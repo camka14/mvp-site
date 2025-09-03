@@ -3,40 +3,26 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
-import { Event } from '@/types';
+import { Event, EventCategory } from '@/types';
+import { eventService } from '@/lib/eventService';
+import { useLocation } from '@/app/hooks/useLocation';
 import Navigation from '@/components/layout/Navigation';
 import SearchBar from '@/components/ui/SearchBar';
 import EventCard from '@/components/ui/EventCard';
+import LocationSearch from '@/components/ui/LocationSearch';
 import Loading from '@/components/ui/Loading';
-
-// Mock data - replace with actual API calls
-const mockEvents: Event[] = [
-  {
-    id: '1',
-    title: 'Beach Volleyball Tournament',
-    description: 'Annual beach volleyball tournament featuring teams from across the region. Perfect for competitive players looking to test their skills.',
-    date: '2025-03-15',
-    time: '09:00 AM',
-    location: 'Santa Monica Beach',
-    category: 'Volleyball',
-    attendees: 24,
-    maxAttendees: 32,
-    price: 25,
-    image: '/api/placeholder/400/200',
-    organizerId: 'user1',
-    status: 'published',
-    createdAt: '2025-02-01',
-    updatedAt: '2025-02-01'
-  },
-  // ... other mock events
-];
 
 export default function EventsPage() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
+  const { location } = useLocation();
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState<'All' | Event['category']>('All');
+  const [error, setError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<'All' | EventCategory>('All');
+  const [selectedEventTypes, setSelectedEventTypes] = useState<('pickup' | 'tournament')[]>(['pickup', 'tournament']);
+  const [selectedSports, setSelectedSports] = useState<string[]>([]);
+  const [maxDistance, setMaxDistance] = useState<number>(50);
   const router = useRouter();
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('q') || '';
@@ -49,42 +35,70 @@ export default function EventsPage() {
       }
       loadEvents();
     }
-  }, [isAuthenticated, authLoading, router]);
+  }, [isAuthenticated, authLoading, router, location, selectedCategory, selectedEventTypes, selectedSports, maxDistance]);
 
   useEffect(() => {
     filterEvents();
-  }, [searchQuery, selectedCategory, events]);
+  }, [searchQuery, events]);
 
   const loadEvents = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      // TODO: Replace with actual API call
-      setEvents(mockEvents);
+      const filters = {
+        category: selectedCategory === 'All' ? undefined : selectedCategory,
+        eventTypes: selectedEventTypes.length === 2 ? undefined : selectedEventTypes,
+        sports: selectedSports.length > 0 ? selectedSports : undefined,
+        userLocation: location || undefined,
+        maxDistance: location ? maxDistance : undefined
+      };
+
+      const loadedEvents = await eventService.getFilteredEvents(filters);
+      setEvents(loadedEvents);
+      setFilteredEvents(loadedEvents);
     } catch (error) {
       console.error('Failed to load events:', error);
+      setError('Failed to load events. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const filterEvents = () => {
-    let filtered = events;
-
-    if (searchQuery) {
-      filtered = filtered.filter(event =>
-        event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        event.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        event.location.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+    if (!searchQuery) {
+      setFilteredEvents(events);
+      return;
     }
 
-    if (selectedCategory !== 'All') {
-      filtered = filtered.filter(event => event.category === selectedCategory);
-    }
-
+    const searchTerm = searchQuery.toLowerCase();
+    const filtered = events.filter(event =>
+      event.name.toLowerCase().includes(searchTerm) ||
+      event.description.toLowerCase().includes(searchTerm) ||
+      event.location.toLowerCase().includes(searchTerm) ||
+      event.sport.toLowerCase().includes(searchTerm)
+    );
+    
     setFilteredEvents(filtered);
   };
 
+  const handleEventTypeToggle = (eventType: 'pickup' | 'tournament') => {
+    setSelectedEventTypes(prev => {
+      if (prev.includes(eventType)) {
+        return prev.filter(type => type !== eventType);
+      } else {
+        return [...prev, eventType];
+      }
+    });
+  };
+
+  const handleLocationChange = (newLocation: any) => {
+    // Location change will trigger useEffect to reload events
+  };
+
   const categories = ['All', 'Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football'] as const;
+  const sports = ['Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football']; // You can populate this dynamically
+  const distanceOptions = [10, 25, 50, 100]; // km
 
   if (authLoading || loading) {
     return <Loading fullScreen text="Loading events..." />;
@@ -101,16 +115,73 @@ export default function EventsPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Discover Events</h1>
-          <p className="text-gray-600">Find and join exciting sports events in your area</p>
+          <p className="text-gray-600">
+            Find pickup games and tournaments {location ? 'near you' : 'in your area'}
+          </p>
         </div>
 
-        {/* Search */}
-        <div className="mb-8">
-          <SearchBar defaultValue={searchQuery} />
-        </div>
+        {/* Controls */}
+        <div className="space-y-6 mb-8">
+          {/* Location and Search */}
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="md:w-1/3">
+              <LocationSearch onLocationChange={handleLocationChange} />
+            </div>
+            <div className="flex-1">
+              <SearchBar defaultValue={searchQuery} />
+            </div>
+          </div>
 
-        {/* Category Filter */}
-        <div className="mb-8">
+          {/* Event Type Filter */}
+          <div className="flex items-center space-x-4">
+            <span className="text-sm font-medium text-gray-700">Event Type:</span>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => handleEventTypeToggle('pickup')}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${
+                  selectedEventTypes.includes('pickup')
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                🏐 Pickup Games
+              </button>
+              <button
+                onClick={() => handleEventTypeToggle('tournament')}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${
+                  selectedEventTypes.includes('tournament')
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                🏆 Tournaments
+              </button>
+            </div>
+          </div>
+
+          {/* Distance Filter */}
+          {location && (
+            <div className="flex items-center space-x-4">
+              <span className="text-sm font-medium text-gray-700">Distance:</span>
+              <div className="flex space-x-2">
+                {distanceOptions.map((distance) => (
+                  <button
+                    key={distance}
+                    onClick={() => setMaxDistance(distance)}
+                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${
+                      maxDistance === distance
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    {distance}km
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Category Filter */}
           <div className="flex flex-wrap gap-2">
             {categories.map((category) => (
               <button
@@ -128,12 +199,26 @@ export default function EventsPage() {
           </div>
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-700">{error}</p>
+            <button
+              onClick={loadEvents}
+              className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
         {/* Results */}
         <div className="mb-4">
           <p className="text-sm text-gray-600">
             {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} found
             {searchQuery && ` for "${searchQuery}"`}
             {selectedCategory !== 'All' && ` in ${selectedCategory}`}
+            {location && ` within ${maxDistance}km`}
           </p>
         </div>
 
@@ -141,7 +226,7 @@ export default function EventsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEvents.length > 0 ? (
             filteredEvents.map((event) => (
-              <EventCard key={event.id} event={event} />
+              <EventCard key={event.id} event={event} showDistance={!!location} userLocation={location} />
             ))
           ) : (
             <div className="col-span-full text-center py-12">
@@ -151,16 +236,33 @@ export default function EventsPage() {
                 </svg>
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No events found</h3>
-              <p className="text-gray-600 mb-4">Try adjusting your search or category filter.</p>
-              <button
-                onClick={() => {
-                  setSelectedCategory('All');
-                  router.push('/events');
-                }}
-                className="btn-primary"
-              >
-                Clear Filters
-              </button>
+              <p className="text-gray-600 mb-4">
+                {location 
+                  ? `Try increasing your search radius or adjusting your filters.`
+                  : 'Set your location to find events near you, or adjust your search filters.'
+                }
+              </p>
+              <div className="space-x-4">
+                {location && (
+                  <button
+                    onClick={() => setMaxDistance(maxDistance * 2)}
+                    className="btn-primary"
+                  >
+                    Expand Search Radius
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedCategory('All');
+                    setSelectedEventTypes(['pickup', 'tournament']);
+                    setSelectedSports([]);
+                    router.push('/events');
+                  }}
+                  className="btn-secondary"
+                >
+                  Clear All Filters
+                </button>
+              </div>
             </div>
           )}
         </div>
