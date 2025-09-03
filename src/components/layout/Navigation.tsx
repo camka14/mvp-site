@@ -15,7 +15,7 @@ const navigationItems: NavItem[] = [
 ];
 
 export default function Navigation() {
-  const { user, setUser } = useApp();
+  const { authUser, setUser } = useApp();
   const pathname = usePathname();
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -30,7 +30,7 @@ export default function Navigation() {
     }
   };
 
-  if (!user) return null;
+  if (!authUser) return null;
 
   return (
     <nav className="bg-white elevation-2 sticky top-0 z-50">
@@ -66,7 +66,7 @@ export default function Navigation() {
             <div className="hidden md:flex items-center space-x-2">
               <span className="text-sm text-gray-600">Hello,</span>
               <span className="text-sm font-medium text-gray-900">
-                {user.name || user.email.split('@')[0]}
+                {authUser.name || authUser.email.split('@')[0]}
               </span>
             </div>
             

@@ -15,12 +15,12 @@ export const authService = {
         await this.logout(); // Logout existing session
       }
 
-      const userAccount: UserAccount = await account.create(
-        ID.unique(),
+      const userAccount: UserAccount = await account.create({
+        userId: ID.unique(),
         email,
         password,
         name
-      );
+      });
 
       // Auto login after registration
       if (userAccount) {
@@ -41,7 +41,11 @@ export const authService = {
         return existingUser; // Return existing user instead of creating new session
       }
 
-      await account.createEmailPasswordSession(email, password);
+      await account.createEmailPasswordSession({
+        email,
+        password
+      });
+
       return await account.get();
     } catch (error) {
       throw error;
@@ -60,7 +64,9 @@ export const authService = {
 
   async logout(): Promise<void> {
     try {
-      await account.deleteSession('current');
+      await account.deleteSession({
+        sessionId: 'current'
+      });
     } catch (error) {
       // If logout fails, user might already be logged out
       console.warn('Logout error:', error);

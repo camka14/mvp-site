@@ -54,7 +54,7 @@ export default function EventCard({ event, showDistance = false, userLocation }:
   const eventTypeInfo = getEventTypeInfo();
 
   return (
-    <Link href={`/events/${event.id}`}>
+    <Link href={`/events/${event.$id}`}>
       <div className="card hover:elevation-3 transition-shadow duration-300 cursor-pointer group">
         <div className="relative h-48 overflow-hidden rounded-t-xl">
           <img

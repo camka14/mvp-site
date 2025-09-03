@@ -226,7 +226,7 @@ export default function EventsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEvents.length > 0 ? (
             filteredEvents.map((event) => (
-              <EventCard key={event.id} event={event} showDistance={!!location} userLocation={location} />
+              <EventCard key={event.$id} event={event} showDistance={!!location} userLocation={location} />
             ))
           ) : (
             <div className="col-span-full text-center py-12">

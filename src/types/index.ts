@@ -1,4 +1,4 @@
-// User types (unchanged)
+// User types
 export interface UserAccount {
   $id: string;
   email: string;
@@ -8,25 +8,13 @@ export interface UserAccount {
   prefs?: Record<string, any>;
 }
 
-export interface UserData {
-  id: string;
-  firstName: string;
-  lastName: string;
-  userName: string;
-  profileImage?: string;
-  teamIds: string[];
-  friendIds: string[];
-  eventInvites: string[];
-  hasStripeAccount?: boolean;
-}
-
-// Unified Event interface (matching your new table structure)
+// Unified Event interface - using $id
 export interface Event {
-  id: string;
+  $id: string;
   name: string;
   description: string;
-  start: string; // ISO-8601 string
-  end: string; // ISO-8601 string
+  start: string;
+  end: string;
   location: string;
   lat: number;
   long: number;
@@ -48,12 +36,12 @@ export interface Event {
   registrationCutoffHours: number;
   seedColor: number;
   isTaxed: boolean;
-  createdAt: string;
-  updatedAt: string;
+  $createdAt: string;
+  $updatedAt: string;
   eventType: 'pickup' | 'tournament';
   sport: string;
-  
-  // Tournament-specific fields (only populated when eventType === 'tournament')
+
+  // Tournament-specific fields
   doubleElimination?: boolean;
   winnerSetCount?: number;
   loserSetCount?: number;
@@ -62,20 +50,87 @@ export interface Event {
   winnerScoreLimitsPerSet?: number[];
   loserScoreLimitsPerSet?: number[];
   prize?: string;
-  
+
   // Computed properties
-  attendees: number; // Calculated from playerIds length
+  attendees: number;
   coordinates: { lat: number; lng: number };
-  category: EventCategory; // Derived from sport column
+  category: EventCategory;
 }
 
-// Tournament and PickupEvent are now just type guards
+export interface UserData {
+  $id: string;
+  firstName: string;
+  lastName: string;
+  teamIds: string[];
+  friendIds: string[];
+  friendRequestIds: string[];
+  friendRequestSentIds: string[];
+  followingIds: string[];
+  userName: string;
+  teamInvites: string[];
+  eventInvites: string[];
+  tournamentInvites: string[];
+  hasStripeAccount?: boolean;
+  uploadedImages: string[];
+  profileImage?: string;
+  $createdAt?: string;
+  $updatedAt?: string;
+
+  // Computed properties
+  fullName: string;
+  avatarUrl: string;
+}
+
+export interface Team {
+  $id: string;
+  name?: string;
+  seed: number;
+  division: string;
+  sport: string;
+  wins: number;
+  losses: number;
+  playerIds: string[];
+  captainId: string;
+  pending: string[];
+  teamSize: number;
+  profileImage?: string;
+  $createdAt?: string;
+  $updatedAt?: string;
+
+  // Computed properties
+  players?: UserData[];
+  captain?: UserData;
+  pendingPlayers?: UserData[];
+  winRate: number;
+  currentSize: number;
+  isFull: boolean;
+  avatarUrl: string;
+}
+
+export function getTeamAvatarUrl(team: Team, size: number = 64): string {
+  if (team.profileImage) {
+    return team.profileImage;
+  }
+
+  // Use team name initials as fallback
+  const teamName = team.name || 'Team';
+  const initials = teamName.split(' ')
+    .map(word => word.charAt(0))
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
+
+  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}&background=2563eb&color=ffffff`;
+}
+
+
+// Rest of types remain the same...
 export type Tournament = Event & { eventType: 'tournament' };
 export type PickupEvent = Event & { eventType: 'pickup' };
 
-export type EventCategory = 
+export type EventCategory =
   | 'Volleyball'
-  | 'Soccer' 
+  | 'Soccer'
   | 'Basketball'
   | 'Tennis'
   | 'Pickleball'
@@ -85,41 +140,6 @@ export type EventCategory =
 
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'completed';
 
-// Helper functions
-export function getCategoryFromEvent(event: Event): EventCategory {
-  const sport = event.sport.toLowerCase();
-  if (sport.includes('volleyball')) return 'Volleyball';
-  if (sport.includes('soccer')) return 'Soccer';
-  if (sport.includes('basketball')) return 'Basketball';
-  if (sport.includes('tennis')) return 'Tennis';
-  if (sport.includes('pickleball')) return 'Pickleball';
-  if (sport.includes('swimming')) return 'Swimming';
-  if (sport.includes('football')) return 'Football';
-  return 'Other';
-}
-
-export function getEventDateTime(event: Event): { date: string; time: string } {
-  const startDate = new Date(event.start);
-  return {
-    date: startDate.toISOString().split('T')[0],
-    time: startDate.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      hour12: true 
-    })
-  };
-}
-
-// Type guards
-export function isTournament(event: Event): event is Tournament {
-  return event.eventType === 'tournament';
-}
-
-export function isPickupEvent(event: Event): event is PickupEvent {
-  return event.eventType === 'pickup';
-}
-
-// Rest of existing types...
 export interface LocationCoordinates {
   lat: number;
   lng: number;
@@ -132,6 +152,52 @@ export interface LocationInfo extends LocationCoordinates {
   zipCode?: string;
 }
 
+// Helper functions (no changes)
+export function getCategoryFromEvent(event: Event): EventCategory {
+  const sport = event.sport.toLowerCase();
+  if (sport.includes('volleyball')) return 'Volleyball';
+  if (sport.includes('soccer')) return 'Soccer';
+  if (sport.includes('basketball')) return 'Basketball';
+  if (sport.includes('tennis')) return 'Tennis';
+  if (sport.includes('pickleball')) return 'Pickleball';
+  if (sport.includes('swimming')) return 'Swimming';
+  if (sport.includes('football')) return 'Football';
+  return 'Other';
+}
+
+export function getUserFullName(user: UserData): string {
+  return `${user.firstName} ${user.lastName}`.trim();
+}
+
+export function getUserAvatarUrl(user: UserData, size: number = 64): string {
+  if (user.profileImage) {
+    return user.profileImage;
+  }
+
+  const fullName = getUserFullName(user);
+  const initials = fullName || user.userName || 'User';
+  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
+}
+
+export function getTeamWinRate(team: Team): number {
+  const totalGames = team.wins + team.losses;
+  if (totalGames === 0) return 0;
+  return Math.round((team.wins / totalGames) * 100);
+}
+
+export function getEventDateTime(event: Event): { date: string; time: string } {
+  const startDate = new Date(event.start);
+  return {
+    date: startDate.toISOString().split('T')[0],
+    time: startDate.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
+  };
+}
+
+// Rest of interfaces...
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;

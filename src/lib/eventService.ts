@@ -1,5 +1,5 @@
 import { databases } from '@/app/appwrite';
-import { Event, LocationCoordinates, getCategoryFromEvent, isTournament, PickupEvent, Tournament } from '@/types';
+import { Event, LocationCoordinates, getCategoryFromEvent } from '@/types';
 import { locationService } from './locationService';
 import { Query } from 'appwrite';
 
@@ -9,7 +9,7 @@ const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 export interface EventFilters {
   category?: string;
   query?: string;
-  maxDistance?: number; // in kilometers
+  maxDistance?: number;
   userLocation?: LocationCoordinates;
   dateFrom?: string;
   dateTo?: string;
@@ -22,17 +22,16 @@ export interface EventFilters {
 
 class EventService {
 
-  // Get all events from the unified table
   async getAllEvents(): Promise<Event[]> {
     try {
-      const response = await databases.listRows(
-        DATABASE_ID,
-        EVENTS_TABLE_ID,
-        [
+      const response = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        queries: [
           Query.orderDesc('$createdAt'),
           Query.limit(100)
         ]
-      );
+      });
 
       return response.rows.map(row => this.mapRowToEvent(row));
     } catch (error) {
@@ -41,7 +40,6 @@ class EventService {
     }
   }
 
-  // Get events with filters
   async getFilteredEvents(filters: EventFilters): Promise<Event[]> {
     try {
       const queries: string[] = [
@@ -49,27 +47,22 @@ class EventService {
         Query.limit(100)
       ];
 
-      // Add eventType filter
       if (filters.eventTypes && filters.eventTypes.length > 0 && filters.eventTypes.length < 2) {
         queries.push(Query.equal('eventType', filters.eventTypes));
       }
 
-      // Add sports filter
       if (filters.sports && filters.sports.length > 0) {
         queries.push(Query.equal('sport', filters.sports));
       }
 
-      // Add divisions filter
       if (filters.divisions && filters.divisions.length > 0) {
         queries.push(Query.contains('divisions', filters.divisions));
       }
 
-      // Add fieldType filter
       if (filters.fieldType) {
         queries.push(Query.equal('fieldType', filters.fieldType));
       }
 
-      // Add date filters
       if (filters.dateFrom) {
         queries.push(Query.greaterThanEqual('start', filters.dateFrom));
       }
@@ -77,20 +70,18 @@ class EventService {
         queries.push(Query.lessThanEqual('end', filters.dateTo));
       }
 
-      // Add price filter
       if (filters.priceMax !== undefined) {
         queries.push(Query.lessThanEqual('price', filters.priceMax));
       }
 
-      const response = await databases.listRows(
-        DATABASE_ID,
-        EVENTS_TABLE_ID,
+      const response = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
         queries
-      );
+      });
 
       let events = response.rows.map(row => this.mapRowToEvent(row));
 
-      // Apply text search filter (client-side since Appwrite search requires indexes)
       if (filters.query) {
         const searchTerm = filters.query.toLowerCase();
         events = events.filter(event =>
@@ -101,7 +92,6 @@ class EventService {
         );
       }
 
-      // Apply category filter (derived from sport)
       if (filters.category && filters.category !== 'All') {
         events = events.filter(event => {
           const eventCategory = getCategoryFromEvent(event);
@@ -109,7 +99,6 @@ class EventService {
         });
       }
 
-      // Apply location-based filtering
       if (filters.userLocation && filters.maxDistance) {
         events = events.filter(event => {
           const distance = locationService.calculateDistance(
@@ -122,7 +111,6 @@ class EventService {
           return distance <= filters.maxDistance!;
         });
 
-        // Sort by distance
         events.sort((a, b) => {
           const distanceA = locationService.calculateDistance(
             filters.userLocation!.lat,
@@ -139,7 +127,6 @@ class EventService {
           return distanceA - distanceB;
         });
       } else {
-        // Sort by start date if no location sorting
         events.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
       }
 
@@ -150,137 +137,30 @@ class EventService {
     }
   }
 
-  // Get single event by ID
-  async getEventById(id: string): Promise<Event | null> {
+  async getEventById(id: string): Promise<Event | undefined> {
     try {
-      const response = await databases.getRow(
-        DATABASE_ID,
-        EVENTS_TABLE_ID,
-        id
-      );
+      const response = await databases.getRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: id
+      });
 
       return this.mapRowToEvent(response);
     } catch (error) {
       console.error('Failed to fetch event:', error);
-      return null;
+      return undefined;
     }
   }
 
-  // Get events by sport
-  async getEventsBySport(sport: string): Promise<Event[]> {
-    try {
-      const response = await databases.listRows(
-        DATABASE_ID,
-        EVENTS_TABLE_ID,
-        [
-          Query.equal('sport', sport),
-          Query.orderDesc('$createdAt'),
-          Query.limit(100)
-        ]
-      );
-
-      return response.rows.map(row => this.mapRowToEvent(row));
-    } catch (error) {
-      console.error('Failed to fetch events by sport:', error);
-      throw new Error('Failed to load events');
-    }
-  }
-
-  // Get pickup events only
-  async getPickupEvents(): Promise<PickupEvent[]> {
-    try {
-      const response = await databases.listRows(
-        DATABASE_ID,
-        EVENTS_TABLE_ID,
-        [
-          Query.equal('eventType', 'pickup'),
-          Query.orderDesc('$createdAt'),
-          Query.limit(100)
-        ]
-      );
-
-      return response.rows.map(row => this.mapRowToEvent(row)) as PickupEvent[];
-    } catch (error) {
-      console.error('Failed to fetch pickup events:', error);
-      throw new Error('Failed to load pickup events');
-    }
-  }
-
-  // Get tournaments only
-  async getTournaments(): Promise<Tournament[]> {
-    try {
-      const response = await databases.listRows(
-        DATABASE_ID,
-        EVENTS_TABLE_ID,
-        [
-          Query.equal('eventType', 'tournament'),
-          Query.orderDesc('$createdAt'),
-          Query.limit(100)
-        ]
-      );
-
-      return response.rows.map(row => this.mapRowToEvent(row)) as Tournament[];
-    } catch (error) {
-      console.error('Failed to fetch tournaments:', error);
-      throw new Error('Failed to load tournaments');
-    }
-  }
-
-  // Map Appwrite row to Event (unified mapping)
+  // Map Appwrite row to Event using spread operator
   private mapRowToEvent(row: any): Event {
-    const baseEvent: Event = {
-      id: row.$id,
-      name: row.name,
-      description: row.description,
-      start: row.start,
-      end: row.end,
-      location: row.location,
-      lat: row.lat,
-      long: row.long,
-      divisions: row.divisions || [],
-      fieldType: row.fieldType,
-      price: row.price || 0,
-      rating: row.rating,
-      imageUrl: row.imageUrl || '',
-      hostId: row.hostId,
-      maxParticipants: row.maxParticipants || 0,
-      teamSizeLimit: row.teamSizeLimit || 0,
-      teamSignup: row.teamSignup || false,
-      singleDivision: row.singleDivision || false,
-      waitList: row.waitList || [],
-      freeAgents: row.freeAgents || [],
-      playerIds: row.playerIds || [],
-      teamIds: row.teamIds || [],
-      cancellationRefundHours: row.cancellationRefundHours || 0,
-      registrationCutoffHours: row.registrationCutoffHours || 0,
-      seedColor: row.seedColor || 0,
-      isTaxed: row.isTaxed || false,
-      createdAt: row.$createdAt,
-      updatedAt: row.$updatedAt,
-
-      // New unified table columns
-      eventType: row.eventType as 'pickup' | 'tournament',
-      sport: row.sport,
-
-      // Computed properties
+    return {
+      ...row, // Spread all fields from Appwrite row
+      // Only define computed properties
       attendees: (row.playerIds || []).length,
       coordinates: { lat: row.lat, lng: row.long },
       category: getCategoryFromEvent({ sport: row.sport } as Event)
     };
-
-    // Add tournament-specific fields if it's a tournament
-    if (row.eventType === 'tournament') {
-      baseEvent.doubleElimination = row.doubleElimination || false;
-      baseEvent.winnerSetCount = row.winnerSetCount || 0;
-      baseEvent.loserSetCount = row.loserSetCount || 0;
-      baseEvent.winnerBracketPointsToVictory = row.winnerBracketPointsToVictory || [];
-      baseEvent.loserBracketPointsToVictory = row.loserBracketPointsToVictory || [];
-      baseEvent.winnerScoreLimitsPerSet = row.winnerScoreLimitsPerSet || [];
-      baseEvent.loserScoreLimitsPerSet = row.loserScoreLimitsPerSet || [];
-      baseEvent.prize = row.prize || '';
-    }
-
-    return baseEvent;
   }
 }
 
