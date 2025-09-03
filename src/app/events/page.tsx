@@ -11,6 +11,7 @@ import SearchBar from '@/components/ui/SearchBar';
 import EventCard from '@/components/ui/EventCard';
 import LocationSearch from '@/components/ui/LocationSearch';
 import Loading from '@/components/ui/Loading';
+import EventDetailModal from '@/components/ui/EventDetailModal';
 
 export default function EventsPage() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
@@ -26,6 +27,8 @@ export default function EventsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('q') || '';
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [showEventModal, setShowEventModal] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -44,7 +47,7 @@ export default function EventsPage() {
   const loadEvents = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const filters = {
         category: selectedCategory === 'All' ? undefined : selectedCategory,
@@ -78,8 +81,13 @@ export default function EventsPage() {
       event.location.toLowerCase().includes(searchTerm) ||
       event.sport.toLowerCase().includes(searchTerm)
     );
-    
+
     setFilteredEvents(filtered);
+  };
+
+  const handleEventClick = (event: Event) => {
+    setSelectedEvent(event);
+    setShowEventModal(true);
   };
 
   const handleEventTypeToggle = (eventType: 'pickup' | 'tournament') => {
@@ -138,21 +146,19 @@ export default function EventsPage() {
             <div className="flex space-x-2">
               <button
                 onClick={() => handleEventTypeToggle('pickup')}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${
-                  selectedEventTypes.includes('pickup')
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${selectedEventTypes.includes('pickup')
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
               >
                 🏐 Pickup Games
               </button>
               <button
                 onClick={() => handleEventTypeToggle('tournament')}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${
-                  selectedEventTypes.includes('tournament')
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${selectedEventTypes.includes('tournament')
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
               >
                 🏆 Tournaments
               </button>
@@ -168,11 +174,10 @@ export default function EventsPage() {
                   <button
                     key={distance}
                     onClick={() => setMaxDistance(distance)}
-                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${
-                      maxDistance === distance
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
+                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${maxDistance === distance
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
                   >
                     {distance}km
                   </button>
@@ -187,11 +192,10 @@ export default function EventsPage() {
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors duration-200 ${
-                  selectedCategory === category
-                    ? 'bg-blue-600 text-white elevation-2'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors duration-200 ${selectedCategory === category
+                  ? 'bg-blue-600 text-white elevation-2'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
               >
                 {category}
               </button>
@@ -226,7 +230,11 @@ export default function EventsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEvents.length > 0 ? (
             filteredEvents.map((event) => (
-              <EventCard key={event.$id} event={event} showDistance={!!location} userLocation={location} />
+              <EventCard
+                key={event.$id}
+                event={event}
+                onClick={() => handleEventClick(event)}
+              />
             ))
           ) : (
             <div className="col-span-full text-center py-12">
@@ -237,7 +245,7 @@ export default function EventsPage() {
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No events found</h3>
               <p className="text-gray-600 mb-4">
-                {location 
+                {location
                   ? `Try increasing your search radius or adjusting your filters.`
                   : 'Set your location to find events near you, or adjust your search filters.'
                 }
@@ -267,6 +275,14 @@ export default function EventsPage() {
           )}
         </div>
       </div>
+      <EventDetailModal
+        event={selectedEvent}
+        isOpen={showEventModal}
+        onClose={() => {
+          setShowEventModal(false);
+          setSelectedEvent(null);
+        }}
+      />
     </>
   );
 }

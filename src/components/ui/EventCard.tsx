@@ -6,12 +6,13 @@ interface EventCardProps {
   event: Event;
   showDistance?: boolean;
   userLocation?: LocationCoordinates | null;
+  onClick?: () => void;
 }
 
-export default function EventCard({ event, showDistance = false, userLocation }: EventCardProps) {
+export default function EventCard({ event, showDistance = false, userLocation, onClick }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
   const category = getCategoryFromEvent(event);
-  
+
   const formatPrice = (price?: number) => {
     if (!price) return 'Free';
     return `$${price}`;
@@ -35,17 +36,17 @@ export default function EventCard({ event, showDistance = false, userLocation }:
 
   const getDistance = () => {
     if (!showDistance || !userLocation) return null;
-    
+
     const distanceKm = locationService.calculateDistance(
       userLocation.lat,
       userLocation.lng,
       event.lat,
       event.long
     );
-    
+
     const distanceMiles = locationService.kmToMiles(distanceKm);
-    
-    return distanceMiles < 1 
+
+    return distanceMiles < 1
       ? `${(distanceMiles * 5280).toFixed(0)} ft`
       : `${distanceMiles.toFixed(1)} mi`;
   };
@@ -54,7 +55,10 @@ export default function EventCard({ event, showDistance = false, userLocation }:
   const eventTypeInfo = getEventTypeInfo();
 
   return (
-    <Link href={`/events/${event.$id}`}>
+    <div
+      className={`card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-shadow duration-200`}
+      onClick={onClick}
+    >
       <div className="card hover:elevation-3 transition-shadow duration-300 cursor-pointer group">
         <div className="relative h-48 overflow-hidden rounded-t-xl">
           <img
@@ -136,6 +140,6 @@ export default function EventCard({ event, showDistance = false, userLocation }:
           </div>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
