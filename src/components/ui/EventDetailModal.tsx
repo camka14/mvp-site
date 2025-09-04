@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Event, UserData, Team, getEventDateTime, getCategoryFromEvent, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import { Event, UserData, Team, getEventDateTime, getCategoryFromEvent, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
+import { paymentService } from '@/lib/paymentService';
 import { useApp } from '@/app/providers';
-import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
-import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
+import ParticipantsPreview from './ParticipantsPreview';
+import ParticipantsDropdown from './ParticipantsDropdown';
+import PaymentModal from './PaymentModal';
 
 interface EventDetailModalProps {
     event: Event | null;
@@ -21,8 +23,13 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     const [isLoading, setIsLoading] = useState(false);
     const [showPlayersDropdown, setShowPlayersDropdown] = useState(false);
     const [showTeamsDropdown, setShowTeamsDropdown] = useState(false);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [joining, setJoining] = useState(false);
+    const [joinError, setJoinError] = useState<string | null>(null);
+    const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
 
     const currentEvent = detailedEvent || event;
+    const isUserRegistered = currentEvent && user && currentEvent.playerIds.includes(user.$id);
 
     useEffect(() => {
         if (isOpen && event) {
@@ -33,6 +40,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
             setPlayers([]);
             setTeams([]);
             setIsLoading(false);
+            setJoinError(null); // Reset error when modal closes
         }
     }, [isOpen, event]);
 
@@ -49,11 +57,55 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
 
             setPlayers(eventPlayers);
             setTeams(eventTeams.filter(team => team !== undefined) as Team[]);
+
+            // Refresh event data to get latest participant counts
+            const updatedEvent = await eventService.getEventById(event.$id);
+            if (updatedEvent) {
+                setDetailedEvent(updatedEvent);
+            }
         } catch (error) {
             console.error('Failed to load event details:', error);
         } finally {
             setIsLoading(false);
         }
+    };
+
+    // Update the join event handlers
+    const handleJoinEvent = async () => {
+        if (!user || !currentEvent) return;
+
+        setJoining(true);
+        setJoinError(null);
+
+        try {
+            const isTournament = currentEvent.eventType === 'tournament';
+
+            if (currentEvent.price === 0) {
+                await paymentService.joinEvent(currentEvent.$id, user.$id, undefined, isTournament);
+                await loadEventDetails(); // Refresh event data
+            } else {
+                const paymentIntent = await paymentService.createPaymentIntent(
+                    currentEvent.$id,
+                    user.$id,
+                    undefined, // teamId if needed
+                    isTournament
+                );
+
+                setPaymentData(paymentIntent); // Store payment data
+                setShowPaymentModal(true);     // Show payment modal
+            }
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to join event');
+        } finally {
+            setJoining(false);
+        }
+    };
+
+
+    // NEW: Handle successful payment
+    const handlePaymentSuccess = () => {
+        setShowPaymentModal(false);
+        loadEventDetails(); // Refresh event data
     };
 
     if (!isOpen || !currentEvent) return null;
@@ -210,21 +262,53 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                         </div>
                                     )}
 
-                                    {/* Registration Status */}
+                                    {/* Registration Status - UPDATED */}
                                     <div className="bg-blue-50 rounded-lg p-4 text-center">
                                         <div className="text-lg font-semibold text-blue-900 mb-1">
                                             {currentEvent.attendees} / {currentEvent.maxParticipants}
                                         </div>
-                                        <div className="text-sm text-blue-700">Total Participants</div>
+                                        <div className="text-sm text-blue-700 mb-3">Total Participants</div>
 
-                                        {currentEvent.attendees < currentEvent.maxParticipants ? (
-                                            <button className="btn-primary w-full mt-3">
-                                                Join Event
-                                            </button>
-                                        ) : (
-                                            <div className="text-sm text-red-600 mt-2 font-medium">
+                                        {/* Error Message */}
+                                        {joinError && (
+                                            <div className="mb-3 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+                                                {joinError}
+                                            </div>
+                                        )}
+
+                                        {/* Join Button Logic */}
+                                        {!user ? (
+                                            <div className="text-sm text-gray-600">
+                                                Please log in to join this event
+                                            </div>
+                                        ) : isUserRegistered ? (
+                                            <div className="text-sm text-green-600 font-medium">
+                                                ✓ You're registered for this event
+                                            </div>
+                                        ) : currentEvent.attendees >= currentEvent.maxParticipants ? (
+                                            <div className="text-sm text-red-600 font-medium">
                                                 Event Full
                                             </div>
+                                        ) : (
+                                            <button
+                                                onClick={handleJoinEvent}
+                                                disabled={joining}
+                                                className={`w-full mt-3 py-2 px-4 rounded-lg font-medium transition-colors ${joining
+                                                    ? 'bg-gray-400 cursor-not-allowed text-white'
+                                                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                                    }`}
+                                            >
+                                                {joining ? (
+                                                    <div className="flex items-center justify-center">
+                                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                                                        Joining...
+                                                    </div>
+                                                ) : currentEvent.price > 0 ? (
+                                                    `Join Event - $${currentEvent.price}`
+                                                ) : (
+                                                    'Join Event'
+                                                )}
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -313,6 +397,21 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                     </div>
                 )}
                 emptyMessage="No teams have registered for this event yet."
+            />
+
+            <PaymentModal
+                isOpen={showPaymentModal}
+                onClose={() => {
+                    setShowPaymentModal(false);
+                    setPaymentData(null); // Clear payment data
+                }}
+                event={currentEvent}
+                paymentData={paymentData} // Pass the already-created payment intent
+                onPaymentSuccess={() => {
+                    setShowPaymentModal(false);
+                    setPaymentData(null);
+                    loadEventDetails();
+                }}
             />
         </>
     );

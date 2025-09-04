@@ -232,3 +232,27 @@ export interface NavItem {
   icon?: React.ComponentType<any>;
   badge?: string | number;
 }
+
+export interface PaymentIntent {
+  paymentIntent: string;
+  ephemeralKey?: string;
+  customer?: string;
+  publishableKey: string;
+  feeBreakdown: FeeBreakdown;
+  error?: string;
+}
+
+export interface FeeBreakdown {
+  eventPrice: number;
+  stripeFee: number;
+  processingFee: number;
+  totalCharge: number;
+  hostReceives: number;
+  feePercentage: number;
+}
+
+export interface PaymentResult {
+  success: boolean;
+  error?: string;
+  paymentIntentId?: string;
+}

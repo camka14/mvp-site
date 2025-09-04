@@ -40,6 +40,24 @@ class EventService {
     }
   }
 
+  // Add this method to your EventService class
+  async updateEventParticipants(eventId: string, updates: { playerIds: string[], teamIds: string[] }): Promise<Event | undefined> {
+    try {
+      const response = await databases.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+        data: updates
+      });
+
+      return this.mapRowToEvent(response);
+    } catch (error) {
+      console.error('Failed to update event participants:', error);
+      throw error;
+    }
+  }
+
+
   async getFilteredEvents(filters: EventFilters): Promise<Event[]> {
     try {
       const queries: string[] = [
