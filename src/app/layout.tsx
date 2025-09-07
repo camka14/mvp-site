@@ -2,7 +2,6 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { ReactNode } from 'react';
 import { Providers } from './providers';
-import { ChatDrawer } from '@/components/chat/ChatDrawer';
 import { ChatProvider } from '@/context/ChatContext';
 import { ChatUIProvider } from '@/context/ChatUIContext';
 import { ChatComponents } from '@/components/chat/ChatComponents';
