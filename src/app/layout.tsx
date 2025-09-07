@@ -2,6 +2,10 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { ReactNode } from 'react';
 import { Providers } from './providers';
+import { ChatDrawer } from '@/components/chat/ChatDrawer';
+import { ChatProvider } from '@/context/ChatContext';
+import { ChatUIProvider } from '@/context/ChatUIContext';
+import { ChatComponents } from '@/components/chat/ChatComponents';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -24,11 +28,12 @@ export default function RootLayout({ children }: RootLayoutProps) {
       </head>
       <body className="min-h-screen bg-gray-50">
         <Providers>
-          <div className="flex flex-col min-h-screen">
-            <main className="flex-1">
+          <ChatProvider>
+            <ChatUIProvider>
               {children}
-            </main>
-          </div>
+              <ChatComponents />
+            </ChatUIProvider>
+          </ChatProvider>
         </Providers>
       </body>
     </html>

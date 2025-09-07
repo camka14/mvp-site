@@ -175,7 +175,7 @@ class EventService {
     return {
       ...row, // Spread all fields from Appwrite row
       // Only define computed properties
-      attendees: (row.playerIds || []).length,
+      attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
       coordinates: { lat: row.lat, lng: row.long },
       category: getCategoryFromEvent({ sport: row.sport } as Event)
     };

@@ -19,7 +19,13 @@
     ],
     "baseUrl": "./src",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@/components/*": ["./components/*"],
+      "@/lib/*": ["./lib/*"],
+      "@/types": ["./types"],
+      "@/types/*": ["./types/*"],
+      "@/utils/*": ["./utils/*"],
+      "@/app/*": ["./app/*"],
     }
   },
   "include": [
@@ -27,7 +33,7 @@
     "**/*.ts", 
     "**/*.tsx", 
     ".next/types/**/*.ts",
-    "src/**/*"
+    "src"
   ],
   "exclude": ["node_modules"]
 }
