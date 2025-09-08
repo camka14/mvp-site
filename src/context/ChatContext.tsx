@@ -28,12 +28,6 @@ interface Message {
 }
 
 interface ChatContextType {
-    // UI State
-    isChatListOpen: boolean;
-    setChatListOpen: (open: boolean) => void;
-    selectedChatId: string | null;
-    setSelectedChatId: (chatId: string | null) => void;
-
     // Data State
     chatGroups: ChatGroup[];
     messages: Record<string, Message[]>;
@@ -50,8 +44,6 @@ const ChatContext = createContext<ChatContextType | null>(null);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
     const { user } = useApp();
-    const [isChatListOpen, setChatListOpen] = useState(false);
-    const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [chatGroups, setChatGroups] = useState<ChatGroup[]>([]);
     const [messages, setMessages] = useState<Record<string, Message[]>>({});
     const [loading, setLoading] = useState(false);
@@ -116,10 +108,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     return (
         <ChatContext.Provider value={{
-            isChatListOpen,
-            setChatListOpen,
-            selectedChatId,
-            setSelectedChatId,
             chatGroups,
             messages,
             loading,

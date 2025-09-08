@@ -11,9 +11,9 @@ export function ChatDrawer() {
     const { loadMessages } = useChat();
     const {
         isChatListOpen,
-        selectedChatId,
+        openChatWindows,
         openChatList,
-        closeAll
+        isFloatingButtonVisible
     } = useChatUI();
 
     const [mounted, setMounted] = useState(false);
@@ -22,33 +22,27 @@ export function ChatDrawer() {
         setMounted(true);
     }, []);
 
+    // Load messages for each open chat window
     useEffect(() => {
-        if (selectedChatId) {
-            loadMessages(selectedChatId);
-        }
-    }, [selectedChatId, loadMessages]);
-
-    // Prevent body scroll when modal is open
-    useEffect(() => {
-        if (isChatListOpen || selectedChatId) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
-
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, [isChatListOpen, selectedChatId]);
+        openChatWindows.forEach(chatId => {
+            loadMessages(chatId);
+        });
+    }, [openChatWindows, loadMessages]);
 
     if (!mounted) return null;
 
+    const chatWindowWidth = 320; // Width of each chat window
+    const chatListWidth = 320; // Width of chat list drawer
+
     const drawerContent = (
-        <>
+        <div className="pointer-events-none fixed inset-0 z-40">
             {/* Floating Chat Button */}
             <button
                 onClick={openChatList}
-                className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-200 flex items-center justify-center"
+                className={`fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 flex items-center justify-center pointer-events-auto ${isFloatingButtonVisible
+                        ? 'translate-y-0 opacity-100 scale-100'
+                        : 'translate-y-16 opacity-0 scale-75 pointer-events-none'
+                    }`}
                 aria-label="Open chat"
             >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,37 +50,40 @@ export function ChatDrawer() {
                 </svg>
             </button>
 
-            {/* Overlay Container */}
-            {(isChatListOpen || selectedChatId) && (
-                <div className="fixed inset-0 z-40">
-                    {/* Backdrop */}
-                    <div
-                        className="absolute inset-0 bg-black bg-opacity-30 transition-opacity"
-                        onClick={closeAll}
-                    />
-
-                    {/* Chat List Drawer */}
-                    <div className={`absolute bottom-20 right-6 w-80 transition-all duration-300 transform ${isChatListOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
-                        }`}>
-                        <div className="bg-white rounded-xl shadow-2xl border overflow-hidden max-h-96">
-                            <ChatList />
-                        </div>
-                    </div>
-
-                    {/* Chat Detail Drawer */}
-                    <div className={`absolute top-0 right-0 w-96 h-full transition-all duration-300 transform ${selectedChatId ? 'translate-x-0' : 'translate-x-full'
-                        }`}>
-                        <div className="bg-white shadow-2xl border-l h-full">
-                            {selectedChatId && (
-                                <ChatDetail
-                                    chatId={selectedChatId}
-                                />
-                            )}
-                        </div>
-                    </div>
+            {/* Chat List Drawer */}
+            <div
+                className={`fixed bottom-0 right-6 transition-all duration-300 pointer-events-auto ${isChatListOpen
+                        ? 'translate-y-0 opacity-100'
+                        : 'translate-y-full opacity-0 pointer-events-none'
+                    }`}
+                style={{ width: `${chatListWidth}px` }}
+            >
+                <div className="bg-white rounded-t-xl shadow-2xl border border-b-0 max-h-96 overflow-hidden">
+                    <ChatList />
                 </div>
-            )}
-        </>
+            </div>
+
+            {/* Chat Detail Windows - Stacked from right to left */}
+            {openChatWindows.map((chatId, index) => {
+                const rightOffset = 6 + (index * chatWindowWidth) + (index > 0 ? index * 8 : 0); // 8px gap between windows
+
+                return (
+                    <div
+                        key={chatId}
+                        className="fixed bottom-0 transition-all duration-300 pointer-events-auto"
+                        style={{
+                            right: `${rightOffset}px`,
+                            width: `${chatWindowWidth}px`,
+                            height: '500px'
+                        }}
+                    >
+                        <div className="bg-white rounded-t-xl shadow-2xl border border-b-0 h-full overflow-hidden">
+                            <ChatDetail chatId={chatId} />
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
     );
 
     return createPortal(drawerContent, document.body);

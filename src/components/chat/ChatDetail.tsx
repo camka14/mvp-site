@@ -11,7 +11,7 @@ interface ChatDetailProps {
 
 export function ChatDetail({ chatId }: ChatDetailProps) {
     const { messages, sendMessage, chatGroups } = useChat();
-    const { closeChat } = useChatUI();
+    const { closeChatWindow } = useChatUI();
     const { user } = useApp();
     const [messageInput, setMessageInput] = useState('');
     const [sending, setSending] = useState(false);
@@ -39,6 +39,10 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
         }
     };
 
+    const handleClose = () => {
+        closeChatWindow(chatId);
+    };
+
     const formatMessageTime = (timestamp: string) => {
         return new Date(timestamp).toLocaleTimeString('en-US', {
             hour: 'numeric',
@@ -49,14 +53,14 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
 
     return (
         <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b bg-white">
-                <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
+            {/* Header with Close Button */}
+            <div className="flex items-center justify-between p-3 border-b bg-gray-50 rounded-t-xl">
+                <div className="flex items-center space-x-3 min-w-0">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
                         {chatGroup?.displayName?.[0]?.toUpperCase() || chatGroup?.name[0]?.toUpperCase() || 'C'}
                     </div>
-                    <div>
-                        <h3 className="font-semibold text-gray-900">
+                    <div className="min-w-0">
+                        <h3 className="font-semibold text-gray-900 truncate text-sm">
                             {chatGroup?.displayName || chatGroup?.name || 'Chat'}
                         </h3>
                         <p className="text-xs text-gray-500">
@@ -65,18 +69,18 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
                     </div>
                 </div>
                 <button
-                    onClick={closeChat}
-                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                    onClick={handleClose}
+                    className="p-1.5 hover:bg-gray-200 rounded-full transition-colors flex-shrink-0"
                     aria-label="Close chat"
                 >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {chatMessages.length === 0 ? (
                     <div className="text-center text-gray-500 mt-8">
                         <p className="text-sm">No messages yet</p>
@@ -90,11 +94,11 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
                                 key={message.$id}
                                 className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                             >
-                                <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${isCurrentUser
+                                <div className={`max-w-xs px-3 py-2 rounded-lg text-sm ${isCurrentUser
                                         ? 'bg-blue-600 text-white'
                                         : 'bg-gray-100 text-gray-900'
                                     }`}>
-                                    <p className="text-sm">{message.body}</p>
+                                    <p>{message.body}</p>
                                     <p className={`text-xs mt-1 ${isCurrentUser ? 'text-blue-100' : 'text-gray-500'
                                         }`}>
                                         {formatMessageTime(message.sentTime)}
@@ -108,20 +112,20 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
             </div>
 
             {/* Message Input */}
-            <div className="border-t bg-white p-4">
+            <div className="border-t bg-white p-3">
                 <form onSubmit={handleSendMessage} className="flex space-x-2">
                     <input
                         type="text"
                         value={messageInput}
                         onChange={(e) => setMessageInput(e.target.value)}
                         placeholder="Type a message..."
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         disabled={sending}
                     />
                     <button
                         type="submit"
                         disabled={!messageInput.trim() || sending}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         {sending ? (
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
