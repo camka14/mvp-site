@@ -125,13 +125,13 @@ class UserService {
             const fileId = ID.unique();
 
             await storage.createFile({
-                bucketId: process.env.NEXT_PUBLIC_PROFILE_IMAGES_BUCKET_ID!,
+                bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
                 fileId,
                 file
             });
 
             const imageUrl = storage.getFilePreview({
-                bucketId: process.env.NEXT_PUBLIC_PROFILE_IMAGES_BUCKET_ID!,
+                bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
                 fileId,
                 width: 400,
                 height: 400
@@ -150,7 +150,7 @@ class UserService {
     async deleteProfileImage(fileId: string): Promise<void> {
         try {
             await storage.deleteFile({
-                bucketId: process.env.NEXT_PUBLIC_PROFILE_IMAGES_BUCKET_ID!,
+                bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
                 fileId
             });
         } catch (error) {
@@ -198,7 +198,7 @@ class UserService {
                 firstName: row.firstName || '',
                 lastName: row.lastName || '',
                 userName: row.userName || '',
-                profileImage: row.profileImage
+                profileImageId: row.profileImage
             } as UserData)
         };
     }

@@ -1,3 +1,5 @@
+import { storage } from "@/app/appwrite";
+
 // User types
 export interface UserAccount {
   $id: string;
@@ -22,7 +24,7 @@ export interface Event {
   fieldType: string;
   price: number;
   rating?: number;
-  imageUrl: string;
+  imageId: string;
   hostId: string;
   maxParticipants: number;
   teamSizeLimit: number;
@@ -35,7 +37,6 @@ export interface Event {
   cancellationRefundHours: number;
   registrationCutoffHours: number;
   seedColor: number;
-  isTaxed: boolean;
   $createdAt: string;
   $updatedAt: string;
   eventType: 'pickup' | 'tournament';
@@ -72,7 +73,7 @@ export interface UserData {
   tournamentInvites: string[];
   hasStripeAccount?: boolean;
   uploadedImages: string[];
-  profileImage?: string;
+  profileImageId?: string;
   $createdAt?: string;
   $updatedAt?: string;
 
@@ -93,7 +94,7 @@ export interface Team {
   captainId: string;
   pending: string[];
   teamSize: number;
-  profileImage?: string;
+  profileImageId?: string;
   $createdAt?: string;
   $updatedAt?: string;
 
@@ -108,8 +109,8 @@ export interface Team {
 }
 
 export function getTeamAvatarUrl(team: Team, size: number = 64): string {
-  if (team.profileImage) {
-    return team.profileImage;
+  if (team.profileImageId) {
+    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: team.profileImageId, width: size, height: size });
   }
 
   // Use team name initials as fallback
@@ -122,6 +123,19 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
 
   return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}&background=2563eb&color=ffffff`;
 }
+
+export function getEventImageUrl(params: {
+  imageId: string;
+  size?: number;
+  width?: number;
+  height?: number;
+}): string {
+  if (params.width || params.height) {
+    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: params.imageId, width: params.width, height: params.height });
+  }
+  return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: params.imageId, width: params.size, height: params.size });
+}
+
 
 
 // Rest of types remain the same...
@@ -170,8 +184,8 @@ export function getUserFullName(user: UserData): string {
 }
 
 export function getUserAvatarUrl(user: UserData, size: number = 64): string {
-  if (user.profileImage) {
-    return user.profileImage;
+  if (user.profileImageId) {
+    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: user.profileImageId, width: size, height: size });
   }
 
   const fullName = getUserFullName(user);

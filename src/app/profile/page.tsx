@@ -42,7 +42,7 @@ export default function ProfilePage() {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 userName: user.userName,
-                profileImage: user.profileImage || ''
+                profileImage: user.profileImageId || ''
             });
         }
     }, [user]);
@@ -55,7 +55,7 @@ export default function ProfilePage() {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     userName: user.userName,
-                    profileImage: user.profileImage || ''
+                    profileImage: user.profileImageId || ''
                 });
             }
         }
@@ -217,10 +217,9 @@ export default function ProfilePage() {
                                     </label>
                                     <ImageUploader
                                         currentImageUrl={profileData.profileImage}
-                                        onImageUploaded={handleImageUploaded}
-                                        bucketId={process.env.NEXT_PUBLIC_PROFILE_IMAGES_BUCKET_ID!}
+                                        currentUser={user}
+                                        bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                                         placeholder="Upload new profile picture"
-                                        maxSizeMB={5}
                                     />
                                 </div>
                             )}

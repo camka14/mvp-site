@@ -1,7 +1,7 @@
 import { databases } from '@/app/appwrite';
 import { Event, LocationCoordinates, getCategoryFromEvent } from '@/types';
 import { locationService } from './locationService';
-import { Query } from 'appwrite';
+import { ID, Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
@@ -19,6 +19,16 @@ export interface EventFilters {
   divisions?: string[];
   fieldType?: string;
 }
+
+export type CreateEventData = Omit<Event,
+  | 'attendees'
+  | 'coordinates'
+  | 'category'
+  | '$id'
+  | '$createdAt'
+  | '$updatedAt'
+>;
+
 
 class EventService {
 
@@ -180,6 +190,22 @@ class EventService {
       category: getCategoryFromEvent({ sport: row.sport } as Event)
     };
   }
+
+  async createEvent(newEvent: Partial<CreateEventData>): Promise<Event> {
+    try {
+      const response = await databases.createRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: ID.unique(),
+        data: newEvent
+      });
+      return this.mapRowToEvent(response);
+    } catch (error) {
+      console.error('Failed to create event:', error);
+      throw error;
+    }
+  }
+
 }
 
 export const eventService = new EventService();

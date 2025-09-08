@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@appwrite.io/pink-icons": "^1.0.0",
+    "@react-google-maps/api": "^2.20.7",
     "@stripe/react-stripe-js": "^4.0.0",
     "@stripe/stripe-js": "^7.9.0",
     "@tailwindcss/postcss": "^4.0.14",

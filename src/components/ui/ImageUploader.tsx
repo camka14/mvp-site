@@ -1,166 +1,91 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { storage } from '@/app/appwrite';
-import { ID } from 'appwrite';
+import React, { useState } from 'react';
+import { ImageSelectionModal } from './ImageSelectionModal';
+import { UserData } from '@/types';
 
 interface ImageUploaderProps {
     currentImageUrl?: string;
-    onImageUploaded: (fileId: string, imageUrl: string) => void;
+    currentUser: UserData; // Serializable array of URLs
     bucketId: string;
-    accept?: string;
-    maxSizeMB?: number;
     className?: string;
     placeholder?: string;
+    onChange?: (url: string) => void; // Optional callback for parent updates
 }
 
 export function ImageUploader({
     currentImageUrl,
-    onImageUploaded,
+    currentUser,
     bucketId,
-    accept = "image/*",
-    maxSizeMB = 5,
     className = "",
-    placeholder = "Click to upload image"
+    placeholder = "Click to select image",
+    onChange
 }: ImageUploaderProps) {
-    const [uploading, setUploading] = useState(false);
-    const [progress, setProgress] = useState(0);
-    const [preview, setPreview] = useState<string | null>(currentImageUrl || null);
-    const [error, setError] = useState<string | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [showModal, setShowModal] = useState(false);
+    const [selectedImageUrl, setSelectedImageUrl] = useState<string>(currentImageUrl || '');
 
-    const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        // Validate file size
-        if (file.size > maxSizeMB * 1024 * 1024) {
-            setError(`File size must be less than ${maxSizeMB}MB`);
-            return;
-        }
-
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-            setError('Please select a valid image file');
-            return;
-        }
-
-        setError(null);
-        setUploading(true);
-        setProgress(0);
-
-        // Create preview
-        const reader = new FileReader();
-        reader.onload = () => setPreview(reader.result as string);
-        reader.readAsDataURL(file);
-
-        try {
-            const fileId = ID.unique();
-
-            // Upload file to Appwrite Storage
-            const response = await storage.createFile(
-                bucketId,
-                fileId,
-                file
-            );
-
-            // Get file preview URL
-            const imageUrl = storage.getFilePreview({bucketId, fileId, width: 400, height: 400});
-
-            onImageUploaded(fileId, imageUrl.toString());
-            setProgress(100);
-        } catch (error) {
-            console.error('Upload error:', error);
-            setError('Failed to upload image. Please try again.');
-            setPreview(currentImageUrl || null);
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    const handleClick = () => {
-        fileInputRef.current?.click();
+    const handleImageSelect = (url: string) => {
+        setSelectedImageUrl(url);
+        onChange?.(url);
     };
 
     const handleRemove = () => {
-        setPreview(null);
-        onImageUploaded('', '');
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
+        setSelectedImageUrl('');
+        onChange?.('');
     };
 
     return (
-        <div className={`space-y-4 ${className}`}>
-            {/* Upload Area */}
-            <div
-                onClick={handleClick}
-                className={`relative border-2 border-dashed rounded-xl cursor-pointer transition-colors ${preview
-                        ? 'border-gray-300 bg-gray-50'
-                        : 'border-blue-300 bg-blue-50 hover:bg-blue-100'
-                    } ${uploading ? 'pointer-events-none' : ''}`}
-            >
-                {preview ? (
+        <>
+            <div className={`relative ${className}`}>
+                {selectedImageUrl ? (
                     <div className="relative">
                         <img
-                            src={preview}
-                            alt="Preview"
-                            className="w-full h-48 object-cover rounded-xl"
+                            src={selectedImageUrl}
+                            alt="Selected"
+                            className="w-full h-40 object-cover rounded-lg border border-gray-200"
                         />
-                        {!uploading && (
+                        <div className="absolute top-2 right-2 flex gap-2">
                             <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRemove();
-                                }}
-                                className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                                onClick={() => setShowModal(true)}
+                                className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg"
+                                title="Change image"
                             >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                 </svg>
                             </button>
-                        )}
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center p-8">
-                        <svg className="w-12 h-12 text-blue-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                        <p className="text-gray-600 text-center">
-                            {placeholder}
-                        </p>
-                        <p className="text-sm text-gray-500 mt-2">
-                            Max size: {maxSizeMB}MB
-                        </p>
-                    </div>
-                )}
-
-                {/* Upload Progress */}
-                {uploading && (
-                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-xl">
-                        <div className="text-white text-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                            <p className="text-sm">Uploading...</p>
+                            <button
+                                onClick={handleRemove}
+                                className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors shadow-lg"
+                                title="Remove image"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
                         </div>
                     </div>
+                ) : (
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="w-full h-40 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors duration-200"
+                    >
+                        <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm font-medium">{placeholder}</span>
+                        <span className="text-xs text-gray-400 mt-1">Select from gallery or upload new</span>
+                    </button>
                 )}
             </div>
 
-            {/* Hidden file input */}
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept={accept}
-                onChange={handleFileSelect}
-                className="hidden"
+            <ImageSelectionModal
+                isOpen={showModal}
+                onClose={() => setShowModal(false)}
+                onSelect={handleImageSelect}
+                bucketId={bucketId}
+                currentUser={currentUser}
             />
-
-            {/* Error message */}
-            {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                    <p className="text-red-800 text-sm">{error}</p>
-                </div>
-            )}
-        </div>
+        </>
     );
 }

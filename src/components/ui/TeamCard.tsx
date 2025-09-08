@@ -33,7 +33,7 @@ export default function TeamCard({
               onError={(e) => {
                 // Fallback to initials if image fails
                 const target = e.target as HTMLImageElement;
-                target.src = getTeamAvatarUrl({ ...team, profileImage: undefined }, 56);
+                target.src = getTeamAvatarUrl({ ...team, profileImageId: undefined }, 56);
               }}
             />
           </div>

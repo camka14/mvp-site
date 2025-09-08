@@ -33,7 +33,7 @@ export default function UserCard({
                         onError={(e) => {
                             // Fallback to initials if image fails
                             const target = e.target as HTMLImageElement;
-                            target.src = getUserAvatarUrl({ ...user, profileImage: undefined }, 48);
+                            target.src = getUserAvatarUrl({ ...user, profileImageId: undefined }, 48);
                         }}
                     />
                 </div>

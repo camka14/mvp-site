@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Event, UserData, Team, getEventDateTime, getCategoryFromEvent, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent } from '@/types';
+import { Event, UserData, Team, getEventDateTime, getCategoryFromEvent, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
 import { useApp } from '@/app/providers';
-import ParticipantsPreview from './ParticipantsPreview';
-import ParticipantsDropdown from './ParticipantsDropdown';
-import PaymentModal from './PaymentModal';
+import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
+import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
+import PaymentModal from '@/components/ui/PaymentModal';
 
 interface EventDetailModalProps {
-    event: Event | null;
+    event: Event;
     isOpen: boolean;
     onClose: () => void;
 }
@@ -121,7 +121,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                     {/* Header */}
                     <div className="relative">
                         <img
-                            src={currentEvent.imageUrl}
+                            src={getEventImageUrl({ imageId: event.imageId, width: 800 })}
                             alt={currentEvent.name}
                             className="w-full h-48 object-cover"
                             onError={(e) => {

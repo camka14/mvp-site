@@ -11,7 +11,8 @@ import SearchBar from '@/components/ui/SearchBar';
 import EventCard from '@/components/ui/EventCard';
 import LocationSearch from '@/components/ui/LocationSearch';
 import Loading from '@/components/ui/Loading';
-import EventDetailModal from '@/components/ui/EventDetailModal';
+import EventDetailModal from './components/EventDetailModal';
+import EventCreationModal from './components/EventCreationModal';
 
 export default function EventsPage() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
@@ -29,6 +30,7 @@ export default function EventsPage() {
   const searchQuery = searchParams.get('q') || '';
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -138,6 +140,13 @@ export default function EventsPage() {
             <div className="flex-1">
               <SearchBar defaultValue={searchQuery} />
             </div>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md flex items-center"
+            >
+              <span className="mr-2">+</span>
+              Create Event
+            </button>
           </div>
 
           {/* Event Type Filter */}
@@ -276,12 +285,20 @@ export default function EventsPage() {
         </div>
       </div>
       <EventDetailModal
-        event={selectedEvent}
+        event={selectedEvent!}
         isOpen={showEventModal}
         onClose={() => {
           setShowEventModal(false);
           setSelectedEvent(null);
         }}
+      />
+      <EventCreationModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onEventCreated={(event) => {
+          setShowCreateModal(false);
+        }}
+        currentUser={user}
       />
     </>
   );

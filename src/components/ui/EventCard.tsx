@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Event, LocationCoordinates, getCategoryFromEvent, getEventDateTime } from '@/types';
+import { Event, LocationCoordinates, getCategoryFromEvent, getEventDateTime, getEventImageUrl } from '@/types';
 import { locationService } from '@/lib/locationService';
 
 interface EventCardProps {
@@ -53,6 +53,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
 
   const distance = getDistance();
   const eventTypeInfo = getEventTypeInfo();
+  const imageUrl = getEventImageUrl({imageId: event.imageId, width: 400, height: 200});
 
   return (
     <div
@@ -62,7 +63,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
       <div className="card hover:elevation-3 transition-shadow duration-300 cursor-pointer group">
         <div className="relative h-48 overflow-hidden rounded-t-xl">
           <img
-            src={event.imageUrl || '/api/placeholder/400/200'}
+            src={imageUrl}
             alt={event.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />

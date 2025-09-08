@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState,} from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
-import { Event, PaymentIntent, FeeBreakdown } from '@/types';
+import { Event, PaymentIntent, getEventImageUrl } from '@/types';
 import { useApp } from '@/app/providers';
 import { paymentService } from '@/lib/paymentService';
 import PaymentForm from './PaymentForm';
@@ -12,7 +12,7 @@ interface PaymentModalProps {
     isOpen: boolean;
     onClose: () => void;
     event: Event;
-    paymentData: PaymentIntent | null; // Receive already-created payment intent
+    paymentData: PaymentIntent | null;
     onPaymentSuccess: () => void;
 }
 
@@ -78,7 +78,7 @@ export default function PaymentModal({
                             {/* Event Details */}
                             <div className="bg-gray-50 rounded-lg p-4">
                                 <div className="flex items-center space-x-3">
-                                    <img src={event.imageUrl} alt={event.name} className="w-12 h-12 rounded-lg object-cover" />
+                                    <img src={getEventImageUrl({imageId: event.imageId, size: 12})} alt={event.name} className="w-12 h-12 rounded-lg object-cover" />
                                     <div>
                                         <div className="font-medium text-gray-900">{event.name}</div>
                                         <div className="text-sm text-gray-600">{event.location}</div>

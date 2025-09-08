@@ -302,7 +302,7 @@ class TeamService {
             } as Team),
             avatarUrl: getTeamAvatarUrl({
                 name: row.name,
-                profileImage: row.profileImage
+                profileImageId: row.profileImage
             } as Team)
         };
 
