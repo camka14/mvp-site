@@ -1,42 +1,91 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from '@/app/hooks/useLocation';
+import { locationService } from '@/lib/locationService';
+import { useDebounce } from '@/app/hooks/useDebounce';
 
-interface LocationSearchProps {
-  onLocationChange: (location: any) => void;
-}
-
-export default function LocationSearch({ onLocationChange }: LocationSearchProps) {
+export default function LocationSearch() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLocationOptions, setShowLocationOptions] = useState(false);
-  const { location, locationInfo, loading, error, requestLocation, searchLocation, clearLocation } = useLocation();
+  const [predictions, setPredictions] = useState<Array<{ description: string; placeId: string }>>([]);
+  const [predictionsLoading, setPredictionsLoading] = useState(false);
+  const [sessionToken, setSessionToken] = useState<any | null>(null);
+  const debouncedQuery = useDebounce(searchQuery, 250);
+
+  const { location, locationInfo, loading, error, requestLocation, clearLocation, setLocationFromInfo } = useLocation();
 
   const handleUseCurrentLocation = async () => {
     await requestLocation();
-    if (location) {
-      onLocationChange(location);
-    }
+  };
+
+  const startSession = () => {
+    if (!sessionToken) setSessionToken(locationService.createPlacesSessionToken());
+  };
+  const endSession = () => {
+    setSessionToken(null);
+    setPredictions([]);
+    setSearchQuery('');
   };
 
   const handleSearchLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
-    
-    await searchLocation(searchQuery);
-    setShowLocationOptions(false);
+    // If user pressed Enter on a typed query without selecting a prediction, fallback to geocode
+    try {
+      const info = await locationService.geocodeLocation(searchQuery);
+      setLocationFromInfo(info);
+      setShowLocationOptions(false);
+      endSession();
+    } catch (e) {
+      // ignore; error surfaced via hook if needed
+    }
   };
 
   const handleClearLocation = () => {
     clearLocation();
-    onLocationChange(null);
     setShowLocationOptions(false);
+    endSession();
+  };
+
+  // Fetch predictions when query changes
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!debouncedQuery || !showLocationOptions) {
+        setPredictions([]);
+        return;
+      }
+      try {
+        setPredictionsLoading(true);
+        const preds = await locationService.getPlacePredictions(debouncedQuery, sessionToken || undefined);
+        if (!cancelled) setPredictions(preds);
+      } catch (e) {
+        if (!cancelled) setPredictions([]);
+      } finally {
+        if (!cancelled) setPredictionsLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [debouncedQuery, sessionToken, showLocationOptions]);
+
+  const selectPrediction = async (placeId: string) => {
+    try {
+      const info = await locationService.getPlaceDetails(placeId, sessionToken || undefined);
+      setLocationFromInfo(info);
+      setShowLocationOptions(false);
+    } catch (e) {
+      // noop
+    } finally {
+      endSession();
+    }
   };
 
   return (
     <div className="relative">
       <button
-        onClick={() => setShowLocationOptions(!showLocationOptions)}
+        onClick={() => { setShowLocationOptions(!showLocationOptions); if (!showLocationOptions) startSession(); }}
         className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
       >
         <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -44,7 +93,7 @@ export default function LocationSearch({ onLocationChange }: LocationSearchProps
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
         <span className="text-sm">
-          {locationInfo?.city ? `${locationInfo.city}, ${locationInfo.state}` : 'Set Location'}
+          {locationInfo?.city ? `${locationInfo.city}, ${locationInfo.state || ''}`.trim().replace(/,\s*$/, '') : 'Set Location'}
         </span>
         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -86,12 +135,35 @@ export default function LocationSearch({ onLocationChange }: LocationSearchProps
               </button>
             </form>
 
+            {/* Autocomplete suggestions */}
+            {(predictionsLoading || predictions.length > 0) && (
+              <div className="border-t border-gray-200 pt-2 max-h-60 overflow-auto">
+                {predictionsLoading && (
+                  <div className="text-xs text-gray-500 px-2 py-1">Loading suggestions…</div>
+                )}
+                {predictions.map((p) => (
+                  <button
+                    key={p.placeId}
+                    type="button"
+                    onClick={() => selectPrediction(p.placeId)}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50 rounded-md text-sm flex items-center"
+                  >
+                    <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {p.description}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Current Location Display */}
             {locationInfo && (
               <div className="pt-2 border-t border-gray-200">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">
-                    Current: {locationInfo.city}, {locationInfo.state}
+                    Current: {locationInfo.city}{locationInfo.state ? `, ${locationInfo.state}` : ''}
                   </span>
                   <button
                     onClick={handleClearLocation}

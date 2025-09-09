@@ -1,16 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
-import { Team, UserData } from '@/types';
+import { Team, UserData, Event } from '@/types';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
+import { eventService } from '@/lib/eventService';
 import Navigation from '@/components/layout/Navigation';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import Loading from '@/components/ui/Loading';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
+import CreateTeamModal from '@/components/ui/CreateTeamModal';
+import InvitePlayersModal from '@/components/ui/InvitePlayersModal';
 
 export default function TeamsPage() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
@@ -24,20 +27,13 @@ export default function TeamsPage() {
   const [selectedTeamForDetails, setSelectedTeamForDetails] = useState<Team | null>(null);
   const [showTeamDetailModal, setShowTeamDetailModal] = useState(false);
 
-  // Create Team Form State - UPDATED with playerCount
-  const [createForm, setCreateForm] = useState({
-    name: '',
-    division: 'Open',
-    sport: 'Volleyball',
-    playerCount: 6,
-    profileImage: ''
-  });
-  const [creating, setCreating] = useState(false);
+  // Event context for inviting free agents
+  const searchParams = useSearchParams();
+  const [eventContext, setEventContext] = useState<Event | null>(null);
+  const [eventFreeAgents, setEventFreeAgents] = useState<UserData[]>([]);
 
-  // Invite Players State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UserData[]>([]);
-  const [inviting, setInviting] = useState<string | null>(null);
+  // Local UI state for extracted modals
+  const [creating, setCreating] = useState(false);
 
   const router = useRouter();
 
@@ -65,13 +61,36 @@ export default function TeamsPage() {
     }
   }, [user, authLoading, isAuthenticated, router]);
 
-  // Update player count when sport changes
+  // Load event context (free agents) if arriving from EventJoinModal
   useEffect(() => {
-    setCreateForm(prev => ({
-      ...prev,
-      playerCount: sportPlayerCounts[prev.sport] || 8
-    }));
-  }, [createForm.sport]);
+    const eventId = searchParams?.get('event');
+    const loadEvent = async () => {
+      if (!eventId) {
+        setEventContext(null);
+        setEventFreeAgents([]);
+        return;
+      }
+      try {
+        const evt = await eventService.getEventById(eventId);
+        if (evt) {
+          setEventContext(evt);
+          if (evt.freeAgents && evt.freeAgents.length > 0) {
+            const agents = await userService.getUsersByIds(evt.freeAgents);
+            setEventFreeAgents(agents);
+          } else {
+            setEventFreeAgents([]);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load event context:', e);
+        setEventContext(null);
+        setEventFreeAgents([]);
+      }
+    };
+    loadEvent();
+  }, [searchParams]);
+
+  // CreateTeamModal manages its own form state
 
   const loadTeamsData = async () => {
     if (!user) return;
@@ -97,35 +116,7 @@ export default function TeamsPage() {
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !createForm.name.trim()) return;
-
-    setCreating(true);
-    try {
-      const newTeam = await teamService.createTeam(
-        createForm.name.trim(),
-        user.$id,
-        createForm.division,
-        createForm.sport,
-        createForm.playerCount,
-        createForm.profileImage || undefined
-      );
-
-      if (newTeam) {
-        setTeams(prev => [...prev, newTeam]);
-        setCreateForm({
-          name: '',
-          division: 'Open',
-          sport: 'Volleyball',
-          playerCount: 6,
-          profileImage: ''
-        });
-        setShowCreateModal(false);
-      }
-    } catch (error) {
-      console.error('Failed to create team:', error);
-    } finally {
-      setCreating(false);
-    }
+    return;
   };
 
   const handleAcceptInvitation = async (teamId: string) => {
@@ -145,7 +136,7 @@ export default function TeamsPage() {
     if (!user) return;
 
     try {
-      const success = await teamService.rejectTeamInvitation(teamId, user.$id);
+      const success = await teamService.removeTeamInvitation(teamId, user.$id);
       if (success) {
         setTeamInvitations(prev => prev.filter(team => team.$id !== teamId));
       }
@@ -154,47 +145,19 @@ export default function TeamsPage() {
     }
   };
 
-  const handleSearchUsers = async (query: string) => {
-    if (query.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      const results = await userService.searchUsers(query);
-      const filteredResults = results.filter(searchUser =>
-        !selectedTeam?.playerIds.includes(searchUser.$id) &&
-        !selectedTeam?.pending.includes(searchUser.$id) &&
-        searchUser.$id !== user?.$id
-      );
-      setSearchResults(filteredResults);
-    } catch (error) {
-      console.error('Failed to search users:', error);
-    }
-  };
-
-  const handleInvitePlayer = async (playerId: string) => {
-    if (!selectedTeam || inviting) return;
-
-    setInviting(playerId);
-    try {
-      const success = await teamService.invitePlayerToTeam(selectedTeam.$id, playerId);
-      if (success) {
-        loadTeamsData();
-        setShowInviteModal(false);
-        setSearchQuery('');
-        setSearchResults([]);
-        setSelectedTeam(null);
-      }
-    } catch (error) {
-      console.error('Failed to invite player:', error);
-    } finally {
-      setInviting(null);
-    }
-  };
+  // Invite flow handled within InvitePlayersModal
 
   const divisions = ['Open', 'Recreational', 'Competitive', 'Elite'];
   const sports = Object.keys(sportPlayerCounts);
+
+  const extractFileIdFromUrl = (url: string): string => {
+    try {
+      const match = url.match(/\/files\/([^/]+)\/preview/);
+      return match ? match[1] : '';
+    } catch {
+      return '';
+    }
+  };
 
   if (authLoading || loading) {
     return <Loading fullScreen text="Loading teams..." />;
@@ -268,8 +231,15 @@ export default function TeamsPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedTeam(team);
-                            setShowInviteModal(true);
+                            // If we have an event context, open the Team Detail modal
+                            // to surface event free agents for inviting
+                            if (eventContext) {
+                              setSelectedTeamForDetails(team);
+                              setShowTeamDetailModal(true);
+                            } else {
+                              setSelectedTeam(team);
+                              setShowInviteModal(true);
+                            }
                           }}
                           className="btn-ghost text-xs py-1 px-2"
                           title="Invite Players"
@@ -364,233 +334,48 @@ export default function TeamsPage() {
           </div>
         )}
 
-        {/* UPDATED Create Team Modal with Player Count */}
-        {showCreateModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold text-gray-900">Create New Team</h3>
-                  <button
-                    onClick={() => setShowCreateModal(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+        {/* Create Team Modal */}
+        <CreateTeamModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          currentUser={user as UserData}
+          onTeamCreated={(team) => setTeams(prev => [...prev, team])}
+        />
 
-                <form onSubmit={handleCreateTeam} className="space-y-4">
-                  <div>
-                    <label className="form-label">Team Name</label>
-                    <input
-                      type="text"
-                      value={createForm.name}
-                      onChange={(e) => setCreateForm(prev => ({ ...prev, name: e.target.value }))}
-                      className="form-input"
-                      placeholder="Enter team name"
-                      required
-                      maxLength={50}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Choose a unique name for your team (max 50 characters)
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="form-label">Sport</label>
-                    <select
-                      value={createForm.sport}
-                      onChange={(e) => setCreateForm(prev => ({ ...prev, sport: e.target.value }))}
-                      className="form-input"
-                    >
-                      {sports.map(sport => (
-                        <option key={sport} value={sport}>{sport}</option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Select the sport your team will play
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="form-label">Division</label>
-                    <select
-                      value={createForm.division}
-                      onChange={(e) => setCreateForm(prev => ({ ...prev, division: e.target.value }))}
-                      className="form-input"
-                    >
-                      {divisions.map(division => (
-                        <option key={division} value={division}>{division}</option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Select the competitive level for your team
-                    </p>
-                  </div>
-
-                  {/* Player Count Field */}
-                  <div>
-                    <label className="form-label">Maximum Players</label>
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="number"
-                        min="2"
-                        max="50"
-                        value={createForm.playerCount}
-                        onChange={(e) => setCreateForm(prev => ({
-                          ...prev,
-                          playerCount: parseInt(e.target.value) || 2
-                        }))}
-                        className="form-input flex-1"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setCreateForm(prev => ({
-                          ...prev,
-                          playerCount: sportPlayerCounts[prev.sport] || 8
-                        }))}
-                        className="btn-ghost text-sm py-2 px-3 whitespace-nowrap"
-                      >
-                        Use Default ({sportPlayerCounts[createForm.sport]})
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Set the maximum number of players for your team (typically {sportPlayerCounts[createForm.sport]} for {createForm.sport})
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="form-label">Team Logo (Optional)</label>
-                    <input
-                      type="url"
-                      value={createForm.profileImage || ''}
-                      onChange={(e) => setCreateForm(prev => ({ ...prev, profileImage: e.target.value }))}
-                      className="form-input"
-                      placeholder="Enter image URL"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Add a team logo or leave blank to use initials
-                    </p>
-                  </div>
-
-                  <div className="flex space-x-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateModal(false)}
-                      className="btn-secondary flex-1"
-                      disabled={creating}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn-primary flex-1"
-                      disabled={creating || !createForm.name.trim()}
-                    >
-                      {creating ? 'Creating...' : 'Create Team'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Invite Players Modal - same as before... */}
-        {showInviteModal && selectedTeam && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-xl font-semibold text-gray-900">Invite Players</h3>
-                    <p className="text-sm text-gray-600">
-                      Add players to {selectedTeam.name}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowInviteModal(false);
-                      setSelectedTeam(null);
-                      setSearchQuery('');
-                      setSearchResults([]);
-                    }}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-
-                <div className="mb-4">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      handleSearchUsers(e.target.value);
-                    }}
-                    className="form-input"
-                    placeholder="Search players by name or username..."
-                  />
-                </div>
-
-                <div className="max-h-64 overflow-y-auto">
-                  {searchQuery.length < 2 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <p>Type at least 2 characters to search for players</p>
-                    </div>
-                  ) : searchResults.length > 0 ? (
-                    <div className="space-y-2">
-                      {searchResults.map((searchUser) => (
-                        <div key={searchUser.$id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-                          <UserCard
-                            user={searchUser}
-                            className="!p-0 !shadow-none flex-1"
-                          />
-                          <button
-                            onClick={() => handleInvitePlayer(searchUser.$id)}
-                            disabled={inviting === searchUser.$id}
-                            className="btn-primary text-sm py-2 px-4 ml-3"
-                          >
-                            {inviting === searchUser.$id ? 'Inviting...' : 'Invite'}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <p>No players found matching "{searchQuery}"</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Invite Players Modal */}
+        {selectedTeam && (
+          <InvitePlayersModal
+            isOpen={showInviteModal}
+            onClose={() => {
+              setShowInviteModal(false);
+              setSelectedTeam(null);
+            }}
+            team={selectedTeam}
+          />
         )}
 
         {/* Team Detail Modal */}
-        <TeamDetailModal
-          team={selectedTeamForDetails}
-          isOpen={showTeamDetailModal}
-          onClose={() => {
-            setShowTeamDetailModal(false);
-            setSelectedTeamForDetails(null);
-          }}
-          onTeamUpdated={(updatedTeam) => {
-            setTeams(prev => prev.map(team => team.$id === updatedTeam.$id ? updatedTeam : team));
-            setSelectedTeamForDetails(updatedTeam);
-          }}
-          onTeamDeleted={(teamId) => {
-            setTeams(prev => prev.filter(team => team.$id !== teamId));
-            setShowTeamDetailModal(false);
-            setSelectedTeamForDetails(null);
-          }}
-        />
+        {selectedTeamForDetails && (
+          <TeamDetailModal
+            currentTeam={selectedTeamForDetails}
+            isOpen={showTeamDetailModal}
+            onClose={() => {
+              setShowTeamDetailModal(false);
+              setSelectedTeamForDetails(null);
+            }}
+            onTeamUpdated={(updatedTeam) => {
+              setTeams(prev => prev.map(team => team.$id === updatedTeam.$id ? updatedTeam : team));
+              setSelectedTeamForDetails(updatedTeam);
+            }}
+            onTeamDeleted={(teamId) => {
+              setTeams(prev => prev.filter(team => team.$id !== teamId));
+              setShowTeamDetailModal(false);
+              setSelectedTeamForDetails(null);
+            }}
+            eventContext={eventContext ?? undefined}
+            eventFreeAgents={eventFreeAgents}
+          />
+        )}
       </div>
     </>
   );

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Event, LocationCoordinates, getCategoryFromEvent, getEventDateTime, getEventImageUrl } from '@/types';
+import { Event, LocationCoordinates, formatPrice, getCategoryFromEvent, getEventDateTime, getEventImageUrl } from '@/types';
 import { locationService } from '@/lib/locationService';
 
 interface EventCardProps {
@@ -12,11 +12,6 @@ interface EventCardProps {
 export default function EventCard({ event, showDistance = false, userLocation, onClick }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
   const category = getCategoryFromEvent(event);
-
-  const formatPrice = (price?: number) => {
-    if (!price) return 'Free';
-    return `$${price}`;
-  };
 
   const getEventTypeInfo = () => {
     if (event.eventType === 'tournament') {
@@ -57,10 +52,9 @@ export default function EventCard({ event, showDistance = false, userLocation, o
 
   return (
     <div
-      className={`card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-shadow duration-200`}
+      className={`card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-shadow duration-200 group h-[420px] flex flex-col`}
       onClick={onClick}
     >
-      <div className="card hover:elevation-3 transition-shadow duration-300 cursor-pointer group">
         <div className="relative h-48 overflow-hidden rounded-t-xl">
           <img
             src={imageUrl}
@@ -88,7 +82,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
           </div>
         </div>
 
-        <div className="card-content">
+        <div className="card-content flex-1 flex flex-col">
           <div className="mb-2">
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
               {event.name}
@@ -99,7 +93,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
             {event.description}
           </p>
 
-          <div className="space-y-2">
+          <div className="space-y-2 flex-1 overflow-hidden">
             <div className="flex items-center text-sm text-gray-500">
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4v10m4-10v10m-4 4h4M4 7h16a2 2 0 012 2v8a2 2 0 01-2-2V9a2 2 0 012-2z" />
@@ -140,7 +134,6 @@ export default function EventCard({ event, showDistance = false, userLocation, o
             </div>
           </div>
         </div>
-      </div>
     </div>
   );
 }

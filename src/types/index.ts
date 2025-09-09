@@ -270,3 +270,8 @@ export interface PaymentResult {
   error?: string;
   paymentIntentId?: string;
 }
+
+export function formatPrice(price?: number) {
+    if (!price) return 'Free';
+    return `$${(price/100).toFixed(2)}`;
+  };

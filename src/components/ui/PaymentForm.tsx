@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStripe, useElements, PaymentElement } from '@stripe/react-stripe-js';
+import { formatPrice } from '@/types';
 
 interface PaymentFormProps {
     onSuccess: () => void;
@@ -64,13 +65,13 @@ export default function PaymentForm({
             <div className="border-t pt-4">
                 <div className="flex justify-between items-center text-lg font-semibold mb-4">
                     <span>Total:</span>
-                    <span>${amount.toFixed(2)}</span>
+                    <span>{formatPrice(amount)}</span>
                 </div>
 
                 <button
                     type="submit"
                     disabled={!stripe || !elements || loading}
-                    className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${!stripe || !elements || loading
+                    className={`w-full py-3 px-4 rounded-lg font-medium transition-colors {!stripe || !elements || loading
                             ? 'bg-gray-400 cursor-not-allowed text-white'
                             : 'bg-blue-600 hover:bg-blue-700 text-white'
                         }`}
@@ -81,7 +82,7 @@ export default function PaymentForm({
                             Processing...
                         </div>
                     ) : (
-                        `Pay $${amount.toFixed(2)}`
+                        `Pay ${formatPrice(amount)}`
                     )}
                 </button>
             </div>

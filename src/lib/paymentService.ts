@@ -18,8 +18,6 @@ interface AddParticipantRequest {
 }
 
 class PaymentService {
-
-    // Only for PAID events - creates Stripe payment intent
     async createPaymentIntent(
         eventId: string,
         userId: string,
@@ -74,6 +72,35 @@ class PaymentService {
         } catch (error) {
             console.error('Failed to join event:', error);
             throw new Error(error instanceof Error ? error.message : 'Failed to join event');
+        }
+    }
+
+    async requestRefund(eventId: string, userId: string, reason?: string): Promise<{
+        success: boolean;
+        message?: string;
+        emailSent?: boolean;
+    }> {
+        try {
+            const response = await functions.createExecution({
+                functionId: process.env.NEXT_PUBLIC_BILLING_FUNCTION_ID!,
+                body: JSON.stringify({
+                    eventId,
+                    userId: userId,
+                    reason: reason || 'requested_by_customer',
+                    command: "refund_payment"
+                }),
+                async: false
+            });
+
+            const result = JSON.parse(response.responseBody);
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Failed to request refund:', error);
+            throw new Error(error instanceof Error ? error.message : 'Failed to request refund');
         }
     }
 }

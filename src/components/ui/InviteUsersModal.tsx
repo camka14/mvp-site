@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { userService } from '@/lib/userService';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
+import ModalShell from './ModalShell';
 
 interface User {
     $id: string;
@@ -23,11 +23,7 @@ export function InviteUsersModal() {
     const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(false);
     const [searching, setSearching] = useState(false);
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
+    // No need to track mounted once using ModalShell
 
     // Search users with debounce
     useEffect(() => {
@@ -103,31 +99,24 @@ export function InviteUsersModal() {
         )}`;
     };
 
-    if (!mounted || !isInviteModalOpen) return null;
+    if (!isInviteModalOpen) return null;
 
-    const modalContent = (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
-                {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-gray-100">
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900">Create New Chat</h3>
-                        <p className="text-sm text-gray-600 mt-1">Search and select users to start a conversation</p>
-                    </div>
-                    <button
-                        onClick={handleClose}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                    >
-                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
+    return (
+        <ModalShell
+            isOpen={isInviteModalOpen}
+            onClose={handleClose}
+            title={
+                <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Create New Chat</h3>
+                    <p className="text-sm text-gray-600 mt-1">Search and select users to start a conversation</p>
                 </div>
-
-                {/* Content */}
-                <div className="flex flex-col max-h-[calc(80vh-8rem)]">
-                    {/* Search Section */}
-                    <div className="p-6 border-b border-gray-100">
+            }
+            maxWidth="md"
+            contentClassName="!pt-0"
+        >
+            <div className="flex flex-col">
+                {/* Search Section */}
+                    <div className="pb-4 border-b border-gray-100">
                         <div className="relative">
                             <input
                                 type="text"
@@ -149,7 +138,7 @@ export function InviteUsersModal() {
 
                     {/* Selected Users */}
                     {selectedUsers.length > 0 && (
-                        <div className="p-6 border-b border-gray-100">
+                        <div className="py-4 border-b border-gray-100">
                             <h4 className="text-sm font-medium text-gray-900 mb-3">
                                 Selected Users ({selectedUsers.length})
                             </h4>
@@ -184,7 +173,7 @@ export function InviteUsersModal() {
                     )}
 
                     {/* Search Results */}
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="flex-1 overflow-y-auto py-4">
                         {searching && (
                             <div className="p-6 text-center">
                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -230,10 +219,9 @@ export function InviteUsersModal() {
                             </div>
                         )}
                     </div>
-                </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end space-x-3 p-6 border-t border-gray-100 bg-gray-50">
+                <div className="flex items-center justify-end space-x-3 pt-4">
                     <button
                         onClick={handleClose}
                         className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors"
@@ -256,8 +244,6 @@ export function InviteUsersModal() {
                     </button>
                 </div>
             </div>
-        </div>
+        </ModalShell>
     );
-
-    return createPortal(modalContent, document.body);
 }

@@ -77,7 +77,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                         type="text"
                         value={value}
                         onChange={(e) => onChange(e.target.value, coordinates.lat, coordinates.lng)}
-                        onKeyPress={(e) => e.key === 'Enter' && searchLocation(value)}
+                        onKeyUp={(e) => e.key === 'Enter' && searchLocation(value)}
                         className={`flex-1 p-3 border rounded-md ${isValid ? 'border-gray-300' : 'border-red-300'
                             }`}
                         placeholder="Enter address or search location"

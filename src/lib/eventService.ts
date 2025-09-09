@@ -31,6 +31,17 @@ export type CreateEventData = Omit<Event,
 
 
 class EventService {
+  private getLatLngBounds(center: LocationCoordinates, distanceKm: number) {
+    // Rough bounding box calculation
+    const latDelta = distanceKm / 111; // degrees per km
+    const lngDelta = distanceKm / (111 * Math.cos(center.lat * Math.PI / 180));
+    return {
+      minLat: center.lat - latDelta,
+      maxLat: center.lat + latDelta,
+      minLng: center.lng - lngDelta,
+      maxLng: center.lng + lngDelta
+    };
+  }
 
   async getAllEvents(): Promise<Event[]> {
     try {
@@ -63,6 +74,60 @@ class EventService {
       return this.mapRowToEvent(response);
     } catch (error) {
       console.error('Failed to update event participants:', error);
+      throw error;
+    }
+  }
+
+  async addFreeAgent(eventId: string, userId: string): Promise<Event | undefined> {
+    try {
+      const existing = await this.getEventById(eventId);
+      if (!existing) return undefined;
+      const freeAgents = Array.from(new Set([...(existing.freeAgents || []), userId]));
+      const response = await databases.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+        data: { freeAgents }
+      });
+      return this.mapRowToEvent(response);
+    } catch (error) {
+      console.error('Failed to add free agent:', error);
+      throw error;
+    }
+  }
+
+  async addToWaitlist(eventId: string, entryId: string): Promise<Event | undefined> {
+    try {
+      const existing = await this.getEventById(eventId);
+      if (!existing) return undefined;
+      const waitList = Array.from(new Set([...(existing.waitList || []), entryId]));
+      const response = await databases.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+        data: { waitList }
+      });
+      return this.mapRowToEvent(response);
+    } catch (error) {
+      console.error('Failed to add to waitlist:', error);
+      throw error;
+    }
+  }
+
+  async removeFreeAgent(eventId: string, userId: string): Promise<Event | undefined> {
+    try {
+      const existing = await this.getEventById(eventId);
+      if (!existing) return undefined;
+      const freeAgents = (existing.freeAgents || []).filter(id => id !== userId);
+      const response = await databases.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+        data: { freeAgents }
+      });
+      return this.mapRowToEvent(response);
+    } catch (error) {
+      console.error('Failed to remove free agent:', error);
       throw error;
     }
   }
@@ -161,6 +226,97 @@ class EventService {
       return events;
     } catch (error) {
       console.error('Failed to fetch filtered events:', error);
+      throw new Error('Failed to load events');
+    }
+  }
+
+  async getEventsPaginated(filters: EventFilters, limit: number = 18, offset: number = 0): Promise<Event[]> {
+    try {
+      const queries: string[] = [];
+
+      // Ordering for stable pagination (by start date asc)
+      queries.push(Query.orderAsc('start'));
+      queries.push(Query.limit(limit));
+      if (offset > 0) queries.push(Query.offset(offset));
+
+      if (filters.eventTypes && filters.eventTypes.length > 0 && filters.eventTypes.length !== 2) {
+        queries.push(Query.equal('eventType', filters.eventTypes));
+      }
+
+      if (filters.sports && filters.sports.length > 0) {
+        queries.push(Query.equal('sport', filters.sports));
+      }
+
+      if (filters.divisions && filters.divisions.length > 0) {
+        queries.push(Query.contains('divisions', filters.divisions));
+      }
+
+      if (filters.fieldType) {
+        queries.push(Query.equal('fieldType', filters.fieldType));
+      }
+
+      if (filters.dateFrom) {
+        queries.push(Query.greaterThanEqual('start', filters.dateFrom));
+      }
+      if (filters.dateTo) {
+        queries.push(Query.lessThanEqual('end', filters.dateTo));
+      }
+
+      if (filters.priceMax !== undefined) {
+        queries.push(Query.lessThanEqual('price', filters.priceMax));
+      }
+
+      // If location is provided, narrow by bounding box around location
+      if (filters.userLocation && filters.maxDistance) {
+        const bounds = this.getLatLngBounds(filters.userLocation, filters.maxDistance);
+        queries.push(Query.greaterThanEqual('lat', bounds.minLat));
+        queries.push(Query.lessThanEqual('lat', bounds.maxLat));
+        queries.push(Query.greaterThanEqual('long', bounds.minLng));
+        queries.push(Query.lessThanEqual('long', bounds.maxLng));
+      }
+
+      const response = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        queries
+      });
+
+      let events = response.rows.map(row => this.mapRowToEvent(row));
+
+      // Apply text query filtering client-side for now
+      if (filters.query) {
+        const searchTerm = filters.query.toLowerCase();
+        events = events.filter(event =>
+          event.name.toLowerCase().includes(searchTerm) ||
+          event.description.toLowerCase().includes(searchTerm) ||
+          event.location.toLowerCase().includes(searchTerm) ||
+          event.sport.toLowerCase().includes(searchTerm)
+        );
+      }
+
+      if (filters.category && filters.category !== 'All') {
+        events = events.filter(event => {
+          const eventCategory = getCategoryFromEvent(event);
+          return eventCategory === filters.category;
+        });
+      }
+
+      // If we used a bounding box, we can still enforce exact distance filtering
+      if (filters.userLocation && filters.maxDistance) {
+        events = events.filter(event => {
+          const distance = locationService.calculateDistance(
+            filters.userLocation!.lat,
+            filters.userLocation!.lng,
+            event.lat,
+            event.long
+          );
+          return distance <= filters.maxDistance!;
+        });
+      }
+
+      return events;
+    } catch (error) {
+      console.error('Failed to fetch paginated events:', error);
       throw new Error('Failed to load events');
     }
   }

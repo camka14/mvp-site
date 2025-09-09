@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { Event, EventCategory } from '@/types';
@@ -16,10 +16,12 @@ import EventCreationModal from './components/EventCreationModal';
 
 export default function EventsPage() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
-  const { location } = useLocation();
+  const { location, requestLocation } = useLocation();
   const [events, setEvents] = useState<Event[]>([]);
-  const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<'All' | EventCategory>('All');
   const [selectedEventTypes, setSelectedEventTypes] = useState<('pickup' | 'tournament')[]>(['pickup', 'tournament']);
@@ -32,60 +34,89 @@ export default function EventsPage() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
+  const LIMIT = 18;
+
+  const buildFilters = useCallback(() => ({
+    category: selectedCategory === 'All' ? undefined : selectedCategory,
+    eventTypes: selectedEventTypes.length === 2 ? undefined : selectedEventTypes,
+    sports: selectedSports.length > 0 ? selectedSports : undefined,
+    userLocation: location || undefined,
+    maxDistance: location ? maxDistance : undefined,
+    query: searchQuery || undefined
+  }), [selectedCategory, selectedEventTypes, selectedSports, location, maxDistance, searchQuery]);
+
+  const loadFirstPage = useCallback(async () => {
+    setIsLoadingInitial(true);
+    setIsLoadingMore(false);
+    setError(null);
+    setOffset(0);
+    setHasMore(true);
+    try {
+      const filters = buildFilters();
+      const page = await eventService.getEventsPaginated(filters, LIMIT, 0);
+      setEvents(page);
+      setOffset(page.length);
+      setHasMore(page.length === LIMIT);
+    } catch (error) {
+      console.error('Failed to load events:', error);
+      setError('Failed to load events. Please try again.');
+    } finally {
+      setIsLoadingInitial(false);
+    }
+  }, [buildFilters]);
+
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    setError(null);
+    try {
+      const filters = buildFilters();
+      const page = await eventService.getEventsPaginated(filters, LIMIT, offset);
+      setEvents(prev => [...prev, ...page]);
+      setOffset(prev => prev + page.length);
+      setHasMore(page.length === LIMIT);
+    } catch (error) {
+      console.error('Failed to load more events:', error);
+      setError('Failed to load more events. Please try again.');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [buildFilters, offset, isLoadingMore, hasMore]);
+
+  // Fetch when auth is confirmed and filters change
   useEffect(() => {
     if (!authLoading) {
       if (!isAuthenticated) {
         router.push('/login');
         return;
       }
-      loadEvents();
+      loadFirstPage();
     }
-  }, [isAuthenticated, authLoading, router, location, selectedCategory, selectedEventTypes, selectedSports, maxDistance]);
+  }, [isAuthenticated, authLoading, router, loadFirstPage]);
 
+  // Ensure geolocation permission is requested and location obtained when entering the page
   useEffect(() => {
-    filterEvents();
-  }, [searchQuery, events]);
-
-  const loadEvents = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const filters = {
-        category: selectedCategory === 'All' ? undefined : selectedCategory,
-        eventTypes: selectedEventTypes.length === 2 ? undefined : selectedEventTypes,
-        sports: selectedSports.length > 0 ? selectedSports : undefined,
-        userLocation: location || undefined,
-        maxDistance: location ? maxDistance : undefined
-      };
-
-      const loadedEvents = await eventService.getFilteredEvents(filters);
-      setEvents(loadedEvents);
-      setFilteredEvents(loadedEvents);
-    } catch (error) {
-      console.error('Failed to load events:', error);
-      setError('Failed to load events. Please try again.');
-    } finally {
-      setLoading(false);
+    let requested = false;
+    if (!location && typeof window !== 'undefined' && !requested) {
+      requested = true;
+      requestLocation().catch(() => {});
     }
-  };
+  }, []);
 
-  const filterEvents = () => {
-    if (!searchQuery) {
-      setFilteredEvents(events);
-      return;
-    }
-
-    const searchTerm = searchQuery.toLowerCase();
-    const filtered = events.filter(event =>
-      event.name.toLowerCase().includes(searchTerm) ||
-      event.description.toLowerCase().includes(searchTerm) ||
-      event.location.toLowerCase().includes(searchTerm) ||
-      event.sport.toLowerCase().includes(searchTerm)
-    );
-
-    setFilteredEvents(filtered);
-  };
+  // Infinite scroll sentinel
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const el = sentinelRef.current;
+    const observer = new IntersectionObserver((entries) => {
+      const [entry] = entries;
+      if (entry.isIntersecting) {
+        loadMore();
+      }
+    }, { rootMargin: '200px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   const handleEventClick = (event: Event) => {
     setSelectedEvent(event);
@@ -102,15 +133,11 @@ export default function EventsPage() {
     });
   };
 
-  const handleLocationChange = (newLocation: any) => {
-    // Location change will trigger useEffect to reload events
-  };
-
   const categories = ['All', 'Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football'] as const;
   const sports = ['Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football']; // You can populate this dynamically
   const distanceOptions = [10, 25, 50, 100]; // km
 
-  if (authLoading || loading) {
+  if (authLoading) {
     return <Loading fullScreen text="Loading events..." />;
   }
 
@@ -135,7 +162,7 @@ export default function EventsPage() {
           {/* Location and Search */}
           <div className="flex flex-col md:flex-row gap-4">
             <div className="md:w-1/3">
-              <LocationSearch onLocationChange={handleLocationChange} />
+              <LocationSearch />
             </div>
             <div className="flex-1">
               <SearchBar defaultValue={searchQuery} />
@@ -217,7 +244,7 @@ export default function EventsPage() {
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-700">{error}</p>
             <button
-              onClick={loadEvents}
+              onClick={() => loadFirstPage()}
               className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
             >
               Try again
@@ -228,7 +255,7 @@ export default function EventsPage() {
         {/* Results */}
         <div className="mb-4">
           <p className="text-sm text-gray-600">
-            {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} found
+            {events.length} event{events.length !== 1 ? 's' : ''} loaded
             {searchQuery && ` for "${searchQuery}"`}
             {selectedCategory !== 'All' && ` in ${selectedCategory}`}
             {location && ` within ${maxDistance}km`}
@@ -236,9 +263,24 @@ export default function EventsPage() {
         </div>
 
         {/* Events Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredEvents.length > 0 ? (
-            filteredEvents.map((event) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch auto-rows-fr">
+          {isLoadingInitial ? (
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={`skeleton-${i}`} className="card h-[420px] flex flex-col">
+                <div className="relative h-48 skeleton" />
+                <div className="card-content flex-1 flex flex-col">
+                  <div className="h-5 w-3/4 skeleton mb-2" />
+                  <div className="h-4 w-full skeleton mb-2" />
+                  <div className="h-4 w-5/6 skeleton mb-4" />
+                  <div className="mt-auto flex items-center justify-between">
+                    <div className="h-4 w-1/2 skeleton" />
+                    <div className="h-3 w-12 skeleton" />
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : events.length > 0 ? (
+            events.map((event) => (
               <EventCard
                 key={event.$id}
                 event={event}
@@ -283,6 +325,17 @@ export default function EventsPage() {
             </div>
           )}
         </div>
+        {/* Loading more indicator */}
+        {!isLoadingInitial && hasMore && (
+          <div className="col-span-full flex justify-center py-6">
+            <div className="flex items-center space-x-2 text-gray-500">
+              <div className="w-5 h-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+              <span className="text-sm">Loading more…</span>
+            </div>
+          </div>
+        )}
+        {/* Sentinel for infinite scroll */}
+        <div ref={sentinelRef} className="col-span-full h-1" />
       </div>
       <EventDetailModal
         event={selectedEvent!}

@@ -8,14 +8,13 @@ const TEAMS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID!;
 
 class TeamService {
 
-    // UPDATED createTeam method with optional profileImage
     async createTeam(
         name: string,
         captainId: string,
         division: string = 'Open',
         sport: string = 'Volleyball',
         maxPlayers: number = 6,
-        profileImage?: string // NEW: Optional profile image
+        profileImage?: string
     ): Promise<Team | undefined> {
         try {
             const teamData = {
@@ -29,7 +28,7 @@ class TeamService {
                 captainId,
                 pending: [],
                 teamSize: maxPlayers,
-                profileImage: profileImage || '' // NEW: Include profile image
+                profileImageId: profileImage || ''
             };
 
             const response = await databases.createRow({
@@ -229,7 +228,7 @@ class TeamService {
         }
     }
 
-    async rejectTeamInvitation(teamId: string, playerId: string): Promise<boolean> {
+    async removeTeamInvitation(teamId: string, playerId: string): Promise<boolean> {
         try {
             const team = await this.getTeamById(teamId);
             if (!team || !team.pending.includes(playerId)) {
