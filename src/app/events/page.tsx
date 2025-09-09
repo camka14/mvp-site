@@ -160,16 +160,18 @@ export default function EventsPage() {
         {/* Controls */}
         <div className="space-y-6 mb-8">
           {/* Location and Search */}
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="md:w-1/3">
-              <LocationSearch />
-            </div>
-            <div className="flex-1">
-              <SearchBar defaultValue={searchQuery} />
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 md:gap-0">
+            <div className="w-full md:flex-1 flex items-center gap-[15px]">
+              <div className="flex-none shrink-0">
+                <LocationSearch />
+              </div>
+              <div className="flex-1 min-w-0 max-w-[520px]">
+                <SearchBar defaultValue={searchQuery} />
+              </div>
             </div>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md flex items-center"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-7 py-3 rounded-md flex items-center md:shrink-0 mt-4 md:mt-0 whitespace-nowrap"
             >
               <span className="mr-2">+</span>
               Create Event
@@ -266,7 +268,7 @@ export default function EventsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch auto-rows-fr">
           {isLoadingInitial ? (
             Array.from({ length: 6 }).map((_, i) => (
-              <div key={`skeleton-${i}`} className="card h-[420px] flex flex-col">
+              <div key={`skeleton-${i}`} className="card h-[500px] flex flex-col">
                 <div className="relative h-48 skeleton" />
                 <div className="card-content flex-1 flex flex-col">
                   <div className="h-5 w-3/4 skeleton mb-2" />

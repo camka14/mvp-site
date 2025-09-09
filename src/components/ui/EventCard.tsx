@@ -52,7 +52,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
 
   return (
     <div
-      className={`card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-shadow duration-200 group h-[420px] flex flex-col`}
+      className={`card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-shadow duration-200 group h-[500px] flex flex-col`}
       onClick={onClick}
     >
         <div className="relative h-48 overflow-hidden rounded-t-xl">
@@ -84,7 +84,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
 
         <div className="card-content flex-1 flex flex-col">
           <div className="mb-2">
-            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
+            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-200 line-clamp-2">
               {event.name}
             </h3>
           </div>
@@ -93,7 +93,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
             {event.description}
           </p>
 
-          <div className="space-y-2 flex-1 overflow-hidden">
+          <div className="space-y-2 flex-1 overflow-hidden flex flex-col">
             <div className="flex items-center text-sm text-gray-500">
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4v10m4-10v10m-4 4h4M4 7h16a2 2 0 012 2v8a2 2 0 01-2-2V9a2 2 0 012-2z" />
@@ -119,7 +119,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
               </div>
             )}
 
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center justify-between pt-2 mt-auto">
               <div className="flex items-center text-sm text-gray-500">
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
