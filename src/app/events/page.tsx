@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { Event, EventCategory } from '@/types';
@@ -148,6 +148,7 @@ export default function EventsPage() {
   return (
     <>
       <Navigation />
+      <Suspense fallback={<Loading text="Loading events..." />}> 
       <div className="container-responsive py-8">
         {/* Header */}
         <div className="mb-8">
@@ -339,6 +340,7 @@ export default function EventsPage() {
         {/* Sentinel for infinite scroll */}
         <div ref={sentinelRef} className="col-span-full h-1" />
       </div>
+      </Suspense>
       <EventDetailModal
         event={selectedEvent!}
         isOpen={showEventModal}
