@@ -1,31 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { chatService } from '@/lib/chatService';
+import { ChatGroup, chatService, Message } from '@/lib/chatService';
 import { useApp } from '@/app/providers';
 
-interface ChatGroup {
-    $id: string;
-    name: string;
-    userIds: string[];
-    hostId: string;
-    displayName?: string;
-    imageUrl?: string;
-    lastMessage?: {
-        body: string;
-        sentTime: string;
-        userId: string;
-    };
-}
-
-interface Message {
-    $id: string;
-    userId: string;
-    body: string;
-    chatId: string;
-    sentTime: string;
-    readByIds: string[];
-}
 
 interface ChatContextType {
     // Data State
@@ -54,7 +32,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setLoading(true);
         try {
             const groups = await chatService.getChatGroups(user.$id);
-            setChatGroups(groups);
+            // Fetch last message for each group in parallel
+            const withLast = await Promise.all(groups.map(async (g) => {
+                const last = await chatService.getLastMessage(g.$id);
+                return last ? { ...g, lastMessage: { body: last.body, sentTime: last.sentTime, userId: last.userId } } : g;
+            }));
+            // Sort groups by last activity (fallback to createdAt if no last message)
+            withLast.sort((a: any, b: any) => {
+                const at = a.lastMessage?.sentTime ? new Date(a.lastMessage.sentTime).getTime() : 0;
+                const bt = b.lastMessage?.sentTime ? new Date(b.lastMessage.sentTime).getTime() : 0;
+                return bt - at;
+            });
+            setChatGroups(withLast as any);
         } catch (error) {
             console.error('Failed to load chat groups:', error);
         } finally {
@@ -69,6 +58,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 ...prev,
                 [chatId]: chatMessages
             }));
+            if (chatMessages.length > 0) {
+                const last = chatMessages[chatMessages.length - 1];
+                setChatGroups(prev => prev.map(g => g.$id === chatId ? {
+                    ...g,
+                    lastMessage: { body: last.body, sentTime: last.sentTime, userId: last.userId }
+                } : g));
+            }
         } catch (error) {
             console.error('Failed to load messages:', error);
         }
@@ -83,6 +79,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 ...prev,
                 [chatId]: [...(prev[chatId] || []), newMessage]
             }));
+            // Update lastMessage on chat group
+            setChatGroups(prev => prev.map(g => g.$id === chatId ? {
+                ...g,
+                lastMessage: { body: newMessage.body, sentTime: newMessage.sentTime, userId: newMessage.userId }
+            } : g));
         } catch (error) {
             console.error('Failed to send message:', error);
         }

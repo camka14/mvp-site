@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import ModalShell from './ModalShell';
+import ModalShell from '@/components/ui/ModalShell';
 import { Team, UserData } from '@/types';
-import UserCard from './UserCard';
+import UserCard from '@/components/ui/UserCard';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 

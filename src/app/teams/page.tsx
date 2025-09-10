@@ -13,7 +13,7 @@ import UserCard from '@/components/ui/UserCard';
 import Loading from '@/components/ui/Loading';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
-import InvitePlayersModal from '@/components/ui/InvitePlayersModal';
+import InvitePlayersModal from './components/InvitePlayersModal';
 
 export default function TeamsPage() {
   return <Suspense fallback={<Loading fullScreen text="Loading teams..." />}>
@@ -165,7 +165,7 @@ function TeamsPageContent() {
     }
   };
 
-  if (authLoading || loading) {
+  if (authLoading) {
     return <Loading fullScreen text="Loading teams..." />;
   }
 
@@ -222,7 +222,35 @@ function TeamsPageContent() {
         {/* Content - same as before... */}
         {activeTab === 'my-teams' ? (
           <div>
-            {teams.length > 0 ? (
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={`team-skel-${i}`} className="card">
+                    <div className="card-content">
+                      <div className="flex items-start space-x-3 mb-4">
+                        <div className="w-14 h-14 rounded-full skeleton" />
+                        <div className="flex-1 min-w-0">
+                          <div className="h-5 w-2/3 skeleton mb-2" />
+                          <div className="h-4 w-1/3 skeleton mb-2" />
+                          <div className="h-3 w-24 skeleton" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
+                        <div className="h-10 skeleton rounded" />
+                        <div className="h-10 skeleton rounded" />
+                        <div className="h-10 skeleton rounded" />
+                      </div>
+                      <div className="pt-3 border-t border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="h-3 w-24 skeleton" />
+                          <div className="h-3 w-20 skeleton" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : teams.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {teams.map((team) => (
                   <TeamCard
@@ -279,7 +307,26 @@ function TeamsPageContent() {
           </div>
         ) : (
           <div>
-            {teamInvitations.length > 0 ? (
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={`inv-skel-${i}`} className="card">
+                    <div className="card-content">
+                      <div className="h-5 w-1/2 skeleton mb-2" />
+                      <div className="h-4 w-1/3 skeleton mb-4" />
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="h-4 w-24 skeleton" />
+                        <div className="h-4 w-16 skeleton" />
+                      </div>
+                      <div className="flex space-x-2">
+                        <div className="h-9 w-24 skeleton rounded" />
+                        <div className="h-9 w-24 skeleton rounded" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : teamInvitations.length > 0 ? (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">
                   Pending Team Invitations

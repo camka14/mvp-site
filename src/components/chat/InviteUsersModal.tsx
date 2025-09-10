@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { userService } from '@/lib/userService';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
-import ModalShell from './ModalShell';
+import ModalShell from '../ui/ModalShell';
 
 interface User {
     $id: string;

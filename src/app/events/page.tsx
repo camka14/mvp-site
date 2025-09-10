@@ -9,7 +9,7 @@ import { useLocation } from '@/app/hooks/useLocation';
 import Navigation from '@/components/layout/Navigation';
 import SearchBar from '@/components/ui/SearchBar';
 import EventCard from '@/components/ui/EventCard';
-import LocationSearch from '@/components/ui/LocationSearch';
+import LocationSearch from '@/components/location/LocationSearch';
 import Loading from '@/components/ui/Loading';
 import EventDetailModal from './components/EventDetailModal';
 import EventCreationModal from './components/EventCreationModal';
@@ -168,7 +168,7 @@ function EventsPageContent() {
           {/* Location and Search */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 md:gap-0">
             <div className="w-full md:flex-1 flex items-center gap-[15px]">
-              <div className="flex-none shrink-0">
+              <div className="flex-none min-w-[270px]">
                 <LocationSearch />
               </div>
               <div className="flex-1 min-w-0 max-w-[520px]">

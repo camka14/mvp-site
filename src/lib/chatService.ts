@@ -1,18 +1,20 @@
 import { functions, databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
 
-interface ChatGroup {
+export interface ChatGroup {
     $id: string;
     name: string;
     userIds: string[];
     hostId: string;
     displayName?: string;
     imageUrl?: string;
-    $createdAt: string;
-    $updatedAt: string;
+    lastMessage?: {
+        body: string;
+        sentTime: string;
+        userId: string;
+    };
 }
-
-interface Message {
+export interface Message {
     $id: string;
     userId: string;
     body: string;
@@ -74,6 +76,33 @@ class ChatService {
         } catch (error) {
             console.error('Failed to get messages:', error);
             throw error;
+        }
+    }
+
+    async getLastMessage(chatId: string): Promise<Message | null> {
+        try {
+            const response = await databases.listRows({
+                databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+                tableId: process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID!,
+                queries: [
+                    Query.equal('chatId', chatId),
+                    Query.orderDesc('sentTime'),
+                    Query.limit(1)
+                ]
+            });
+            if (!response.rows.length) return null;
+            const row: any = response.rows[0];
+            return {
+                $id: row.$id,
+                userId: row.userId,
+                body: row.body,
+                chatId: row.chatId,
+                sentTime: row.sentTime,
+                readByIds: row.readByIds || []
+            };
+        } catch (error) {
+            console.error('Failed to get last message:', error);
+            return null;
         }
     }
 
@@ -144,8 +173,6 @@ class ChatService {
                 hostId: response.hostId,
                 displayName: response.displayName,
                 imageUrl: response.imageUrl,
-                $createdAt: response.$createdAt,
-                $updatedAt: response.$updatedAt
             };
         } catch (error) {
             console.error('Failed to create chat group:', error);
@@ -181,8 +208,6 @@ class ChatService {
                     hostId: existingDM.hostId,
                     displayName: existingDM.displayName,
                     imageUrl: existingDM.imageUrl,
-                    $createdAt: existingDM.$createdAt,
-                    $updatedAt: existingDM.$updatedAt
                 };
             }
 

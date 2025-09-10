@@ -58,7 +58,7 @@ export function ChatDrawer() {
                     }`}
                 style={{ width: `${chatListWidth}px` }}
             >
-                <div className="bg-white rounded-t-xl shadow-2xl border border-b-0 max-h-96 overflow-hidden">
+                <div className="bg-white rounded-t-xl shadow-2xl max-h-96 overflow-hidden">
                     <ChatList />
                 </div>
             </div>
@@ -77,7 +77,7 @@ export function ChatDrawer() {
                             height: '500px'
                         }}
                     >
-                        <div className="bg-white rounded-t-xl shadow-2xl border border-b-0 h-full overflow-hidden">
+                        <div className="bg-white rounded-t-xl shadow-2xl h-full overflow-hidden">
                             <ChatDetail chatId={chatId} />
                         </div>
                     </div>

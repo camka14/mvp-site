@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ModalShell from '@/components/ui/ModalShell';
 import { CreateEventData, eventService } from '@/lib/eventService';
-import LocationSelector from '@/components/ui/LocationSelector';
+import LocationSelector from '@/components/location/LocationSelector';
 import DivisionSelector from './DivisionSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';

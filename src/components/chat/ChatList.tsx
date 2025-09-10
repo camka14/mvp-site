@@ -102,17 +102,15 @@ export function ChatList() {
                                         <p className="font-medium text-gray-900 truncate">
                                             {chat.displayName || chat.name}
                                         </p>
-                                        {chat.lastMessage && (
-                                            <span className="text-xs text-gray-500">
-                                                {formatTime(chat.lastMessage.sentTime)}
-                                            </span>
-                                        )}
                                     </div>
                                     {chat.lastMessage && (
-                                        <p className="text-sm text-gray-600 truncate">
-                                            {chat.lastMessage.userId === user?.$id ? 'You: ' : ''}
-                                            {chat.lastMessage.body}
-                                        </p>
+                                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                                            <span className="truncate">
+                                                {chat.lastMessage.userId === user?.$id ? 'You: ' : ''}
+                                                {chat.lastMessage.body}
+                                            </span>
+                                            <span className="text-xs text-gray-500 shrink-0">• {formatTime(chat.lastMessage.sentTime)}</span>
+                                        </div>
                                     )}
                                 </div>
                             </div>
