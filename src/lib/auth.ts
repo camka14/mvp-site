@@ -1,4 +1,5 @@
 import { account, ID } from '@/app/appwrite';
+import type { UserData } from '@/types';
 
 interface UserAccount {
   $id: string;
@@ -7,6 +8,56 @@ interface UserAccount {
 }
 
 export const authService = {
+  // LocalStorage keys
+  AUTH_USER_KEY: 'auth-user',
+  APP_USER_KEY: 'app-user',
+
+  // Helpers: storage accessors
+  getStoredAuthUser(): UserAccount | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(this.AUTH_USER_KEY);
+      return raw ? (JSON.parse(raw) as UserAccount) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  getStoredUserData(): UserData | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(this.APP_USER_KEY);
+      return raw ? (JSON.parse(raw) as UserData) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  setCurrentAuthUser(user: UserAccount | null): void {
+    if (typeof window === 'undefined') return;
+    try {
+      if (user) {
+        window.localStorage.setItem(this.AUTH_USER_KEY, JSON.stringify(user));
+      } else {
+        window.localStorage.removeItem(this.AUTH_USER_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  },
+
+  setCurrentUserData(user: UserData | null): void {
+    if (typeof window === 'undefined') return;
+    try {
+      if (user) {
+        window.localStorage.setItem(this.APP_USER_KEY, JSON.stringify(user));
+      } else {
+        window.localStorage.removeItem(this.APP_USER_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  },
   async createAccount(email: string, password: string, name?: string): Promise<UserAccount> {
     try {
       // First check if user is already logged in
@@ -24,7 +75,8 @@ export const authService = {
 
       // Auto login after registration
       if (userAccount) {
-        return await this.login(email, password);
+        const loggedIn = await this.login(email, password);
+        return loggedIn;
       }
 
       return userAccount;
@@ -46,7 +98,10 @@ export const authService = {
         password
       });
 
-      return await account.get();
+      const user = await account.get();
+      // Persist to localStorage
+      this.setCurrentAuthUser(user as UserAccount);
+      return user as UserAccount;
     } catch (error) {
       throw error;
     }
@@ -54,8 +109,14 @@ export const authService = {
 
   async getCurrentUser(): Promise<UserAccount | null> {
     try {
+      // Try localStorage first for faster hydration
+      const cached = this.getStoredAuthUser();
+      if (cached) return cached;
+
+      // Fallback to Appwrite
       const user = await account.get();
-      return user;
+      this.setCurrentAuthUser(user as UserAccount);
+      return user as UserAccount;
     } catch (error) {
       // If there's an error getting the user, they're not logged in
       return null;
@@ -71,6 +132,9 @@ export const authService = {
       // If logout fails, user might already be logged out
       console.warn('Logout error:', error);
     }
+    // Always clear local cache
+    this.setCurrentAuthUser(null);
+    this.setCurrentUserData(null);
   },
 
   async checkSession(): Promise<boolean> {

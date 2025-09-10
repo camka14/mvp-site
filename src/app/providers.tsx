@@ -34,8 +34,13 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps) {
-  const [user, setUser] = useState<UserData | null>(null);
-  const [authUser, setAuthUser] = useState<UserAccount | null>(null);
+  // Initialize from localStorage for faster hydration
+  const [user, setUserState] = useState<UserData | null>(() => {
+    return typeof window !== 'undefined' ? authService.getStoredUserData() : null;
+  });
+  const [authUser, setAuthUser] = useState<UserAccount | null>(() => {
+    return typeof window !== 'undefined' ? authService.getStoredAuthUser() : null;
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -53,22 +58,32 @@ export function Providers({ children }: ProvidersProps) {
         const userData = await userService.getUserById(currentAuthUser.$id);
         if (userData) {
           setUser(userData);
+          authService.setCurrentUserData(userData);
         } else {
           // If no user data exists in your custom table, you might want to create it
           // or handle this case based on your app logic
           console.warn('Auth user exists but no user data found in database');
           setUser(null);
+          authService.setCurrentUserData(null);
         }
       } else {
         setUser(null);
+        authService.setCurrentUserData(null);
       }
     } catch (error) {
       console.warn('Auth check error:', error);
       setAuthUser(null);
       setUser(null);
+      authService.setCurrentUserData(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Ensure setUser persists to localStorage for consumers
+  const setUser = (value: UserData | null) => {
+    setUserState(value);
+    authService.setCurrentUserData(value);
   };
 
   const isAuthenticated = authUser !== null && user !== null;

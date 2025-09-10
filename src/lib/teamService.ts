@@ -106,6 +106,46 @@ class TeamService {
         }
     }
 
+    async getTeamsByIds(teamIds: string[], includeRelations: boolean = false): Promise<Team[]> {
+        try {
+            if (teamIds.length === 0) return [];
+
+            const queries = [
+                Query.limit(50),
+                Query.equal('$id', teamIds)
+            ];
+
+            const response = await databases.listRows({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                queries
+            });
+
+            const teams = response.rows.map(row => this.mapRowToTeam(row));
+
+            if (includeRelations) {
+                // Fetch players for each team
+                const playerIds = Array.from(new Set(teams.flatMap(team => team.playerIds)));
+                const playersMap: { [key: string]: UserData } = {};
+                if (playerIds.length > 0) {
+                    const players = await userService.getUsersByIds(playerIds);
+                    players.forEach(player => {
+                        playersMap[player.$id] = player;
+                    });
+                }
+
+                teams.forEach(team => {
+                    team.players = team.playerIds.map(id => playersMap[id]).filter(Boolean);
+                });
+            }
+
+            return teams;
+        } catch (error) {
+            console.error('Failed to fetch teams:', error);
+            return [];
+        }
+    }
+
     // Rest of methods remain the same...
     async getTeamById(id: string, includeRelations: boolean = false): Promise<Team | undefined> {
         try {

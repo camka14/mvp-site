@@ -61,6 +61,21 @@ class EventService {
     }
   }
 
+  async getEvent(id: string): Promise<Event | undefined> {
+    try {
+      const response = await databases.getRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: id
+      });
+
+      return this.mapRowToEvent(response);
+    } catch (error) {
+      console.error('Failed to fetch event:', error);
+      return undefined;
+    }
+  }
+
   // Add this method to your EventService class
   async updateEventParticipants(eventId: string, updates: { playerIds: string[], teamIds: string[] }): Promise<Event | undefined> {
     try {
