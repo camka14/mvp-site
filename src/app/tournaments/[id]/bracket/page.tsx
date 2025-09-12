@@ -11,14 +11,14 @@ import { Match, TournamentBracket } from '../../types/tournament';
 
 export default function TournamentBracketPage() {
     return (
-        <Suspense fallback={<Loading />}>
+        <Suspense fallback={<Loading text="Loading tournament..." />}> 
             <TournamentBracketContent />
         </Suspense>
     );
 }
 
 function TournamentBracketContent() {
-    const { user, loading: authLoading, isAuthenticated } = useApp();
+    const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
     const { id } = useParams();
     const router = useRouter();
     const [bracket, setBracket] = useState<TournamentBracket | null>(null);
@@ -28,13 +28,13 @@ function TournamentBracketContent() {
 
     useEffect(() => {
         if (!authLoading) {
-            if (!isAuthenticated) {
+            if (!isAuthenticated && !isGuest) {
                 router.push('/login');
                 return;
             }
             loadTournamentBracket();
         }
-    }, [isAuthenticated, authLoading, id]);
+    }, [isAuthenticated, isGuest, authLoading, id]);
 
     const loadTournamentBracket = async () => {
         try {
@@ -77,12 +77,16 @@ function TournamentBracketContent() {
         });
     };
 
-    if (authLoading || loading) {
-        return <Loading />;
+    if (authLoading) {
+        return <Loading fullScreen text="Loading tournament..." />;
     }
 
-    if (!isAuthenticated) {
-        return <Loading />;
+    if (!isAuthenticated && !isGuest) {
+        return <Loading fullScreen text="Redirecting to login..." />;
+    }
+
+    if (loading) {
+        return <Loading fullScreen text="Loading tournament..." />;
     }
 
     if (error) {
