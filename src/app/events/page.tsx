@@ -41,6 +41,7 @@ function EventsPageContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const LIMIT = 18;
+  const DEFAULT_EVENT_ID = '68b89ab116e106a731c3';
 
   const kmBetween = useCallback((a: {lat:number,lng:number}, b: {lat:number,lng:number}) => {
     const toRad = (x: number) => x * Math.PI / 180;
@@ -94,7 +95,17 @@ function EventsPageContent() {
     try {
       const filters = buildFilters();
       const page = await eventService.getEventsPaginated(filters, LIMIT, 0);
-      setEvents(page);
+
+      // Try to include a default sample event at the top when available
+      let result = page;
+      try {
+        const sample = await eventService.getEventById(DEFAULT_EVENT_ID);
+        if (sample && !page.some(e => e.$id === sample.$id)) {
+          result = [sample, ...page];
+        }
+      } catch {}
+
+      setEvents(result);
       setOffset(page.length);
       setHasMore(page.length === LIMIT);
     } catch (error) {
