@@ -104,7 +104,9 @@ function TeamsPageContent() {
     setLoading(true);
     try {
       const userTeams = await teamService.getTeamsByUserId(user.$id);
-      setTeams(userTeams);
+      // Enrich with players so TeamCard can show member avatars
+      const detailedTeams = await teamService.getTeamsByIds(userTeams.map(t => t.$id), true);
+      setTeams(detailedTeams);
 
       if (user.teamInvites && user.teamInvites.length > 0) {
         const invitationPromises = user.teamInvites.map(teamId =>

@@ -121,7 +121,7 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
     .substring(0, 2)
     .toUpperCase();
 
-  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}&background=2563eb&color=ffffff`;
+  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
 }
 
 export function getEventImageUrl(params: {

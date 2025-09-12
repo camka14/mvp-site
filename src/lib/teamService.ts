@@ -106,6 +106,22 @@ class TeamService {
         }
     }
 
+    // NEW: Update team name
+    async updateTeamName(teamId: string, name: string): Promise<Team | undefined> {
+        try {
+            const response = await databases.updateRow({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                rowId: teamId,
+                data: { name }
+            });
+            return this.mapRowToTeam(response);
+        } catch (error) {
+            console.error('Failed to update team name:', error);
+            throw error;
+        }
+    }
+
     async getTeamsByIds(teamIds: string[], includeRelations: boolean = false): Promise<Team[]> {
         try {
             if (teamIds.length === 0) return [];
@@ -332,6 +348,7 @@ class TeamService {
 
         const team: Team = {
             ...row,
+            profileImageId: row.profileImage || row.profileImageId || row.profileImageID,
             // Computed properties
             currentSize,
             isFull: currentSize >= maxPlayers,
