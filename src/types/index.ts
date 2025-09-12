@@ -71,7 +71,6 @@ export interface UserData {
   userName: string;
   teamInvites: string[];
   eventInvites: string[];
-  tournamentInvites: string[];
   hasStripeAccount?: boolean;
   uploadedImages: string[];
   profileImageId?: string;

@@ -21,7 +21,7 @@ export default function EventsPage() {
 }
 
 function EventsPageContent() {
-  const { user, loading: authLoading, isAuthenticated } = useApp();
+  const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
   const { location, requestLocation } = useLocation();
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
@@ -133,10 +133,10 @@ function EventsPageContent() {
     }
   }, [buildFilters, offset, isLoadingMore, hasMore, isLoadingInitial]);
 
-  // Fetch when auth is confirmed and filters change
+  // Fetch when auth is confirmed and filters change (allow guests)
   useEffect(() => {
     if (!authLoading) {
-      if (!isAuthenticated) {
+      if (!isAuthenticated && !(typeof window !== 'undefined' && window.localStorage.getItem('guest-session') === '1')) {
         router.push('/login');
         return;
       }
@@ -191,7 +191,7 @@ function EventsPageContent() {
     return <Loading fullScreen text="Loading events..." />;
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !(typeof window !== 'undefined' && window.localStorage.getItem('guest-session') === '1')) {
     return <Loading fullScreen text="Redirecting to login..." />;
   }
 
@@ -221,13 +221,15 @@ function EventsPageContent() {
                 </Suspense>
               </div>
             </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-7 py-3 rounded-md flex items-center md:shrink-0 mt-4 md:mt-0 whitespace-nowrap"
-            >
-              <span className="mr-2">+</span>
-              Create Event
-            </button>
+            {!isGuest && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-7 py-3 rounded-md flex items-center md:shrink-0 mt-4 md:mt-0 whitespace-nowrap"
+              >
+                <span className="mr-2">+</span>
+                Create Event
+              </button>
+            )}
           </div>
 
           {/* Event Type Filter */}

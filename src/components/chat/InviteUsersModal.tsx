@@ -11,7 +11,7 @@ interface User {
     firstName: string;
     lastName: string;
     userName: string;
-    profileImage?: string;
+    profileImageId?: string;
 }
 
 export function InviteUsersModal() {
@@ -88,7 +88,7 @@ export function InviteUsersModal() {
     };
 
     const getUserAvatar = (user: User) => {
-        if (user.profileImage) return user.profileImage;
+        if (user.profileImageId) return user.profileImageId;
 
         const initials = `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase();
         return `data:image/svg+xml,${encodeURIComponent(

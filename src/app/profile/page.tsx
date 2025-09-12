@@ -19,7 +19,7 @@ export default function ProfilePage() {
         firstName: '',
         lastName: '',
         userName: '',
-        profileImage: ''
+        profileImageId: ''
     });
 
     // Account sections
@@ -42,7 +42,7 @@ export default function ProfilePage() {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 userName: user.userName,
-                profileImage: user.profileImageId || ''
+                profileImageId: user.profileImageId || ''
             });
         }
     }, [user]);
@@ -55,7 +55,7 @@ export default function ProfilePage() {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     userName: user.userName,
-                    profileImage: user.profileImageId || ''
+                    profileImageId: user.profileImageId || ''
                 });
             }
         }
@@ -74,7 +74,7 @@ export default function ProfilePage() {
                 firstName: profileData.firstName,
                 lastName: profileData.lastName,
                 userName: profileData.userName,
-                profileImage: profileData.profileImage
+                profileImageId: profileData.profileImageId
             });
 
             setUser(updatedUser);
@@ -87,7 +87,7 @@ export default function ProfilePage() {
     };
 
     const handleImageUploaded = (fileId: string, imageUrl: string) => {
-        setProfileData(prev => ({ ...prev, profileImage: imageUrl }));
+        setProfileData(prev => ({ ...prev, profileImageId: imageUrl }));
     };
 
     const handleEmailUpdate = async () => {
@@ -157,7 +157,7 @@ export default function ProfilePage() {
                             <div className="flex items-end -mt-16 mb-6">
                                 <div className="relative">
                                     <img
-                                        src={profileData.profileImage || getUserAvatarUrl(user, 128)}
+                                        src={profileData.profileImageId || getUserAvatarUrl(user, 128)}
                                         alt={user.fullName}
                                         className="w-32 h-32 rounded-full border-4 border-white shadow-lg bg-white"
                                     />
@@ -216,7 +216,7 @@ export default function ProfilePage() {
                                         Profile Picture
                                     </label>
                                     <ImageUploader
-                                        currentImageUrl={profileData.profileImage}
+                                        currentImageUrl={profileData.profileImageId}
                                         bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                                         placeholder="Upload new profile picture"
                                     />

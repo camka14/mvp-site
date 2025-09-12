@@ -1,5 +1,6 @@
-import { account, ID } from '@/app/appwrite';
+import { account, databases, ID } from '@/app/appwrite';
 import type { UserData } from '@/types';
+import { OAuthProvider } from 'appwrite';
 
 interface UserAccount {
   $id: string;
@@ -11,6 +12,7 @@ export const authService = {
   // LocalStorage keys
   AUTH_USER_KEY: 'auth-user',
   APP_USER_KEY: 'app-user',
+  GUEST_KEY: 'guest-session',
 
   // Helpers: storage accessors
   getStoredAuthUser(): UserAccount | null {
@@ -58,7 +60,21 @@ export const authService = {
       // ignore storage errors
     }
   },
-  async createAccount(email: string, password: string, name?: string): Promise<UserAccount> {
+  setGuest(flag: boolean) {
+    if (typeof window === 'undefined') return;
+    try {
+      if (flag) {
+        window.localStorage.setItem(this.GUEST_KEY, '1');
+      } else {
+        window.localStorage.removeItem(this.GUEST_KEY);
+      }
+    } catch { }
+  },
+  isGuest(): boolean {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(this.GUEST_KEY) === '1';
+  },
+  async createAccount(email: string, password: string, firstName: string, lastName: string, userName: string): Promise<UserAccount> {
     try {
       // First check if user is already logged in
       const existingUser = await this.getCurrentUser();
@@ -70,12 +86,56 @@ export const authService = {
         userId: ID.unique(),
         email,
         password,
-        name
+        name: `${firstName} ${lastName}`.trim()
       });
 
       // Auto login after registration
       if (userAccount) {
         const loggedIn = await this.login(email, password);
+
+        // Ensure a corresponding user profile exists in the Users table
+        try {
+          const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+          const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
+
+          // Check if there's already a row (id matches auth account id)
+          let userRow: any | null = null;
+          try {
+            userRow = await databases.getRow({
+              databaseId: DATABASE_ID,
+              tableId: USERS_TABLE_ID,
+              rowId: loggedIn.$id
+            });
+          } catch {
+            userRow = null;
+          }
+
+          if (!userRow) {
+            await databases.createRow({
+              databaseId: DATABASE_ID,
+              tableId: USERS_TABLE_ID,
+              rowId: loggedIn.$id,
+              data: {
+                firstName: firstName || '',
+                lastName: lastName || '',
+                userName,
+                teamIds: [],
+                friendIds: [],
+                friendRequestIds: [],
+                friendRequestSentIds: [],
+                followingIds: [],
+                teamInvites: [],
+                eventInvites: [],
+                uploadedImages: [],
+                profileImageId: ''
+              }
+            });
+          }
+        } catch (profileErr) {
+          // Don't block login on profile creation issues; surface for debugging
+          console.warn('Failed to ensure user profile row:', profileErr);
+        }
+
         return loggedIn;
       }
 
@@ -101,6 +161,7 @@ export const authService = {
       const user = await account.get();
       // Persist to localStorage
       this.setCurrentAuthUser(user as UserAccount);
+      this.setGuest(false);
       return user as UserAccount;
     } catch (error) {
       throw error;
@@ -135,6 +196,7 @@ export const authService = {
     // Always clear local cache
     this.setCurrentAuthUser(null);
     this.setCurrentUserData(null);
+    this.setGuest(false);
   },
 
   async checkSession(): Promise<boolean> {
@@ -143,6 +205,31 @@ export const authService = {
       return true;
     } catch (error) {
       return false;
+    }
+  },
+
+  async oauthLoginWithGoogle(): Promise<void> {
+    const successUrl = `${window.location.origin}/events`;
+    const failureUrl = `${window.location.origin}/login`;
+    // Clear any guest flag before redirecting to provider
+    this.setGuest(false);
+    await account.createOAuth2Session({ provider: OAuthProvider.Google, success: successUrl, failure: failureUrl });
+  },
+
+  async guestLogin(): Promise<void> {
+    try {
+      // Ensure we're not carrying over any prior user state
+      this.setCurrentAuthUser(null);
+      this.setCurrentUserData(null);
+
+      // Create an anonymous (guest) session with Appwrite
+      await account.createAnonymousSession();
+
+      // Mark guest mode in localStorage for downstream checks
+      this.setGuest(true);
+    } catch (error) {
+      // Bubble up so caller can show a friendly error
+      throw error;
     }
   }
 };

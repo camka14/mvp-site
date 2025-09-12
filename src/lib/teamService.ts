@@ -14,7 +14,7 @@ class TeamService {
         division: string = 'Open',
         sport: string = 'Volleyball',
         maxPlayers: number = 6,
-        profileImage?: string
+        profileImageId?: string
     ): Promise<Team | undefined> {
         try {
             const teamData = {
@@ -28,7 +28,7 @@ class TeamService {
                 captainId,
                 pending: [],
                 teamSize: maxPlayers,
-                profileImageId: profileImage || ''
+                profileImageId: profileImageId || ''
             };
 
             const response = await databases.createRow({
@@ -90,13 +90,13 @@ class TeamService {
     }
 
     // NEW: Update team profile image
-    async updateTeamProfileImage(teamId: string, profileImage: string): Promise<Team | undefined> {
+    async updateTeamProfileImage(teamId: string, profileImageId: string): Promise<Team | undefined> {
         try {
             const response = await databases.updateRow({
                 databaseId: DATABASE_ID,
                 tableId: TEAMS_TABLE_ID,
                 rowId: teamId,
-                data: { profileImage }
+                data: { profileImageId }
             });
 
             return this.mapRowToTeam(response);

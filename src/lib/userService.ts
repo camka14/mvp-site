@@ -9,10 +9,33 @@ interface UpdateProfileData {
     firstName?: string;
     lastName?: string;
     userName?: string;
-    profileImage?: string;
+    profileImageId?: string;
 }
 
 class UserService {
+    async createUser(id: string, data: Partial<UserData>): Promise<UserData> {
+        try {
+            const response = await databases.createRow({
+                databaseId: DATABASE_ID,
+                tableId: USERS_TABLE_ID,
+                rowId: id,
+                data
+            });
+            return this.mapRowToUser(response);
+        } catch (error: any) {
+            // If the row already exists (race condition), fetch and return it
+            if (error && (error.code === 409 || error.response?.status === 409)) {
+                const existing = await databases.getRow({
+                    databaseId: DATABASE_ID,
+                    tableId: USERS_TABLE_ID,
+                    rowId: id
+                });
+                return this.mapRowToUser(existing);
+            }
+            console.error('Failed to create user profile:', error);
+            throw error;
+        }
+    }
 
     async getUserById(id: string): Promise<UserData | undefined> {
         try {
@@ -198,7 +221,7 @@ class UserService {
                 firstName: row.firstName || '',
                 lastName: row.lastName || '',
                 userName: row.userName || '',
-                profileImageId: row.profileImage
+                profileImageId: row.profileImageId
             } as UserData)
         };
     }

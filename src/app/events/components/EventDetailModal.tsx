@@ -387,8 +387,13 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                     )}
 
                                     {!user ? (
-                                        <div className="text-sm text-gray-600 text-center">
-                                            Please log in to join this event
+                                        <div className="text-center">
+                                            <button
+                                                onClick={() => { window.location.href = '/login'; }}
+                                                className="w-full py-2 px-4 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white"
+                                            >
+                                                Sign in to join
+                                            </button>
                                         </div>
                                     ) : isUserRegistered ? (
                                         <div className="text-sm text-green-600 font-medium text-center">
