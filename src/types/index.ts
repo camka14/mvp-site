@@ -51,6 +51,7 @@ export interface Event {
   winnerScoreLimitsPerSet?: number[];
   loserScoreLimitsPerSet?: number[];
   prize?: string;
+  fieldCount: number
 
   // Computed properties
   attendees: number;

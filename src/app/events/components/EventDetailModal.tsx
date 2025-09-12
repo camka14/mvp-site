@@ -11,6 +11,14 @@ import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
 import PaymentModal from '@/components/ui/PaymentModal';
 import RefundSection from '@/components/ui/RefundSection';
+import EventCreationModal from './EventCreationModal';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 interface EventDetailModalProps {
     event: Event;
@@ -33,6 +41,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
+    const [showEditModal, setShowEditModal] = useState(false);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -40,6 +49,8 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     const [selectedTeamId, setSelectedTeamId] = useState('');
 
     const currentEvent = detailedEvent || event;
+
+    const isEventHost = !!user && currentEvent && user.$id === currentEvent.hostId;
 
     useEffect(() => {
         if (isOpen && event) {
@@ -188,6 +199,8 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                         }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+
+                    {/* Event Info Overlay */}
                     <div className="absolute bottom-4 left-6 text-white">
                         <div className="flex items-center space-x-4 text-sm">
                             <div className="flex items-center">
@@ -205,6 +218,19 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                             </div>
                         </div>
                     </div>
+
+                    {/* ✅ Edit Button - Only visible to event host */}
+                    {isEventHost && (
+                        <button
+                            onClick={() => setShowEditModal(true)}
+                            className="absolute top-4 left-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            <span>Edit Event</span>
+                        </button>
+                    )}
                 </div>
 
                 {/* Content */}
@@ -290,17 +316,6 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                         <span className="text-gray-600">Registration Cutoff:</span>
                                         <span className="font-medium">{currentEvent.registrationCutoffHours}h before</span>
                                     </div>
-                                    {currentEvent.rating && (
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-600">Rating:</span>
-                                            <span className="font-medium flex items-center">
-                                                {currentEvent.rating}/5
-                                                <svg className="w-4 h-4 text-yellow-400 ml-1" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                                </svg>
-                                            </span>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
@@ -423,30 +438,45 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                     </button>
 
                                                     {showTeamJoinOptions && (
-                                                        <div className="bg-white rounded-lg p-3 space-y-3">
+                                                        <div className="bg-white rounded-lg p-4 space-y-4">
                                                             {userTeams.length > 0 ? (
-                                                                <div>
-                                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Select your team</label>
-                                                                    <select
-                                                                        value={selectedTeamId}
-                                                                        onChange={(e) => setSelectedTeamId(e.target.value)}
-                                                                        className="w-full p-2 border border-gray-300 rounded-md"
-                                                                    >
-                                                                        <option value="">Choose a team…</option>
-                                                                        {userTeams.map(t => (
-                                                                            <option key={t.$id} value={t.$id}>{t.name} ({t.division})</option>
-                                                                        ))}
-                                                                    </select>
-                                                                    <div className="flex items-center space-x-2 mt-3">
+                                                                <div className="space-y-4">
+                                                                    <div>
+                                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                                            Select your team
+                                                                        </label>
+                                                                        <Select
+                                                                            value={selectedTeamId}
+                                                                            onValueChange={setSelectedTeamId}
+                                                                        >
+                                                                            <SelectTrigger className="w-full">
+                                                                                <SelectValue placeholder="Choose a team" />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                {userTeams.map(t => (
+                                                                                    <SelectItem key={t.$id} value={t.$id}>
+                                                                                        {t.name} ({t.division})
+                                                                                    </SelectItem>
+                                                                                ))}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
+
+                                                                    {/* Manage Teams Button Section - Matching Hide/Show button height */}
+                                                                    <div className="flex justify-center">
                                                                         <button
                                                                             onClick={() => {
                                                                                 router.push(`/teams?event=${currentEvent.$id}`);
                                                                                 onClose();
                                                                             }}
-                                                                            className="flex-1 py-2 px-3 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                                                            className="py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200 text-sm font-medium" // ✅ Matches Hide/Show button padding
                                                                         >
                                                                             Manage Teams
                                                                         </button>
+                                                                    </div>
+
+                                                                    {/* Join/Waitlist Button Section - Matching Hide/Show button height */}
+                                                                    <div className="flex justify-center pt-2">
                                                                         {currentEvent.attendees >= currentEvent.maxParticipants ? (
                                                                             <button
                                                                                 onClick={async () => {
@@ -456,44 +486,56 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                                                     try {
                                                                                         await eventService.addToWaitlist(currentEvent.$id, selectedTeamId);
                                                                                         await loadEventDetails();
-                                                                                    } catch (e) {
+                                                                                    } catch (e: any) {
                                                                                         setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');
                                                                                     } finally {
                                                                                         setJoining(false);
                                                                                     }
                                                                                 }}
                                                                                 disabled={joining || !selectedTeamId}
-                                                                                className={`flex-1 py-2 px-3 rounded-lg text-white ${joining || !selectedTeamId ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'}`}
+                                                                                className={`py-2 px-4 rounded-lg text-white font-medium min-w-[120px] transition-colors duration-200 ${ // ✅ Matches Hide/Show button padding
+                                                                                    joining || !selectedTeamId
+                                                                                        ? 'bg-gray-400 cursor-not-allowed'
+                                                                                        : 'bg-orange-600 hover:bg-orange-700'
+                                                                                    }`}
                                                                             >
-                                                                                {joining ? 'Adding…' : 'Join Waitlist'}
+                                                                                {joining ? 'Adding...' : 'Join Waitlist'}
                                                                             </button>
                                                                         ) : (
                                                                             <button
                                                                                 onClick={handleJoinAsTeam}
                                                                                 disabled={joining || !selectedTeamId}
-                                                                                className={`flex-1 py-2 px-3 rounded-lg text-white ${joining || !selectedTeamId ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                                                                                className={`py-2 px-4 rounded-lg text-white font-medium min-w-[120px] transition-colors duration-200 ${ // ✅ Matches Hide/Show button padding
+                                                                                    joining || !selectedTeamId
+                                                                                        ? 'bg-gray-400 cursor-not-allowed'
+                                                                                        : 'bg-green-600 hover:bg-green-700'
+                                                                                    }`}
                                                                             >
-                                                                                {joining ? 'Joining…' : 'Confirm Join'}
+                                                                                {joining ? 'Joining...' : 'Confirm Join'}
                                                                             </button>
                                                                         )}
                                                                     </div>
                                                                 </div>
                                                             ) : (
-                                                                <div className="text-center">
-                                                                    <p className="text-sm text-gray-600 mb-2">You have no teams for {currentEvent.sport}.</p>
+                                                                <div className="text-center space-y-3">
+                                                                    <p className="text-sm text-gray-600">
+                                                                        You have no teams for {currentEvent.sport}.
+                                                                    </p>
                                                                     <button
                                                                         onClick={() => {
                                                                             router.push(`/teams?event=${currentEvent.$id}`);
                                                                             onClose();
                                                                         }}
-                                                                        className="w-full py-2 px-3 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                                                        className="py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200 text-sm font-medium" // ✅ Matches Hide/Show button padding
                                                                     >
-                                                                        Manage Teams
+                                                                        Create Team
                                                                     </button>
                                                                 </div>
                                                             )}
                                                         </div>
                                                     )}
+
+
 
                                                     {isUserFreeAgent ? (
                                                         <div className="space-y-2">
@@ -659,6 +701,18 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                     setPaymentData(null);
                     loadEventDetails();
                 }}
+            />
+            <EventCreationModal
+                isOpen={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                onEventCreated={async (updatedEvent) => {
+                    setShowEditModal(false);
+                    if (updatedEvent) {
+                        setDetailedEvent(updatedEvent);
+                    }
+                }}
+                currentUser={user}
+                editingEvent={currentEvent}
             />
         </>
     );

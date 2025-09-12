@@ -130,6 +130,23 @@ class EventService {
     }
   }
 
+  async updateEvent(eventId: string, eventData: Partial<CreateEventData>): Promise<Event> {
+    try {
+      const response = await databases.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+        data: eventData
+      });
+
+      return this.mapRowToEvent(response);
+    } catch (error) {
+      console.error('Failed to update event:', error);
+      throw error;
+    }
+  }
+
+
   async addFreeAgent(eventId: string, userId: string): Promise<Event | undefined> {
     try {
       const existing = await this.getEventById(eventId);
