@@ -85,7 +85,7 @@ class TournamentService {
             const rounds = this.generateMatchTree(matchesWithRelations);
 
             return {
-                tournament,
+                tournament: tournament as Event & { eventType: 'tournament' },
                 matches: matchesWithRelations,
                 teams,
                 rounds,

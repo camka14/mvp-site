@@ -1,6 +1,7 @@
 // components/RefundSection.tsx
 import React, { useState } from 'react';
 import { Event } from '@/types';
+import { eventService } from '@/lib/eventService';
 import { paymentService } from '@/lib/paymentService';
 import { useApp } from '@/app/providers';
 
@@ -18,6 +19,9 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
     const { user } = useApp();
 
     if (!userRegistered) return null;
+
+    const isHost = !!user && user.$id === event.hostId;
+    const isFreeForUser = event.price === 0 || isHost;
 
     // Calculate refund eligibility
     const now = new Date();
@@ -64,9 +68,42 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
         }
     };
 
+    const handleLeaveEvent = async () => {
+        if (!user) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const latest = await eventService.getEventById(event.$id);
+            if (!latest) throw new Error('Event not found');
+
+            let newPlayerIds = latest.playerIds || [];
+            let newTeamIds = latest.teamIds || [];
+
+            if (latest.teamSignup) {
+                // Try to remove the user's team registration first
+                const userTeamId = (user.teamIds || []).find(tid => newTeamIds.includes(tid));
+                if (userTeamId) {
+                    newTeamIds = newTeamIds.filter(id => id !== userTeamId);
+                } else {
+                    // Fallback: if user somehow joined individually, remove their playerId
+                    newPlayerIds = newPlayerIds.filter(id => id !== user.$id);
+                }
+            } else {
+                newPlayerIds = newPlayerIds.filter(id => id !== user.$id);
+            }
+
+            await eventService.updateEventParticipants(event.$id, { playerIds: newPlayerIds, teamIds: newTeamIds });
+            onRefundSuccess();
+        } catch (e: any) {
+            setError(e?.message || 'Failed to leave event');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="font-semibold mb-3 text-gray-900">Refund Options</h4>
+            <h4 className="font-semibold mb-3 text-gray-900">{isFreeForUser ? 'Registration' : 'Refund Options'}</h4>
 
             {error && (
                 <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
@@ -74,7 +111,20 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
                 </div>
             )}
 
-            {canAutoRefund ? (
+            {isFreeForUser ? (
+                <div className="space-y-2">
+                    <p className="text-sm text-gray-600">
+                        You can leave this event at any time before it starts.
+                    </p>
+                    <button
+                        onClick={handleLeaveEvent}
+                        disabled={loading}
+                        className="w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                    >
+                        {loading ? 'Leaving…' : 'Leave Event'}
+                    </button>
+                </div>
+            ) : canAutoRefund ? (
                 <div className="space-y-2">
                     <p className="text-sm text-gray-600">
                         You can get a full refund until {refundDeadline.toLocaleString()}

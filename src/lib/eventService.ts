@@ -146,6 +146,20 @@ class EventService {
     }
   }
 
+  async deleteEvent(eventId: string): Promise<boolean> {
+    try {
+      await databases.deleteRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId
+      });
+      return true;
+    } catch (error) {
+      console.error('Failed to delete event:', error);
+      return false;
+    }
+  }
+
 
   async addFreeAgent(eventId: string, userId: string): Promise<Event | undefined> {
     try {

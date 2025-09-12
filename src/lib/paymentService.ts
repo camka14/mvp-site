@@ -59,6 +59,7 @@ class PaymentService {
                     userId,
                     teamId: teamId || null,
                     isTournament,
+                    task: "editEvent",
                     command: "addParticipant"
                 } as AddParticipantRequest),
                 async: false

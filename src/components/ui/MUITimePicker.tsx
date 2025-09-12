@@ -47,11 +47,13 @@ const theme = createTheme({
 });
 
 interface MUITimePickerProps {
-  value: string; // Format: "HH:mm"
+  value: string; // Format: "h:mm a" for 12-hour or "HH:mm" for 24-hour
   onChange: (time: string) => void;
   label?: string;
   disabled?: boolean;
   className?: string;
+  ampm?: boolean; // Add this prop
+  format?: string; // Add this prop
 }
 
 export const MUITimePicker: React.FC<MUITimePickerProps> = ({
@@ -60,20 +62,58 @@ export const MUITimePicker: React.FC<MUITimePickerProps> = ({
   label,
   disabled = false,
   className = "",
+  ampm = true, // Default to 12-hour format
+  format = "h:mm a", // Default format for 12-hour
 }) => {
   const parseTimeString = (timeString: string): Date => {
-    const [hours, minutes] = timeString.split(':');
     const date = new Date();
-    date.setHours(parseInt(hours, 10));
-    date.setMinutes(parseInt(minutes, 10));
+
+    if (ampm && timeString.includes(' ')) {
+      // Handle 12-hour format like "2:30 PM"
+      const [timePart, meridiem] = timeString.split(' ');
+      const [hours, minutes] = timePart.split(':');
+      let hour24 = parseInt(hours, 10);
+
+      if (meridiem.toUpperCase() === 'PM' && hour24 !== 12) {
+        hour24 += 12;
+      } else if (meridiem.toUpperCase() === 'AM' && hour24 === 12) {
+        hour24 = 0;
+      }
+
+      date.setHours(hour24);
+      date.setMinutes(parseInt(minutes, 10));
+    } else {
+      // Handle 24-hour format like "14:30"
+      const [hours, minutes] = timeString.split(':');
+      date.setHours(parseInt(hours, 10));
+      date.setMinutes(parseInt(minutes, 10));
+    }
+
     date.setSeconds(0);
     date.setMilliseconds(0);
     return date;
   };
 
   const formatTimeToString = (date: Date | null): string => {
-    if (!date) return '12:00';
-    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    if (!date) return ampm ? '12:00 AM' : '12:00';
+
+    if (ampm) {
+      // Format as 12-hour with AM/PM
+      let hours = date.getHours();
+      const minutes = date.getMinutes();
+      const ampmSuffix = hours >= 12 ? 'PM' : 'AM';
+
+      if (hours === 0) {
+        hours = 12;
+      } else if (hours > 12) {
+        hours -= 12;
+      }
+
+      return `${hours}:${minutes.toString().padStart(2, '0')} ${ampmSuffix}`;
+    } else {
+      // Format as 24-hour
+      return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    }
   };
 
   const handleTimeChange = (newValue: Date | null) => {
@@ -83,53 +123,30 @@ export const MUITimePicker: React.FC<MUITimePickerProps> = ({
   };
 
   return (
-    <div className={`space-y-2 ${className}`}>
-      {label && <Label className="text-sm font-medium">{label}</Label>}
-      <ThemeProvider theme={theme}>
-        <LocalizationProvider dateAdapter={AdapterDateFns}>
+    <ThemeProvider theme={theme}>
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <div className={className}>
+          {label && <Label className="mb-2 block">{label}</Label>}
           <TimePicker
             value={parseTimeString(value)}
             onChange={handleTimeChange}
             disabled={disabled}
-            ampm={false} // 24-hour format
-            views={['hours', 'minutes']}
-            format="HH:mm"
+            ampm={ampm} // Enable 12-hour format with AM/PM
+            format={format} // Set the display format
+            enableAccessibleFieldDOMStructure={false} // Add this line to fix the error
+            slots={{
+              textField: TextField, // Use slots instead of renderInput
+            }}
             slotProps={{
               textField: {
                 fullWidth: true,
                 variant: 'outlined',
                 size: 'small',
               },
-              desktopPaper: {
-                sx: {
-                  '& .MuiTimeClock-root': {
-                    backgroundColor: 'white',
-                  },
-                  '& .MuiTimeClock-clock': {
-                    backgroundColor: '#f9fafb',
-                  },
-                  '& .MuiClockPointer-root': {
-                    backgroundColor: '#3b82f6',
-                  },
-                  '& .MuiClockPointer-thumb': {
-                    backgroundColor: '#3b82f6',
-                    border: '2px solid white',
-                  },
-                  '& .MuiClock-pin': {
-                    backgroundColor: '#3b82f6',
-                  },
-                  '& .MuiClockNumber-root': {
-                    '&.Mui-selected': {
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                    },
-                  },
-                },
-              },
             }}
           />
-        </LocalizationProvider>
-      </ThemeProvider>
-    </div>
+        </div>
+      </LocalizationProvider>
+    </ThemeProvider>
   );
 };

@@ -206,6 +206,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         });
     }, [eventData]);
 
+    useEffect(() => {
+        if (eventData.teamSignup) {
+            setJoinAsParticipant(false);
+        }
+    }, [eventData.teamSignup]);
+
     const isValid = Object.values(validation).every(v => v);
 
     // Helper functions for date/time management
@@ -511,27 +517,21 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
                         {/* Separate Date and Time Pickers */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Start Date & Time */}
-                            <div className="space-y-3">
-                                <Label className="text-base font-medium">Start Date & Time *</Label>
+                            <div className="space-y-4">
+                                <Label className="text-sm font-medium text-gray-700">Start Date & Time *</Label>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-2 gap-4">
                                     {/* Date Picker */}
-                                    <div className="space-y-2">
-                                        <Label className="text-sm text-gray-600">Date</Label>
+                                    <div>
+                                        <Label className="text-xs text-gray-600 mb-1 block">Date</Label>
                                         <Popover>
                                             <PopoverTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="w-full p-3 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white flex items-center justify-between"
-                                                >
-                                                    <div className="flex items-center">
-                                                        <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                                        <span>{format(new Date(eventData.start), "MMM dd")}</span>
-                                                    </div>
+                                                <button className="w-full px-3 py-2 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200 flex items-center justify-between">
+                                                    {format(new Date(eventData.start), "MMM dd")}
+                                                    <CalendarIcon className="h-4 w-4 text-gray-400" />
                                                 </button>
                                             </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                                            <PopoverContent className="w-auto p-0" align="start">
                                                 <Calendar
                                                     mode="single"
                                                     selected={new Date(eventData.start)}
@@ -549,56 +549,50 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                         </Popover>
                                     </div>
 
-                                    {/* Time Picker */}
-                                    <div className="space-y-2">
-                                        <Label className="text-sm text-gray-600">Time</Label>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="w-full p-3 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white flex items-center justify-between"
-                                                >
-                                                    <div className="flex items-center">
-                                                        <ClockIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                                        <span>{format(new Date(eventData.start), 'h:mm a')}</span>
-                                                    </div>
-                                                </button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-3 z-[60]" align="start">
-                                                <MUITimePicker
-                                                    value={format(new Date(eventData.start), 'HH:mm')}
-                                                    onChange={(timeValue) => {
-                                                        const newDateTime = updateDateTime(eventData.start, timeValue);
-                                                        setEventData(prev => ({ ...prev, start: newDateTime }));
-                                                    }}
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
+                                    {/* Time Picker - Direct MUITimePicker */}
+                                    <div>
+                                        <MUITimePicker
+                                            label="Time"
+                                            value={format(new Date(eventData.start), 'h:mm a')}
+                                            onChange={(timeValue) => {
+                                                // Parse the 12-hour format and convert to 24-hour for updateDateTime
+                                                const [timePart, meridiem] = timeValue.split(' ');
+                                                const [hours, minutes] = timePart.split(':');
+                                                let hour24 = parseInt(hours, 10);
+
+                                                if (meridiem === 'PM' && hour24 !== 12) {
+                                                    hour24 += 12;
+                                                } else if (meridiem === 'AM' && hour24 === 12) {
+                                                    hour24 = 0;
+                                                }
+
+                                                const time24Format = `${hour24.toString().padStart(2, '0')}:${minutes}`;
+                                                const newDateTime = updateDateTime(eventData.start, time24Format);
+                                                setEventData(prev => ({ ...prev, start: newDateTime }));
+                                            }}
+                                            ampm={true}
+                                            format="h:mm a"
+                                        />
                                     </div>
                                 </div>
                             </div>
 
                             {/* End Date & Time */}
-                            <div className="space-y-3">
-                                <Label className="text-base font-medium">End Date & Time</Label>
+                            <div className="space-y-4">
+                                <Label className="text-sm font-medium text-gray-700">End Date & Time</Label>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-2 gap-4">
                                     {/* Date Picker */}
-                                    <div className="space-y-2">
-                                        <Label className="text-sm text-gray-600">Date</Label>
+                                    <div>
+                                        <Label className="text-xs text-gray-600 mb-1 block">Date</Label>
                                         <Popover>
                                             <PopoverTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="w-full p-3 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white flex items-center justify-between"
-                                                >
-                                                    <div className="flex items-center">
-                                                        <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                                        <span>{format(new Date(eventData.end), "MMM dd")}</span>
-                                                    </div>
+                                                <button className="w-full px-3 py-2 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200 flex items-center justify-between">
+                                                    {format(new Date(eventData.end), "MMM dd")}
+                                                    <CalendarIcon className="h-4 w-4 text-gray-400" />
                                                 </button>
                                             </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                                            <PopoverContent className="w-auto p-0" align="start">
                                                 <Calendar
                                                     mode="single"
                                                     selected={new Date(eventData.end)}
@@ -616,31 +610,30 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                         </Popover>
                                     </div>
 
-                                    {/* Time Picker */}
-                                    <div className="space-y-2">
-                                        <Label className="text-sm text-gray-600">Time</Label>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="w-full p-3 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white flex items-center justify-between"
-                                                >
-                                                    <div className="flex items-center">
-                                                        <ClockIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                                        <span>{format(new Date(eventData.end), 'h:mm a')}</span>
-                                                    </div>
-                                                </button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-3 z-[60]" align="start">
-                                                <MUITimePicker
-                                                    value={format(new Date(eventData.end), 'HH:mm')}
-                                                    onChange={(timeValue) => {
-                                                        const newDateTime = updateDateTime(eventData.end, timeValue);
-                                                        setEventData(prev => ({ ...prev, end: newDateTime }));
-                                                    }}
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
+                                    {/* Time Picker - Direct MUITimePicker */}
+                                    <div>
+                                        <MUITimePicker
+                                            label="Time"
+                                            value={format(new Date(eventData.end), 'h:mm a')}
+                                            onChange={(timeValue) => {
+                                                // Parse the 12-hour format and convert to 24-hour for updateDateTime
+                                                const [timePart, meridiem] = timeValue.split(' ');
+                                                const [hours, minutes] = timePart.split(':');
+                                                let hour24 = parseInt(hours, 10);
+
+                                                if (meridiem === 'PM' && hour24 !== 12) {
+                                                    hour24 += 12;
+                                                } else if (meridiem === 'AM' && hour24 === 12) {
+                                                    hour24 = 0;
+                                                }
+
+                                                const time24Format = `${hour24.toString().padStart(2, '0')}:${minutes}`;
+                                                const newDateTime = updateDateTime(eventData.end, time24Format);
+                                                setEventData(prev => ({ ...prev, end: newDateTime }));
+                                            }}
+                                            ampm={true}
+                                            format="h:mm a"
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -654,6 +647,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         {/* Division Selector */}
                         <MultiSelect
                             value={eventData.divisions.map(d => d.skillLevel)}
+                            placeholder='Select Divisions'
                             options={[
                                 { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
                                 { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
@@ -721,17 +715,42 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
             {/* Footer */}
             <div className="border-t p-6 flex justify-between items-center">
-                <div className="flex items-center space-x-3">
-                    <input
-                        type="checkbox"
-                        id="joinAsParticipant"
-                        checked={joinAsParticipant}
-                        onChange={(e) => setJoinAsParticipant(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <Label htmlFor="joinAsParticipant" className="text-sm">
-                        Join as participant
-                    </Label>
+                <div>
+                    {!isEditMode && !eventData.teamSignup && (
+                        <div className="flex items-center space-x-3">
+                            <input
+                                type="checkbox"
+                                id="joinAsParticipant"
+                                checked={joinAsParticipant}
+                                onChange={(e) => setJoinAsParticipant(e.target.checked)}
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <Label htmlFor="joinAsParticipant" className="text-sm">
+                                Join as participant
+                            </Label>
+                        </div>
+                    )}
+                    {isEditMode && (
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (!editingEvent) return;
+                                if (!confirm('Delete this event? This cannot be undone.')) return;
+                                setIsSubmitting(true);
+                                try {
+                                    const ok = await eventService.deleteEvent(editingEvent.$id);
+                                    if (ok) {
+                                        onClose();
+                                    }
+                                } finally {
+                                    setIsSubmitting(false);
+                                }
+                            }}
+                            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        >
+                            Delete Event
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex space-x-3">

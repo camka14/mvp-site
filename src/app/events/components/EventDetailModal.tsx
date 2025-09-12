@@ -51,6 +51,8 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     const currentEvent = detailedEvent || event;
 
     const isEventHost = !!user && currentEvent && user.$id === currentEvent.hostId;
+    const isFreeEvent = currentEvent && currentEvent.price === 0;
+    const isFreeForUser = isFreeEvent || isEventHost;
 
     useEffect(() => {
         if (isOpen && event) {
@@ -124,7 +126,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         try {
             const isTournament = currentEvent.eventType === 'tournament';
 
-            if (currentEvent.price === 0) {
+            if (isFreeForUser) {
                 await paymentService.joinEvent(currentEvent.$id, user.$id, undefined, isTournament);
                 await loadEventDetails(); // Refresh event data
             } else {
@@ -152,7 +154,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         setJoinError(null);
         try {
             const isTournament = currentEvent.eventType === 'tournament';
-            if (currentEvent.price === 0) {
+            if (isFreeForUser) {
                 await paymentService.joinEvent(currentEvent.$id, user.$id, selectedTeamId, isTournament);
                 await loadEventDetails();
             } else {
