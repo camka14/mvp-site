@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { Event, EventCategory } from '@/types';
@@ -42,6 +42,40 @@ function EventsPageContent() {
 
   const LIMIT = 18;
 
+  const kmBetween = useCallback((a: {lat:number,lng:number}, b: {lat:number,lng:number}) => {
+    const toRad = (x: number) => x * Math.PI / 180;
+    const R = 6371; // km
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const sinDLat = Math.sin(dLat/2);
+    const sinDLon = Math.sin(dLon/2);
+    const c = 2 * Math.asin(Math.sqrt(sinDLat*sinDLat + Math.cos(lat1)*Math.cos(lat2)*sinDLon*sinDLon));
+    return R * c;
+  }, []);
+
+  // Derived client-side filtered list to avoid flicker while awaiting server-filtered pages
+  const filteredEvents = useMemo(() => {
+    const q = (searchQuery || '').trim().toLowerCase();
+    return events.filter(e => {
+      if (selectedCategory !== 'All' && e.category !== selectedCategory) return false;
+      if (selectedEventTypes.length === 1 && !selectedEventTypes.includes(e.eventType)) return false;
+      if (selectedSports.length > 0 && !selectedSports.map(s=>s.toLowerCase()).includes(e.sport.toLowerCase())) return false;
+      if (q) {
+        const text = `${e.name} ${e.description ?? ''} ${e.location ?? ''}`.toLowerCase();
+        if (!text.includes(q)) return false;
+      }
+      if (location) {
+        try {
+          const dist = kmBetween({ lat: location.lat, lng: location.lng }, { lat: e.coordinates.lat, lng: e.coordinates.lng });
+          if (dist > maxDistance) return false;
+        } catch {}
+      }
+      return true;
+    });
+  }, [events, selectedCategory, selectedEventTypes, selectedSports, searchQuery, location, maxDistance, kmBetween]);
+
   const buildFilters = useCallback(() => ({
     category: selectedCategory === 'All' ? undefined : selectedCategory,
     eventTypes: selectedEventTypes.length === 2 ? undefined : selectedEventTypes,
@@ -72,13 +106,23 @@ function EventsPageContent() {
   }, [buildFilters]);
 
   const loadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
+    // Prevent fetching more while the initial page is loading or a fetch is in-flight
+    if (isLoadingInitial || isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
     setError(null);
     try {
       const filters = buildFilters();
       const page = await eventService.getEventsPaginated(filters, LIMIT, offset);
-      setEvents(prev => [...prev, ...page]);
+      // Append while de-duplicating by $id to avoid duplicate cards if the backend overlaps pages
+      setEvents(prev => {
+        const merged = [...prev, ...page];
+        const seen = new Set<string>();
+        return merged.filter(e => {
+          if (seen.has(e.$id)) return false;
+          seen.add(e.$id);
+          return true;
+        });
+      });
       setOffset(prev => prev + page.length);
       setHasMore(page.length === LIMIT);
     } catch (error) {
@@ -87,7 +131,7 @@ function EventsPageContent() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [buildFilters, offset, isLoadingMore, hasMore]);
+  }, [buildFilters, offset, isLoadingMore, hasMore, isLoadingInitial]);
 
   // Fetch when auth is confirmed and filters change
   useEffect(() => {
@@ -265,7 +309,7 @@ function EventsPageContent() {
         {/* Results */}
         <div className="mb-4">
           <p className="text-sm text-gray-600">
-            {events.length} event{events.length !== 1 ? 's' : ''} loaded
+            {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} loaded
             {searchQuery && ` for "${searchQuery}"`}
             {selectedCategory !== 'All' && ` in ${selectedCategory}`}
             {location && ` within ${maxDistance}km`}
@@ -289,8 +333,8 @@ function EventsPageContent() {
                 </div>
               </div>
             ))
-          ) : events.length > 0 ? (
-            events.map((event) => (
+          ) : filteredEvents.length > 0 ? (
+            filteredEvents.map((event) => (
               <EventCard
                 key={event.$id}
                 event={event}
