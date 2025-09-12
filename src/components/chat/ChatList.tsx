@@ -7,11 +7,14 @@ import { useApp } from '@/app/providers';
 
 export function ChatList() {
     const { chatGroups, loading } = useChat();
-    const { openChatWindow, closeChatList, setInviteModalOpen } = useChatUI();
+    const { openChatWindow, openChatWindows, closeChatList, setInviteModalOpen } = useChatUI();
     const { user } = useApp();
 
     const handleChatSelect = (chatId: string) => {
-        openChatWindow(chatId);
+        // Only open if not already open
+        if (!openChatWindows.includes(chatId)) {
+            openChatWindow(chatId);
+        }
     };
 
     const handleClose = () => {
@@ -40,82 +43,101 @@ export function ChatList() {
 
     if (loading) {
         return (
-            <div className="p-4 flex justify-center">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col max-h-96">
-            {/* Header with Close Button */}
-            <div className="flex items-center justify-between p-4 border-b bg-gray-50 rounded-t-xl">
-                <h3 className="font-semibold text-gray-900">Messages</h3>
+        <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+                <h2 className="font-semibold text-gray-900">Messages</h2>
                 <div className="flex items-center space-x-2">
                     <button
                         onClick={() => setInviteModalOpen(true)}
                         className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                        aria-label="New chat"
+                        title="Start new chat"
                     >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
                     </button>
                     <button
                         onClick={handleClose}
                         className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                        aria-label="Close"
                     >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
             </div>
 
-            {/* Chat List */}
+            {/* Chat Groups List */}
             <div className="flex-1 overflow-y-auto">
                 {chatGroups.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500">
-                        <p className="text-sm">No conversations yet</p>
+                    <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                        <div className="text-gray-500 text-sm mb-2">No conversations yet</div>
                         <button
                             onClick={() => setInviteModalOpen(true)}
-                            className="mt-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                            className="text-blue-500 text-sm hover:text-blue-600"
                         >
-                            Start a conversation
+                            Start your first chat
                         </button>
                     </div>
                 ) : (
-                    chatGroups.map((chat) => (
-                        <button
-                            key={chat.$id}
-                            onClick={() => handleChatSelect(chat.$id)}
-                            className="w-full p-3 hover:bg-gray-50 border-b border-gray-100 text-left transition-colors group"
-                        >
-                            <div className="flex items-start space-x-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                                    {chat.displayName?.[0]?.toUpperCase() || chat.name[0]?.toUpperCase() || 'C'}
-                                </div>
+                    <div className="divide-y divide-gray-100">
+                        {chatGroups.map((chatGroup) => {
+                            const isOpen = openChatWindows.includes(chatGroup.$id);
 
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                        <p className="font-medium text-gray-900 truncate">
-                                            {chat.displayName || chat.name}
-                                        </p>
+                            return (
+                                <div
+                                    key={chatGroup.$id}
+                                    onClick={() => handleChatSelect(chatGroup.$id)}
+                                    className={`p-3 flex items-center space-x-3 transition-colors relative ${isOpen
+                                            ? 'bg-gray-100 cursor-not-allowed'
+                                            : 'hover:bg-gray-50 cursor-pointer'
+                                        }`}
+                                >
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${isOpen ? 'bg-gray-400' : 'bg-blue-500'
+                                        }`}>
+                                        {chatGroup.displayName?.[0]?.toUpperCase() || chatGroup.name[0]?.toUpperCase() || 'C'}
                                     </div>
-                                    {chat.lastMessage && (
-                                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                                            <span className="truncate">
-                                                {chat.lastMessage.userId === user?.$id ? 'You: ' : ''}
-                                                {chat.lastMessage.body}
+
+                                    <div className={`flex-1 min-w-0 ${isOpen ? 'text-gray-400' : 'text-gray-900'}`}>
+                                        <div className="flex items-center justify-between">
+                                            <p className={`text-sm font-medium truncate ${isOpen ? 'text-gray-400' : 'text-gray-900'}`}>
+                                                {chatGroup.displayName || chatGroup.name || 'Unnamed Chat'}
+                                            </p>
+                                            {chatGroup.lastMessage && (
+                                                <span className={`text-xs ml-2 flex-shrink-0 ${isOpen ? 'text-gray-300' : 'text-gray-500'}`}>
+                                                    {formatTime(chatGroup.lastMessage.sentTime)}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center justify-between mt-1">
+                                            <p className={`text-xs truncate ${isOpen ? 'text-gray-300' : 'text-gray-500'}`}>
+                                                {chatGroup.lastMessage?.body || 'No messages yet'}
+                                            </p>
+                                            <span className={`text-xs ml-2 flex-shrink-0 ${isOpen ? 'text-gray-300' : 'text-gray-500'}`}>
+                                                {chatGroup.userIds.length} members
                                             </span>
-                                            <span className="text-xs text-gray-500 shrink-0">• {formatTime(chat.lastMessage.sentTime)}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Visual indicator for open chats */}
+                                    {isOpen && (
+                                        <div className="absolute right-2 top-2">
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                                         </div>
                                     )}
                                 </div>
-                            </div>
-                        </button>
-                    ))
+                            );
+                        })}
+                    </div>
                 )}
             </div>
         </div>

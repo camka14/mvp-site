@@ -6,14 +6,11 @@ interface ChatUIContextType {
     // Chat list drawer state
     isChatListOpen: boolean;
     setChatListOpen: (open: boolean) => void;
-
     // Multiple chat windows state
     openChatWindows: string[];
-
     // Modal state
     isInviteModalOpen: boolean;
     setInviteModalOpen: (open: boolean) => void;
-
     // Actions
     openChatList: () => void;
     closeChatList: () => void;
@@ -30,6 +27,8 @@ export function ChatUIProvider({ children }: { children: ReactNode }) {
     const [openChatWindows, setOpenChatWindows] = useState<string[]>([]);
     const [isInviteModalOpen, setInviteModalOpen] = useState(false);
 
+    const MAX_OPEN_CHATS = 3;
+
     const openChatList = () => setChatListOpen(true);
 
     const closeChatList = () => {
@@ -37,16 +36,20 @@ export function ChatUIProvider({ children }: { children: ReactNode }) {
     };
 
     const openChatWindow = (chatId: string) => {
-        // Add chat to open windows if not already open
         setOpenChatWindows(prev => {
-            if (!prev.includes(chatId)) {
+            // Check if chat is already open
+            if (prev.includes(chatId)) {
+                return prev; // Don't add duplicate
+            }
+
+            if (prev.length >= MAX_OPEN_CHATS) {
+                // Remove the oldest chat window and add the new one
+                return [...prev.slice(1), chatId];
+            } else {
+                // Add new chat window
                 return [...prev, chatId];
             }
-            return prev;
         });
-
-        // Close chat list when opening a chat
-        setChatListOpen(false);
     };
 
     const closeChatWindow = (chatId: string) => {
@@ -61,19 +64,21 @@ export function ChatUIProvider({ children }: { children: ReactNode }) {
     const isFloatingButtonVisible = !isChatListOpen && openChatWindows.length === 0;
 
     return (
-        <ChatUIContext.Provider value={{
-            isChatListOpen,
-            setChatListOpen,
-            openChatWindows,
-            isInviteModalOpen,
-            setInviteModalOpen,
-            openChatList,
-            closeChatList,
-            openChatWindow,
-            closeChatWindow,
-            closeAllChatWindows,
-            isFloatingButtonVisible
-        }}>
+        <ChatUIContext.Provider
+            value={{
+                isChatListOpen,
+                setChatListOpen,
+                openChatWindows,
+                isInviteModalOpen,
+                setInviteModalOpen,
+                openChatList,
+                closeChatList,
+                openChatWindow,
+                closeChatWindow,
+                closeAllChatWindows,
+                isFloatingButtonVisible,
+            }}
+        >
             {children}
         </ChatUIContext.Provider>
     );

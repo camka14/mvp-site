@@ -9,13 +9,7 @@ import { ChatDetail } from './ChatDetail';
 
 export function ChatDrawer() {
     const { loadMessages } = useChat();
-    const {
-        isChatListOpen,
-        openChatWindows,
-        openChatList,
-        isFloatingButtonVisible
-    } = useChatUI();
-
+    const { isChatListOpen, openChatWindows, openChatList, isFloatingButtonVisible } = useChatUI();
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -35,54 +29,51 @@ export function ChatDrawer() {
     const chatListWidth = 320; // Width of chat list drawer
 
     const drawerContent = (
-        <div className="pointer-events-none fixed inset-0 z-40">
-            {/* Floating Chat Button */}
-            <button
-                onClick={openChatList}
-                className={`fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 flex items-center justify-center pointer-events-auto ${isFloatingButtonVisible
-                        ? 'translate-y-0 opacity-100 scale-100'
-                        : 'translate-y-16 opacity-0 scale-75 pointer-events-none'
-                    }`}
-                aria-label="Open chat"
-            >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-            </button>
-
-            {/* Chat List Drawer */}
-            <div
-                className={`fixed bottom-0 right-6 transition-all duration-300 pointer-events-auto ${isChatListOpen
-                        ? 'translate-y-0 opacity-100'
-                        : 'translate-y-full opacity-0 pointer-events-none'
-                    }`}
-                style={{ width: `${chatListWidth}px` }}
-            >
-                <div className="bg-white rounded-t-xl shadow-2xl max-h-96 overflow-hidden">
+        <div className="fixed inset-0 pointer-events-none z-50">
+            {/* Chat List - Half height, positioned at bottom-right */}
+            {isChatListOpen && (
+                <div
+                    className="fixed bottom-0 bg-white border-l border-t border-gray-200 shadow-lg pointer-events-auto rounded-tl-lg"
+                    style={{
+                        right: 0,
+                        width: `${chatListWidth}px`,
+                        height: '50vh',
+                    }}
+                >
                     <ChatList />
                 </div>
-            </div>
+            )}
 
-            {/* Chat Detail Windows - Stacked from right to left */}
+            {/* Chat Windows - Half height, stacked to the left of chat list */}
             {openChatWindows.map((chatId, index) => {
-                const rightOffset = 6 + (index * chatWindowWidth) + (index > 0 ? index * 8 : 0); // 8px gap between windows
+                const rightPosition = (isChatListOpen ? chatListWidth : 0) + (index * chatWindowWidth);
 
                 return (
                     <div
                         key={chatId}
-                        className="fixed bottom-0 transition-all duration-300 pointer-events-auto"
+                        className="fixed bottom-0 bg-white border-l border-t border-gray-200 shadow-lg pointer-events-auto rounded-tl-lg"
                         style={{
-                            right: `${rightOffset}px`,
+                            right: `${rightPosition}px`,
                             width: `${chatWindowWidth}px`,
-                            height: '500px'
+                            height: '50vh',
                         }}
                     >
-                        <div className="bg-white rounded-t-xl shadow-2xl h-full overflow-hidden">
-                            <ChatDetail chatId={chatId} />
-                        </div>
+                        <ChatDetail chatId={chatId} />
                     </div>
                 );
             })}
+
+            {/* Floating Chat Button */}
+            {isFloatingButtonVisible && (
+                <button
+                    onClick={openChatList}
+                    className="fixed bottom-4 right-4 bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg transition-colors pointer-events-auto"
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-3.582 8-8 8a8.955 8.955 0 01-2.292-.307l-5.7 1.9a.75.75 0 01-.92-.92l1.9-5.7c-.207-.732-.308-1.494-.308-2.292C6 7.582 9.582 4 14 4s8 3.582 8 8z" />
+                    </svg>
+                </button>
+            )}
         </div>
     );
 

@@ -53,38 +53,37 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
 
     return (
         <div className="flex flex-col h-full">
-            {/* Header with Close Button */}
-            <div className="flex items-center justify-between p-3 border-b bg-gray-50 rounded-t-xl">
-                <div className="flex items-center space-x-3 min-w-0">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
+            {/* Header with Close Button - Fixed height */}
+            <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+                <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium">
                         {chatGroup?.displayName?.[0]?.toUpperCase() || chatGroup?.name[0]?.toUpperCase() || 'C'}
                     </div>
-                    <div className="min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate text-sm">
+                    <div>
+                        <div className="font-medium text-sm text-gray-900">
                             {chatGroup?.displayName || chatGroup?.name || 'Chat'}
-                        </h3>
-                        <p className="text-xs text-gray-500">
+                        </div>
+                        <div className="text-xs text-gray-500">
                             {chatGroup?.userIds.length || 0} members
-                        </p>
+                        </div>
                     </div>
                 </div>
                 <button
                     onClick={handleClose}
-                    className="p-1.5 hover:bg-gray-200 rounded-full transition-colors flex-shrink-0"
-                    aria-label="Close chat"
+                    className="p-1 hover:bg-gray-200 rounded-full transition-colors"
                 >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* Messages - Scrollable area that takes remaining height */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
                 {chatMessages.length === 0 ? (
-                    <div className="text-center text-gray-500 mt-8">
-                        <p className="text-sm">No messages yet</p>
-                        <p className="text-xs mt-1">Start the conversation!</p>
+                    <div className="flex flex-col items-center justify-center h-full text-center text-gray-500">
+                        <div className="text-sm">No messages yet</div>
+                        <div className="text-xs">Start the conversation!</div>
                     </div>
                 ) : (
                     chatMessages.map((message) => {
@@ -94,15 +93,16 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
                                 key={message.$id}
                                 className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                             >
-                                <div className={`max-w-xs px-3 py-2 rounded-lg text-sm ${isCurrentUser
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-gray-100 text-gray-900'
-                                    }`}>
-                                    <p>{message.body}</p>
-                                    <p className={`text-xs mt-1 ${isCurrentUser ? 'text-blue-100' : 'text-gray-500'
-                                        }`}>
+                                <div
+                                    className={`max-w-xs px-3 py-2 rounded-lg text-sm ${isCurrentUser
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-gray-200 text-gray-900'
+                                        }`}
+                                >
+                                    <div>{message.body}</div>
+                                    <div className={`text-xs mt-1 ${isCurrentUser ? 'text-blue-100' : 'text-gray-500'}`}>
                                         {formatMessageTime(message.sentTime)}
-                                    </p>
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -111,8 +111,8 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Message Input */}
-            <div className="border-t bg-white p-3">
+            {/* Message Input - Fixed height at bottom */}
+            <div className="border-t border-gray-200 p-3 flex-shrink-0">
                 <form onSubmit={handleSendMessage} className="flex space-x-2">
                     <input
                         type="text"
@@ -125,10 +125,13 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
                     <button
                         type="submit"
                         disabled={!messageInput.trim() || sending}
-                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                     >
                         {sending ? (
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                            </svg>
                         ) : (
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />

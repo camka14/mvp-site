@@ -71,7 +71,7 @@ export default function PaymentForm({
                 <button
                     type="submit"
                     disabled={!stripe || !elements || loading}
-                    className={`w-full py-3 px-4 rounded-lg font-medium transition-colors {!stripe || !elements || loading
+                    className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${!stripe || !elements || loading
                             ? 'bg-gray-400 cursor-not-allowed text-white'
                             : 'bg-blue-600 hover:bg-blue-700 text-white'
                         }`}
