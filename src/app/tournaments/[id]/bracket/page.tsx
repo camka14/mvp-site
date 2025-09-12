@@ -23,6 +23,7 @@ function TournamentBracketContent() {
     const router = useRouter();
     const [bracket, setBracket] = useState<TournamentBracket | null>(null);
     const [loading, setLoading] = useState(true);
+    const [expanded, setExpanded] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -126,76 +127,82 @@ function TournamentBracketContent() {
     }
 
     return (
-        <>
+        <div className="min-h-screen flex flex-col">
             <Navigation />
 
-            {/* Header */}
-            <div className="bg-white border-b border-gray-200">
-                <div className="container-responsive py-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <button
-                                onClick={() => router.push(`/events`)}
-                                className="text-blue-600 hover:text-blue-700 mb-2 flex items-center gap-2"
-                            >
-                                ← Back to Events
-                            </button>
-                            <h1 className="text-3xl font-bold text-gray-900">{bracket.tournament.name}</h1>
-                            <p className="text-gray-600 mt-1">Tournament Bracket</p>
-                        </div>
+            {!expanded && (
+                <>
+                    {/* Header */}
+                    <div className="bg-white border-b border-gray-200">
+                        <div className="container-responsive py-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <button
+                                        onClick={() => router.push(`/events`)}
+                                        className="text-blue-600 hover:text-blue-700 mb-2 flex items-center gap-2"
+                                    >
+                                        ← Back to Events
+                                    </button>
+                                    <h1 className="text-3xl font-bold text-gray-900">{bracket.tournament.name}</h1>
+                                    <p className="text-gray-600 mt-1">Tournament Bracket</p>
+                                </div>
 
-                        {bracket.canManage && (
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => router.push(`/tournaments/${id}/manage`)}
-                                    className="btn-secondary"
-                                >
-                                    Manage Tournament
-                                </button>
-                                <button
-                                    onClick={loadTournamentBracket}
-                                    className="btn-primary"
-                                >
-                                    Refresh
-                                </button>
+                                {bracket.canManage && (
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => router.push(`/tournaments/${id}/manage`)}
+                                            className="btn-secondary"
+                                        >
+                                            Manage Tournament
+                                        </button>
+                                        <button
+                                            onClick={loadTournamentBracket}
+                                            className="btn-primary"
+                                        >
+                                            Refresh
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
                     </div>
-                </div>
-            </div>
 
-            {/* Tournament Info */}
-            <div className="bg-gray-50 border-b border-gray-200">
-                <div className="container-responsive py-4">
-                    <div className="flex flex-wrap gap-6 text-sm text-gray-600">
-                        <div>
-                            <span className="font-medium">Format:</span>{' '}
-                            {bracket.tournament.doubleElimination ? 'Double Elimination' : 'Single Elimination'}
-                        </div>
-                        <div>
-                            <span className="font-medium">Teams:</span> {bracket.teams.length}
-                        </div>
-                        <div>
-                            <span className="font-medium">Matches:</span> {bracket.matches.length}
-                        </div>
-                        {bracket.tournament.prize && (
-                            <div>
-                                <span className="font-medium">Prize:</span> {bracket.tournament.prize}
+                    {/* Tournament Info */}
+                    <div className="bg-gray-50 border-b border-gray-200">
+                        <div className="container-responsive py-4">
+                            <div className="flex flex-wrap gap-6 text-sm text-gray-600">
+                                <div>
+                                    <span className="font-medium">Format:</span>{' '}
+                                    {bracket.tournament.doubleElimination ? 'Double Elimination' : 'Single Elimination'}
+                                </div>
+                                <div>
+                                    <span className="font-medium">Teams:</span> {bracket.teams.length}
+                                </div>
+                                <div>
+                                    <span className="font-medium">Matches:</span> {bracket.matches.length}
+                                </div>
+                                {bracket.tournament.prize && (
+                                    <div>
+                                        <span className="font-medium">Prize:</span> {bracket.tournament.prize}
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
                     </div>
-                </div>
-            </div>
+                </>
+            )}
 
-            {/* Bracket */}
-            <div className="flex-1 bg-gray-50">
+            {/* Bracket (fills remaining space) */}
+            <div className="flex-1 bg-gray-50 min-h-0">
                 <TournamentBracketView
                     bracket={bracket}
                     onScoreUpdate={handleScoreUpdate}
                     onMatchUpdate={handleMatchUpdate}
                     currentUser={user!}
+                    isExpanded={expanded}
+                    onToggleExpand={() => setExpanded((v) => !v)}
                 />
             </div>
-        </>
+        </div>
     );
 }

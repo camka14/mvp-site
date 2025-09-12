@@ -29,10 +29,10 @@ export interface MatchWithRelations extends Match {
     team2Data?: Team;
     referee?: UserData;
     field?: Field;
-    winnerNextMatch?: Match;
-    loserNextMatch?: Match;
-    previousLeftMatch?: Match;
-    previousRightMatch?: Match;
+    winnerNextMatch?: MatchWithRelations;
+    loserNextMatch?: MatchWithRelations;
+    previousLeftMatch?: MatchWithRelations;
+    previousRightMatch?: MatchWithRelations;
 }
 
 export interface TournamentBracket {
