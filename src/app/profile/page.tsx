@@ -217,7 +217,6 @@ export default function ProfilePage() {
                                     </label>
                                     <ImageUploader
                                         currentImageUrl={profileData.profileImage}
-                                        currentUser={user}
                                         bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                                         placeholder="Upload new profile picture"
                                     />

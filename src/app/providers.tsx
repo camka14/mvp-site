@@ -12,10 +12,12 @@ interface UserAccount {
 }
 
 interface AppContextType {
-  user: UserData | null; // Changed from UserAccount to UserData
-  authUser: UserAccount | null; // Keep auth user separate
+  user: UserData | null;
+  authUser: UserAccount | null;
   loading: boolean;
   setUser: (user: UserData | null) => void;
+  updateUser: (updates: Partial<UserData>) => Promise<UserData | null>;
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -86,6 +88,28 @@ export function Providers({ children }: ProvidersProps) {
     authService.setCurrentUserData(value);
   };
 
+  const refreshUser = async () => {
+    if (!authUser) return;
+    try {
+      const latest = await userService.getUserById(authUser.$id);
+      if (latest) setUser(latest);
+    } catch (e) {
+      console.warn('Failed to refresh user', e);
+    }
+  };
+
+  const updateUser = async (updates: Partial<UserData>) => {
+    if (!user) return null;
+    try {
+      const updated = await userService.updateUser(user.$id, updates);
+      setUser(updated);
+      return updated;
+    } catch (e) {
+      console.warn('Failed to update user', e);
+      return null;
+    }
+  };
+
   const isAuthenticated = authUser !== null && user !== null;
 
   return (
@@ -94,6 +118,8 @@ export function Providers({ children }: ProvidersProps) {
       authUser,
       loading,
       setUser,
+      updateUser,
+      refreshUser,
       isAuthenticated
     }}>
       {children}

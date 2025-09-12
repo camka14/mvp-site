@@ -152,6 +152,23 @@ export type EventCategory =
   | 'Football'
   | 'Other';
 
+// Central list of supported sports
+export enum Sports {
+  Volleyball = 'Volleyball',
+  Soccer = 'Soccer',
+  Basketball = 'Basketball',
+  Tennis = 'Tennis',
+  Pickleball = 'Pickleball',
+  Swimming = 'Swimming',
+  Football = 'Football',
+  Hockey = 'Hockey',
+  Baseball = 'Baseball',
+  Other = 'Other',
+}
+
+// Convenient iterable list for UI dropdowns
+export const SPORTS_LIST: string[] = Object.values(Sports);
+
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'completed';
 
 export interface LocationCoordinates {

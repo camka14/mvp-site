@@ -1,168 +1,187 @@
-
 import React from 'react';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
+interface TournamentData {
+    doubleElimination: boolean;
+    winnerSetCount: number;
+    loserSetCount: number;
+    winnerBracketPointsToVictory: number[];
+    loserBracketPointsToVictory: number[];
+    prize: string;
+    fieldCount: number;
+}
 
 interface TournamentFieldsProps {
-    tournamentData: {
-        doubleElimination: boolean;
-        winnerSetCount: number;
-        loserSetCount: number;
-        winnerBracketPointsToVictory: number[];
-        loserBracketPointsToVictory: number[];
-        prize: string;
-        fieldCount: number;
-    };
-    onChange: (data: any) => void;
+    tournamentData: TournamentData;
+    setTournamentData: React.Dispatch<React.SetStateAction<TournamentData>>;
 }
 
 const TournamentFields: React.FC<TournamentFieldsProps> = ({
     tournamentData,
-    onChange
+    setTournamentData,
 }) => {
-    const updateTournamentData = (field: string, value: any) => {
-        onChange((prev: any) => ({ ...prev, [field]: value }));
-    };
-
-    const updatePointsArray = (type: 'winner' | 'loser', index: number, value: number) => {
-        const field = type === 'winner' ? 'winnerBracketPointsToVictory' : 'loserBracketPointsToVictory';
-        const currentArray = tournamentData[field];
-        const newArray = [...currentArray];
-        newArray[index] = value;
-        updateTournamentData(field, newArray);
-    };
-
-    const updateSetCount = (type: 'winner' | 'loser', count: number) => {
-        const field = type === 'winner' ? 'winnerSetCount' : 'loserSetCount';
-        const pointsField = type === 'winner' ? 'winnerBracketPointsToVictory' : 'loserBracketPointsToVictory';
-
-        updateTournamentData(field, count);
-        updateTournamentData(pointsField, Array(count).fill(21));
-    };
-
     return (
-        <div className="space-y-6 p-4 border border-gray-200 rounded-md bg-gray-50">
-            <h3 className="text-lg font-medium text-gray-900">Tournament Settings</h3>
+        <div className="bg-gray-50 rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">Tournament Settings</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Tournament Format */}
+                <div className="space-y-2">
+                    <Label>Tournament Format</Label>
+                    <Select
+                        value={tournamentData.doubleElimination ? 'double' : 'single'}
+                        onValueChange={(value) =>
+                            setTournamentData(prev => ({
+                                ...prev,
+                                doubleElimination: value === 'double'
+                            }))
+                        }
+                    >
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="single">Single Elimination</SelectItem>
+                            <SelectItem value="double">Double Elimination</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                {/* Winner Set Count */}
+                <div className="space-y-2">
+                    <Label>Winner Set Count</Label>
+                    <Select
+                        value={tournamentData.winnerSetCount.toString()}
+                        onValueChange={(value) =>
+                            setTournamentData(prev => ({
+                                ...prev,
+                                winnerSetCount: parseInt(value)
+                            }))
+                        }
+                    >
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="1">Best of 1</SelectItem>
+                            <SelectItem value="3">Best of 3</SelectItem>
+                            <SelectItem value="5">Best of 5</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                {/* Loser Set Count (only for double elimination) */}
+                {tournamentData.doubleElimination && (
+                    <div className="space-y-2">
+                        <Label>Loser Set Count</Label>
+                        <Select
+                            value={tournamentData.loserSetCount.toString()}
+                            onValueChange={(value) =>
+                                setTournamentData(prev => ({
+                                    ...prev,
+                                    loserSetCount: parseInt(value)
+                                }))
+                            }
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="1">Best of 1</SelectItem>
+                                <SelectItem value="3">Best of 3</SelectItem>
+                                <SelectItem value="5">Best of 5</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                )}
+
+                {/* Field Count */}
+                <div className="space-y-2">
+                    <Label>Field Count</Label>
+                    <Select
+                        value={tournamentData.fieldCount.toString()}
+                        onValueChange={(value) =>
+                            setTournamentData(prev => ({
+                                ...prev,
+                                fieldCount: parseInt(value)
+                            }))
+                        }
+                    >
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(count => (
+                                <SelectItem key={count} value={count.toString()}>
+                                    {count} {count === 1 ? 'Field' : 'Fields'}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            {/* Points to Victory */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div className="space-y-2">
+                    <Label htmlFor="winnerPoints">Winner Bracket Points to Victory</Label>
+                    <Input
+                        id="winnerPoints"
+                        type="number"
+                        min="1"
+                        value={tournamentData.winnerBracketPointsToVictory[0] || 21}
+                        onChange={(e) =>
+                            setTournamentData(prev => ({
+                                ...prev,
+                                winnerBracketPointsToVictory: [parseInt(e.target.value) || 21]
+                            }))
+                        }
+                    />
+                </div>
+
+                {tournamentData.doubleElimination && (
+                    <div className="space-y-2">
+                        <Label htmlFor="loserPoints">Loser Bracket Points to Victory</Label>
+                        <Input
+                            id="loserPoints"
+                            type="number"
+                            min="1"
+                            value={tournamentData.loserBracketPointsToVictory[0] || 21}
+                            onChange={(e) =>
+                                setTournamentData(prev => ({
+                                    ...prev,
+                                    loserBracketPointsToVictory: [parseInt(e.target.value) || 21]
+                                }))
+                            }
+                        />
+                    </div>
+                )}
+            </div>
 
             {/* Prize */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Prize (Optional)
-                </label>
-                <input
+            <div className="mt-4 space-y-2">
+                <Label htmlFor="prize">Prize (Optional)</Label>
+                <Input
+                    id="prize"
                     type="text"
                     value={tournamentData.prize}
-                    onChange={(e) => updateTournamentData('prize', e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-md"
-                    placeholder="e.g., $500 cash prize"
+                    onChange={(e) =>
+                        setTournamentData(prev => ({
+                            ...prev,
+                            prize: e.target.value
+                        }))
+                    }
+                    placeholder="Enter tournament prize"
                 />
             </div>
-
-            {/* Field Count */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Number of Fields *
-                </label>
-                <input
-                    type="number"
-                    min="1"
-                    value={tournamentData.fieldCount}
-                    onChange={(e) => updateTournamentData('fieldCount', parseInt(e.target.value) || 1)}
-                    className="w-full p-3 border border-gray-300 rounded-md"
-                />
-            </div>
-
-            {/* Elimination Type */}
-            <div className="flex items-center">
-                <input
-                    type="checkbox"
-                    id="doubleElimination"
-                    checked={tournamentData.doubleElimination}
-                    onChange={(e) => updateTournamentData('doubleElimination', e.target.checked)}
-                    className="mr-2"
-                />
-                <label htmlFor="doubleElimination" className="text-sm font-medium text-gray-700">
-                    Double Elimination
-                </label>
-            </div>
-
-            {/* Winner Bracket Settings */}
-            <div>
-                <h4 className="text-md font-medium text-gray-800 mb-3">Winner Bracket</h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Sets to Win
-                        </label>
-                        <select
-                            value={tournamentData.winnerSetCount}
-                            onChange={(e) => updateSetCount('winner', parseInt(e.target.value))}
-                            className="w-full p-3 border border-gray-300 rounded-md"
-                        >
-                            {[1, 2, 3, 4, 5].map(count => (
-                                <option key={count} value={count}>{count}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                    {Array(tournamentData.winnerSetCount).fill(0).map((_, index) => (
-                        <div key={index}>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                Set {index + 1} Points
-                            </label>
-                            <input
-                                type="number"
-                                min="1"
-                                value={tournamentData.winnerBracketPointsToVictory[index] || 21}
-                                onChange={(e) => updatePointsArray('winner', index, parseInt(e.target.value) || 21)}
-                                className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                            />
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Loser Bracket Settings (if double elimination) */}
-            {tournamentData.doubleElimination && (
-                <div>
-                    <h4 className="text-md font-medium text-gray-800 mb-3">Loser Bracket</h4>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Sets to Win
-                            </label>
-                            <select
-                                value={tournamentData.loserSetCount}
-                                onChange={(e) => updateSetCount('loser', parseInt(e.target.value))}
-                                className="w-full p-3 border border-gray-300 rounded-md"
-                            >
-                                {[1, 2, 3, 4, 5].map(count => (
-                                    <option key={count} value={count}>{count}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                        {Array(tournamentData.loserSetCount).fill(0).map((_, index) => (
-                            <div key={index}>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
-                                    Set {index + 1} Points
-                                </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    value={tournamentData.loserBracketPointsToVictory[index] || 21}
-                                    onChange={(e) => updatePointsArray('loser', index, parseInt(e.target.value) || 21)}
-                                    className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                                />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

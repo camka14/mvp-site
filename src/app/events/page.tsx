@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
-import { Event, EventCategory } from '@/types';
+import { Event, EventCategory, SPORTS_LIST } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { useLocation } from '@/app/hooks/useLocation';
 import Navigation from '@/components/layout/Navigation';
@@ -184,7 +184,7 @@ function EventsPageContent() {
   };
 
   const categories = ['All', 'Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football'] as const;
-  const sports = ['Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football']; // You can populate this dynamically
+  const sports = SPORTS_LIST;
   const distanceOptions = [10, 25, 50, 100]; // km
 
   if (authLoading) {
@@ -402,7 +402,7 @@ function EventsPageContent() {
       <EventCreationModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onEventCreated={(event) => {
+        onEventCreated={() => {
           setShowCreateModal(false);
         }}
         currentUser={user}

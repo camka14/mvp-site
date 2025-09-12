@@ -1,19 +1,45 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
-import ModalShell from '@/components/ui/ModalShell';
+import { format } from 'date-fns';
+import { CalendarIcon, ClockIcon } from 'lucide-react';
+
 import { CreateEventData, eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
-import DivisionSelector from './DivisionSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl } from '@/types';
+import { getEventImageUrl, SPORTS_LIST } from '@/types';
+
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { MUITimePicker } from '@/components/ui/MUITimePicker';
+import MultiSelect from '@/components/ui/MultiSelect';
+
+// Define Division interface locally
+interface Division {
+    id: string;
+    name: string;
+    skillLevel: string;
+    minRating?: number;
+    maxRating?: number;
+}
 
 interface EventCreationModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onEventCreated: (event: CreateEventData) => void;
+    onEventCreated: () => void;
     currentUser?: any;
 }
 
@@ -23,13 +49,40 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     onEventCreated,
     currentUser
 }) => {
-    const location = useLocation();
+    const { location: userLocation } = useLocation();
     const modalRef = useRef<HTMLDivElement>(null);
-    const backgroundRef = useRef<HTMLDivElement>(null);
-    const mouseDownTargetRef = useRef<EventTarget | null>(null);
+    const [selectedImageId, setSelectedImageId] = useState<string>('');
     const [selectedImageUrl, setSelectedImageUrl] = useState<string>('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [joinAsParticipant, setJoinAsParticipant] = useState(false);
 
-    const [eventData, setEventData] = useState<Partial<CreateEventData>>({
+    // Complete event data state with ALL fields
+    const [eventData, setEventData] = useState<{
+        name: string;
+        description: string;
+        location: string;
+        lat: number;
+        long: number;
+        start: string;
+        end: string;
+        eventType: 'pickup' | 'tournament';
+        sport: string;
+        fieldType: string;
+        price: number;
+        maxParticipants: number;
+        teamSizeLimit: number;
+        teamSignup: boolean;
+        singleDivision: boolean;
+        divisions: Division[];
+        cancellationRefundHours: number;
+        registrationCutoffHours: number;
+        imageId: string;
+        seedColor: number;
+        waitList: string[];
+        freeAgents: string[];
+        playerIds: string[];
+        teamIds: string[];
+    }>({
         name: '',
         description: '',
         location: '',
@@ -37,7 +90,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         long: 0,
         start: new Date().toISOString(),
         end: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-        eventType: 'pickup' as const,
+        eventType: 'pickup',
         sport: '',
         fieldType: 'indoor',
         price: 0,
@@ -66,6 +119,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         fieldCount: 1
     });
 
+    // Validation state
     const [validation, setValidation] = useState({
         isNameValid: false,
         isPriceValid: true,
@@ -75,28 +129,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         isSkillLevelValid: false
     });
 
-
-    const [joinAsParticipant, setJoinAsParticipant] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // Prevent background scroll when modal is open
-    useEffect(() => {
-        if (isOpen) {
-            const originalStyle = window.getComputedStyle(document.body).overflow;
-            document.body.style.overflow = 'hidden';
-            return () => {
-                document.body.style.overflow = originalStyle;
-            };
-        }
-    }, [isOpen]);
-
     // Validation effect
     useEffect(() => {
         setValidation({
             isNameValid: eventData.name ? eventData.name?.trim().length > 0 : false,
             isPriceValid: eventData.price !== undefined ? eventData.price >= 0 : false,
             isMaxParticipantsValid: eventData.maxParticipants ? eventData.maxParticipants > 1 : false,
-            isTeamSizeValid: eventData.teamSizeLimit ? eventData.teamSizeLimit >= 2 : false,
+            isTeamSizeValid: eventData.teamSizeLimit ? eventData.teamSizeLimit >= 1 : false,
             isLocationValid: eventData.location ? eventData.location?.trim().length > 0 && eventData.lat !== 0 && eventData.long !== 0 : false,
             isSkillLevelValid: eventData.divisions ? eventData.divisions?.length > 0 : false
         });
@@ -104,15 +143,25 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     const isValid = Object.values(validation).every(v => v);
 
+    // Helper functions for date/time management
+    const updateDateTime = (dateISO: string, timeString: string) => {
+        const date = new Date(dateISO);
+        const [hours, minutes] = timeString.split(':');
+        date.setHours(parseInt(hours, 10));
+        date.setMinutes(parseInt(minutes, 10));
+        return date.toISOString();
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!isValid || isSubmitting) return;
 
         setIsSubmitting(true);
         try {
-            let newEvent: Partial<CreateEventData> = {
+            let submitData: any = {
                 ...eventData,
-                imageId: selectedImageUrl,
+                divisions: eventData.divisions.map(div => div.skillLevel),
+                imageId: selectedImageId, // ✅ Use the file ID, not URL
                 hostId: currentUser?.$id,
                 playerIds: joinAsParticipant && !eventData.teamSignup ? [currentUser?.$id] : [],
                 teamIds: [],
@@ -121,14 +170,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             };
 
             if (eventData.eventType === 'tournament') {
-                newEvent = {
-                    ...newEvent,
-                    ...tournamentData
-                };
+                submitData = { ...submitData, ...tournamentData };
             }
 
-            const createdEvent = await eventService.createEvent(newEvent);
-            onEventCreated(createdEvent);
+            const createdEvent = await eventService.createEvent(submitData);
+            onEventCreated();
             onClose();
         } catch (error) {
             console.error('Failed to create event:', error);
@@ -137,53 +183,28 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     };
 
-    const handleImageChange = (url: string) => {
+    const handleImageChange = (fileId: string, url: string) => {
+        setSelectedImageId(fileId);
         setSelectedImageUrl(url);
-        setEventData(prev => ({ ...prev, imageId: url }));
-    };
-
-    // Handle proper backdrop click
-    const handleBackdropMouseDown = (e: React.MouseEvent) => {
-        if (e.target === e.currentTarget) {
-            mouseDownTargetRef.current = e.target;
-        } else {
-            mouseDownTargetRef.current = null;
-        }
-    };
-
-    const handleBackdropMouseUp = (e: React.MouseEvent) => {
-        if (e.target === e.currentTarget && mouseDownTargetRef.current === e.target) {
-            onClose();
-        }
-        mouseDownTargetRef.current = null;
+        setEventData(prev => ({ ...prev, imageId: fileId }));
     };
 
     if (!isOpen) return null;
 
     return (
-        <div
-            ref={backgroundRef}
-            className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto"
-            onMouseDown={handleBackdropMouseDown}
-            onMouseUp={handleBackdropMouseUp}
-            style={{ scrollBehavior: 'smooth' }}
-        >
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto">
             <div
                 ref={modalRef}
-                className="bg-white rounded-lg max-w-4xl w-full my-8 shadow-2xl relative overflow-hidden"
-                style={{
-                    maxHeight: 'calc(100vh - 4rem)',
-                    minHeight: 'auto'
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onMouseUp={(e) => e.stopPropagation()}
+                className="bg-white rounded-lg max-w-4xl w-full my-8 shadow-2xl relative flex flex-col"
+                style={{ maxHeight: 'calc(100vh - 4rem)' }}
+                onClick={(e) => e.stopPropagation()}
             >
-                {/* Hero Image Section */}
+                {/* Hero Image Section - FIXED */}
                 <div className="relative h-48 bg-gradient-to-br from-blue-500 to-purple-600">
-                    {eventData.imageId ? (
+                    {selectedImageUrl ? (
                         <img
-                            src={getEventImageUrl({ imageId: eventData.imageId, height: 48 })}
-                            alt={eventData.name}
+                            src={selectedImageUrl} // ✅ Use URL for display
+                            alt={eventData.name || 'Event image'}
                             className="w-full h-48 object-cover"
                             onError={(e) => {
                                 const target = e.target as HTMLImageElement;
@@ -193,40 +214,33 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     ) : (
                         <div className="w-full h-full flex items-center justify-center text-white">
                             <div className="text-center">
-                                <div className="text-6xl mb-4">🏐</div>
+                                <div className="text-6xl mb-4">🏆</div>
                                 <p className="text-lg">Add an image for your event</p>
                             </div>
                         </div>
                     )}
 
-                    {/* Close button */}
                     <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 text-white hover:text-gray-300 text-2xl font-bold bg-black/20 rounded-full w-10 h-10 flex items-center justify-center transition-colors duration-200"
+                        className="absolute top-4 right-4 text-white hover:text-gray-300 text-2xl font-bold bg-black/20 rounded-full w-10 h-10 flex items-center justify-center"
                     >
                         ×
                     </button>
                 </div>
 
+
                 {/* Scrollable Content */}
-                <div
-                    className="overflow-y-auto"
-                    style={{ maxHeight: 'calc(100vh - 16rem)' }}
-                >
+                <div className="flex-1 min-h-0 overflow-y-auto">
                     <div className="p-6">
-                        {/* Event Title Section */}
                         <div className="mb-6">
-                            <h2 className="text-3xl font-bold mb-4 text-gray-900">Create New Event</h2>
+                            <h2 className="text-3xl font-bold mb-4">Create New Event</h2>
 
                             {/* Image Upload */}
                             <div className="mb-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Event Image
-                                </label>
+                                <Label className="block text-sm font-medium mb-2">Event Image</Label>
                                 <ImageUploader
                                     currentImageUrl={selectedImageUrl}
-                                    currentUser={currentUser}
-                                    bucketId={process.env.NEXT_PUBLIC_EVENTS_BUCKET_ID!}
+                                    bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                                     className="w-full max-w-md"
                                     placeholder="Select event image"
                                     onChange={handleImageChange}
@@ -235,103 +249,106 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-8">
-                            {/* Basic Information Card */}
+                            {/* Basic Information */}
                             <div className="bg-gray-50 rounded-lg p-6">
-                                <h3 className="text-lg font-semibold mb-4 text-gray-900">Basic Information</h3>
+                                <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Event Name *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={eventData.name || ''}
+                                    <div className="space-y-2">
+                                        <Label>Event Name *</Label>
+                                        <Input
+                                            value={eventData.name}
                                             onChange={(e) => setEventData(prev => ({ ...prev, name: e.target.value }))}
-                                            className={`w-full p-3 border rounded-md transition-colors duration-200 ${validation.isNameValid ? 'border-gray-300 focus:border-blue-500' : 'border-red-300 focus:border-red-500'
-                                                } focus:outline-none focus:ring-2 focus:ring-blue-200`}
                                             placeholder="Enter event name"
+                                            className={!validation.isNameValid && eventData.name ? 'border-red-300' : ''}
                                         />
-                                        {!validation.isNameValid && eventData.name && eventData.name?.length > 0 && (
-                                            <p className="text-red-500 text-sm mt-1">Event name is required</p>
+                                        {!validation.isNameValid && eventData.name && (
+                                            <p className="text-red-500 text-sm">Event name is required</p>
                                         )}
                                     </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Sport *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={eventData.sport || ''}
-                                            onChange={(e) => setEventData(prev => ({ ...prev, sport: e.target.value }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
-                                            placeholder="e.g., Volleyball, Basketball"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Event Details Card */}
-                            <div className="bg-gray-50 rounded-lg p-6">
-                                <h3 className="text-lg font-semibold mb-4 text-gray-900">Event Details</h3>
-
-                                {/* Event Type and Field Type */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Event Type *
-                                        </label>
-                                        <select
-                                            value={eventData.eventType}
-                                            onChange={(e) => setEventData(prev => ({
-                                                ...prev,
-                                                eventType: e.target.value as 'pickup' | 'tournament'
-                                            }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
+                                    <div className="space-y-2">
+                                        <Label>Sport *</Label>
+                                        <Select
+                                            value={eventData.sport}
+                                            onValueChange={(value) => setEventData(prev => ({ ...prev, sport: value }))}
                                         >
-                                            <option value="pickup">Pickup Game</option>
-                                            <option value="tournament">Tournament</option>
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Field Type *
-                                        </label>
-                                        <select
-                                            value={eventData.fieldType}
-                                            onChange={(e) => setEventData(prev => ({ ...prev, fieldType: e.target.value }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
-                                        >
-                                            <option value="indoor">Indoor</option>
-                                            <option value="outdoor">Outdoor</option>
-                                            <option value="sand">Sand</option>
-                                            <option value="grass">Grass</option>
-                                        </select>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a sport" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {SPORTS_LIST.map(sport => (
+                                                    <SelectItem key={sport} value={sport}>
+                                                        {sport.charAt(0).toUpperCase() + sport.slice(1)}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
 
                                 {/* Description */}
-                                <div className="mb-4">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Description
-                                    </label>
+                                <div className="space-y-2 mt-4">
+                                    <Label htmlFor="description">Description</Label>
                                     <textarea
-                                        value={eventData.description || ''}
+                                        id="description"
+                                        value={eventData.description}
                                         onChange={(e) => setEventData(prev => ({ ...prev, description: e.target.value }))}
                                         className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
                                         rows={3}
                                         placeholder="Describe your event..."
                                     />
                                 </div>
+                            </div>
 
-                                {/* Price and Participants */}
+                            {/* Event Details */}
+                            <div className="bg-gray-50 rounded-lg p-6">
+                                <h3 className="text-lg font-semibold mb-4">Event Details</h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <div className="space-y-2">
+                                        <Label>Event Type *</Label>
+                                        <Select
+                                            value={eventData.eventType}
+                                            onValueChange={(value) => setEventData(prev => ({
+                                                ...prev,
+                                                eventType: value as 'pickup' | 'tournament'
+                                            }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="pickup">Pickup Game</SelectItem>
+                                                <SelectItem value="tournament">Tournament</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Field Type *</Label>
+                                        <Select
+                                            value={eventData.fieldType}
+                                            onValueChange={(value) => setEventData(prev => ({ ...prev, fieldType: value }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="indoor">Indoor</SelectItem>
+                                                <SelectItem value="outdoor">Outdoor</SelectItem>
+                                                <SelectItem value="sand">Sand</SelectItem>
+                                                <SelectItem value="grass">Grass</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                {/* Pricing and Participant Details */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Price ($)
-                                        </label>
-                                        <input
+                                    <div className="space-y-2">
+                                        <Label htmlFor="price">Price ($)</Label>
+                                        <Input
+                                            id="price"
                                             type="number"
                                             min="0"
                                             step="0.01"
@@ -340,18 +357,17 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                                 ...prev,
                                                 price: parseFloat(e.target.value) || 0
                                             }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
+                                            className={!validation.isPriceValid ? 'border-red-300' : ''}
                                         />
-                                        <p className="text-sm text-gray-500 mt-1">
+                                        <p className="text-sm text-gray-500">
                                             {eventData.price === 0 ? 'Free' : `$${eventData.price?.toFixed(2)}`}
                                         </p>
                                     </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Max Participants *
-                                        </label>
-                                        <input
+                                    <div className="space-y-2">
+                                        <Label htmlFor="maxParticipants">Max Participants *</Label>
+                                        <Input
+                                            id="maxParticipants"
                                             type="number"
                                             min="2"
                                             value={eventData.maxParticipants}
@@ -359,15 +375,14 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                                 ...prev,
                                                 maxParticipants: parseInt(e.target.value) || 10
                                             }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
+                                            className={!validation.isMaxParticipantsValid ? 'border-red-300' : ''}
                                         />
                                     </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Team Size Limit
-                                        </label>
-                                        <input
+                                    <div className="space-y-2">
+                                        <Label htmlFor="teamSizeLimit">Team Size Limit</Label>
+                                        <Input
+                                            id="teamSizeLimit"
                                             type="number"
                                             min="1"
                                             value={eventData.teamSizeLimit}
@@ -375,23 +390,53 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                                 ...prev,
                                                 teamSizeLimit: parseInt(e.target.value) || 2
                                             }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
+                                            className={!validation.isTeamSizeValid ? 'border-red-300' : ''}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Policy Settings */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="cancellationRefundHours">Cancellation Refund (Hours)</Label>
+                                        <Input
+                                            id="cancellationRefundHours"
+                                            type="number"
+                                            min="0"
+                                            value={eventData.cancellationRefundHours}
+                                            onChange={(e) => setEventData(prev => ({
+                                                ...prev,
+                                                cancellationRefundHours: parseInt(e.target.value) || 24
+                                            }))}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="registrationCutoffHours">Registration Cutoff (Hours)</Label>
+                                        <Input
+                                            id="registrationCutoffHours"
+                                            type="number"
+                                            min="0"
+                                            value={eventData.registrationCutoffHours}
+                                            onChange={(e) => setEventData(prev => ({
+                                                ...prev,
+                                                registrationCutoffHours: parseInt(e.target.value) || 2
+                                            }))}
                                         />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Location Card */}
+                            {/* Location & Time */}
                             <div className="bg-gray-50 rounded-lg p-6">
-                                <h3 className="text-lg font-semibold mb-4 text-gray-900">Location & Time</h3>
+                                <h3 className="text-lg font-semibold mb-4">Location & Time</h3>
 
-                                {/* Location */}
-                                <div className="mb-4">
+                                <div className="mb-6">
                                     <LocationSelector
-                                        value={eventData.location || ''}
+                                        value={eventData.location}
                                         coordinates={{
-                                            lat: eventData.lat || location.location !== null ? location.location!.lat : 0,
-                                            lng: eventData.long || location.location !== null ? location.location!.lng : 0
+                                            lat: eventData.lat || userLocation?.lat || 0,
+                                            lng: eventData.long || userLocation?.lng || 0
                                         }}
                                         onChange={(location, lat, lng) => {
                                             setEventData(prev => ({ ...prev, location, lat, long: lng }));
@@ -400,126 +445,246 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     />
                                 </div>
 
-                                {/* Date and Time */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Start Date & Time *
-                                        </label>
-                                        <input
-                                            type="datetime-local"
-                                            value={eventData.start ? new Date(eventData.start).toISOString().slice(0, 16) : ''}
-                                            onChange={(e) => setEventData(prev => ({
-                                                ...prev,
-                                                start: new Date(e.target.value).toISOString()
-                                            }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
-                                        />
+                                {/* Separate Date and Time Pickers */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Start Date & Time */}
+                                    <div className="space-y-3">
+                                        <Label className="text-base font-medium">Start Date & Time *</Label>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {/* Date Picker */}
+                                            <div className="space-y-2">
+                                                <Label className="text-sm text-gray-600">Date</Label>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="w-full p-3 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white flex items-center justify-between"
+                                                        >
+                                                            <div className="flex items-center">
+                                                                <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
+                                                                <span>{format(new Date(eventData.start), "MMM dd")}</span>
+                                                            </div>
+                                                        </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                                                        <Calendar
+                                                            mode="single"
+                                                            selected={new Date(eventData.start)}
+                                                            onSelect={(date) => {
+                                                                if (date) {
+                                                                    const currentTime = format(new Date(eventData.start), 'HH:mm');
+                                                                    const newDateTime = updateDateTime(date.toISOString(), currentTime);
+                                                                    setEventData(prev => ({ ...prev, start: newDateTime }));
+                                                                }
+                                                            }}
+                                                            disabled={(date) => date < new Date()}
+                                                            initialFocus
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+
+                                            {/* Time Picker */}
+                                            <div className="space-y-2">
+                                                <Label className="text-sm text-gray-600">Time</Label>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="w-full p-3 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white flex items-center justify-between"
+                                                        >
+                                                            <div className="flex items-center">
+                                                                <ClockIcon className="mr-2 h-4 w-4 text-gray-400" />
+                                                                <span>{format(new Date(eventData.start), 'h:mm a')}</span>
+                                                            </div>
+                                                        </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-3 z-[60]" align="start">
+                                                        <MUITimePicker
+                                                            value={format(new Date(eventData.start), 'HH:mm')}
+                                                            onChange={(timeValue) => {
+                                                                const newDateTime = updateDateTime(eventData.start, timeValue);
+                                                                setEventData(prev => ({ ...prev, start: newDateTime }));
+                                                            }}
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            End Date & Time *
-                                        </label>
-                                        <input
-                                            type="datetime-local"
-                                            value={eventData.end ? new Date(eventData.end).toISOString().slice(0, 16) : ''}
-                                            onChange={(e) => setEventData(prev => ({
-                                                ...prev,
-                                                end: new Date(e.target.value).toISOString()
-                                            }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
-                                        />
+                                    {/* End Date & Time */}
+                                    <div className="space-y-3">
+                                        <Label className="text-base font-medium">End Date & Time</Label>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {/* Date Picker */}
+                                            <div className="space-y-2">
+                                                <Label className="text-sm text-gray-600">Date</Label>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="w-full p-3 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white flex items-center justify-between"
+                                                        >
+                                                            <div className="flex items-center">
+                                                                <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
+                                                                <span>{format(new Date(eventData.end), "MMM dd")}</span>
+                                                            </div>
+                                                        </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                                                        <Calendar
+                                                            mode="single"
+                                                            selected={new Date(eventData.end)}
+                                                            onSelect={(date) => {
+                                                                if (date) {
+                                                                    const currentTime = format(new Date(eventData.end), 'HH:mm');
+                                                                    const newDateTime = updateDateTime(date.toISOString(), currentTime);
+                                                                    setEventData(prev => ({ ...prev, end: newDateTime }));
+                                                                }
+                                                            }}
+                                                            disabled={(date) => date < new Date(eventData.start)}
+                                                            initialFocus
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+
+                                            {/* Time Picker */}
+                                            <div className="space-y-2">
+                                                <Label className="text-sm text-gray-600">Time</Label>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="w-full p-3 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white flex items-center justify-between"
+                                                        >
+                                                            <div className="flex items-center">
+                                                                <ClockIcon className="mr-2 h-4 w-4 text-gray-400" />
+                                                                <span>{format(new Date(eventData.end), 'h:mm a')}</span>
+                                                            </div>
+                                                        </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-3 z-[60]" align="start">
+                                                        <MUITimePicker
+                                                            value={format(new Date(eventData.end), 'HH:mm')}
+                                                            onChange={(timeValue) => {
+                                                                const newDateTime = updateDateTime(eventData.end, timeValue);
+                                                                setEventData(prev => ({ ...prev, end: newDateTime }));
+                                                            }}
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Skill Levels & Settings Card */}
+                            {/* Skills & Settings */}
                             <div className="bg-gray-50 rounded-lg p-6">
-                                <h3 className="text-lg font-semibold mb-4 text-gray-900">Event Settings</h3>
+                                <h3 className="text-lg font-semibold mb-4">Event Settings</h3>
 
-                                {/* Divisions */}
-                                <div className="mb-4">
-                                    <DivisionSelector
-                                        selectedDivisions={eventData.divisions || []}
-                                        onChange={(divisions) => setEventData(prev => ({ ...prev, divisions }))}
-                                        isValid={validation.isSkillLevelValid}
-                                    />
-                                </div>
+                                {/* Division Selector */}
+                                <MultiSelect
+                                    value={eventData.divisions.map(d => d.skillLevel)}
+                                    options={[
+                                        { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
+                                        { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
+                                        { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
+                                        { value: 'expert', label: 'Expert (4.5+)' },
+                                        { value: 'open', label: 'Open (All Skill Levels)' },
+                                    ]}
+                                    onChange={(vals) => {
+                                        const toLabel = (v: string) => {
+                                            switch (v) {
+                                                case 'beginner': return 'Beginner (1.0 - 2.5) Division';
+                                                case 'intermediate': return 'Intermediate (2.5 - 3.5) Division';
+                                                case 'advanced': return 'Advanced (3.5 - 4.5) Division';
+                                                case 'expert': return 'Expert (4.5+) Division';
+                                                case 'open': return 'Open (All Skill Levels) Division';
+                                                default: return v;
+                                            }
+                                        };
+                                        setEventData(prev => ({
+                                            ...prev,
+                                            divisions: vals.map(v => ({ id: `${v}-${Date.now()}`, name: toLabel(v), skillLevel: v } as Division))
+                                        }));
+                                    }}
+                                />
 
-                                {/* Checkboxes */}
-                                <div className="space-y-3">
-                                    <div className="flex items-center">
+                                {/* Team Settings */}
+                                <div className="mt-6 space-y-4">
+                                    <div className="flex items-center space-x-3">
                                         <input
                                             type="checkbox"
                                             id="teamSignup"
                                             checked={eventData.teamSignup}
                                             onChange={(e) => setEventData(prev => ({ ...prev, teamSignup: e.target.checked }))}
-                                            className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                         />
-                                        <label htmlFor="teamSignup" className="text-sm font-medium text-gray-700">
+                                        <Label htmlFor="teamSignup" className="text-sm">
                                             Team Event (teams compete rather than individuals)
-                                        </label>
+                                        </Label>
                                     </div>
 
-                                    {!eventData.teamSignup && (
-                                        <div className="flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                id="joinEvent"
-                                                checked={joinAsParticipant}
-                                                onChange={(e) => setJoinAsParticipant(e.target.checked)}
-                                                className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                            />
-                                            <label htmlFor="joinEvent" className="text-sm font-medium text-gray-700">
-                                                Join as participant
-                                            </label>
-                                        </div>
-                                    )}
+                                    <div className="flex items-center space-x-3">
+                                        <input
+                                            type="checkbox"
+                                            id="singleDivision"
+                                            checked={eventData.singleDivision}
+                                            onChange={(e) => setEventData(prev => ({ ...prev, singleDivision: e.target.checked }))}
+                                            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                        />
+                                        <Label htmlFor="singleDivision" className="text-sm">
+                                            Single Division (all skill levels play together)
+                                        </Label>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Tournament-specific fields */}
+                            {/* Tournament Fields */}
                             {eventData.eventType === 'tournament' && (
                                 <TournamentFields
                                     tournamentData={tournamentData}
-                                    onChange={setTournamentData}
+                                    setTournamentData={setTournamentData}
                                 />
                             )}
                         </form>
                     </div>
                 </div>
 
-                {/* Action Buttons - Fixed at bottom */}
-                <div className="sticky bottom-0 bg-white border-t border-gray-200 p-6">
-                    <div className="flex justify-end space-x-4">
+                {/* Action Buttons */}
+                <div className="border-t p-6 flex justify-between items-center">
+                    <div className="flex items-center space-x-3">
+                        <input
+                            type="checkbox"
+                            id="joinAsParticipant"
+                            checked={joinAsParticipant}
+                            onChange={(e) => setJoinAsParticipant(e.target.checked)}
+                            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <Label htmlFor="joinAsParticipant" className="text-sm">
+                            Join as participant
+                        </Label>
+                    </div>
+
+                    <div className="flex space-x-3">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-6 py-3 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors duration-200 font-medium"
+                            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                             Cancel
                         </button>
                         <button
-                            type="submit"
                             onClick={handleSubmit}
                             disabled={!isValid || isSubmitting}
-                            className={`px-6 py-3 rounded-md text-white font-medium transition-colors duration-200 ${isValid && !isSubmitting
-                                ? 'bg-blue-600 hover:bg-blue-700'
-                                : 'bg-gray-400 cursor-not-allowed'
-                                }`}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                         >
-                            {isSubmitting ? (
-                                <span className="flex items-center">
-                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Creating...
-                                </span>
-                            ) : (
-                                'Create Event'
-                            )}
+                            {isSubmitting ? 'Creating...' : 'Create Event'}
                         </button>
                     </div>
                 </div>

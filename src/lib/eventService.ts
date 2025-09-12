@@ -20,14 +20,51 @@ export interface EventFilters {
   fieldType?: string;
 }
 
-export type CreateEventData = Omit<Event,
-  | 'attendees'
-  | 'coordinates'
-  | 'category'
-  | '$id'
-  | '$createdAt'
-  | '$updatedAt'
->;
+export interface Division {
+  id: string;
+  name: string;
+  skillLevel: string;
+  minRating?: number;
+  maxRating?: number;
+}
+
+export interface CreateEventData {
+  $id?: string;
+  name?: string;
+  description?: string;
+  location?: string;
+  lat?: number;
+  long?: number;
+  start?: string;
+  end?: string;
+  eventType?: 'pickup' | 'tournament';
+  sport?: string;
+  fieldType?: string;
+  price?: number;
+  maxParticipants?: number;
+  teamSizeLimit?: number;
+  teamSignup?: boolean;
+  singleDivision?: boolean;
+  divisions?: Division[]; // ✅ CHANGED FROM string[] TO Division[]
+  cancellationRefundHours?: number;
+  registrationCutoffHours?: number;
+  imageId?: string;
+  seedColor?: number;
+  waitList?: string[];
+  freeAgents?: string[];
+  playerIds?: string[];
+  teamIds?: string[];
+  hostId?: string;
+
+  // Tournament-specific fields
+  doubleElimination?: boolean;
+  winnerSetCount?: number;
+  loserSetCount?: number;
+  winnerBracketPointsToVictory?: number[];
+  loserBracketPointsToVictory?: number[];
+  prize?: string;
+  fieldCount?: number;
+}
 
 
 class EventService {
