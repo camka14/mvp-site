@@ -159,7 +159,7 @@ export default function ProfilePage() {
                                     <img
                                         src={profileData.profileImage || getUserAvatarUrl(user, 128)}
                                         alt={user.fullName}
-                                        className="w-32 h-32 rounded-full border-4 border-white shadow-lg"
+                                        className="w-32 h-32 rounded-full border-4 border-white shadow-lg bg-white"
                                     />
                                 </div>
                                 <div className="ml-6 flex-1">
