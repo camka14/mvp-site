@@ -116,7 +116,7 @@ export function InviteUsersModal() {
         >
             <div className="flex flex-col">
                 {/* Search Section */}
-                    <div className="pb-4 border-b border-gray-100">
+                    <div className="pb-4 pt-4 border-b border-gray-100">
                         <div className="relative">
                             <input
                                 type="text"
