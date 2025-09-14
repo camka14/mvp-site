@@ -42,6 +42,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     const [joinError, setJoinError] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [confirmingPurchase, setConfirmingPurchase] = useState(false);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -133,7 +134,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                 const paymentIntent = await paymentService.createPaymentIntent(
                     currentEvent.$id,
                     user.$id,
-                    undefined, // teamId if needed
+                    undefined,
                     isTournament
                 );
 
@@ -155,7 +156,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         try {
             const isTournament = currentEvent.eventType === 'tournament';
             if (isFreeForUser) {
-                await paymentService.joinEvent(currentEvent.$id, user.$id, selectedTeamId, isTournament);
+                await paymentService.joinEvent(currentEvent.$id, undefined, selectedTeamId, isTournament);
                 await loadEventDetails();
             } else {
                 const paymentIntent = await paymentService.createPaymentIntent(
@@ -171,6 +172,44 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
             setJoinError(error instanceof Error ? error.message : 'Failed to join as team');
         } finally {
             setJoining(false);
+        }
+    };
+
+    // After successful payment, poll for up to 30s until the registration is reflected
+    const confirmRegistrationAfterPayment = async () => {
+        if (!user || !currentEvent) return;
+        setConfirmingPurchase(true);
+        setJoinError(null);
+
+        const deadline = Date.now() + 30_000; // 30 seconds
+        const pollIntervalMs = 2000; // 2 seconds
+        const targetTeamId = selectedTeamId || null;
+
+        try {
+            while (Date.now() < deadline) {
+                const latest = await eventService.getEventById(currentEvent.$id);
+                if (latest) {
+                    // Check registration status depending on signup type
+                    const registered = latest.teamSignup
+                        ? (targetTeamId ? (latest.teamIds || []).includes(targetTeamId) : false)
+                        : (latest.playerIds || []).includes(user.$id);
+
+                    if (registered) {
+                        await loadEventDetails();
+                        setConfirmingPurchase(false);
+                        return;
+                    }
+                }
+
+                await new Promise(res => setTimeout(res, pollIntervalMs));
+            }
+
+            // Timed out
+            setJoinError('Timed out');
+        } catch (e) {
+            setJoinError('Error confirming purchase.');
+        } finally {
+            setConfirmingPurchase(false);
         }
     };
 
@@ -428,10 +467,16 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                     ) : (
                                                         <button
                                                             onClick={handleJoinEvent}
-                                                            disabled={joining}
-                                                            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${joining ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                                                            disabled={joining || confirmingPurchase}
+                                                            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${joining || confirmingPurchase ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
                                                         >
-                                                            {joining ? 'Joining…' : currentEvent.price > 0 ? `Join Event - ${formatPrice(currentEvent.price)}` : 'Join Event'}
+                                                            {confirmingPurchase
+                                                                ? 'Confirming purchase…'
+                                                                : joining
+                                                                    ? 'Joining…'
+                                                                    : currentEvent.price > 0
+                                                                        ? `Join Event - ${formatPrice(currentEvent.price)}`
+                                                                        : 'Join Event'}
                                                         </button>
                                                     )}
                                                 </div>
@@ -511,14 +556,14 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                                         ) : (
                                                                             <button
                                                                                 onClick={handleJoinAsTeam}
-                                                                                disabled={joining || !selectedTeamId}
+                                                                                disabled={joining || !selectedTeamId || confirmingPurchase}
                                                                                 className={`py-2 px-4 rounded-lg text-white font-medium min-w-[120px] transition-colors duration-200 ${ // ✅ Matches Hide/Show button padding
-                                                                                    joining || !selectedTeamId
+                                                                                    joining || !selectedTeamId || confirmingPurchase
                                                                                         ? 'bg-gray-400 cursor-not-allowed'
                                                                                         : 'bg-green-600 hover:bg-green-700'
                                                                                     }`}
                                                                             >
-                                                                                {joining ? 'Joining...' : 'Confirm Join'}
+                                                                                {confirmingPurchase ? 'Confirming purchase...' : (joining ? 'Joining...' : 'Confirm Join')}
                                                                             </button>
                                                                         )}
                                                                     </div>
@@ -703,10 +748,10 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                 }}
                 event={currentEvent}
                 paymentData={paymentData} // Pass the already-created payment intent
-                onPaymentSuccess={() => {
+                onPaymentSuccess={async () => {
                     setShowPaymentModal(false);
                     setPaymentData(null);
-                    loadEventDetails();
+                    await confirmRegistrationAfterPayment();
                 }}
             />
             <EventCreationModal

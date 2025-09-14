@@ -50,7 +50,7 @@ class PaymentService {
         }
     }
 
-    async joinEvent(eventId: string, userId: string, teamId?: string, isTournament: boolean = false): Promise<void> {
+    async joinEvent(eventId: string, userId?: string, teamId?: string, isTournament: boolean = false): Promise<void> {
         try {
             const response = await functions.createExecution({
                 functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,

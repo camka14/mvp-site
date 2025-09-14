@@ -91,7 +91,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         playerIds: string[];
         teamIds: string[];
     }>(() => {
-        // ✅ If editing, use existing event data; otherwise, use defaults
         if (editingEvent) {
             return {
                 name: editingEvent.name,
@@ -154,7 +153,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     });
 
-    // ✅ Initialize tournament data if editing tournament
     const [tournamentData, setTournamentData] = useState(() => {
         if (editingEvent && editingEvent.eventType === 'tournament') {
             return {
@@ -180,6 +178,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     });
 
+    const todaysDate = new Date(new Date().setHours(0,0,0,0));
     const modalTitle = isEditMode ? 'Edit Event' : 'Create New Event';
     const submitButtonText = isEditMode ? 'Update Event' : 'Create Event';
     const submittingText = isEditMode ? 'Updating...' : 'Creating...';
@@ -542,8 +541,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                                             setEventData(prev => ({ ...prev, start: newDateTime }));
                                                         }
                                                     }}
-                                                    disabled={(date) => date < new Date()}
-                                                    initialFocus
+                                                    disabled={(date) => (date < todaysDate)}
+                                                    autoFocus
                                                 />
                                             </PopoverContent>
                                         </Popover>
@@ -603,8 +602,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                                             setEventData(prev => ({ ...prev, end: newDateTime }));
                                                         }
                                                     }}
-                                                    disabled={(date) => date < new Date(eventData.start)}
-                                                    initialFocus
+                                                    disabled={(date) => date <= new Date(new Date(eventData.start).setHours(0,0,0,0))}
+                                                    autoFocus
                                                 />
                                             </PopoverContent>
                                         </Popover>
