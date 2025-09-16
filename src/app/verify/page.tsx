@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authService } from '@/lib/auth';
 
-export default function VerifyPage() {
+function VerifyContent() {
   const params = useSearchParams();
   const router = useRouter();
   const userId = useMemo(() => params.get('userId') || '', [params]);
@@ -57,7 +57,6 @@ export default function VerifyPage() {
           </p>
         </div>
 
-        {/* Status box */}
         {message && (
           <div className={`rounded-lg p-4 mb-4 ${
             state === 'success' ? 'bg-green-50 border border-green-200 text-green-800' :
@@ -102,3 +101,19 @@ export default function VerifyPage() {
   );
 }
 
+export default function VerifyPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="inline-flex items-center gap-3 text-gray-600">
+            <span className="h-5 w-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+            Loading…
+          </div>
+        </div>
+      }
+    >
+      <VerifyContent />
+    </Suspense>
+  );
+}
