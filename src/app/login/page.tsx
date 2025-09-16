@@ -49,7 +49,13 @@ export default function LoginPage() {
         if (!formData.firstName || !formData.lastName || !formData.userName) {
           throw new Error('Please provide first name, last name, and username');
         }
-        authUser = await authService.createAccount(formData.email, formData.password, formData.firstName, formData.lastName, formData.userName);
+        authUser = await authService.createAccount(
+          formData.email,
+          formData.password,
+          formData.firstName,
+          formData.lastName,
+          formData.userName
+        );
       }
 
       const extendedUser = await userService.getUserById(authUser.$id);
@@ -59,6 +65,11 @@ export default function LoginPage() {
       }
 
       setUser(extendedUser);
+      // After signup, direct users to the verification page
+      if (!isLogin) {
+        router.push('/verify');
+        return;
+      }
       router.push('/events');
 
     } catch (error: any) {

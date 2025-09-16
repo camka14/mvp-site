@@ -104,6 +104,31 @@ class PaymentService {
             throw new Error(error instanceof Error ? error.message : 'Failed to request refund');
         }
     }
+
+    async connectStripeAccount(userId: string): Promise<{ onboardingUrl: string }> {
+        try {
+            const response = await functions.createExecution({
+                functionId: process.env.NEXT_PUBLIC_BILLING_FUNCTION_ID!,
+                body: JSON.stringify({
+                    userId,
+                    command: "connect_host_account"
+                }),
+                async: false
+            });
+
+            const result = JSON.parse(response.responseBody);
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Failed to connect Stripe account:', error);
+            throw new Error(error instanceof Error ? error.message : 'Failed to connect Stripe account');
+        }
+    }
+
 }
 
 export const paymentService = new PaymentService();

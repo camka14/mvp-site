@@ -27,6 +27,7 @@ import { Label } from '@/components/ui/label';
 import { MUITimePicker } from '@/components/ui/MUITimePicker';
 import MultiSelect from '@/components/ui/MultiSelect';
 import ModalShell from '@/components/ui/ModalShell';
+import { paymentService } from '@/lib/paymentService';
 
 // Define Division interface locally
 interface Division {
@@ -61,7 +62,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         editingEvent ? getEventImageUrl({ imageId: editingEvent.imageId, width: 800 }) : ''
     );
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [connectingStripe, setConnectingStripe] = useState(false);
     const [joinAsParticipant, setJoinAsParticipant] = useState(false);
+    const [hasStripeAccount, setHasStripeAccount] = useState(currentUser?.hasStripeAccount || false);
+
     const isEditMode = !!editingEvent;
 
     // Complete event data state with ALL fields
@@ -178,7 +182,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     });
 
-    const todaysDate = new Date(new Date().setHours(0,0,0,0));
+    const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
     const modalTitle = isEditMode ? 'Edit Event' : 'Create New Event';
     const submitButtonText = isEditMode ? 'Update Event' : 'Create Event';
     const submittingText = isEditMode ? 'Updating...' : 'Creating...';
@@ -221,6 +225,20 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         date.setMinutes(parseInt(minutes, 10));
         return date.toISOString();
     };
+
+    const handleConnectStripe = async () => {
+        try {
+            setConnectingStripe(true);
+            const result = await paymentService.connectStripeAccount(currentUser?.$id);
+            window.open(result.onboardingUrl, '_blank', 'noopener,noreferrer');
+        } catch (error) {
+            console.error('Failed to connect Stripe account:', error);
+        } finally {
+            setConnectingStripe(false);
+        }
+    };
+
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -419,15 +437,41 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 <Input
                                     id="price"
                                     type="number"
-                                    min="0"
-                                    step="0.01"
+                                    min={0}
+                                    step={0.01}
                                     value={eventData.price}
                                     onChange={(e) => setEventData(prev => ({
                                         ...prev,
                                         price: parseFloat(e.target.value) || 0
                                     }))}
                                     className={!validation.isPriceValid ? 'border-red-300' : ''}
+                                    disabled={!hasStripeAccount} // Always disable if no Stripe account
                                 />
+
+                                {/* Always show connect Stripe when no account */}
+                                {!hasStripeAccount && (
+                                    <div className="mt-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleConnectStripe}
+                                            disabled={connectingStripe}
+                                            className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                        >
+                                            {connectingStripe ? (
+                                                <span className="inline-flex items-center gap-2">
+                                                    <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                                                    Connecting…
+                                                </span>
+                                            ) : (
+                                                'Connect Stripe Account'
+                                            )}
+                                        </button>
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            Connect your Stripe account to enable paid events and set a price.
+                                        </p>
+                                    </div>
+                                )}
+
                                 <p className="text-sm text-gray-500">
                                     {eventData.price === 0 ? 'Free' : `$${eventData.price?.toFixed(2)}`}
                                 </p>
@@ -602,7 +646,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                                             setEventData(prev => ({ ...prev, end: newDateTime }));
                                                         }
                                                     }}
-                                                    disabled={(date) => date <= new Date(new Date(eventData.start).setHours(0,0,0,0))}
+                                                    disabled={(date) => date <= new Date(new Date(eventData.start).setHours(0, 0, 0, 0))}
                                                     autoFocus
                                                 />
                                             </PopoverContent>

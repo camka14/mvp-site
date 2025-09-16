@@ -89,7 +89,7 @@ export const authService = {
         name: `${firstName} ${lastName}`.trim()
       });
 
-      // Auto login after registration
+      // Auto login after registration (required to send verification email via Account API)
       if (userAccount) {
         const loggedIn = await this.login(email, password);
 
@@ -136,6 +136,15 @@ export const authService = {
           console.warn('Failed to ensure user profile row:', profileErr);
         }
 
+        // Send email verification link. This requires an active session for the user account.
+        try {
+          await account.createVerification({
+            url: `${window.location.origin}/verify`
+          });
+        } catch (e) {
+          console.warn('Failed to send verification email:', e);
+        }
+
         return loggedIn;
       }
 
@@ -143,6 +152,18 @@ export const authService = {
     } catch (error) {
       throw error;
     }
+  },
+
+  async resendVerification(): Promise<void> {
+    // Re-send verification email to the current authenticated user
+    await account.createVerification({
+      url: `${window.location.origin}/verify`
+    });
+  },
+
+  async confirmVerification(userId: string, secret: string): Promise<void> {
+    // Confirm verification using parameters from the email link
+    await account.updateVerification({ userId, secret });
   },
 
   async login(email: string, password: string): Promise<UserAccount> {
