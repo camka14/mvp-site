@@ -9,6 +9,7 @@ import { NavItem } from '@/types';
 
 const baseNav: NavItem[] = [
   { label: 'Events', href: '/events' },
+  { label: 'Organizations', href: '/organizations' },
   { label: 'My Teams', href: '/teams' },
   { label: 'Profile', href: '/profile' },
 ];
@@ -51,7 +52,7 @@ export default function Navigation() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`font-medium transition-colors duration-200 ${pathname === item.href
+                className={`font-medium transition-colors duration-200 ${(pathname === item.href || pathname.startsWith(item.href + '/'))
                     ? 'text-blue-600 border-b-2 border-blue-600'
                     : 'text-gray-600 hover:text-gray-900'
                   }`}
@@ -113,7 +114,7 @@ export default function Navigation() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`block py-2 px-4 font-medium ${pathname === item.href
+                className={`block py-2 px-4 font-medium ${(pathname === item.href || pathname.startsWith(item.href + '/'))
                     ? 'text-blue-600 bg-blue-50'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                   }`}

@@ -108,6 +108,37 @@ export interface Team {
   avatarUrl: string;
 }
 
+export interface Field {
+  $id: string;
+  name: string;
+  location: string;
+  lat: number;
+  long: number;
+  type: string;
+  fieldNumber: number;
+}
+
+export interface Organization {
+  $id: string;
+  name: string;
+  description?: string;
+  website?: string;
+  logoId?: string;
+  location?: string;
+  lat?: number;
+  long?: number;
+  ownerId?: string;
+  $createdAt?: string;
+  $updatedAt?: string;
+}
+
+// Optional, expanded organization with relationships
+export interface OrganizationDetail extends Organization {
+  events?: Event[];
+  teams?: Team[];
+  fields?: Field[];
+}
+
 export function getTeamAvatarUrl(team: Team, size: number = 64): string {
   if (team.profileImageId) {
     return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: team.profileImageId, width: size, height: size });
