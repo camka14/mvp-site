@@ -55,6 +55,7 @@ export interface CreateEventData {
   playerIds?: string[];
   teamIds?: string[];
   hostId?: string;
+  organizationId?: string;
 
   // Tournament-specific fields
   doubleElimination?: boolean;

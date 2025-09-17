@@ -1,6 +1,6 @@
 // components/ui/TeamDetailModal.tsx
 import React, { useState, useEffect } from 'react';
-import ModalShell from './ModalShell';
+import { Modal } from '@mantine/core';
 import { Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
@@ -255,17 +255,11 @@ export default function TeamDetailModal({
         }
     };
 
-    if (!isOpen) return null;
-
     return (
         <>
-            <ModalShell
-                isOpen={isOpen}
-                onClose={onClose}
-                maxWidth="4xl"
-                contentClassName="!p-0"
-                header={
-                    <div className="flex items-center justify-between w-full">
+            <Modal opened={isOpen} onClose={onClose} size="xl" centered withCloseButton>
+                <div className="p-4">
+                    <div className="flex items-center justify-between w-full mb-4">
                         <div className="flex items-center space-x-4">
                             <img
                                 src={getTeamAvatarUrl(currentTeam, 60)}
@@ -298,10 +292,9 @@ export default function TeamDetailModal({
                             </div>
                         )}
                     </div>
-                }
-            >
+                </div>
                 {/* Content */}
-                <div className="p-6">
+                <div className="p-6 pt-0">
                     {/* Event Context Banner */}
                     {eventContext && (
                         <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -629,7 +622,7 @@ export default function TeamDetailModal({
                         </div>
                     </div>
                 )}
-            </ModalShell>
+            </Modal>
             <ImageSelectionModal
                 bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                 onSelect={handleChangeImage}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import ModalShell from './ModalShell';
+import { Modal, Button, Group, TextInput, Textarea } from '@mantine/core';
 import type { Organization, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { ImageUploader } from './ImageUploader';
@@ -62,71 +62,53 @@ export default function CreateOrganizationModal({ isOpen, onClose, currentUser, 
   };
 
   return (
-    <ModalShell isOpen={isOpen} onClose={onClose} title="Create Organization" maxWidth="md">
+    <Modal opened={isOpen} onClose={onClose} title="Create Organization" size="md" centered>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="form-label">Name</label>
-          <input
-            className="form-input"
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            placeholder="Organization name"
-            required
-            maxLength={80}
-          />
-        </div>
-        <div>
-          <label className="form-label">Description</label>
-          <textarea
-            className="form-input"
-            value={form.description}
-            onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-            placeholder="Tell people what your organization does"
-            rows={3}
-            maxLength={500}
-          />
-        </div>
-        <div>
-          <label className="form-label">Website</label>
-          <input
-            className="form-input"
-            value={form.website}
-            onChange={(e) => setForm((p) => ({ ...p, website: e.target.value }))}
-            placeholder="https://example.com"
-            type="url"
-          />
-        </div>
+        <TextInput
+          label="Name"
+          value={form.name}
+          onChange={(e) => setForm((p) => ({ ...p, name: e.currentTarget.value }))}
+          placeholder="Organization name"
+          required
+          maxLength={80}
+        />
+        <Textarea
+          label="Description"
+          value={form.description}
+          onChange={(e) => setForm((p) => ({ ...p, description: e.currentTarget.value }))}
+          placeholder="Tell people what your organization does"
+          autosize minRows={3}
+          maxLength={500}
+        />
+        <TextInput
+          label="Website"
+          value={form.website}
+          onChange={(e) => setForm((p) => ({ ...p, website: e.currentTarget.value }))}
+          placeholder="https://example.com"
+          type="url"
+        />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="form-label">Location</label>
-            <input
-              className="form-input"
-              value={form.location}
-              onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
-              placeholder="City, State"
-            />
-          </div>
+          <TextInput
+            label="Location"
+            value={form.location}
+            onChange={(e) => setForm((p) => ({ ...p, location: e.currentTarget.value }))}
+            placeholder="City, State"
+          />
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="form-label">Lat</label>
-              <input
-                className="form-input"
-                value={form.lat}
-                onChange={(e) => setForm((p) => ({ ...p, lat: e.target.value }))}
-                placeholder="37.7749"
-                inputMode="decimal"
-              />
-            </div>
-            <div>
-              <label className="form-label">Long</label>
-              <input
-                className="form-input"
-                value={form.long}
-                onChange={(e) => setForm((p) => ({ ...p, long: e.target.value }))}
-                placeholder="-122.4194"
-                inputMode="decimal"
-              />
-            </div>
+            <TextInput
+              label="Lat"
+              value={String(form.lat)}
+              onChange={(e) => setForm((p) => ({ ...p, lat: e.currentTarget.value }))}
+              placeholder="37.7749"
+              inputMode="decimal"
+            />
+            <TextInput
+              label="Long"
+              value={String(form.long)}
+              onChange={(e) => setForm((p) => ({ ...p, long: e.currentTarget.value }))}
+              placeholder="-122.4194"
+              inputMode="decimal"
+            />
           </div>
         </div>
         <div>
@@ -142,14 +124,11 @@ export default function CreateOrganizationModal({ isOpen, onClose, currentUser, 
             }}
           />
         </div>
-        <div className="flex space-x-3 pt-2">
-          <button type="button" onClick={onClose} className="btn-secondary flex-1" disabled={creating}>Cancel</button>
-          <button type="submit" className="btn-primary flex-1" disabled={creating || !form.name.trim()}>
-            {creating ? 'Creating…' : 'Create Organization'}
-          </button>
-        </div>
+        <Group justify="space-between" pt="sm">
+          <Button variant="default" onClick={onClose} disabled={creating}>Cancel</Button>
+          <Button type="submit" disabled={creating || !form.name.trim()}>{creating ? 'Creating…' : 'Create Organization'}</Button>
+        </Group>
       </form>
-    </ModalShell>
+    </Modal>
   );
 }
-

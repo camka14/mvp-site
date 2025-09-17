@@ -6,7 +6,7 @@ import { Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
 import { useApp } from '@/app/providers';
 import { paymentService } from '@/lib/paymentService';
 import PaymentForm from './PaymentForm';
-import ModalShell from './ModalShell';
+import { Modal, Button, Group, Alert } from '@mantine/core';
 
 // Initialize Stripe with publishable key from environment
 const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
@@ -42,14 +42,12 @@ export default function PaymentModal({
     // Handle Stripe configuration error
     if (!stripePromise) {
         return (
-            <ModalShell isOpen={true} onClose={onClose} title="Configuration Error" maxWidth="md">
-                <p className="text-red-600 mb-4">
+            <Modal opened={true} onClose={onClose} title="Configuration Error" centered>
+                <Alert color="red" variant="light" mb="md">
                     Payment system is not properly configured. Please contact support.
-                </p>
-                <button onClick={onClose} className="w-full py-2 px-4 bg-gray-600 text-white rounded-lg">
-                    Close
-                </button>
-            </ModalShell>
+                </Alert>
+                <Button fullWidth onClick={onClose}>Close</Button>
+            </Modal>
         );
     }
 
@@ -69,17 +67,10 @@ export default function PaymentModal({
     };
 
     return (
-        <ModalShell
-            isOpen={isOpen}
-            onClose={onClose}
-            title={showConfirmation ? 'Confirm Registration' : 'Payment'}
-            maxWidth="lg"
-        >
+        <Modal opened={isOpen} onClose={() => { onClose(); resetModal(); }} title={showConfirmation ? 'Confirm Registration' : 'Payment'} size="lg" centered>
                 {/* Error Display */}
                 {error && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-                        <p className="text-red-600 text-sm">{error}</p>
-                    </div>
+                    <Alert color="red" variant="light" mb="md">{error}</Alert>
                 )}
 
                     {/* Confirmation View */}
@@ -125,20 +116,10 @@ export default function PaymentModal({
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="flex space-x-3">
-                                <button
-                                    onClick={onClose}
-                                    className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() => setShowConfirmation(false)}
-                                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                >
-                                    Continue to Payment
-                                </button>
-                            </div>
+                            <Group grow>
+                                <Button variant="default" onClick={onClose}>Cancel</Button>
+                                <Button onClick={() => setShowConfirmation(false)}>Continue to Payment</Button>
+                            </Group>
                         </div>
                     ) : (
                         /* Payment Form - Only show when we have payment intent */
@@ -164,6 +145,6 @@ export default function PaymentModal({
                             </Elements>
                         )
                     )}
-        </ModalShell>
+        </Modal>
     );
 }

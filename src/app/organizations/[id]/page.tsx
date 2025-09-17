@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -10,6 +10,13 @@ import { useApp } from '@/app/providers';
 import type { OrganizationDetail } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { storage } from '@/app/appwrite';
+import EventCreationModal from '@/app/events/components/EventCreationModal';
+import EventDetailModal from '@/app/events/components/EventDetailModal';
+import CreateTeamModal from '@/components/ui/CreateTeamModal';
+import CreateFieldModal from '@/components/ui/CreateFieldModal';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
+import { format, parse, startOfWeek, getDay } from 'date-fns';
 
 export default function OrganizationDetailPage() {
   return (
@@ -26,6 +33,20 @@ function OrganizationDetailContent() {
   const [org, setOrg] = useState<OrganizationDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields'>('overview');
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
+  const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
+  const [showCreateFieldModal, setShowCreateFieldModal] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
+  const [showEventDetailModal, setShowEventDetailModal] = useState(false);
+  const [calendarView, setCalendarView] = useState<View>('month');
+
+  const localizer = useMemo(() => dateFnsLocalizer({
+    format,
+    parse: parse as any,
+    startOfWeek,
+    getDay,
+    locales: {} as any,
+  }), []);
 
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
 
@@ -138,26 +159,54 @@ function OrganizationDetailContent() {
             )}
 
             {activeTab === 'events' && (
-              <div className="card"><div className="card-content">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">Events</h3>
-                  <button className="btn-primary" onClick={() => router.push('/events')}>Create Event</button>
-                </div>
-                {org.events && org.events.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {org.events.map((e) => (
-                      <EventCard key={e.$id} event={e} />
-                    ))}
+              <div className="card">
+                <div className="card-content">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold">Events Calendar</h3>
+                    <div className="flex items-center gap-2">
+                      {(['month','week','day','agenda'] as View[]).map(v => (
+                        <button key={v}
+                                onClick={() => setCalendarView(v)}
+                                className={`px-3 py-1 rounded text-sm ${calendarView===v ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                          {String(v).charAt(0).toUpperCase()+String(v).slice(1)}
+                        </button>
+                      ))}
+                      <button className="btn-primary" onClick={() => setShowCreateEventModal(true)}>
+                        + Create Event
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-sm text-gray-600">No events yet.</p>
-                )}
-              </div></div>
+                  <div className="h-[800px]">
+                    <BigCalendar
+                      localizer={localizer}
+                      events={(org.events || []).map(e => ({
+                        title: e.name,
+                        start: new Date(e.start),
+                        end: new Date(e.end),
+                        resource: e,
+                      }))}
+                      startAccessor="start"
+                      endAccessor="end"
+                      views={["month","week","day","agenda"]}
+                      view={calendarView}
+                      onView={(v) => setCalendarView(v)}
+                      step={30}
+                      popup
+                      selectable
+                      onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailModal(true); }}
+                      onSelectSlot={() => setShowCreateEventModal(true)}
+                    />
+                  </div>
+                </div>
+              </div>
             )}
 
             {activeTab === 'teams' && (
               <div className="card"><div className="card-content">
-                <h3 className="font-semibold mb-4">Teams</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold">Teams</h3>
+                  <button className="btn-primary" onClick={() => setShowCreateTeamModal(true)}>Create Team</button>
+                </div>
                 {org.teams && org.teams.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {org.teams.map((t) => (
@@ -174,7 +223,10 @@ function OrganizationDetailContent() {
               <div className="card"><div className="card-content">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold">Fields</h3>
-                  <button className="btn-secondary" onClick={() => router.push('/events')}>Manage Fields</button>
+                  <div className="flex gap-2">
+                    <button className="btn-secondary" onClick={() => router.push('/events')}>Manage Fields</button>
+                    <button className="btn-primary" onClick={() => setShowCreateFieldModal(true)}>Create Field</button>
+                  </div>
                 </div>
                 {org.fields && org.fields.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -194,7 +246,32 @@ function OrganizationDetailContent() {
           </>
         )}
       </div>
+
+      {/* Modals */}
+      <EventDetailModal
+        event={selectedEvent!}
+        isOpen={showEventDetailModal}
+        onClose={() => { setShowEventDetailModal(false); setSelectedEvent(null); }}
+      />
+      <EventCreationModal
+        isOpen={showCreateEventModal}
+        onClose={() => setShowCreateEventModal(false)}
+        onEventCreated={async () => { setShowCreateEventModal(false); if (id) await loadOrg(id); }}
+        currentUser={user}
+        organizationId={id}
+      />
+      <CreateTeamModal
+        isOpen={showCreateTeamModal}
+        onClose={() => setShowCreateTeamModal(false)}
+        currentUser={user}
+        onTeamCreated={async () => { setShowCreateTeamModal(false); if (id) await loadOrg(id); }}
+      />
+      <CreateFieldModal
+        isOpen={showCreateFieldModal}
+        onClose={() => setShowCreateFieldModal(false)}
+        organizationId={id}
+        onFieldCreated={async () => { setShowCreateFieldModal(false); if (id) await loadOrg(id); }}
+      />
     </>
   );
 }
-
