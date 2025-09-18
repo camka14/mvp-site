@@ -107,7 +107,7 @@ export default function ScoreUpdateModal({
     <Modal opened={isOpen} onClose={onClose} title={<Title order={4}>Update Match Score</Title>} centered>
       <div className="mb-4">
         <Text c="dimmed" size="sm">
-          Match {match.roundLabel} • Best of {setResults.length}
+          Match {match.matchId} • Best of {setResults.length}
         </Text>
         {match.losersBracket && (
           <Badge mt={6} color="orange">Loser Bracket</Badge>
