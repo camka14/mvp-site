@@ -274,7 +274,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             // Only set hostId and participant data for new events
             if (!isEditMode) {
                 submitData.hostId = currentUser?.$id;
-                if (organizationId) submitData.organizationId = organizationId;
+                if (organizationId) submitData.organization = organizationId;
                 submitData.playerIds = joinAsParticipant && !eventData.teamSignup ? [currentUser?.$id] : [];
                 submitData.teamIds = [];
                 submitData.waitList = [];

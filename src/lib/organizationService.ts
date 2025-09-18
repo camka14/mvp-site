@@ -60,72 +60,22 @@ class OrganizationService {
 
   async getOrganizationById(id: string, includeRelations: boolean = true): Promise<OrganizationDetail | undefined> {
     try {
-      const response = await databases.getRow({
-        databaseId: DATABASE_ID,
-        tableId: ORGANIZATIONS_TABLE_ID,
-        rowId: id,
-      });
-      const base = this.mapRowToOrganization(response as AnyRow);
-
-      if (!includeRelations) return base;
-
-      // Try to use expanded relations if present on the row (Appwrite Tables relations)
-      const relEvents = (response as AnyRow).events as AnyRow[] | undefined;
-      const relTeams = (response as AnyRow).teams as AnyRow[] | undefined;
-      const relFields = (response as AnyRow).fields as AnyRow[] | undefined;
-
-      let events: Event[] = [];
-      let teams: Team[] = [];
-      let fields: Field[] = [];
-
-      if (Array.isArray(relEvents)) {
-        events = relEvents.map((r) => this.mapRowToEvent(r));
+      if (!includeRelations) {
+        const response = await databases.getRow({
+          databaseId: DATABASE_ID,
+          tableId: ORGANIZATIONS_TABLE_ID,
+          rowId: id,
+        });
+        return this.mapRowToOrganization(response as AnyRow) as OrganizationDetail;
+      } else {
+        const response = await databases.getRow({
+          databaseId: DATABASE_ID,
+          tableId: ORGANIZATIONS_TABLE_ID,
+          rowId: id,
+          queries: [Query.select(['fields.*', 'teams.*', 'events.*'])],
+        });
+      return this.mapRowToOrganization(response as AnyRow) as OrganizationDetail;
       }
-      if (Array.isArray(relTeams)) {
-        teams = relTeams.map((r) => this.mapRowToTeam(r));
-      }
-      if (Array.isArray(relFields)) {
-        fields = relFields as Field[];
-      }
-
-      // Fallback: if not expanded, try fetching by foreign key conventions
-      if (events.length === 0) {
-        try {
-          const list = await databases.listRows({
-            databaseId: DATABASE_ID,
-            tableId: process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!,
-            queries: [Query.equal('organizationId', id), Query.limit(100)],
-          });
-          events = (list.rows as AnyRow[]).map((r) => this.mapRowToEvent(r));
-        } catch {}
-      }
-      if (teams.length === 0) {
-        try {
-          const list = await databases.listRows({
-            databaseId: DATABASE_ID,
-            tableId: process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID!,
-            queries: [Query.equal('organizationId', id), Query.limit(100)],
-          });
-          teams = (list.rows as AnyRow[]).map((r) => this.mapRowToTeam(r));
-        } catch {}
-      }
-      if (fields.length === 0 && FIELDS_TABLE_ID) {
-        try {
-          const list = await databases.listRows({
-            databaseId: DATABASE_ID,
-            tableId: FIELDS_TABLE_ID,
-            queries: [Query.equal('organizationId', id), Query.limit(100)],
-          });
-          fields = (list.rows as AnyRow[]) as unknown as Field[];
-        } catch {}
-      }
-
-      return {
-        ...base,
-        events,
-        teams,
-        fields,
-      } as OrganizationDetail;
     } catch (e) {
       console.error('Failed to fetch organization:', e);
       return undefined;
