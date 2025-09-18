@@ -69,7 +69,7 @@ class TournamentService {
                     const [team1Data, team2Data, referee] = await Promise.all([
                         match.team1 ? teams.find(t => t.$id === match.team1) : undefined,
                         match.team2 ? teams.find(t => t.$id === match.team2) : undefined,
-                        match.refId ? userService.getUserById(match.refId) : undefined,
+                        match.refId ? teams.find(t => t.$id == match.refId) : undefined,
                     ]);
 
                     return {

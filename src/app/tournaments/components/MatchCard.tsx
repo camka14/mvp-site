@@ -1,7 +1,7 @@
 'use client';
 
 import { MatchWithRelations } from '../types/tournament';
-import { getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import { getTeamAvatarUrl } from '@/types';
 
 interface MatchCardProps {
     match: MatchWithRelations;
@@ -64,7 +64,7 @@ export default function MatchCard({ match, onClick, canManage = false, className
             </div>
 
             {/* Match Content */}
-            <div className="p-4 pt-6">
+            <div className="p-4 pv-6">
                 {/* Match Info */}
                 <div className="flex items-center justify-between mb-4">
                     <div className="text-sm text-gray-600">
@@ -171,13 +171,24 @@ export default function MatchCard({ match, onClick, canManage = false, className
             </div>
 
             {/* Referee Info */}
-            {match.referee && (
-                <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2">
-                    <div className="bg-white rounded-full px-3 py-1 text-xs text-gray-600 border shadow-sm">
-                        Ref: {match.referee.firstName}.{match.referee.lastName.charAt(0)}
-                    </div>
+            <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2">
+                <div className="bg-white rounded-full px-2 py-1 text-xs text-gray-700 border shadow-sm flex items-center gap-2">
+                    {match.referee ? (
+                        <>
+                            <img
+                                src={getTeamAvatarUrl(match.referee, 18)}
+                                alt={match.referee.name || 'Ref Team'}
+                                className="w-4 h-4 rounded-full"
+                            />
+                            <span className="font-medium truncate max-w-[140px]">
+                                {match.referee.name || 'Ref Team'}
+                            </span>
+                        </>
+                    ) : (
+                        <span>{match.refId ? 'Ref: Assigned' : 'Ref: TBD'}</span>
+                    )}
                 </div>
-            )}
+            </div>
         </div>
     );
 }

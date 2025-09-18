@@ -44,7 +44,7 @@ export default function TournamentBracketView({
     const CARD_W = 288; // w-72
     const CARD_H = 200; // standard height (h-50)
     const GAP_X = 48;
-    const GAP_Y = 8;   // per-level extra spacing
+    const GAP_Y = 12;   // per-level extra spacing
     const LEVEL_STEP = Math.round(CARD_H / 2 + GAP_Y);
     const START_OFFSET = 16; // initial x/y offset from top-left
 
@@ -351,29 +351,31 @@ export default function TournamentBracketView({
     return (
         <div className="h-full flex flex-col min-h-0">
             {/* Controls Bar */}
-            <Paper withBorder p="sm" className="flex justify-between items-center">
-                <Group gap="xs">
-                    <ActionIcon variant="default" onClick={handleZoomOut} disabled={zoomLevel <= 0.5} aria-label="Zoom out">−</ActionIcon>
-                    <Badge variant="light">{Math.round(zoomLevel * 100)}%</Badge>
-                    <ActionIcon variant="default" onClick={handleZoomIn} disabled={zoomLevel >= 3} aria-label="Zoom in">+</ActionIcon>
-                    <Button variant="default" size="xs" onClick={handleZoomReset}>Reset</Button>
-                    <Text size="xs" c="dimmed">Ctrl + scroll to zoom • Ctrl + 0 to reset</Text>
-                </Group>
+            <Paper withBorder p="sm">
+                <Group justify="space-between" align="center" wrap="nowrap" w="100%">
+                    <Group gap="xs">
+                        <ActionIcon variant="default" onClick={handleZoomOut} disabled={zoomLevel <= 0.5} aria-label="Zoom out">−</ActionIcon>
+                        <Badge variant="light">{Math.round(zoomLevel * 100)}%</Badge>
+                        <ActionIcon variant="default" onClick={handleZoomIn} disabled={zoomLevel >= 3} aria-label="Zoom in">+</ActionIcon>
+                        <Button variant="default" size="xs" onClick={handleZoomReset}>Reset</Button>
+                        <Text size="xs" c="dimmed" className="hidden md:inline">Ctrl + scroll to zoom • Ctrl + 0 to reset</Text>
+                    </Group>
 
-                <Group gap="sm">
-                    {bracket.tournament.doubleElimination && (
-                        <SegmentedControl
-                            value={isLosersBracket ? 'losers' : 'winners'}
-                            onChange={(v: string) => setIsLosersBracket(v === 'losers')}
-                            data={[
-                                { label: 'Winners Bracket', value: 'winners' },
-                                { label: 'Losers Bracket', value: 'losers' },
-                            ]}
-                        />
-                    )}
-                    <Button variant="default" size="xs" onClick={onToggleExpand} aria-pressed={!!isExpanded} title={isExpanded ? 'Collapse view' : 'Expand view'}>
-                        {isExpanded ? 'Collapse' : 'Expand'}
-                    </Button>
+                    <Group gap="sm">
+                        {bracket.tournament.doubleElimination && (
+                            <SegmentedControl
+                                value={isLosersBracket ? 'losers' : 'winners'}
+                                onChange={(v: string) => setIsLosersBracket(v === 'losers')}
+                                data={[
+                                    { label: 'Winners Bracket', value: 'winners' },
+                                    { label: 'Losers Bracket', value: 'losers' },
+                                ]}
+                            />
+                        )}
+                        <Button variant="default" size="xs" onClick={onToggleExpand} aria-pressed={!!isExpanded} title={isExpanded ? 'Collapse view' : 'Expand view'}>
+                            {isExpanded ? 'Collapse' : 'Expand'}
+                        </Button>
+                    </Group>
                 </Group>
             </Paper>
 

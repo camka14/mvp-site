@@ -27,7 +27,7 @@ export interface Match {
 export interface MatchWithRelations extends Match {
     team1Data?: Team;
     team2Data?: Team;
-    referee?: UserData;
+    referee?: Team;
     field?: Field;
     winnerNextMatch?: MatchWithRelations;
     loserNextMatch?: MatchWithRelations;
