@@ -206,7 +206,6 @@ function EventsPageContent() {
     });
   };
 
-  const categories = ['All', 'Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football'] as const;
   const sports = SPORTS_LIST;
   const distanceOptions = [10, 25, 50, 100]; // km
 
@@ -276,15 +275,16 @@ function EventsPageContent() {
             </Group>
           )}
 
-          {/* Category Filter */}
-          <Group gap="sm" align="center">
-            <Chip.Group value={[selectedCategory]} onChange={(vals: any) => setSelectedCategory((vals[0] || 'All') as any)}>
-              {categories.map((category) => (
-                <Chip key={category} value={category}>{category}</Chip>
-              ))}
-            </Chip.Group>
-          </Group>
-        </div>
+        {/* Sports Filter */}
+        <Group gap="sm" align="center">
+          <Text size="sm" fw={500}>Sports:</Text>
+          <Chip.Group multiple value={selectedSports} onChange={(vals: any) => setSelectedSports(vals)}>
+            {sports.map((sport) => (
+              <Chip key={sport} value={sport}>{sport}</Chip>
+            ))}
+          </Chip.Group>
+        </Group>
+      </div>
 
         {/* Error Display */}
         {error && (
