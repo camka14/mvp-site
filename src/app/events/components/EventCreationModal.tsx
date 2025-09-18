@@ -12,6 +12,7 @@ import { getEventImageUrl, SPORTS_LIST, Event } from '@/types';
 import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
+import { locationService } from '@/lib/locationService';
 
 // Define Division interface locally
 interface Division {
@@ -59,7 +60,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         name: string;
         description: string;
         location: string;
+        // Keep tuple for UI but also track explicit lat/long
         coordinates: [number, number];
+        lat: number;
+        long: number;
         start: string;
         end: string;
         eventType: 'pickup' | 'tournament';
@@ -86,6 +90,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 description: editingEvent.description,
                 location: editingEvent.location,
                 coordinates: editingEvent.coordinates,
+                lat: Array.isArray(editingEvent.coordinates) ? editingEvent.coordinates[1] : (editingEvent as any).coordinates?.lat,
+                long: Array.isArray(editingEvent.coordinates) ? editingEvent.coordinates[0] : (editingEvent as any).coordinates?.lng,
                 start: editingEvent.start,
                 end: editingEvent.end,
                 eventType: editingEvent.eventType,
@@ -117,6 +123,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 description: '',
                 location: '',
                 coordinates: [0, 0],
+                lat: 0,
+                long: 0,
                 start: new Date().toISOString(),
                 end: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
                 eventType: 'pickup',
@@ -187,7 +195,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             isPriceValid: eventData.price !== undefined ? eventData.price >= 0 : false,
             isMaxParticipantsValid: eventData.maxParticipants ? eventData.maxParticipants > 1 : false,
             isTeamSizeValid: eventData.teamSizeLimit ? eventData.teamSizeLimit >= 1 : false,
-            isLocationValid: eventData.location ? eventData.location?.trim().length > 0 && eventData.coordinates[1] !== 0 && eventData.coordinates[0] !== 0 : false,
+            isLocationValid: eventData.location ? eventData.location?.trim().length > 0 && (eventData.lat !== 0 && eventData.long !== 0) : false,
             isSkillLevelValid: eventData.divisions ? eventData.divisions?.length > 0 : false
         });
     }, [eventData]);
@@ -197,6 +205,33 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             setJoinAsParticipant(false);
         }
     }, [eventData.teamSignup]);
+
+    // Initialize coordinates from user's current location for new events
+    useEffect(() => {
+        if (!isEditMode && userLocation) {
+            if ((eventData.lat === 0 && eventData.long === 0)) {
+                setEventData(prev => ({
+                    ...prev,
+                    lat: userLocation.lat,
+                    long: userLocation.lng,
+                    coordinates: [userLocation.lng, userLocation.lat],
+                }));
+            }
+        }
+    }, [isEditMode, userLocation]);
+
+    // Populate human-readable location if empty
+    useEffect(() => {
+        if (!isEditMode && eventData.location.trim().length === 0 && eventData.lat !== 0 && eventData.long !== 0) {
+            locationService.reverseGeocode(eventData.lat, eventData.long)
+                .then(info => {
+                    const label = [info.city, info.state].filter(Boolean).join(', ')
+                        || `${info.lat.toFixed(4)}, ${info.lng.toFixed(4)}`;
+                    setEventData(prev => ({ ...prev, location: label }));
+                })
+                .catch(() => { /* ignore */ });
+        }
+    }, [isEditMode, eventData.lat, eventData.long]);
 
     const isValid = Object.values(validation).every(v => v);
 
@@ -466,11 +501,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <LocationSelector
                                 value={eventData.location}
                                 coordinates={{
-                                    lat: eventData.coordinates[1] || userLocation?.lat || 0,
-                                    lng: eventData.coordinates[0] || userLocation?.lng || 0
+                                    lat: (eventData.lat ?? userLocation?.lat ?? 0),
+                                    lng: (eventData.long ?? userLocation?.lng ?? 0)
                                 }}
                                 onChange={(location, lat, lng) => {
-                                    setEventData(prev => ({ ...prev, location, lat, long: lng }));
+                                    setEventData(prev => ({ ...prev, location, lat, long: lng, coordinates: [lng, lat] }));
                                 }}
                                 isValid={validation.isLocationValid}
                             />
