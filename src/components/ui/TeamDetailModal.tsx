@@ -442,7 +442,6 @@ export default function TeamDetailModal({
                                     <TextInput placeholder="Type at least 2 characters to search for players" value={searchQuery} onChange={(e) => setSearchQuery(e.currentTarget.value)} mb="sm" />
                                     {searching && (
                                         <Group justify="center" py="sm">
-                                            <Loader size="sm" />
                                             <Text c="dimmed" size="sm">Searching...</Text>
                                         </Group>
                                     )}

@@ -42,16 +42,6 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.sport]);
 
-  // No longer used: ImageUploader already returns fileId and url separately
-  // const extractFileIdFromUrl = (url: string): string => {
-  //   try {
-  //     const match = url.match(/\/files\/([^/]+)\/preview/);
-  //     return match ? match[1] : '';
-  //   } catch {
-  //     return '';
-  //   }
-  // };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return;
