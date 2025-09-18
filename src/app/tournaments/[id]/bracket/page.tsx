@@ -6,6 +6,7 @@ import { useApp } from '@/app/providers';
 import { tournamentService } from '@/lib/tournamentService';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
+import { Button, Group, Paper, Text } from '@mantine/core';
 import TournamentBracketView from '../../components/TournamentBracketView';
 import { Match, TournamentBracket } from '../../types/tournament';
 
@@ -98,12 +99,7 @@ function TournamentBracketContent() {
                         <div className="text-red-600 mb-4">⚠️</div>
                         <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Bracket</h2>
                         <p className="text-gray-600 mb-4">{error}</p>
-                        <button
-                            onClick={loadTournamentBracket}
-                            className="btn-primary"
-                        >
-                            Try Again
-                        </button>
+                        <Button onClick={loadTournamentBracket}>Try Again</Button>
                     </div>
                 </div>
             </>
@@ -118,12 +114,7 @@ function TournamentBracketContent() {
                     <div className="text-center">
                         <h2 className="text-2xl font-bold text-gray-900 mb-2">Tournament Not Found</h2>
                         <p className="text-gray-600 mb-4">The tournament you're looking for doesn't exist.</p>
-                        <button
-                            onClick={() => router.push('/events')}
-                            className="btn-primary"
-                        >
-                            Back to Events
-                        </button>
+                        <Button onClick={() => router.push('/events')}>Back to Events</Button>
                     </div>
                 </div>
             </>
@@ -137,39 +128,28 @@ function TournamentBracketContent() {
             {!expanded && (
                 <>
                     {/* Header */}
-                    <div className="bg-white border-b border-gray-200">
+                    <Paper withBorder radius={0} className="border-b">
                         <div className="container-responsive py-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <button
-                                        onClick={() => router.push(`/events`)}
-                                        className="text-blue-600 hover:text-blue-700 mb-2 flex items-center gap-2"
-                                    >
+                                    <Button variant="subtle" onClick={() => router.push('/events')} mb={8}>
                                         ← Back to Events
-                                    </button>
+                                    </Button>
                                     <h1 className="text-3xl font-bold text-gray-900">{bracket.tournament.name}</h1>
-                                    <p className="text-gray-600 mt-1">Tournament Bracket</p>
+                                    <Text c="dimmed" mt={4}>Tournament Bracket</Text>
                                 </div>
 
                                 {bracket.canManage && (
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => router.push(`/tournaments/${id}/manage`)}
-                                            className="btn-secondary"
-                                        >
+                                    <Group gap="sm">
+                                        <Button variant="default" onClick={() => router.push(`/tournaments/${id}/manage`)}>
                                             Manage Tournament
-                                        </button>
-                                        <button
-                                            onClick={loadTournamentBracket}
-                                            className="btn-primary"
-                                        >
-                                            Refresh
-                                        </button>
-                                    </div>
+                                        </Button>
+                                        <Button onClick={loadTournamentBracket}>Refresh</Button>
+                                    </Group>
                                 )}
                             </div>
                         </div>
-                    </div>
+                    </Paper>
 
                     {/* Tournament Info */}
                     <div className="bg-gray-50 border-b border-gray-200">

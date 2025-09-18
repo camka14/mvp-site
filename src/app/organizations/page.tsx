@@ -5,6 +5,7 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
+import { Container, Title, Text, Group, Button, SimpleGrid, Paper } from '@mantine/core';
 import { useApp } from '@/app/providers';
 import type { Organization, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
@@ -53,27 +54,27 @@ function OrganizationsPageContent() {
   return (
     <>
       <Navigation />
-      <div className="container-responsive py-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+      <Container size="lg" py="xl">
+        <Group justify="space-between" align="center" mb="lg">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Organizations</h1>
-            <p className="text-gray-600">Manage your organizations and dashboards</p>
+            <Title order={2} mb={4}>Organizations</Title>
+            <Text c="dimmed">Manage your organizations and dashboards</Text>
           </div>
-          <button className="btn-primary whitespace-nowrap" onClick={() => setShowCreate(true)}>+ Create Organization</button>
-        </div>
+          <Button onClick={() => setShowCreate(true)}>+ Create Organization</Button>
+        </Group>
 
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={`org-skel-${i}`} className="card"><div className="card-content"><div className="h-24 skeleton rounded" /></div></div>
+              <Paper key={`org-skel-${i}`} withBorder radius="md" p="md" h={120} className="skeleton" />
             ))}
-          </div>
+          </SimpleGrid>
         ) : orgs.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
             {orgs.map((org) => (
               <OrganizationCard key={org.$id} organization={org} onClick={() => router.push(`/organizations/${org.$id}`)} />
             ))}
-          </div>
+          </SimpleGrid>
         ) : (
           <div className="text-center py-16">
             <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -81,9 +82,9 @@ function OrganizationsPageContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" />
               </svg>
             </div>
-            <h3 className="text-xl font-medium text-gray-900 mb-2">No organizations yet</h3>
-            <p className="text-gray-600 mb-6 max-w-sm mx-auto">Create your first organization to host events and manage fields in one place.</p>
-            <button className="btn-primary" onClick={() => setShowCreate(true)}>Create Organization</button>
+            <Title order={3} mb={6}>No organizations yet</Title>
+            <Text c="dimmed" mb="md" className="max-w-sm mx-auto">Create your first organization to host events and manage fields in one place.</Text>
+            <Button onClick={() => setShowCreate(true)}>Create Organization</Button>
           </div>
         )}
 
@@ -93,8 +94,7 @@ function OrganizationsPageContent() {
           currentUser={user as UserData}
           onCreated={(org) => setOrgs((prev) => [org, ...prev])}
         />
-      </div>
+      </Container>
     </>
   );
 }
-

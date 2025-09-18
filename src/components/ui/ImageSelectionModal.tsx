@@ -4,6 +4,7 @@ import { ID } from 'appwrite';
 import { UserData } from '@/types';
 import { userService } from '@/lib/userService';
 import { useApp } from '@/app/providers';
+import { Modal, Button, SimpleGrid, Image, Alert, Group, Stack, FileButton, Loader, Text, Box } from '@mantine/core';
 
 interface ImageSelectionModalProps {
     bucketId: string;
@@ -86,96 +87,57 @@ export function ImageSelectionModal({
         fileInputRef.current?.click();
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
-            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-hidden">
-                {/* Header */}
-                <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                    <h2 className="text-xl font-semibold">Select Image</h2>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 text-xl"
-                    >
-                        ×
-                    </button>
-                </div>
+        <Modal opened={isOpen} onClose={onClose} title="Select image" size="xl" centered>
+            <Stack gap="md">
+                {error && (
+                    <Alert color="red" variant="light">{error}</Alert>
+                )}
 
-                {/* Content */}
-                <div className="p-6 overflow-y-auto max-h-96">
-                    {error && (
-                        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-                            {error}
-                        </div>
-                    )}
+                {/* Upload New */}
+                {uploading ? (
+                    <Group justify="center" h={160} style={{ borderRadius: 8, background: 'var(--mantine-color-gray-1)' }}>
+                        <Loader size="sm" />
+                        <Text c="dimmed">Uploading…</Text>
+                    </Group>
+                ) : (
+                    <Group justify="space-between">
+                        <FileButton
+                            onChange={(file) => {
+                                if (!file) return;
+                                // create a synthetic event to reuse handler
+                                handleFileUpload({ target: { files: [file] } } as any);
+                            }}
+                            accept="image/*"
+                        >
+                            {(props) => (
+                                <Button {...props} variant="light" leftSection={<span>📸</span>}>
+                                    Upload new image
+                                </Button>
+                            )}
+                        </FileButton>
+                        <Text c="dimmed" size="sm">Max 5MB, images only</Text>
+                    </Group>
+                )}
 
-                    {/* Upload New Button */}
-                    {uploading ? (
-                        <div className="w-full h-40 bg-gray-100 rounded-lg flex items-center justify-center">
-                            <div className="text-gray-600">Uploading...</div>
-                        </div>
-                    ) : (
-                        <>
-                            <button
-                                onClick={triggerFileInput}
-                                className="w-full h-40 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors duration-200 mb-6"
-                            >
-                                <span className="text-4xl mb-2">📸</span>
-                                <span>Upload New Image</span>
-                            </button>
+                {/* Existing Images */}
+                <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} spacing="md">
+                    {uploadedImages.map((image) => (
+                        <Box key={image.id} style={{ aspectRatio: '1 / 1', overflow: 'hidden', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--mantine-color-default-border)' }}
+                             onClick={() => { onSelect(image.id, image.url); onClose(); }}>
+                            <Image src={image.url} alt="Uploaded" fit="cover" height="100%" width="100%"
+                                   fallbackSrc="https://via.placeholder.com/400x400?text=Image" />
+                        </Box>
+                    ))}
+                </SimpleGrid>
+                {uploadedImages.length === 0 && (
+                    <Text ta="center" c="dimmed">No images uploaded yet. Upload your first image!</Text>
+                )}
 
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                onChange={handleFileUpload}
-                                className="hidden"
-                            />
-                        </>
-                    )}
-
-                    {/* Existing Images from user.uploadedImages */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {uploadedImages.map((image) => (
-                            <button
-                                key={image.id}
-                                onClick={() => {
-                                    onSelect(image.id, image.url); // ✅ Pass both ID and URL
-                                    onClose();
-                                }}
-                                className="aspect-square rounded-lg overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <img
-                                    src={image.url}
-                                    alt="Uploaded image"
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                        const target = e.target as HTMLImageElement;
-                                        target.src = 'https://via.placeholder.com/400x400?text=Error+Loading+Image';
-                                    }}
-                                />
-                            </button>
-                        ))}
-                    </div>
-
-                    {uploadedImages.length === 0 && (
-                        <div className="text-center text-gray-500 py-8">
-                            No images uploaded yet. Upload your first image!
-                        </div>
-                    )}
-                </div>
-
-                {/* Footer */}
-                <div className="p-6 border-t border-gray-200 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-800"
-                    >
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
+                <Group justify="end" mt="sm">
+                    <Button variant="subtle" onClick={onClose}>Close</Button>
+                </Group>
+            </Stack>
+        </Modal>
     );
 }

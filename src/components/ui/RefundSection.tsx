@@ -1,5 +1,6 @@
 // components/RefundSection.tsx
 import React, { useState } from 'react';
+import { Paper, Text, Button, Alert, Textarea, Group } from '@mantine/core';
 import { Event } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { paymentService } from '@/lib/paymentService';
@@ -102,90 +103,56 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
     };
 
     return (
-        <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="font-semibold mb-3 text-gray-900">{isFreeForUser ? 'Registration' : 'Refund Options'}</h4>
+        <Paper withBorder p="md" radius="md">
+            <Text fw={600} mb={8}>{isFreeForUser ? 'Registration' : 'Refund Options'}</Text>
 
             {error && (
-                <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
-                    {error}
-                </div>
+                <Alert color="red" variant="light" mb="sm">{error}</Alert>
             )}
 
             {isFreeForUser ? (
                 <div className="space-y-2">
-                    <p className="text-sm text-gray-600">
-                        You can leave this event at any time before it starts.
-                    </p>
-                    <button
-                        onClick={handleLeaveEvent}
-                        disabled={loading}
-                        className="w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
-                    >
-                        {loading ? 'Leaving…' : 'Leave Event'}
-                    </button>
+                    <Text size="sm" c="dimmed">You can leave this event at any time before it starts.</Text>
+                    <Button fullWidth color="red" onClick={handleLeaveEvent} loading={loading}>
+                        Leave Event
+                    </Button>
                 </div>
             ) : canAutoRefund ? (
                 <div className="space-y-2">
-                    <p className="text-sm text-gray-600">
-                        You can get a full refund until {refundDeadline.toLocaleString()}
-                    </p>
-                    <button
-                        onClick={handleRefund}
-                        disabled={loading}
-                        className="w-full py-2 px-4 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                    >
-                        {loading ? 'Processing...' : 'Get Refund'}
-                    </button>
+                    <Text size="sm" c="dimmed">You can get a full refund until {refundDeadline.toLocaleString()}</Text>
+                    <Button fullWidth color="green" onClick={handleRefund} loading={loading}>
+                        Get Refund
+                    </Button>
                 </div>
             ) : (
                 <div className="space-y-3">
-                    <p className="text-sm text-gray-600">
+                    <Text size="sm" c="dimmed">
                         {!isBeforeEventStart
                             ? 'Event has already started. You can request a refund from the host.'
-                            : 'Automatic refund period has expired. You can request a refund from the host.'
-                        }
-                    </p>
+                            : 'Automatic refund period has expired. You can request a refund from the host.'}
+                    </Text>
 
                     {!showReasonInput ? (
-                        <button
-                            onClick={handleRequestRefund}
-                            className="w-full py-2 px-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-                        >
-                            Request Refund
-                        </button>
+                        <Button fullWidth color="orange" onClick={handleRequestRefund}>Request Refund</Button>
                     ) : (
                         <div className="space-y-3">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Reason for refund request *
-                                </label>
-                                <textarea
-                                    value={refundReason}
-                                    onChange={(e) => setRefundReason(e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                    rows={3}
-                                    placeholder="Please explain why you need a refund..."
-                                />
-                            </div>
-                            <div className="flex space-x-2">
-                                <button
-                                    onClick={() => setShowReasonInput(false)}
-                                    className="flex-1 py-2 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleRefund}
-                                    disabled={loading || !refundReason.trim()}
-                                    className="flex-1 py-2 px-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                                >
-                                    {loading ? 'Sending...' : 'Send Request'}
-                                </button>
-                            </div>
+                            <Textarea
+                                label="Reason for refund request *"
+                                value={refundReason}
+                                onChange={(e) => setRefundReason(e.currentTarget.value)}
+                                placeholder="Please explain why you need a refund..."
+                                minRows={3}
+                            />
+                            <Group grow>
+                                <Button variant="default" onClick={() => setShowReasonInput(false)}>Cancel</Button>
+                                <Button color="orange" onClick={handleRefund} disabled={!refundReason.trim()} loading={loading}>
+                                    Send Request
+                                </Button>
+                            </Group>
                         </div>
                     )}
                 </div>
             )}
-        </div>
+        </Paper>
     );
 }

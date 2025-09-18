@@ -1,4 +1,5 @@
 import React from 'react';
+import { Paper, Group, Text, Avatar, Loader } from '@mantine/core';
 
 interface ParticipantsPreviewProps {
     title: string;
@@ -21,71 +22,39 @@ export default function ParticipantsPreview({
 }: ParticipantsPreviewProps) {
     if (totalCount === 0 && !isLoading) {
         return (
-            <div className="text-center py-4 text-gray-500 text-sm">
-                {emptyMessage}
-            </div>
+            <Paper withBorder p="md" radius="md">
+                <Text c="dimmed" ta="center" size="sm">{emptyMessage}</Text>
+            </Paper>
         );
     }
 
     return (
-        <div
-            className="bg-gray-50 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition-colors"
-            onClick={onClick}
-        >
-            <div className="flex items-center justify-between mb-3">
-                <h4 className="font-medium text-gray-900">{title}</h4>
-                <div className="text-sm text-gray-600">
+        <Paper withBorder p="md" radius="md" onClick={onClick} style={{ cursor: 'pointer' }}>
+            <Group justify="space-between" mb={8}>
+                <Text fw={600}>{title}</Text>
+                <Text size="sm" c="dimmed">
                     {totalCount} {totalCount === 1 ? title.slice(0, -1).toLowerCase() : title.toLowerCase()}
-                </div>
-            </div>
+                </Text>
+            </Group>
 
             {isLoading ? (
-                <div className="flex items-center space-x-2">
-                    <div className="animate-pulse flex space-x-2">
-                        {[1, 2, 3].map((i) => (
-                            <div key={i} className="w-8 h-8 bg-gray-300 rounded-full"></div>
-                        ))}
-                    </div>
-                    <span className="text-sm text-gray-500 ml-2">Loading...</span>
-                </div>
+                <Group gap="xs">
+                    <Loader size="sm" />
+                    <Text size="sm" c="dimmed">Loading…</Text>
+                </Group>
             ) : (
-                <div className="flex items-center">
-                    {/* Avatar Stack */}
-                    <div className="flex -space-x-2 mr-3">
-                        {participants.slice(0, 3).map((participant, index) => (
-                            <img
-                                key={participant.$id}
-                                src={getAvatarUrl(participant)}
-                                alt=""
-                                className="w-8 h-8 rounded-full border-2 border-white object-cover"
-                                style={{ zIndex: 3 - index }}
-                            />
+                <Group>
+                    <Group gap={-8} mr="sm">
+                        {participants.slice(0, 3).map((p: any, index: number) => (
+                            <Avatar key={p.$id} src={getAvatarUrl(p)} radius="xl" size={32} style={{ zIndex: 3 - index }} />
                         ))}
-
-                        {/* Fade effect for additional participants */}
                         {totalCount > 3 && (
-                            <div className="relative">
-                                <div
-                                    className="w-8 h-8 rounded-full border-2 border-white bg-gradient-to-r from-transparent to-gray-200 flex items-center justify-center"
-                                    style={{ zIndex: 0 }}
-                                >
-                                    <span className="text-xs font-medium text-gray-600">+{totalCount - 3}</span>
-                                </div>
-                                {/* Fade overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-50 to-gray-50 rounded-full opacity-60"></div>
-                            </div>
+                            <Avatar radius="xl" size={32} color="gray">+{totalCount - 3}</Avatar>
                         )}
-                    </div>
-
-                    {/* View All Link */}
-                    <div className="flex items-center text-sm text-blue-600 hover:text-blue-700">
-                        <span>View all</span>
-                        <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                    </div>
-                </div>
+                    </Group>
+                    <Text size="sm" c="blue">View all →</Text>
+                </Group>
             )}
-        </div>
+        </Paper>
     );
 }

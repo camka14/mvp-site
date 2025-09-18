@@ -14,6 +14,7 @@ import Loading from '@/components/ui/Loading';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import InvitePlayersModal from './components/InvitePlayersModal';
+import { Container, Title, Text, Group, Button, SegmentedControl, SimpleGrid, Paper, Badge } from '@mantine/core';
 
 export default function TeamsPage() {
   return <Suspense fallback={<Loading fullScreen text="Loading teams..." />}>
@@ -178,82 +179,40 @@ function TeamsPageContent() {
   return (
     <>
       <Navigation />
-      <div className="container-responsive py-8">
+      <Container size="lg" py="xl">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <Group justify="space-between" align="center" mb="lg">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Team Management</h1>
-            <p className="text-gray-600">Manage your teams and invitations</p>
+            <Title order={2} mb={4}>Team Management</Title>
+            <Text c="dimmed">Manage your teams and invitations</Text>
           </div>
-
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="btn-primary whitespace-nowrap"
-          >
-            + Create Team
-          </button>
-        </div>
+          <Button onClick={() => setShowCreateModal(true)}>+ Create Team</Button>
+        </Group>
 
         {/* Tabs */}
-        <div className="flex space-x-1 bg-gray-100 rounded-lg p-1 mb-8 w-fit">
-          <button
-            onClick={() => setActiveTab('my-teams')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${activeTab === 'my-teams'
-              ? 'bg-white text-blue-600 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900'
-              }`}
-          >
-            My Teams ({teams.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('invitations')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 relative ${activeTab === 'invitations'
-              ? 'bg-white text-blue-600 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900'
-              }`}
-          >
-            Invitations ({teamInvitations.length})
-            {teamInvitations.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                {teamInvitations.length}
-              </span>
-            )}
-          </button>
-        </div>
+        <Group mb="lg">
+          <SegmentedControl
+            value={activeTab}
+            onChange={(v: any) => setActiveTab(v)}
+            data={[
+              { label: `My Teams (${teams.length})`, value: 'my-teams' },
+              { label: `Invitations (${teamInvitations.length})`, value: 'invitations' },
+            ]}
+          />
+          {teamInvitations.length > 0 && <Badge color="red" variant="filled" size="xs">{teamInvitations.length}</Badge>}
+        </Group>
 
         {/* Content - same as before... */}
         {activeTab === 'my-teams' ? (
           <div>
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={`team-skel-${i}`} className="card">
-                    <div className="card-content">
-                      <div className="flex items-start space-x-3 mb-4">
-                        <div className="w-14 h-14 rounded-full skeleton" />
-                        <div className="flex-1 min-w-0">
-                          <div className="h-5 w-2/3 skeleton mb-2" />
-                          <div className="h-4 w-1/3 skeleton mb-2" />
-                          <div className="h-3 w-24 skeleton" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
-                        <div className="h-10 skeleton rounded" />
-                        <div className="h-10 skeleton rounded" />
-                        <div className="h-10 skeleton rounded" />
-                      </div>
-                      <div className="pt-3 border-t border-gray-200">
-                        <div className="flex items-center justify-between">
-                          <div className="h-3 w-24 skeleton" />
-                          <div className="h-3 w-20 skeleton" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <Paper key={`team-skel-${i}`} withBorder radius="md" p="md" h={220} className="skeleton" />
                 ))}
-              </div>
+              </SimpleGrid>
             ) : teams.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                 {teams.map((team) => (
                   <TeamCard
                     key={team.$id}
@@ -264,7 +223,7 @@ function TeamsPageContent() {
                     }}
                     actions={
                       team.captainId === user.$id && (
-                        <button
+                        <Button
                           onClick={(e) => {
                             e.stopPropagation();
                             // If we have an event context, open the Team Detail modal
@@ -277,16 +236,15 @@ function TeamsPageContent() {
                               setShowInviteModal(true);
                             }
                           }}
-                          className="btn-ghost text-xs py-1 px-2"
                           title="Invite Players"
                         >
                           + Invite
-                        </button>
+                        </Button>
                       )
                     }
                   />
                 ))}
-              </div>
+              </SimpleGrid>
             ) : (
               <div className="text-center py-16">
                 <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -298,80 +256,42 @@ function TeamsPageContent() {
                 <p className="text-gray-600 mb-6 max-w-sm mx-auto">
                   Create your first team to start organizing players and competing in events.
                 </p>
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="btn-primary"
-                >
-                  Create Your First Team
-                </button>
+                <Button onClick={() => setShowCreateModal(true)}>Create Your First Team</Button>
               </div>
             )}
           </div>
         ) : (
           <div>
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={`inv-skel-${i}`} className="card">
-                    <div className="card-content">
-                      <div className="h-5 w-1/2 skeleton mb-2" />
-                      <div className="h-4 w-1/3 skeleton mb-4" />
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="h-4 w-24 skeleton" />
-                        <div className="h-4 w-16 skeleton" />
-                      </div>
-                      <div className="flex space-x-2">
-                        <div className="h-9 w-24 skeleton rounded" />
-                        <div className="h-9 w-24 skeleton rounded" />
-                      </div>
-                    </div>
-                  </div>
+                  <Paper key={`inv-skel-${i}`} withBorder radius="md" p="md" h={180} className="skeleton" />
                 ))}
-              </div>
+              </SimpleGrid>
             ) : teamInvitations.length > 0 ? (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Pending Team Invitations
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Title order={4} mb="md">Pending Team Invitations</Title>
+                <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                   {teamInvitations.map((team) => (
-                    <div key={team.$id} className="card">
-                      <div className="card-content">
-                        <div className="flex items-start justify-between mb-4">
-                          <div>
-                            <h3 className="font-semibold text-gray-900 mb-1">
-                              {team.name || 'Unnamed Team'}
-                            </h3>
-                            <p className="text-sm text-gray-600">{team.division} Division</p>
-                          </div>
-                          <span className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full">
-                            Invited
-                          </span>
+                    <Paper key={team.$id} withBorder radius="md" p="md">
+                      <Group justify="space-between" mb="sm">
+                        <div>
+                          <Text fw={600}>{team.name || 'Unnamed Team'}</Text>
+                          <Text size="sm" c="dimmed">{team.division} Division</Text>
                         </div>
-
-                        <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
-                          <span>{team.teamSize} members</span>
-                          <span>{team.winRate}% win rate</span>
-                        </div>
-
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleAcceptInvitation(team.$id)}
-                            className="btn-primary flex-1 text-sm py-2"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            onClick={() => handleRejectInvitation(team.$id)}
-                            className="btn-secondary flex-1 text-sm py-2"
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                        <Badge color="orange" variant="light">Invited</Badge>
+                      </Group>
+                      <Group justify="space-between" c="dimmed" mb="md">
+                        <Text size="sm">{team.teamSize} members</Text>
+                        <Text size="sm">{team.winRate}% win rate</Text>
+                      </Group>
+                      <Group>
+                        <Button onClick={() => handleAcceptInvitation(team.$id)} fullWidth>Accept</Button>
+                        <Button variant="default" onClick={() => handleRejectInvitation(team.$id)} fullWidth>Decline</Button>
+                      </Group>
+                    </Paper>
                   ))}
-                </div>
+                </SimpleGrid>
               </div>
             ) : (
               <div className="text-center py-16">
@@ -431,7 +351,7 @@ function TeamsPageContent() {
             eventFreeAgents={eventFreeAgents}
           />
         )}
-      </div>
+      </Container>
     </>
   );
 }
