@@ -1,4 +1,5 @@
 import { UserData, getUserAvatarUrl } from '@/types';
+import { Card, Group, Avatar, Text, Badge } from '@mantine/core';
 
 interface UserCardProps {
     user: UserData;
@@ -19,47 +20,20 @@ export default function UserCard({
 }: UserCardProps) {
 
     return (
-        <div
-            className={`card p-4 ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-shadow duration-200 ${className}`}
-            onClick={onClick}
-        >
-            <div className="flex items-center space-x-3">
-                {/* Avatar */}
-                <div className="flex-shrink-0">
-                    <img
-                        src={getUserAvatarUrl(user, 48)}
-                        alt={user.fullName || user.userName}
-                        className="w-12 h-12 rounded-full object-cover"
-                        onError={(e) => {
-                            // Fallback to initials if image fails
-                            const target = e.target as HTMLImageElement;
-                            target.src = getUserAvatarUrl({ ...user, profileImageId: undefined }, 48);
-                        }}
-                    />
-                </div>
-
-                {/* User Info */}
-                <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-medium text-gray-900 truncate">
+        <Card withBorder p="md" onClick={onClick} className={className} style={{ cursor: onClick ? 'pointer' : 'default' }}>
+            <Group wrap="nowrap" gap="sm">
+                <Avatar src={getUserAvatarUrl(user, 48)} radius="xl" size={48} alt={user.fullName || user.userName} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <Text fw={500} size="sm" truncate>
                         {user.fullName || `${user.firstName} ${user.lastName}`.trim() || user.userName}
-                    </h3>
-                    <p className="text-sm text-gray-500 truncate">
-                        @{user.userName}
-                    </p>
+                    </Text>
+                    <Text size="sm" c="dimmed" truncate>@{user.userName}</Text>
                     {showRole && role && (
-                        <p className="text-xs text-blue-600 font-medium mt-1">
-                            {role}
-                        </p>
+                        <Text size="xs" c="blue" fw={600} mt={4}>{role}</Text>
                     )}
                 </div>
-
-                {/* Actions */}
-                {actions && (
-                    <div className="flex-shrink-0">
-                        {actions}
-                    </div>
-                )}
-            </div>
-        </div>
+                {actions}
+            </Group>
+        </Card>
     );
 }

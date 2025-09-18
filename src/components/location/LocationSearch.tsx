@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from '@/app/hooks/useLocation';
 import { locationService } from '@/lib/locationService';
 import { useDebounce } from '@/app/hooks/useDebounce';
+import { Popover, Button, TextInput, Loader, ScrollArea, Text, Group } from '@mantine/core';
+import Paper from '@mui/material/Paper';
 
 export default function LocationSearch() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,107 +85,49 @@ export default function LocationSearch() {
   };
 
   return (
-    <div className="relative w-full">
-      <button
-        onClick={() => { setShowLocationOptions(!showLocationOptions); if (!showLocationOptions) startSession(); }}
-        className="w-full h-12 flex items-center gap-2 px-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200 leading-5"
-      >
-        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-        <span className="text-sm truncate">
-          {locationInfo?.city ? `${locationInfo.city}, ${locationInfo.state || ''}`.trim().replace(/,\s*$/, '') : 'Set Location'}
-        </span>
-        <svg className="w-4 h-4 text-gray-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {showLocationOptions && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-          <div className="p-4 space-y-4">
-            {/* Current Location Button */}
-            <button
-              onClick={handleUseCurrentLocation}
-              disabled={loading}
-              className="w-full flex items-center space-x-2 px-3 py-2 text-left hover:bg-gray-50 rounded-md transition-colors duration-200"
-            >
-              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-              <span className="text-sm">
-                {loading ? 'Getting location...' : 'Use Current Location'}
-              </span>
-            </button>
-
-            {/* Search Form */}
-            <form onSubmit={handleSearchLocation} className="space-y-2">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Enter city, state, or ZIP code"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="submit"
-                disabled={loading || !searchQuery.trim()}
-                className="w-full btn-primary text-sm py-2"
-              >
-                {loading ? 'Searching...' : 'Search Location'}
-              </button>
-            </form>
-
-            {/* Autocomplete suggestions */}
-            {(predictionsLoading || predictions.length > 0) && (
-              <div className="border-t border-gray-200 pt-2 max-h-60 overflow-auto">
-                {predictionsLoading && (
-                  <div className="text-xs text-gray-500 px-2 py-1">Loading suggestions…</div>
-                )}
-                {predictions.map((p) => (
-                  <button
-                    key={p.placeId}
-                    type="button"
-                    onClick={() => selectPrediction(p.placeId)}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-50 rounded-md text-sm flex items-center"
-                  >
-                    <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    {p.description}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Current Location Display */}
-            {locationInfo && (
-              <div className="pt-2 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">
-                    Current: {locationInfo.city}{locationInfo.state ? `, ${locationInfo.state}` : ''}
-                  </span>
-                  <button
-                    onClick={handleClearLocation}
-                    className="text-xs text-red-600 hover:text-red-800"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Error Display */}
-            {error && (
-              <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
-                {error}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    <Popover opened={showLocationOptions} onChange={setShowLocationOptions} position="bottom-start" withArrow>
+      <Popover.Target>
+        <Button variant="default" onClick={() => { setShowLocationOptions(!showLocationOptions); if (!showLocationOptions) startSession(); }}>
+          {locationInfo?.city ? `${locationInfo.city}${locationInfo.state ? `, ${locationInfo.state}` : ''}` : 'Set Location'}
+        </Button>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Group mb="sm">
+          <Button fullWidth onClick={handleUseCurrentLocation} disabled={loading} leftSection={<span>📍</span>}>
+            {loading ? 'Getting location…' : 'Use Current Location'}
+          </Button>
+        </Group>
+        <form onSubmit={handleSearchLocation}>
+          <Group align="stretch" gap="xs">
+            <TextInput
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.currentTarget.value)}
+              placeholder="Enter city, state, or ZIP"
+              style={{ flex: 1 }}
+            />
+            <Button type="submit" disabled={loading || !searchQuery.trim()}>Search</Button>
+          </Group>
+        </form>
+        {(predictionsLoading || predictions.length > 0) && (
+          <ScrollArea.Autosize mah={180} mt="sm">
+            {predictionsLoading && <Text size="xs" c="dimmed" px="xs">Loading suggestions…</Text>}
+            {predictions.map((p) => (
+              <Button key={p.placeId} variant="subtle" fullWidth justify="flex-start" onClick={() => selectPrediction(p.placeId)}>
+                {p.description}
+              </Button>
+            ))}
+          </ScrollArea.Autosize>
+        )}
+        {locationInfo && (
+          <Group justify="space-between" mt="sm">
+            <Text size="sm" c="dimmed">Current: {locationInfo.city}{locationInfo.state ? `, ${locationInfo.state}` : ''}</Text>
+            <Button variant="subtle" color="red" size="xs" onClick={handleClearLocation}>Clear</Button>
+          </Group>
+        )}
+        {error && (
+          <Text size="xs" c="red" mt="sm">{error}</Text>
+        )}
+      </Popover.Dropdown>
+    </Popover>
   );
 }

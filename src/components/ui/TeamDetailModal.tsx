@@ -1,6 +1,6 @@
 // components/ui/TeamDetailModal.tsx
 import React, { useState, useEffect } from 'react';
-import ModalShell from './ModalShell';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea } from '@mantine/core';
 import { Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
@@ -255,138 +255,102 @@ export default function TeamDetailModal({
         }
     };
 
-    if (!isOpen) return null;
-
     return (
         <>
-            <ModalShell
-                isOpen={isOpen}
-                onClose={onClose}
-                maxWidth="4xl"
-                contentClassName="!p-0"
-                header={
-                    <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center space-x-4">
-                            <img
-                                src={getTeamAvatarUrl(currentTeam, 60)}
-                                alt={currentTeam.name}
-                                className="w-15 h-15 rounded-lg object-cover"
-                            />
+            <Modal opened={isOpen} onClose={onClose} size="xl" centered withCloseButton>
+                <div style={{ padding: 16 }}>
+                    <Group justify="space-between" align="center" mb="sm">
+                        <Group gap="md" align="center">
+                            <Avatar src={getTeamAvatarUrl(currentTeam, 60)} alt={currentTeam.name} size={60} radius="xl" />
                             <div>
                                 {editingName ? (
-                                    <div className="flex items-center space-x-2">
-                                        <input
-                                            className="text-2xl font-bold text-gray-900 border-b border-gray-300 focus:outline-none"
-                                            value={newName}
-                                            onChange={(e) => setNewName(e.target.value)}
-                                        />
-                                        <button onClick={handleSaveName} className="text-blue-600 text-sm">Save</button>
-                                        <button onClick={() => { setEditingName(false); setNewName(currentTeam.name || ''); }} className="text-gray-600 text-sm">Cancel</button>
-                                    </div>
+                                    <Group gap="xs">
+                                        <TextInput value={newName} onChange={(e) => setNewName(e.currentTarget.value)} />
+                                        <Button size="xs" onClick={handleSaveName}>Save</Button>
+                                        <Button size="xs" variant="subtle" onClick={() => { setEditingName(false); setNewName(currentTeam.name || ''); }}>Cancel</Button>
+                                    </Group>
                                 ) : (
-                                    <h3 className="text-2xl font-bold text-gray-900">{currentTeam.name}</h3>
+                                    <Title order={3}>{currentTeam.name}</Title>
                                 )}
-                                <p className="text-gray-600">{currentTeam.division} Division • {currentTeam.sport}</p>
+                                <Text c="dimmed">{currentTeam.division} Division • {currentTeam.sport}</Text>
                             </div>
-                        </div>
+                        </Group>
                         {isTeamCaptain && (
-                            <div className="flex items-center gap-2">
+                            <Group gap="xs">
                                 {!editingName && (
-                                    <button onClick={() => setEditingName(true)} className="btn-ghost text-sm">Edit Name</button>
+                                    <Button variant="subtle" size="xs" onClick={() => setEditingName(true)}>Edit Name</Button>
                                 )}
-                                <button onClick={() => setImagePickerOpen(true)} className="btn-secondary text-sm">Change Image</button>
-                            </div>
+                                <Button variant="default" size="xs" onClick={() => setImagePickerOpen(true)}>Change Image</Button>
+                            </Group>
                         )}
-                    </div>
-                }
-            >
-                {/* Content */}
-                <div className="p-6">
+                    </Group>
+                </div>
+                <div style={{ padding: 24, paddingTop: 0 }}>
                     {/* Event Context Banner */}
                     {eventContext && (
-                        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                            <h4 className="font-semibold text-blue-900 mb-2">
-                                Managing team for: {eventContext.name}
-                            </h4>
-                            <p className="text-sm text-blue-700 mb-2">
-                                {eventContext.location} • {eventContext.sport}
-                            </p>
+                        <Alert color="blue" variant="light" mb="md" title={`Managing team for: ${eventContext.name}`}>
+                            <Text size="sm" c="blue">{eventContext.location} • {eventContext.sport}</Text>
                             {getFilteredFreeAgents().length > 0 && (
-                                <p className="text-sm text-blue-600">
-                                    <strong>{getFilteredFreeAgents().length} free agents</strong> from this event are available to invite (highlighted below).
-                                </p>
+                                <Text size="sm" c="blue">{getFilteredFreeAgents().length} free agents available to invite.</Text>
                             )}
-                        </div>
+                        </Alert>
                     )}
 
                     {/* Error Display */}
                     {error && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-                            <p className="text-red-600 text-sm">{error}</p>
-                            <button
-                                onClick={() => setError(null)}
-                                className="text-red-800 hover:text-red-900 text-xs underline mt-1"
-                            >
-                                Dismiss
-                            </button>
-                        </div>
+                        <Alert color="red" variant="light" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>
                     )}
 
                     {/* Team Stats */}
-                    <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-gray-50 p-4 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-gray-900">{currentTeam.wins}</div>
-                            <div className="text-sm text-gray-600">Wins</div>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-gray-900">{currentTeam.losses}</div>
-                            <div className="text-sm text-gray-600">Losses</div>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-gray-900">{currentTeam.winRate}%</div>
-                            <div className="text-sm text-gray-600">Win Rate</div>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-gray-900">{teamPlayers.length}/{currentTeam.teamSize}</div>
-                            <div className="text-sm text-gray-600">Players</div>
-                        </div>
-                    </div>
+                    <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md" mb="md">
+                        <Paper withBorder p="md" radius="md" ta="center">
+                            <Title order={3}>{currentTeam.wins}</Title>
+                            <Text c="dimmed">Wins</Text>
+                        </Paper>
+                        <Paper withBorder p="md" radius="md" ta="center">
+                            <Title order={3}>{currentTeam.losses}</Title>
+                            <Text c="dimmed">Losses</Text>
+                        </Paper>
+                        <Paper withBorder p="md" radius="md" ta="center">
+                            <Title order={3}>{currentTeam.winRate}%</Title>
+                            <Text c="dimmed">Win Rate</Text>
+                        </Paper>
+                        <Paper withBorder p="md" radius="md" ta="center">
+                            <Title order={3}>{teamPlayers.length}/{currentTeam.teamSize}</Title>
+                            <Text c="dimmed">Players</Text>
+                        </Paper>
+                    </SimpleGrid>
 
                     {/* Team Members */}
                     <div className="mb-6">
-                        <h4 className="text-lg font-semibold mb-4">Team Members ({teamPlayers.length})</h4>
+                        <Title order={5} mb="sm">Team Members ({teamPlayers.length})</Title>
                         {teamPlayers.length > 0 ? (
-                            <div className="space-y-3">
-                                {teamPlayers.map(player => (
-                                    <div key={player.$id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <div className="flex items-center space-x-3">
-                                            <img
-                                                src={getUserAvatarUrl(player, 40)}
-                                                alt={getUserFullName(player)}
-                                                className="w-10 h-10 rounded-full object-cover"
-                                            />
-                                            <div>
-                                                <p className="font-medium">{getUserFullName(player)}</p>
-                                                {player.$id === currentTeam.captainId && (
-                                                    <span className="text-xs text-blue-600 font-medium">Captain</span>
+                            <ScrollArea.Autosize mah={240} type="auto">
+                                <div className="space-y-8">
+                                    {teamPlayers.map(player => (
+                                        <Paper key={player.$id} withBorder radius="md" p="sm">
+                                            <Group justify="space-between">
+                                                <Group>
+                                                    <Avatar src={getUserAvatarUrl(player, 40)} alt={getUserFullName(player)} size={40} radius="xl" />
+                                                    <div>
+                                                        <Text fw={500}>{getUserFullName(player)}</Text>
+                                                        {player.$id === currentTeam.captainId && (
+                                                            <Badge color="blue" variant="light" size="xs">Captain</Badge>
+                                                        )}
+                                                    </div>
+                                                </Group>
+                                                {isTeamCaptain && player.$id !== currentTeam.captainId && (
+                                                    <Button color="red" variant="subtle" size="xs" onClick={() => handleRemovePlayer(player.$id)}>Remove</Button>
                                                 )}
-                                            </div>
-                                        </div>
-                                        {isTeamCaptain && player.$id !== currentTeam.captainId && (
-                                            <button
-                                                onClick={() => handleRemovePlayer(player.$id)}
-                                                className="text-red-600 hover:text-red-800 text-sm"
-                                            >
-                                                Remove
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
+                                            </Group>
+                                        </Paper>
+                                    ))}
+                                </div>
+                            </ScrollArea.Autosize>
                         ) : (
-                            <p className="text-gray-500 text-center py-4">
+                            <Text c="dimmed" ta="center" py={8}>
                                 {isTeamCaptain ? 'Invite some players to build your team!' : 'This team is just getting started.'}
-                            </p>
+                            </Text>
                         )}
                     </div>
 
@@ -469,114 +433,66 @@ export default function TeamDetailModal({
                     {/* Add Players Section */}
                     {isTeamCaptain && (
                         <div className="mb-6">
-                            <button
-                                onClick={() => setShowAddPlayers(!showAddPlayers)}
-                                className="mb-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            >
+                            <Button onClick={() => setShowAddPlayers(!showAddPlayers)} mb="sm">
                                 {showAddPlayers ? 'Close' : 'Add Players'}
-                            </button>
-
+                            </Button>
                             {showAddPlayers && (
-                                <div className="border border-gray-200 rounded-lg p-4">
-                                    <h4 className="font-medium mb-3">Add players to {currentTeam.name}</h4>
-
-                                    <div className="mb-4">
-                                        <input
-                                            type="text"
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                            placeholder="Type at least 2 characters to search for players"
-                                        />
-                                    </div>
-
+                                <Paper withBorder radius="md" p="md">
+                                    <Title order={6} mb="sm">Add players to {currentTeam.name}</Title>
+                                    <TextInput placeholder="Type at least 2 characters to search for players" value={searchQuery} onChange={(e) => setSearchQuery(e.currentTarget.value)} mb="sm" />
                                     {searching && (
-                                        <div className="text-center py-4">
-                                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
-                                            <p className="text-gray-500 text-sm mt-2">Searching...</p>
-                                        </div>
+                                        <Group justify="center" py="sm">
+                                            <Text c="dimmed" size="sm">Searching...</Text>
+                                        </Group>
                                     )}
-
                                     {!searching && searchQuery.length >= 2 && getAvailableUsers().length === 0 && (
-                                        <p className="text-gray-500 text-center py-4">
-                                            No players found matching "{searchQuery}"
-                                        </p>
+                                        <Text c="dimmed" ta="center" py={8}>No players found matching "{searchQuery}"</Text>
                                     )}
-
                                     {!searching && (searchQuery.length < 2 && getFilteredFreeAgents().length > 0) && (
                                         <div className="mb-4">
-                                            <h5 className="font-medium text-sm text-blue-900 mb-2">Available Free Agents from Event:</h5>
+                                            <Text fw={500} size="sm" c="blue" mb={4}>Available Free Agents from Event:</Text>
                                             <div className="space-y-2">
                                                 {getFilteredFreeAgents().map(agent => (
-                                                    <div
-                                                        key={agent.$id}
-                                                        className="flex items-center justify-between p-3 border-blue-300 bg-blue-50 border rounded-lg"
-                                                    >
-                                                        <div className="flex items-center space-x-3">
-                                                            <img
-                                                                src={getUserAvatarUrl(agent, 40)}
-                                                                alt={getUserFullName(agent)}
-                                                                className="w-10 h-10 rounded-full object-cover"
-                                                            />
-                                                            <div>
-                                                                <p className="font-medium">{getUserFullName(agent)}</p>
-                                                                <span className="text-xs text-blue-600 font-medium">
-                                                                    Free Agent from Event
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => handleInviteUser(agent.$id)}
-                                                            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
-                                                        >
-                                                            Invite
-                                                        </button>
-                                                    </div>
+                                                    <Paper key={agent.$id} withBorder radius="md" p="sm" bg={'blue.0'}>
+                                                        <Group justify="space-between">
+                                                            <Group>
+                                                                <Avatar src={getUserAvatarUrl(agent, 40)} alt={getUserFullName(agent)} size={40} radius="xl" />
+                                                                <div>
+                                                                    <Text fw={500}>{getUserFullName(agent)}</Text>
+                                                                    <Text size="xs" c="blue">Free Agent from Event</Text>
+                                                                </div>
+                                                            </Group>
+                                                            <Button size="xs" onClick={() => handleInviteUser(agent.$id)}>Invite</Button>
+                                                        </Group>
+                                                    </Paper>
                                                 ))}
                                             </div>
                                         </div>
                                     )}
-
                                     {!searching && getAvailableUsers().length > 0 && searchQuery.length >= 2 && (
-                                        <div className="max-h-60 overflow-y-auto space-y-2">
-                                            {getAvailableUsers().map(user => {
-                                                const isFreeAgent = getFilteredFreeAgents().some(agent => agent.$id === user.$id);
-
-                                                return (
-                                                    <div
-                                                        key={user.$id}
-                                                        className={`flex items-center justify-between p-3 border rounded-lg ${isFreeAgent
-                                                            ? 'border-blue-300 bg-blue-50'
-                                                            : 'border-gray-200 hover:bg-gray-50'
-                                                            }`}
-                                                    >
-                                                        <div className="flex items-center space-x-3">
-                                                            <img
-                                                                src={getUserAvatarUrl(user, 40)}
-                                                                alt={getUserFullName(user)}
-                                                                className="w-10 h-10 rounded-full object-cover"
-                                                            />
-                                                            <div>
-                                                                <p className="font-medium">{getUserFullName(user)}</p>
-                                                                {isFreeAgent && (
-                                                                    <span className="text-xs text-blue-600 font-medium">
-                                                                        Free Agent from Event
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => handleInviteUser(user.$id)}
-                                                            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
-                                                        >
-                                                            Invite
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
+                                        <ScrollArea.Autosize mah={300}>
+                                            <div className="space-y-2">
+                                                {getAvailableUsers().map(user => {
+                                                    const isFreeAgent = getFilteredFreeAgents().some(agent => agent.$id === user.$id);
+                                                    return (
+                                                        <Paper key={user.$id} withBorder radius="md" p="sm" bg={isFreeAgent ? 'blue.0' : undefined}>
+                                                            <Group justify="space-between">
+                                                                <Group>
+                                                                    <Avatar src={getUserAvatarUrl(user, 40)} alt={getUserFullName(user)} size={40} radius="xl" />
+                                                                    <div>
+                                                                        <Text fw={500}>{getUserFullName(user)}</Text>
+                                                                        {isFreeAgent && <Text size="xs" c="blue">Free Agent from Event</Text>}
+                                                                    </div>
+                                                                </Group>
+                                                                <Button size="xs" onClick={() => handleInviteUser(user.$id)}>Invite</Button>
+                                                            </Group>
+                                                        </Paper>
+                                                    );
+                                                })}
+                                            </div>
+                                        </ScrollArea.Autosize>
                                     )}
-                                </div>
+                                </Paper>
                             )}
                         </div>
                     )}
@@ -584,52 +500,29 @@ export default function TeamDetailModal({
                     {/* Delete Team Section */}
                     {isTeamCaptain && (
                         <div className="border-t pt-6">
-                            <div className="bg-red-50 p-4 rounded-lg">
-                                <h4 className="text-lg font-semibold text-red-900 mb-2">Danger Zone</h4>
-                                <p className="text-red-700 text-sm mb-4">
-                                    Once you delete a team, there is no going back. Please be certain.
-                                </p>
-                                <button
-                                    onClick={() => setShowDeleteConfirm(true)}
-                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                                >
-                                    Delete Team
-                                </button>
-                            </div>
+                            <Paper withBorder radius="md" p="md" bg={'red.0'}>
+                                <Title order={5} c="red" mb={4}>Danger Zone</Title>
+                                <Text c="red" size="sm" mb="sm">Once you delete a team, there is no going back. Please be certain.</Text>
+                                <Button color="red" onClick={() => setShowDeleteConfirm(true)}>Delete Team</Button>
+                            </Paper>
                         </div>
                     )}
                 </div>
 
                 {/* Delete Confirmation Modal */}
                 {showDeleteConfirm && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-lg max-w-md w-full p-6">
-                            <h3 className="text-lg font-semibold mb-4">Delete Team</h3>
-                            <div className="mb-6">
-                                <p className="text-gray-600 mb-2">This action cannot be undone</p>
-                                <p className="text-sm text-gray-500">
-                                    Are you sure you want to delete <strong>"{currentTeam.name}"</strong>?
-                                    This will permanently remove the team and all its data.
-                                </p>
-                            </div>
-                            <div className="flex space-x-3">
-                                <button
-                                    onClick={() => setShowDeleteConfirm(false)}
-                                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleDeleteTeam}
-                                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                                >
-                                    Delete Team
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    <Modal opened={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete Team" centered>
+                        <Text c="dimmed" mb="sm">This action cannot be undone</Text>
+                        <Text size="sm" mb="md">
+                            Are you sure you want to delete <strong>"{currentTeam.name}"</strong>? This will permanently remove the team and all its data.
+                        </Text>
+                        <Group grow>
+                            <Button variant="default" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+                            <Button color="red" onClick={handleDeleteTeam}>Delete Team</Button>
+                        </Group>
+                    </Modal>
                 )}
-            </ModalShell>
+            </Modal>
             <ImageSelectionModal
                 bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                 onSelect={handleChangeImage}

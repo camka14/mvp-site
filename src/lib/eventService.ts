@@ -55,6 +55,7 @@ export interface CreateEventData {
   playerIds?: string[];
   teamIds?: string[];
   hostId?: string;
+  organizationId?: string;
 
   // Tournament-specific fields
   doubleElimination?: boolean;
@@ -438,6 +439,21 @@ class EventService {
         rowId: ID.unique(),
         data: newEvent
       });
+      if (newEvent.fieldCount) {
+        for (const field in Array.from(Array(newEvent.fieldCount + 1)).keys()) {
+          if (field === '0') continue;
+          await databases.createRow({
+            databaseId: DATABASE_ID,
+            tableId: process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!,
+            rowId: ID.unique(),
+            data: {
+              eventIds: [response.$id],
+              fieldNumber: field,
+              divisions: ["OPEN"],
+            }
+          });
+        }
+      }
       return this.mapRowToEvent(response);
     } catch (error) {
       console.error('Failed to create event:', error);

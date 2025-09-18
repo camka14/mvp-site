@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { TextInput, Button, Paper, Text } from '@mantine/core';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { locationService } from '@/lib/locationService';
 
@@ -68,51 +69,37 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
 
     return (
         <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-                Location *
-            </label>
+            <Text fw={500} size="sm" mb={4}>Location *</Text>
             <div className="space-y-2">
                 <div className="flex gap-2">
-                    <input
-                        type="text"
+                    <TextInput
                         value={value}
-                        onChange={(e) => onChange(e.target.value, coordinates.lat, coordinates.lng)}
-                        onKeyUp={(e) => e.key === 'Enter' && searchLocation(value)}
-                        className={`flex-1 p-3 border rounded-md ${isValid ? 'border-gray-300' : 'border-red-300'
-                            }`}
+                        onChange={(e) => onChange(e.currentTarget.value, coordinates.lat, coordinates.lng)}
+                        onKeyUp={(e) => (e.key === 'Enter') && searchLocation(value)}
                         placeholder="Enter address or search location"
+                        error={!isValid && value.length > 0 ? 'Please select a valid location' : undefined}
+                        style={{ flex: 1 }}
                     />
-                    <button
-                        type="button"
-                        onClick={() => setShowMap(!showMap)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                    >
+                    <Button type="button" onClick={() => setShowMap(!showMap)}>
                         {showMap ? 'Hide' : 'Show'} Map
-                    </button>
+                    </Button>
                 </div>
-
-                {!isValid && value.length > 0 && (
-                    <p className="text-red-500 text-sm">Please select a valid location</p>
-                )}
             </div>
 
             {showMap && isLoaded && (
-                <div className="mt-4 h-64 border rounded-md overflow-hidden">
+                <Paper mt="md" withBorder radius="md" style={{ height: 256, overflow: 'hidden' }}>
                     <GoogleMap
                         mapContainerStyle={{ width: '100%', height: '100%' }}
                         center={center}
                         zoom={15}
                         onClick={onMapClick}
-                        options={{
-                            clickableIcons: true,
-                            disableDefaultUI: false,
-                        }}
+                        options={{ clickableIcons: true, disableDefaultUI: false }}
                     >
                         {selectedLocation.lat !== 0 && selectedLocation.lng !== 0 && (
                             <Marker position={selectedLocation} />
                         )}
                     </GoogleMap>
-                </div>
+                </Paper>
             )}
         </div>
     );

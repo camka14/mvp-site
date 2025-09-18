@@ -1,7 +1,10 @@
 import { Inter } from 'next/font/google';
 import './globals.css';
+import '@mantine/core/styles.css';
+import '@mantine/dates/styles.css';
 import { ReactNode } from 'react';
 import { Providers } from './providers';
+import { MantineProvider } from '@mantine/core';
 import { ChatProvider } from '@/context/ChatContext';
 import { ChatUIProvider } from '@/context/ChatUIContext';
 import { ChatComponents } from '@/components/chat/ChatComponents';
@@ -26,14 +29,16 @@ export default function RootLayout({ children }: RootLayoutProps) {
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className="min-h-screen bg-gray-50">
-        <Providers>
-          <ChatProvider>
-            <ChatUIProvider>
-              {children}
-              <ChatComponents />
-            </ChatUIProvider>
-          </ChatProvider>
-        </Providers>
+        <MantineProvider>
+          <Providers>
+            <ChatProvider>
+              <ChatUIProvider>
+                {children}
+                <ChatComponents />
+              </ChatUIProvider>
+            </ChatProvider>
+          </Providers>
+        </MantineProvider>
       </body>
     </html>
   );

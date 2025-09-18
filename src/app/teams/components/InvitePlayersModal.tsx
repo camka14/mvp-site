@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import ModalShell from '@/components/ui/ModalShell';
+import { Modal, TextInput, Button, Paper, Group, Alert } from '@mantine/core';
 import { Team, UserData } from '@/types';
 import UserCard from '@/components/ui/UserCard';
 import { userService } from '@/lib/userService';
@@ -58,48 +58,35 @@ export default function InvitePlayersModal({ isOpen, onClose, team, onInvitesSen
   };
 
   return (
-    <ModalShell isOpen={isOpen} onClose={onClose} title={`Invite Players to ${team?.name ?? 'Team'}`} maxWidth="lg">
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">{error}</div>
-      )}
-
-      <div className="mb-4">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => handleSearchUsers(e.target.value)}
-          className="form-input"
-          placeholder="Search players by name or username..."
-        />
-      </div>
-
-      <div className="max-h-64 overflow-y-auto">
+    <Modal opened={isOpen} onClose={onClose} title={`Invite Players to ${team?.name ?? 'Team'}`} size="lg" centered>
+      {error && (<Alert color="red" variant="light" mb="sm">{error}</Alert>)}
+      <TextInput
+        value={searchQuery}
+        onChange={(e) => handleSearchUsers(e.currentTarget.value)}
+        placeholder="Search players by name or username..."
+        mb="sm"
+        autoFocus
+      />
+      <div style={{ maxHeight: 300, overflowY: 'auto' }}>
         {searchQuery.length < 2 ? (
-          <div className="text-center py-8 text-gray-500">
-            <p>Type at least 2 characters to search for players</p>
-          </div>
+          <Paper withBorder p="md" radius="md"><span>Type at least 2 characters to search for players</span></Paper>
         ) : searchResults.length > 0 ? (
           <div className="space-y-2">
             {searchResults.map((searchUser) => (
-              <div key={searchUser.$id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-                <UserCard user={searchUser} className="!p-0 !shadow-none flex-1" />
-                <button
-                  onClick={() => handleInvitePlayer(searchUser.$id)}
-                  disabled={inviting === searchUser.$id}
-                  className="btn-primary text-sm py-2 px-4 ml-3"
-                >
-                  {inviting === searchUser.$id ? 'Inviting...' : 'Invite'}
-                </button>
-              </div>
+              <Paper key={searchUser.$id} withBorder p="sm" radius="md">
+                <Group justify="space-between" align="center">
+                  <UserCard user={searchUser} className="!p-0 !shadow-none flex-1" />
+                  <Button onClick={() => handleInvitePlayer(searchUser.$id)} disabled={inviting === searchUser.$id}>
+                    {inviting === searchUser.$id ? 'Inviting...' : 'Invite'}
+                  </Button>
+                </Group>
+              </Paper>
             ))}
           </div>
         ) : (
-          <div className="text-center py-8 text-gray-500">
-            <p>No players found matching "{searchQuery}"</p>
-          </div>
+          <Paper withBorder p="md" radius="md"><span>No players found matching "{searchQuery}"</span></Paper>
         )}
       </div>
-    </ModalShell>
+    </Modal>
   );
 }
-

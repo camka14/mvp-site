@@ -7,6 +7,7 @@ import { ImageUploader } from '@/components/ui/ImageUploader';
 import { getUserAvatarUrl } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
+import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid } from '@mantine/core';
 
 export default function ProfilePage() {
     const { user, loading, setUser } = useApp();
@@ -148,73 +149,54 @@ export default function ProfilePage() {
         <>
             <Navigation />
             <div className="min-h-screen bg-gray-50 py-8">
-                <div className="max-w-4xl mx-auto px-4">
+                <Container size="lg">
                     {/* Profile Header */}
-                    <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+                    <Paper radius="lg" shadow="xl" withBorder>
                         <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-32"></div>
                         <div className="relative px-6 pb-6">
                             {/* Profile Picture */}
-                            <div className="flex items-end -mt-16 mb-6">
+                            <div className="flex items-end -mt-16 mb-6 bg">
                                 <div className="relative">
-                                    <img
+                                    <Avatar
                                         src={profileData.profileImageId || getUserAvatarUrl(user, 128)}
                                         alt={user.fullName}
-                                        className="w-32 h-32 rounded-full border-4 border-white shadow-lg bg-white"
+                                        size={128}
+                                        radius="xl"
+                                        bg="white"
+                                        style={{ backgroundColor: '#fff', border: '4px solid #fff', boxShadow: 'var(--mantine-shadow-lg)' }}
                                     />
                                 </div>
                                 <div className="ml-6 flex-1">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <h1 className="text-3xl font-bold text-gray-900">
-                                                {isEditing ? 'Edit Profile' : user.fullName}
-                                            </h1>
+                                            <Title order={2}>{isEditing ? 'Edit Profile' : user.fullName}</Title>
                                             {!isEditing && (
-                                                <p className="text-lg text-gray-600">@{user.userName}</p>
+                                                <Text size="lg" c="dimmed">@{user.userName}</Text>
                                             )}
                                         </div>
-                                        <div className="flex space-x-3">
+                                        <Group gap="sm">
                                             {isEditing ? (
                                                 <>
-                                                    <button
-                                                        onClick={handleEditToggle}
-                                                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button
-                                                        onClick={handleSave}
-                                                        disabled={saving}
-                                                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors"
-                                                    >
-                                                        {saving ? 'Saving...' : 'Save Changes'}
-                                                    </button>
+                                                    <Button variant="default" onClick={handleEditToggle}>Cancel</Button>
+                                                    <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
                                                 </>
                                             ) : (
-                                                <button
-                                                    onClick={handleEditToggle}
-                                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
-                                                >
-                                                    Edit Profile
-                                                </button>
+                                                <Button onClick={handleEditToggle}>Edit Profile</Button>
                                             )}
-                                        </div>
+                                        </Group>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Error Message */}
                             {error && (
-                                <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-                                    <p className="text-red-800 text-sm">{error}</p>
-                                </div>
+                                <Alert color="red" variant="light" mb="md">{error}</Alert>
                             )}
 
                             {/* Profile Image Upload (Edit Mode Only) */}
                             {isEditing && (
                                 <div className="mb-6">
-                                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                                        Profile Picture
-                                    </label>
+                                    <Text size="sm" fw={500} mb={6}>Profile Picture</Text>
                                     <ImageUploader
                                         currentImageUrl={profileData.profileImageId}
                                         bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
@@ -231,17 +213,9 @@ export default function ProfilePage() {
 
                                     {/* First Name */}
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            First Name
-                                        </label>
+                                        <Text size="sm" fw={500} mb={4}>First Name</Text>
                                         {isEditing ? (
-                                            <input
-                                                type="text"
-                                                value={profileData.firstName}
-                                                onChange={(e) => setProfileData(prev => ({ ...prev, firstName: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                required
-                                            />
+                                            <TextInput value={profileData.firstName} onChange={(e) => setProfileData(prev => ({ ...prev, firstName: e.currentTarget.value }))} required />
                                         ) : (
                                             <p className="text-gray-900 py-2">{user.firstName}</p>
                                         )}
@@ -249,17 +223,9 @@ export default function ProfilePage() {
 
                                     {/* Last Name */}
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Last Name
-                                        </label>
+                                        <Text size="sm" fw={500} mb={4}>Last Name</Text>
                                         {isEditing ? (
-                                            <input
-                                                type="text"
-                                                value={profileData.lastName}
-                                                onChange={(e) => setProfileData(prev => ({ ...prev, lastName: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                required
-                                            />
+                                            <TextInput value={profileData.lastName} onChange={(e) => setProfileData(prev => ({ ...prev, lastName: e.currentTarget.value }))} required />
                                         ) : (
                                             <p className="text-gray-900 py-2">{user.lastName}</p>
                                         )}
@@ -267,17 +233,9 @@ export default function ProfilePage() {
 
                                     {/* Username */}
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Username
-                                        </label>
+                                        <Text size="sm" fw={500} mb={4}>Username</Text>
                                         {isEditing ? (
-                                            <input
-                                                type="text"
-                                                value={profileData.userName}
-                                                onChange={(e) => setProfileData(prev => ({ ...prev, userName: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                required
-                                            />
+                                            <TextInput value={profileData.userName} onChange={(e) => setProfileData(prev => ({ ...prev, userName: e.currentTarget.value }))} required />
                                         ) : (
                                             <p className="text-gray-900 py-2">@{user.userName}</p>
                                         )}
@@ -285,9 +243,7 @@ export default function ProfilePage() {
 
                                     {/* Member Since */}
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Member Since
-                                        </label>
+                                        <Text size="sm" fw={500} mb={4}>Member Since</Text>
                                         <p className="text-gray-900 py-2">
                                             {user.$createdAt ? new Date(user.$createdAt).toLocaleDateString() : 'Unknown'}
                                         </p>
@@ -314,102 +270,54 @@ export default function ProfilePage() {
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </Paper>
 
                     {/* Account Settings */}
                     {!isEditing && (
                         <div className="mt-8 space-y-6">
                             {/* Email Section */}
-                            <div className="bg-white rounded-xl shadow-lg p-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-semibold text-gray-900">Email Address</h3>
-                                    <button
-                                        onClick={() => setShowEmailSection(!showEmailSection)}
-                                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                                    >
+                            <Paper withBorder radius="md" p="md">
+                                <Group justify="space-between" mb="sm">
+                                    <Title order={4}>Email Address</Title>
+                                    <Button variant="subtle" onClick={() => setShowEmailSection(!showEmailSection)}>
                                         {showEmailSection ? 'Cancel' : 'Change Email'}
-                                    </button>
-                                </div>
+                                    </Button>
+                                </Group>
 
                                 {showEmailSection ? (
                                     <div className="space-y-4">
-                                        <input
-                                            type="email"
-                                            placeholder="New email address"
-                                            value={emailData.email}
-                                            onChange={(e) => setEmailData(prev => ({ ...prev, email: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        />
-                                        <input
-                                            type="password"
-                                            placeholder="Current password"
-                                            value={emailData.currentPassword}
-                                            onChange={(e) => setEmailData(prev => ({ ...prev, currentPassword: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        />
-                                        <button
-                                            onClick={handleEmailUpdate}
-                                            disabled={saving || !emailData.email || !emailData.currentPassword}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                                        >
-                                            Update Email
-                                        </button>
+                                        <TextInput type="email" placeholder="New email address" value={emailData.email} onChange={(e) => setEmailData(prev => ({ ...prev, email: e.currentTarget.value }))} />
+                                        <TextInput type="password" placeholder="Current password" value={emailData.currentPassword} onChange={(e) => setEmailData(prev => ({ ...prev, currentPassword: e.currentTarget.value }))} />
+                                        <Button onClick={handleEmailUpdate} disabled={saving || !emailData.email || !emailData.currentPassword}>Update Email</Button>
                                     </div>
                                 ) : (
-                                    <p className="text-gray-600">Click "Change Email" to update your email address</p>
+                                    <Text c="dimmed">Click "Change Email" to update your email address</Text>
                                 )}
-                            </div>
+                            </Paper>
 
                             {/* Password Section */}
-                            <div className="bg-white rounded-xl shadow-lg p-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-semibold text-gray-900">Password</h3>
-                                    <button
-                                        onClick={() => setShowPasswordSection(!showPasswordSection)}
-                                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                                    >
+                            <Paper withBorder radius="md" p="md">
+                                <Group justify="space-between" mb="sm">
+                                    <Title order={4}>Password</Title>
+                                    <Button variant="subtle" onClick={() => setShowPasswordSection(!showPasswordSection)}>
                                         {showPasswordSection ? 'Cancel' : 'Change Password'}
-                                    </button>
-                                </div>
+                                    </Button>
+                                </Group>
 
                                 {showPasswordSection ? (
                                     <div className="space-y-4">
-                                        <input
-                                            type="password"
-                                            placeholder="Current password"
-                                            value={passwordData.currentPassword}
-                                            onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        />
-                                        <input
-                                            type="password"
-                                            placeholder="New password"
-                                            value={passwordData.newPassword}
-                                            onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        />
-                                        <input
-                                            type="password"
-                                            placeholder="Confirm new password"
-                                            value={passwordData.confirmPassword}
-                                            onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        />
-                                        <button
-                                            onClick={handlePasswordUpdate}
-                                            disabled={saving || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                                        >
-                                            Update Password
-                                        </button>
+                                        <TextInput type="password" placeholder="Current password" value={passwordData.currentPassword} onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.currentTarget.value }))} />
+                                        <TextInput type="password" placeholder="New password" value={passwordData.newPassword} onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.currentTarget.value }))} />
+                                        <TextInput type="password" placeholder="Confirm new password" value={passwordData.confirmPassword} onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.currentTarget.value }))} />
+                                        <Button onClick={handlePasswordUpdate} disabled={saving || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}>Update Password</Button>
                                     </div>
                                 ) : (
-                                    <p className="text-gray-600">Click "Change Password" to update your password</p>
+                                    <Text c="dimmed">Click "Change Password" to update your password</Text>
                                 )}
-                            </div>
+                            </Paper>
                         </div>
                     )}
-                </div>
+                </Container>
             </div>
         </>
     );

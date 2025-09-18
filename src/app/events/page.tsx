@@ -7,10 +7,12 @@ import { Event, EventCategory, SPORTS_LIST } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { useLocation } from '@/app/hooks/useLocation';
 import Navigation from '@/components/layout/Navigation';
-import SearchBar from '@/components/ui/SearchBar';
+// SearchBar replaced inline with Mantine TextInput
 import EventCard from '@/components/ui/EventCard';
 import LocationSearch from '@/components/location/LocationSearch';
 import Loading from '@/components/ui/Loading';
+import { Container, Title, Text, Group, Button, Paper, Chip, SegmentedControl, Alert, Loader, SimpleGrid, TextInput } from '@mantine/core';
+import { useDebounce } from '@/app/hooks/useDebounce';
 import EventDetailModal from './components/EventDetailModal';
 import EventCreationModal from './components/EventCreationModal';
 
@@ -36,6 +38,8 @@ function EventsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('q') || '';
+  const [searchTerm, setSearchTerm] = useState<string>(searchQuery);
+  const debouncedSearch = useDebounce(searchTerm, 500);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -43,18 +47,26 @@ function EventsPageContent() {
   const LIMIT = 18;
   const DEFAULT_EVENT_ID = '68b89ab116e106a731c3';
 
-  const kmBetween = useCallback((a: {lat:number,lng:number}, b: {lat:number,lng:number}) => {
+  const kmBetween = useCallback((a: { lat: number, lng: number }, b: { lat: number, lng: number }) => {
     const toRad = (x: number) => x * Math.PI / 180;
     const R = 6371; // km
     const dLat = toRad(b.lat - a.lat);
     const dLon = toRad(b.lng - a.lng);
     const lat1 = toRad(a.lat);
     const lat2 = toRad(b.lat);
-    const sinDLat = Math.sin(dLat/2);
-    const sinDLon = Math.sin(dLon/2);
-    const c = 2 * Math.asin(Math.sqrt(sinDLat*sinDLat + Math.cos(lat1)*Math.cos(lat2)*sinDLon*sinDLon));
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLon = Math.sin(dLon / 2);
+    const c = 2 * Math.asin(Math.sqrt(sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon));
     return R * c;
   }, []);
+
+  // Update URL when search changes
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (debouncedSearch) params.set('q', debouncedSearch); else params.delete('q');
+    router.push(`/events?${params.toString()}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   // Derived client-side filtered list to avoid flicker while awaiting server-filtered pages
   const filteredEvents = useMemo(() => {
@@ -62,7 +74,7 @@ function EventsPageContent() {
     return events.filter(e => {
       if (selectedCategory !== 'All' && e.category !== selectedCategory) return false;
       if (selectedEventTypes.length === 1 && !selectedEventTypes.includes(e.eventType)) return false;
-      if (selectedSports.length > 0 && !selectedSports.map(s=>s.toLowerCase()).includes(e.sport.toLowerCase())) return false;
+      if (selectedSports.length > 0 && !selectedSports.map(s => s.toLowerCase()).includes(e.sport.toLowerCase())) return false;
       if (q) {
         const text = `${e.name} ${e.description ?? ''} ${e.location ?? ''}`.toLowerCase();
         if (!text.includes(q)) return false;
@@ -71,7 +83,7 @@ function EventsPageContent() {
         try {
           const dist = kmBetween({ lat: location.lat, lng: location.lng }, { lat: e.coordinates.lat, lng: e.coordinates.lng });
           if (dist > maxDistance) return false;
-        } catch {}
+        } catch { }
       }
       return true;
     });
@@ -103,7 +115,7 @@ function EventsPageContent() {
         if (sample && !page.some(e => e.$id === sample.$id)) {
           result = [sample, ...page];
         }
-      } catch {}
+      } catch { }
 
       setEvents(result);
       setOffset(page.length);
@@ -194,7 +206,6 @@ function EventsPageContent() {
     });
   };
 
-  const categories = ['All', 'Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football'] as const;
   const sports = SPORTS_LIST;
   const distanceOptions = [10, 25, 50, 100]; // km
 
@@ -209,142 +220,99 @@ function EventsPageContent() {
   return (
     <>
       <Navigation />
-      <div className="container-responsive py-8">
+      <Container size="lg" py="xl">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Discover Events</h1>
-          <p className="text-gray-600">
-            Find pickup games and tournaments {location ? 'near you' : 'in your area'}
-          </p>
+          <Title order={2} mb={6}>Discover Events</Title>
+          <Text c="dimmed">Find pickup games and tournaments {location ? 'near you' : 'in your area'}</Text>
         </div>
 
         {/* Controls */}
         <div className="space-y-6 mb-8">
           {/* Location and Search */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 md:gap-0">
-            <div className="w-full md:flex-1 flex items-center gap-[15px]">
-              <div className="flex-none min-w-[270px]">
+          <Group justify="space-between" align="stretch" gap="md" wrap="wrap">
+            <Group align="center" gap="md" style={{ flex: 1, minWidth: 320 }}>
+              <div style={{ minWidth: 270 }}>
                 <LocationSearch />
               </div>
-              <div className="flex-1 min-w-0 max-w-[520px]">
-                <Suspense fallback={<div className="h-12 bg-gray-100 rounded animate-pulse"></div>}>
-                  <SearchBar defaultValue={searchQuery} />
-                </Suspense>
+              <div style={{ flex: 1, minWidth: 240, maxWidth: 520 }}>
+                <TextInput
+                  placeholder="Search events by title, location, or category..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.currentTarget.value)}
+                  leftSection={<span aria-hidden>🔍</span>}
+                  rightSection={searchTerm ? (
+                    <button onClick={() => setSearchTerm('')} aria-label="Clear search">✕</button>
+                  ) : null}
+                />
               </div>
-            </div>
+            </Group>
             {!isGuest && (
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-7 py-3 rounded-md flex items-center md:shrink-0 mt-4 md:mt-0 whitespace-nowrap"
-              >
-                <span className="mr-2">+</span>
+              <Button onClick={() => setShowCreateModal(true)} leftSection={<span>+</span>}>
                 Create Event
-              </button>
+              </Button>
             )}
-          </div>
+          </Group>
 
           {/* Event Type Filter */}
-          <div className="flex items-center space-x-4">
-            <span className="text-sm font-medium text-gray-700">Event Type:</span>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => handleEventTypeToggle('pickup')}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${selectedEventTypes.includes('pickup')
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-              >
-                🏐 Pickup Games
-              </button>
-              <button
-                onClick={() => handleEventTypeToggle('tournament')}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${selectedEventTypes.includes('tournament')
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-              >
-                🏆 Tournaments
-              </button>
-            </div>
-          </div>
+          <Group gap="sm" align="center">
+            <Text size="sm" fw={500}>Event Type:</Text>
+            <Chip.Group multiple value={selectedEventTypes} onChange={(vals: any) => setSelectedEventTypes(vals)}>
+              <Chip value="pickup">🏐 Pickup Games</Chip>
+              <Chip value="tournament">🏆 Tournaments</Chip>
+            </Chip.Group>
+          </Group>
 
           {/* Distance Filter */}
           {location && (
-            <div className="flex items-center space-x-4">
-              <span className="text-sm font-medium text-gray-700">Distance:</span>
-              <div className="flex space-x-2">
-                {distanceOptions.map((distance) => (
-                  <button
-                    key={distance}
-                    onClick={() => setMaxDistance(distance)}
-                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors duration-200 ${maxDistance === distance
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                  >
-                    {distance}km
-                  </button>
-                ))}
-              </div>
-            </div>
+            <Group gap="sm" align="center">
+              <Text size="sm" fw={500}>Distance:</Text>
+              <SegmentedControl
+                value={String(maxDistance)}
+                onChange={(v: string) => setMaxDistance(parseInt(v))}
+                data={distanceOptions.map(d => ({ label: `${d}km`, value: String(d) }))}
+              />
+            </Group>
           )}
 
-          {/* Category Filter */}
-          <div className="flex flex-wrap gap-2">
-            {categories.map((category) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors duration-200 ${selectedCategory === category
-                  ? 'bg-blue-600 text-white elevation-2'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
-              >
-                {category}
-              </button>
+        {/* Sports Filter */}
+        <Group gap="sm" align="center">
+          <Text size="sm" fw={500}>Sports:</Text>
+          <Chip.Group multiple value={selectedSports} onChange={(vals: any) => setSelectedSports(vals)}>
+            {sports.map((sport) => (
+              <Chip key={sport} value={sport}>{sport}</Chip>
             ))}
-          </div>
-        </div>
+          </Chip.Group>
+        </Group>
+      </div>
 
         {/* Error Display */}
         {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-700">{error}</p>
-            <button
-              onClick={() => loadFirstPage()}
-              className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-            >
-              Try again
-            </button>
-          </div>
+          <Alert color="red" variant="light" mb="md">
+            <Group justify="space-between" wrap="wrap">
+              <Text>{error}</Text>
+              <Button variant="subtle" color="red" onClick={() => loadFirstPage()}>Try again</Button>
+            </Group>
+          </Alert>
         )}
 
         {/* Results */}
         <div className="mb-4">
-          <p className="text-sm text-gray-600">
+          <Text size="sm" c="dimmed">
             {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} loaded
             {searchQuery && ` for "${searchQuery}"`}
             {selectedCategory !== 'All' && ` in ${selectedCategory}`}
             {location && ` within ${maxDistance}km`}
-          </p>
+          </Text>
         </div>
 
         {/* Events Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch auto-rows-fr">
+        <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
           {isLoadingInitial ? (
             Array.from({ length: 6 }).map((_, i) => (
-              <div key={`skeleton-${i}`} className="card h-[500px] flex flex-col">
-                <div className="relative h-48 skeleton" />
-                <div className="card-content flex-1 flex flex-col">
-                  <div className="h-5 w-3/4 skeleton mb-2" />
-                  <div className="h-4 w-full skeleton mb-2" />
-                  <div className="h-4 w-5/6 skeleton mb-4" />
-                  <div className="mt-auto flex items-center justify-between">
-                    <div className="h-4 w-1/2 skeleton" />
-                    <div className="h-3 w-12 skeleton" />
-                  </div>
-                </div>
-              </div>
+              <Paper key={`skeleton-${i}`} withBorder h={500} p="md" radius="md">
+                <Paper h={192} radius="md" className="skeleton" />
+              </Paper>
             ))
           ) : filteredEvents.length > 0 ? (
             filteredEvents.map((event) => (
@@ -370,40 +338,32 @@ function EventsPageContent() {
               </p>
               <div className="space-x-4">
                 {location && (
-                  <button
-                    onClick={() => setMaxDistance(maxDistance * 2)}
-                    className="btn-primary"
-                  >
-                    Expand Search Radius
-                  </button>
+                  <Button onClick={() => setMaxDistance(maxDistance * 2)}>Expand Search Radius</Button>
                 )}
-                <button
+                <Button variant="default"
                   onClick={() => {
                     setSelectedCategory('All');
                     setSelectedEventTypes(['pickup', 'tournament']);
                     setSelectedSports([]);
                     router.push('/events');
                   }}
-                  className="btn-secondary"
                 >
                   Clear All Filters
-                </button>
+                </Button>
               </div>
             </div>
           )}
-        </div>
+        </SimpleGrid>
         {/* Loading more indicator */}
         {!isLoadingInitial && hasMore && (
-          <div className="col-span-full flex justify-center py-6">
-            <div className="flex items-center space-x-2 text-gray-500">
-              <div className="w-5 h-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-              <span className="text-sm">Loading more…</span>
-            </div>
-          </div>
+          <Group justify="center" py="lg">
+            <Loader size="sm" />
+            <Text c="dimmed" size="sm">Loading more…</Text>
+          </Group>
         )}
         {/* Sentinel for infinite scroll */}
         <div ref={sentinelRef} className="col-span-full h-1" />
-      </div>
+      </Container>
       <EventDetailModal
         event={selectedEvent!}
         isOpen={showEventModal}

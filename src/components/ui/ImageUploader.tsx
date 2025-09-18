@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { ImageSelectionModal } from './ImageSelectionModal';
-import { UserData } from '@/types';
+import { Box, Button, Group, ActionIcon, Paper, Stack, Text, Image } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 
 interface ImageUploaderProps {
     currentImageUrl?: string;
@@ -18,7 +19,7 @@ export function ImageUploader({
     placeholder = "Click to select image",
     onChange
 }: ImageUploaderProps) {
-    const [showModal, setShowModal] = useState(false);
+    const [opened, { open, close }] = useDisclosure(false);
     const [selectedImageUrl, setSelectedImageUrl] = useState(currentImageUrl || '');
 
     const handleImageSelect = (fileId: string, url: string) => {
@@ -34,44 +35,30 @@ export function ImageUploader({
     return (
         <>
             {selectedImageUrl ? (
-                <div className="relative">
-                    <img
-                        src={selectedImageUrl}
-                        alt="Selected image"
-                        className="w-full h-40 object-cover rounded-lg"
-                    />
-                    <button
-                        type="button"
-                        onClick={() => setShowModal(true)}
-                        className="absolute top-2 right-2 p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg"
-                        title="Change image"
-                    >
-                        ✏️
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleRemove}
-                        className="absolute top-2 left-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors shadow-lg"
-                        title="Remove image"
-                    >
-                        🗑️
-                    </button>
-                </div>
+                <Box pos="relative">
+                    <Image src={selectedImageUrl} alt="Selected image" h={160} radius="md" fit="cover" />
+                    <Group gap="xs" pos="absolute" top={8} right={8}>
+                        <ActionIcon variant="filled" color="blue" onClick={open} title="Change image">
+                            ✏️
+                        </ActionIcon>
+                        <ActionIcon variant="filled" color="red" onClick={handleRemove} title="Remove image">
+                            🗑️
+                        </ActionIcon>
+                    </Group>
+                </Box>
             ) : (
-                <button
-                    type="button"
-                    onClick={() => setShowModal(true)}
-                    className="w-full h-40 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors duration-200"
-                >
-                    <span className="text-4xl mb-2">📸</span>
-                    <span>{placeholder}</span>
-                    <span className="text-sm">Select from gallery or upload new</span>
-                </button>
+                <Paper withBorder p="md" h={160} style={{ borderStyle: 'dashed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Stack gap={2} align="center">
+                        <Text fz={32}>📸</Text>
+                        <Button variant="light" onClick={open}>Select image</Button>
+                        <Text size="xs" c="dimmed">{placeholder}</Text>
+                    </Stack>
+                </Paper>
             )}
 
             <ImageSelectionModal
-                isOpen={showModal}
-                onClose={() => setShowModal(false)}
+                isOpen={opened}
+                onClose={close}
                 onSelect={handleImageSelect}
                 bucketId={bucketId}
             />

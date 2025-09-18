@@ -9,24 +9,8 @@ import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
 import { getEventImageUrl, SPORTS_LIST, Event } from '@/types';
 
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { MUITimePicker } from '@/components/ui/MUITimePicker';
-import MultiSelect from '@/components/ui/MultiSelect';
-import ModalShell from '@/components/ui/ModalShell';
+import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button } from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 
 // Define Division interface locally
@@ -44,6 +28,7 @@ interface EventCreationModalProps {
     onEventCreated: (updatedEvent?: Event) => void;
     currentUser?: any;
     editingEvent?: Event;
+    organizationId?: string;
 }
 
 const EventCreationModal: React.FC<EventCreationModalProps> = ({
@@ -51,7 +36,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     onClose,
     onEventCreated,
     currentUser,
-    editingEvent
+    editingEvent,
+    organizationId
 }) => {
     const { location: userLocation } = useLocation();
     const modalRef = useRef<HTMLDivElement>(null);
@@ -256,6 +242,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             // Only set hostId and participant data for new events
             if (!isEditMode) {
                 submitData.hostId = currentUser?.$id;
+                if (organizationId) submitData.organizationId = organizationId;
                 submitData.playerIds = joinAsParticipant && !eventData.teamSignup ? [currentUser?.$id] : [];
                 submitData.teamIds = [];
                 submitData.waitList = [];
@@ -293,7 +280,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <ModalShell isOpen={isOpen} onClose={onClose} title={modalTitle} maxWidth="4xl" contentClassName="!p-0">
+        <Modal opened={isOpen} onClose={onClose} title={modalTitle} size="xl" centered>
             {/* Hero banner similar to EventDetailModal */}
             <div className="relative">
                 {selectedImageUrl ? (
@@ -324,7 +311,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
                     {/* Image Upload */}
                     <div className="mb-6">
-                        <Label className="block text-sm font-medium mb-2">Event Image</Label>
+                        <div className="block text-sm font-medium mb-2">Event Image</div>
                         <ImageUploader
                             currentImageUrl={selectedImageUrl}
                             bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
@@ -340,51 +327,33 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     <div className="bg-gray-50 rounded-lg p-6">
                         <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Event Name *</Label>
-                                <Input
-                                    value={eventData.name}
-                                    onChange={(e) => setEventData(prev => ({ ...prev, name: e.target.value }))}
-                                    placeholder="Enter event name"
-                                    className={!validation.isNameValid && eventData.name ? 'border-red-300' : ''}
-                                />
-                                {!validation.isNameValid && eventData.name && (
-                                    <p className="text-red-500 text-sm">Event name is required</p>
-                                )}
-                            </div>
+                            <TextInput
+                                label="Event Name *"
+                                value={eventData.name}
+                                onChange={(e) => setEventData(prev => ({ ...prev, name: e.currentTarget.value }))}
+                                placeholder="Enter event name"
+                                error={!validation.isNameValid && !!eventData.name ? 'Event name is required' : undefined}
+                            />
 
-                            <div className="space-y-2">
-                                <Label>Sport *</Label>
-                                <Select
-                                    value={eventData.sport}
-                                    onValueChange={(value) => setEventData(prev => ({ ...prev, sport: value }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select a sport" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {SPORTS_LIST.map(sport => (
-                                            <SelectItem key={sport} value={sport}>
-                                                {sport.charAt(0).toUpperCase() + sport.slice(1)}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        {/* Description */}
-                        <div className="space-y-2 mt-4">
-                            <Label htmlFor="description">Description</Label>
-                            <textarea
-                                id="description"
-                                value={eventData.description}
-                                onChange={(e) => setEventData(prev => ({ ...prev, description: e.target.value }))}
-                                className="w-full p-3 border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200"
-                                rows={3}
-                                placeholder="Describe your event..."
+                            <MantineSelect
+                                label="Sport *"
+                                placeholder="Select a sport"
+                                data={SPORTS_LIST}
+                                value={eventData.sport}
+                                onChange={(value) => setEventData(prev => ({ ...prev, sport: value || '' }))}
+                                searchable
                             />
                         </div>
+
+                        <Textarea
+                            label="Description"
+                            value={eventData.description}
+                            onChange={(e) => setEventData(prev => ({ ...prev, description: e.currentTarget.value }))}
+                            placeholder="Describe your event..."
+                            autosize
+                            minRows={3}
+                            className="mt-4"
+                        />
                     </div>
 
                     {/* Event Details */}
@@ -392,60 +361,41 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         <h3 className="text-lg font-semibold mb-4">Event Details</h3>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div className="space-y-2">
-                                <Label>Event Type *</Label>
-                                <Select
-                                    value={eventData.eventType}
-                                    onValueChange={(value) => setEventData(prev => ({
-                                        ...prev,
-                                        eventType: value as 'pickup' | 'tournament'
-                                    }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="pickup">Pickup Game</SelectItem>
-                                        <SelectItem value="tournament">Tournament</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            <MantineSelect
+                                label="Event Type *"
+                                data={[
+                                    { value: 'pickup', label: 'Pickup Game' },
+                                    { value: 'tournament', label: 'Tournament' },
+                                ]}
+                                value={eventData.eventType}
+                                onChange={(value) => setEventData(prev => ({ ...prev, eventType: (value as 'pickup' | 'tournament') || prev.eventType }))}
+                            />
 
-                            <div className="space-y-2">
-                                <Label>Field Type *</Label>
-                                <Select
-                                    value={eventData.fieldType}
-                                    onValueChange={(value) => setEventData(prev => ({ ...prev, fieldType: value }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="indoor">Indoor</SelectItem>
-                                        <SelectItem value="outdoor">Outdoor</SelectItem>
-                                        <SelectItem value="sand">Sand</SelectItem>
-                                        <SelectItem value="grass">Grass</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            <MantineSelect
+                                label="Field Type *"
+                                data={[
+                                    { value: 'indoor', label: 'Indoor' },
+                                    { value: 'outdoor', label: 'Outdoor' },
+                                    { value: 'sand', label: 'Sand' },
+                                    { value: 'grass', label: 'Grass' },
+                                ]}
+                                value={eventData.fieldType}
+                                onChange={(value) => setEventData(prev => ({ ...prev, fieldType: value || prev.fieldType }))}
+                            />
                         </div>
 
                         {/* Pricing and Participant Details */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="price">Price ($)</Label>
-                                <Input
-                                    id="price"
-                                    type="number"
+                            <div>
+                                <NumberInput
+                                    label="Price ($)"
                                     min={0}
                                     step={0.01}
                                     value={eventData.price}
-                                    onChange={(e) => setEventData(prev => ({
-                                        ...prev,
-                                        price: parseFloat(e.target.value) || 0
-                                    }))}
-                                    className={!validation.isPriceValid ? 'border-red-300' : ''}
-                                    disabled={!hasStripeAccount} // Always disable if no Stripe account
+                                    onChange={(val) => setEventData(prev => ({ ...prev, price: Number(val) || 0 }))}
+                                    disabled={!hasStripeAccount}
+                                    decimalScale={2}
+                                    fixedDecimalScale
                                 />
 
                                 {/* Always show connect Stripe when no account */}
@@ -477,66 +427,37 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 </p>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="maxParticipants">Max Participants *</Label>
-                                <Input
-                                    id="maxParticipants"
-                                    type="number"
-                                    min="2"
-                                    value={eventData.maxParticipants}
-                                    onChange={(e) => setEventData(prev => ({
-                                        ...prev,
-                                        maxParticipants: parseInt(e.target.value) || 10
-                                    }))}
-                                    className={!validation.isMaxParticipantsValid ? 'border-red-300' : ''}
-                                />
-                            </div>
+                            <NumberInput
+                                label="Max Participants *"
+                                min={2}
+                                value={eventData.maxParticipants}
+                                onChange={(val) => setEventData(prev => ({ ...prev, maxParticipants: Number(val) || 10 }))}
+                                error={!validation.isMaxParticipantsValid ? 'Enter at least 2' : undefined}
+                            />
 
-                            <div className="space-y-2">
-                                <Label htmlFor="teamSizeLimit">Team Size Limit</Label>
-                                <Input
-                                    id="teamSizeLimit"
-                                    type="number"
-                                    min="1"
-                                    value={eventData.teamSizeLimit}
-                                    onChange={(e) => setEventData(prev => ({
-                                        ...prev,
-                                        teamSizeLimit: parseInt(e.target.value) || 2
-                                    }))}
-                                    className={!validation.isTeamSizeValid ? 'border-red-300' : ''}
-                                />
-                            </div>
+                            <NumberInput
+                                label="Team Size Limit"
+                                min={1}
+                                value={eventData.teamSizeLimit}
+                                onChange={(val) => setEventData(prev => ({ ...prev, teamSizeLimit: Number(val) || 2 }))}
+                                error={!validation.isTeamSizeValid ? 'Enter at least 1' : undefined}
+                            />
                         </div>
 
                         {/* Policy Settings */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="cancellationRefundHours">Cancellation Refund (Hours)</Label>
-                                <Input
-                                    id="cancellationRefundHours"
-                                    type="number"
-                                    min="0"
-                                    value={eventData.cancellationRefundHours}
-                                    onChange={(e) => setEventData(prev => ({
-                                        ...prev,
-                                        cancellationRefundHours: parseInt(e.target.value) || 24
-                                    }))}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="registrationCutoffHours">Registration Cutoff (Hours)</Label>
-                                <Input
-                                    id="registrationCutoffHours"
-                                    type="number"
-                                    min="0"
-                                    value={eventData.registrationCutoffHours}
-                                    onChange={(e) => setEventData(prev => ({
-                                        ...prev,
-                                        registrationCutoffHours: parseInt(e.target.value) || 2
-                                    }))}
-                                />
-                            </div>
+                            <NumberInput
+                                label="Cancellation Refund (Hours)"
+                                min={0}
+                                value={eventData.cancellationRefundHours}
+                                onChange={(val) => setEventData(prev => ({ ...prev, cancellationRefundHours: Number(val) || 24 }))}
+                            />
+                            <NumberInput
+                                label="Registration Cutoff (Hours)"
+                                min={0}
+                                value={eventData.registrationCutoffHours}
+                                onChange={(val) => setEventData(prev => ({ ...prev, registrationCutoffHours: Number(val) || 2 }))}
+                            />
                         </div>
                     </div>
 
@@ -558,146 +479,64 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             />
                         </div>
 
-                        {/* Separate Date and Time Pickers */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-4">
-                                <Label className="text-sm font-medium text-gray-700">Start Date & Time *</Label>
+                        {/* Mantine DateTime pickers */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <DateTimePicker
+                                    label="Start Date & Time"
+                                    valueFormat="DD MMM YYYY hh:mm A"
+                                    value={new Date(eventData.start)}
+                                    onChange={(val) => {
+                                        if (!val) return;
+                                        const d = typeof val === 'string' ? new Date(val) : (val as Date);
+                                        setEventData(prev => ({ ...prev, start: d.toISOString() }));
+                                    }}
+                                    minDate={todaysDate}
+                                    timePickerProps={{
+                                        withDropdown: true,
+                                        format: '12h',
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    {/* Date Picker */}
-                                    <div>
-                                        <Label className="text-xs text-gray-600 mb-1 block">Date</Label>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <button className="w-full px-3 py-2 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200 flex items-center justify-between">
-                                                    {format(new Date(eventData.start), "MMM dd")}
-                                                    <CalendarIcon className="h-4 w-4 text-gray-400" />
-                                                </button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0" align="start">
-                                                <Calendar
-                                                    mode="single"
-                                                    selected={new Date(eventData.start)}
-                                                    onSelect={(date) => {
-                                                        if (date) {
-                                                            const currentTime = format(new Date(eventData.start), 'HH:mm');
-                                                            const newDateTime = updateDateTime(date.toISOString(), currentTime);
-                                                            setEventData(prev => ({ ...prev, start: newDateTime }));
-                                                        }
-                                                    }}
-                                                    disabled={(date) => (date < todaysDate)}
-                                                    autoFocus
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
-                                    </div>
-
-                                    {/* Time Picker - Direct MUITimePicker */}
-                                    <div>
-                                        <MUITimePicker
-                                            label="Time"
-                                            value={format(new Date(eventData.start), 'h:mm a')}
-                                            onChange={(timeValue) => {
-                                                // Parse the 12-hour format and convert to 24-hour for updateDateTime
-                                                const [timePart, meridiem] = timeValue.split(' ');
-                                                const [hours, minutes] = timePart.split(':');
-                                                let hour24 = parseInt(hours, 10);
-
-                                                if (meridiem === 'PM' && hour24 !== 12) {
-                                                    hour24 += 12;
-                                                } else if (meridiem === 'AM' && hour24 === 12) {
-                                                    hour24 = 0;
-                                                }
-
-                                                const time24Format = `${hour24.toString().padStart(2, '0')}:${minutes}`;
-                                                const newDateTime = updateDateTime(eventData.start, time24Format);
-                                                setEventData(prev => ({ ...prev, start: newDateTime }));
-                                            }}
-                                            ampm={true}
-                                            format="h:mm a"
-                                        />
-                                    </div>
-                                </div>
+                                    }}
+                                />
                             </div>
+                            <div>
+                                <DateTimePicker
+                                    label="End Date & Time"
+                                    valueFormat="DD MMM YYYY hh:mm A"
+                                    value={new Date(eventData.end)}
+                                    onChange={(val) => {
+                                        if (!val) return;
+                                        const d = typeof val === 'string' ? new Date(val) : (val as Date);
+                                        setEventData(prev => ({ ...prev, end: d.toISOString() }));
+                                    }}
+                                    minDate={new Date(eventData.start)}
+                                    timePickerProps={{
+                                        withDropdown: true,
+                                        format: '12h',
 
-                            {/* End Date & Time */}
-                            <div className="space-y-4">
-                                <Label className="text-sm font-medium text-gray-700">End Date & Time</Label>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    {/* Date Picker */}
-                                    <div>
-                                        <Label className="text-xs text-gray-600 mb-1 block">Date</Label>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <button className="w-full px-3 py-2 text-left border border-gray-300 rounded-md hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors duration-200 flex items-center justify-between">
-                                                    {format(new Date(eventData.end), "MMM dd")}
-                                                    <CalendarIcon className="h-4 w-4 text-gray-400" />
-                                                </button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0" align="start">
-                                                <Calendar
-                                                    mode="single"
-                                                    selected={new Date(eventData.end)}
-                                                    onSelect={(date) => {
-                                                        if (date) {
-                                                            const currentTime = format(new Date(eventData.end), 'HH:mm');
-                                                            const newDateTime = updateDateTime(date.toISOString(), currentTime);
-                                                            setEventData(prev => ({ ...prev, end: newDateTime }));
-                                                        }
-                                                    }}
-                                                    disabled={(date) => date <= new Date(new Date(eventData.start).setHours(0, 0, 0, 0))}
-                                                    autoFocus
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
-                                    </div>
-
-                                    {/* Time Picker - Direct MUITimePicker */}
-                                    <div>
-                                        <MUITimePicker
-                                            label="Time"
-                                            value={format(new Date(eventData.end), 'h:mm a')}
-                                            onChange={(timeValue) => {
-                                                // Parse the 12-hour format and convert to 24-hour for updateDateTime
-                                                const [timePart, meridiem] = timeValue.split(' ');
-                                                const [hours, minutes] = timePart.split(':');
-                                                let hour24 = parseInt(hours, 10);
-
-                                                if (meridiem === 'PM' && hour24 !== 12) {
-                                                    hour24 += 12;
-                                                } else if (meridiem === 'AM' && hour24 === 12) {
-                                                    hour24 = 0;
-                                                }
-
-                                                const time24Format = `${hour24.toString().padStart(2, '0')}:${minutes}`;
-                                                const newDateTime = updateDateTime(eventData.end, time24Format);
-                                                setEventData(prev => ({ ...prev, end: newDateTime }));
-                                            }}
-                                            ampm={true}
-                                            format="h:mm a"
-                                        />
-                                    </div>
-                                </div>
+                                    }}
+                                />
                             </div>
                         </div>
                     </div>
+
+                    {/* legacy date/time inputs removed after migration to Mantine DateTimePicker */}
 
                     {/* Skills & Settings */}
                     <div className="bg-gray-50 rounded-lg p-6">
                         <h3 className="text-lg font-semibold mb-4">Event Settings</h3>
 
-                        {/* Division Selector */}
-                        <MultiSelect
-                            value={eventData.divisions.map(d => d.skillLevel)}
-                            placeholder='Select Divisions'
-                            options={[
+                        <MantineMultiSelect
+                            label="Divisions"
+                            placeholder="Select divisions"
+                            data={[
                                 { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
                                 { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
                                 { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
                                 { value: 'expert', label: 'Expert (4.5+)' },
                                 { value: 'open', label: 'Open (All Skill Levels)' },
                             ]}
+                            value={eventData.divisions.map(d => d.skillLevel)}
                             onChange={(vals) => {
                                 const toLabel = (v: string) => {
                                     switch (v) {
@@ -714,35 +553,28 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     divisions: vals.map(v => ({ id: `${v}-${Date.now()}`, name: toLabel(v), skillLevel: v } as Division))
                                 }));
                             }}
+                            clearable
+                            searchable
                         />
 
                         {/* Team Settings */}
-                        <div className="mt-6 space-y-4">
-                            <div className="flex items-center space-x-3">
-                                <input
-                                    type="checkbox"
-                                    id="teamSignup"
-                                    checked={eventData.teamSignup}
-                                    onChange={(e) => setEventData(prev => ({ ...prev, teamSignup: e.target.checked }))}
-                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                />
-                                <Label htmlFor="teamSignup" className="text-sm">
-                                    Team Event (teams compete rather than individuals)
-                                </Label>
-                            </div>
-
-                            <div className="flex items-center space-x-3">
-                                <input
-                                    type="checkbox"
-                                    id="singleDivision"
-                                    checked={eventData.singleDivision}
-                                    onChange={(e) => setEventData(prev => ({ ...prev, singleDivision: e.target.checked }))}
-                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                />
-                                <Label htmlFor="singleDivision" className="text-sm">
-                                    Single Division (all skill levels play together)
-                                </Label>
-                            </div>
+                        <div className="mt-6 space-y-3">
+                            <Switch
+                                label="Team Event (teams compete rather than individuals)"
+                                checked={eventData.teamSignup}
+                                onChange={(e) => {
+                                    const checked = e.currentTarget.checked;
+                                    setEventData(prev => ({ ...prev, teamSignup: checked }));
+                                }}
+                            />
+                            <Switch
+                                label="Single Division (all skill levels play together)"
+                                checked={eventData.singleDivision}
+                                onChange={(e) => {
+                                    const checked = e.currentTarget.checked;
+                                    setEventData(prev => ({ ...prev, singleDivision: checked }));
+                                }}
+                            />
                         </div>
                     </div>
 
@@ -760,18 +592,14 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             <div className="border-t p-6 flex justify-between items-center">
                 <div>
                     {!isEditMode && !eventData.teamSignup && (
-                        <div className="flex items-center space-x-3">
-                            <input
-                                type="checkbox"
-                                id="joinAsParticipant"
-                                checked={joinAsParticipant}
-                                onChange={(e) => setJoinAsParticipant(e.target.checked)}
-                                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
-                            <Label htmlFor="joinAsParticipant" className="text-sm">
-                                Join as participant
-                            </Label>
-                        </div>
+                        <Switch
+                            label="Join as participant"
+                            checked={joinAsParticipant}
+                            onChange={(e) => {
+                                const checked = e.currentTarget.checked;
+                                setJoinAsParticipant(checked);
+                            }}
+                        />
                     )}
                     {isEditMode && (
                         <button
@@ -796,24 +624,14 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     )}
                 </div>
 
-                <div className="flex space-x-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={!isValid || isSubmitting}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
+                <Group gap="sm">
+                    <Button variant="default" onClick={onClose}>Cancel</Button>
+                    <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
                         {isSubmitting ? submittingText : submitButtonText}
-                    </button>
-                </div>
+                    </Button>
+                </Group>
             </div>
-        </ModalShell>
+        </Modal>
     );
 };
 
