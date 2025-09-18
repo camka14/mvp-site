@@ -1,13 +1,5 @@
 import React, { useState } from 'react';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { Modal, Select, Button, Group, Paper, Text } from '@mantine/core';
 
 interface Division {
     id: string;
@@ -49,77 +41,42 @@ const EventJoinModal: React.FC<EventJoinModalProps> = ({
         }
     };
 
-    if (!isOpen) return null;
+    const data = availableDivisions.map((d) => ({
+        value: d.id,
+        label: `${d.name} (${d.currentParticipants}/${d.maxParticipants})`,
+        disabled: d.currentParticipants >= d.maxParticipants,
+    }));
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold">Join Event</h2>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 text-xl"
-                    >
-                        ×
-                    </button>
-                </div>
+        <Modal opened={isOpen} onClose={onClose} title="Join Event" centered>
+            <Select
+                label="Select Division"
+                placeholder="Choose your division"
+                value={selectedDivision}
+                onChange={(value) => setSelectedDivision(value || '')}
+                data={data}
+                searchable={false}
+                clearable={false}
+            />
 
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>Select Division</Label>
-                        <Select
-                            value={selectedDivision}
-                            onValueChange={setSelectedDivision}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Choose your division" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {availableDivisions.map(division => (
-                                    <SelectItem
-                                        key={division.id}
-                                        value={division.id}
-                                        disabled={division.currentParticipants >= division.maxParticipants}
-                                    >
-                                        <div className="flex flex-col">
-                                            <span>{division.name}</span>
-                                            <span className="text-sm text-gray-500">
-                                                {division.currentParticipants}/{division.maxParticipants} participants
-                                            </span>
-                                        </div>
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
+            {selectedDivision && (
+                <Paper p="sm" mt="md" radius="sm" withBorder>
+                    <Text size="sm">
+                        You're joining the{' '}
+                        {availableDivisions.find((d) => d.id === selectedDivision)?.name} division
+                    </Text>
+                </Paper>
+            )}
 
-                    {selectedDivision && (
-                        <div className="p-3 bg-blue-50 rounded-md">
-                            <p className="text-sm text-blue-800">
-                                You're joining the{' '}
-                                {availableDivisions.find(d => d.id === selectedDivision)?.name} division
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex justify-end space-x-3 mt-6">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={onClose}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleJoin}
-                        disabled={!selectedDivision || isJoining}
-                    >
-                        {isJoining ? 'Joining...' : 'Join Event'}
-                    </Button>
-                </div>
-            </div>
-        </div>
+            <Group justify="flex-end" mt="lg">
+                <Button variant="default" onClick={onClose} type="button">
+                    Cancel
+                </Button>
+                <Button onClick={handleJoin} disabled={!selectedDivision || isJoining}>
+                    {isJoining ? 'Joining...' : 'Join Event'}
+                </Button>
+            </Group>
+        </Modal>
     );
 };
 

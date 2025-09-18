@@ -76,14 +76,14 @@ function OrganizationsPageContent() {
             ))}
           </SimpleGrid>
         ) : (
-          <div className="text-center py-16">
+          <div className="text-center py-16 flex flex-col items-center">
             <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" />
               </svg>
             </div>
             <Title order={3} mb={6}>No organizations yet</Title>
-            <Text c="dimmed" mb="md" className="max-w-sm mx-auto">Create your first organization to host events and manage fields in one place.</Text>
+            <Text c="dimmed" mb="md" ta="center" className="w-full max-w-sm">Create your first organization to host events and manage fields in one place.</Text>
             <Button onClick={() => setShowCreate(true)}>Create Organization</Button>
           </div>
         )}

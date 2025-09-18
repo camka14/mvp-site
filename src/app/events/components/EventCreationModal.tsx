@@ -330,7 +330,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <TextInput
                                 label="Event Name *"
                                 value={eventData.name}
-                                onChange={(e) => setEventData(prev => ({ ...prev, name: e.currentTarget.value }))}
+                                onChange={(e) => setEventData(prev => ({ ...prev, name: e.currentTarget?.value || '' }))}
                                 placeholder="Enter event name"
                                 error={!validation.isNameValid && !!eventData.name ? 'Event name is required' : undefined}
                             />
@@ -348,7 +348,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         <Textarea
                             label="Description"
                             value={eventData.description}
-                            onChange={(e) => setEventData(prev => ({ ...prev, description: e.currentTarget.value }))}
+                            onChange={(e) => setEventData(prev => ({ ...prev, description: e.currentTarget?.value || '' }))}
                             placeholder="Describe your event..."
                             autosize
                             minRows={3}
