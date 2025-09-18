@@ -59,8 +59,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         name: string;
         description: string;
         location: string;
-        lat: number;
-        long: number;
+        coordinates: [number, number];
         start: string;
         end: string;
         eventType: 'pickup' | 'tournament';
@@ -86,8 +85,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 name: editingEvent.name,
                 description: editingEvent.description,
                 location: editingEvent.location,
-                lat: editingEvent.lat,
-                long: editingEvent.long,
+                coordinates: editingEvent.coordinates,
                 start: editingEvent.start,
                 end: editingEvent.end,
                 eventType: editingEvent.eventType,
@@ -118,8 +116,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 name: '',
                 description: '',
                 location: '',
-                lat: 0,
-                long: 0,
+                coordinates: [0, 0],
                 start: new Date().toISOString(),
                 end: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
                 eventType: 'pickup',
@@ -190,7 +187,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             isPriceValid: eventData.price !== undefined ? eventData.price >= 0 : false,
             isMaxParticipantsValid: eventData.maxParticipants ? eventData.maxParticipants > 1 : false,
             isTeamSizeValid: eventData.teamSizeLimit ? eventData.teamSizeLimit >= 1 : false,
-            isLocationValid: eventData.location ? eventData.location?.trim().length > 0 && eventData.lat !== 0 && eventData.long !== 0 : false,
+            isLocationValid: eventData.location ? eventData.location?.trim().length > 0 && eventData.coordinates[1] !== 0 && eventData.coordinates[0] !== 0 : false,
             isSkillLevelValid: eventData.divisions ? eventData.divisions?.length > 0 : false
         });
     }, [eventData]);
@@ -469,8 +466,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <LocationSelector
                                 value={eventData.location}
                                 coordinates={{
-                                    lat: eventData.lat || userLocation?.lat || 0,
-                                    lng: eventData.long || userLocation?.lng || 0
+                                    lat: eventData.coordinates[1] || userLocation?.lat || 0,
+                                    lng: eventData.coordinates[0] || userLocation?.lng || 0
                                 }}
                                 onChange={(location, lat, lng) => {
                                     setEventData(prev => ({ ...prev, location, lat, long: lng }));

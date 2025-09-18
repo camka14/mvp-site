@@ -18,8 +18,7 @@ export interface Event {
   start: string;
   end: string;
   location: string;
-  lat: number;
-  long: number;
+  coordinates: [number, number];
   divisions: string[];
   fieldType: string;
   price: number;
@@ -55,7 +54,6 @@ export interface Event {
 
   // Computed properties
   attendees: number;
-  coordinates: { lat: number; lng: number };
   category: EventCategory;
 }
 

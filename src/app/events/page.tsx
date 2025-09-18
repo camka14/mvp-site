@@ -81,7 +81,7 @@ function EventsPageContent() {
       }
       if (location) {
         try {
-          const dist = kmBetween({ lat: location.lat, lng: location.lng }, { lat: e.coordinates.lat, lng: e.coordinates.lng });
+          const dist = kmBetween({ lat: location.lat, lng: location.lng }, { lat: e.coordinates[1], lng: e.coordinates[0] });
           if (dist > maxDistance) return false;
         } catch { }
       }
