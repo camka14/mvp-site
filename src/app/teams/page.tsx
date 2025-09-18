@@ -281,7 +281,7 @@ function TeamsPageContent() {
                         </div>
                         <Badge color="orange" variant="light">Invited</Badge>
                       </Group>
-                      <Group justify="space-between" c="dimmed" size="sm" mb="md">
+                      <Group justify="space-between" c="dimmed" mb="md">
                         <Text size="sm">{team.teamSize} members</Text>
                         <Text size="sm">{team.winRate}% win rate</Text>
                       </Group>
