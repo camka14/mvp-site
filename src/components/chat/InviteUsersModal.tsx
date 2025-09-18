@@ -23,7 +23,6 @@ export function InviteUsersModal() {
     const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(false);
     const [searching, setSearching] = useState(false);
-    // No need to track mounted once using ModalShell
 
     // Search users with debounce
     useEffect(() => {
