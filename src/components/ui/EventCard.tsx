@@ -35,8 +35,8 @@ export default function EventCard({ event, showDistance = false, userLocation, o
     const distanceKm = locationService.calculateDistance(
       userLocation.lat,
       userLocation.lng,
-      event.lat,
-      event.long
+      event.coordinates[1],
+      event.coordinates[0]
     );
 
     const distanceMiles = locationService.kmToMiles(distanceKm);
