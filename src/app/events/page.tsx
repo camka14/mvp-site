@@ -7,11 +7,12 @@ import { Event, EventCategory, SPORTS_LIST } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { useLocation } from '@/app/hooks/useLocation';
 import Navigation from '@/components/layout/Navigation';
-import SearchBar from '@/components/ui/SearchBar';
+// SearchBar replaced inline with Mantine TextInput
 import EventCard from '@/components/ui/EventCard';
 import LocationSearch from '@/components/location/LocationSearch';
 import Loading from '@/components/ui/Loading';
-import { Container, Title, Text, Group, Button, Paper, ChipGroup, Chip, SegmentedControl, Alert, Loader, SimpleGrid } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Chip, SegmentedControl, Alert, Loader, SimpleGrid, TextInput } from '@mantine/core';
+import { useDebounce } from '@/app/hooks/useDebounce';
 import EventDetailModal from './components/EventDetailModal';
 import EventCreationModal from './components/EventCreationModal';
 
@@ -37,6 +38,8 @@ function EventsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('q') || '';
+  const [searchTerm, setSearchTerm] = useState<string>(searchQuery);
+  const debouncedSearch = useDebounce(searchTerm, 500);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -56,6 +59,14 @@ function EventsPageContent() {
     const c = 2 * Math.asin(Math.sqrt(sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon));
     return R * c;
   }, []);
+
+  // Update URL when search changes
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (debouncedSearch) params.set('q', debouncedSearch); else params.delete('q');
+    router.push(`/events?${params.toString()}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   // Derived client-side filtered list to avoid flicker while awaiting server-filtered pages
   const filteredEvents = useMemo(() => {
@@ -226,9 +237,15 @@ function EventsPageContent() {
                 <LocationSearch />
               </div>
               <div style={{ flex: 1, minWidth: 240, maxWidth: 520 }}>
-                <Suspense fallback={<Paper withBorder h={48} radius="md" />}>
-                  <SearchBar defaultValue={searchQuery} />
-                </Suspense>
+                <TextInput
+                  placeholder="Search events by title, location, or category..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.currentTarget.value)}
+                  leftSection={<span aria-hidden>🔍</span>}
+                  rightSection={searchTerm ? (
+                    <button onClick={() => setSearchTerm('')} aria-label="Clear search">✕</button>
+                  ) : null}
+                />
               </div>
             </Group>
             {!isGuest && (
@@ -241,10 +258,10 @@ function EventsPageContent() {
           {/* Event Type Filter */}
           <Group gap="sm" align="center">
             <Text size="sm" fw={500}>Event Type:</Text>
-            <ChipGroup multiple value={selectedEventTypes} onChange={(vals: any) => setSelectedEventTypes(vals)}>
+            <Chip.Group multiple value={selectedEventTypes} onChange={(vals: any) => setSelectedEventTypes(vals)}>
               <Chip value="pickup">🏐 Pickup Games</Chip>
               <Chip value="tournament">🏆 Tournaments</Chip>
-            </ChipGroup>
+            </Chip.Group>
           </Group>
 
           {/* Distance Filter */}
@@ -261,11 +278,11 @@ function EventsPageContent() {
 
           {/* Category Filter */}
           <Group gap="sm" align="center">
-            <ChipGroup value={[selectedCategory]} onChange={(vals: any) => setSelectedCategory((vals[0] || 'All') as any)}>
+            <Chip.Group value={[selectedCategory]} onChange={(vals: any) => setSelectedCategory((vals[0] || 'All') as any)}>
               {categories.map((category) => (
                 <Chip key={category} value={category}>{category}</Chip>
               ))}
-            </ChipGroup>
+            </Chip.Group>
           </Group>
         </div>
 

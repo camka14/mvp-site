@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { Team, UserData, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import { Paper, Group, Avatar, Text, Badge, SimpleGrid } from '@mantine/core';
 
 interface TeamCardProps {
   team: Team;
@@ -18,140 +18,72 @@ export default function TeamCard({
 }: TeamCardProps) {
 
   return (
-    <div
-      className={`card group ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-all duration-200 ${className}`}
-      onClick={onClick}
-    >
-      <div className="card-content">
-        {/* Team Header with Profile Image */}
-        <div className="flex items-start space-x-3 mb-4">
-          <div className="flex-shrink-0">
-            <img
-              src={getTeamAvatarUrl(team, 56)}
-              alt={team.name || 'Team'}
-              className="w-14 h-14 rounded-full object-cover border-2 border-gray-200 group-hover:border-blue-300 transition-colors"
-              onError={(e) => {
-                // Fallback to initials if image fails
-                const target = e.target as HTMLImageElement;
-                target.src = getTeamAvatarUrl({ ...team, profileImageId: undefined }, 56);
-              }}
-            />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors truncate">
-              {team.name || 'Unnamed Team'}
-            </h3>
-            <div className="flex items-center space-x-2 mb-2">
-              <span className="text-sm text-gray-600">{team.division} Division</span>
-              {team.sport && (
-                <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
-                  {team.sport}
-                </span>
-              )}
-              {team.isFull && (
-                <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-800">
-                  Full
-                </span>
-              )}
-            </div>
-            <div className="flex items-center space-x-2">
+    <Paper withBorder radius="md" p="md" className={className} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
+      <Group align="flex-start" justify="space-between" mb="sm" wrap="nowrap">
+        <Group gap="sm" align="flex-start" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+          <Avatar src={getTeamAvatarUrl(team, 56)} alt={team.name || 'Team'} size={56} radius="xl" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text fw={600} size="lg" truncate>{team.name || 'Unnamed Team'}</Text>
+            <Group gap={6} mt={4}>
+              <Text size="sm" c="dimmed">{team.division} Division</Text>
+              {team.sport && <Badge variant="light" color="blue" size="xs">{team.sport}</Badge>}
+              {team.isFull && <Badge variant="light" color="red" size="xs">Full</Badge>}
+            </Group>
+            <Group gap={6} mt={6}>
               {team.wins > 0 || team.losses > 0 ? (
-                <span className={`text-xs px-2 py-1 rounded-full ${team.winRate >= 75 ? 'bg-green-100 text-green-800' :
-                    team.winRate >= 50 ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                  }`}>
+                <Badge size="xs" variant="light" color={team.winRate >= 75 ? 'green' : team.winRate >= 50 ? 'yellow' : 'red'}>
                   {team.winRate}% win rate
-                </span>
+                </Badge>
               ) : (
-                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
-                  New Team
-                </span>
+                <Badge size="xs" variant="light" color="gray">New Team</Badge>
               )}
-            </div>
+            </Group>
           </div>
+        </Group>
+        {actions}
+      </Group>
 
-          {actions && (
-            <div className="flex-shrink-0">
-              {actions}
-            </div>
+      {showStats && (
+        <SimpleGrid cols={3} spacing="sm" mb="sm">
+          <div style={{ textAlign: 'center' }}>
+            <Text fw={600}>{team.wins}</Text>
+            <Text size="xs" c="dimmed">Wins</Text>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <Text fw={600}>{team.losses}</Text>
+            <Text size="xs" c="dimmed">Losses</Text>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <Text fw={600}>{team.currentSize}/{team.teamSize}</Text>
+            <Text size="xs" c="dimmed">Players</Text>
+          </div>
+        </SimpleGrid>
+      )}
+
+      <Group justify="space-between" mb="xs">
+        <Group gap={6}>
+          <Text size="sm" c="dimmed">Members:</Text>
+          <Group gap={-8}>
+            {team.players?.slice(0, 5).map((player, index) => (
+              <Avatar key={player.$id} src={getUserAvatarUrl(player, 32)} alt={player.fullName} size={32} radius="xl" />
+            ))}
+            {team.currentSize > 5 && (
+              <Avatar size={32} radius="xl" color="gray">+{team.currentSize - 5}</Avatar>
+            )}
+          </Group>
+        </Group>
+      </Group>
+
+      <Group justify="space-between" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+        <Group gap={8}>
+          {team.pending && team.pending.length > 0 && (
+            <Text size="xs" c="orange" fw={600}>{team.pending.length} pending</Text>
           )}
-        </div>
-
-        {/* Team Stats */}
-        {showStats && (
-          <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
-            <div className="text-center">
-              <div className="text-lg font-semibold text-gray-900">{team.wins}</div>
-              <div className="text-xs text-gray-600">Wins</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-semibold text-gray-900">{team.losses}</div>
-              <div className="text-xs text-gray-600">Losses</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-semibold text-gray-900">
-                {team.currentSize}/{team.teamSize}
-              </div>
-              <div className="text-xs text-gray-600">Players</div>
-            </div>
-          </div>
-        )}
-
-        {/* Player Avatars */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">Members:</span>
-            <div className="flex -space-x-2">
-              {team.players?.slice(0, 5).map((player, index) => (
-                <img
-                  key={player.$id}
-                  src={getUserAvatarUrl(player, 32)}
-                  alt={player.fullName}
-                  className="w-8 h-8 rounded-full border-2 border-white object-cover"
-                  style={{ zIndex: 5 - index }}
-                  title={player.fullName}
-                />
-              ))}
-              {team.currentSize > 5 && (
-                <div
-                  className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600"
-                  title={`+${team.currentSize - 5} more players`}
-                  style={{ zIndex: 0 }}
-                >
-                  +{team.currentSize - 5}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Team Status */}
-        <div className="pt-3 border-t border-gray-200">
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center space-x-3">
-              {team.pending && team.pending.length > 0 && (
-                <span className="text-orange-600 font-medium flex items-center">
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {team.pending.length} pending
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center space-x-2">
-              {team.isFull ? (
-                <span className="text-red-600 font-medium">Team Full</span>
-              ) : (
-                <span className="text-green-600 font-medium">
-                  {team.teamSize - team.currentSize} spots left
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+        </Group>
+        <Text size="xs" c={team.isFull ? 'red' : 'green'} fw={600}>
+          {team.isFull ? 'Team Full' : `${team.teamSize - team.currentSize} spots left`}
+        </Text>
+      </Group>
+    </Paper>
   );
 }

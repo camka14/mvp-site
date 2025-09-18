@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
+import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid } from '@mantine/core';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import { useApp } from '@/app/providers';
@@ -84,66 +85,68 @@ function OrganizationDetailContent() {
   return (
     <>
       <Navigation />
-      <div className="container-responsive py-8">
+      <Container size="lg" py="xl">
         {loading || !org ? (
           <Loading fullScreen={false} text="Loading organization..." />
         ) : (
           <>
             {/* Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-              <div className="flex items-center gap-3">
-                {logoUrl && <img src={logoUrl} alt={org.name} className="w-16 h-16 rounded-full border" />}
+            <Group justify="space-between" align="center" mb="lg">
+              <Group gap="md">
+                {logoUrl && <img src={logoUrl} alt={org.name} style={{ width: 64, height: 64, borderRadius: '9999px', border: '1px solid #e5e7eb' }} />}
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">{org.name}</h1>
-                  <div className="text-gray-600 flex items-center gap-3">
+                  <Title order={2} mb={2}>{org.name}</Title>
+                  <Group gap="md">
                     {org.website && (
-                      <a href={org.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{org.website}</a>
+                      <a href={org.website} target="_blank" rel="noreferrer"><Text c="blue">{org.website}</Text></a>
                     )}
                     {org.location && (
-                      <span className="text-sm">{org.location}</span>
+                      <Text size="sm" c="dimmed">{org.location}</Text>
                     )}
-                  </div>
+                  </Group>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                {/* Future: actions such as edit org, invite team, etc. */}
-                <button className="btn-secondary" onClick={() => router.push('/events')}>Manage Events</button>
-              </div>
-            </div>
+              </Group>
+              <Group>
+                <Button variant="default" onClick={() => router.push('/events')}>Manage Events</Button>
+              </Group>
+            </Group>
 
             {/* Tabs */}
-            <div className="flex space-x-1 bg-gray-100 rounded-lg p-1 mb-8 w-fit">
-              {(['overview', 'events', 'teams', 'fields'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                >
-                  {tab[0].toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              value={activeTab}
+              onChange={(v: any) => setActiveTab(v)}
+              data={[
+                { label: 'Overview', value: 'overview' },
+                { label: 'Events', value: 'events' },
+                { label: 'Teams', value: 'teams' },
+                { label: 'Fields', value: 'fields' },
+              ]}
+              mb="lg"
+            />
 
             {activeTab === 'overview' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 space-y-6">
-                  <div className="card"><div className="card-content"><h3 className="font-semibold mb-2">About</h3><p className="text-sm text-gray-700 whitespace-pre-line">{org.description || 'No description'}</p></div></div>
-                  <div className="card"><div className="card-content">
-                    <h3 className="font-semibold mb-4">Recent Events</h3>
+              <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="lg">
+                <div style={{ gridColumn: 'span 2' }}>
+                  <Paper withBorder p="md" radius="md" mb="md">
+                    <Title order={5} mb="xs">About</Title>
+                    <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-line' }}>{org.description || 'No description'}</Text>
+                  </Paper>
+                  <Paper withBorder p="md" radius="md">
+                    <Title order={5} mb="md">Recent Events</Title>
                     {org.events && org.events.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                         {org.events.slice(0, 4).map((e) => (
                           <EventCard key={e.$id} event={e} />
                         ))}
-                      </div>
+                      </SimpleGrid>
                     ) : (
-                      <p className="text-sm text-gray-600">No events yet.</p>
+                      <Text size="sm" c="dimmed">No events yet.</Text>
                     )}
-                  </div></div>
+                  </Paper>
                 </div>
-                <div className="space-y-6">
-                  <div className="card"><div className="card-content">
-                    <h3 className="font-semibold mb-4">Teams</h3>
+                <div>
+                  <Paper withBorder p="md" radius="md">
+                    <Title order={5} mb="md">Teams</Title>
                     {org.teams && org.teams.length > 0 ? (
                       <div className="space-y-3">
                         {org.teams.slice(0, 3).map((t) => (
@@ -151,33 +154,28 @@ function OrganizationDetailContent() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-600">No teams yet.</p>
+                      <Text size="sm" c="dimmed">No teams yet.</Text>
                     )}
-                  </div></div>
+                  </Paper>
                 </div>
-              </div>
+              </SimpleGrid>
             )}
 
             {activeTab === 'events' && (
-              <div className="card">
-                <div className="card-content">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold">Events Calendar</h3>
-                    <div className="flex items-center gap-2">
-                      {(['month','week','day','agenda'] as View[]).map(v => (
-                        <button key={v}
-                                onClick={() => setCalendarView(v)}
-                                className={`px-3 py-1 rounded text-sm ${calendarView===v ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
-                          {String(v).charAt(0).toUpperCase()+String(v).slice(1)}
-                        </button>
-                      ))}
-                      <button className="btn-primary" onClick={() => setShowCreateEventModal(true)}>
-                        + Create Event
-                      </button>
-                    </div>
-                  </div>
-                  <div className="h-[800px]">
-                    <BigCalendar
+              <Paper withBorder p="md" radius="md">
+                <Group justify="space-between" mb="sm">
+                  <Title order={5}>Events Calendar</Title>
+                  <Group gap="xs">
+                    {(['month','week','day','agenda'] as View[]).map(v => (
+                      <Button key={v} variant={calendarView===v ? 'filled' : 'default'} size="xs" onClick={() => setCalendarView(v)}>
+                        {String(v).charAt(0).toUpperCase()+String(v).slice(1)}
+                      </Button>
+                    ))}
+                    <Button onClick={() => setShowCreateEventModal(true)}>+ Create Event</Button>
+                  </Group>
+                </Group>
+                <div className="h-[800px]">
+                  <BigCalendar
                       localizer={localizer}
                       events={(org.events || []).map(e => ({
                         title: e.name,
@@ -195,57 +193,56 @@ function OrganizationDetailContent() {
                       selectable
                       onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailModal(true); }}
                       onSelectSlot={() => setShowCreateEventModal(true)}
-                    />
-                  </div>
+                  />
                 </div>
-              </div>
+              </Paper>
             )}
 
             {activeTab === 'teams' && (
-              <div className="card"><div className="card-content">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">Teams</h3>
-                  <button className="btn-primary" onClick={() => setShowCreateTeamModal(true)}>Create Team</button>
-                </div>
+              <Paper withBorder p="md" radius="md">
+                <Group justify="space-between" mb="md">
+                  <Title order={5}>Teams</Title>
+                  <Button onClick={() => setShowCreateTeamModal(true)}>Create Team</Button>
+                </Group>
                 {org.teams && org.teams.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                     {org.teams.map((t) => (
                       <TeamCard key={t.$id} team={t} />
                     ))}
-                  </div>
+                  </SimpleGrid>
                 ) : (
-                  <p className="text-sm text-gray-600">No teams yet.</p>
+                  <Text size="sm" c="dimmed">No teams yet.</Text>
                 )}
-              </div></div>
+              </Paper>
             )}
 
             {activeTab === 'fields' && (
-              <div className="card"><div className="card-content">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">Fields</h3>
-                  <div className="flex gap-2">
-                    <button className="btn-secondary" onClick={() => router.push('/events')}>Manage Fields</button>
-                    <button className="btn-primary" onClick={() => setShowCreateFieldModal(true)}>Create Field</button>
-                  </div>
-                </div>
+              <Paper withBorder p="md" radius="md">
+                <Group justify="space-between" mb="md">
+                  <Title order={5}>Fields</Title>
+                  <Group gap="xs">
+                    <Button variant="default" onClick={() => router.push('/events')}>Manage Fields</Button>
+                    <Button onClick={() => setShowCreateFieldModal(true)}>Create Field</Button>
+                  </Group>
+                </Group>
                 {org.fields && org.fields.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
                     {org.fields.map((f) => (
-                      <div key={f.$id} className="p-4 rounded-lg border bg-white">
-                        <div className="font-medium text-gray-900">{f.name || `Field ${f.fieldNumber}`}</div>
-                        <div className="text-sm text-gray-600">{f.type || '—'}</div>
-                        {f.location && <div className="text-xs text-gray-500 mt-1">{f.location}</div>}
-                      </div>
+                      <Paper key={f.$id} withBorder p="md" radius="md">
+                        <Text fw={500}>{f.name || `Field ${f.fieldNumber}`}</Text>
+                        <Text size="sm" c="dimmed">{f.type || '—'}</Text>
+                        {f.location && <Text size="xs" c="dimmed" mt={4}>{f.location}</Text>}
+                      </Paper>
                     ))}
-                  </div>
+                  </SimpleGrid>
                 ) : (
-                  <p className="text-sm text-gray-600">No fields yet.</p>
+                  <Text size="sm" c="dimmed">No fields yet.</Text>
                 )}
-              </div></div>
+              </Paper>
             )}
           </>
         )}
-      </div>
+      </Container>
 
       {/* Modals */}
       <EventDetailModal

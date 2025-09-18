@@ -42,14 +42,15 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.sport]);
 
-  const extractFileIdFromUrl = (url: string): string => {
-    try {
-      const match = url.match(/\/files\/([^/]+)\/preview/);
-      return match ? match[1] : '';
-    } catch {
-      return '';
-    }
-  };
+  // No longer used: ImageUploader already returns fileId and url separately
+  // const extractFileIdFromUrl = (url: string): string => {
+  //   try {
+  //     const match = url.match(/\/files\/([^/]+)\/preview/);
+  //     return match ? match[1] : '';
+  //   } catch {
+  //     return '';
+  //   }
+  // };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +87,11 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
             label="Team Name"
             placeholder="Enter team name"
             value={form.name}
-            onChange={(e) => setForm(prev => ({ ...prev, name: e.currentTarget.value }))}
+            onChange={(e) => setForm(prev => ({
+              ...prev,
+              // Guard against rare null target/currentTarget to avoid runtime error
+              name: (e?.currentTarget?.value ?? (e as any)?.target?.value ?? '')
+            }))}
             required
             maxLength={50}
           />
@@ -130,9 +135,8 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
             bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID as string}
             className="w-full"
             placeholder="Select team logo"
-            onChange={(url) => {
+            onChange={(fileId, url) => {
               setSelectedTeamImageUrl(url);
-              const fileId = extractFileIdFromUrl(url);
               setForm(prev => ({ ...prev, profileImageId: fileId }));
             }}
           />

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { userService } from '@/lib/userService';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
-import ModalShell from '../ui/ModalShell';
+import { Modal, TextInput, Button, Group, Paper, Avatar, Text, Alert, ScrollArea } from '@mantine/core';
 
 interface User {
     $id: string;
@@ -102,148 +102,82 @@ export function InviteUsersModal() {
     if (!isInviteModalOpen) return null;
 
     return (
-        <ModalShell
-            isOpen={isInviteModalOpen}
-            onClose={handleClose}
-            title={
-                <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Create New Chat</h3>
-                    <p className="text-sm text-gray-600 mt-1">Search and select users to start a conversation</p>
-                </div>
-            }
-            maxWidth="md"
-            contentClassName="!pt-0"
-        >
+        <Modal opened={isInviteModalOpen} onClose={handleClose} title={<div><Text fw={600}>Create New Chat</Text><Text size="sm" c="dimmed">Search and select users to start a conversation</Text></div>} size="md" centered>
             <div className="flex flex-col">
                 {/* Search Section */}
-                    <div className="pb-4 pt-4 border-b border-gray-100">
-                        <div className="relative">
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search by name or username..."
-                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                autoFocus
-                            />
-                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                        </div>
-
+                    <div className="pb-4 pt-4" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+                        <TextInput value={searchQuery} onChange={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search by name or username..." autoFocus />
                         {searchQuery.length > 0 && searchQuery.length < 2 && (
-                            <p className="text-sm text-gray-500 mt-2">Type at least 2 characters to search for users</p>
+                            <Text size="sm" c="dimmed" mt={6}>Type at least 2 characters to search for users</Text>
                         )}
                     </div>
 
                     {/* Selected Users */}
                     {selectedUsers.length > 0 && (
-                        <div className="py-4 border-b border-gray-100">
-                            <h4 className="text-sm font-medium text-gray-900 mb-3">
-                                Selected Users ({selectedUsers.length})
-                            </h4>
-                            <div className="space-y-2 max-h-32 overflow-y-auto">
-                                {selectedUsers.map((user) => (
-                                    <div key={user.$id} className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
-                                        <div className="flex items-center space-x-3">
-                                            <img
-                                                src={getUserAvatar(user)}
-                                                alt={`${user.firstName} ${user.lastName}`}
-                                                className="w-8 h-8 rounded-full"
-                                            />
-                                            <div>
-                                                <p className="font-medium text-gray-900 text-sm">
-                                                    {user.firstName} {user.lastName}
-                                                </p>
-                                                <p className="text-xs text-gray-500">@{user.userName}</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRemoveUser(user.$id)}
-                                            className="p-1 hover:bg-blue-100 rounded-full transition-colors"
-                                        >
-                                            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
+                        <div className="py-4" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+                            <Text size="sm" fw={600} mb={8}>Selected Users ({selectedUsers.length})</Text>
+                            <ScrollArea.Autosize mah={120}>
+                                <div className="space-y-2">
+                                    {selectedUsers.map((user) => (
+                                        <Paper key={user.$id} withBorder p="sm" radius="md" bg={'blue.0'}>
+                                            <Group justify="space-between">
+                                                <Group>
+                                                    <Avatar src={getUserAvatar(user)} alt={`${user.firstName} ${user.lastName}`} size={32} radius="xl" />
+                                                    <div>
+                                                        <Text fw={500} size="sm">{user.firstName} {user.lastName}</Text>
+                                                        <Text size="xs" c="dimmed">@{user.userName}</Text>
+                                                    </div>
+                                                </Group>
+                                                <Button size="xs" variant="subtle" onClick={() => handleRemoveUser(user.$id)}>Remove</Button>
+                                            </Group>
+                                        </Paper>
+                                    ))}
+                                </div>
+                            </ScrollArea.Autosize>
                         </div>
                     )}
 
                     {/* Search Results */}
-                    <div className="flex-1 overflow-y-auto py-4">
+                    <div className="flex-1 py-4" style={{ maxHeight: 360 }}>
                         {searching && (
-                            <div className="p-6 text-center">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                                <p className="text-sm text-gray-500 mt-2">Searching...</p>
-                            </div>
+                            <Group justify="center" py="sm">
+                                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                <Text c="dimmed" size="sm">Searching...</Text>
+                            </Group>
                         )}
 
                         {searchResults.length > 0 && (
-                            <div className="p-4">
-                                <div className="space-y-2">
+                            <ScrollArea.Autosize mah={320} type="auto">
+                                <div className="p-2 space-y-2">
                                     {searchResults.map((user) => (
-                                        <button
-                                            key={user.$id}
-                                            onClick={() => handleAddUser(user)}
-                                            className="w-full p-3 hover:bg-gray-50 flex items-center space-x-3 text-left rounded-lg transition-colors"
-                                        >
-                                            <img
-                                                src={getUserAvatar(user)}
-                                                alt={`${user.firstName} ${user.lastName}`}
-                                                className="w-10 h-10 rounded-full"
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-medium text-gray-900 truncate">
-                                                    {user.firstName} {user.lastName}
-                                                </p>
-                                                <p className="text-sm text-gray-500 truncate">@{user.userName}</p>
-                                            </div>
-                                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                            </svg>
-                                        </button>
+                                        <Paper key={user.$id} withBorder p="sm" radius="md" onClick={() => handleAddUser(user)} style={{ cursor: 'pointer' }}>
+                                            <Group>
+                                                <Avatar src={getUserAvatar(user)} alt={`${user.firstName} ${user.lastName}`} radius="xl" />
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <Text fw={500} truncate>{user.firstName} {user.lastName}</Text>
+                                                    <Text size="sm" c="dimmed" truncate>@{user.userName}</Text>
+                                                </div>
+                                                <Text c="blue" fw={700}>+</Text>
+                                            </Group>
+                                        </Paper>
                                     ))}
                                 </div>
-                            </div>
+                            </ScrollArea.Autosize>
                         )}
 
                         {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
-                            <div className="p-6 text-center text-gray-500">
-                                <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
-                                <p className="text-sm">No users found matching "{searchQuery}"</p>
-                            </div>
+                            <Paper withBorder p="md" radius="md" ta="center"><Text c="dimmed" size="sm">No users found matching "{searchQuery}"</Text></Paper>
                         )}
                     </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end space-x-3 pt-4">
-                    <button
-                        onClick={handleClose}
-                        className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={selectedUsers.length === 0 || loading}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
-                    >
-                        {loading ? (
-                            <div className="flex items-center space-x-2">
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                <span>Creating...</span>
-                            </div>
-                        ) : (
-                            `Create Chat ${selectedUsers.length > 0 ? `(${selectedUsers.length})` : ''}`
-                        )}
-                    </button>
-                </div>
+                <Group justify="end" pt="sm" gap="sm">
+                    <Button variant="default" onClick={handleClose}>Cancel</Button>
+                    <Button onClick={handleSubmit} disabled={selectedUsers.length === 0 || loading}>
+                        {loading ? 'Creating...' : `Create Chat ${selectedUsers.length > 0 ? `(${selectedUsers.length})` : ''}`}
+                    </Button>
+                </Group>
             </div>
-        </ModalShell>
+        </Modal>
     );
 }
