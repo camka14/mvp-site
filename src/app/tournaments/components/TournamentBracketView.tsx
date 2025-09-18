@@ -10,6 +10,7 @@ import MatchCard from './MatchCard';
 
 import ScoreUpdateModal from '../[id]/bracket/components/ScoreUpdateModal';
 import { xor } from '@/app/uitl';
+import { Paper, Group, Button, ActionIcon, Text, SegmentedControl, Badge } from '@mantine/core';
 
 
 interface TournamentBracketViewProps {
@@ -350,71 +351,31 @@ export default function TournamentBracketView({
     return (
         <div className="h-full flex flex-col min-h-0">
             {/* Controls Bar */}
-            <div className="flex justify-between items-center p-4 bg-gray-50 border-b">
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={handleZoomOut}
-                        className="px-3 py-1.5 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition-colors text-sm font-medium"
-                        disabled={zoomLevel <= 0.5}
-                    >
-                        -
-                    </button>
-                    <span className="min-w-[60px] text-center text-sm font-mono bg-white px-2 py-1.5 border border-gray-300 rounded-md">
-                        {Math.round(zoomLevel * 100)}%
-                    </span>
-                    <button
-                        onClick={handleZoomIn}
-                        className="px-3 py-1.5 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition-colors text-sm font-medium"
-                        disabled={zoomLevel >= 3}
-                    >
-                        +
-                    </button>
-                    <button
-                        onClick={handleZoomReset}
-                        className="px-3 py-1.5 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition-colors text-sm"
-                    >
-                        Reset
-                    </button>
-                    <span className="text-xs text-gray-500 ml-2">
-                        Ctrl + scroll to zoom • Ctrl + 0 to reset
-                    </span>
-                </div>
+            <Paper withBorder p="sm" className="flex justify-between items-center">
+                <Group gap="xs">
+                    <ActionIcon variant="default" onClick={handleZoomOut} disabled={zoomLevel <= 0.5} aria-label="Zoom out">−</ActionIcon>
+                    <Badge variant="light">{Math.round(zoomLevel * 100)}%</Badge>
+                    <ActionIcon variant="default" onClick={handleZoomIn} disabled={zoomLevel >= 3} aria-label="Zoom in">+</ActionIcon>
+                    <Button variant="default" size="xs" onClick={handleZoomReset}>Reset</Button>
+                    <Text size="xs" c="dimmed">Ctrl + scroll to zoom • Ctrl + 0 to reset</Text>
+                </Group>
 
-                <div className="flex items-center gap-2">
+                <Group gap="sm">
                     {bracket.tournament.doubleElimination && (
-                        <div className="flex gap-2">
-                            <button
-                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${!isLosersBracket
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-                                    }`}
-                                onClick={() => setIsLosersBracket(false)}
-                                aria-pressed={!isLosersBracket}
-                            >
-                                Winners Bracket
-                            </button>
-                            <button
-                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${isLosersBracket
-                                    ? 'bg-orange-600 text-white'
-                                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-                                    }`}
-                                onClick={() => setIsLosersBracket(true)}
-                                aria-pressed={isLosersBracket}
-                            >
-                                Losers Bracket
-                            </button>
-                        </div>
+                        <SegmentedControl
+                            value={isLosersBracket ? 'losers' : 'winners'}
+                            onChange={(v: string) => setIsLosersBracket(v === 'losers')}
+                            data={[
+                                { label: 'Winners Bracket', value: 'winners' },
+                                { label: 'Losers Bracket', value: 'losers' },
+                            ]}
+                        />
                     )}
-                    <button
-                        onClick={onToggleExpand}
-                        className="px-3 py-1.5 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition-colors text-sm"
-                        aria-pressed={!!isExpanded}
-                        title={isExpanded ? 'Collapse view' : 'Expand view'}
-                    >
+                    <Button variant="default" size="xs" onClick={onToggleExpand} aria-pressed={!!isExpanded} title={isExpanded ? 'Collapse view' : 'Expand view'}>
                         {isExpanded ? 'Collapse' : 'Expand'}
-                    </button>
-                </div>
-            </div>
+                    </Button>
+                </Group>
+            </Paper>
 
             {/* Bracket Container with CSS Zoom */}
             <div
@@ -432,7 +393,7 @@ export default function TournamentBracketView({
                 >
                     {/* Absolutely positioned matches */}
                     {Object.values(viewById).length === 0 ? (
-                        <div className="text-gray-500">No matches</div>
+                        <Text c="dimmed">No matches</Text>
                     ) : (
                         <>
                             {Object.values(viewById).map((m) => {
