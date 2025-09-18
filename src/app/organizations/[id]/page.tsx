@@ -40,6 +40,7 @@ function OrganizationDetailContent() {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [showEventDetailModal, setShowEventDetailModal] = useState(false);
   const [calendarView, setCalendarView] = useState<View>('month');
+  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
 
   const localizer = useMemo(() => dateFnsLocalizer({
     format,
@@ -50,6 +51,20 @@ function OrganizationDetailContent() {
   }), []);
 
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
+
+  // Custom event renderer to show start/end times on cards
+  const CalendarEvent: any = ({ event }: any) => {
+    const s: Date = event.start instanceof Date ? event.start : new Date(event.start);
+    const e: Date = event.end instanceof Date ? event.end : new Date(event.end);
+    const times = `${format(s, 'p')} - ${format(e, 'p')}`; // e.g., 2:00 PM - 3:30 PM
+    const title = event.resource?.name || event.title;
+    return (
+      <div className="leading-tight">
+        <div className="text-[11px] opacity-90">{times}</div>
+        <div className="truncate">{title}</div>
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (!authLoading) {
@@ -136,7 +151,11 @@ function OrganizationDetailContent() {
                     {org.events && org.events.length > 0 ? (
                       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                         {org.events.slice(0, 4).map((e) => (
-                          <EventCard key={e.$id} event={e} />
+                          <EventCard
+                            key={e.$id}
+                            event={e}
+                            onClick={() => { setSelectedEvent(e); setShowEventDetailModal(true); }}
+                          />
                         ))}
                       </SimpleGrid>
                     ) : (
@@ -187,10 +206,13 @@ function OrganizationDetailContent() {
                       endAccessor="end"
                       views={["month","week","day","agenda"]}
                       view={calendarView}
+                      date={calendarDate}
                       onView={(v) => setCalendarView(v)}
+                      onNavigate={(date) => setCalendarDate(date)}
                       step={30}
                       popup
                       selectable
+                      components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
                       onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailModal(true); }}
                       onSelectSlot={() => setShowCreateEventModal(true)}
                   />

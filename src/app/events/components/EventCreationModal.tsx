@@ -42,7 +42,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 }) => {
     const { location: userLocation } = useLocation();
     const modalRef = useRef<HTMLDivElement>(null);
-    const [selectedImageId, setSelectedImageId] = useState<string>('');
+    const [selectedImageId, setSelectedImageId] = useState<string>(editingEvent?.imageId || '');
 
 
     const [selectedImageUrl, setSelectedImageUrl] = useState(
@@ -185,7 +185,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         isMaxParticipantsValid: true,
         isTeamSizeValid: true,
         isLocationValid: false,
-        isSkillLevelValid: false
+        isSkillLevelValid: false,
+        isImageValid: false,
     });
 
     // Validation effect
@@ -196,9 +197,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             isMaxParticipantsValid: eventData.maxParticipants ? eventData.maxParticipants > 1 : false,
             isTeamSizeValid: eventData.teamSizeLimit ? eventData.teamSizeLimit >= 1 : false,
             isLocationValid: eventData.location ? eventData.location?.trim().length > 0 && (eventData.lat !== 0 && eventData.long !== 0) : false,
-            isSkillLevelValid: eventData.divisions ? eventData.divisions?.length > 0 : false
+            isSkillLevelValid: eventData.divisions ? eventData.divisions?.length > 0 : false,
+            isImageValid: Boolean(selectedImageId || eventData.imageId || selectedImageUrl),
         });
-    }, [eventData]);
+    }, [eventData, selectedImageId, selectedImageUrl]);
 
     useEffect(() => {
         if (eventData.teamSignup) {
@@ -265,10 +267,16 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         setIsSubmitting(true);
         try {
             // Convert Division[] to string[] for backend compatibility
+            const finalImageId = selectedImageId || eventData.imageId;
+            if (!finalImageId) {
+                // Safety net: image is required
+                setIsSubmitting(false);
+                return;
+            }
             let submitData: any = {
                 ...eventData,
                 divisions: eventData.divisions.map(div => div.skillLevel),
-                imageId: selectedImageId,
+                imageId: finalImageId,
             };
 
             // Only set hostId and participant data for new events
@@ -351,6 +359,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             placeholder="Select event image"
                             onChange={handleImageChange}
                         />
+                        {!validation.isImageValid && (
+                            <p className="text-red-600 text-sm mt-1">An event image is required.</p>
+                        )}
                     </div>
                 </div>
 
