@@ -3,8 +3,8 @@ import { Event, UserData, Team } from '@/types/index';
 export interface Match {
     $id: string;
     matchId: number;
-    team1?: string;
-    team2?: string;
+    team1Id?: string;
+    team2Id?: string;
     tournamentId: string;
     refId?: string;
     fieldId?: string;

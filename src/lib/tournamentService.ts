@@ -36,8 +36,8 @@ class TournamentService {
             const matches: Match[] = matchesResponse.rows.map(row => ({
                 $id: row.$id,
                 matchId: row.matchId,
-                team1: row.team1,
-                team2: row.team2,
+                team1Id: row.team1Id,
+                team2Id: row.team2Id,
                 tournamentId: row.tournamentId,
                 refId: row.refId,
                 field: row.field,
@@ -67,8 +67,8 @@ class TournamentService {
             const matchesWithRelations: MatchWithRelations[] = await Promise.all(
                 matches.map(async (match) => {
                     const [team1Data, team2Data, referee] = await Promise.all([
-                        match.team1 ? teams.find(t => t.$id === match.team1) : undefined,
-                        match.team2 ? teams.find(t => t.$id === match.team2) : undefined,
+                        match.team1Id ? teams.find(t => t.$id === match.team1Id) : undefined,
+                        match.team2Id ? teams.find(t => t.$id === match.team2Id) : undefined,
                         match.refId ? teams.find(t => t.$id == match.refId) : undefined,
                     ]);
 
@@ -111,8 +111,8 @@ class TournamentService {
             return {
                 $id: response.$id,
                 matchId: response.matchNumber,
-                team1: response.team1,
-                team2: response.team2,
+                team1Id: response.team1Id,
+                team2Id: response.team2Id,
                 tournamentId: response.tournamentId,
                 refId: response.refId,
                 fieldId: response.fieldId,
