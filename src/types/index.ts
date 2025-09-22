@@ -29,8 +29,8 @@ export interface Event {
   teamSizeLimit: number;
   teamSignup: boolean;
   singleDivision: boolean;
-  waitList: string[];
-  freeAgents: string[];
+  waitListIds: string[];
+  freeAgentIds: string[];
   playerIds: string[];
   teamIds: string[];
   cancellationRefundHours: number;

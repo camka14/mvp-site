@@ -82,8 +82,8 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
             setTeams(eventTeams.filter(team => team !== undefined) as Team[]);
 
             // Load free agents from the latest snapshot
-            if (baseEvent.freeAgents && baseEvent.freeAgents.length > 0) {
-                const agents = await userService.getUsersByIds(baseEvent.freeAgents);
+            if (baseEvent.freeAgentIds && baseEvent.freeAgentIds.length > 0) {
+                const agents = await userService.getUsersByIds(baseEvent.freeAgentIds);
                 setFreeAgents(agents);
             } else {
                 setFreeAgents([]);
@@ -217,7 +217,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         (!currentEvent.teamSignup && currentEvent.playerIds.includes(user.$id)) ||
         (currentEvent.teamSignup && (user.teamIds || []).some(tid => currentEvent.teamIds.includes(tid)))
     );
-    const isUserFreeAgent = !!user && (currentEvent.freeAgents || []).includes(user.$id);
+    const isUserFreeAgent = !!user && (currentEvent.freeAgentIds || []).includes(user.$id);
 
     return (
         <>
@@ -391,12 +391,12 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                             )}
 
                             {/* Free Agents Section */}
-                            {(freeAgents.length > 0 || currentEvent.freeAgents.length > 0) && (
+                            {(freeAgents.length > 0 || currentEvent.freeAgentIds.length > 0) && (
                                 <div className="mb-4">
                                     <ParticipantsPreview
                                         title="Free Agents"
                                         participants={freeAgents}
-                                        totalCount={currentEvent.freeAgents.length}
+                                        totalCount={currentEvent.freeAgentIds.length}
                                         isLoading={isLoading}
                                         onClick={() => setShowFreeAgentsDropdown(true)}
                                         getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}

@@ -50,8 +50,8 @@ export interface CreateEventData {
   registrationCutoffHours?: number;
   imageId?: string;
   seedColor?: number;
-  waitList?: string[];
-  freeAgents?: string[];
+  waitListIds?: string[];
+  freeAgentIds?: string[];
   playerIds?: string[];
   teamIds?: string[];
   hostId?: string;
@@ -172,7 +172,7 @@ class EventService {
     try {
       const existing = await this.getEventById(eventId);
       if (!existing) return undefined;
-      const freeAgents = Array.from(new Set([...(existing.freeAgents || []), userId]));
+      const freeAgents = Array.from(new Set([...(existing.freeAgentIds || []), userId]));
       const response = await databases.updateRow({
         databaseId: DATABASE_ID,
         tableId: EVENTS_TABLE_ID,
@@ -190,7 +190,7 @@ class EventService {
     try {
       const existing = await this.getEventById(eventId);
       if (!existing) return undefined;
-      const waitList = Array.from(new Set([...(existing.waitList || []), entryId]));
+      const waitList = Array.from(new Set([...(existing.waitListIds || []), entryId]));
       const response = await databases.updateRow({
         databaseId: DATABASE_ID,
         tableId: EVENTS_TABLE_ID,
@@ -208,7 +208,7 @@ class EventService {
     try {
       const existing = await this.getEventById(eventId);
       if (!existing) return undefined;
-      const freeAgents = (existing.freeAgents || []).filter(id => id !== userId);
+      const freeAgents = (existing.freeAgentIds || []).filter(id => id !== userId);
       const response = await databases.updateRow({
         databaseId: DATABASE_ID,
         tableId: EVENTS_TABLE_ID,
