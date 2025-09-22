@@ -1,5 +1,5 @@
 import { databases } from '@/app/appwrite';
-import { Event, LocationCoordinates, getCategoryFromEvent } from '@/types';
+import { Event, EventWithRelations, Tournament, PickupEvent, LocationCoordinates, getCategoryFromEvent, Division, Team, UserData, Field, Match } from '@/types';
 import { locationService } from './locationService';
 import { ID, Query } from 'appwrite';
 
@@ -20,14 +20,6 @@ export interface EventFilters {
   fieldType?: string;
 }
 
-export interface Division {
-  id: string;
-  name: string;
-  skillLevel: string;
-  minRating?: number;
-  maxRating?: number;
-}
-
 export interface CreateEventData {
   $id?: string;
   name?: string;
@@ -45,7 +37,7 @@ export interface CreateEventData {
   teamSizeLimit?: number;
   teamSignup?: boolean;
   singleDivision?: boolean;
-  divisions?: Division[]; // ✅ CHANGED FROM string[] TO Division[]
+  divisions?: Division[];
   cancellationRefundHours?: number;
   registrationCutoffHours?: number;
   imageId?: string;
@@ -67,18 +59,60 @@ export interface CreateEventData {
   fieldCount?: number;
 }
 
-
 class EventService {
-  private getLatLngBounds(center: LocationCoordinates, distanceKm: number) {
-    // Rough bounding box calculation
-    const latDelta = distanceKm / 111; // degrees per km
-    const lngDelta = distanceKm / (111 * Math.cos(center.lat * Math.PI / 180));
-    return {
-      minLat: center.lat - latDelta,
-      maxLat: center.lat + latDelta,
-      minLng: center.lng - lngDelta,
-      maxLng: center.lng + lngDelta
-    };
+  /**
+   * Get event with all relationships expanded (matching Python backend approach)
+   * This fetches all related data in a single database call using Appwrite's relationship features
+   */
+  async getEventWithRelations(id: string): Promise<EventWithRelations | undefined> {
+    try {
+      // Use Query.select to expand all relationships like in Python backend
+      const queries = [
+        Query.select([
+          '*',
+          'matches.*',
+          'matches.field.$id',
+          'matches.team1.$id',
+          'matches.team2.$id',
+          'matches.referee.$id',
+          'players.*',
+          'teams.*',
+          'teams.matches.$id',
+          'fields.*',
+          'fields.matches.$id',
+        ])
+      ];
+
+      const response = await databases.getRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: id,
+        queries
+      });
+
+      return this.mapRowToEventWithRelations(response);
+    } catch (error) {
+      console.error('Failed to fetch event with relations:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get basic event without expanded relationships (for list views)
+   */
+  async getEvent(id: string): Promise<Event | undefined> {
+    try {
+      const response = await databases.getRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: id
+      });
+
+      return this.mapRowToEvent(response);
+    } catch (error) {
+      console.error('Failed to fetch event:', error);
+      return undefined;
+    }
   }
 
   async getAllEvents(): Promise<Event[]> {
@@ -99,23 +133,7 @@ class EventService {
     }
   }
 
-  async getEvent(id: string): Promise<Event | undefined> {
-    try {
-      const response = await databases.getRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: id
-      });
-
-      return this.mapRowToEvent(response);
-    } catch (error) {
-      console.error('Failed to fetch event:', error);
-      return undefined;
-    }
-  }
-
-  // Add this method to your EventService class
-  async updateEventParticipants(eventId: string, updates: { playerIds: string[], teamIds: string[] }): Promise<Event | undefined> {
+  async updateEventParticipants(eventId: string, updates: { playerIds: string[], teamIds: string[] }): Promise<Event> {
     try {
       const response = await databases.updateRow({
         databaseId: DATABASE_ID,
@@ -139,6 +157,7 @@ class EventService {
           ? { coordinates: [eventData.long, eventData.lat] as [number, number] }
           : {}),
       };
+
       const response = await databases.updateRow({
         databaseId: DATABASE_ID,
         tableId: EVENTS_TABLE_ID,
@@ -167,67 +186,149 @@ class EventService {
     }
   }
 
-
-  async addFreeAgent(eventId: string, userId: string): Promise<Event | undefined> {
+  async createEvent(newEvent: Partial<CreateEventData>): Promise<Event> {
     try {
-      const existing = await this.getEventById(eventId);
-      if (!existing) return undefined;
-      const freeAgents = Array.from(new Set([...(existing.freeAgents || []), userId]));
-      const response = await databases.updateRow({
+      const payload = {
+        ...newEvent,
+        ...(newEvent?.lat !== undefined && newEvent?.long !== undefined
+          ? { coordinates: [newEvent.long, newEvent.lat] as [number, number] }
+          : {}),
+      };
+
+      const response = await databases.createRow({
         databaseId: DATABASE_ID,
         tableId: EVENTS_TABLE_ID,
-        rowId: eventId,
-        data: { freeAgents }
+        rowId: ID.unique(),
+        data: payload
       });
+
+      // Create fields if this is a tournament
+      if (newEvent.fieldCount && newEvent.fieldCount > 0) {
+        for (let fieldNum = 1; fieldNum <= newEvent.fieldCount; fieldNum++) {
+          await databases.createRow({
+            databaseId: DATABASE_ID,
+            tableId: process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!,
+            rowId: ID.unique(),
+            data: {
+              eventId: response.$id,
+              fieldNumber: fieldNum,
+              divisions: ["OPEN"], // Default division
+            }
+          });
+        }
+      }
+
       return this.mapRowToEvent(response);
     } catch (error) {
-      console.error('Failed to add free agent:', error);
+      console.error('Failed to create event:', error);
       throw error;
     }
   }
 
-  async addToWaitlist(eventId: string, entryId: string): Promise<Event | undefined> {
-    try {
-      const existing = await this.getEventById(eventId);
-      if (!existing) return undefined;
-      const waitList = Array.from(new Set([...(existing.waitList || []), entryId]));
-      const response = await databases.updateRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: eventId,
-        data: { waitList }
-      });
-      return this.mapRowToEvent(response);
-    } catch (error) {
-      console.error('Failed to add to waitlist:', error);
-      throw error;
-    }
+  private mapRowToEvent(row: any): Event {
+    return {
+      ...row,
+      // Computed properties
+      attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
+      coordinates: [row.long, row.lat],
+      category: getCategoryFromEvent({ sport: row.sport } as Event),
+      // Ensure divisions is always an array
+      divisions: Array.isArray(row.divisions) ? row.divisions : []
+    };
   }
 
-  async removeFreeAgent(eventId: string, userId: string): Promise<Event | undefined> {
-    try {
-      const existing = await this.getEventById(eventId);
-      if (!existing) return undefined;
-      const freeAgents = (existing.freeAgents || []).filter(id => id !== userId);
-      const response = await databases.updateRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: eventId,
-        data: { freeAgents }
+  private mapRowToEventWithRelations(row: any): EventWithRelations {
+    const baseEvent = this.mapRowToEvent(row);
+
+    // Setup default divisions
+    const divisions: Division[] = [{ id: "OPEN", name: "OPEN" }];
+
+    // Process expanded teams
+    const teams: { [key: string]: Team } = {};
+    if (row.teams && Array.isArray(row.teams)) {
+      row.teams.forEach((teamData: any) => {
+        const team: Team = {
+          ...teamData,
+          division: divisions[0], // Default division
+          winRate: this.calculateWinRate(teamData.wins || 0, teamData.losses || 0),
+          currentSize: (teamData.playerIds || []).length,
+          isFull: (teamData.playerIds || []).length >= (teamData.teamSize || 6),
+          avatarUrl: '' // Will be computed by helper function
+        };
+        teams[team.$id] = team;
       });
-      return this.mapRowToEvent(response);
-    } catch (error) {
-      console.error('Failed to remove free agent:', error);
-      throw error;
     }
+
+    // Process expanded players
+    const players: UserData[] = [];
+    if (row.players && Array.isArray(row.players)) {
+      row.players.forEach((playerData: any) => {
+        const player: UserData = {
+          ...playerData,
+          fullName: `${playerData.firstName || ''} ${playerData.lastName || ''}`.trim(),
+          avatarUrl: '' // Will be computed by helper function
+        };
+        players.push(player);
+      });
+    }
+
+    // Process fields (for tournaments)
+    const fields: { [key: string]: Field } = {};
+    if (row.fields && Array.isArray(row.fields)) {
+      row.fields.forEach((fieldData: any) => {
+        const field: Field = {
+          ...fieldData,
+          divisions: divisions
+        };
+        fields[field.$id] = field;
+      });
+    }
+
+    // Process matches (for tournaments)
+    const matches: { [key: string]: Match } = {};
+    if (row.matches && Array.isArray(row.matches)) {
+      row.matches.forEach((matchData: any) => {
+        const match: Match = {
+          ...matchData,
+          division: divisions[0],
+          team1: matchData.team1 ? teams[this.extractId(matchData.team1)] : undefined,
+          team2: matchData.team2 ? teams[this.extractId(matchData.team2)] : undefined,
+          referee: matchData.referee ? teams[this.extractId(matchData.referee)] : undefined,
+          fieldId: matchData.field ? fields[this.extractId(matchData.field)] : undefined,
+        };
+        matches[match.$id] = match;
+      });
+    }
+
+    const eventWithRelations: EventWithRelations = {
+      ...baseEvent,
+      teams,
+      players,
+      divisions,
+      fields: Object.keys(fields).length > 0 ? fields : undefined,
+      matches: Object.keys(matches).length > 0 ? matches : undefined,
+    };
+
+    return eventWithRelations;
   }
 
+  private extractId(value: any): string {
+    if (typeof value === 'string') return value;
+    if (value && typeof value === 'object' && value.$id) return value.$id;
+    return '';
+  }
 
+  private calculateWinRate(wins: number, losses: number): number {
+    const totalGames = wins + losses;
+    if (totalGames === 0) return 0;
+    return Math.round((wins / totalGames) * 100);
+  }
+
+  // Pagination methods remain largely the same but updated to use new types
   async getEventsPaginated(filters: EventFilters, limit: number = 18, offset: number = 0): Promise<Event[]> {
     try {
       const queries: string[] = [];
 
-      // Ordering for stable pagination (by start date asc)
       queries.push(Query.orderAsc('start'));
       queries.push(Query.limit(limit));
       if (offset > 0) queries.push(Query.offset(offset));
@@ -251,6 +352,7 @@ class EventService {
       if (filters.dateFrom) {
         queries.push(Query.greaterThanEqual('start', filters.dateFrom));
       }
+
       if (filters.dateTo) {
         queries.push(Query.lessThanEqual('end', filters.dateTo));
       }
@@ -259,7 +361,6 @@ class EventService {
         queries.push(Query.lessThanEqual('price', filters.priceMax));
       }
 
-      // If location is provided, narrow using Appwrite geo distance query (meters)
       if (filters.userLocation && filters.maxDistance) {
         queries.push(
           Query.distanceLessThan(
@@ -278,7 +379,7 @@ class EventService {
 
       let events = response.rows.map(row => this.mapRowToEvent(row));
 
-      // Apply text query filtering client-side for now
+      // Apply client-side filtering
       if (filters.query) {
         const searchTerm = filters.query.toLowerCase();
         events = events.filter(event =>
@@ -296,99 +397,12 @@ class EventService {
         });
       }
 
-      if (filters.userLocation && filters.maxDistance) {
-        events = events.filter(event => {
-          const [lng, lat] = Array.isArray((event as any).coordinates)
-            ? (event as any).coordinates as [number, number]
-            : [(event as any).coordinates?.lng, (event as any).coordinates?.lat];
-          const distanceKm = locationService.calculateDistance(
-            filters.userLocation!.lat,
-            filters.userLocation!.lng,
-            lat,
-            lng
-          );
-          return distanceKm <= filters.maxDistance!;
-        });
-        // Also sort by distance for UX
-        events.sort((a, b) => {
-          const [lngA, latA] = Array.isArray((a as any).coordinates) ? (a as any).coordinates : [(a as any).coordinates?.lng, (a as any).coordinates?.lat];
-          const [lngB, latB] = Array.isArray((b as any).coordinates) ? (b as any).coordinates : [(b as any).coordinates?.lng, (b as any).coordinates?.lat];
-          const dA = locationService.calculateDistance(filters.userLocation!.lat, filters.userLocation!.lng, latA, lngA);
-          const dB = locationService.calculateDistance(filters.userLocation!.lat, filters.userLocation!.lng, latB, lngB);
-          return dA - dB;
-        });
-      }
-
       return events;
     } catch (error) {
       console.error('Failed to fetch paginated events:', error);
       throw new Error('Failed to load events');
     }
   }
-
-  async getEventById(id: string): Promise<Event | undefined> {
-    try {
-      const response = await databases.getRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: id
-      });
-
-      return this.mapRowToEvent(response);
-    } catch (error) {
-      console.error('Failed to fetch event:', error);
-      return undefined;
-    }
-  }
-
-  // Map Appwrite row to Event using spread operator
-  private mapRowToEvent(row: any): Event {
-    return {
-      ...row, // Spread all fields from Appwrite row
-      // Only define computed properties
-      attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
-      // Store as [longitude, latitude] tuple for Appwrite v20 geo queries
-      coordinates: [row.long, row.lat],
-      category: getCategoryFromEvent({ sport: row.sport } as Event)
-    };
-  }
-
-  async createEvent(newEvent: Partial<CreateEventData>): Promise<Event> {
-    try {
-      const payload = {
-        ...newEvent,
-        ...(newEvent?.lat !== undefined && newEvent?.long !== undefined
-          ? { coordinates: [newEvent.long, newEvent.lat] as [number, number] }
-          : {}),
-      };
-      const response = await databases.createRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: ID.unique(),
-        data: payload
-      });
-      if (newEvent.fieldCount) {
-        for (const field in Array.from(Array(newEvent.fieldCount + 1)).keys()) {
-          if (field === '0') continue;
-          await databases.createRow({
-            databaseId: DATABASE_ID,
-            tableId: process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!,
-            rowId: ID.unique(),
-            data: {
-              eventIds: [response.$id],
-              fieldNumber: field,
-              divisions: ["OPEN"],
-            }
-          });
-        }
-      }
-      return this.mapRowToEvent(response);
-    } catch (error) {
-      console.error('Failed to create event:', error);
-      throw error;
-    }
-  }
-
 }
 
 export const eventService = new EventService();

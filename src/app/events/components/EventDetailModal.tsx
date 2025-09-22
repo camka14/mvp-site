@@ -68,7 +68,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         setIsLoading(true);
         try {
             // Always fetch the latest event snapshot first
-            const latest = await eventService.getEventById(event.$id);
+            const latest = await eventService.getEvent(event.$id);
             const baseEvent = latest || event;
             setDetailedEvent(baseEvent);
 
@@ -91,7 +91,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
 
             // If team signup and user is present, load user's relevant teams
             if (user && baseEvent.teamSignup) {
-                const teamsByUser = await teamService.getTeamsByUserId(user.$id);
+                const teamsByUser = await teamService.getTeamById(user.$id);
                 const relevant = teamsByUser.filter(t => t.sport.toLowerCase() === baseEvent.sport.toLowerCase());
                 setUserTeams(relevant);
             } else {
@@ -181,7 +181,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
 
         try {
             while (Date.now() < deadline) {
-                const latest = await eventService.getEventById(currentEvent.$id);
+                const latest = await eventService.getEvent(currentEvent.$id);
                 if (latest) {
                     // Check registration status depending on signup type
                     const registered = latest.teamSignup

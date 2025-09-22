@@ -10,53 +10,47 @@ export interface UserAccount {
   prefs?: Record<string, any>;
 }
 
-// Unified Event interface - using $id
-export interface Event {
-  $id: string;
+// Division interface matching Python model
+export interface Division {
+  id: string;
   name: string;
-  description: string;
-  start: string;
-  end: string;
-  location: string;
-  coordinates: [number, number];
-  divisions: string[];
-  fieldType: string;
-  price: number;
-  rating?: number;
-  imageId: string;
-  hostId: string;
-  maxParticipants: number;
-  teamSizeLimit: number;
-  teamSignup: boolean;
-  singleDivision: boolean;
-  waitList: string[];
-  freeAgents: string[];
-  playerIds: string[];
-  teamIds: string[];
-  cancellationRefundHours: number;
-  registrationCutoffHours: number;
-  seedColor: number;
-  $createdAt: string;
-  $updatedAt: string;
-  eventType: 'pickup' | 'tournament';
-  sport: string;
-
-  // Tournament-specific fields
-  doubleElimination?: boolean;
-  winnerSetCount?: number;
-  loserSetCount?: number;
-  winnerBracketPointsToVictory?: number[];
-  loserBracketPointsToVictory?: number[];
-  winnerScoreLimitsPerSet?: number[];
-  loserScoreLimitsPerSet?: number[];
-  prize?: string;
-  fieldCount: number
-
-  // Computed properties
-  attendees: number;
-  category: EventCategory;
+  skillLevel?: string;
+  minRating?: number;
+  maxRating?: number;
 }
 
+// Match interface for tournaments (matching Python model)
+export interface Match {
+  $id: string;
+  matchId?: number;
+  team1Points: number[];
+  team2Points: number[];
+  tournamentId: string;
+  start: string;
+  end: string;
+  losersBracket?: boolean;
+  setResults: number[];
+  side?: string;
+  refereeCheckedIn?: boolean;
+
+  // Relationship fields - can be IDs or expanded objects
+  division: Division | string;
+  fieldId?: Field | string;
+  referee?: Team | string;
+  team1?: Team | string;
+  team2?: Team | string;
+
+  // Match relationships
+  previousLeftMatch?: Match | string;
+  previousRightMatch?: Match | string;
+  winnerNextMatch?: Match | string;
+  loserNextMatch?: Match | string;
+
+  $createdAt?: string;
+  $updatedAt?: string;
+}
+
+// Updated UserData interface
 export interface UserData {
   $id: string;
   firstName: string;
@@ -80,11 +74,12 @@ export interface UserData {
   avatarUrl: string;
 }
 
+// Updated Team interface with relationships
 export interface Team {
   $id: string;
   name?: string;
   seed: number;
-  division: string;
+  division: Division | string; // Can be expanded or just ID
   sport: string;
   wins: number;
   losses: number;
@@ -96,16 +91,20 @@ export interface Team {
   $createdAt?: string;
   $updatedAt?: string;
 
-  // Computed properties
+  // Expanded relationships (populated when fetching with relations)
   players?: UserData[];
   captain?: UserData;
   pendingPlayers?: UserData[];
+  matches?: Match[]; // Tournament matches this team participates in
+
+  // Computed properties
   winRate: number;
   currentSize: number;
   isFull: boolean;
   avatarUrl: string;
 }
 
+// Updated Field interface
 export interface Field {
   $id: string;
   name: string;
@@ -114,8 +113,85 @@ export interface Field {
   long: number;
   type: string;
   fieldNumber: number;
+
+  // Relationships
+  divisions?: Division[];
+  matches?: Match[];
+  eventId?: string; // Link to parent event
 }
 
+// Core Event interface with relationships
+export interface Event {
+  $id: string;
+  name: string;
+  description: string;
+  start: string;
+  end: string;
+  location: string;
+  coordinates: [number, number];
+  fieldType: string;
+  price: number;
+  rating?: number;
+  imageId: string;
+  hostId: string;
+  maxParticipants: number;
+  teamSizeLimit: number;
+  teamSignup: boolean;
+  singleDivision: boolean;
+  waitList: string[];
+  freeAgents: string[];
+  playerIds: string[];
+  teamIds: string[];
+  cancellationRefundHours: number;
+  registrationCutoffHours: number;
+  seedColor: number;
+  $createdAt: string;
+  $updatedAt: string;
+  eventType: 'pickup' | 'tournament';
+  sport: string;
+
+  // Relationship fields - can be IDs or expanded objects
+  divisions: Division[] | string[];
+
+  // Tournament-specific fields
+  doubleElimination?: boolean;
+  winnerSetCount?: number;
+  loserSetCount?: number;
+  winnerBracketPointsToVictory?: number[];
+  loserBracketPointsToVictory?: number[];
+  winnerScoreLimitsPerSet?: number[];
+  loserScoreLimitsPerSet?: number[];
+  prize?: string;
+  fieldCount: number;
+
+  // Computed properties
+  attendees: number;
+  category: EventCategory;
+}
+
+// Expanded Event interface with all relationships populated (matching Python get_event)
+export interface EventWithRelations extends Event {
+  // Expanded relationships
+  teams: { [key: string]: Team }; // Dictionary of teams with full data
+  players: UserData[]; // Array of user objects
+  divisions: Division[]; // Array of division objects
+  fields?: { [key: string]: Field }; // Dictionary of fields (for tournaments)
+  matches?: { [key: string]: Match }; // Dictionary of matches (for tournaments)
+  host?: UserData; // Expanded host information
+}
+
+// Tournament and Pickup event types
+export type Tournament = EventWithRelations & {
+  eventType: 'tournament';
+  fields: { [key: string]: Field };
+  matches: { [key: string]: Match };
+};
+
+export type PickupEvent = EventWithRelations & {
+  eventType: 'pickup';
+};
+
+// Organization interfaces
 export interface Organization {
   $id: string;
   name: string;
@@ -130,47 +206,13 @@ export interface Organization {
   $updatedAt?: string;
 }
 
-// Optional, expanded organization with relationships
 export interface OrganizationDetail extends Organization {
   events?: Event[];
   teams?: Team[];
   fields?: Field[];
 }
 
-export function getTeamAvatarUrl(team: Team, size: number = 64): string {
-  if (team.profileImageId) {
-    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: team.profileImageId, width: size, height: size });
-  }
-
-  // Use team name initials as fallback
-  const teamName = team.name || 'Team';
-  const initials = teamName.split(' ')
-    .map(word => word.charAt(0))
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
-
-  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
-}
-
-export function getEventImageUrl(params: {
-  imageId: string;
-  size?: number;
-  width?: number;
-  height?: number;
-}): string {
-  if (params.width || params.height) {
-    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: params.imageId, width: params.width, height: params.height });
-  }
-  return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: params.imageId, width: params.size, height: params.size });
-}
-
-
-
-// Rest of types remain the same...
-export type Tournament = Event & { eventType: 'tournament' };
-export type PickupEvent = Event & { eventType: 'pickup' };
-
+// Rest of the existing interfaces remain the same...
 export type EventCategory =
   | 'Volleyball'
   | 'Soccer'
@@ -181,7 +223,6 @@ export type EventCategory =
   | 'Football'
   | 'Other';
 
-// Central list of supported sports
 export enum Sports {
   Volleyball = 'Volleyball',
   Soccer = 'Soccer',
@@ -195,7 +236,6 @@ export enum Sports {
   Other = 'Other',
 }
 
-// Convenient iterable list for UI dropdowns
 export const SPORTS_LIST: string[] = Object.values(Sports);
 
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'completed';
@@ -212,7 +252,7 @@ export interface LocationInfo extends LocationCoordinates {
   zipCode?: string;
 }
 
-// Helper functions (no changes)
+// Helper functions
 export function getCategoryFromEvent(event: Event): EventCategory {
   const sport = event.sport.toLowerCase();
   if (sport.includes('volleyball')) return 'Volleyball';
@@ -231,12 +271,58 @@ export function getUserFullName(user: UserData): string {
 
 export function getUserAvatarUrl(user: UserData, size: number = 64): string {
   if (user.profileImageId) {
-    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: user.profileImageId, width: size, height: size });
+    return storage.getFilePreview({
+      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
+      fileId: user.profileImageId,
+      width: size,
+      height: size
+    });
   }
 
   const fullName = getUserFullName(user);
   const initials = fullName || user.userName || 'User';
   return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
+}
+
+export function getTeamAvatarUrl(team: Team, size: number = 64): string {
+  if (team.profileImageId) {
+    return storage.getFilePreview({
+      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
+      fileId: team.profileImageId,
+      width: size,
+      height: size
+    });
+  }
+
+  const teamName = team.name || 'Team';
+  const initials = teamName.split(' ')
+    .map(word => word.charAt(0))
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
+  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
+}
+
+export function getEventImageUrl(params: {
+  imageId: string;
+  size?: number;
+  width?: number;
+  height?: number;
+}): string {
+  if (params.width || params.height) {
+    return storage.getFilePreview({
+      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
+      fileId: params.imageId,
+      width: params.width,
+      height: params.height
+    });
+  }
+  return storage.getFilePreview({
+    bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
+    fileId: params.imageId,
+    width: params.size,
+    height: params.size
+  });
 }
 
 export function getTeamWinRate(team: Team): number {
@@ -257,7 +343,7 @@ export function getEventDateTime(event: Event): { date: string; time: string } {
   };
 }
 
-// Rest of interfaces...
+// API and form interfaces remain the same...
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -318,6 +404,6 @@ export interface PaymentResult {
 }
 
 export function formatPrice(price?: number) {
-    if (!price) return 'Free';
-    return `$${(price/100).toFixed(2)}`;
-  };
+  if (!price) return 'Free';
+  return `$${(price / 100).toFixed(2)}`;
+}

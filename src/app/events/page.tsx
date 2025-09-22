@@ -111,7 +111,7 @@ function EventsPageContent() {
       // Try to include a default sample event at the top when available
       let result = page;
       try {
-        const sample = await eventService.getEventById(DEFAULT_EVENT_ID);
+        const sample = await eventService.getEvent(DEFAULT_EVENT_ID);
         if (sample && !page.some(e => e.$id === sample.$id)) {
           result = [sample, ...page];
         }
