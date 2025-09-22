@@ -111,8 +111,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 registrationCutoffHours: editingEvent.registrationCutoffHours,
                 imageId: editingEvent.imageId,
                 seedColor: editingEvent.seedColor || 0,
-                waitList: editingEvent.waitList || [],
-                freeAgents: editingEvent.freeAgents || [],
+                waitList: editingEvent.waitListIds || [],
+                freeAgents: editingEvent.freeAgentIds || [],
                 playerIds: editingEvent.playerIds || [],
                 teamIds: editingEvent.teamIds || []
             };

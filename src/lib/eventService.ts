@@ -42,8 +42,8 @@ export interface CreateEventData {
   registrationCutoffHours?: number;
   imageId?: string;
   seedColor?: number;
-  waitList?: string[];
-  freeAgents?: string[];
+  waitListIds?: string[];
+  freeAgentIds?: string[];
   playerIds?: string[];
   teamIds?: string[];
   hostId?: string;

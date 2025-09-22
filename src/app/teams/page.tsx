@@ -81,8 +81,8 @@ function TeamsPageContent() {
         const evt = await eventService.getEventById(eventId);
         if (evt) {
           setEventContext(evt);
-          if (evt.freeAgents && evt.freeAgents.length > 0) {
-            const agents = await userService.getUsersByIds(evt.freeAgents);
+          if (evt.freeAgentIds && evt.freeAgentIds.length > 0) {
+            const agents = await userService.getUsersByIds(evt.freeAgentIds);
             setEventFreeAgents(agents);
           } else {
             setEventFreeAgents([]);
