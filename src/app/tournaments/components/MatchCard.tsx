@@ -1,10 +1,9 @@
 'use client';
 
-import { MatchWithRelations } from '../types/tournament';
-import { getTeamAvatarUrl } from '@/types';
+import { getTeamAvatarUrl, Match } from '@/types';
 
 interface MatchCardProps {
-    match: MatchWithRelations;
+    match: Match;
     onClick: () => void;
     canManage?: boolean;
     className?: string;
@@ -83,15 +82,15 @@ export default function MatchCard({ match, onClick, canManage = false, className
                     <div className={`flex items-center justify-between p-2 rounded ${result?.winner === 1 ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
                         }`}>
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                            {match.team1Data && (
+                            {match.team1 && (
                                 <img
-                                    src={getTeamAvatarUrl(match.team1Data, 24)}
-                                    alt={getTeamName(match.team1Data)}
+                                    src={getTeamAvatarUrl(match.team1, 24)}
+                                    alt={getTeamName(match.team1)}
                                     className="w-6 h-6 rounded-full"
                                 />
                             )}
                             <span className="text-sm font-medium truncate">
-                                {getTeamName(match.team1Data)}
+                                {getTeamName(match.team1)}
                             </span>
                         </div>
                         <div className="flex items-center gap-1 text-sm font-mono">
@@ -115,15 +114,15 @@ export default function MatchCard({ match, onClick, canManage = false, className
                     <div className={`flex items-center justify-between p-2 rounded ${result?.winner === 2 ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
                         }`}>
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                            {match.team2Data && (
+                            {match.team2 && (
                                 <img
-                                    src={getTeamAvatarUrl(match.team2Data, 24)}
-                                    alt={getTeamName(match.team2Data)}
+                                    src={getTeamAvatarUrl(match.team2, 24)}
+                                    alt={getTeamName(match.team2)}
                                     className="w-6 h-6 rounded-full"
                                 />
                             )}
                             <span className="text-sm font-medium truncate">
-                                {getTeamName(match.team2Data)}
+                                {getTeamName(match.team2)}
                             </span>
                         </div>
                         <div className="flex items-center gap-1 text-sm font-mono">
@@ -185,7 +184,7 @@ export default function MatchCard({ match, onClick, canManage = false, className
                             </span>
                         </>
                     ) : (
-                        <span>{match.refId ? 'Ref: Assigned' : 'Ref: TBD'}</span>
+                        <span>Ref: TBD</span>
                     )}
                 </div>
             </div>

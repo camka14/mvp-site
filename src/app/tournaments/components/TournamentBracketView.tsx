@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
-import { TournamentBracket, MatchWithRelations } from '../types/tournament';
+import { TournamentBracket } from '../types/tournament';
 
-import { UserData } from '@/types';
+import { Match, UserData } from '@/types';
 
 import MatchCard from './MatchCard';
 
@@ -16,7 +16,7 @@ import { Paper, Group, Button, ActionIcon, Text, SegmentedControl, Badge } from 
 interface TournamentBracketViewProps {
     bracket: TournamentBracket;
     onScoreUpdate: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
-    onMatchUpdate: (matchId: string, updates: Partial<MatchWithRelations>) => Promise<void>;
+    onMatchUpdate: (matchId: string, updates: Partial<Match>) => Promise<void>;
     currentUser?: UserData;
     isExpanded?: boolean;
     onToggleExpand?: () => void;
@@ -30,7 +30,7 @@ export default function TournamentBracketView({
     isExpanded,
     onToggleExpand,
 }: TournamentBracketViewProps) {
-    const [selectedMatch, setSelectedMatch] = useState<MatchWithRelations | null>(null);
+    const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
     const [showScoreModal, setShowScoreModal] = useState(false);
     // Zoom state - using CSS zoom instead of transform
     const [zoomLevel, setZoomLevel] = useState(1);
@@ -52,11 +52,11 @@ export default function TournamentBracketView({
 
     // Subset of matches for current view, plus one-hop children from the opposite bracket
     const viewById = useMemo(() => {
-        const map: Record<string, MatchWithRelations> = {};
+        const map: Record<string, Match> = {};
         // include all matches in current bracket
-        bracket.matches.forEach(m => { if (m.losersBracket === isLosersBracket) map[m.$id] = m; });
+        Object.values(bracket.matches).forEach(m => { if (m.losersBracket === isLosersBracket) map[m.$id] = m; });
         // include one-hop children even if from opposite bracket
-        const idToMatch: Record<string, MatchWithRelations> = Object.fromEntries(bracket.matches.map(m => [m.$id, m]));
+        const idToMatch: Record<string, Match> = Object.fromEntries(Object.values(bracket.matches).map(m => [m.$id, m]));
         Object.values(map).forEach(parent => {
             const left = parent.previousLeftMatch ?? (parent.previousLeftId ? idToMatch[parent.previousLeftId] : undefined);
             const right = parent.previousRightMatch ?? (parent.previousRightId ? idToMatch[parent.previousRightId] : undefined);
@@ -85,10 +85,10 @@ export default function TournamentBracketView({
     }, [terminalIds, viewById]);
 
     // Helper: children of a node with at most one-hop cross-bracket inclusion
-    const getChildrenLimited = useCallback((m: MatchWithRelations): MatchWithRelations[] => {
+    const getChildrenLimited = useCallback((m: Match): Match[] => {
         const left = m.previousLeftMatch ?? (m.previousLeftId ? viewById[m.previousLeftId] : undefined);
         const right = m.previousRightMatch ?? (m.previousRightId ? viewById[m.previousRightId] : undefined);
-        const children: MatchWithRelations[] = [];
+        const children: Match[] = [];
         if (left) children.push(left);
         if (right && (!left || right.$id !== left.$id)) children.push(right);
         // Do not traverse beyond one hop across brackets
@@ -220,7 +220,7 @@ export default function TournamentBracketView({
         const conns: { fromId: string; toId: string; x1: number; y1: number; x2: number; y2: number }[] = [];
         if (!positionById.size) { setConnections(conns); return; }
 
-        const getNextTarget = (m: MatchWithRelations): MatchWithRelations | undefined => {
+        const getNextTarget = (m: Match): Match | undefined => {
             if (!isLosersBracket) {
                 // Winners view: only next winner match
                 const t = m.winnerNextMatch ?? (m.winnerNextMatchId ? viewById[m.winnerNextMatchId] : undefined);
@@ -325,7 +325,7 @@ export default function TournamentBracketView({
         return () => window.removeEventListener('wheel', onWheel as EventListener);
     }, []);
 
-    const handleMatchClick = (match: MatchWithRelations) => {
+    const handleMatchClick = (match: Match) => {
         setSelectedMatch(match);
         setShowScoreModal(true);
     };
@@ -341,11 +341,11 @@ export default function TournamentBracketView({
         setSelectedMatch(null);
     };
 
-    const canManageMatch = (match: MatchWithRelations) => {
+    const canManageMatch = (match: Match) => {
         if (!currentUser) return false;
         if (bracket.isHost) return true;
         // Check if user is the referee
-        return match.refId === currentUser.$id;
+        return match.referee?.$id === currentUser.$id;
     };
 
     return (

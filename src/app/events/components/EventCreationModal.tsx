@@ -7,21 +7,14 @@ import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl, SPORTS_LIST, Event } from '@/types';
+import { getEventImageUrl, SPORTS_LIST, Event, Division as CoreDivision } from '@/types';
 
 import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
 
-// Define Division interface locally
-interface Division {
-    id: string;
-    name: string;
-    skillLevel: string;
-    minRating?: number;
-    maxRating?: number;
-}
+// UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
 interface EventCreationModalProps {
     isOpen: boolean;
@@ -74,7 +67,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         teamSizeLimit: number;
         teamSignup: boolean;
         singleDivision: boolean;
-        divisions: Division[];
+        divisions: string[];
         cancellationRefundHours: number;
         registrationCutoffHours: number;
         imageId: string;
@@ -84,14 +77,27 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         playerIds: string[];
         teamIds: string[];
     }>(() => {
+        const toDivisionKey = (d: string | CoreDivision): string => {
+            if (typeof d === 'string') {
+                const s = d.toLowerCase();
+                if (s.includes('beginner')) return 'beginner';
+                if (s.includes('intermediate')) return 'intermediate';
+                if (s.includes('advanced')) return 'advanced';
+                if (s.includes('expert')) return 'expert';
+                if (s.includes('open')) return 'open';
+                return d; // assume key already
+            }
+            const v = (d.skillLevel || d.name || d.id || '').toString();
+            return v.toLowerCase() || 'open';
+        };
         if (editingEvent) {
             return {
                 name: editingEvent.name,
                 description: editingEvent.description,
                 location: editingEvent.location,
                 coordinates: editingEvent.coordinates,
-                lat: Array.isArray(editingEvent.coordinates) ? editingEvent.coordinates[1] : (editingEvent as any).coordinates?.lat,
-                long: Array.isArray(editingEvent.coordinates) ? editingEvent.coordinates[0] : (editingEvent as any).coordinates?.lng,
+                lat: Array.isArray(editingEvent.coordinates) ? Number(editingEvent.coordinates[1]) : Number((editingEvent as any).coordinates?.lat || 0),
+                long: Array.isArray(editingEvent.coordinates) ? Number(editingEvent.coordinates[0]) : Number((editingEvent as any).coordinates?.lng || 0),
                 start: editingEvent.start,
                 end: editingEvent.end,
                 eventType: editingEvent.eventType,
@@ -102,11 +108,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 teamSizeLimit: editingEvent.teamSizeLimit,
                 teamSignup: editingEvent.teamSignup,
                 singleDivision: editingEvent.singleDivision,
-                divisions: editingEvent.divisions.map(skillLevel => ({
-                    id: `${skillLevel}-${Date.now()}`,
-                    name: skillLevel,
-                    skillLevel
-                })),
+                divisions: Array.isArray(editingEvent.divisions)
+                    ? (editingEvent.divisions as (string | CoreDivision)[]).map(toDivisionKey)
+                    : [],
                 cancellationRefundHours: editingEvent.cancellationRefundHours,
                 registrationCutoffHours: editingEvent.registrationCutoffHours,
                 imageId: editingEvent.imageId,
@@ -266,7 +270,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
         setIsSubmitting(true);
         try {
-            // Convert Division[] to string[] for backend compatibility
+            // Divisions already tracked as string[] keys
             const finalImageId = selectedImageId || eventData.imageId;
             if (!finalImageId) {
                 // Safety net: image is required
@@ -275,7 +279,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             }
             let submitData: any = {
                 ...eventData,
-                divisions: eventData.divisions.map(div => div.skillLevel),
+                divisions: eventData.divisions,
                 imageId: finalImageId,
             };
 
@@ -570,35 +574,20 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         <h3 className="text-lg font-semibold mb-4">Event Settings</h3>
 
                         <MantineMultiSelect
-                            label="Divisions"
-                            placeholder="Select divisions"
-                            data={[
-                                { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
-                                { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
-                                { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
-                                { value: 'expert', label: 'Expert (4.5+)' },
-                                { value: 'open', label: 'Open (All Skill Levels)' },
-                            ]}
-                            value={eventData.divisions.map(d => d.skillLevel)}
-                            onChange={(vals) => {
-                                const toLabel = (v: string) => {
-                                    switch (v) {
-                                        case 'beginner': return 'Beginner (1.0 - 2.5) Division';
-                                        case 'intermediate': return 'Intermediate (2.5 - 3.5) Division';
-                                        case 'advanced': return 'Advanced (3.5 - 4.5) Division';
-                                        case 'expert': return 'Expert (4.5+) Division';
-                                        case 'open': return 'Open (All Skill Levels) Division';
-                                        default: return v;
-                                    }
-                                };
-                                setEventData(prev => ({
-                                    ...prev,
-                                    divisions: vals.map(v => ({ id: `${v}-${Date.now()}`, name: toLabel(v), skillLevel: v } as Division))
-                                }));
-                            }}
-                            clearable
-                            searchable
-                        />
+                        label="Divisions"
+                        placeholder="Select divisions"
+                        data={[
+                            { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
+                            { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
+                            { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
+                            { value: 'expert', label: 'Expert (4.5+)' },
+                            { value: 'open', label: 'Open (All Skill Levels)' },
+                        ]}
+                        value={eventData.divisions}
+                        onChange={(vals) => setEventData(prev => ({ ...prev, divisions: vals }))}
+                        clearable
+                        searchable
+                    />
 
                         {/* Team Settings */}
                         <div className="mt-6 space-y-3">

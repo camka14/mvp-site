@@ -1,6 +1,5 @@
 import { databases } from '@/app/appwrite';
-import { Event, EventWithRelations, Tournament, PickupEvent, LocationCoordinates, getCategoryFromEvent, Division, Team, UserData, Field, Match } from '@/types';
-import { locationService } from './locationService';
+import { Event, LocationCoordinates, getCategoryFromEvent, Division, Team, UserData, Field, Match } from '@/types';
 import { ID, Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
@@ -42,6 +41,10 @@ export interface CreateEventData {
   registrationCutoffHours?: number;
   imageId?: string;
   seedColor?: number;
+  // EventCreationModal passes these as plain arrays
+  waitList?: string[];
+  freeAgents?: string[];
+  // Stored/normalized names in DB
   waitListIds?: string[];
   freeAgentIds?: string[];
   playerIds?: string[];
@@ -64,7 +67,7 @@ class EventService {
    * Get event with all relationships expanded (matching Python backend approach)
    * This fetches all related data in a single database call using Appwrite's relationship features
    */
-  async getEventWithRelations(id: string): Promise<EventWithRelations | undefined> {
+  async getEventWithRelations(id: string): Promise<Event | undefined> {
     try {
       // Use Query.select to expand all relationships like in Python backend
       const queries = [
@@ -131,6 +134,11 @@ class EventService {
       console.error('Failed to fetch events:', error);
       throw new Error('Failed to load events');
     }
+  }
+
+  // Convenience alias used across UI
+  async getEventById(id: string): Promise<Event | undefined> {
+    return this.getEvent(id);
   }
 
   async updateEventParticipants(eventId: string, updates: { playerIds: string[], teamIds: string[] }): Promise<Event> {
@@ -237,79 +245,36 @@ class EventService {
     };
   }
 
-  private mapRowToEventWithRelations(row: any): EventWithRelations {
+  private mapRowToEventWithRelations(row: any): Event {
     const baseEvent = this.mapRowToEvent(row);
 
-    // Setup default divisions
-    const divisions: Division[] = [{ id: "OPEN", name: "OPEN" }];
+    const event: Event = { ...baseEvent };
 
-    // Process expanded teams
-    const teams: { [key: string]: Team } = {};
-    if (row.teams && Array.isArray(row.teams)) {
-      row.teams.forEach((teamData: any) => {
-        const team: Team = {
-          ...teamData,
-          division: divisions[0], // Default division
-          winRate: this.calculateWinRate(teamData.wins || 0, teamData.losses || 0),
-          currentSize: (teamData.playerIds || []).length,
-          isFull: (teamData.playerIds || []).length >= (teamData.teamSize || 6),
-          avatarUrl: '' // Will be computed by helper function
-        };
-        teams[team.$id] = team;
-      });
+    // Simply cast lists from Appwrite; only compute player fullName.
+    if (Array.isArray(row.teams)) {
+      event.teams = row.teams as Team[];
     }
 
-    // Process expanded players
-    const players: UserData[] = [];
-    if (row.players && Array.isArray(row.players)) {
-      row.players.forEach((playerData: any) => {
-        const player: UserData = {
-          ...playerData,
-          fullName: `${playerData.firstName || ''} ${playerData.lastName || ''}`.trim(),
-          avatarUrl: '' // Will be computed by helper function
-        };
-        players.push(player);
-      });
+    if (Array.isArray(row.fields)) {
+      event.fields = row.fields as Field[];
     }
 
-    // Process fields (for tournaments)
-    const fields: { [key: string]: Field } = {};
-    if (row.fields && Array.isArray(row.fields)) {
-      row.fields.forEach((fieldData: any) => {
-        const field: Field = {
-          ...fieldData,
-          divisions: divisions
-        };
-        fields[field.$id] = field;
-      });
+    if (Array.isArray(row.matches)) {
+      event.matches = (row.matches as any[]).map((m: any) => ({
+        ...m,
+        matchId: m.matchNumber ?? m.matchId,
+      } as Match));
     }
 
-    // Process matches (for tournaments)
-    const matches: { [key: string]: Match } = {};
-    if (row.matches && Array.isArray(row.matches)) {
-      row.matches.forEach((matchData: any) => {
-        const match: Match = {
-          ...matchData,
-          division: divisions[0],
-          team1: matchData.team1 ? teams[this.extractId(matchData.team1)] : undefined,
-          team2: matchData.team2 ? teams[this.extractId(matchData.team2)] : undefined,
-          referee: matchData.referee ? teams[this.extractId(matchData.referee)] : undefined,
-          fieldId: matchData.field ? fields[this.extractId(matchData.field)] : undefined,
-        };
-        matches[match.$id] = match;
-      });
+    if (Array.isArray(row.players)) {
+      event.players = (row.players as any[]).map((p: any) => ({
+        ...p,
+        fullName: `${p.firstName || ''} ${p.lastName || ''}`.trim(),
+        avatarUrl: p.avatarUrl ?? '',
+      } as UserData));
     }
 
-    const eventWithRelations: EventWithRelations = {
-      ...baseEvent,
-      teams,
-      players,
-      divisions,
-      fields: Object.keys(fields).length > 0 ? fields : undefined,
-      matches: Object.keys(matches).length > 0 ? matches : undefined,
-    };
-
-    return eventWithRelations;
+    return event;
   }
 
   private extractId(value: any): string {
@@ -322,6 +287,46 @@ class EventService {
     const totalGames = wins + losses;
     if (totalGames === 0) return 0;
     return Math.round((wins / totalGames) * 100);
+  }
+
+  // Waitlist and free-agent helpers used by EventDetailModal
+  async addToWaitlist(eventId: string, participantId: string): Promise<Event> {
+    const existing = await this.getEvent(eventId);
+    if (!existing) throw new Error('Event not found');
+    const updated = Array.from(new Set([...(existing.waitListIds || []), participantId]));
+    const response = await databases.updateRow({
+      databaseId: DATABASE_ID,
+      tableId: EVENTS_TABLE_ID,
+      rowId: eventId,
+      data: { waitListIds: updated }
+    });
+    return this.mapRowToEvent(response);
+  }
+
+  async addFreeAgent(eventId: string, userId: string): Promise<Event> {
+    const existing = await this.getEvent(eventId);
+    if (!existing) throw new Error('Event not found');
+    const updated = Array.from(new Set([...(existing.freeAgentIds || []), userId]));
+    const response = await databases.updateRow({
+      databaseId: DATABASE_ID,
+      tableId: EVENTS_TABLE_ID,
+      rowId: eventId,
+      data: { freeAgentIds: updated }
+    });
+    return this.mapRowToEvent(response);
+  }
+
+  async removeFreeAgent(eventId: string, userId: string): Promise<Event> {
+    const existing = await this.getEvent(eventId);
+    if (!existing) throw new Error('Event not found');
+    const updated = (existing.freeAgentIds || []).filter(id => id !== userId);
+    const response = await databases.updateRow({
+      databaseId: DATABASE_ID,
+      tableId: EVENTS_TABLE_ID,
+      rowId: eventId,
+      data: { freeAgentIds: updated }
+    });
+    return this.mapRowToEvent(response);
   }
 
   // Pagination methods remain largely the same but updated to use new types

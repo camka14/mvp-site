@@ -73,13 +73,11 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
             setDetailedEvent(baseEvent);
 
             // Load participants from the latest snapshot
-            const [eventPlayers, eventTeams] = await Promise.all([
-                baseEvent.playerIds.length > 0 ? userService.getUsersByIds(baseEvent.playerIds) : Promise.resolve([]),
-                baseEvent.teamIds.length > 0 ? Promise.all(baseEvent.teamIds.map(id => teamService.getTeamById(id, true))) : Promise.resolve([])
-            ]);
+            const eventPlayers: UserData[] = (latest?.players as UserData[]) || [];
+            const eventTeams: Team[] = (latest?.teams as Team[]) || [];
 
             setPlayers(eventPlayers);
-            setTeams(eventTeams.filter(team => team !== undefined) as Team[]);
+            setTeams(eventTeams);
 
             // Load free agents from the latest snapshot
             if (baseEvent.freeAgentIds && baseEvent.freeAgentIds.length > 0) {
@@ -91,8 +89,9 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
 
             // If team signup and user is present, load user's relevant teams
             if (user && baseEvent.teamSignup) {
-                const teamsByUser = await teamService.getTeamById(user.$id);
-                const relevant = teamsByUser.filter(t => t.sport.toLowerCase() === baseEvent.sport.toLowerCase());
+                const ids = Array.isArray(user.teamIds) ? user.teamIds : [];
+                const userTeamsAll = await teamService.getTeamsByIds(ids, true);
+                const relevant = userTeamsAll.filter(t => (t.sport || '').toLowerCase() === (baseEvent.sport || '').toLowerCase());
                 setUserTeams(relevant);
             } else {
                 setUserTeams([]);
@@ -183,10 +182,12 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
             while (Date.now() < deadline) {
                 const latest = await eventService.getEvent(currentEvent.$id);
                 if (latest) {
-                    // Check registration status depending on signup type
+                    // Check registration status depending on signup type using relations
                     const registered = latest.teamSignup
-                        ? (targetTeamId ? (latest.teamIds || []).includes(targetTeamId) : false)
-                        : (latest.playerIds || []).includes(user.$id);
+                        ? (targetTeamId
+                            ? Object.values(latest.teams || {}).some(t => t.$id === targetTeamId)
+                            : Object.values(latest.teams || {}).some(t => (t.playerIds || []).includes(user.$id)))
+                        : (latest.players || []).some(p => p.$id === user.$id);
 
                     if (registered) {
                         await loadEventDetails();
@@ -212,10 +213,11 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     const { date, time } = getEventDateTime(currentEvent);
     const category = getCategoryFromEvent(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
-    // Only consider real registrations (not free-agent listings) for refund logic
+    const totalParticipants = isTeamSignup ? teams.length : players.length;
+    // Use expanded relations for registration state
     const isUserRegistered = !!user && (
-        (!currentEvent.teamSignup && currentEvent.playerIds.includes(user.$id)) ||
-        (currentEvent.teamSignup && (user.teamIds || []).some(tid => currentEvent.teamIds.includes(tid)))
+        (!isTeamSignup && players.some(p => p.$id === user.$id)) ||
+        (isTeamSignup && teams.some(t => (t.playerIds || []).includes(user.$id)))
     );
     const isUserFreeAgent = !!user && (currentEvent.freeAgentIds || []).includes(user.$id);
 
@@ -225,7 +227,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                 {/* Optional hero banner */}
                 <div className="relative">
                     <img
-                        src={getEventImageUrl({ imageId: event.imageId, width: 800 })}
+                        src={getEventImageUrl({ imageId: currentEvent.imageId, width: 800 })}
                         alt={currentEvent.name}
                         className="w-full h-48 object-cover"
                         onError={(e) => {
@@ -302,7 +304,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                             <div className="flex flex-wrap gap-2 mt-1">
                                                 {currentEvent.divisions.map((division, index) => (
                                                     <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                                                        {division}
+                                                        {typeof division === 'string' ? division : (division?.name || division?.id || 'Division')}
                                                     </span>
                                                 ))}
                                             </div>
@@ -361,12 +363,12 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                             <h3 className="text-lg font-semibold text-gray-900 mb-4">Participants</h3>
 
                             {/* Players Section */}
-                            {(players.length > 0 || currentEvent.playerIds.length > 0) && (
+                            {players.length > 0 && (
                                 <div className="mb-4">
                                     <ParticipantsPreview
                                         title="Players"
                                         participants={players}
-                                        totalCount={currentEvent.playerIds.length}
+                                        totalCount={players.length}
                                         isLoading={isLoading}
                                         onClick={() => setShowPlayersDropdown(true)}
                                         getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
@@ -376,12 +378,12 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                             )}
 
                             {/* Teams Section */}
-                            {(teams.length > 0 || currentEvent.teamIds.length > 0) && (
+                            {teams.length > 0 && (
                                 <div className="mb-4">
                                     <ParticipantsPreview
                                         title="Teams"
                                         participants={teams}
-                                        totalCount={currentEvent.teamIds.length}
+                                        totalCount={teams.length}
                                         isLoading={isLoading}
                                         onClick={() => setShowTeamsDropdown(true)}
                                         getAvatarUrl={(participant) => getTeamAvatarUrl(participant as Team, 32)}
@@ -422,7 +424,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                             </Text>
                                             <div style={{ textAlign: 'center', marginTop: 8 }}>
                                                 <Text size="sm" c="dimmed">
-                                                    {currentEvent.attendees} / {currentEvent.maxParticipants} total participants
+                                                    {totalParticipants} / {currentEvent.maxParticipants} total participants
                                                 </Text>
                                             </div>
                                         </>
@@ -430,7 +432,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                         <div className="space-y-3">
                                         {!isTeamSignup ? (
                                             <div>
-                                                {currentEvent.attendees >= currentEvent.maxParticipants ? (
+                                                {totalParticipants >= currentEvent.maxParticipants ? (
                                                     <Button fullWidth color="orange"
                                                         onClick={async () => {
                                                             if (!user) return;
@@ -480,7 +482,10 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                                     </label>
                                                                     <MantineSelect
                                                                         placeholder="Choose a team"
-                                                                        data={userTeams.map(t => ({ value: t.$id, label: `${t.name} (${t.division})` }))}
+                                                                        data={userTeams.map(t => ({
+                                                                            value: t.$id,
+                                                                            label: `${t.name || 'Team'} (${typeof t.division === 'string' ? t.division : (t.division as any)?.name || 'Division'})`
+                                                                        }))}
                                                                         value={selectedTeamId}
                                                                         onChange={(value) => setSelectedTeamId(value || '')}
                                                                         searchable
@@ -501,7 +506,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
 
                                                                 {/* Join/Waitlist Button Section - Matching Hide/Show button height */}
                                                                 <div className="flex justify-center pt-2">
-                                                                    {currentEvent.attendees >= currentEvent.maxParticipants ? (
+                                                                    {totalParticipants >= currentEvent.maxParticipants ? (
                                                                         <Button
                                                                             onClick={async () => {
                                                                                 if (!selectedTeamId) return;
@@ -548,7 +553,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                             {/* Total participants below actions */}
                                             <div style={{ textAlign: 'center' }}>
                                                 <Text size="sm" c="dimmed">
-                                                    {currentEvent.attendees} / {currentEvent.maxParticipants} total participants
+                                                    {totalParticipants} / {currentEvent.maxParticipants} total participants
                                                 </Text>
                                             </div>
                                         </div>
@@ -675,7 +680,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                         <div className="flex-1">
                             <div className="font-medium text-gray-900">{(team as Team).name || 'Unnamed Team'}</div>
                             <div className="text-sm text-gray-500">
-                                {(team as Team).currentSize} members • {(team as Team).division} Division
+                                {(team as Team).currentSize} members • {typeof (team as Team).division === 'string' ? (team as Team).division : ((team as Team).division as any)?.name || 'Division'} Division
                             </div>
                         </div>
                         <div className="text-xs text-gray-400">

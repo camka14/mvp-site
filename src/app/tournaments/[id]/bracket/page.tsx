@@ -8,7 +8,8 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import { Button, Group, Paper, Text } from '@mantine/core';
 import TournamentBracketView from '../../components/TournamentBracketView';
-import { Match, TournamentBracket } from '../../types/tournament';
+import { TournamentBracket } from '../../types/tournament';
+import { Match } from '@/types';
 
 export default function TournamentBracketPage() {
     return (
@@ -163,7 +164,7 @@ function TournamentBracketContent() {
                                     <span className="font-medium">Teams:</span> {bracket.teams.length}
                                 </div>
                                 <div>
-                                    <span className="font-medium">Matches:</span> {bracket.matches.length}
+                                    <span className="font-medium">Matches:</span> {Object.values(bracket.matches).length}
                                 </div>
                                 {bracket.tournament.prize && (
                                     <div>

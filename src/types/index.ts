@@ -26,25 +26,29 @@ export interface Match {
   team1Points: number[];
   team2Points: number[];
   tournamentId: string;
+  previousLeftId?: string;
+  previousRightId?: string;
+  winnerNextMatchId?: string;
+  loserNextMatchId?: string;
   start: string;
   end: string;
   losersBracket?: boolean;
   setResults: number[];
   side?: string;
-  refereeCheckedIn?: boolean;
+  refCheckedIn?: boolean;
 
   // Relationship fields - can be IDs or expanded objects
-  division: Division | string;
-  fieldId?: Field | string;
-  referee?: Team | string;
-  team1?: Team | string;
-  team2?: Team | string;
+  division: Division;
+  field?: Field;
+  referee?: Team;
+  team1?: Team;
+  team2?: Team;
 
   // Match relationships
-  previousLeftMatch?: Match | string;
-  previousRightMatch?: Match | string;
-  winnerNextMatch?: Match | string;
-  loserNextMatch?: Match | string;
+  previousLeftMatch?: Match;
+  previousRightMatch?: Match;
+  winnerNextMatch?: Match;
+  loserNextMatch?: Match;
 
   $createdAt?: string;
   $updatedAt?: string;
@@ -138,8 +142,8 @@ export interface Event {
   teamSizeLimit: number;
   teamSignup: boolean;
   singleDivision: boolean;
-  waitList: string[];
-  freeAgents: string[];
+  waitListIds: string[];
+  freeAgentIds: string[];
   playerIds: string[];
   teamIds: string[];
   cancellationRefundHours: number;
@@ -163,33 +167,15 @@ export interface Event {
   loserScoreLimitsPerSet?: number[];
   prize?: string;
   fieldCount: number;
+  fields?: Field[];
+  matches?: Match[];
+  teams?: Team[];
+  players?: UserData[];
 
   // Computed properties
   attendees: number;
   category: EventCategory;
 }
-
-// Expanded Event interface with all relationships populated (matching Python get_event)
-export interface EventWithRelations extends Event {
-  // Expanded relationships
-  teams: { [key: string]: Team }; // Dictionary of teams with full data
-  players: UserData[]; // Array of user objects
-  divisions: Division[]; // Array of division objects
-  fields?: { [key: string]: Field }; // Dictionary of fields (for tournaments)
-  matches?: { [key: string]: Match }; // Dictionary of matches (for tournaments)
-  host?: UserData; // Expanded host information
-}
-
-// Tournament and Pickup event types
-export type Tournament = EventWithRelations & {
-  eventType: 'tournament';
-  fields: { [key: string]: Field };
-  matches: { [key: string]: Match };
-};
-
-export type PickupEvent = EventWithRelations & {
-  eventType: 'pickup';
-};
 
 // Organization interfaces
 export interface Organization {
