@@ -9,7 +9,7 @@ import {
   Field,
   Match,
   LeagueConfig,
-  WeeklySchedule,
+  TimeSlot,
   EventStatus,
 } from '@/types';
 import { ID, Query } from 'appwrite';
@@ -304,12 +304,7 @@ class EventService {
     }
 
     if (Array.isArray(row.weeklySchedules)) {
-      event.weeklySchedules = (row.weeklySchedules as any[]).map((schedule: any) => ({
-        ...schedule,
-        $id: schedule.$id ?? schedule.id,
-        eventId: this.extractId(schedule.eventId ?? schedule.event),
-        fieldId: this.extractId(schedule.fieldId ?? schedule.field),
-      })) as WeeklySchedule[];
+      event.timeSlots = (row.weeklySchedules as any[]).map((schedule: any) => this.mapRowToTimeSlot(schedule));
     }
 
     if (Array.isArray(row.players)) {
@@ -353,6 +348,54 @@ class EventService {
     const totalGames = wins + losses;
     if (totalGames === 0) return 0;
     return Math.round((wins / totalGames) * 100);
+  }
+
+  private mapRowToTimeSlot(row: any): TimeSlot {
+    const slot: TimeSlot = {
+      $id: row.$id ?? row.id,
+      dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
+      startTime: this.normalizeTime(row.startTime),
+      endTime: this.normalizeTime(row.endTime),
+      timezone: typeof row.timezone === 'string' ? row.timezone : String(row.timezone ?? 'UTC'),
+      event: row.event ?? row.eventId ?? row.event?.$id,
+      field: row.field ?? row.fieldId ?? row.field?.$id,
+    };
+
+    if (row.field) {
+      slot.field = row.field;
+    }
+
+    if (row.event) {
+      slot.event = row.event;
+    }
+
+    return slot;
+  }
+
+  private normalizeTime(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      if (/^\d{1,2}:\d{2}$/.test(value)) {
+        return this.timeStringToMinutes(value);
+      }
+
+      const numeric = Number(value);
+      if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+        return numeric;
+      }
+    }
+
+    return 0;
+  }
+
+  private timeStringToMinutes(time: string): number {
+    const [hoursRaw, minutesRaw] = time.split(':');
+    const hours = Number(hoursRaw ?? 0);
+    const minutes = Number(minutesRaw ?? 0);
+    return (Number.isNaN(hours) ? 0 : hours) * 60 + (Number.isNaN(minutes) ? 0 : minutes);
   }
 
   // Waitlist and free-agent helpers used by EventDetailModal

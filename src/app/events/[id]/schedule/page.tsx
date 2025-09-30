@@ -98,16 +98,19 @@ function LeagueScheduleContent() {
       });
     }
 
-    if (event?.weeklySchedules) {
-      event.weeklySchedules.forEach(schedule => {
-        if (schedule.fieldId && schedule.field?.name && !map.has(schedule.fieldId)) {
-          map.set(schedule.fieldId, schedule.field.name);
+    if (event?.timeSlots) {
+      event.timeSlots.forEach(schedule => {
+        const scheduleFieldId = typeof schedule.field === 'string'
+          ? schedule.field
+          : schedule.field?.$id;
+        if (scheduleFieldId && schedule.field && typeof schedule.field === 'object' && schedule.field.name && !map.has(scheduleFieldId)) {
+          map.set(scheduleFieldId, schedule.field.name);
         }
       });
     }
 
     return map;
-  }, [event?.fields, event?.weeklySchedules]);
+  }, [event?.fields, event?.timeSlots]);
 
   const teamLookup = useMemo(() => {
     const map = new Map<string, Team>();

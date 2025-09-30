@@ -55,13 +55,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const timezoneDefault = typeof Intl !== 'undefined'
         ? Intl.DateTimeFormat().resolvedOptions().timeZone
         : 'UTC';
-    const createSlotForm = useCallback((slot?: WeeklySlotInput): LeagueSlotForm => ({
+    const createSlotForm = useCallback((slot?: Partial<WeeklySlotInput> & { fieldId?: string }): LeagueSlotForm => ({
         key: slot?.$id ?? `slot-${Math.random().toString(36).slice(2, 9)}`,
         $id: slot?.$id,
-        fieldId: slot?.fieldId || '',
+        fieldId: slot?.fieldId,
         dayOfWeek: slot?.dayOfWeek,
-        startTime: slot?.startTime || '',
-        endTime: slot?.endTime || '',
+        startTime: slot?.startTime,
+        endTime: slot?.endTime,
         timezone: slot?.timezone || timezoneDefault,
         conflicts: [],
         checking: false,
@@ -248,10 +248,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     });
 
     const [leagueSlots, setLeagueSlots] = useState<LeagueSlotForm[]>(() => {
-        if (editingEvent && editingEvent.eventType === 'league' && editingEvent.weeklySchedules?.length) {
-            return (editingEvent.weeklySchedules || []).map((slot) => createSlotForm({
+        if (editingEvent && editingEvent.eventType === 'league' && editingEvent.timeSlots?.length) {
+            return (editingEvent.timeSlots || []).map((slot) => createSlotForm({
                 $id: slot.$id,
-                fieldId: slot.fieldId,
+                fieldId: typeof slot.field === 'string'
+                    ? slot.field
+                    : slot.field?.$id,
                 dayOfWeek: slot.dayOfWeek,
                 startTime: slot.startTime,
                 endTime: slot.endTime,
@@ -321,7 +323,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             if (!slot.fieldId || validKeys.has(slot.fieldId)) {
                 return slot;
             }
-            return { ...slot, fieldId: '' };
+            return { ...slot, fieldId: undefined };
         }));
     }, [fieldTemplates, shouldManageLocalFields]);
 
@@ -339,7 +341,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             return;
         }
 
-        if (!slot.fieldId || typeof slot.dayOfWeek !== 'number' || !slot.startTime || !slot.endTime) {
+        if (
+            !slot.fieldId ||
+            typeof slot.dayOfWeek !== 'number' ||
+            typeof slot.startTime !== 'number' ||
+            typeof slot.endTime !== 'number'
+        ) {
             setLeagueSlots(prev => {
                 const next = [...prev];
                 if (next[index]) {
@@ -464,9 +471,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 setsPerMatch: source?.setsPerMatch ?? undefined,
             });
 
-            const slots = (editingEvent.weeklySchedules || []).map(slot => createSlotForm({
+            const slots = (editingEvent.timeSlots || []).map(slot => createSlotForm({
                 $id: slot.$id,
-                fieldId: slot.fieldId,
+                fieldId: typeof slot.field === 'string'
+                    ? slot.field
+                    : slot.field?.$id,
                 dayOfWeek: slot.dayOfWeek,
                 startTime: slot.startTime,
                 endTime: slot.endTime,
@@ -476,7 +485,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             setLeagueSlots(slots.length > 0 ? slots : [createSlotForm()]);
 
             slots.forEach((slot, index) => {
-                if (slot.fieldId && typeof slot.dayOfWeek === 'number' && slot.startTime && slot.endTime) {
+                if (
+                    slot.fieldId &&
+                    typeof slot.dayOfWeek === 'number' &&
+                    typeof slot.startTime === 'number' &&
+                    typeof slot.endTime === 'number'
+                ) {
                     checkSlotConflicts(slot, index);
                 }
             });
@@ -545,7 +559,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     useEffect(() => {
         if (eventData.eventType !== 'league' || shouldManageLocalFields) return;
         leagueSlotsRef.current.forEach((slot, index) => {
-            if (slot.fieldId && typeof slot.dayOfWeek === 'number' && slot.startTime && slot.endTime) {
+            if (
+                slot.fieldId &&
+                typeof slot.dayOfWeek === 'number' &&
+                typeof slot.startTime === 'number' &&
+                typeof slot.endTime === 'number'
+            ) {
                 checkSlotConflicts(slot, index);
             }
         });
@@ -641,7 +660,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const hasSlotConflicts = eventData.eventType === 'league' && !shouldManageLocalFields && leagueSlots.some(slot => slot.conflicts.length > 0);
     const hasPendingSlotChecks = eventData.eventType === 'league' && !shouldManageLocalFields && leagueSlots.some(slot => slot.checking);
     const hasIncompleteSlot = eventData.eventType === 'league' && leagueSlots.some(slot =>
-        !slot.fieldId || typeof slot.dayOfWeek !== 'number' || !slot.startTime || !slot.endTime || !slot.timezone
+        !slot.fieldId ||
+        typeof slot.dayOfWeek !== 'number' ||
+        typeof slot.startTime !== 'number' ||
+        typeof slot.endTime !== 'number' ||
+        !slot.timezone
     );
 
     const leagueFormValid = eventData.eventType !== 'league'
@@ -699,13 +722,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             return;
         }
 
-        const toMinutes = (time: string) => {
-            const [hours, minutes] = time.split(':').map((value) => Number(value || 0));
-            return hours * 60 + minutes;
-        };
-
         const invalidTimes = leagueSlots.some(slot =>
-            slot.startTime && slot.endTime && toMinutes(slot.endTime) <= toMinutes(slot.startTime)
+            typeof slot.startTime === 'number' &&
+            typeof slot.endTime === 'number' &&
+            slot.endTime <= slot.startTime
         );
 
         if (invalidTimes) {
@@ -720,13 +740,18 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
 
         const slotPayloads: LeagueSlotCreationInput[] = leagueSlots
-            .filter(slot => slot.fieldId && typeof slot.dayOfWeek === 'number' && slot.startTime && slot.endTime)
+            .filter(slot =>
+                slot.fieldId &&
+                typeof slot.dayOfWeek === 'number' &&
+                typeof slot.startTime === 'number' &&
+                typeof slot.endTime === 'number'
+            )
             .map(slot => ({
                 fieldId: shouldManageLocalFields ? undefined : slot.fieldId,
                 fieldKey: shouldManageLocalFields ? slot.fieldId : undefined,
                 dayOfWeek: slot.dayOfWeek as LeagueSlotCreationInput['dayOfWeek'],
-                startTime: slot.startTime,
-                endTime: slot.endTime,
+                startTime: slot.startTime as number,
+                endTime: slot.endTime as number,
                 timezone: slot.timezone || timezoneDefault,
             }));
 

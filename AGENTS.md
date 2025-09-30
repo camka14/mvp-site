@@ -558,6 +558,129 @@ export default function TeamsPage() {
 - **Pagination**: `Query.limit(50)`, `Query.cursorAfter('rowId')`
 - **Ordering**: `Query.orderAsc('name')`, `Query.orderDesc('$createdAt')`
 
+## Testing & Quality Assurance
+
+### Tooling & Commands
+
+- **Test runner**: Jest with `ts-jest` presets. Keep the config in `jest.config.ts` (or extend `package.json` if preferred).
+- **Run quickly during development**: `npx jest --watch` scoped to changed files. For CI-quality checks use `npm run test -- --runInBand` to avoid concurrency issues with Appwrite mocks.
+- **Type safety first**: always pair `npx tsc --noEmit` with Jest to surface type regressions alongside behavioural ones.
+
+```ts
+// jest.config.ts
+import type { Config } from 'jest';
+
+const config: Config = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
+  setupFilesAfterEnv: ['<rootDir>/test/setupTests.ts'],
+  collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts'],
+};
+
+export default config;
+```
+
+### When to Write Tests
+
+- **Every new function or feature** ships with at least one Jest test that proves the primary behaviour (happy-path) and a failure mode. Service-layer additions should cover Appwrite SDK usage via mocks.
+- **Bug fixes** include a regression test first, demonstrating the failing case before applying the patch.
+- **UI components** that contain business logic (form validation, derived state, conditional rendering) get component tests using `@testing-library/react` with Jest DOM matchers.
+
+> **Rule of thumb**: if code is complex enough to require a comment, it is complex enough to need a Jest test.
+
+### Structuring Tests
+
+- Co-locate unit tests beside the implementation: `yourFunction.test.ts` next to `yourFunction.ts`, or use `__tests__` folders for higher-level scenarios. Keep mocks under `test/mocks/*` so they can be reused.
+- Prefer deterministic inputs—mock time (`jest.useFakeTimers()`), network responses, and Appwrite clients to keep tests fast and hermetic. Avoid hitting real Appwrite instances.
+- Use factory helpers (`buildEvent()`, `buildTeam()`) in `test/factories.ts` to reduce duplication when creating domain objects for assertions.
+
+### Examples
+
+**Service function map test**
+
+```ts
+// src/lib/__tests__/eventService.test.ts
+import { eventService } from '@/lib/eventService';
+import { tables } from '@/app/appwrite';
+
+jest.mock('@/app/appwrite', () => ({
+  tables: { getRow: jest.fn() },
+}));
+
+describe('eventService.getEventWithRelations', () => {
+  it('hydrates time slots with relationship data', async () => {
+    (tables.getRow as jest.Mock).mockResolvedValue({
+      $id: 'evt_123',
+      weeklySchedules: [{
+        $id: 'ts_1',
+        dayOfWeek: 1,
+        startTime: 540,
+        endTime: 600,
+        timezone: 'America/Denver',
+        field: { $id: 'fld_1', name: 'Court A' },
+      }],
+    });
+
+    const result = await eventService.getEventWithRelations('evt_123');
+
+    expect(result?.timeSlots?.[0]).toMatchObject({
+      startTime: 540,
+      field: expect.objectContaining({ name: 'Court A' }),
+    });
+  });
+});
+```
+
+**Component interaction test**
+
+```tsx
+// src/app/events/components/__tests__/LeagueFields.test.tsx
+import { render, fireEvent } from '@testing-library/react';
+import LeagueFields from '../LeagueFields';
+
+const noop = () => {};
+
+it('converts time input into minutes before invoking onUpdateSlot', () => {
+  const onUpdateSlot = jest.fn();
+
+  const { getByLabelText } = render(
+    <LeagueFields
+      leagueData={{ gamesPerOpponent: 1, includePlayoffs: false, usesSets: false, matchDurationMinutes: 60 }}
+      onLeagueDataChange={noop}
+      slots={[{
+        key: 'slot-1',
+        fieldId: 'fld_1',
+        dayOfWeek: 1,
+        startTime: 540,
+        endTime: 600,
+        timezone: 'UTC',
+        conflicts: [],
+        checking: false,
+      }]}
+      onAddSlot={noop}
+      onUpdateSlot={onUpdateSlot}
+      onRemoveSlot={noop}
+      fields={[]}
+      fieldsLoading={false}
+    />
+  );
+
+  fireEvent.change(getByLabelText(/Start Time/i), { target: { value: '10:00' } });
+
+  expect(onUpdateSlot).toHaveBeenCalledWith(0, expect.objectContaining({ startTime: 600 }));
+});
+```
+
+### Test Review Checklist
+
+- Does the change include Jest coverage for new/modified logic?
+- Are mocks and spies reset with `afterEach(jest.clearAllMocks)` to avoid test bleed?
+- Are asynchronous tests using `await`/`findBy*` rather than timers? Prefer `waitFor` for retry logic.
+- Is coverage meaningful (asserting on outputs and side-effects) rather than implementation details?
+
 ## Security & Permissions
 
 - Authenticate with `Account` (email/password, OAuth) and protect pages.

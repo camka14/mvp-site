@@ -71,18 +71,16 @@ export interface Match {
   $updatedAt?: string;
 }
 
-export interface WeeklySchedule {
+export interface TimeSlot {
   $id: string;
-  eventId: string;
-  fieldId: string;
   dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  startTime: string;
-  endTime: string;
+  startTime: number;
+  endTime: number;
   timezone: string;
-  field?: Field;
+  event?: Event | string;
+  field?: Field | string;
 }
 
-// Updated UserData interface
 export interface UserData {
   $id: string;
   firstName: string;
@@ -106,7 +104,6 @@ export interface UserData {
   avatarUrl: string;
 }
 
-// Updated Team interface with relationships
 export interface Team {
   $id: string;
   name?: string;
@@ -123,7 +120,7 @@ export interface Team {
   $createdAt?: string;
   $updatedAt?: string;
 
-  // Expanded relationships (populated when fetching with relations)
+  // Expanded relationships
   players?: UserData[];
   captain?: UserData;
   pendingPlayers?: UserData[];
@@ -182,7 +179,7 @@ export interface Event {
 
   // Relationship fields - can be IDs or expanded objects
   divisions: Division[] | string[];
-  weeklySchedules?: WeeklySchedule[];
+  timeSlots?: TimeSlot[];
 
   // Tournament-specific fields
   doubleElimination?: boolean;

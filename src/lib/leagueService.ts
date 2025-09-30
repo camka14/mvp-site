@@ -1,7 +1,7 @@
 import { databases, ID, functions } from '@/app/appwrite';
 import { Query } from 'appwrite';
 import {
-  WeeklySchedule,
+  TimeSlot,
   ScheduledMatchPayload,
   CreateLeagueFnInput,
   Event,
@@ -19,14 +19,14 @@ const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 export interface WeeklySlotInput {
   fieldId: string;
   dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  startTime: string;
-  endTime: string;
+  startTime: number;
+  endTime: number;
   timezone: string;
   $id?: string;
 }
 
 export interface WeeklySlotConflict {
-  schedule: WeeklySchedule;
+  schedule: TimeSlot;
   event: Event;
 }
 
@@ -46,8 +46,8 @@ export interface LeagueSlotCreationInput {
   fieldKey?: string;
   fieldId?: string;
   dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  startTime: string;
-  endTime: string;
+  startTime: number;
+  endTime: number;
   timezone: string;
 }
 
@@ -63,22 +63,24 @@ export interface CreateLeagueDraftResult {
 }
 
 class LeagueService {
-  async createWeeklySchedules(eventId: string, slots: WeeklySlotInput[]): Promise<WeeklySchedule[]> {
+  async createWeeklySchedules(eventId: string, slots: WeeklySlotInput[]): Promise<TimeSlot[]> {
     if (!slots.length) {
       return [];
     }
 
     const created = await Promise.all(slots.map(async (slot) => {
+      const startTime = this.normalizeTime(slot.startTime);
+      const endTime = this.normalizeTime(slot.endTime);
       const response = await databases.createRow({
         databaseId: DATABASE_ID,
         tableId: WEEKLY_SCHEDULES_TABLE_ID,
         rowId: ID.unique(),
         data: {
-          eventId,
-          fieldId: slot.fieldId,
+          event: eventId,
+          field: slot.fieldId,
           dayOfWeek: slot.dayOfWeek,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
+          startTime,
+          endTime,
           timezone: slot.timezone,
         },
       });
@@ -103,18 +105,32 @@ class LeagueService {
     );
   }
 
-  async listWeeklySchedulesByEvent(eventId: string): Promise<WeeklySchedule[]> {
+  async listWeeklySchedulesByEvent(eventId: string): Promise<TimeSlot[]> {
     const response = await databases.listRows({
       databaseId: DATABASE_ID,
       tableId: WEEKLY_SCHEDULES_TABLE_ID,
-      queries: [Query.equal('eventId', eventId)],
+      queries: [
+        Query.equal('event', eventId),
+        Query.select([
+          '*',
+          'field.*',
+          'event.$id',
+        ]),
+      ],
     });
 
     return response.rows.map((row: any) => this.mapRowToWeeklySchedule(row));
   }
 
-  async listWeeklySchedulesByField(fieldId: string, dayOfWeek?: number): Promise<WeeklySchedule[]> {
-    const queries = [Query.equal('fieldId', fieldId)];
+  async listWeeklySchedulesByField(fieldId: string, dayOfWeek?: number): Promise<TimeSlot[]> {
+    const queries = [
+      Query.equal('field', fieldId),
+      Query.select([
+        '*',
+        'field.*',
+        'event.$id',
+      ]),
+    ];
     if (typeof dayOfWeek === 'number') {
       queries.push(Query.equal('dayOfWeek', dayOfWeek));
     }
@@ -139,12 +155,14 @@ class LeagueService {
     const cachedEvents = new Map<string, Event>();
 
     for (const schedule of existingSchedules) {
-      const otherEventId = schedule.eventId;
+      const otherEventId = this.extractId(schedule.event);
       if (!otherEventId || otherEventId === options.ignoreEventId) {
         continue;
       }
 
-      if (!this.timesOverlap(slot.startTime, slot.endTime, schedule.startTime, schedule.endTime)) {
+      const slotStart = this.normalizeTime(slot.startTime);
+      const slotEnd = this.normalizeTime(slot.endTime);
+      if (!this.timesOverlap(slotStart, slotEnd, schedule.startTime, schedule.endTime)) {
         continue;
       }
 
@@ -246,8 +264,8 @@ class LeagueService {
             fieldPayload.weeklySchedules = {
               create: slots.map(slot => ({
                 dayOfWeek: slot.dayOfWeek,
-                startTime: slot.startTime,
-                endTime: slot.endTime,
+                startTime: this.normalizeTime(slot.startTime),
+                endTime: this.normalizeTime(slot.endTime),
                 timezone: slot.timezone,
               })),
             };
@@ -260,10 +278,10 @@ class LeagueService {
     if (slotsForExistingFields.length) {
       relationshipsPayload.weeklySchedules = {
         create: slotsForExistingFields.map(slot => ({
-          fieldId: slot.fieldId,
+          field: slot.fieldId,
           dayOfWeek: slot.dayOfWeek,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
+          startTime: this.normalizeTime(slot.startTime),
+          endTime: this.normalizeTime(slot.endTime),
           timezone: slot.timezone,
         })),
       };
@@ -348,39 +366,30 @@ class LeagueService {
     };
   }
 
-  private mapRowToWeeklySchedule(row: any): WeeklySchedule {
-    const eventId = typeof row.eventId === 'string'
-      ? row.eventId
-      : typeof row.event === 'string'
-        ? row.event
-        : row.eventId?.$id ?? row.event?.$id ?? '';
-
-    const fieldId = typeof row.fieldId === 'string'
-      ? row.fieldId
-      : typeof row.field === 'string'
-        ? row.field
-        : row.fieldId?.$id ?? row.field?.$id ?? '';
-
-    const schedule: WeeklySchedule = {
+  private mapRowToWeeklySchedule(row: any): TimeSlot {
+    const schedule: TimeSlot = {
       $id: row.$id,
-      eventId,
-      fieldId,
-      dayOfWeek: Number(row.dayOfWeek ?? 0) as WeeklySchedule['dayOfWeek'],
-      startTime: row.startTime,
-      endTime: row.endTime,
-      timezone: row.timezone,
+      dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
+      startTime: this.normalizeTime(row.startTime),
+      endTime: this.normalizeTime(row.endTime),
+      timezone: typeof row.timezone === 'string' ? row.timezone : String(row.timezone ?? 'UTC'),
+      event: row.event ?? row.eventId ?? row.event?.$id,
+      field: row.field ?? row.fieldId ?? row.field?.$id,
     };
 
     if (row.field) {
       schedule.field = row.field;
     }
 
+    if (row.event) {
+      schedule.event = row.event;
+    }
+
     return schedule;
   }
 
-  private timesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
-    const [startAMin, endAMin, startBMin, endBMin] = [startA, endA, startB, endB].map(this.timeToMinutes);
-    return !(endAMin <= startBMin || startAMin >= endBMin);
+  private timesOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
+    return !(endA <= startB || startA >= endB);
   }
 
   private dateRangesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
@@ -392,9 +401,51 @@ class LeagueService {
     return !(endDateA < startDateB || startDateA > endDateB);
   }
 
-  private timeToMinutes(time: string): number {
-    const [hours, minutes] = time.split(':').map((value) => parseInt(value, 10));
-    return hours * 60 + minutes;
+  private normalizeTime(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      if (/^\d{1,2}:\d{2}$/.test(value)) {
+        return this.timeStringToMinutes(value);
+      }
+
+      const numeric = Number(value);
+      if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+        return numeric;
+      }
+    }
+
+    return 0;
+  }
+
+  private timeStringToMinutes(time: string): number {
+    const [hoursRaw, minutesRaw] = time.split(':');
+    const hours = Number(hoursRaw ?? 0);
+    const minutes = Number(minutesRaw ?? 0);
+    return (Number.isNaN(hours) ? 0 : hours) * 60 + (Number.isNaN(minutes) ? 0 : minutes);
+  }
+
+  private extractId(value: any): string {
+    if (!value) {
+      return '';
+    }
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      const first = value[0];
+      return this.extractId(first);
+    }
+
+    if (typeof value === 'object' && '$id' in value) {
+      return (value.$id as string) || '';
+    }
+
+    return '';
   }
 }
 

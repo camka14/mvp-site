@@ -27,9 +27,41 @@ const DAYS_OF_WEEK = [
   { value: '6', label: 'Sunday' },
 ];
 
-export interface LeagueSlotForm extends Omit<WeeklySlotInput, 'dayOfWeek'> {
-  dayOfWeek?: WeeklySlotInput['dayOfWeek'];
+const minutesToTimeString = (minutes?: number): string => {
+  if (typeof minutes !== 'number' || Number.isNaN(minutes)) {
+    return '';
+  }
+
+  const normalized = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(normalized / 60) % 24;
+  const mins = normalized % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+};
+
+const parseTimeInput = (value: string): number | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const [hoursRaw, minutesRaw] = value.split(':');
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return undefined;
+  }
+
+  return hours * 60 + minutes;
+};
+
+export interface LeagueSlotForm {
   key: string;
+  $id?: string;
+  fieldId?: string;
+  dayOfWeek?: WeeklySlotInput['dayOfWeek'];
+  startTime?: number;
+  endTime?: number;
+  timezone?: string;
   conflicts: WeeklySlotConflict[];
   checking: boolean;
   error?: string;
@@ -214,8 +246,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       label="Field"
                       placeholder="Select field"
                       data={fieldOptionsForSlot}
-                      value={slot.fieldId || null}
-                      onChange={(value) => onUpdateSlot(index, { fieldId: value || '' })}
+                      value={slot.fieldId ?? null}
+                      onChange={(value) => onUpdateSlot(index, { fieldId: value || undefined })}
                       searchable
                     />
 
@@ -229,15 +261,15 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
 
                     <TimeInput
                       label="Start Time"
-                      value={slot.startTime || ''}
-                      onChange={(event) => onUpdateSlot(index, { startTime: event.currentTarget.value || undefined })}
+                      value={minutesToTimeString(slot.startTime)}
+                      onChange={(event) => onUpdateSlot(index, { startTime: parseTimeInput(event.currentTarget.value) })}
                       withSeconds={false}
                     />
 
                     <TimeInput
                       label="End Time"
-                      value={slot.endTime || ''}
-                      onChange={(event) => onUpdateSlot(index, { endTime: event.currentTarget.value || undefined })}
+                      value={minutesToTimeString(slot.endTime)}
+                      onChange={(event) => onUpdateSlot(index, { endTime: parseTimeInput(event.currentTarget.value) })}
                       withSeconds={false}
                     />
                   </div>
