@@ -43,7 +43,12 @@ export default function InvitePlayersModal({ isOpen, onClose, team, onInvitesSen
     if (inviting) return;
     setInviting(playerId);
     try {
-      const success = await teamService.invitePlayerToTeam(team.$id, playerId);
+      const player = searchResults.find(u => u.$id === playerId) || await userService.getUserById(playerId);
+      if (!player) {
+        throw new Error('Player not found');
+      }
+
+      const success = await teamService.invitePlayerToTeam(team, player);
       if (success) {
         setSearchResults(prev => prev.filter(u => u.$id !== playerId));
         onInvitesSent?.();

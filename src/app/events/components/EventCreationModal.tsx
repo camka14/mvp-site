@@ -1,18 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
 import { CalendarIcon, ClockIcon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 import { CreateEventData, eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl, SPORTS_LIST, Event, Division as CoreDivision } from '@/types';
+import { getEventImageUrl, SPORTS_LIST, Event, Division as CoreDivision, UserData, Team, LeagueConfig, Field } from '@/types';
 
-import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button } from '@mantine/core';
+import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
+import { leagueService, WeeklySlotInput, LeagueFieldTemplateInput, LeagueSlotCreationInput } from '@/lib/leagueService';
+import { fieldService } from '@/lib/fieldService';
+import LeagueFields, { LeagueSlotForm } from './LeagueFields';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -25,6 +29,12 @@ interface EventCreationModalProps {
     organizationId?: string;
 }
 
+interface FieldTemplate {
+    key: string;
+    name: string;
+    fieldNumber: number;
+}
+
 const EventCreationModal: React.FC<EventCreationModalProps> = ({
     isOpen,
     onClose,
@@ -33,6 +43,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     editingEvent,
     organizationId
 }) => {
+    const router = useRouter();
     const { location: userLocation } = useLocation();
     const modalRef = useRef<HTMLDivElement>(null);
     const [selectedImageId, setSelectedImageId] = useState<string>(editingEvent?.imageId || '');
@@ -41,6 +52,41 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const [selectedImageUrl, setSelectedImageUrl] = useState(
         editingEvent ? getEventImageUrl({ imageId: editingEvent.imageId, width: 800 }) : ''
     );
+    const timezoneDefault = typeof Intl !== 'undefined'
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : 'UTC';
+    const createSlotForm = useCallback((slot?: WeeklySlotInput): LeagueSlotForm => ({
+        key: slot?.$id ?? `slot-${Math.random().toString(36).slice(2, 9)}`,
+        $id: slot?.$id,
+        fieldId: slot?.fieldId || '',
+        dayOfWeek: slot?.dayOfWeek,
+        startTime: slot?.startTime || '',
+        endTime: slot?.endTime || '',
+        timezone: slot?.timezone || timezoneDefault,
+        conflicts: [],
+        checking: false,
+    }), [timezoneDefault]);
+    const syncFieldTemplates = useCallback((count: number, current: FieldTemplate[]): FieldTemplate[] => {
+        const normalizedCount = Math.max(1, count);
+        const trimmed = current.slice(0, normalizedCount);
+        const next: FieldTemplate[] = [];
+        for (let index = 0; index < normalizedCount; index += 1) {
+            const existing = trimmed[index];
+            if (existing) {
+                next.push({
+                    ...existing,
+                    fieldNumber: index + 1,
+                });
+            } else {
+                next.push({
+                    key: `field-${index + 1}-${Math.random().toString(36).slice(2, 7)}`,
+                    name: `Field ${index + 1}`,
+                    fieldNumber: index + 1,
+                });
+            }
+        }
+        return next;
+    }, []);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [connectingStripe, setConnectingStripe] = useState(false);
     const [joinAsParticipant, setJoinAsParticipant] = useState(false);
@@ -59,7 +105,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         long: number;
         start: string;
         end: string;
-        eventType: 'pickup' | 'tournament';
+        eventType: 'pickup' | 'tournament' | 'league';
         sport: string;
         fieldType: string;
         price: number;
@@ -74,8 +120,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         seedColor: number;
         waitList: string[];
         freeAgents: string[];
-        playerIds: string[];
-        teamIds: string[];
+        players: UserData[];
+        teams: Team[];
     }>(() => {
         const toDivisionKey = (d: string | CoreDivision): string => {
             if (typeof d === 'string') {
@@ -117,8 +163,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 seedColor: editingEvent.seedColor || 0,
                 waitList: editingEvent.waitListIds || [],
                 freeAgents: editingEvent.freeAgentIds || [],
-                playerIds: editingEvent.playerIds || [],
-                teamIds: editingEvent.teamIds || []
+                players: editingEvent.players || [],
+                teams: editingEvent.teams || []
             };
         } else {
             // Default values for new event
@@ -146,8 +192,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 seedColor: 0,
                 waitList: [],
                 freeAgents: [],
-                playerIds: [],
-                teamIds: []
+                players: [],
+                teams: []
             };
         }
     });
@@ -161,7 +207,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 winnerBracketPointsToVictory: editingEvent.winnerBracketPointsToVictory || [21],
                 loserBracketPointsToVictory: editingEvent.loserBracketPointsToVictory || [21],
                 prize: editingEvent.prize || '',
-                fieldCount: editingEvent.fieldCount
+                fieldCount: editingEvent.fieldCount ?? editingEvent.fields?.length ?? 1
 
             };
         } else {
@@ -177,10 +223,361 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     });
 
+    const [leagueData, setLeagueData] = useState<LeagueConfig>(() => {
+        if (editingEvent && editingEvent.eventType === 'league') {
+            const source = editingEvent.leagueConfig || editingEvent;
+            return {
+                gamesPerOpponent: source?.gamesPerOpponent ?? 1,
+                includePlayoffs: source?.includePlayoffs ?? false,
+                playoffTeamCount: source?.playoffTeamCount ?? undefined,
+                usesSets: source?.usesSets ?? false,
+                matchDurationMinutes: source?.matchDurationMinutes ?? 60,
+                setDurationMinutes: source?.setDurationMinutes ?? undefined,
+                setsPerMatch: source?.setsPerMatch ?? undefined,
+            };
+        }
+        return {
+            gamesPerOpponent: 1,
+            includePlayoffs: false,
+            playoffTeamCount: undefined,
+            usesSets: false,
+            matchDurationMinutes: 60,
+            setDurationMinutes: undefined,
+            setsPerMatch: undefined,
+        };
+    });
+
+    const [leagueSlots, setLeagueSlots] = useState<LeagueSlotForm[]>(() => {
+        if (editingEvent && editingEvent.eventType === 'league' && editingEvent.weeklySchedules?.length) {
+            return (editingEvent.weeklySchedules || []).map((slot) => createSlotForm({
+                $id: slot.$id,
+                fieldId: slot.fieldId,
+                dayOfWeek: slot.dayOfWeek,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                timezone: slot.timezone,
+            }));
+        }
+        return [createSlotForm()];
+    });
+
+    const [leagueError, setLeagueError] = useState<string | null>(null);
+    const [fields, setFields] = useState<Field[]>(() => editingEvent?.fields || []);
+    const [fieldsLoading, setFieldsLoading] = useState(false);
+    const [fieldCount, setFieldCount] = useState<number>(() => {
+        if (editingEvent?.fields?.length) {
+            return editingEvent.fields.length;
+        }
+        if (editingEvent && typeof (editingEvent as any)?.fieldCount === 'number') {
+            return Number((editingEvent as any).fieldCount) || 1;
+        }
+        return 1;
+    });
+    const [fieldTemplates, setFieldTemplates] = useState<FieldTemplate[]>(() => {
+        if (editingEvent?.fields?.length) {
+            return [...editingEvent.fields]
+                .sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0))
+                .map((field, index) => ({
+                    key: field.$id || `field-${index + 1}`,
+                    name: field.name || `Field ${field.fieldNumber ?? index + 1}`,
+                    fieldNumber: field.fieldNumber ?? index + 1,
+                }));
+        }
+        return Array.from({ length: Math.max(1, fieldCount) }, (_, idx) => ({
+            key: `field-${idx + 1}-${Math.random().toString(36).slice(2, 7)}`,
+            name: `Field ${idx + 1}`,
+            fieldNumber: idx + 1,
+        }));
+    });
+    const shouldProvisionFields = !organizationId;
+    const shouldManageLocalFields = shouldProvisionFields && !isEditMode && eventData.eventType === 'league';
+    const leagueSlotsRef = useRef<LeagueSlotForm[]>(leagueSlots);
+
+    useEffect(() => {
+        if (!shouldManageLocalFields) {
+            return;
+        }
+        setFieldTemplates(prev => syncFieldTemplates(fieldCount, prev));
+    }, [fieldCount, shouldManageLocalFields, syncFieldTemplates]);
+
+    useEffect(() => {
+        if (editingEvent?.fields?.length && !shouldManageLocalFields) {
+            setFieldTemplates(
+                [...editingEvent.fields]
+                    .sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0))
+                    .map((field, index) => ({
+                        key: field.$id || `field-${index + 1}`,
+                        name: field.name || `Field ${field.fieldNumber ?? index + 1}`,
+                        fieldNumber: field.fieldNumber ?? index + 1,
+                    }))
+            );
+        }
+    }, [editingEvent?.fields, shouldManageLocalFields]);
+
+    useEffect(() => {
+        if (!shouldManageLocalFields) return;
+        const validKeys = new Set(fieldTemplates.map(template => template.key));
+        setLeagueSlots(prev => prev.map(slot => {
+            if (!slot.fieldId || validKeys.has(slot.fieldId)) {
+                return slot;
+            }
+            return { ...slot, fieldId: '' };
+        }));
+    }, [fieldTemplates, shouldManageLocalFields]);
+
+    const checkSlotConflicts = useCallback(async (slot: LeagueSlotForm, index: number) => {
+        if (eventData.eventType !== 'league') return;
+
+        if (shouldManageLocalFields) {
+            setLeagueSlots(prev => {
+                const next = [...prev];
+                if (next[index]) {
+                    next[index] = { ...next[index], conflicts: [], error: undefined, checking: false };
+                }
+                return next;
+            });
+            return;
+        }
+
+        if (!slot.fieldId || typeof slot.dayOfWeek !== 'number' || !slot.startTime || !slot.endTime) {
+            setLeagueSlots(prev => {
+                const next = [...prev];
+                if (next[index]) {
+                    next[index] = { ...next[index], conflicts: [], error: undefined, checking: false };
+                }
+                return next;
+            });
+            return;
+        }
+
+        if (!eventData.start || !eventData.end) {
+            return;
+        }
+
+        const payload: WeeklySlotInput = {
+            fieldId: slot.fieldId,
+            dayOfWeek: slot.dayOfWeek as WeeklySlotInput['dayOfWeek'],
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            timezone: slot.timezone || timezoneDefault,
+            $id: slot.$id,
+        };
+
+        setLeagueSlots(prev => {
+            const next = [...prev];
+            if (next[index]) {
+                next[index] = { ...next[index], checking: true, error: undefined };
+            }
+            return next;
+        });
+
+        try {
+            const conflicts = await leagueService.checkConflictsForSlot(
+                payload,
+                eventData.start,
+                eventData.end,
+                { ignoreEventId: editingEvent?.$id }
+            );
+
+            setLeagueSlots(prev => {
+                const next = [...prev];
+                if (next[index]) {
+                    next[index] = { ...next[index], conflicts, checking: false, error: undefined };
+                }
+                return next;
+            });
+        } catch (error) {
+            setLeagueSlots(prev => {
+                const next = [...prev];
+                if (next[index]) {
+                    next[index] = {
+                        ...next[index],
+                        checking: false,
+                        error: error instanceof Error ? error.message : 'Failed to check availability',
+                    };
+                }
+                return next;
+            });
+        }
+    }, [editingEvent?.$id, eventData.end, eventData.eventType, eventData.start, timezoneDefault]);
+
+    const handleAddSlot = () => {
+        setLeagueError(null);
+        setLeagueSlots(prev => [...prev, createSlotForm()]);
+    };
+
+    const handleRemoveSlot = (index: number) => {
+        setLeagueSlots(prev => {
+            if (prev.length <= 1) return prev;
+            return prev.filter((_, idx) => idx !== index);
+        });
+    };
+
+    const handleUpdateSlot = (index: number, updates: Partial<LeagueSlotForm>) => {
+        const current = leagueSlots[index];
+        if (!current) return;
+
+        const updated: LeagueSlotForm = {
+            ...current,
+            ...updates,
+            timezone: updates.timezone !== undefined ? updates.timezone : current.timezone,
+        };
+
+        if (!updated.timezone) {
+            updated.timezone = timezoneDefault;
+        }
+
+        setLeagueSlots(prev => {
+            const next = [...prev];
+            next[index] = updated;
+            return next;
+        });
+
+        setLeagueError(null);
+        checkSlotConflicts(updated, index);
+    };
+
+    const handleFieldTemplateNameChange = (index: number, name: string) => {
+        setFieldTemplates(prev => {
+            const next = [...prev];
+            if (next[index]) {
+                next[index] = { ...next[index], name };
+            }
+            return next;
+        });
+    };
+
+    useEffect(() => {
+        leagueSlotsRef.current = leagueSlots;
+    }, [leagueSlots]);
+
+    useEffect(() => {
+        if (editingEvent && editingEvent.eventType === 'league') {
+            const source = editingEvent.leagueConfig || editingEvent;
+            setLeagueData({
+                gamesPerOpponent: source?.gamesPerOpponent ?? 1,
+                includePlayoffs: source?.includePlayoffs ?? false,
+                playoffTeamCount: source?.playoffTeamCount ?? undefined,
+                usesSets: source?.usesSets ?? false,
+                matchDurationMinutes: source?.matchDurationMinutes ?? 60,
+                setDurationMinutes: source?.setDurationMinutes ?? undefined,
+                setsPerMatch: source?.setsPerMatch ?? undefined,
+            });
+
+            const slots = (editingEvent.weeklySchedules || []).map(slot => createSlotForm({
+                $id: slot.$id,
+                fieldId: slot.fieldId,
+                dayOfWeek: slot.dayOfWeek,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                timezone: slot.timezone,
+            }));
+
+            setLeagueSlots(slots.length > 0 ? slots : [createSlotForm()]);
+
+            slots.forEach((slot, index) => {
+                if (slot.fieldId && typeof slot.dayOfWeek === 'number' && slot.startTime && slot.endTime) {
+                    checkSlotConflicts(slot, index);
+                }
+            });
+        } else if (!editingEvent) {
+            setLeagueData({
+                gamesPerOpponent: 1,
+                includePlayoffs: false,
+                playoffTeamCount: undefined,
+                usesSets: false,
+                matchDurationMinutes: 60,
+                setDurationMinutes: undefined,
+                setsPerMatch: undefined,
+            });
+            setLeagueSlots([createSlotForm()]);
+        }
+    }, [checkSlotConflicts, createSlotForm, editingEvent]);
+
+    useEffect(() => {
+        let isMounted = true;
+        if (!organizationId) {
+            return;
+        }
+
+        const loadFields = async () => {
+            try {
+                setFieldsLoading(true);
+                const result = await fieldService.listFields(organizationId);
+                if (!isMounted) return;
+
+                setFields(prev => {
+                    const map = new Map<string, Field>();
+                    [...prev, ...(Array.isArray(result) ? result : [])].forEach(field => {
+                        if (field?.$id) {
+                            map.set(field.$id, field);
+                        }
+                    });
+                    return Array.from(map.values());
+                });
+            } catch (error) {
+                console.error('Failed to load fields:', error);
+            } finally {
+                if (isMounted) setFieldsLoading(false);
+            }
+        };
+
+        loadFields();
+        return () => {
+            isMounted = false;
+        };
+    }, [organizationId]);
+
+    useEffect(() => {
+        if (editingEvent?.fields) {
+            setFields(prev => {
+                const map = new Map<string, Field>();
+                [...prev, ...(editingEvent.fields as Field[])].forEach(field => {
+                    if (field?.$id) {
+                        map.set(field.$id, field);
+                    }
+                });
+                return Array.from(map.values());
+            });
+        }
+    }, [editingEvent?.fields]);
+
+    useEffect(() => {
+        if (eventData.eventType !== 'league' || shouldManageLocalFields) return;
+        leagueSlotsRef.current.forEach((slot, index) => {
+            if (slot.fieldId && typeof slot.dayOfWeek === 'number' && slot.startTime && slot.endTime) {
+                checkSlotConflicts(slot, index);
+            }
+        });
+    }, [eventData.start, eventData.end, eventData.eventType, checkSlotConflicts]);
+
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
     const modalTitle = isEditMode ? 'Edit Event' : 'Create New Event';
-    const submitButtonText = isEditMode ? 'Update Event' : 'Create Event';
-    const submittingText = isEditMode ? 'Updating...' : 'Creating...';
+    const submitButtonText = isEditMode
+        ? 'Update Event'
+        : eventData.eventType === 'league'
+            ? 'Preview Schedule'
+            : 'Create Event';
+    const submittingText = isEditMode
+        ? 'Updating...'
+        : eventData.eventType === 'league'
+            ? 'Generating schedule...'
+            : 'Creating...';
+    const leagueFieldOptions = useMemo(() => {
+        if (shouldManageLocalFields) {
+            return fieldTemplates.map(template => ({
+                value: template.key,
+                label: template.name || `Field ${template.fieldNumber}`,
+            }));
+        }
+        if (fields.length > 0) {
+            return fields.map(field => ({
+                value: field.$id,
+                label: field.name || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Field'),
+            }));
+        }
+        return [] as { value: string; label: string }[];
+    }, [fields, fieldTemplates, shouldManageLocalFields]);
 
     // Validation state
     const [validation, setValidation] = useState({
@@ -191,6 +588,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         isLocationValid: false,
         isSkillLevelValid: false,
         isImageValid: false,
+        isFieldCountValid: true,
     });
 
     // Validation effect
@@ -201,10 +599,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             isMaxParticipantsValid: eventData.maxParticipants ? eventData.maxParticipants > 1 : false,
             isTeamSizeValid: eventData.teamSizeLimit ? eventData.teamSizeLimit >= 1 : false,
             isLocationValid: eventData.location ? eventData.location?.trim().length > 0 && (eventData.lat !== 0 && eventData.long !== 0) : false,
-            isSkillLevelValid: eventData.divisions ? eventData.divisions?.length > 0 : false,
+            isSkillLevelValid: eventData.eventType === 'league' ? true : (eventData.divisions ? eventData.divisions?.length > 0 : false),
             isImageValid: Boolean(selectedImageId || eventData.imageId || selectedImageUrl),
+            isFieldCountValid: shouldManageLocalFields ? fieldCount >= 1 : true,
         });
-    }, [eventData, selectedImageId, selectedImageUrl]);
+    }, [eventData, fieldCount, fieldTemplates, selectedImageId, selectedImageUrl, shouldManageLocalFields]);
 
     useEffect(() => {
         if (eventData.teamSignup) {
@@ -239,7 +638,27 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     }, [isEditMode, eventData.lat, eventData.long]);
 
-    const isValid = Object.values(validation).every(v => v);
+    const hasSlotConflicts = eventData.eventType === 'league' && !shouldManageLocalFields && leagueSlots.some(slot => slot.conflicts.length > 0);
+    const hasPendingSlotChecks = eventData.eventType === 'league' && !shouldManageLocalFields && leagueSlots.some(slot => slot.checking);
+    const hasIncompleteSlot = eventData.eventType === 'league' && leagueSlots.some(slot =>
+        !slot.fieldId || typeof slot.dayOfWeek !== 'number' || !slot.startTime || !slot.endTime || !slot.timezone
+    );
+
+    const leagueFormValid = eventData.eventType !== 'league'
+        ? true
+        : (
+            leagueData.gamesPerOpponent >= 1 &&
+            leagueData.matchDurationMinutes > 0 &&
+            (!leagueData.includePlayoffs || (leagueData.playoffTeamCount && leagueData.playoffTeamCount > 1)) &&
+            (!leagueData.usesSets || (leagueData.setsPerMatch && leagueData.setDurationMinutes)) &&
+            !hasSlotConflicts &&
+            !hasPendingSlotChecks &&
+            !hasIncompleteSlot &&
+            (!shouldManageLocalFields || fieldTemplates.length === Math.max(1, fieldCount)) &&
+            (!shouldManageLocalFields || fieldTemplates.every(template => template.name?.trim().length > 0))
+        );
+
+    const isValid = Object.values(validation).every(v => v) && leagueFormValid;
 
     // Helper functions for date/time management
     const updateDateTime = (dateISO: string, timeString: string) => {
@@ -264,9 +683,137 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
 
 
+    const handleLeaguePreview = async () => {
+        if (eventData.eventType !== 'league' || isEditMode) return;
+        if (isSubmitting || !isValid) return;
+
+        const startDate = new Date(eventData.start);
+        const endDate = new Date(eventData.end);
+        if (!(startDate instanceof Date) || !(endDate instanceof Date) || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            setLeagueError('Provide a valid start and end date for the league.');
+            return;
+        }
+
+        if (startDate >= endDate) {
+            setLeagueError('League end date must be after the start date.');
+            return;
+        }
+
+        const toMinutes = (time: string) => {
+            const [hours, minutes] = time.split(':').map((value) => Number(value || 0));
+            return hours * 60 + minutes;
+        };
+
+        const invalidTimes = leagueSlots.some(slot =>
+            slot.startTime && slot.endTime && toMinutes(slot.endTime) <= toMinutes(slot.startTime)
+        );
+
+        if (invalidTimes) {
+            setLeagueError('Each timeslot must end after it starts.');
+            return;
+        }
+
+        const finalImageId = selectedImageId || eventData.imageId;
+        if (!finalImageId) {
+            setLeagueError('Add an event image before previewing the schedule.');
+            return;
+        }
+
+        const slotPayloads: LeagueSlotCreationInput[] = leagueSlots
+            .filter(slot => slot.fieldId && typeof slot.dayOfWeek === 'number' && slot.startTime && slot.endTime)
+            .map(slot => ({
+                fieldId: shouldManageLocalFields ? undefined : slot.fieldId,
+                fieldKey: shouldManageLocalFields ? slot.fieldId : undefined,
+                dayOfWeek: slot.dayOfWeek as LeagueSlotCreationInput['dayOfWeek'],
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                timezone: slot.timezone || timezoneDefault,
+            }));
+
+        if (slotPayloads.length === 0) {
+            setLeagueError('Add at least one complete weekly timeslot to continue.');
+            return;
+        }
+
+        setIsSubmitting(true);
+        setLeagueError(null);
+
+        let createdEvent: Event | null = null;
+
+        try {
+            const payload: Partial<CreateEventData> = {
+                ...eventData,
+                divisions: eventData.divisions as any,
+                imageId: finalImageId,
+                status: 'draft',
+                eventType: 'league',
+                gamesPerOpponent: leagueData.gamesPerOpponent,
+                includePlayoffs: leagueData.includePlayoffs,
+                playoffTeamCount: leagueData.includePlayoffs ? leagueData.playoffTeamCount ?? undefined : undefined,
+                usesSets: leagueData.usesSets,
+                matchDurationMinutes: leagueData.matchDurationMinutes,
+                setDurationMinutes: leagueData.usesSets ? leagueData.setDurationMinutes ?? undefined : undefined,
+                setsPerMatch: leagueData.usesSets ? leagueData.setsPerMatch ?? undefined : undefined,
+            };
+            payload.playerIds = [];
+            payload.teamIds = [];
+            payload.waitList = [];
+            payload.freeAgents = [];
+            payload.hostId = currentUser?.$id;
+            if (organizationId) payload.organization = organizationId;
+
+            const draft = await leagueService.createLeagueDraft({
+                eventData: payload,
+                fieldTemplates: shouldManageLocalFields
+                    ? fieldTemplates.map<LeagueFieldTemplateInput>((template) => ({
+                        key: template.key,
+                        name: template.name?.trim() || `Field ${template.fieldNumber}`,
+                        fieldNumber: template.fieldNumber,
+                        fieldType: eventData.fieldType,
+                    }))
+                    : [],
+                slots: slotPayloads,
+            });
+
+            createdEvent = draft.event;
+
+            const schedule = await leagueService.generateSchedule(createdEvent.$id, false);
+
+            if (typeof window !== 'undefined') {
+                sessionStorage.setItem(`league-preview:${createdEvent.$id}`, JSON.stringify(schedule));
+            }
+
+            const refreshed = await eventService.getEventWithRelations(createdEvent.$id);
+            onEventCreated(refreshed || createdEvent);
+            onClose();
+            router.push(`/events/${createdEvent.$id}/schedule?preview=1`);
+        } catch (error) {
+            setLeagueError(error instanceof Error ? error.message : 'Failed to generate preview schedule.');
+            if (createdEvent) {
+                try {
+                    await leagueService.deleteWeeklySchedulesForEvent(createdEvent.$id);
+                } catch (scheduleError) {
+                    console.error('Failed to rollback weekly schedules:', scheduleError);
+                }
+                try {
+                    await eventService.deleteEvent(createdEvent.$id);
+                } catch (cleanupError) {
+                    console.error('Failed to rollback league event:', cleanupError);
+                }
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!isValid || isSubmitting) return;
+        if (isSubmitting || !isValid) return;
+
+        if (!isEditMode && eventData.eventType === 'league') {
+            await handleLeaguePreview();
+            return;
+        }
 
         setIsSubmitting(true);
         try {
@@ -291,10 +838,33 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 submitData.teamIds = [];
                 submitData.waitList = [];
                 submitData.freeAgents = [];
+                if (shouldProvisionFields) {
+                    submitData.fieldCount = fieldCount;
+                }
             }
 
             if (eventData.eventType === 'tournament') {
                 submitData = { ...submitData, ...tournamentData };
+                if (!isEditMode && shouldProvisionFields) {
+                    submitData.fieldCount = fieldCount;
+                }
+            }
+
+            if (eventData.eventType === 'league') {
+                submitData = {
+                    ...submitData,
+                    ...(isEditMode ? {} : { status: 'draft' }),
+                    gamesPerOpponent: leagueData.gamesPerOpponent,
+                    includePlayoffs: leagueData.includePlayoffs,
+                    playoffTeamCount: leagueData.includePlayoffs ? leagueData.playoffTeamCount ?? undefined : undefined,
+                    usesSets: leagueData.usesSets,
+                    matchDurationMinutes: leagueData.matchDurationMinutes,
+                    setDurationMinutes: leagueData.usesSets ? leagueData.setDurationMinutes ?? undefined : undefined,
+                    setsPerMatch: leagueData.usesSets ? leagueData.setsPerMatch ?? undefined : undefined,
+                };
+                if (!isEditMode && shouldProvisionFields && !shouldManageLocalFields) {
+                    submitData.fieldCount = fieldCount;
+                }
             }
 
             let resultEvent;
@@ -413,9 +983,17 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 data={[
                                     { value: 'pickup', label: 'Pickup Game' },
                                     { value: 'tournament', label: 'Tournament' },
+                                    { value: 'league', label: 'League' },
                                 ]}
                                 value={eventData.eventType}
-                                onChange={(value) => setEventData(prev => ({ ...prev, eventType: (value as 'pickup' | 'tournament') || prev.eventType }))}
+                                onChange={(value) => {
+                                    if (!value) return;
+                                    setLeagueError(null);
+                                    setEventData(prev => ({
+                                        ...prev,
+                                        eventType: value as 'pickup' | 'tournament' | 'league',
+                                    }));
+                                }}
                             />
 
                             <MantineSelect
@@ -506,6 +1084,33 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 onChange={(val) => setEventData(prev => ({ ...prev, registrationCutoffHours: Number(val) || 2 }))}
                             />
                         </div>
+
+                        {shouldManageLocalFields && (
+                            <div className="mt-4 space-y-4">
+                                <div>
+                                    <NumberInput
+                                        label="Number of Fields"
+                                        min={1}
+                                        value={fieldCount}
+                                        onChange={(val) => setFieldCount(Number(val) || 1)}
+                                        error={!validation.isFieldCountValid ? 'Specify at least one field' : undefined}
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Fields will be created for this league using the names you provide below.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {fieldTemplates.map((template, index) => (
+                                        <TextInput
+                                            key={template.key}
+                                            label={`Field ${template.fieldNumber} Name`}
+                                            value={template.name}
+                                            onChange={(event) => handleFieldTemplateNameChange(index, event.currentTarget.value)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Location & Time */}
@@ -610,11 +1215,27 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         </div>
                     </div>
 
+                    {eventData.eventType === 'league' && (
+                        <LeagueFields
+                            leagueData={leagueData}
+                            onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
+                            slots={leagueSlots}
+                            onAddSlot={handleAddSlot}
+                            onUpdateSlot={handleUpdateSlot}
+                            onRemoveSlot={handleRemoveSlot}
+                            fields={fields}
+                            fieldsLoading={fieldsLoading}
+                            fieldOptions={leagueFieldOptions}
+                        />
+                    )}
+
                     {/* Tournament Fields */}
                     {eventData.eventType === 'tournament' && (
                         <TournamentFields
                             tournamentData={tournamentData}
                             setTournamentData={setTournamentData}
+                            showFieldCountSelector={!shouldProvisionFields}
+                            fieldCountOverride={shouldProvisionFields ? fieldCount : undefined}
                         />
                     )}
                 </form>
@@ -622,8 +1243,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
             {/* Footer */}
             <div className="border-t p-6 flex justify-between items-center">
-                <div>
-                    {!isEditMode && !eventData.teamSignup && (
+                <div className="flex flex-col gap-3">
+                    {leagueError && (
+                        <Alert color="red" radius="md">
+                            {leagueError}
+                        </Alert>
+                    )}
+                    {!isEditMode && !eventData.teamSignup && eventData.eventType !== 'league' && (
                         <Switch
                             label="Join as participant"
                             checked={joinAsParticipant}

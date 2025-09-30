@@ -20,13 +20,21 @@ export default function EventCard({ event, showDistance = false, userLocation, o
         bgColor: 'bg-purple-600',
         icon: '🏆'
       };
-    } else {
+    }
+
+    if (event.eventType === 'league') {
       return {
-        label: 'Pickup Game',
-        bgColor: 'bg-blue-600',
-        icon: '🏐'
+        label: 'League',
+        bgColor: 'bg-emerald-600',
+        icon: '🏟️'
       };
     }
+
+    return {
+      label: 'Pickup Game',
+      bgColor: 'bg-blue-600',
+      icon: '🏐'
+    };
   };
 
   const getDistance = () => {

@@ -19,13 +19,24 @@ export interface Division {
   maxRating?: number;
 }
 
+export interface LeagueConfig {
+  gamesPerOpponent: number;
+  includePlayoffs: boolean;
+  playoffTeamCount?: number;
+  usesSets: boolean;
+  matchDurationMinutes: number;
+  setDurationMinutes?: number;
+  setsPerMatch?: number;
+}
+
 // Match interface for tournaments (matching Python model)
 export interface Match {
   $id: string;
   matchId?: number;
   team1Points: number[];
   team2Points: number[];
-  tournamentId: string;
+  eventId?: string;
+  tournamentId?: string;
   previousLeftId?: string;
   previousRightId?: string;
   winnerNextMatchId?: string;
@@ -36,9 +47,15 @@ export interface Match {
   setResults: number[];
   side?: string;
   refCheckedIn?: boolean;
+  matchType?: 'regular' | 'playoff';
+  weekNumber?: number;
+  team1Seed?: number;
+  team2Seed?: number;
+  team1Id?: string;
+  team2Id?: string;
 
   // Relationship fields - can be IDs or expanded objects
-  division: Division;
+  division?: Division;
   field?: Field;
   referee?: Team;
   team1?: Team;
@@ -52,6 +69,17 @@ export interface Match {
 
   $createdAt?: string;
   $updatedAt?: string;
+}
+
+export interface WeeklySchedule {
+  $id: string;
+  eventId: string;
+  fieldId: string;
+  dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  field?: Field;
 }
 
 // Updated UserData interface
@@ -144,18 +172,17 @@ export interface Event {
   singleDivision: boolean;
   waitListIds: string[];
   freeAgentIds: string[];
-  playerIds: string[];
-  teamIds: string[];
   cancellationRefundHours: number;
   registrationCutoffHours: number;
   seedColor: number;
   $createdAt: string;
   $updatedAt: string;
-  eventType: 'pickup' | 'tournament';
+  eventType: 'pickup' | 'tournament' | 'league';
   sport: string;
 
   // Relationship fields - can be IDs or expanded objects
   divisions: Division[] | string[];
+  weeklySchedules?: WeeklySchedule[];
 
   // Tournament-specific fields
   doubleElimination?: boolean;
@@ -166,11 +193,22 @@ export interface Event {
   winnerScoreLimitsPerSet?: number[];
   loserScoreLimitsPerSet?: number[];
   prize?: string;
-  fieldCount: number;
+  fieldCount?: number;
   fields?: Field[];
   matches?: Match[];
   teams?: Team[];
   players?: UserData[];
+
+  // League-specific fields (flattened for DB compatibility)
+  gamesPerOpponent?: number;
+  includePlayoffs?: boolean;
+  playoffTeamCount?: number;
+  usesSets?: boolean;
+  matchDurationMinutes?: number;
+  setDurationMinutes?: number;
+  setsPerMatch?: number;
+  status?: EventStatus;
+  leagueConfig?: LeagueConfig;
 
   // Computed properties
   attendees: number;
@@ -224,7 +262,26 @@ export enum Sports {
 
 export const SPORTS_LIST: string[] = Object.values(Sports);
 
-export type EventStatus = 'draft' | 'published' | 'cancelled' | 'completed';
+export type EventStatus = 'draft' | 'published' | 'archived' | 'cancelled' | 'completed';
+
+export interface CreateLeagueFnInput {
+  eventId: string;
+  dryRun?: boolean;
+}
+
+export interface ScheduledMatchPayload {
+  id: string;
+  eventId: string;
+  fieldId: string;
+  start: string;
+  end: string;
+  weekNumber?: number;
+  matchType: 'regular' | 'playoff';
+  team1Id?: string;
+  team2Id?: string;
+  team1Seed?: number;
+  team2Seed?: number;
+}
 
 export interface LocationCoordinates {
   lat: number;

@@ -53,6 +53,7 @@
     "react-hook-form": "^7.62.0",
     "react-select": "^5.10.2",
     "react-time-picker": "^8.0.2",
+    "react-timezone-select": "^3.2.8",
     "recharts": "^3.2.1",
     "stripe": "^18.5.0",
     "tailwind-merge": "^3.3.1",

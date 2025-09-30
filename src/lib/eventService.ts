@@ -1,5 +1,17 @@
 import { databases } from '@/app/appwrite';
-import { Event, LocationCoordinates, getCategoryFromEvent, Division, Team, UserData, Field, Match } from '@/types';
+import {
+  Event,
+  LocationCoordinates,
+  getCategoryFromEvent,
+  Division,
+  Team,
+  UserData,
+  Field,
+  Match,
+  LeagueConfig,
+  WeeklySchedule,
+  EventStatus,
+} from '@/types';
 import { ID, Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
@@ -13,7 +25,7 @@ export interface EventFilters {
   dateFrom?: string;
   dateTo?: string;
   priceMax?: number;
-  eventTypes?: ('pickup' | 'tournament')[];
+  eventTypes?: ('pickup' | 'tournament' | 'league')[];
   sports?: string[];
   divisions?: string[];
   fieldType?: string;
@@ -28,7 +40,7 @@ export interface CreateEventData {
   long?: number;
   start?: string;
   end?: string;
-  eventType?: 'pickup' | 'tournament';
+  eventType?: 'pickup' | 'tournament' | 'league';
   sport?: string;
   fieldType?: string;
   price?: number;
@@ -51,6 +63,7 @@ export interface CreateEventData {
   teamIds?: string[];
   hostId?: string;
   organization?: string;
+  status?: EventStatus;
 
   // Tournament-specific fields
   doubleElimination?: boolean;
@@ -60,6 +73,15 @@ export interface CreateEventData {
   loserBracketPointsToVictory?: number[];
   prize?: string;
   fieldCount?: number;
+
+  // League-specific fields
+  gamesPerOpponent?: number;
+  includePlayoffs?: boolean;
+  playoffTeamCount?: number;
+  usesSets?: boolean;
+  matchDurationMinutes?: number;
+  setDurationMinutes?: number;
+  setsPerMatch?: number;
 }
 
 class EventService {
@@ -83,6 +105,8 @@ class EventService {
           'teams.matches.$id',
           'fields.*',
           'fields.matches.$id',
+          'weeklySchedules.*',
+          'weeklySchedules.field.*',
         ])
       ];
 
@@ -241,7 +265,9 @@ class EventService {
       coordinates: [row.long, row.lat],
       category: getCategoryFromEvent({ sport: row.sport } as Event),
       // Ensure divisions is always an array
-      divisions: Array.isArray(row.divisions) ? row.divisions : []
+      divisions: Array.isArray(row.divisions) ? row.divisions : [],
+      status: row.status as EventStatus | undefined,
+      leagueConfig: this.buildLeagueConfig(row),
     };
   }
 
@@ -260,10 +286,30 @@ class EventService {
     }
 
     if (Array.isArray(row.matches)) {
-      event.matches = (row.matches as any[]).map((m: any) => ({
-        ...m,
-        matchId: m.matchNumber ?? m.matchId,
-      } as Match));
+      event.matches = (row.matches as any[]).map((m: any) => {
+        const mappedMatch: Match = {
+          ...m,
+          matchId: m.matchNumber ?? m.matchId,
+          eventId: m.eventId ?? m.tournamentId,
+          matchType: m.matchType ?? undefined,
+          weekNumber: m.weekNumber ?? undefined,
+          team1Seed: m.team1Seed ?? undefined,
+          team2Seed: m.team2Seed ?? undefined,
+          team1Id: this.extractId(m.team1Id ?? m.team1?.$id ?? m.team1),
+          team2Id: this.extractId(m.team2Id ?? m.team2?.$id ?? m.team2),
+        };
+
+        return mappedMatch;
+      });
+    }
+
+    if (Array.isArray(row.weeklySchedules)) {
+      event.weeklySchedules = (row.weeklySchedules as any[]).map((schedule: any) => ({
+        ...schedule,
+        $id: schedule.$id ?? schedule.id,
+        eventId: this.extractId(schedule.eventId ?? schedule.event),
+        fieldId: this.extractId(schedule.fieldId ?? schedule.field),
+      })) as WeeklySchedule[];
     }
 
     if (Array.isArray(row.players)) {
@@ -275,6 +321,26 @@ class EventService {
     }
 
     return event;
+  }
+
+  mapRowFromDatabase(row: any, includeRelations: boolean = false): Event {
+    return includeRelations ? this.mapRowToEventWithRelations(row) : this.mapRowToEvent(row);
+  }
+
+  private buildLeagueConfig(row: any): LeagueConfig | undefined {
+    if (typeof row?.gamesPerOpponent !== 'number') {
+      return undefined;
+    }
+
+    return {
+      gamesPerOpponent: row.gamesPerOpponent,
+      includePlayoffs: Boolean(row.includePlayoffs),
+      playoffTeamCount: row.playoffTeamCount ?? undefined,
+      usesSets: Boolean(row.usesSets),
+      matchDurationMinutes: row.matchDurationMinutes ?? 60,
+      setDurationMinutes: row.setDurationMinutes ?? undefined,
+      setsPerMatch: row.setsPerMatch ?? undefined,
+    };
   }
 
   private extractId(value: any): string {
@@ -338,7 +404,7 @@ class EventService {
       queries.push(Query.limit(limit));
       if (offset > 0) queries.push(Query.offset(offset));
 
-      if (filters.eventTypes && filters.eventTypes.length > 0 && filters.eventTypes.length !== 2) {
+      if (filters.eventTypes && filters.eventTypes.length > 0 && filters.eventTypes.length < 3) {
         queries.push(Query.equal('eventType', filters.eventTypes));
       }
 

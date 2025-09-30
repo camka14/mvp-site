@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Paper, Title, Grid, Select, NumberInput, TextInput, Stack, Divider, Flex, Box } from '@mantine/core';
 
 interface TournamentData {
@@ -14,17 +14,30 @@ interface TournamentData {
 interface TournamentFieldsProps {
     tournamentData: TournamentData;
     setTournamentData: React.Dispatch<React.SetStateAction<TournamentData>>;
+    showFieldCountSelector?: boolean;
+    fieldCountOverride?: number;
 }
 
 const TournamentFields: React.FC<TournamentFieldsProps> = ({
     tournamentData,
     setTournamentData,
+    showFieldCountSelector = true,
+    fieldCountOverride,
 }) => {
     const syncArrayLength = (arr: number[], len: number, fill = 21) => {
         const next = arr.slice(0, len);
         while (next.length < len) next.push(fill);
         return next;
     };
+
+    useEffect(() => {
+        if (typeof fieldCountOverride === 'number' && tournamentData.fieldCount !== fieldCountOverride) {
+            setTournamentData((prev) => ({
+                ...prev,
+                fieldCount: fieldCountOverride,
+            }));
+        }
+    }, [fieldCountOverride, setTournamentData, tournamentData.fieldCount]);
 
     return (
         <Paper withBorder radius="md" p="md">
@@ -48,22 +61,24 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                     />
                 </Grid.Col>
 
-                <Grid.Col span={{ base: 12, md: 6 }}>
-                    <Select
-                        label="Field Count"
-                        value={String(tournamentData.fieldCount)}
-                        onChange={(value) =>
-                            setTournamentData((prev) => ({
-                                ...prev,
-                                fieldCount: parseInt(value || '1', 10),
-                            }))
-                        }
-                        data={[1, 2, 3, 4, 5, 6, 7, 8].map((count) => ({
-                            value: String(count),
-                            label: `${count} ${count === 1 ? 'Field' : 'Fields'}`,
-                        }))}
-                    />
-                </Grid.Col>
+                {showFieldCountSelector && (
+                    <Grid.Col span={{ base: 12, md: 6 }}>
+                        <Select
+                            label="Field Count"
+                            value={String(fieldCountOverride ?? tournamentData.fieldCount)}
+                            onChange={(value) =>
+                                setTournamentData((prev) => ({
+                                    ...prev,
+                                    fieldCount: parseInt(value || '1', 10),
+                                }))
+                            }
+                            data={[1, 2, 3, 4, 5, 6, 7, 8].map((count) => ({
+                                value: String(count),
+                                label: `${count} ${count === 1 ? 'Field' : 'Fields'}`,
+                            }))}
+                        />
+                    </Grid.Col>
+                )}
 
                 <Grid.Col span={{ base: 12, md: 6 }}>
                     <Select

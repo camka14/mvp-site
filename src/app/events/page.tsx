@@ -32,7 +32,7 @@ function EventsPageContent() {
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<'All' | EventCategory>('All');
-  const [selectedEventTypes, setSelectedEventTypes] = useState<('pickup' | 'tournament')[]>(['pickup', 'tournament']);
+  const [selectedEventTypes, setSelectedEventTypes] = useState<('pickup' | 'tournament' | 'league')[]>(['pickup', 'tournament', 'league']);
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
   const [maxDistance, setMaxDistance] = useState<number>(50);
   const router = useRouter();
@@ -91,7 +91,7 @@ function EventsPageContent() {
 
   const buildFilters = useCallback(() => ({
     category: selectedCategory === 'All' ? undefined : selectedCategory,
-    eventTypes: selectedEventTypes.length === 2 ? undefined : selectedEventTypes,
+    eventTypes: selectedEventTypes.length === 3 ? undefined : selectedEventTypes,
     sports: selectedSports.length > 0 ? selectedSports : undefined,
     userLocation: location || undefined,
     maxDistance: location ? maxDistance : undefined,
@@ -196,16 +196,6 @@ function EventsPageContent() {
     setShowEventModal(true);
   };
 
-  const handleEventTypeToggle = (eventType: 'pickup' | 'tournament') => {
-    setSelectedEventTypes(prev => {
-      if (prev.includes(eventType)) {
-        return prev.filter(type => type !== eventType);
-      } else {
-        return [...prev, eventType];
-      }
-    });
-  };
-
   const sports = SPORTS_LIST;
   const distanceOptions = [10, 25, 50, 100]; // km
 
@@ -257,9 +247,14 @@ function EventsPageContent() {
           {/* Event Type Filter */}
           <Group gap="sm" align="center">
             <Text size="sm" fw={500}>Event Type:</Text>
-            <Chip.Group multiple value={selectedEventTypes} onChange={(vals: any) => setSelectedEventTypes(vals)}>
+            <Chip.Group
+              multiple
+              value={selectedEventTypes}
+              onChange={(vals) => setSelectedEventTypes(vals as ('pickup' | 'tournament' | 'league')[])}
+            >
               <Chip value="pickup">🏐 Pickup Games</Chip>
               <Chip value="tournament">🏆 Tournaments</Chip>
+              <Chip value="league">🏟️ Leagues</Chip>
             </Chip.Group>
           </Group>
 
@@ -343,7 +338,7 @@ function EventsPageContent() {
                 <Button variant="default"
                   onClick={() => {
                     setSelectedCategory('All');
-                    setSelectedEventTypes(['pickup', 'tournament']);
+                    setSelectedEventTypes(['pickup', 'tournament', 'league']);
                     setSelectedSports([]);
                     router.push('/events');
                   }}

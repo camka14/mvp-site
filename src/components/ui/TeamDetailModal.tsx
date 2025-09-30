@@ -171,7 +171,9 @@ export default function TeamDetailModal({
 
     const handleInviteUser = async (userId: string) => {
         try {
-            const success = await teamService.invitePlayerToTeam(currentTeam.$id, userId);
+            const user = await userService.getUserById(userId);
+            if (!user) throw new Error('User not found');
+            const success = await teamService.invitePlayerToTeam(currentTeam, user);
 
             if (success) {
                 const invitedUser = await userService.getUserById(userId);

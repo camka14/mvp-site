@@ -111,6 +111,34 @@ class TeamService {
         }
     }
 
+    async invitePlayerToTeam(team: Team, user: UserData): Promise<boolean> {
+        try {
+            if (team.playerIds.includes(user.$id)) {
+                // Player already on team; nothing to do
+                return false;
+            }
+
+            const pendingSet = new Set(team.pending ?? []);
+            pendingSet.add(user.$id);
+            const updatedPending = Array.from(pendingSet);
+
+            await databases.updateRow({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                rowId: team.$id,
+                data: {
+                    pending: updatedPending,
+                },
+            });
+
+            await userService.addTeamInvitation(user.$id, team.$id);
+            return true;
+        } catch (error) {
+            console.error('Failed to invite player to team:', error);
+            return false;
+        }
+    }
+
     private mapRowToTeam(row: any): Team {
         const currentSize = (row.playerIds || []).length;
         const maxPlayers = row.teamSize;

@@ -1,7 +1,7 @@
 'use client';
 
 import { databases } from '@/app/appwrite';
-import { ID } from 'appwrite';
+import { ID, Query } from 'appwrite';
 import type { Field } from '@/types';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
@@ -15,6 +15,7 @@ export interface CreateFieldData {
   long?: number;
   fieldNumber: number;
   organizationId?: string;
+  eventId?: string;
 }
 
 class FieldService {
@@ -27,7 +28,18 @@ class FieldService {
     });
     return response as unknown as Field;
   }
+
+  async listFields(organizationId?: string): Promise<Field[]> {
+    const queries = organizationId ? [Query.equal('organizationId', organizationId)] : [];
+
+    const response = await databases.listRows({
+      databaseId: DATABASE_ID,
+      tableId: FIELDS_TABLE_ID,
+      queries,
+    });
+
+    return response.rows as Field[];
+  }
 }
 
 export const fieldService = new FieldService();
-
