@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, Suspense } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Container, Title, Text, Group, Button, Paper, Alert, Badge, Tabs, Stack } from '@mantine/core';
 
 import Navigation from '@/components/layout/Navigation';
@@ -15,7 +15,9 @@ function LeagueScheduleContent() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const eventId = params?.id as string | undefined;
+  const isPreview = searchParams?.get('preview') === '1';
 
   const [event, setEvent] = useState<Event | null>(null);
   const [matches, setMatches] = useState<ScheduledMatchPayload[]>([]);
@@ -33,49 +35,72 @@ function LeagueScheduleContent() {
         router.push('/login');
         return;
       }
-      loadSchedule();
+      loadSchedule(isPreview);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, isAuthenticated, isGuest, eventId]);
+  }, [authLoading, isAuthenticated, isGuest, eventId, isPreview]);
 
-  const loadSchedule = async () => {
+  const loadSchedule = async (previewMode: boolean) => {
     if (!eventId) return;
     setLoading(true);
     setError(null);
 
     try {
-      const fetchedEvent = await eventService.getEventWithRelations(eventId);
-      if (!fetchedEvent) {
+      let previewEvent: Event | null = null;
+      let previewMatches: ScheduledMatchPayload[] = [];
+
+      if (previewMode && typeof window !== 'undefined') {
+        const cachedEvent = sessionStorage.getItem(`league-preview-event:${eventId}`);
+        if (cachedEvent) {
+          try {
+            previewEvent = JSON.parse(cachedEvent) as Event;
+          } catch (parseError) {
+            console.warn('Failed to parse cached preview event:', parseError);
+          }
+        }
+
+        const cachedMatches = sessionStorage.getItem(`league-preview:${eventId}`);
+        if (cachedMatches) {
+          try {
+            const parsed = JSON.parse(cachedMatches) as LeagueScheduleResponse;
+            previewMatches = parsed.matches || [];
+          } catch (parseError) {
+            console.warn('Failed to parse cached preview schedule:', parseError);
+          }
+        }
+      }
+
+      let fetchedEvent: Event | null = null;
+      if (!previewEvent) {
+        try {
+          fetchedEvent = await eventService.getEventWithRelations(eventId);
+        } catch (fetchError) {
+          if (!previewMode) {
+            throw fetchError;
+          }
+          console.warn('Preview event not found in database, using cached data.');
+        }
+      }
+
+      const activeEvent = previewEvent || fetchedEvent;
+      if (!activeEvent) {
         setError('League not found.');
         setLoading(false);
         return;
       }
 
-      if (fetchedEvent.eventType !== 'league') {
+      if (activeEvent.eventType !== 'league') {
         setError('This event is not a league.');
-        setEvent(fetchedEvent);
+        setEvent(activeEvent);
         setLoading(false);
         return;
       }
 
-      setEvent(fetchedEvent);
+      setEvent(activeEvent);
 
-      let scheduleMatches: ScheduledMatchPayload[] = [];
-      if (typeof window !== 'undefined') {
-        const cached = sessionStorage.getItem(`league-preview:${eventId}`);
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached) as LeagueScheduleResponse;
-            scheduleMatches = parsed.matches || [];
-          } catch (parseError) {
-            console.warn('Failed to parse cached preview schedule:', parseError);
-          } finally {
-            sessionStorage.removeItem(`league-preview:${eventId}`);
-          }
-        }
-      }
+      let scheduleMatches: ScheduledMatchPayload[] = previewMatches;
 
-      if (!scheduleMatches.length) {
+      if (!scheduleMatches.length && (!previewMode || !previewEvent)) {
         scheduleMatches = await leagueService.listMatchesByEvent(eventId);
       }
 

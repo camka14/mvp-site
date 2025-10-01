@@ -1,4 +1,4 @@
-import { databases } from '@/app/appwrite';
+import { databases, functions } from '@/app/appwrite';
 import {
   Event,
   LocationCoordinates,
@@ -16,6 +16,39 @@ import { ID, Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
+const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
+
+export interface LeagueGenerationOptions {
+  dryRun?: boolean;
+  participantCount?: number;
+  teamId?: string;
+  userId?: string;
+}
+
+export interface LeagueGenerationMatchResult {
+  id?: string | number | null;
+  matchId?: string | number | null;
+  start?: string;
+  end?: string;
+  field?: unknown;
+  fieldId?: unknown;
+  team1?: unknown;
+  team1Id?: unknown;
+  team2?: unknown;
+  team2Id?: unknown;
+  matchType?: string;
+  weekNumber?: number | null;
+  team1Seed?: number | null;
+  team2Seed?: number | null;
+}
+
+export interface LeagueGenerationResponse {
+  preview?: boolean;
+  status?: string;
+  matches?: LeagueGenerationMatchResult[];
+  warnings?: string[];
+  error?: unknown;
+}
 
 export interface EventFilters {
   category?: string;
@@ -257,6 +290,48 @@ class EventService {
     }
   }
 
+  async generateLeagueSchedule(
+    eventId: string,
+    options: LeagueGenerationOptions = {}
+  ): Promise<LeagueGenerationResponse> {
+    try {
+      const payload: Record<string, unknown> = {
+        task: 'generateLeague',
+        eventId,
+      };
+
+      if (options.dryRun !== undefined) {
+        payload.dryRun = options.dryRun;
+      }
+      if (options.participantCount !== undefined) {
+        payload.participantCount = options.participantCount;
+      }
+      if (options.teamId) {
+        payload.teamId = options.teamId;
+      }
+      if (options.userId) {
+        payload.userId = options.userId;
+      }
+
+      const execution = await functions.createExecution({
+        functionId: EVENT_MANAGER_FUNCTION_ID,
+        body: JSON.stringify(payload),
+        async: false,
+      });
+
+      const parsed = this.parseLeagueGenerationResponse(execution.responseBody);
+      const errorPayload = this.extractLeagueGenerationError(parsed?.error);
+      if (errorPayload) {
+        throw new Error(errorPayload);
+      }
+
+      return parsed;
+    } catch (error) {
+      console.error('Failed to request league generation:', error);
+      throw error instanceof Error ? error : new Error('Failed to request league generation');
+    }
+  }
+
   private mapRowToEvent(row: any): Event {
     return {
       ...row,
@@ -370,6 +445,42 @@ class EventService {
     }
 
     return slot;
+  }
+
+  private parseLeagueGenerationResponse(body?: string): LeagueGenerationResponse {
+    if (!body) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed === 'object') {
+        return parsed as LeagueGenerationResponse;
+      }
+    } catch (error) {
+      console.error('Failed to parse league generation response:', error);
+    }
+
+    return {};
+  }
+
+  private extractLeagueGenerationError(value: unknown): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (typeof value === 'object') {
+      const message = (value as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim().length > 0) {
+        return message;
+      }
+    }
+
+    return 'Failed to generate league schedule';
   }
 
   private normalizeTime(value: unknown): number {

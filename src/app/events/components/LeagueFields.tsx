@@ -144,6 +144,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             step={5}
             value={leagueData.matchDurationMinutes}
             onChange={(value) => onLeagueDataChange({ matchDurationMinutes: Number(value) || 60 })}
+            disabled={leagueData.usesSets}
           />
         </div>
 

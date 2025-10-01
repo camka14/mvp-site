@@ -14,6 +14,7 @@ const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const WEEKLY_SCHEDULES_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
 const MATCHES_COLLECTION_ID = process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!;
 const CREATE_LEAGUE_FUNCTION_ID = process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION_ID!;
+const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 
 export interface WeeklySlotInput {
@@ -33,6 +34,8 @@ export interface WeeklySlotConflict {
 export interface LeagueScheduleResponse {
   matches: ScheduledMatchPayload[];
   warnings?: string[];
+  preview?: boolean;
+  event?: Event;
 }
 
 export interface LeagueFieldTemplateInput {
@@ -201,6 +204,56 @@ class LeagueService {
     }
 
     return result as LeagueScheduleResponse;
+  }
+
+  async previewScheduleFromDocument(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
+    const payload: Record<string, any> = {
+      task: 'generateLeague',
+      eventDocument,
+      persist: false,
+    };
+
+    if (typeof options.participantCount === 'number') {
+      payload.participantCount = options.participantCount;
+    }
+
+    const execution = await functions.createExecution({
+      functionId: EVENT_MANAGER_FUNCTION_ID,
+      body: JSON.stringify(payload),
+      async: false,
+    });
+
+    const parsed = JSON.parse(execution.responseBody || '{}');
+    if (parsed.error) {
+      throw new Error(typeof parsed.error === 'string' ? parsed.error : 'Failed to preview league schedule');
+    }
+
+    const matches = Array.isArray(parsed.matches)
+      ? (parsed.matches as any[]).map((match) => ({
+          id: match.id ?? match.$id,
+          eventId: parsed.event?.$id ?? eventDocument?.$id ?? 'preview',
+          fieldId: match.field,
+          start: match.start,
+          end: match.end,
+          weekNumber: match.weekNumber ?? undefined,
+          matchType: match.matchType ?? 'regular',
+          team1Id: match.team1 ?? match.team1Id ?? undefined,
+          team2Id: match.team2 ?? match.team2Id ?? undefined,
+          team1Seed: match.team1Seed ?? undefined,
+          team2Seed: match.team2Seed ?? undefined,
+        })) as ScheduledMatchPayload[]
+      : [];
+
+    let event: Event | undefined;
+    if (parsed.event) {
+      event = eventService.mapRowFromDatabase(parsed.event, true);
+    }
+
+    return {
+      matches,
+      preview: typeof parsed.preview === 'boolean' ? parsed.preview : true,
+      event,
+    };
   }
 
   async listMatchesByEvent(eventId: string): Promise<ScheduledMatchPayload[]> {
