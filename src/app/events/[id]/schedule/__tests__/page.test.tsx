@@ -4,10 +4,14 @@ import LeagueSchedulePage from '../page';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
 import type { AppwriteModuleMock } from '../../../../../../test/mocks/appwrite';
+import type { Field, Match } from '@/types';
+
+const useSearchParamsMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useParams: jest.fn(() => ({ id: 'event_1' })),
   useRouter: jest.fn(() => ({ push: jest.fn() })),
+  useSearchParams: () => useSearchParamsMock(),
 }));
 
 const useAppMock = jest.fn();
@@ -38,12 +42,15 @@ jest.mock('@/lib/leagueService', () => ({
 
 describe('League schedule page', () => {
   beforeEach(() => {
+    useSearchParamsMock.mockReset();
     useAppMock.mockReturnValue({
       user: { $id: 'host_1' },
       isAuthenticated: true,
       isGuest: false,
       loading: false,
     });
+
+    useSearchParamsMock.mockReturnValue({ get: () => null });
 
     jest.clearAllMocks();
 
@@ -58,25 +65,42 @@ describe('League schedule page', () => {
       hostId: 'host_1',
       teams: [],
       fields: [
-        { $id: 'field_1', name: 'Court A', fieldNumber: 1 },
+        { $id: 'field_1', name: 'Court A', fieldNumber: 1, type: 'indoor', location: '', lat: 0, long: 0 },
       ],
       timeSlots: [],
     });
 
-    (leagueService.listMatchesByEvent as jest.Mock).mockResolvedValue([
-      {
-        id: 'match_1',
-        fieldId: 'field_1',
-        start: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
-        end: new Date(Date.now() + 28 * 60 * 60 * 1000).toISOString(),
-        matchType: 'regular',
-        team1Id: 'team_a',
-        team2Id: 'team_b',
-      },
-    ]);
+    const mockMatch: Match = {
+      $id: 'match_1',
+      eventId: 'event_1',
+      start: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
+      end: new Date(Date.now() + 28 * 60 * 60 * 1000).toISOString(),
+      timezone: 'UTC',
+      matchType: 'regular',
+      team1Id: 'team_a',
+      team2Id: 'team_b',
+      team1Seed: 1,
+      team2Seed: 2,
+      team1Points: [],
+      team2Points: [],
+      setResults: [],
+      fieldId: 'field_1',
+      fieldName: 'Court A',
+      field: {
+        $id: 'field_1',
+        name: 'Court A',
+        fieldNumber: 1,
+        type: 'indoor',
+        location: 'Sports Center',
+        lat: 0,
+        long: 0,
+      } as Field,
+    };
+
+    (leagueService.listMatchesByEvent as jest.Mock).mockResolvedValue([mockMatch]);
   });
 
-  it('loads league schedule and displays matches grouped by week', async () => {
+  it('loads league schedule and displays matches on the calendar', async () => {
     renderWithMantine(<LeagueSchedulePage />);
 
     await waitFor(() => {
@@ -84,10 +108,12 @@ describe('League schedule page', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Week 1/)).toBeInTheDocument();
+      expect(screen.getByTestId('league-calendar')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Court A/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText(/Court A/).length).toBeGreaterThan(0);
+    });
     expect(leagueService.listMatchesByEvent).toHaveBeenCalledWith('event_1');
   });
 });

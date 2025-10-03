@@ -9,7 +9,9 @@ import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { eventService } from '@/lib/eventService';
 import { leagueService, LeagueScheduleResponse } from '@/lib/leagueService';
-import type { Event, ScheduledMatchPayload, Team } from '@/types';
+import type { Event, Match, Team } from '@/types';
+import LeagueCalendarView from './components/LeagueCalendarView';
+import PlayoffBracket from './components/PlayoffBracket';
 
 function LeagueScheduleContent() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
@@ -20,7 +22,7 @@ function LeagueScheduleContent() {
   const isPreview = searchParams?.get('preview') === '1';
 
   const [event, setEvent] = useState<Event | null>(null);
-  const [matches, setMatches] = useState<ScheduledMatchPayload[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -40,6 +42,10 @@ function LeagueScheduleContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, isAuthenticated, isGuest, eventId, isPreview]);
 
+  const normalizeMatches = (raw: unknown): Match[] => {
+    return Array.isArray(raw) ? (raw as Match[]) : [];
+  };
+
   const loadSchedule = async (previewMode: boolean) => {
     if (!eventId) return;
     setLoading(true);
@@ -47,7 +53,7 @@ function LeagueScheduleContent() {
 
     try {
       let previewEvent: Event | null = null;
-      let previewMatches: ScheduledMatchPayload[] = [];
+      let previewMatches: Match[] = [];
 
       if (previewMode && typeof window !== 'undefined') {
         const cachedEvent = sessionStorage.getItem(`league-preview-event:${eventId}`);
@@ -63,7 +69,7 @@ function LeagueScheduleContent() {
         if (cachedMatches) {
           try {
             const parsed = JSON.parse(cachedMatches) as LeagueScheduleResponse;
-            previewMatches = parsed.matches || [];
+            previewMatches = normalizeMatches(parsed.matches || []);
           } catch (parseError) {
             console.warn('Failed to parse cached preview schedule:', parseError);
           }
@@ -73,7 +79,7 @@ function LeagueScheduleContent() {
       let fetchedEvent: Event | null = null;
       if (!previewEvent) {
         try {
-          fetchedEvent = await eventService.getEventWithRelations(eventId);
+          fetchedEvent = (await eventService.getEventWithRelations(eventId)) ?? null;
         } catch (fetchError) {
           if (!previewMode) {
             throw fetchError;
@@ -82,7 +88,7 @@ function LeagueScheduleContent() {
         }
       }
 
-      const activeEvent = previewEvent || fetchedEvent;
+      const activeEvent: Event | null = previewEvent ?? fetchedEvent ?? null;
       if (!activeEvent) {
         setError('League not found.');
         setLoading(false);
@@ -98,7 +104,7 @@ function LeagueScheduleContent() {
 
       setEvent(activeEvent);
 
-      let scheduleMatches: ScheduledMatchPayload[] = previewMatches;
+      let scheduleMatches: Match[] = previewMatches;
 
       if (!scheduleMatches.length && (!previewMode || !previewEvent)) {
         scheduleMatches = await leagueService.listMatchesByEvent(eventId);
@@ -149,40 +155,46 @@ function LeagueScheduleContent() {
     return map;
   }, [event?.teams]);
 
-  const computeWeekNumber = (start: string) => {
-    if (!event?.start) return undefined;
-    const eventStart = new Date(event.start);
-    const matchStart = new Date(start);
-    if (Number.isNaN(eventStart.getTime()) || Number.isNaN(matchStart.getTime())) return undefined;
-    const diffMs = matchStart.getTime() - eventStart.getTime();
-    const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
-    return diffWeeks + 1;
+  const userTimeZone = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (error) {
+      return 'UTC';
+    }
+  }, []);
+
+  const ensureIsoWithOffset = (value: string) => {
+    if (!value) return null;
+    return /([zZ]|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`;
   };
 
-  const matchesByWeek = useMemo(() => {
-    const groups = new Map<number, ScheduledMatchPayload[]>();
-    matches.forEach(match => {
-      const week = match.weekNumber ?? computeWeekNumber(match.start) ?? 1;
-      if (!groups.has(week)) {
-        groups.set(week, []);
-      }
-      groups.get(week)!.push(match);
-    });
-
-    const sorted = Array.from(groups.entries()).sort((a, b) => a[0] - b[0]);
-    return sorted.map(([week, weekMatches]) => ({
-      week,
-      matches: weekMatches.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()),
-    }));
-  }, [matches, event?.start]);
-
-  const formatDateTime = (value: string) => {
-    const date = new Date(value);
+  const formatDateTime = (value: string, overrideTimeZone?: string) => {
+    const iso = ensureIsoWithOffset(value);
+    if (!iso) return value;
+    const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return value;
-    return `${date.toLocaleDateString()} · ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const timeZone = overrideTimeZone || userTimeZone;
+    return `${date.toLocaleDateString([], { timeZone })} · ${date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone,
+    })}`;
   };
 
-  const getTeamLabel = (match: ScheduledMatchPayload, key: 'team1' | 'team2') => {
+  const hasPlayoffMatches = useMemo(
+    () => matches.some(match => match.matchType === 'playoff'),
+    [matches],
+  );
+
+  const shouldShowBracketTab = hasPlayoffMatches || isPreview;
+
+  useEffect(() => {
+    if (!shouldShowBracketTab && activeTab === 'bracket') {
+      setActiveTab('schedule');
+    }
+  }, [shouldShowBracketTab, activeTab]);
+
+  const getTeamLabel = (match: Match, key: 'team1' | 'team2') => {
     const teamId = key === 'team1' ? match.team1Id : match.team2Id;
     if (teamId && teamLookup.has(teamId)) {
       return teamLookup.get(teamId)?.name || 'TBD';
@@ -250,7 +262,7 @@ function LeagueScheduleContent() {
           <Paper withBorder shadow="sm" p="xl" radius="md">
             <Stack gap="md" align="center">
               <Text fw={600} size="lg">{error}</Text>
-              <Button variant="default" onClick={loadSchedule}>Try Again</Button>
+              <Button variant="default" onClick={() => loadSchedule(isPreview)}>Try Again</Button>
             </Stack>
           </Paper>
         </div>
@@ -349,6 +361,7 @@ function LeagueScheduleContent() {
           <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
             <Tabs.List>
               <Tabs.Tab value="schedule">Schedule</Tabs.Tab>
+              {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
               <Tabs.Tab value="standings" disabled>Standings</Tabs.Tab>
             </Tabs.List>
 
@@ -358,49 +371,27 @@ function LeagueScheduleContent() {
                   <Text>No matches generated yet.</Text>
                 </Paper>
               ) : (
-                <Stack gap="lg">
-                  {matchesByWeek.map(({ week, matches: weekMatches }) => (
-                    <Paper key={`week-${week}`} withBorder radius="md" p="lg">
-                      <Group justify="space-between" mb="md">
-                        <Text fw={600}>Week {week}</Text>
-                        <Text c="dimmed" size="sm">{weekMatches.length} match{weekMatches.length !== 1 ? 'es' : ''}</Text>
-                      </Group>
-
-                      <Stack gap="sm">
-                        {weekMatches.map(match => (
-                          <Paper key={match.id} withBorder radius="md" p="md" shadow="xs">
-                            <Group justify="space-between" align="flex-start" wrap="wrap">
-                              <div>
-                                <Group gap="sm">
-                                  <Text fw={600}>{formatDateTime(match.start)}</Text>
-                                  {match.matchType === 'playoff' && (
-                                    <Badge color="grape" variant="light">Playoff</Badge>
-                                  )}
-                                </Group>
-                                <Text size="sm" c="dimmed">
-                                  {fieldLookup.get(match.fieldId) || `Field ${match.fieldId || 'TBD'}`}
-                                </Text>
-                              </div>
-                              <div className="text-right">
-                                <Text size="sm" c="dimmed">Ends {formatDateTime(match.end)}</Text>
-                              </div>
-                            </Group>
-
-                            <div className="mt-3">
-                              <Group gap="sm" align="center">
-                                <Text fw={600}>{getTeamLabel(match, 'team1')}</Text>
-                                <Text c="dimmed">vs</Text>
-                                <Text fw={600}>{getTeamLabel(match, 'team2')}</Text>
-                              </Group>
-                            </div>
-                          </Paper>
-                        ))}
-                      </Stack>
-                    </Paper>
-                  ))}
-                </Stack>
+                <LeagueCalendarView
+                  matches={matches}
+                  eventStart={event.start}
+                  eventEnd={event.end}
+                  fieldLookup={fieldLookup}
+                  getTeamLabel={getTeamLabel}
+                  formatDateTime={formatDateTime}
+                />
               )}
             </Tabs.Panel>
+
+            {shouldShowBracketTab && (
+              <Tabs.Panel value="bracket" pt="md">
+                <PlayoffBracket
+                  matches={matches}
+                  fieldLookup={fieldLookup}
+                  getTeamLabel={getTeamLabel}
+                  formatDateTime={formatDateTime}
+                />
+              </Tabs.Panel>
+            )}
 
             <Tabs.Panel value="standings" pt="md">
               <Paper withBorder radius="md" p="xl" ta="center">

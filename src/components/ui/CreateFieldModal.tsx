@@ -58,7 +58,10 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, onFi
           label="Name"
           placeholder="Court 1, Field A, etc."
           value={form.name}
-          onChange={(e) => setForm(prev => ({ ...prev, name: e.currentTarget.value }))}
+          onChange={(e) => {
+            const value = e.currentTarget.value;
+            setForm(prev => ({ ...prev, name: value }));
+          }}
           required
         />
 
@@ -82,7 +85,10 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, onFi
           label="Location (optional)"
           placeholder="123 Main St, City"
           value={form.location}
-          onChange={(e) => setForm(prev => ({ ...prev, location: e.currentTarget.value }))}
+          onChange={(e) => {
+            const value = e.currentTarget.value;
+            setForm(prev => ({ ...prev, location: value }));
+          }}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -105,7 +111,10 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, onFi
             label="Organization ID (optional)"
             placeholder="Link this field to an organization"
             value={form.organizationId}
-            onChange={(e) => setForm(prev => ({ ...prev, organizationId: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm(prev => ({ ...prev, organizationId: value }));
+            }}
           />
         )}
 

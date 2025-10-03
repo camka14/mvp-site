@@ -43,6 +43,7 @@ export interface Match {
   loserNextMatchId?: string;
   start: string;
   end: string;
+  timezone?: string;
   losersBracket?: boolean;
   setResults: number[];
   side?: string;
@@ -53,6 +54,9 @@ export interface Match {
   team2Seed?: number;
   team1Id?: string;
   team2Id?: string;
+  fieldId?: string;
+  fieldName?: string;
+  fieldNumber?: number;
 
   // Relationship fields - can be IDs or expanded objects
   division?: Division;
@@ -264,20 +268,6 @@ export type EventStatus = 'draft' | 'published' | 'archived' | 'cancelled' | 'co
 export interface CreateLeagueFnInput {
   eventId: string;
   dryRun?: boolean;
-}
-
-export interface ScheduledMatchPayload {
-  id: string;
-  eventId: string;
-  fieldId: string;
-  start: string;
-  end: string;
-  weekNumber?: number;
-  matchType: 'regular' | 'playoff';
-  team1Id?: string;
-  team2Id?: string;
-  team1Seed?: number;
-  team2Seed?: number;
 }
 
 export interface LocationCoordinates {

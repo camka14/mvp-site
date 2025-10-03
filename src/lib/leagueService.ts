@@ -2,7 +2,7 @@ import { databases, ID, functions } from '@/app/appwrite';
 import { Query } from 'appwrite';
 import {
   TimeSlot,
-  ScheduledMatchPayload,
+  Match,
   CreateLeagueFnInput,
   Event,
 } from '@/types';
@@ -16,6 +16,60 @@ const MATCHES_COLLECTION_ID = process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!;
 const CREATE_LEAGUE_FUNCTION_ID = process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION_ID!;
 const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
+
+const mapMatchRecord = (input: any, fallbackEventId: string): Match => {
+  const fieldRef = input?.field;
+  const fieldId = typeof input?.fieldId === 'string'
+    ? input.fieldId
+    : typeof fieldRef === 'string'
+      ? fieldRef
+      : fieldRef?.$id;
+
+  const fieldName = typeof input?.fieldName === 'string'
+    ? input.fieldName
+    : typeof fieldRef === 'object'
+      ? fieldRef?.name
+      : undefined;
+
+  const fieldNumber = typeof input?.fieldNumber === 'number'
+    ? input.fieldNumber
+    : typeof fieldRef === 'object'
+      ? fieldRef?.fieldNumber
+      : undefined;
+
+  const team1Id = typeof input?.team1Id === 'string'
+    ? input.team1Id
+    : typeof input?.team1 === 'string'
+      ? input.team1
+      : undefined;
+
+  const team2Id = typeof input?.team2Id === 'string'
+    ? input.team2Id
+    : typeof input?.team2 === 'string'
+      ? input.team2
+      : undefined;
+
+  return {
+    $id: (input?.$id ?? input?.id) as string,
+    eventId: (input?.eventId ?? fallbackEventId) as string,
+    start: input.start,
+    end: input.end,
+    timezone: input.timezone,
+    matchType: input.matchType ?? 'regular',
+    weekNumber: input.weekNumber,
+    team1Id,
+    team2Id,
+    team1Seed: input.team1Seed,
+    team2Seed: input.team2Seed,
+    losersBracket: input.losersBracket,
+    fieldId,
+    fieldName,
+    fieldNumber,
+    team1Points: input.team1Points as number[],
+    team2Points: input.team2Points as number[],
+    setResults: input.setResults as number[],
+  } as Match;
+};
 
 export interface WeeklySlotInput {
   fieldId: string;
@@ -32,7 +86,7 @@ export interface WeeklySlotConflict {
 }
 
 export interface LeagueScheduleResponse {
-  matches: ScheduledMatchPayload[];
+  matches: Match[];
   warnings?: string[];
   preview?: boolean;
   event?: Event;
@@ -203,7 +257,15 @@ class LeagueService {
       throw new Error(typeof result.error === 'string' ? result.error : 'Failed to generate league schedule');
     }
 
-    return result as LeagueScheduleResponse;
+    const eventRefId = typeof result?.event?.$id === 'string' ? result.event.$id : eventId;
+    const matches = Array.isArray(result?.matches)
+      ? result.matches.map((match: any) => mapMatchRecord(match, eventRefId))
+      : [];
+
+    return {
+      ...result,
+      matches,
+    } as LeagueScheduleResponse;
   }
 
   async previewScheduleFromDocument(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
@@ -228,20 +290,8 @@ class LeagueService {
       throw new Error(typeof parsed.error === 'string' ? parsed.error : 'Failed to preview league schedule');
     }
 
-    const matches = Array.isArray(parsed.matches)
-      ? (parsed.matches as any[]).map((match) => ({
-          id: match.id ?? match.$id,
-          eventId: parsed.event?.$id ?? eventDocument?.$id ?? 'preview',
-          fieldId: match.field,
-          start: match.start,
-          end: match.end,
-          weekNumber: match.weekNumber ?? undefined,
-          matchType: match.matchType ?? 'regular',
-          team1Id: match.team1 ?? match.team1Id ?? undefined,
-          team2Id: match.team2 ?? match.team2Id ?? undefined,
-          team1Seed: match.team1Seed ?? undefined,
-          team2Seed: match.team2Seed ?? undefined,
-        })) as ScheduledMatchPayload[]
+    const matches: Match[] = Array.isArray(parsed.matches)
+      ? (parsed.matches as any[]).map((match) => mapMatchRecord(match, parsed.event?.$id ?? eventDocument?.$id ?? 'preview'))
       : [];
 
     let event: Event | undefined;
@@ -256,7 +306,7 @@ class LeagueService {
     };
   }
 
-  async listMatchesByEvent(eventId: string): Promise<ScheduledMatchPayload[]> {
+  async listMatchesByEvent(eventId: string): Promise<Match[]> {
     const response = await databases.listRows({
       databaseId: DATABASE_ID,
       tableId: MATCHES_COLLECTION_ID,
@@ -266,19 +316,7 @@ class LeagueService {
       ],
     });
 
-    return response.rows.map((row: any) => ({
-      id: row.$id,
-      eventId: row.eventId ?? eventId,
-      fieldId: row.fieldId,
-      start: row.start,
-      end: row.end,
-      weekNumber: row.weekNumber ?? undefined,
-      matchType: row.matchType ?? 'regular',
-      team1Id: row.team1Id ?? undefined,
-      team2Id: row.team2Id ?? undefined,
-      team1Seed: row.team1Seed ?? undefined,
-      team2Seed: row.team2Seed ?? undefined,
-    })) as ScheduledMatchPayload[];
+    return response.rows.map((row: any) => mapMatchRecord(row, row.eventId ?? eventId));
   }
 
   async deleteMatchesByEvent(eventId: string): Promise<void> {
@@ -287,7 +325,7 @@ class LeagueService {
       databases.deleteRow({
         databaseId: DATABASE_ID,
         tableId: MATCHES_COLLECTION_ID,
-        rowId: match.id,
+        rowId: match.$id,
       })
     ));
   }
