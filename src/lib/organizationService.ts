@@ -2,7 +2,7 @@
 
 import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
-import type { Event, Field, Organization, OrganizationDetail, Team } from '@/types';
+import type { Event, Field, Organization, Team } from '@/types';
 import { getCategoryFromEvent } from '@/types';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
@@ -58,7 +58,7 @@ class OrganizationService {
     return (response.rows as AnyRow[]).map(this.mapRowToOrganization);
   }
 
-  async getOrganizationById(id: string, includeRelations: boolean = true): Promise<OrganizationDetail | undefined> {
+  async getOrganizationById(id: string, includeRelations: boolean = true): Promise<Organization | undefined> {
     try {
       if (!includeRelations) {
         const response = await databases.getRow({
@@ -66,7 +66,7 @@ class OrganizationService {
           tableId: ORGANIZATIONS_TABLE_ID,
           rowId: id,
         });
-        return this.mapRowToOrganization(response as AnyRow) as OrganizationDetail;
+        return this.mapRowToOrganization(response as AnyRow) as Organization;
       } else {
         const response = await databases.getRow({
           databaseId: DATABASE_ID,
@@ -74,7 +74,7 @@ class OrganizationService {
           rowId: id,
           queries: [Query.select(['fields.*', 'teams.*', 'events.*'])],
         });
-      return this.mapRowToOrganization(response as AnyRow) as OrganizationDetail;
+      return this.mapRowToOrganization(response as AnyRow) as Organization;
       }
     } catch (e) {
       console.error('Failed to fetch organization:', e);

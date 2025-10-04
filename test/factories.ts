@@ -60,7 +60,15 @@ export const buildTimeSlot = (overrides: Partial<TimeSlot> = {}): TimeSlot => {
     startTime: 9 * 60,
     endTime: 10 * 60,
     timezone: 'UTC',
-    field: overrides.field ?? 'field_1',
+    field: overrides.field ?? {
+      $id: 'field_1',
+      name: 'Court A',
+      location: '',
+      lat: 0,
+      long: 0,
+      type: 'indoor',
+      fieldNumber: 1,
+    },
     ...overrides,
   };
 };
@@ -102,4 +110,3 @@ export const buildEvent = (overrides: Partial<Event> = {}): Event => {
     ...overrides,
   };
 };
-

@@ -58,6 +58,11 @@ function TeamsPageContent() {
     'Other': 8
   };
 
+  const getDivisionLabel = (division: Team['division']) =>
+    typeof division === 'string'
+      ? division
+      : division?.name || division?.skillLevel || 'Division';
+
   useEffect(() => {
     if (!authLoading) {
       if (!isAuthenticated || !user) {
@@ -277,7 +282,7 @@ function TeamsPageContent() {
                       <Group justify="space-between" mb="sm">
                         <div>
                           <Text fw={600}>{team.name || 'Unnamed Team'}</Text>
-                          <Text size="sm" c="dimmed">{team.division} Division</Text>
+                          <Text size="sm" c="dimmed">{getDivisionLabel(team.division)} Division</Text>
                         </div>
                         <Badge color="orange" variant="light">Invited</Badge>
                       </Group>

@@ -367,14 +367,17 @@ function EventsPageContent() {
           setSelectedEvent(null);
         }}
       />
-      <EventCreationModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onEventCreated={() => {
-          setShowCreateModal(false);
-        }}
-        currentUser={user}
-      />
+      {user && (
+        <EventCreationModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onEventCreated={() => {
+            setShowCreateModal(false);
+          }}
+          currentUser={user}
+          organization={null}
+        />
+      )}
     </>
   );
 }

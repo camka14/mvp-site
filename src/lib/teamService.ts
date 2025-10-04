@@ -140,33 +140,43 @@ class TeamService {
     }
 
     private mapRowToTeam(row: any): Team {
-        const currentSize = (row.playerIds || []).length;
-        const maxPlayers = row.teamSize;
+        const playerIds = Array.isArray(row.playerIds) ? row.playerIds : [];
+        const pending = Array.isArray(row.pending) ? row.pending : [];
+        const teamSize = typeof row.teamSize === 'number' ? row.teamSize : playerIds.length;
+        const wins = typeof row.wins === 'number' ? row.wins : Number(row.wins ?? 0);
+        const losses = typeof row.losses === 'number' ? row.losses : Number(row.losses ?? 0);
 
-        // Handle division - could be expanded object or string ID
         let division: Division | string;
-        if (typeof row.division === 'object' && row.division.id) {
+        if (row.division && typeof row.division === 'object' && ('id' in row.division || 'name' in row.division)) {
             division = row.division as Division;
         } else {
-            division = row.division || 'Open';
+            division = (row.division as string) || 'Open';
         }
 
         const team: Team = {
-            ...row,
+            $id: row.$id,
+            name: row.name,
+            seed: typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0),
             division,
+            sport: row.sport || 'Volleyball',
+            wins,
+            losses,
+            playerIds,
+            captainId: row.captainId,
+            pending,
+            teamSize,
             profileImageId: row.profileImage || row.profileImageId || row.profileImageID,
-            // Computed properties
-            currentSize,
-            isFull: currentSize >= maxPlayers,
-            winRate: getTeamWinRate({
-                wins: row.wins || 0,
-                losses: row.losses || 0
-            } as Team),
-            avatarUrl: getTeamAvatarUrl({
-                name: row.name,
-                profileImageId: row.profileImage
-            } as Team)
+            $createdAt: row.$createdAt,
+            $updatedAt: row.$updatedAt,
+            winRate: 0,
+            currentSize: playerIds.length,
+            isFull: playerIds.length >= teamSize,
+            avatarUrl: '',
         };
+
+        const totalMatches = team.wins + team.losses;
+        team.winRate = totalMatches === 0 ? 0 : Math.round((team.wins / totalMatches) * 100);
+        team.avatarUrl = getTeamAvatarUrl(team);
 
         return team;
     }
@@ -244,8 +254,175 @@ class TeamService {
         }
     }
 
-    // All other methods remain the same...
-    // (deleteTeam, updateTeamProfileImage, updateTeamName, getTeamsByUserId, etc.)
+    async getTeamsByUserId(userId: string): Promise<Team[]> {
+        try {
+            const response = await databases.listRows({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                queries: [
+                    Query.limit(100),
+                    Query.contains('playerIds', userId),
+                ],
+            });
+
+            return response.rows.map((row: any) => this.mapRowToTeam(row));
+        } catch (error) {
+            console.error('Failed to fetch user teams:', error);
+            return [];
+        }
+    }
+
+    async updateTeamProfileImage(teamId: string, fileId: string): Promise<Team | undefined> {
+        try {
+            const response = await databases.updateRow({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                rowId: teamId,
+                data: {
+                    profileImageId: fileId,
+                    profileImage: fileId,
+                },
+            });
+
+            return this.mapRowToTeam(response);
+        } catch (error) {
+            console.error('Failed to update team profile image:', error);
+            return undefined;
+        }
+    }
+
+    async updateTeamName(teamId: string, name: string): Promise<Team | undefined> {
+        try {
+            const response = await databases.updateRow({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                rowId: teamId,
+                data: { name },
+            });
+
+            return this.mapRowToTeam(response);
+        } catch (error) {
+            console.error('Failed to update team name:', error);
+            return undefined;
+        }
+    }
+
+    async acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> {
+        try {
+            const team = await this.getTeamById(teamId);
+            if (!team) {
+                return false;
+            }
+
+            const nextPlayerIds = Array.from(new Set([...team.playerIds, userId]));
+            const nextPending = team.pending.filter(id => id !== userId);
+
+            await databases.updateRow({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                rowId: teamId,
+                data: {
+                    playerIds: nextPlayerIds,
+                    pending: nextPending,
+                },
+            });
+
+            const user = await userService.getUserById(userId);
+            if (user) {
+                const updatedTeamIds = Array.from(new Set([...(user.teamIds || []), teamId]));
+                await userService.updateUser(userId, { teamIds: updatedTeamIds });
+            }
+
+            await userService.removeTeamInvitation(userId, teamId);
+            return true;
+        } catch (error) {
+            console.error('Failed to accept team invitation:', error);
+            return false;
+        }
+    }
+
+    async removeTeamInvitation(teamId: string, userId: string): Promise<boolean> {
+        try {
+            const team = await this.getTeamById(teamId);
+            if (!team) {
+                return false;
+            }
+
+            const nextPending = team.pending.filter(id => id !== userId);
+
+            await databases.updateRow({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                rowId: teamId,
+                data: { pending: nextPending },
+            });
+
+            await userService.removeTeamInvitation(userId, teamId);
+            return true;
+        } catch (error) {
+            console.error('Failed to remove team invitation:', error);
+            return false;
+        }
+    }
+
+    async removePlayerFromTeam(teamId: string, userId: string): Promise<boolean> {
+        try {
+            const team = await this.getTeamById(teamId);
+            if (!team) {
+                return false;
+            }
+
+            const nextPlayerIds = team.playerIds.filter(id => id !== userId);
+
+            await databases.updateRow({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                rowId: teamId,
+                data: { playerIds: nextPlayerIds },
+            });
+
+            const user = await userService.getUserById(userId);
+            if (user) {
+                const updatedTeamIds = (user.teamIds || []).filter(id => id !== teamId);
+                await userService.updateUser(userId, { teamIds: updatedTeamIds });
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Failed to remove player from team:', error);
+            return false;
+        }
+    }
+
+    async deleteTeam(teamId: string): Promise<boolean> {
+        try {
+            const team = await this.getTeamById(teamId);
+
+            await databases.deleteRow({
+                databaseId: DATABASE_ID,
+                tableId: TEAMS_TABLE_ID,
+                rowId: teamId,
+            });
+
+            if (team) {
+                await Promise.all(team.playerIds.map(async (playerId) => {
+                    const user = await userService.getUserById(playerId);
+                    if (!user) return;
+                    const updatedTeamIds = (user.teamIds || []).filter(id => id !== teamId);
+                    await userService.updateUser(playerId, { teamIds: updatedTeamIds });
+                }));
+
+                await Promise.all(team.pending.map(async (userId) => {
+                    await userService.removeTeamInvitation(userId, teamId);
+                }));
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Failed to delete team:', error);
+            return false;
+        }
+    }
 }
 
 export const teamService = new TeamService();

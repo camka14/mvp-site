@@ -81,8 +81,8 @@ export interface TimeSlot {
   startTime: number;
   endTime: number;
   timezone: string;
-  event?: Event | string;
-  field?: Field | string;
+  event?: Event;
+  field?: Field;
 }
 
 export interface UserData {
@@ -150,7 +150,8 @@ export interface Field {
   // Relationships
   divisions?: Division[];
   matches?: Match[];
-  eventId?: string; // Link to parent event
+  events?: Event[];
+  organization?: Organization | string;
 }
 
 // Core Event interface with relationships
@@ -162,6 +163,8 @@ export interface Event {
   end: string;
   location: string;
   coordinates: [number, number];
+  lat?: number;
+  long?: number;
   fieldType: string;
   price: number;
   rating?: number;
@@ -173,6 +176,10 @@ export interface Event {
   singleDivision: boolean;
   waitListIds: string[];
   freeAgentIds: string[];
+  playerIds?: string[];
+  teamIds?: string[];
+  waitList?: string[];
+  freeAgents?: string[];
   cancellationRefundHours: number;
   registrationCutoffHours: number;
   seedColor: number;
@@ -180,6 +187,7 @@ export interface Event {
   $updatedAt: string;
   eventType: 'pickup' | 'tournament' | 'league';
   sport: string;
+  organization?: Organization | string;
 
   // Relationship fields - can be IDs or expanded objects
   divisions: Division[] | string[];
@@ -229,9 +237,8 @@ export interface Organization {
   ownerId?: string;
   $createdAt?: string;
   $updatedAt?: string;
-}
 
-export interface OrganizationDetail extends Organization {
+  // Relationships
   events?: Event[];
   teams?: Team[];
   fields?: Field[];

@@ -14,8 +14,8 @@ import {
 } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
 import TimezoneSelect from 'react-timezone-select';
-import type { Field, LeagueConfig } from '@/types';
-import type { WeeklySlotConflict, WeeklySlotInput } from '@/lib/leagueService';
+import type { Field, LeagueConfig, TimeSlot } from '@/types';
+import type { WeeklySlotConflict } from '@/lib/leagueService';
 
 const DAYS_OF_WEEK = [
   { value: '0', label: 'Monday' },
@@ -26,6 +26,16 @@ const DAYS_OF_WEEK = [
   { value: '5', label: 'Saturday' },
   { value: '6', label: 'Sunday' },
 ];
+
+const createFieldStub = (fieldId: string, label?: string): Field => ({
+  $id: fieldId,
+  name: label ?? '',
+  location: '',
+  lat: 0,
+  long: 0,
+  type: '',
+  fieldNumber: 0,
+});
 
 const minutesToTimeString = (minutes?: number): string => {
   if (typeof minutes !== 'number' || Number.isNaN(minutes)) {
@@ -57,8 +67,8 @@ const parseTimeInput = (value: string): number | undefined => {
 export interface LeagueSlotForm {
   key: string;
   $id?: string;
-  fieldId?: string;
-  dayOfWeek?: WeeklySlotInput['dayOfWeek'];
+  field?: Field;
+  dayOfWeek?: TimeSlot['dayOfWeek'];
   startTime?: number;
   endTime?: number;
   timezone?: string;
@@ -118,6 +128,11 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
     if (typeof window === 'undefined') return undefined;
     return document.body;
   }, []);
+
+  const fieldLookup = useMemo(
+    () => new Map(fields.map((field) => [field.$id, field])),
+    [fields],
+  );
 
   const availableFieldOptions = (fieldOptions && fieldOptions.length > 0)
     ? fieldOptions
@@ -221,9 +236,16 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
         <Stack gap="md">
           {slots.map((slot, index) => {
             const conflictCount = slot.conflicts.length;
-            const fieldOptionsForSlot = !slot.fieldId || availableFieldOptions.some(option => option.value === slot.fieldId)
-              ? availableFieldOptions
-              : [...availableFieldOptions, { value: slot.fieldId, label: slot.fieldId }];
+            const selectedFieldId = slot.field?.$id ?? null;
+            const fieldOptionsForSlot = selectedFieldId && !availableFieldOptions.some(option => option.value === selectedFieldId)
+              ? [
+                  ...availableFieldOptions,
+                  {
+                    value: selectedFieldId,
+                    label: slot.field?.name || (slot.field?.fieldNumber ? `Field ${slot.field.fieldNumber}` : selectedFieldId),
+                  },
+                ]
+              : availableFieldOptions;
             return (
               <Card key={slot.key} shadow="xs" radius="md" padding="lg" withBorder>
                 <div className="flex flex-col gap-4">
@@ -247,8 +269,19 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       label="Field"
                       placeholder="Select field"
                       data={fieldOptionsForSlot}
-                      value={slot.fieldId ?? null}
-                      onChange={(value) => onUpdateSlot(index, { fieldId: value || undefined })}
+                      value={selectedFieldId}
+                      onChange={(value) => {
+                        if (!value) {
+                          onUpdateSlot(index, { field: undefined });
+                          return;
+                        }
+                        const nextField = fieldLookup.get(value)
+                          ?? createFieldStub(
+                            value,
+                            fieldOptionsForSlot.find(option => option.value === value)?.label,
+                          );
+                        onUpdateSlot(index, { field: nextField });
+                      }}
                       searchable
                     />
 

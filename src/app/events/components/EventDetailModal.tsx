@@ -728,18 +728,25 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                     await confirmRegistrationAfterPayment();
                 }}
             />
-            <EventCreationModal
-                isOpen={showEditModal}
-                onClose={() => setShowEditModal(false)}
-                onEventCreated={async (updatedEvent) => {
-                    setShowEditModal(false);
-                    if (updatedEvent) {
-                        setDetailedEvent(updatedEvent);
+            {user && (
+                <EventCreationModal
+                    isOpen={showEditModal}
+                    onClose={() => setShowEditModal(false)}
+                    onEventCreated={async (updatedEvent) => {
+                        setShowEditModal(false);
+                        if (updatedEvent) {
+                            setDetailedEvent(updatedEvent);
+                        }
+                    }}
+                    currentUser={user}
+                    editingEvent={currentEvent}
+                    organization={
+                        currentEvent && typeof currentEvent.organization === 'object' && currentEvent.organization
+                            ? currentEvent.organization
+                            : null
                     }
-                }}
-                currentUser={user}
-                editingEvent={currentEvent}
-            />
+                />
+            )}
         </>
     );
 }

@@ -8,7 +8,7 @@ import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleG
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import { useApp } from '@/app/providers';
-import type { OrganizationDetail } from '@/types';
+import type { Organization } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { storage } from '@/app/appwrite';
 import EventCreationModal from '@/app/events/components/EventCreationModal';
@@ -31,7 +31,7 @@ function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
   const { user, loading: authLoading, isAuthenticated } = useApp();
-  const [org, setOrg] = useState<OrganizationDetail | null>(null);
+  const [org, setOrg] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields'>('overview');
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
@@ -277,7 +277,7 @@ function OrganizationDetailContent() {
         onClose={() => setShowCreateEventModal(false)}
         onEventCreated={async () => { setShowCreateEventModal(false); if (id) await loadOrg(id); }}
         currentUser={user}
-        organizationId={id}
+        organization={org}
       />
       <CreateTeamModal
         isOpen={showCreateTeamModal}

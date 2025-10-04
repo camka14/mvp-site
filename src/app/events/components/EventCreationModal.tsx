@@ -8,14 +8,13 @@ import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl, SPORTS_LIST, Event, Division as CoreDivision, UserData, Team, LeagueConfig, Field } from '@/types';
+import { getEventImageUrl, SPORTS_LIST, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization } from '@/types';
 
 import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
-import { leagueService, WeeklySlotInput } from '@/lib/leagueService';
-import { fieldService } from '@/lib/fieldService';
+import { leagueService } from '@/lib/leagueService';
 import LeagueFields, { LeagueSlotForm } from './LeagueFields';
 import { ID } from '@/app/appwrite';
 
@@ -25,11 +24,119 @@ interface EventCreationModalProps {
     isOpen: boolean;
     onClose: () => void;
     onEventCreated: (updatedEvent?: Event) => void;
-    currentUser?: any;
+    currentUser: UserData;
     editingEvent?: Event;
-    organizationId?: string;
+    organization: Organization | null;
 }
 
+type EventType = Event['eventType'];
+
+// Compares two numeric start/end pairs to detect overlapping minutes within the same day.
+const slotsOverlap = (startA: number, endA: number, startB: number, endB: number): boolean =>
+    Math.max(startA, startB) < Math.min(endA, endB);
+
+// Evaluates the current slot against other form slots to surface inline validation errors for leagues.
+const computeSlotError = (
+    slots: LeagueSlotForm[],
+    index: number,
+    eventType: EventType
+): string | undefined => {
+    if (eventType !== 'league') {
+        return undefined;
+    }
+
+    const slot = slots[index];
+    if (!slot) {
+        return undefined;
+    }
+
+    const slotField = slot.field;
+    if (!slotField || typeof slotField.$id !== 'string') {
+        return undefined;
+    }
+
+    if (
+        typeof slot.dayOfWeek !== 'number' ||
+        typeof slot.startTime !== 'number' ||
+        typeof slot.endTime !== 'number'
+    ) {
+        return undefined;
+    }
+
+    const slotDayOfWeek = slot.dayOfWeek;
+    const slotStartTime = slot.startTime;
+    const slotEndTime = slot.endTime;
+
+    if (slotEndTime <= slotStartTime) {
+        return 'Timeslot must end after it starts.';
+    }
+
+    const hasOverlap = slots.some((other, otherIndex) => {
+        if (otherIndex === index) {
+            return false;
+        }
+
+        const otherField = other.field;
+        if (!otherField || typeof otherField.$id !== 'string') {
+            return false;
+        }
+
+        if (otherField.$id !== slotField.$id) {
+            return false;
+        }
+
+        if (typeof other.dayOfWeek !== 'number' || other.dayOfWeek !== slotDayOfWeek) {
+            return false;
+        }
+
+        if (
+            typeof other.startTime !== 'number' ||
+            typeof other.endTime !== 'number'
+        ) {
+            return false;
+        }
+
+        const otherStartTime = other.startTime;
+        const otherEndTime = other.endTime;
+
+        return slotsOverlap(slotStartTime, slotEndTime, otherStartTime, otherEndTime);
+    });
+
+    if (hasOverlap) {
+        return 'Overlaps with another timeslot in this form.';
+    }
+
+    return undefined;
+};
+
+// Resets conflict bookkeeping and assigns slot errors so UI can block submission when overlaps exist.
+const normalizeSlotState = (slots: LeagueSlotForm[], eventType: EventType): LeagueSlotForm[] => {
+    let mutated = false;
+
+    const normalized = slots.map((slot, index) => {
+        const error = computeSlotError(slots, index, eventType);
+        const needsUpdate =
+            slot.error !== error ||
+            slot.checking !== false ||
+            slot.conflicts.length > 0;
+
+        if (!needsUpdate) {
+            return slot;
+        }
+
+        mutated = true;
+        return {
+            ...slot,
+            conflicts: [],
+            checking: false,
+            error,
+        };
+    });
+
+    return mutated ? normalized : slots;
+};
+
+// Converts mixed input values into numbers while respecting optional fallbacks for blank fields.
 const normalizeNumber = (value: unknown, fallback?: number): number | undefined => {
     if (typeof value === 'number' && Number.isFinite(value)) {
         return value;
@@ -47,39 +154,48 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     onEventCreated,
     currentUser,
     editingEvent,
-    organizationId
+    organization
 }) => {
     const router = useRouter();
     const { location: userLocation } = useLocation();
     const modalRef = useRef<HTMLDivElement>(null);
+    // Stores the persisted file ID for the event hero image so submissions reference storage assets.
     const [selectedImageId, setSelectedImageId] = useState<string>(editingEvent?.imageId || '');
 
 
+    // Mirrors the hero image URL for live preview inside the modal banner.
     const [selectedImageUrl, setSelectedImageUrl] = useState(
         editingEvent ? getEventImageUrl({ imageId: editingEvent.imageId, width: 800 }) : ''
     );
     const timezoneDefault = typeof Intl !== 'undefined'
         ? Intl.DateTimeFormat().resolvedOptions().timeZone
         : 'UTC';
-    const createSlotForm = useCallback((slot?: Partial<WeeklySlotInput> & { fieldId?: string }): LeagueSlotForm => ({
+    // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
+    const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => ({
         key: slot?.$id ?? ID.unique(),
         $id: slot?.$id,
-        fieldId: slot?.fieldId,
+        field: typeof slot?.field === 'object' && slot.field ? slot.field as Field : undefined,
         dayOfWeek: slot?.dayOfWeek,
         startTime: slot?.startTime,
         endTime: slot?.endTime,
         timezone: slot?.timezone || timezoneDefault,
         conflicts: [],
         checking: false,
+        error: undefined,
     }), [timezoneDefault]);
+    // Guards the submit button and spinner while create/update or preview requests are in-flight.
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);
+    // Flag the user can toggle to add themselves to new pickup/tournament rosters on creation.
     const [joinAsParticipant, setJoinAsParticipant] = useState(false);
+    // Cached Stripe onboarding state pulled from the current user so paid inputs can be enabled/disabled.
     const [hasStripeAccount, setHasStripeAccount] = useState(currentUser?.hasStripeAccount || false);
 
     const isEditMode = !!editingEvent;
 
     // Complete event data state with ALL fields
+    // Central event payload that binds the form inputs for basic details, logistics, and relationships.
     const [eventData, setEventData] = useState<{
         name: string;
         description: string;
@@ -183,6 +299,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     });
 
+    // Holds tournament-specific settings so the modal can conditionally render the TournamentFields block.
     const [tournamentData, setTournamentData] = useState(() => {
         if (editingEvent && editingEvent.eventType === 'tournament') {
             return {
@@ -208,6 +325,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     });
 
+    // Maintains league configuration sliders/toggles passed into the schedule preview pipeline.
     const [leagueData, setLeagueData] = useState<LeagueConfig>(() => {
         if (editingEvent && editingEvent.eventType === 'league') {
             const source = editingEvent.leagueConfig || editingEvent;
@@ -232,22 +350,37 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         };
     });
 
+    // Represents weekly availability rows for league scheduling; normalized with createSlotForm.
     const [leagueSlots, setLeagueSlots] = useState<LeagueSlotForm[]>(() => {
         if (editingEvent && editingEvent.eventType === 'league' && editingEvent.timeSlots?.length) {
-            return (editingEvent.timeSlots || []).map((slot) => createSlotForm({
-                $id: slot.$id,
-                fieldId: typeof slot.field === 'string'
-                    ? slot.field
-                    : slot.field?.$id,
-                dayOfWeek: slot.dayOfWeek,
-                startTime: slot.startTime,
-                endTime: slot.endTime,
-                timezone: slot.timezone,
-            }));
+            return (editingEvent.timeSlots || []).map((slot) => {
+                const fieldRef = (() => {
+                    if (slot.field && typeof slot.field === 'object') {
+                        return slot.field as Field;
+                    }
+                    const fieldId = typeof slot.field === 'string'
+                        ? slot.field
+                        : (slot.field as any)?.$id;
+                    if (!fieldId) {
+                        return undefined;
+                    }
+                    return editingEvent.fields?.find((field) => field.$id === fieldId);
+                })();
+
+                return createSlotForm({
+                    $id: slot.$id,
+                    field: fieldRef,
+                    dayOfWeek: slot.dayOfWeek,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime,
+                    timezone: slot.timezone,
+                });
+            });
         }
         return [createSlotForm()];
     });
 
+    // Surface-level validation message shown beneath the LeagueFields component.
     const [leagueError, setLeagueError] = useState<string | null>(null);
 
     const initialFieldCount = (() => {
@@ -261,13 +394,15 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         return 1;
     })();
 
+    // Tracks the number of ad-hoc fields we should provision when the org lacks saved facilities.
     const [fieldCount, setFieldCount] = useState<number>(initialFieldCount);
 
+    // Mutable list of fields either fetched from the org or generated locally for new events.
     const [fields, setFields] = useState<Field[]>(() => {
         if (editingEvent?.fields?.length) {
             return [...editingEvent.fields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
         }
-        if (!organizationId) {
+        if (!organization) {
             return Array.from({ length: initialFieldCount }, (_, idx) => ({
                 $id: ID.unique(),
                 name: `Field ${idx + 1}`,
@@ -280,11 +415,17 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
         return [];
     });
+    // Spinner flag while asynchronous field lookups resolve.
     const [fieldsLoading, setFieldsLoading] = useState(false);
-    const shouldProvisionFields = !organizationId;
+    const shouldProvisionFields = !organization;
     const shouldManageLocalFields = shouldProvisionFields && !isEditMode && (eventData.eventType === 'league' || eventData.eventType === 'tournament');
-    const leagueSlotsRef = useRef<LeagueSlotForm[]>(leagueSlots);
 
+    // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
+    const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
+        setLeagueSlots(prev => normalizeSlotState(updater(prev), eventData.eventType));
+    }, [eventData.eventType]);
+
+    // When provisioning local fields, mirror field type/count changes into the generated list.
     useEffect(() => {
         if (!shouldManageLocalFields) {
             return;
@@ -314,6 +455,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         });
     }, [fieldCount, shouldManageLocalFields, eventData.fieldType]);
 
+    // For organizations with existing facilities, seed the field list with their saved ordering.
     useEffect(() => {
         if (shouldManageLocalFields || !editingEvent?.fields?.length) {
             return;
@@ -321,110 +463,34 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         setFields([...editingEvent.fields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0)));
     }, [editingEvent?.fields, shouldManageLocalFields]);
 
+    // Clear slot field references that point to deleted ad-hoc fields when the list is regenerated.
     useEffect(() => {
         if (!shouldManageLocalFields) return;
         const validIds = new Set(fields.map(field => field.$id));
-        setLeagueSlots(prev => prev.map(slot => {
-            if (!slot.fieldId || validIds.has(slot.fieldId)) {
+        updateLeagueSlots(prev => prev.map(slot => {
+            const fieldId = slot.field?.$id;
+            if (!fieldId || validIds.has(fieldId)) {
                 return slot;
             }
-            return { ...slot, fieldId: undefined };
+            return { ...slot, field: undefined };
         }));
-    }, [fields, shouldManageLocalFields]);
+    }, [fields, shouldManageLocalFields, updateLeagueSlots]);
 
-    const checkSlotConflicts = useCallback(async (slot: LeagueSlotForm, index: number) => {
-        if (eventData.eventType !== 'league') return;
-
-        if (shouldManageLocalFields) {
-            setLeagueSlots(prev => {
-                const next = [...prev];
-                if (next[index]) {
-                    next[index] = { ...next[index], conflicts: [], error: undefined, checking: false };
-                }
-                return next;
-            });
-            return;
-        }
-
-        if (
-            !slot.fieldId ||
-            typeof slot.dayOfWeek !== 'number' ||
-            typeof slot.startTime !== 'number' ||
-            typeof slot.endTime !== 'number'
-        ) {
-            setLeagueSlots(prev => {
-                const next = [...prev];
-                if (next[index]) {
-                    next[index] = { ...next[index], conflicts: [], error: undefined, checking: false };
-                }
-                return next;
-            });
-            return;
-        }
-
-        if (!eventData.start || !eventData.end) {
-            return;
-        }
-
-        const payload: WeeklySlotInput = {
-            fieldId: slot.fieldId,
-            dayOfWeek: slot.dayOfWeek as WeeklySlotInput['dayOfWeek'],
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            timezone: slot.timezone || timezoneDefault,
-            $id: slot.$id,
-        };
-
-        setLeagueSlots(prev => {
-            const next = [...prev];
-            if (next[index]) {
-                next[index] = { ...next[index], checking: true, error: undefined };
-            }
-            return next;
-        });
-
-        try {
-            const conflicts = await leagueService.checkConflictsForSlot(
-                payload,
-                eventData.start,
-                eventData.end,
-                { ignoreEventId: editingEvent?.$id }
-            );
-
-            setLeagueSlots(prev => {
-                const next = [...prev];
-                if (next[index]) {
-                    next[index] = { ...next[index], conflicts, checking: false, error: undefined };
-                }
-                return next;
-            });
-        } catch (error) {
-            setLeagueSlots(prev => {
-                const next = [...prev];
-                if (next[index]) {
-                    next[index] = {
-                        ...next[index],
-                        checking: false,
-                        error: error instanceof Error ? error.message : 'Failed to check availability',
-                    };
-                }
-                return next;
-            });
-        }
-    }, [editingEvent?.$id, eventData.end, eventData.eventType, eventData.start, timezoneDefault]);
-
+    // Adds a blank slot row in the LeagueFields list when the user taps "Add Timeslot".
     const handleAddSlot = () => {
         setLeagueError(null);
-        setLeagueSlots(prev => [...prev, createSlotForm()]);
+        updateLeagueSlots(prev => [...prev, createSlotForm()]);
     };
 
+    // Drops a specific slot by index, leaving at least one slot for the scheduler UI to edit.
     const handleRemoveSlot = (index: number) => {
-        setLeagueSlots(prev => {
+        updateLeagueSlots(prev => {
             if (prev.length <= 1) return prev;
             return prev.filter((_, idx) => idx !== index);
         });
     };
 
+    // Applies granular updates coming back from LeagueFields inputs before revalidating the array.
     const handleUpdateSlot = (index: number, updates: Partial<LeagueSlotForm>) => {
         const current = leagueSlots[index];
         if (!current) return;
@@ -439,16 +505,16 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             updated.timezone = timezoneDefault;
         }
 
-        setLeagueSlots(prev => {
+        updateLeagueSlots(prev => {
             const next = [...prev];
             next[index] = updated;
             return next;
         });
 
         setLeagueError(null);
-        checkSlotConflicts(updated, index);
     };
 
+    // Updates locally managed fields when the org lacks saved fields (new event + provisioning).
     const handleLocalFieldNameChange = (index: number, name: string) => {
         if (!shouldManageLocalFields) {
             return;
@@ -462,10 +528,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         });
     };
 
-    useEffect(() => {
-        leagueSlotsRef.current = leagueSlots;
-    }, [leagueSlots]);
-
+    // Ensure leagues default their end date to the start date until schedules generate an actual end.
     useEffect(() => {
         if (isEditMode) {
             return;
@@ -481,6 +544,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     }, [eventData.eventType, eventData.start, isEditMode]);
 
+    // Hydrate league-specific state and slots when opening the modal for an existing event.
     useEffect(() => {
         if (editingEvent && editingEvent.eventType === 'league') {
             const source = editingEvent.leagueConfig || editingEvent;
@@ -494,29 +558,32 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 setsPerMatch: normalizeNumber(source?.setsPerMatch),
             });
 
-            const slots = (editingEvent.timeSlots || []).map(slot => createSlotForm({
-                $id: slot.$id,
-                fieldId: typeof slot.field === 'string'
-                    ? slot.field
-                    : slot.field?.$id,
-                dayOfWeek: slot.dayOfWeek,
-                startTime: slot.startTime,
-                endTime: slot.endTime,
-                timezone: slot.timezone,
-            }));
+            const slots = (editingEvent.timeSlots || []).map(slot => {
+                const fieldRef = (() => {
+                    if (slot.field && typeof slot.field === 'object') {
+                        return slot.field as Field;
+                    }
+                    const fieldId = typeof slot.field === 'string'
+                        ? slot.field
+                        : (slot.field as any)?.$id;
+                    if (!fieldId) {
+                        return undefined;
+                    }
+                    return editingEvent.fields?.find((field) => field.$id === fieldId);
+                })();
 
-            setLeagueSlots(slots.length > 0 ? slots : [createSlotForm()]);
-
-            slots.forEach((slot, index) => {
-                if (
-                    slot.fieldId &&
-                    typeof slot.dayOfWeek === 'number' &&
-                    typeof slot.startTime === 'number' &&
-                    typeof slot.endTime === 'number'
-                ) {
-                    checkSlotConflicts(slot, index);
-                }
+                return createSlotForm({
+                    $id: slot.$id,
+                    field: fieldRef,
+                    dayOfWeek: slot.dayOfWeek,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime,
+                    timezone: slot.timezone,
+                });
             });
+
+            const initialSlots = slots.length > 0 ? slots : [createSlotForm()];
+            setLeagueSlots(normalizeSlotState(initialSlots, editingEvent.eventType));
         } else if (!editingEvent) {
             setLeagueData({
                 gamesPerOpponent: 1,
@@ -527,44 +594,25 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 setDurationMinutes: undefined,
                 setsPerMatch: undefined,
             });
-            setLeagueSlots([createSlotForm()]);
+            setLeagueSlots(normalizeSlotState([createSlotForm()], 'pickup'));
         }
-    }, [checkSlotConflicts, createSlotForm, editingEvent]);
+    }, [createSlotForm, editingEvent]);
 
+    // Pull the organization's fields so league/tournament creators can assign real facilities.
     useEffect(() => {
         let isMounted = true;
-        if (!organizationId) {
+        if (!organization?.fields) {
             return;
         }
 
-        const loadFields = async () => {
-            try {
-                setFieldsLoading(true);
-                const result = await fieldService.listFields(organizationId);
-                if (!isMounted) return;
+        setFields(organization.fields);
 
-                setFields(prev => {
-                    const map = new Map<string, Field>();
-                    [...prev, ...(Array.isArray(result) ? result : [])].forEach(field => {
-                        if (field?.$id) {
-                            map.set(field.$id, field);
-                        }
-                    });
-                    return Array.from(map.values());
-                });
-            } catch (error) {
-                console.error('Failed to load fields:', error);
-            } finally {
-                if (isMounted) setFieldsLoading(false);
-            }
-        };
-
-        loadFields();
         return () => {
             isMounted = false;
         };
-    }, [organizationId]);
+    }, [organization]);
 
+    // Merge any newly loaded fields from the event into local state without losing existing edits.
     useEffect(() => {
         if (editingEvent?.fields) {
             setFields(prev => {
@@ -579,19 +627,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     }, [editingEvent?.fields]);
 
+    // Re-run slot normalization when the modal switches event types (e.g., league -> tournament).
     useEffect(() => {
-        if (eventData.eventType !== 'league' || shouldManageLocalFields) return;
-        leagueSlotsRef.current.forEach((slot, index) => {
-            if (
-                slot.fieldId &&
-                typeof slot.dayOfWeek === 'number' &&
-                typeof slot.startTime === 'number' &&
-                typeof slot.endTime === 'number'
-            ) {
-                checkSlotConflicts(slot, index);
-            }
-        });
-    }, [eventData.start, eventData.end, eventData.eventType, checkSlotConflicts]);
+        updateLeagueSlots(prev => prev);
+    }, [eventData.eventType, updateLeagueSlots]);
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
     const modalTitle = isEditMode ? 'Edit Event' : 'Create New Event';
@@ -616,33 +655,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }));
     }, [fields]);
 
-    const buildFieldRelationships = useCallback((): Record<string, unknown> | undefined => {
-        if (!fields.length) {
-            return undefined;
-        }
-
-        if (shouldManageLocalFields) {
-            return {
-                create: fields.map(field => ({
-                    $id: field.$id,
-                    name: field.name,
-                    fieldNumber: field.fieldNumber,
-                    type: field.type ?? eventData.fieldType,
-                    location: field.location,
-                    lat: field.lat,
-                    long: field.long,
-                })),
-            };
-        }
-
-        return {
-            connect: fields
-                .filter(field => field.$id)
-                .map(field => ({ $id: field.$id })),
-        };
-    }, [fields, shouldManageLocalFields, eventData.fieldType]);
-
     // Validation state
+    // Aggregated validity flags used to gate the submit button and surface inline messages.
     const [validation, setValidation] = useState({
         isNameValid: false,
         isPriceValid: true,
@@ -655,6 +669,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     });
 
     // Validation effect
+    // Recalculate validation every time relevant form values change so the CTA stays accurate.
     useEffect(() => {
         setValidation({
             isNameValid: eventData.name ? eventData.name?.trim().length > 0 : false,
@@ -668,6 +683,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         });
     }, [eventData, fieldCount, fields, selectedImageId, selectedImageUrl, shouldManageLocalFields]);
 
+    // Prevents the creator from joining twice when they toggle team-based registration on.
     useEffect(() => {
         if (eventData.teamSignup) {
             setJoinAsParticipant(false);
@@ -675,6 +691,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     }, [eventData.teamSignup]);
 
     // Initialize coordinates from user's current location for new events
+    // Pre-populates location inputs using the viewer's geolocation for faster setup on new events.
     useEffect(() => {
         if (!isEditMode && userLocation) {
             if ((eventData.lat === 0 && eventData.long === 0)) {
@@ -689,6 +706,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     }, [isEditMode, userLocation]);
 
     // Populate human-readable location if empty
+    // Converts coordinates into a city/state label when the user hasn't typed an address manually.
     useEffect(() => {
         if (!isEditMode && eventData.location.trim().length === 0 && eventData.lat !== 0 && eventData.long !== 0) {
             locationService.reverseGeocode(eventData.lat, eventData.long)
@@ -701,10 +719,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     }, [isEditMode, eventData.lat, eventData.long]);
 
-    const hasSlotConflicts = eventData.eventType === 'league' && !shouldManageLocalFields && leagueSlots.some(slot => slot.conflicts.length > 0);
-    const hasPendingSlotChecks = eventData.eventType === 'league' && !shouldManageLocalFields && leagueSlots.some(slot => slot.checking);
+    const hasSlotConflicts = eventData.eventType === 'league' && leagueSlots.some(slot => Boolean(slot.error));
     const hasIncompleteSlot = eventData.eventType === 'league' && leagueSlots.some(slot =>
-        !slot.fieldId ||
+        !slot.field ||
         typeof slot.dayOfWeek !== 'number' ||
         typeof slot.startTime !== 'number' ||
         typeof slot.endTime !== 'number' ||
@@ -726,7 +743,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             (!leagueData.includePlayoffs || (leagueData.playoffTeamCount && leagueData.playoffTeamCount > 1)) &&
             setTimingValid &&
             !hasSlotConflicts &&
-            !hasPendingSlotChecks &&
             !hasIncompleteSlot &&
             (!shouldManageLocalFields || fields.length === Math.max(1, fieldCount)) &&
             (!shouldManageLocalFields || fields.every(field => field.name?.trim().length > 0))
@@ -734,6 +750,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     const isValid = Object.values(validation).every(v => v) && leagueFormValid;
 
+    // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
     const handleConnectStripe = async () => {
         try {
             setConnectingStripe(true);
@@ -746,8 +763,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     };
 
-
-
+    // Generates an in-memory league schedule and navigates to the preview page for new leagues.
     const handleLeaguePreview = async () => {
         if (eventData.eventType !== 'league' || isEditMode) return;
         if (isSubmitting || !isValid) return;
@@ -782,7 +798,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
 
         const validSlots = leagueSlots.filter(slot =>
-            slot.fieldId &&
+            slot.field &&
             typeof slot.dayOfWeek === 'number' &&
             typeof slot.startTime === 'number' &&
             typeof slot.endTime === 'number'
@@ -815,28 +831,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 return `preview-${Date.now()}`;
             })();
 
-            const playerDocuments = (eventData.players || [])
-                .map(player => {
-                    const id = (player as any)?.$id || (player as any)?.id;
-                    return id ? { $id: id } : null;
-                })
-                .filter(Boolean);
-
-            const teamDocuments = (eventData.teams || [])
-                .map(team => {
-                    if (!team?.$id) return null;
-                    return {
-                        $id: team.$id,
-                        name: team.name,
-                        seed: Number.isFinite(team.seed) ? team.seed : 0,
-                        captainId: team.captainId ?? '',
-                        wins: team.wins ?? 0,
-                        losses: team.losses ?? 0,
-                        playerIds: Array.isArray(team.playerIds) ? team.playerIds : [],
-                    };
-                })
-                .filter(Boolean);
-
             const fieldMap = new Map<string, Field>();
             fields.forEach(field => {
                 if (field?.$id) {
@@ -844,46 +838,26 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 }
             });
 
-            type PreviewSlotDocument = {
-                $id: string;
-                dayOfWeek: number;
-                startTime: number;
-                endTime: number;
-                timezone: string;
-                field: { $id: string; name?: string; fieldNumber?: number };
-            };
-
-            const slotDocuments: PreviewSlotDocument[] = validSlots
-                .map((slot): PreviewSlotDocument | null => {
-                    if (!slot.fieldId) {
+            const slotDocuments: any[] = validSlots
+                .map((slot): any | null => {
+                    if (!slot.field) {
                         return null;
                     }
 
-                    const fieldDetails = fieldMap.get(slot.fieldId);
-                    const fieldPayload: { $id: string; name?: string; fieldNumber?: number } = {
-                        $id: slot.fieldId,
-                    };
-
-                    if (fieldDetails?.name) {
-                        fieldPayload.name = fieldDetails.name;
-                    }
-
-                    if (typeof fieldDetails?.fieldNumber === 'number') {
-                        fieldPayload.fieldNumber = fieldDetails.fieldNumber;
-                    }
+                    const fieldId = slot.field.$id;
+                    const fieldDetails = fieldId ? fieldMap.get(fieldId) ?? slot.field : slot.field;
 
                     return {
                         $id: slot.$id || ID.unique(),
-                        dayOfWeek: slot.dayOfWeek as number,
+                        dayOfWeek: slot.dayOfWeek as TimeSlot['dayOfWeek'],
                         startTime: Number(slot.startTime),
                         endTime: Number(slot.endTime),
                         timezone: slot.timezone || timezoneDefault,
-                        field: fieldPayload,
+                        field: {$id: fieldDetails.$id},
                     };
                 })
-                .filter((slot): slot is PreviewSlotDocument => slot !== null);
+                .filter((slot): slot is TimeSlot => slot !== null);
 
-            const fieldRelationships = buildFieldRelationships();
 
             const eventDocument: Record<string, any> = {
                 $id: previewEventId,
@@ -907,7 +881,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 singleDivision: eventData.singleDivision,
                 divisions: eventData.divisions,
                 hostId: currentUser?.$id,
-                organization: organizationId,
+                organization: {...organization, fields: undefined, events: undefined, teams: undefined},
                 gamesPerOpponent: leagueData.gamesPerOpponent,
                 includePlayoffs: leagueData.includePlayoffs,
                 playoffTeamCount: leagueData.includePlayoffs ? leagueData.playoffTeamCount ?? undefined : undefined,
@@ -916,9 +890,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 registrationCutoffHours: eventData.registrationCutoffHours,
                 ...timingFields,
                 matches: [],
-                teams: teamDocuments,
-                players: playerDocuments,
-                ...fields,
+                teams: [],
+                players: joinAsParticipant ? [currentUser] : [],
+                fields: fields,
                 timeSlots: slotDocuments,
             };
 
@@ -940,6 +914,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     };
 
+    // Persists the event (or triggers preview for new leagues) when the modal form is submitted.
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (isSubmitting || !isValid) return;
@@ -951,41 +926,62 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
         setIsSubmitting(true);
         try {
-            // Divisions already tracked as string[] keys
             const finalImageId = selectedImageId || eventData.imageId;
             if (!finalImageId) {
-                // Safety net: image is required
                 setIsSubmitting(false);
                 return;
             }
-            let submitData: any = {
-                ...eventData,
+
+            const baseCoordinates: [number, number] = [eventData.long, eventData.lat];
+
+            const submitEvent: Partial<Event> & { lat?: number; long?: number } = {
+                name: eventData.name.trim(),
+                description: eventData.description,
+                location: eventData.location,
+                start: eventData.start,
+                end: eventData.end,
+                eventType: eventData.eventType,
+                sport: eventData.sport,
+                fieldType: eventData.fieldType,
+                price: eventData.price,
+                maxParticipants: eventData.maxParticipants,
+                teamSizeLimit: eventData.teamSizeLimit,
+                teamSignup: eventData.teamSignup,
+                singleDivision: eventData.singleDivision,
                 divisions: eventData.divisions,
+                cancellationRefundHours: eventData.cancellationRefundHours,
+                registrationCutoffHours: eventData.registrationCutoffHours,
                 imageId: finalImageId,
+                seedColor: eventData.seedColor,
+                waitListIds: eventData.waitList,
+                freeAgentIds: eventData.freeAgents,
+                coordinates: baseCoordinates,
+                lat: eventData.lat,
+                long: eventData.long,
             };
 
-            // Only set hostId and participant data for new events
+            if (!shouldManageLocalFields && fields.length > 0) {
+                submitEvent.fields = fields;
+            }
+
             if (!isEditMode) {
-                submitData.hostId = currentUser?.$id;
-                if (organizationId) submitData.organization = organizationId;
-                submitData.playerIds = joinAsParticipant && !eventData.teamSignup ? [currentUser?.$id] : [];
-                submitData.teamIds = [];
-                submitData.waitList = [];
-                submitData.freeAgents = [];
+                if (currentUser?.$id) {
+                    submitEvent.hostId = currentUser.$id;
+                }
+                if (organization) {
+                    submitEvent.organization = organization;
+                }
+                submitEvent.waitListIds = [];
+                submitEvent.freeAgentIds = [];
                 if (shouldProvisionFields) {
-                    submitData.fieldCount = fieldCount;
+                    submitEvent.fieldCount = fieldCount;
                 }
             }
 
-            const submissionFieldRelationships = buildFieldRelationships();
-            if (submissionFieldRelationships) {
-                submitData.fields = submissionFieldRelationships;
-            }
-
             if (eventData.eventType === 'tournament') {
-                submitData = { ...submitData, ...tournamentData };
+                Object.assign(submitEvent, tournamentData);
                 if (!isEditMode && shouldProvisionFields) {
-                    submitData.fieldCount = fieldCount;
+                    submitEvent.fieldCount = fieldCount;
                 }
             }
 
@@ -1001,32 +997,31 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         matchDurationMinutes: normalizeNumber(leagueData.matchDurationMinutes, 60) ?? 60,
                     };
 
-                submitData = {
-                    ...submitData,
-                    ...(isEditMode ? {} : { status: 'draft' }),
+                Object.assign(submitEvent, {
                     gamesPerOpponent: leagueData.gamesPerOpponent,
                     includePlayoffs: leagueData.includePlayoffs,
                     playoffTeamCount: leagueData.includePlayoffs ? leagueData.playoffTeamCount ?? undefined : undefined,
                     ...timingFields,
-                };
+                });
+
+                if (!isEditMode) {
+                    submitEvent.status = 'draft' as EventStatus;
+                }
+
                 if (!isEditMode && shouldProvisionFields && !shouldManageLocalFields) {
-                    submitData.fieldCount = fieldCount;
+                    submitEvent.fieldCount = fieldCount;
                 }
             }
 
             if (eventData.eventType === 'tournament' || eventData.eventType === 'league') {
-                // Let tournaments and leagues derive their end time once matches are generated.
-                const { end: _omitEnd, ...rest } = submitData;
-                submitData = rest;
+                delete submitEvent.end;
             }
 
             let resultEvent;
             if (isEditMode) {
-                // Update existing event
-                resultEvent = await eventService.updateEvent(editingEvent!.$id, submitData);
+                resultEvent = await eventService.updateEvent(editingEvent!.$id, submitEvent);
             } else {
-                // Create new event
-                resultEvent = await eventService.createEvent(submitData);
+                resultEvent = await eventService.createEvent(submitEvent);
             }
 
             onEventCreated(resultEvent);
@@ -1038,6 +1033,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     };
 
+    // Syncs the selected hero image with component state after uploads or picker changes.
     const handleImageChange = (fileId: string, url: string) => {
         setSelectedImageId(fileId);
         setSelectedImageUrl(url);

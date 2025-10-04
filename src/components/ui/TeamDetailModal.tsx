@@ -274,7 +274,7 @@ export default function TeamDetailModal({
                                 ) : (
                                     <Title order={3}>{currentTeam.name}</Title>
                                 )}
-                                <Text c="dimmed">{currentTeam.division} Division • {currentTeam.sport}</Text>
+                                <Text c="dimmed">{typeof currentTeam.division === 'string' ? currentTeam.division : currentTeam.division?.name || currentTeam.division?.skillLevel || 'Division'} Division • {currentTeam.sport}</Text>
                             </div>
                         </Group>
                         {isTeamCaptain && (

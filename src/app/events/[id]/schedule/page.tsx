@@ -213,7 +213,7 @@ function LeagueScheduleContent() {
     setPublishing(true);
     setInfoMessage(null);
     try {
-      const updated = await eventService.updateEvent(event.$id, { status: 'published' });
+      const updated = await eventService.createEvent(event);
       setEvent(updated);
       setInfoMessage('League published.');
     } catch (err) {

@@ -11,6 +11,7 @@ import {
   LeagueConfig,
   TimeSlot,
   EventStatus,
+  Organization,
 } from '@/types';
 import { ID, Query } from 'appwrite';
 
@@ -62,59 +63,6 @@ export interface EventFilters {
   sports?: string[];
   divisions?: string[];
   fieldType?: string;
-}
-
-export interface CreateEventData {
-  $id?: string;
-  name?: string;
-  description?: string;
-  location?: string;
-  lat?: number;
-  long?: number;
-  start?: string;
-  end?: string;
-  eventType?: 'pickup' | 'tournament' | 'league';
-  sport?: string;
-  fieldType?: string;
-  price?: number;
-  maxParticipants?: number;
-  teamSizeLimit?: number;
-  teamSignup?: boolean;
-  singleDivision?: boolean;
-  divisions?: Division[];
-  cancellationRefundHours?: number;
-  registrationCutoffHours?: number;
-  imageId?: string;
-  seedColor?: number;
-  // EventCreationModal passes these as plain arrays
-  waitList?: string[];
-  freeAgents?: string[];
-  // Stored/normalized names in DB
-  waitListIds?: string[];
-  freeAgentIds?: string[];
-  playerIds?: string[];
-  teamIds?: string[];
-  hostId?: string;
-  organization?: string;
-  status?: EventStatus;
-
-  // Tournament-specific fields
-  doubleElimination?: boolean;
-  winnerSetCount?: number;
-  loserSetCount?: number;
-  winnerBracketPointsToVictory?: number[];
-  loserBracketPointsToVictory?: number[];
-  prize?: string;
-  fieldCount?: number;
-
-  // League-specific fields
-  gamesPerOpponent?: number;
-  includePlayoffs?: boolean;
-  playoffTeamCount?: number;
-  usesSets?: boolean;
-  matchDurationMinutes?: number;
-  setDurationMinutes?: number;
-  setsPerMatch?: number;
 }
 
 class EventService {
@@ -214,14 +162,9 @@ class EventService {
     }
   }
 
-  async updateEvent(eventId: string, eventData: Partial<CreateEventData>): Promise<Event> {
+  async updateEvent(eventId: string, eventData: Partial<Event> & { lat?: number; long?: number }): Promise<Event> {
     try {
-      const payload = {
-        ...eventData,
-        ...(eventData?.lat !== undefined && eventData?.long !== undefined
-          ? { coordinates: [eventData.long, eventData.lat] as [number, number] }
-          : {}),
-      };
+      const payload = this.buildEventMutationPayload(eventData);
 
       const response = await databases.updateRow({
         databaseId: DATABASE_ID,
@@ -251,14 +194,9 @@ class EventService {
     }
   }
 
-  async createEvent(newEvent: Partial<CreateEventData>): Promise<Event> {
+  async createEvent(newEvent: Partial<Event>): Promise<Event> {
     try {
-      const payload = {
-        ...newEvent,
-        ...(newEvent?.lat !== undefined && newEvent?.long !== undefined
-          ? { coordinates: [newEvent.long, newEvent.lat] as [number, number] }
-          : {}),
-      };
+      const payload = this.buildEventMutationPayload(newEvent);
 
       const response = await databases.createRow({
         databaseId: DATABASE_ID,
@@ -333,16 +271,22 @@ class EventService {
   }
 
   private mapRowToEvent(row: any): Event {
+    const lat = typeof row.lat === 'number' ? row.lat : Number(row.lat ?? row.coordinates?.[1] ?? 0);
+    const long = typeof row.long === 'number' ? row.long : Number(row.long ?? row.coordinates?.[0] ?? 0);
+
     return {
       ...row,
       // Computed properties
       attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
-      coordinates: [row.long, row.lat],
+      coordinates: [long, lat],
+      lat,
+      long,
       category: getCategoryFromEvent({ sport: row.sport } as Event),
       // Ensure divisions is always an array
       divisions: Array.isArray(row.divisions) ? row.divisions : [],
       status: row.status as EventStatus | undefined,
       leagueConfig: this.buildLeagueConfig(row),
+      organization: row.organization ?? row.organizationId,
     };
   }
 
@@ -350,6 +294,10 @@ class EventService {
     const baseEvent = this.mapRowToEvent(row);
 
     const event: Event = { ...baseEvent };
+
+    if (row.organization) {
+      event.organization = row.organization as Organization;
+    }
 
     // Simply cast lists from Appwrite; only compute player fullName.
     if (Array.isArray(row.teams)) {
@@ -411,6 +359,45 @@ class EventService {
       setDurationMinutes: row.setDurationMinutes ?? undefined,
       setsPerMatch: row.setsPerMatch ?? undefined,
     };
+  }
+
+  private buildEventMutationPayload(eventData: Partial<Event> & { lat?: number; long?: number }): Record<string, unknown> {
+    const {
+      attendees,
+      category,
+      leagueConfig,
+      organization,
+      fields,
+      lat,
+      long,
+      ...rest
+    } = eventData;
+
+    const payload: Record<string, unknown> = { ...rest };
+
+    if (lat !== undefined && long !== undefined) {
+      payload.lat = lat;
+      payload.long = long;
+      payload.coordinates = [long, lat] as [number, number];
+    } else if (eventData.coordinates) {
+      payload.coordinates = eventData.coordinates;
+      payload.long = eventData.coordinates[0];
+      payload.lat = eventData.coordinates[1];
+    }
+
+    if (organization) {
+      payload.organization = typeof organization === 'string' ? organization : organization.$id;
+    }
+
+    if (fields !== undefined) {
+      payload.fields = fields;
+    }
+
+    if (leagueConfig) {
+      Object.assign(payload, leagueConfig);
+    }
+
+    return payload;
   }
 
   private extractId(value: any): string {

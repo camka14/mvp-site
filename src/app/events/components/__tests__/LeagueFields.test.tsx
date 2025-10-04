@@ -1,12 +1,23 @@
 import { fireEvent, screen } from '@testing-library/react';
 import LeagueFields, { LeagueSlotForm } from '../LeagueFields';
 import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
+import type { Field } from '@/types';
 
 jest.mock('react-timezone-select', () => () => <div data-testid="timezone-select" />);
 
+const field: Field = {
+  $id: 'field_1',
+  name: 'Court A',
+  location: '',
+  lat: 0,
+  long: 0,
+  type: 'indoor',
+  fieldNumber: 1,
+};
+
 const baseSlot: LeagueSlotForm = {
   key: 'slot-1',
-  fieldId: 'field_1',
+  field,
   dayOfWeek: 1,
   startTime: 9 * 60,
   endTime: 10 * 60,
@@ -34,7 +45,7 @@ describe('LeagueFields', () => {
         onAddSlot={noop}
         onUpdateSlot={onUpdateSlot}
         onRemoveSlot={noop}
-        fields={[]}
+        fields={[field]}
         fieldsLoading={false}
       />,
     );
@@ -60,7 +71,7 @@ describe('LeagueFields', () => {
             ...baseSlot,
             conflicts: [
               {
-                schedule: baseSlot,
+                schedule: baseSlot as any,
                 event: { $id: 'evt_1', name: 'Other Event' } as any,
               },
             ],
@@ -69,7 +80,7 @@ describe('LeagueFields', () => {
         onAddSlot={noop}
         onUpdateSlot={noop}
         onRemoveSlot={noop}
-        fields={[]}
+        fields={[field]}
         fieldsLoading={false}
       />,
     );

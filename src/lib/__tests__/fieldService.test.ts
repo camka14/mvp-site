@@ -29,12 +29,15 @@ describe('fieldService', () => {
       fieldNumber: 1,
     });
 
-    expect(appwriteModuleMock.databases.createRow).toHaveBeenCalledWith({
+    expect(appwriteModuleMock.databases.createRow).toHaveBeenCalledWith(expect.objectContaining({
       databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
       rowId: expect.any(String),
-      data: { name: 'Court A', fieldNumber: 1 },
-    });
+    }));
+    expect(appwriteModuleMock.databases.createRow.mock.calls[0][0].data).toEqual(expect.objectContaining({
+      name: 'Court A',
+      fieldNumber: 1,
+    }));
     expect(field.$id).toBe('field_1');
   });
 
@@ -45,11 +48,14 @@ describe('fieldService', () => {
 
     const fields = await fieldService.listFields('org_1');
 
-    expect(appwriteModuleMock.databases.listRows).toHaveBeenCalledWith({
+    expect(appwriteModuleMock.databases.listRows).toHaveBeenCalledWith(expect.objectContaining({
       databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
-      queries: [expect.anything()],
-    });
+    }));
+    const queries = appwriteModuleMock.databases.listRows.mock.calls[0][0].queries;
+    expect(queries).toEqual(expect.arrayContaining([
+      expect.stringContaining('organization.$id'),
+    ]));
     expect(fields[0].name).toBe('Court A');
   });
 });
