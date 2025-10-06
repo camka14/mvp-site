@@ -4,7 +4,7 @@ import { getTeamAvatarUrl, Match } from '@/types';
 
 interface MatchCardProps {
     match: Match;
-    onClick: () => void;
+    onClick?: () => void;
     canManage?: boolean;
     className?: string;
 }
@@ -44,13 +44,15 @@ export default function MatchCard({ match, onClick, canManage = false, className
         });
     };
 
+    const clickable = typeof onClick === 'function';
+
     return (
         <div
-            className={`relative bg-white rounded-lg shadow-sm border-2 transition-all duration-200 cursor-pointer hover:shadow-md ${match.losersBracket
+            className={`relative bg-white rounded-lg shadow-sm border-2 transition-all duration-200 ${clickable ? 'cursor-pointer hover:shadow-md' : ''} ${match.losersBracket
                     ? 'border-orange-200 hover:border-orange-300'
                     : 'border-blue-200 hover:border-blue-300'
                 } ${isCompleted ? 'opacity-75' : ''} ${className}`}
-            onClick={onClick}
+            onClick={clickable ? onClick : undefined}
         >
             {/* Match Header */}
             <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">

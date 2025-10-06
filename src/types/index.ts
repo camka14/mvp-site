@@ -43,7 +43,6 @@ export interface Match {
   loserNextMatchId?: string;
   start: string;
   end: string;
-  timezone?: string;
   losersBracket?: boolean;
   setResults: number[];
   side?: string;
@@ -52,13 +51,8 @@ export interface Match {
   weekNumber?: number;
   team1Seed?: number;
   team2Seed?: number;
-  team1Id?: string;
-  team2Id?: string;
-  fieldId?: string;
-  fieldName?: string;
-  fieldNumber?: number;
 
-  // Relationship fields - can be IDs or expanded objects
+  // Relationship fields - hydrated when selected via Queries
   division?: Division;
   field?: Field;
   referee?: Team;
@@ -80,7 +74,6 @@ export interface TimeSlot {
   dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   startTime: number;
   endTime: number;
-  timezone: string;
   event?: Event;
   field?: Field;
 }
@@ -222,6 +215,14 @@ export interface Event {
   // Computed properties
   attendees: number;
   category: EventCategory;
+}
+
+export interface TournamentBracket {
+  tournament: Event;
+  matches: Record<string, Match>;
+  teams: Team[];
+  isHost: boolean;
+  canManage: boolean;
 }
 
 // Organization interfaces

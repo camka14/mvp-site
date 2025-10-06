@@ -31,6 +31,8 @@ interface EventCreationModalProps {
 
 type EventType = Event['eventType'];
 
+type DefaultLocationSource = 'none' | 'user' | 'organization';
+
 // Compares two numeric start/end pairs to detect overlapping minutes within the same day.
 const slotsOverlap = (startA: number, endA: number, startB: number, endB: number): boolean =>
     Math.max(startA, startB) < Math.min(endA, endB);
@@ -148,6 +150,124 @@ const normalizeNumber = (value: unknown, fallback?: number): number | undefined 
     return fallback;
 };
 
+const formatLatLngLabel = (lat?: number, lng?: number): string => {
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+        return '';
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return '';
+    }
+    return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+};
+
+type EventFormState = {
+    name: string;
+    description: string;
+    location: string;
+    coordinates: [number, number];
+    lat: number;
+    long: number;
+    start: string;
+    end: string;
+    eventType: 'pickup' | 'tournament' | 'league';
+    sport: string;
+    fieldType: string;
+    price: number;
+    maxParticipants: number;
+    teamSizeLimit: number;
+    teamSignup: boolean;
+    singleDivision: boolean;
+    divisions: string[];
+    cancellationRefundHours: number;
+    registrationCutoffHours: number;
+    imageId: string;
+    seedColor: number;
+    waitList: string[];
+    freeAgents: string[];
+    players: UserData[];
+    teams: Team[];
+};
+
+const divisionKeyFromValue = (value: string | CoreDivision): string => {
+    if (typeof value === 'string') {
+        const normalized = value.toLowerCase();
+        if (normalized.includes('beginner')) return 'beginner';
+        if (normalized.includes('intermediate')) return 'intermediate';
+        if (normalized.includes('advanced')) return 'advanced';
+        if (normalized.includes('expert')) return 'expert';
+        if (normalized.includes('open')) return 'open';
+        return value;
+    }
+    const fallback = (value.skillLevel || value.name || value.id || '').toString();
+    return fallback.toLowerCase() || 'open';
+};
+
+const createDefaultEventData = (): EventFormState => ({
+    name: '',
+    description: '',
+    location: '',
+    coordinates: [0, 0],
+    lat: 0,
+    long: 0,
+    start: new Date().toISOString(),
+    end: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    eventType: 'pickup',
+    sport: '',
+    fieldType: 'indoor',
+    price: 0,
+    maxParticipants: 10,
+    teamSizeLimit: 2,
+    teamSignup: false,
+    singleDivision: false,
+    divisions: [],
+    cancellationRefundHours: 24,
+    registrationCutoffHours: 2,
+    imageId: '',
+    seedColor: 0,
+    waitList: [],
+    freeAgents: [],
+    players: [],
+    teams: [],
+});
+
+const mapEventToFormState = (event: Event): EventFormState => ({
+    name: event.name,
+    description: event.description ?? '',
+    location: event.location ?? '',
+    coordinates: Array.isArray(event.coordinates) ? event.coordinates as [number, number] : [0, 0],
+    lat: Array.isArray(event.coordinates)
+        ? Number(event.coordinates[1])
+        : Number((event as any).coordinates?.lat || 0),
+    long: Array.isArray(event.coordinates)
+        ? Number(event.coordinates[0])
+        : Number((event as any).coordinates?.lng || 0),
+    start: event.start,
+    end: event.end,
+    eventType: event.eventType,
+    sport: event.sport ?? '',
+    fieldType: event.fieldType ?? 'indoor',
+    price: Number.isFinite(event.price) ? event.price : 0,
+    maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
+    teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : 2,
+    teamSignup: Boolean(event.teamSignup),
+    singleDivision: Boolean(event.singleDivision),
+    divisions: Array.isArray(event.divisions)
+        ? (event.divisions as (string | CoreDivision)[]).map(divisionKeyFromValue)
+        : [],
+    cancellationRefundHours: Number.isFinite(event.cancellationRefundHours)
+        ? event.cancellationRefundHours
+        : 24,
+    registrationCutoffHours: Number.isFinite(event.registrationCutoffHours)
+        ? event.registrationCutoffHours
+        : 2,
+    imageId: event.imageId ?? '',
+    seedColor: event.seedColor || 0,
+    waitList: event.waitListIds || [],
+    freeAgents: event.freeAgentIds || [],
+    players: event.players || [],
+    teams: event.teams || [],
+});
+
 const EventCreationModal: React.FC<EventCreationModalProps> = ({
     isOpen,
     onClose,
@@ -157,8 +277,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     organization
 }) => {
     const router = useRouter();
-    const { location: userLocation } = useLocation();
+    const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
     const modalRef = useRef<HTMLDivElement>(null);
+    const defaultLocationSourceRef = useRef<DefaultLocationSource>('none');
+    const appliedDefaultLocationLabelRef = useRef<string | null>(null);
     // Stores the persisted file ID for the event hero image so submissions reference storage assets.
     const [selectedImageId, setSelectedImageId] = useState<string>(editingEvent?.imageId || '');
 
@@ -167,9 +289,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const [selectedImageUrl, setSelectedImageUrl] = useState(
         editingEvent ? getEventImageUrl({ imageId: editingEvent.imageId, width: 800 }) : ''
     );
-    const timezoneDefault = typeof Intl !== 'undefined'
-        ? Intl.DateTimeFormat().resolvedOptions().timeZone
-        : 'UTC';
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => ({
         key: slot?.$id ?? ID.unique(),
@@ -178,11 +297,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         dayOfWeek: slot?.dayOfWeek,
         startTime: slot?.startTime,
         endTime: slot?.endTime,
-        timezone: slot?.timezone || timezoneDefault,
         conflicts: [],
         checking: false,
         error: undefined,
-    }), [timezoneDefault]);
+    }), []);
     // Guards the submit button and spinner while create/update or preview requests are in-flight.
     const [isSubmitting, setIsSubmitting] = useState(false);
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
@@ -192,112 +310,14 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     // Cached Stripe onboarding state pulled from the current user so paid inputs can be enabled/disabled.
     const [hasStripeAccount, setHasStripeAccount] = useState(currentUser?.hasStripeAccount || false);
 
-    const isEditMode = !!editingEvent;
+    const isPreviewDraft = Boolean(editingEvent?.$id && editingEvent.$id.startsWith('preview-'));
+    const isEditMode = !!editingEvent && !isPreviewDraft;
 
     // Complete event data state with ALL fields
     // Central event payload that binds the form inputs for basic details, logistics, and relationships.
-    const [eventData, setEventData] = useState<{
-        name: string;
-        description: string;
-        location: string;
-        // Keep tuple for UI but also track explicit lat/long
-        coordinates: [number, number];
-        lat: number;
-        long: number;
-        start: string;
-        end: string;
-        eventType: 'pickup' | 'tournament' | 'league';
-        sport: string;
-        fieldType: string;
-        price: number;
-        maxParticipants: number;
-        teamSizeLimit: number;
-        teamSignup: boolean;
-        singleDivision: boolean;
-        divisions: string[];
-        cancellationRefundHours: number;
-        registrationCutoffHours: number;
-        imageId: string;
-        seedColor: number;
-        waitList: string[];
-        freeAgents: string[];
-        players: UserData[];
-        teams: Team[];
-    }>(() => {
-        const toDivisionKey = (d: string | CoreDivision): string => {
-            if (typeof d === 'string') {
-                const s = d.toLowerCase();
-                if (s.includes('beginner')) return 'beginner';
-                if (s.includes('intermediate')) return 'intermediate';
-                if (s.includes('advanced')) return 'advanced';
-                if (s.includes('expert')) return 'expert';
-                if (s.includes('open')) return 'open';
-                return d; // assume key already
-            }
-            const v = (d.skillLevel || d.name || d.id || '').toString();
-            return v.toLowerCase() || 'open';
-        };
-        if (editingEvent) {
-            return {
-                name: editingEvent.name,
-                description: editingEvent.description,
-                location: editingEvent.location,
-                coordinates: editingEvent.coordinates,
-                lat: Array.isArray(editingEvent.coordinates) ? Number(editingEvent.coordinates[1]) : Number((editingEvent as any).coordinates?.lat || 0),
-                long: Array.isArray(editingEvent.coordinates) ? Number(editingEvent.coordinates[0]) : Number((editingEvent as any).coordinates?.lng || 0),
-                start: editingEvent.start,
-                end: editingEvent.end,
-                eventType: editingEvent.eventType,
-                sport: editingEvent.sport,
-                fieldType: editingEvent.fieldType,
-                price: editingEvent.price,
-                maxParticipants: editingEvent.maxParticipants,
-                teamSizeLimit: editingEvent.teamSizeLimit,
-                teamSignup: editingEvent.teamSignup,
-                singleDivision: editingEvent.singleDivision,
-                divisions: Array.isArray(editingEvent.divisions)
-                    ? (editingEvent.divisions as (string | CoreDivision)[]).map(toDivisionKey)
-                    : [],
-                cancellationRefundHours: editingEvent.cancellationRefundHours,
-                registrationCutoffHours: editingEvent.registrationCutoffHours,
-                imageId: editingEvent.imageId,
-                seedColor: editingEvent.seedColor || 0,
-                waitList: editingEvent.waitListIds || [],
-                freeAgents: editingEvent.freeAgentIds || [],
-                players: editingEvent.players || [],
-                teams: editingEvent.teams || []
-            };
-        } else {
-            // Default values for new event
-            return {
-                name: '',
-                description: '',
-                location: '',
-                coordinates: [0, 0],
-                lat: 0,
-                long: 0,
-                start: new Date().toISOString(),
-                end: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-                eventType: 'pickup',
-                sport: '',
-                fieldType: 'indoor',
-                price: 0,
-                maxParticipants: 10,
-                teamSizeLimit: 2,
-                teamSignup: false,
-                singleDivision: false,
-                divisions: [],
-                cancellationRefundHours: 24,
-                registrationCutoffHours: 2,
-                imageId: '',
-                seedColor: 0,
-                waitList: [],
-                freeAgents: [],
-                players: [],
-                teams: []
-            };
-        }
-    });
+    const [eventData, setEventData] = useState<EventFormState>(() =>
+        editingEvent ? mapEventToFormState(editingEvent) : createDefaultEventData()
+    );
 
     // Holds tournament-specific settings so the modal can conditionally render the TournamentFields block.
     const [tournamentData, setTournamentData] = useState(() => {
@@ -373,7 +393,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     dayOfWeek: slot.dayOfWeek,
                     startTime: slot.startTime,
                     endTime: slot.endTime,
-                    timezone: slot.timezone,
                 });
             });
         }
@@ -424,6 +443,27 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
         setLeagueSlots(prev => normalizeSlotState(updater(prev), eventData.eventType));
     }, [eventData.eventType]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+
+        defaultLocationSourceRef.current = 'none';
+        appliedDefaultLocationLabelRef.current = null;
+
+        if (editingEvent) {
+            setEventData(mapEventToFormState(editingEvent));
+            setSelectedImageId(editingEvent.imageId || '');
+            setSelectedImageUrl(editingEvent.imageId
+                ? getEventImageUrl({ imageId: editingEvent.imageId, width: 800 })
+                : '');
+        } else {
+            setEventData(createDefaultEventData());
+            setSelectedImageId('');
+            setSelectedImageUrl('');
+        }
+    }, [editingEvent, isOpen]);
 
     // When provisioning local fields, mirror field type/count changes into the generated list.
     useEffect(() => {
@@ -498,12 +538,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         const updated: LeagueSlotForm = {
             ...current,
             ...updates,
-            timezone: updates.timezone !== undefined ? updates.timezone : current.timezone,
         };
-
-        if (!updated.timezone) {
-            updated.timezone = timezoneDefault;
-        }
 
         updateLeagueSlots(prev => {
             const next = [...prev];
@@ -578,7 +613,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     dayOfWeek: slot.dayOfWeek,
                     startTime: slot.startTime,
                     endTime: slot.endTime,
-                    timezone: slot.timezone,
                 });
             });
 
@@ -690,21 +724,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     }, [eventData.teamSignup]);
 
-    // Initialize coordinates from user's current location for new events
-    // Pre-populates location inputs using the viewer's geolocation for faster setup on new events.
-    useEffect(() => {
-        if (!isEditMode && userLocation) {
-            if ((eventData.lat === 0 && eventData.long === 0)) {
-                setEventData(prev => ({
-                    ...prev,
-                    lat: userLocation.lat,
-                    long: userLocation.lng,
-                    coordinates: [userLocation.lng, userLocation.lat],
-                }));
-            }
-        }
-    }, [isEditMode, userLocation]);
-
     // Populate human-readable location if empty
     // Converts coordinates into a city/state label when the user hasn't typed an address manually.
     useEffect(() => {
@@ -724,8 +743,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         !slot.field ||
         typeof slot.dayOfWeek !== 'number' ||
         typeof slot.startTime !== 'number' ||
-        typeof slot.endTime !== 'number' ||
-        !slot.timezone
+        typeof slot.endTime !== 'number'
     );
 
     const matchDurationValid = !leagueData.usesSets
@@ -747,6 +765,130 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             (!shouldManageLocalFields || fields.length === Math.max(1, fieldCount)) &&
             (!shouldManageLocalFields || fields.every(field => field.name?.trim().length > 0))
         );
+
+    const userLocationLabel = useMemo(() => {
+        if (userLocationInfo) {
+            const parts = [userLocationInfo.city, userLocationInfo.state]
+                .filter((part): part is string => Boolean(part && part.trim().length > 0));
+            if (parts.length) {
+                return parts.join(', ');
+            }
+            if (userLocationInfo.zipCode && userLocationInfo.zipCode.trim().length > 0) {
+                return userLocationInfo.zipCode;
+            }
+            if (userLocationInfo.country && userLocationInfo.country.trim().length > 0) {
+                return userLocationInfo.country;
+            }
+            if (typeof userLocationInfo.lat === 'number' && typeof userLocationInfo.lng === 'number') {
+                return formatLatLngLabel(userLocationInfo.lat, userLocationInfo.lng);
+            }
+        }
+        if (userLocation) {
+            return formatLatLngLabel(userLocation.lat, userLocation.lng);
+        }
+        return '';
+    }, [userLocationInfo, userLocation]);
+
+    const organizationLocationLabel = (organization?.location ?? '').trim();
+    const organizationLat = typeof organization?.lat === 'number' ? organization.lat : null;
+    const organizationLong = typeof organization?.long === 'number' ? organization.long : null;
+
+    // Seeds the location picker with organization defaults or the user's saved location for new events.
+    useEffect(() => {
+        if (!isOpen || isEditMode) {
+            return;
+        }
+
+        let appliedSource: DefaultLocationSource = 'none';
+        let appliedLabel: string | null = null;
+
+        setEventData(prev => {
+            if (organizationLocationLabel && defaultLocationSourceRef.current !== 'organization') {
+                const canOverride =
+                    defaultLocationSourceRef.current === 'none' ||
+                    (
+                        defaultLocationSourceRef.current === 'user' &&
+                        (!appliedDefaultLocationLabelRef.current ||
+                            prev.location.trim() === appliedDefaultLocationLabelRef.current.trim())
+                    );
+
+                if (canOverride) {
+                    const updates: Partial<EventFormState> = { location: organizationLocationLabel };
+
+                    if (
+                        organizationLat !== null &&
+                        organizationLong !== null &&
+                        Number.isFinite(organizationLat) &&
+                        Number.isFinite(organizationLong)
+                    ) {
+                        updates.lat = organizationLat;
+                        updates.long = organizationLong;
+                        updates.coordinates = [organizationLong, organizationLat] as [number, number];
+                    }
+
+                    const nextLocation = updates.location ?? prev.location;
+                    const nextLat = updates.lat ?? prev.lat;
+                    const nextLong = updates.long ?? prev.long;
+                    const prevCoordinates = (prev.coordinates ?? [prev.long, prev.lat]) as [number, number];
+                    const nextCoordinates = (updates.coordinates ?? prev.coordinates ?? [nextLong, nextLat]) as [number, number];
+
+                    const locationChanged = nextLocation !== prev.location;
+                    const latChanged = nextLat !== prev.lat;
+                    const longChanged = nextLong !== prev.long;
+                    const coordsChanged =
+                        prevCoordinates[0] !== nextCoordinates[0] || prevCoordinates[1] !== nextCoordinates[1];
+
+                    if (locationChanged || latChanged || longChanged || coordsChanged) {
+                        appliedSource = 'organization';
+                        appliedLabel = organizationLocationLabel;
+                        return {
+                            ...prev,
+                            ...updates,
+                        };
+                    }
+                }
+            }
+
+            if (defaultLocationSourceRef.current === 'none' && userLocation) {
+                const labelCandidate = userLocationLabel.trim() || formatLatLngLabel(userLocation.lat, userLocation.lng);
+                const updates: Partial<EventFormState> = {};
+
+                if (!prev.location.trim() && labelCandidate) {
+                    updates.location = labelCandidate;
+                }
+
+                if (prev.lat === 0 && prev.long === 0) {
+                    updates.lat = userLocation.lat;
+                    updates.long = userLocation.lng;
+                    updates.coordinates = [userLocation.lng, userLocation.lat] as [number, number];
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    appliedSource = 'user';
+                    appliedLabel = updates.location ?? labelCandidate;
+                    return {
+                        ...prev,
+                        ...updates,
+                    };
+                }
+            }
+
+            return prev;
+        });
+
+        if (appliedSource !== 'none') {
+            defaultLocationSourceRef.current = appliedSource;
+            appliedDefaultLocationLabelRef.current = appliedLabel;
+        }
+    }, [
+        isOpen,
+        isEditMode,
+        organizationLocationLabel,
+        organizationLat,
+        organizationLong,
+        userLocation,
+        userLocationLabel,
+    ]);
 
     const isValid = Object.values(validation).every(v => v) && leagueFormValid;
 
@@ -824,13 +966,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     matchDurationMinutes: normalizeNumber(leagueData.matchDurationMinutes, 60) ?? 60,
                 };
 
-            const previewEventId = (() => {
-                if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-                    return `preview-${crypto.randomUUID()}`;
-                }
-                return `preview-${Date.now()}`;
-            })();
-
             const fieldMap = new Map<string, Field>();
             fields.forEach(field => {
                 if (field?.$id) {
@@ -852,7 +987,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         dayOfWeek: slot.dayOfWeek as TimeSlot['dayOfWeek'],
                         startTime: Number(slot.startTime),
                         endTime: Number(slot.endTime),
-                        timezone: slot.timezone || timezoneDefault,
                         field: {$id: fieldDetails.$id},
                     };
                 })
@@ -860,7 +994,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
 
             const eventDocument: Record<string, any> = {
-                $id: previewEventId,
+                $id: ID.unique(),
                 name: eventData.name,
                 description: eventData.description,
                 start: eventData.start,
@@ -900,8 +1034,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             const previewEvent = (preview.event as Event);
 
             if (typeof window !== 'undefined') {
-                sessionStorage.setItem(`league-preview:${previewEvent.$id}`,
-                    JSON.stringify({ matches: preview.matches }));
                 sessionStorage.setItem(`league-preview-event:${previewEvent.$id}`, JSON.stringify(previewEvent));
             }
 

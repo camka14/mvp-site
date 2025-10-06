@@ -6,7 +6,7 @@ import { Modal, Button, Group, Paper, Text, Avatar, Badge, Title, ActionIcon } f
 
 interface ScoreUpdateModalProps {
   match: Match
-  tournament: Event & { eventType: 'tournament' };
+  tournament: Event;
   canManage: boolean;
   onSubmit: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
   onClose: () => void;
@@ -195,4 +195,3 @@ export default function ScoreUpdateModal({
     </Modal>
   );
 }
-

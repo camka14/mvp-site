@@ -58,7 +58,6 @@ describe('leagueService', () => {
         dayOfWeek: 2,
         startTime: 9 * 60,
         endTime: 10 * 60,
-        timezone: 'UTC',
       };
 
       appwriteModuleMock.databases.createRow.mockResolvedValue({
@@ -80,7 +79,6 @@ describe('leagueService', () => {
             dayOfWeek: 2,
             startTime: 9 * 60,
             endTime: 10 * 60,
-            timezone: 'UTC',
           },
           queries: expect.any(Array),
         }),
@@ -103,7 +101,6 @@ describe('leagueService', () => {
             dayOfWeek: 3,
             startTime: '10:00',
             endTime: '11:30',
-            timezone: 'America/New_York',
             field: { $id: 'field_1', name: 'Court B' },
             event: { $id: 'event_1' },
           },

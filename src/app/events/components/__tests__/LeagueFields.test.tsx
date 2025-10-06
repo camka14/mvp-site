@@ -3,8 +3,6 @@ import LeagueFields, { LeagueSlotForm } from '../LeagueFields';
 import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
 import type { Field } from '@/types';
 
-jest.mock('react-timezone-select', () => () => <div data-testid="timezone-select" />);
-
 const field: Field = {
   $id: 'field_1',
   name: 'Court A',
@@ -21,7 +19,6 @@ const baseSlot: LeagueSlotForm = {
   dayOfWeek: 1,
   startTime: 9 * 60,
   endTime: 10 * 60,
-  timezone: 'UTC',
   conflicts: [],
   checking: false,
 };

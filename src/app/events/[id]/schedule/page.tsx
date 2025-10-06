@@ -9,10 +9,11 @@ import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { eventService } from '@/lib/eventService';
 import { leagueService, LeagueScheduleResponse } from '@/lib/leagueService';
-import type { Event, Match, Team } from '@/types';
+import type { Event, Match, Team, TournamentBracket } from '@/types';
 import LeagueCalendarView from './components/LeagueCalendarView';
-import PlayoffBracket from './components/PlayoffBracket';
+import TournamentBracketView from './components/TournamentBracketView';
 
+// Main schedule page component that protects access and renders league schedule/bracket content.
 function LeagueScheduleContent() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
   const params = useParams();
@@ -30,6 +31,7 @@ function LeagueScheduleContent() {
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('schedule');
 
+  // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
   useEffect(() => {
     if (!eventId) return;
     if (!authLoading) {
@@ -42,10 +44,12 @@ function LeagueScheduleContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, isAuthenticated, isGuest, eventId, isPreview]);
 
+  // Convert cached match payloads into a typed array, ignoring any invalid formats.
   const normalizeMatches = (raw: unknown): Match[] => {
     return Array.isArray(raw) ? (raw as Match[]) : [];
   };
 
+  // Hydrate event + match data from preview cache or Appwrite and sync local component state.
   const loadSchedule = async (previewMode: boolean) => {
     if (!eventId) return;
     setLoading(true);
@@ -53,7 +57,6 @@ function LeagueScheduleContent() {
 
     try {
       let previewEvent: Event | null = null;
-      let previewMatches: Match[] = [];
 
       if (previewMode && typeof window !== 'undefined') {
         const cachedEvent = sessionStorage.getItem(`league-preview-event:${eventId}`);
@@ -62,16 +65,6 @@ function LeagueScheduleContent() {
             previewEvent = JSON.parse(cachedEvent) as Event;
           } catch (parseError) {
             console.warn('Failed to parse cached preview event:', parseError);
-          }
-        }
-
-        const cachedMatches = sessionStorage.getItem(`league-preview:${eventId}`);
-        if (cachedMatches) {
-          try {
-            const parsed = JSON.parse(cachedMatches) as LeagueScheduleResponse;
-            previewMatches = normalizeMatches(parsed.matches || []);
-          } catch (parseError) {
-            console.warn('Failed to parse cached preview schedule:', parseError);
           }
         }
       }
@@ -95,22 +88,9 @@ function LeagueScheduleContent() {
         return;
       }
 
-      if (activeEvent.eventType !== 'league') {
-        setError('This event is not a league.');
-        setEvent(activeEvent);
-        setLoading(false);
-        return;
-      }
-
       setEvent(activeEvent);
 
-      let scheduleMatches: Match[] = previewMatches;
-
-      if (!scheduleMatches.length && (!previewMode || !previewEvent)) {
-        scheduleMatches = await leagueService.listMatchesByEvent(eventId);
-      }
-
-      setMatches(scheduleMatches);
+      setMatches(activeEvent?.matches ? activeEvent.matches : []);
     } catch (err) {
       console.error('Failed to load league schedule:', err);
       setError('Failed to load league schedule. Please try again.');
@@ -119,30 +99,7 @@ function LeagueScheduleContent() {
     }
   };
 
-  const fieldLookup = useMemo(() => {
-    const map = new Map<string, string>();
-    if (event?.fields) {
-      event.fields.forEach(field => {
-        if (field?.$id) {
-          map.set(field.$id, field.name || `Field ${field.fieldNumber ?? ''}`);
-        }
-      });
-    }
-
-    if (event?.timeSlots) {
-      event.timeSlots.forEach(schedule => {
-        const scheduleFieldId = typeof schedule.field === 'string'
-          ? schedule.field
-          : schedule.field?.$id;
-        if (scheduleFieldId && schedule.field && typeof schedule.field === 'object' && schedule.field.name && !map.has(scheduleFieldId)) {
-          map.set(scheduleFieldId, schedule.field.name);
-        }
-      });
-    }
-
-    return map;
-  }, [event?.fields, event?.timeSlots]);
-
+  // Cache team id to team data mappings to avoid repeated array scans per match render.
   const teamLookup = useMemo(() => {
     const map = new Map<string, Team>();
     if (event?.teams) {
@@ -155,6 +112,7 @@ function LeagueScheduleContent() {
     return map;
   }, [event?.teams]);
 
+  // Resolve the viewer's timezone once so time formatting stays consistent across renders.
   const userTimeZone = useMemo(() => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -163,41 +121,114 @@ function LeagueScheduleContent() {
     }
   }, []);
 
+  // Append a UTC offset to raw timestamps to guarantee Date parsing succeeds in all browsers.
   const ensureIsoWithOffset = (value: string) => {
     if (!value) return null;
     return /([zZ]|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`;
   };
 
-  const formatDateTime = (value: string, overrideTimeZone?: string) => {
+  // Format start/end timestamps for display, falling back to the viewer's timezone.
+  const formatDateTime = (value: string) => {
     const iso = ensureIsoWithOffset(value);
     if (!iso) return value;
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return value;
-    const timeZone = overrideTimeZone || userTimeZone;
-    return `${date.toLocaleDateString([], { timeZone })} · ${date.toLocaleTimeString([], {
+    return `${date.toLocaleDateString([], { timeZone: userTimeZone })} · ${date.toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
-      timeZone,
+      timeZone: userTimeZone,
     })}`;
   };
 
-  const hasPlayoffMatches = useMemo(
-    () => matches.some(match => match.matchType === 'playoff'),
+  const playoffMatches = useMemo(
+    () => matches.filter((match) => {
+      if (match.matchType === 'playoff') return true;
+      if (typeof match.matchId === 'number' && match.matchId > 0) return true;
+      return Boolean(
+        match.losersBracket ||
+        match.previousLeftId ||
+        match.previousRightId ||
+        match.winnerNextMatchId ||
+        match.loserNextMatchId
+      );
+    }),
     [matches],
   );
 
-  const shouldShowBracketTab = hasPlayoffMatches || isPreview;
+  const bracketMatchesMap = useMemo<Record<string, Match> | null>(() => {
+    if (!playoffMatches.length) {
+      return null;
+    }
 
+    const map = playoffMatches.reduce<Record<string, Match>>((acc, match) => {
+      acc[match.$id] = { ...match };
+      return acc;
+    }, {});
+
+    Object.values(map).forEach((match) => {
+      if (match.winnerNextMatchId && map[match.winnerNextMatchId]) {
+        match.winnerNextMatch = map[match.winnerNextMatchId];
+      }
+      if (match.loserNextMatchId && map[match.loserNextMatchId]) {
+        match.loserNextMatch = map[match.loserNextMatchId];
+      }
+      if (match.previousLeftId && map[match.previousLeftId]) {
+        match.previousLeftMatch = map[match.previousLeftId];
+      }
+      if (match.previousRightId && map[match.previousRightId]) {
+        match.previousRightMatch = map[match.previousRightId];
+      }
+    });
+
+    return map;
+  }, [playoffMatches]);
+
+  const bracketData = useMemo<TournamentBracket | null>(() => {
+    if (!event || !bracketMatchesMap) {
+      return null;
+    }
+
+    const isHost = event.hostId === user?.$id;
+
+    return {
+      tournament: event,
+      matches: bracketMatchesMap,
+      teams: Array.isArray(event.teams) ? event.teams : [],
+      isHost,
+      canManage: !isPreview && isHost,
+    };
+  }, [event, bracketMatchesMap, isPreview, user?.$id]);
+
+  const shouldShowBracketTab = !!bracketData || isPreview;
+
+  // Ensure the bracket tab is only active when playoff data exists or preview mode demands it.
   useEffect(() => {
     if (!shouldShowBracketTab && activeTab === 'bracket') {
       setActiveTab('schedule');
     }
   }, [shouldShowBracketTab, activeTab]);
 
+  useEffect(() => {
+    const request = searchParams?.get('tab');
+    if (!request) return;
+    if (request === 'bracket' && !shouldShowBracketTab) return;
+    if (request === activeTab) return;
+    if (request === 'schedule' || request === 'bracket' || request === 'standings') {
+      setActiveTab(request);
+    }
+  }, [searchParams, shouldShowBracketTab, activeTab]);
+
+  // Produce readable team labels, preferring related team objects and falling back to seeds.
   const getTeamLabel = (match: Match, key: 'team1' | 'team2') => {
-    const teamId = key === 'team1' ? match.team1Id : match.team2Id;
-    if (teamId && teamLookup.has(teamId)) {
-      return teamLookup.get(teamId)?.name || 'TBD';
+    const relation = key === 'team1' ? match.team1 : match.team2;
+
+    if (relation) {
+      if (relation.name) {
+        return relation.name;
+      }
+      if (relation.$id && teamLookup.has(relation.$id)) {
+        return teamLookup.get(relation.$id)?.name || 'TBD';
+      }
     }
 
     const seed = key === 'team1' ? match.team1Seed : match.team2Seed;
@@ -208,6 +239,7 @@ function LeagueScheduleContent() {
     return 'TBD';
   };
 
+  // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
     if (!event || publishing) return;
     setPublishing(true);
@@ -226,6 +258,24 @@ function LeagueScheduleContent() {
 
   const handleCancel = async () => {
     if (!event || cancelling) return;
+    if (isPreview || event.$id?.startsWith('preview-')) {
+      if (typeof window !== 'undefined' && event.$id) {
+        try {
+          window.sessionStorage.setItem('league-preview-resume-id', event.$id);
+        } catch (storageError) {
+          console.warn('Failed to persist preview resume id:', storageError);
+        }
+      }
+
+      if (typeof window !== 'undefined' && window.history.length > 1) {
+        router.back();
+      } else {
+        router.push('/events');
+      }
+      return;
+    }
+
+    // Prompt for confirmation, then delete matches/schedules/event before navigating back to events.
     if (!window.confirm('Cancel this league? This will delete the schedule and the event.')) return;
     setCancelling(true);
     setError(null);
@@ -375,7 +425,6 @@ function LeagueScheduleContent() {
                   matches={matches}
                   eventStart={event.start}
                   eventEnd={event.end}
-                  fieldLookup={fieldLookup}
                   getTeamLabel={getTeamLabel}
                   formatDateTime={formatDateTime}
                 />
@@ -384,12 +433,17 @@ function LeagueScheduleContent() {
 
             {shouldShowBracketTab && (
               <Tabs.Panel value="bracket" pt="md">
-                <PlayoffBracket
-                  matches={matches}
-                  fieldLookup={fieldLookup}
-                  getTeamLabel={getTeamLabel}
-                  formatDateTime={formatDateTime}
-                />
+                {bracketData ? (
+                  <TournamentBracketView
+                    bracket={bracketData}
+                    currentUser={user ?? undefined}
+                    isPreview={isPreview}
+                  />
+                ) : (
+                  <Paper withBorder radius="md" p="xl" ta="center">
+                    <Text>No playoff bracket generated yet.</Text>
+                  </Paper>
+                )}
               </Tabs.Panel>
             )}
 

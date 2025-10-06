@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Calendar } from '@mantine/dates';
 import { Badge, Box, Group, Paper, ScrollArea, Stack, Text } from '@mantine/core';
@@ -10,9 +10,8 @@ interface LeagueCalendarViewProps {
   matches: Match[];
   eventStart?: string;
   eventEnd?: string;
-  fieldLookup: Map<string, string>;
   getTeamLabel: (match: Match, key: 'team1' | 'team2') => string;
-  formatDateTime: (value: string, timeZone?: string) => string;
+  formatDateTime: (value: string) => string;
 }
 
 const normalizeToDate = (value: unknown): Date => {
@@ -47,11 +46,44 @@ const parseKeyToDate = (key: string): Date => {
   return new Date(year, (month ?? 1) - 1, day ?? 1);
 };
 
+const parseDateInput = (value?: string | Date | null): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [year, month, day] = trimmed.split('-').map(Number);
+      if (![year, month, day].some(Number.isNaN)) {
+        return new Date(year, (month ?? 1) - 1, day ?? 1);
+      }
+    }
+
+    const direct = new Date(trimmed);
+    if (!Number.isNaN(direct.getTime())) {
+      return new Date(direct.getFullYear(), direct.getMonth(), direct.getDate());
+    }
+
+    if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) {
+      const withOffset = new Date(`${trimmed}Z`);
+      if (!Number.isNaN(withOffset.getTime())) {
+        return new Date(withOffset.getFullYear(), withOffset.getMonth(), withOffset.getDate());
+      }
+    }
+  }
+  return null;
+};
+
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+
 export function LeagueCalendarView({
   matches,
   eventStart,
   eventEnd,
-  fieldLookup,
   getTeamLabel,
   formatDateTime,
 }: LeagueCalendarViewProps) {
@@ -77,22 +109,6 @@ export function LeagueCalendarView({
     return map;
   }, [matches]);
 
-  const firstMatchKey = useMemo(() => {
-    const keys = Array.from(matchesByDate.keys()).sort();
-    return keys[0] ?? null;
-  }, [matchesByDate]);
-
-  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(firstMatchKey);
-
-  useEffect(() => {
-    setSelectedDateKey(firstMatchKey);
-  }, [firstMatchKey]);
-
-  const selectedMatches = useMemo(() => {
-    if (!selectedDateKey) return [];
-    return matchesByDate.get(selectedDateKey) ?? [];
-  }, [matchesByDate, selectedDateKey]);
-
   const matchRange = useMemo(() => {
     if (!matches.length) return null;
     const validStarts = matches
@@ -104,28 +120,86 @@ export function LeagueCalendarView({
     return { min, max };
   }, [matches]);
 
+  const firstMatchKey = useMemo(() => {
+    const keys = Array.from(matchesByDate.keys()).sort();
+    return keys[0] ?? null;
+  }, [matchesByDate]);
+
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(firstMatchKey);
+
+  const initialVisibleDate = useMemo(() => {
+    if (firstMatchKey) {
+      return parseKeyToDate(firstMatchKey);
+    }
+    if (matchRange?.min) {
+      return startOfDay(matchRange.min);
+    }
+    const eventStartDate = parseDateInput(eventStart);
+    if (eventStartDate) {
+      return startOfDay(eventStartDate);
+    }
+    return new Date();
+  }, [eventStart, firstMatchKey, matchRange]);
+
+  const [visibleMonth, setVisibleMonth] = useState<Date>(initialVisibleDate);
+
+  useEffect(() => {
+    setSelectedDateKey(firstMatchKey);
+  }, [firstMatchKey]);
+
+  useEffect(() => {
+    setVisibleMonth((prev) => {
+      if (
+        prev.getFullYear() === initialVisibleDate.getFullYear() &&
+        prev.getMonth() === initialVisibleDate.getMonth()
+      ) {
+        return prev;
+      }
+      return initialVisibleDate;
+    });
+  }, [initialVisibleDate]);
+
+  useEffect(() => {
+    if (!selectedDateKey) return;
+    const next = parseKeyToDate(selectedDateKey);
+    if (Number.isNaN(next.getTime())) return;
+    setVisibleMonth((prev) => {
+      if (prev.getFullYear() === next.getFullYear() && prev.getMonth() === next.getMonth()) {
+        return prev;
+      }
+      return next;
+    });
+  }, [selectedDateKey]);
+
+  const selectedMatches = useMemo(() => {
+    if (!selectedDateKey) return [];
+    return matchesByDate.get(selectedDateKey) ?? [];
+  }, [matchesByDate, selectedDateKey]);
+
   const minDate = useMemo(() => {
-    const eventStartDate = eventStart ? new Date(eventStart) : null;
-    const matchMin = matchRange?.min ?? null;
-    if (eventStartDate && !Number.isNaN(eventStartDate.getTime()) && matchMin) {
-      return matchMin.getTime() < eventStartDate.getTime() ? matchMin : eventStartDate;
+    const candidates: Date[] = [];
+    const eventStartDate = parseDateInput(eventStart);
+    if (eventStartDate) {
+      candidates.push(startOfDay(eventStartDate));
     }
-    if (eventStartDate && !Number.isNaN(eventStartDate.getTime())) {
-      return eventStartDate;
+    if (matchRange?.min) {
+      candidates.push(startOfDay(matchRange.min));
     }
-    return matchMin ?? undefined;
+    if (!candidates.length) return undefined;
+    return new Date(Math.min(...candidates.map((date) => date.getTime())));
   }, [eventStart, matchRange]);
 
   const maxDate = useMemo(() => {
-    const eventEndDate = eventEnd ? new Date(eventEnd) : null;
-    const matchMax = matchRange?.max ?? null;
-    const candidates = [eventEndDate, matchMax].filter(
-      (date): date is Date => !!date && !Number.isNaN(date.getTime()),
-    );
+    const candidates: Date[] = [];
+    const eventEndDate = parseDateInput(eventEnd);
+    if (eventEndDate) {
+      candidates.push(endOfDay(eventEndDate));
+    }
+    if (matchRange?.max) {
+      candidates.push(endOfDay(matchRange.max));
+    }
     if (!candidates.length) return undefined;
-    const latest = new Date(Math.max(...candidates.map((date) => date.getTime())));
-    latest.setHours(23, 59, 59, 999);
-    return latest;
+    return new Date(Math.max(...candidates.map((date) => date.getTime())));
   }, [eventEnd, matchRange]);
 
   const selectedDate = selectedDateKey ? parseKeyToDate(selectedDateKey) : null;
@@ -177,19 +251,15 @@ export function LeagueCalendarView({
       >
         <Calendar
           data-testid="league-calendar"
-          date={selectedDate ?? undefined}
+          date={visibleMonth}
           onDateChange={(value) => {
-            if (!value) {
-              setSelectedDateKey(null);
-              return;
-            }
+            if (!value) return;
             const candidate = Array.isArray(value) ? value[0] : value;
             const nextDate = normalizeToDate(candidate);
             if (Number.isNaN(nextDate.getTime())) {
-              setSelectedDateKey(null);
               return;
             }
-            setSelectedDateKey(dateKey(nextDate));
+            setVisibleMonth(nextDate);
           }}
           minDate={minDate}
           maxDate={maxDate}
@@ -215,7 +285,10 @@ export function LeagueCalendarView({
 
             return (
               <Box
-                onClick={() => setSelectedDateKey(key)}
+                onClick={() => {
+                  setSelectedDateKey(key);
+                  setVisibleMonth(day);
+                }}
                 data-selected={isSelected || undefined}
                 data-has-matches={hasMatches || undefined}
                 style={{
@@ -276,33 +349,41 @@ export function LeagueCalendarView({
                     No matches scheduled for this date.
                   </Text>
                 ) : (
-                  selectedMatches.map((match) => (
-                    <Paper key={match.$id} withBorder radius="md" p="md" shadow="xs">
-                      <Stack gap={4}>
-                        <Group justify="space-between" wrap="wrap">
-                          <Group gap="sm">
-                            <Text fw={600}>{formatDateTime(match.start, match.timezone)}</Text>
-                            {match.matchType === 'playoff' && (
-                              <Badge color="grape" variant="light" size="sm">
-                                Playoff
-                              </Badge>
-                            )}
+                  selectedMatches.map((match) => {
+                    const fieldRelation = match.field && typeof match.field === 'object' ? match.field : undefined;
+                    const fieldId = fieldRelation?.$id;
+                    const resolvedFieldName = fieldRelation?.name
+                      || (fieldRelation?.fieldNumber ? `Field ${fieldRelation.fieldNumber}` : undefined)
+                      || 'Field TBD';
+
+                    return (
+                      <Paper key={match.$id} withBorder radius="md" p="md" shadow="xs">
+                        <Stack gap={4}>
+                          <Group justify="space-between" wrap="wrap">
+                            <Group gap="sm">
+                              <Text fw={600}>{formatDateTime(match.start)}</Text>
+                              {match.matchType === 'playoff' && (
+                                <Badge color="grape" variant="light" size="sm">
+                                  Playoff
+                                </Badge>
+                              )}
+                            </Group>
+                            <Text size="sm" c="dimmed">
+                              Ends {formatDateTime(match.end)}
+                            </Text>
                           </Group>
                           <Text size="sm" c="dimmed">
-                            Ends {formatDateTime(match.end, match.timezone)}
+                            {resolvedFieldName}
                           </Text>
-                        </Group>
-                        <Text size="sm" c="dimmed">
-                          {match.field?.name}
-                        </Text>
-                        <Group gap="sm" align="center">
-                          <Text fw={600}>{getTeamLabel(match, 'team1')}</Text>
-                          <Text c="dimmed">vs</Text>
-                          <Text fw={600}>{getTeamLabel(match, 'team2')}</Text>
-                        </Group>
-                      </Stack>
-                    </Paper>
-                  ))
+                          <Group gap="sm" align="center">
+                            <Text fw={600}>{getTeamLabel(match, 'team1')}</Text>
+                            <Text c="dimmed">vs</Text>
+                            <Text fw={600}>{getTeamLabel(match, 'team2')}</Text>
+                          </Group>
+                        </Stack>
+                      </Paper>
+                    );
+                  })
                 )}
               </Stack>
             </ScrollArea>

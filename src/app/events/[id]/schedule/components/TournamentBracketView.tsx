@@ -2,33 +2,31 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
-import { TournamentBracket } from '../types/tournament';
-
-import { Match, UserData } from '@/types';
+import { TournamentBracket, Match, UserData } from '@/types';
 
 import MatchCard from './MatchCard';
 
-import ScoreUpdateModal from '../[id]/bracket/components/ScoreUpdateModal';
+import ScoreUpdateModal from './ScoreUpdateModal';
 import { xor } from '@/app/uitl';
 import { Paper, Group, Button, ActionIcon, Text, SegmentedControl, Badge } from '@mantine/core';
 
 
 interface TournamentBracketViewProps {
     bracket: TournamentBracket;
-    onScoreUpdate: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
-    onMatchUpdate: (matchId: string, updates: Partial<Match>) => Promise<void>;
+    onScoreUpdate?: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
     currentUser?: UserData;
     isExpanded?: boolean;
     onToggleExpand?: () => void;
+    isPreview?: boolean;
 }
 
 export default function TournamentBracketView({
     bracket,
     onScoreUpdate,
-    onMatchUpdate,
     currentUser,
     isExpanded,
     onToggleExpand,
+    isPreview = false,
 }: TournamentBracketViewProps) {
     const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
     const [showScoreModal, setShowScoreModal] = useState(false);
@@ -65,6 +63,11 @@ export default function TournamentBracketView({
         });
         return map;
     }, [bracket.matches, isLosersBracket]);
+
+    const hasLoserMatches = useMemo(
+        () => Object.values(bracket.matches).some(match => match.losersBracket),
+        [bracket.matches],
+    );
 
     // Terminals: no winnerNext within current view's bracket
     const terminalIds = useMemo(() => Object.values(viewById)
@@ -325,7 +328,25 @@ export default function TournamentBracketView({
         return () => window.removeEventListener('wheel', onWheel as EventListener);
     }, []);
 
+    const allowScoreUpdates = !!onScoreUpdate && !isPreview;
+
+    const canManageMatch = (match: Match) => {
+        if (!allowScoreUpdates) return false;
+        if (!currentUser) return false;
+        if (!bracket.canManage && !bracket.isHost) return false;
+        if (bracket.isHost) return true;
+        return match.referee?.$id === currentUser.$id;
+    };
+
+    useEffect(() => {
+        if (!allowScoreUpdates) {
+            setShowScoreModal(false);
+            setSelectedMatch(null);
+        }
+    }, [allowScoreUpdates]);
+
     const handleMatchClick = (match: Match) => {
+        if (!canManageMatch(match)) return;
         setSelectedMatch(match);
         setShowScoreModal(true);
     };
@@ -336,16 +357,14 @@ export default function TournamentBracketView({
         team2Points: number[],
         setResults: number[]
     ) => {
+        if (!onScoreUpdate) {
+            setShowScoreModal(false);
+            setSelectedMatch(null);
+            return;
+        }
         await onScoreUpdate(matchId, team1Points, team2Points, setResults);
         setShowScoreModal(false);
         setSelectedMatch(null);
-    };
-
-    const canManageMatch = (match: Match) => {
-        if (!currentUser) return false;
-        if (bracket.isHost) return true;
-        // Check if user is the referee
-        return match.referee?.$id === currentUser.$id;
     };
 
     return (
@@ -358,11 +377,14 @@ export default function TournamentBracketView({
                         <Badge variant="light">{Math.round(zoomLevel * 100)}%</Badge>
                         <ActionIcon variant="default" onClick={handleZoomIn} disabled={zoomLevel >= 3} aria-label="Zoom in">+</ActionIcon>
                         <Button variant="default" size="xs" onClick={handleZoomReset}>Reset</Button>
+                        {isPreview && (
+                            <Badge color="yellow" variant="light">Preview</Badge>
+                        )}
                         <Text size="xs" c="dimmed" className="hidden md:inline">Ctrl + scroll to zoom • Ctrl + 0 to reset</Text>
                     </Group>
 
                     <Group gap="sm">
-                        {bracket.tournament.doubleElimination && (
+                        {(bracket.tournament.doubleElimination || hasLoserMatches) && (
                             <SegmentedControl
                                 value={isLosersBracket ? 'losers' : 'winners'}
                                 onChange={(v: string) => setIsLosersBracket(v === 'losers')}
@@ -372,9 +394,11 @@ export default function TournamentBracketView({
                                 ]}
                             />
                         )}
-                        <Button variant="default" size="xs" onClick={onToggleExpand} aria-pressed={!!isExpanded} title={isExpanded ? 'Collapse view' : 'Expand view'}>
-                            {isExpanded ? 'Collapse' : 'Expand'}
-                        </Button>
+                        {typeof onToggleExpand === 'function' && (
+                            <Button variant="default" size="xs" onClick={onToggleExpand} aria-pressed={!!isExpanded} title={isExpanded ? 'Collapse view' : 'Expand view'}>
+                                {isExpanded ? 'Collapse' : 'Expand'}
+                            </Button>
+                        )}
                     </Group>
                 </Group>
             </Paper>
@@ -401,6 +425,7 @@ export default function TournamentBracketView({
                             {Object.values(viewById).map((m) => {
                                 const pos = positionById.get(m.$id);
                                 if (!pos) return null;
+                                const manageable = canManageMatch(m);
                                 return (
                                     <div
                                         key={m.$id}
@@ -410,8 +435,8 @@ export default function TournamentBracketView({
                                     >
                                         <MatchCard
                                             match={m}
-                                            onClick={() => handleMatchClick(m)}
-                                            canManage={canManageMatch(m)}
+                                            onClick={manageable ? () => handleMatchClick(m) : undefined}
+                                            canManage={manageable}
                                             className="w-full h-full"
                                         />
                                     </div>
@@ -439,7 +464,7 @@ export default function TournamentBracketView({
             </div>
 
             {/* Score Update Modal */}
-            {showScoreModal && selectedMatch && (
+            {allowScoreUpdates && showScoreModal && selectedMatch && (
                 <ScoreUpdateModal
                     match={selectedMatch}
                     tournament={bracket.tournament}

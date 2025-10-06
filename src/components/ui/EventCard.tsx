@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { useMemo } from 'react';
 import { Event, LocationCoordinates, formatPrice, getCategoryFromEvent, getEventDateTime, getEventImageUrl } from '@/types';
 import { locationService } from '@/lib/locationService';
 
@@ -58,6 +58,29 @@ export default function EventCard({ event, showDistance = false, userLocation, o
   const eventTypeInfo = getEventTypeInfo();
   const imageUrl = getEventImageUrl({imageId: event.imageId, width: 400, height: 200});
 
+  const fieldLabels = useMemo(() => {
+    const names = new Set<string>();
+
+    if (Array.isArray(event.fields)) {
+      event.fields.forEach((field) => {
+        if (field?.name) {
+          names.add(field.name);
+        }
+      });
+    }
+
+    if (Array.isArray(event.timeSlots)) {
+      event.timeSlots.forEach((slot) => {
+        const field = slot.field;
+        if (field && typeof field === 'object' && field.name) {
+          names.add(field.name);
+        }
+      });
+    }
+
+    return Array.from(names);
+  }, [event.fields, event.timeSlots]);
+
   return (
     <div
       className={`card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-shadow duration-200 group h-[500px] flex flex-col`}
@@ -116,6 +139,15 @@ export default function EventCard({ event, showDistance = false, userLocation, o
               </svg>
               {event.location}
             </div>
+
+            {fieldLabels.length > 0 && (
+              <div className="flex items-center text-sm text-gray-500">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2h-5l-3 3-3-3H6a2 2 0 01-2-2V6z" />
+                </svg>
+                {fieldLabels.join(', ')}
+              </div>
+            )}
 
             {/* Show divisions if available */}
             {event.divisions.length > 0 && (

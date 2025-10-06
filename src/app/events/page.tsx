@@ -43,6 +43,8 @@ function EventsPageContent() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [resumePreviewEvent, setResumePreviewEvent] = useState<Event | null>(null);
+  const resumePreviewHandled = useRef(false);
 
   const LIMIT = 18;
   const DEFAULT_EVENT_ID = '68b89ab116e106a731c3';
@@ -175,6 +177,39 @@ function EventsPageContent() {
       requestLocation().catch(() => { });
     }
   }, []);
+
+  useEffect(() => {
+    if (authLoading || resumePreviewHandled.current) {
+      return;
+    }
+    if (!user || typeof window === 'undefined') {
+      return;
+    }
+
+    const resumeId = window.sessionStorage.getItem('league-preview-resume-id');
+    if (!resumeId) {
+      resumePreviewHandled.current = true;
+      return;
+    }
+
+    resumePreviewHandled.current = true;
+    window.sessionStorage.removeItem('league-preview-resume-id');
+
+    const cachedEvent = window.sessionStorage.getItem(`league-preview-event:${resumeId}`);
+    if (cachedEvent) {
+      try {
+        const parsed = JSON.parse(cachedEvent) as Event;
+        setResumePreviewEvent(parsed);
+      } catch (parseError) {
+        console.warn('Failed to hydrate preview draft from cache:', parseError);
+        setResumePreviewEvent(null);
+      }
+    } else {
+      setResumePreviewEvent(null);
+    }
+
+    setShowCreateModal(true);
+  }, [authLoading, user]);
 
   // Infinite scroll sentinel
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -370,9 +405,14 @@ function EventsPageContent() {
       {user && (
         <EventCreationModal
           isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
+          editingEvent={resumePreviewEvent ?? undefined}
+          onClose={() => {
+            setShowCreateModal(false);
+            setResumePreviewEvent(null);
+          }}
           onEventCreated={() => {
             setShowCreateModal(false);
+            setResumePreviewEvent(null);
           }}
           currentUser={user}
           organization={null}

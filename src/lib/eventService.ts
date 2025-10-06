@@ -32,11 +32,8 @@ export interface LeagueGenerationMatchResult {
   start?: string;
   end?: string;
   field?: unknown;
-  fieldId?: unknown;
   team1?: unknown;
-  team1Id?: unknown;
   team2?: unknown;
-  team2Id?: unknown;
   matchType?: string;
   weekNumber?: number | null;
   team1Seed?: number | null;
@@ -86,8 +83,8 @@ class EventService {
           'teams.matches.$id',
           'fields.*',
           'fields.matches.$id',
-          'weeklySchedules.*',
-          'weeklySchedules.field.*',
+          'timeSlots.*',
+          'timeSlots.field.$id',
         ])
       ];
 
@@ -310,17 +307,63 @@ class EventService {
 
     if (Array.isArray(row.matches)) {
       event.matches = (row.matches as any[]).map((m: any) => {
+        const fieldRef = m.field && typeof m.field === 'object' ? (m.field as Field) : undefined;
         const mappedMatch: Match = {
-          ...m,
+          $id: m.$id ?? m.id,
+          start: m.start,
+          end: m.end,
           matchId: m.matchNumber ?? m.matchId,
           eventId: m.eventId ?? m.tournamentId,
+          tournamentId: m.tournamentId,
           matchType: m.matchType ?? undefined,
           weekNumber: m.weekNumber ?? undefined,
           team1Seed: m.team1Seed ?? undefined,
           team2Seed: m.team2Seed ?? undefined,
-          team1Id: this.extractId(m.team1Id ?? m.team1?.$id ?? m.team1),
-          team2Id: this.extractId(m.team2Id ?? m.team2?.$id ?? m.team2),
-        };
+          losersBracket: m.losersBracket ?? undefined,
+          team1Points: Array.isArray(m.team1Points) ? (m.team1Points as number[]) : [],
+          team2Points: Array.isArray(m.team2Points) ? (m.team2Points as number[]) : [],
+          setResults: Array.isArray(m.setResults) ? (m.setResults as number[]) : [],
+          previousLeftId: m.previousLeftId ?? m.previousLeftMatchId,
+          previousRightId: m.previousRightId ?? m.previousRightMatchId,
+          winnerNextMatchId: m.winnerNextMatchId ?? (m.winnerNextMatch ? (m.winnerNextMatch as Match).$id : undefined),
+          loserNextMatchId: m.loserNextMatchId ?? (m.loserNextMatch ? (m.loserNextMatch as Match).$id : undefined),
+        } as Match;
+
+        if (fieldRef) {
+          mappedMatch.field = fieldRef;
+        }
+
+        if (m.team1 && typeof m.team1 === 'object') {
+          mappedMatch.team1 = m.team1 as Team;
+        }
+
+        if (m.team2 && typeof m.team2 === 'object') {
+          mappedMatch.team2 = m.team2 as Team;
+        }
+
+        if (m.division) {
+          mappedMatch.division = m.division;
+        }
+
+        if (m.referee && typeof m.referee === 'object') {
+          mappedMatch.referee = m.referee as Team;
+        }
+
+        if (m.previousLeftMatch) {
+          mappedMatch.previousLeftMatch = m.previousLeftMatch as Match;
+        }
+
+        if (m.previousRightMatch) {
+          mappedMatch.previousRightMatch = m.previousRightMatch as Match;
+        }
+
+        if (m.winnerNextMatch) {
+          mappedMatch.winnerNextMatch = m.winnerNextMatch as Match;
+        }
+
+        if (m.loserNextMatch) {
+          mappedMatch.loserNextMatch = m.loserNextMatch as Match;
+        }
 
         return mappedMatch;
       });
@@ -418,7 +461,6 @@ class EventService {
       dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
       startTime: this.normalizeTime(row.startTime),
       endTime: this.normalizeTime(row.endTime),
-      timezone: typeof row.timezone === 'string' ? row.timezone : String(row.timezone ?? 'UTC'),
       event: row.event ?? row.eventId ?? row.event?.$id,
       field: row.field ?? row.fieldId ?? row.field?.$id,
     };

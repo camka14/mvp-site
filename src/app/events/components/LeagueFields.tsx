@@ -13,7 +13,6 @@ import {
   Badge,
 } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
-import TimezoneSelect from 'react-timezone-select';
 import type { Field, LeagueConfig, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 
@@ -71,7 +70,6 @@ export interface LeagueSlotForm {
   dayOfWeek?: TimeSlot['dayOfWeek'];
   startTime?: number;
   endTime?: number;
-  timezone?: string;
   conflicts: WeeklySlotConflict[];
   checking: boolean;
   error?: string;
@@ -100,35 +98,6 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   fieldsLoading,
   fieldOptions,
 }) => {
-  const detectedTimezone = useMemo(() => {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''; // best effort
-    } catch {
-      return '';
-    }
-  }, []);
-
-  const fallbackTimezone = detectedTimezone || 'UTC';
-
-  const timezoneSelectStyles = useMemo(
-    () => ({
-      menu: (provided: any) => ({
-        ...provided,
-        zIndex: 20,
-      }),
-      menuPortal: (provided: any) => ({
-        ...provided,
-        zIndex: 9999,
-      }),
-    }),
-    [],
-  );
-
-  const timezoneMenuPortalTarget = useMemo(() => {
-    if (typeof window === 'undefined') return undefined;
-    return document.body;
-  }, []);
-
   const fieldLookup = useMemo(
     () => new Map(fields.map((field) => [field.$id, field])),
     [fields],
@@ -300,27 +269,16 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       withSeconds={false}
                     />
 
-                    <TimeInput
-                      label="End Time"
-                      value={minutesToTimeString(slot.endTime)}
-                      onChange={(event) => onUpdateSlot(index, { endTime: parseTimeInput(event.currentTarget.value) })}
-                      withSeconds={false}
-                    />
-                  </div>
-
-                  <TimezoneSelect
-                    value={slot.timezone || fallbackTimezone}
-                    onChange={(value) => {
-                      const next = typeof value === 'string' ? value : value?.value;
-                      onUpdateSlot(index, { timezone: next || undefined });
-                    }}
-                    styles={timezoneSelectStyles}
-                    menuPortalTarget={timezoneMenuPortalTarget}
-                    className="w-full"
+                  <TimeInput
+                    label="End Time"
+                    value={minutesToTimeString(slot.endTime)}
+                    onChange={(event) => onUpdateSlot(index, { endTime: parseTimeInput(event.currentTarget.value) })}
+                    withSeconds={false}
                   />
+                </div>
 
-                  {conflictCount > 0 && (
-                    <Alert color="red" radius="md">
+                {conflictCount > 0 && (
+                  <Alert color="red" radius="md">
                       <Stack gap="xs">
                         <Text fw={600}>Conflicts detected</Text>
                         {slot.conflicts.map(({ event, schedule }, conflictIndex) => (

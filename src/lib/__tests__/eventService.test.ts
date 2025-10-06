@@ -42,7 +42,6 @@ describe('eventService', () => {
             dayOfWeek: 1,
             startTime: '09:00',
             endTime: 600,
-            timezone: 'America/Denver',
             field: { $id: 'fld_1', name: 'Court A' },
           },
         ],
@@ -62,7 +61,6 @@ describe('eventService', () => {
         dayOfWeek: 1,
         startTime: 540,
         endTime: 600,
-        timezone: 'America/Denver',
       });
       expect((event?.timeSlots?.[0]?.field as any)?.name).toBe('Court A');
     });

@@ -5,6 +5,7 @@ import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
 import type { AppwriteModuleMock } from '../../../../../../test/mocks/appwrite';
 import type { Field, Match } from '@/types';
+import { buildTeam } from '../../../../../../test/factories';
 
 const useSearchParamsMock = jest.fn();
 
@@ -75,17 +76,12 @@ describe('League schedule page', () => {
       eventId: 'event_1',
       start: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
       end: new Date(Date.now() + 28 * 60 * 60 * 1000).toISOString(),
-      timezone: 'UTC',
       matchType: 'regular',
-      team1Id: 'team_a',
-      team2Id: 'team_b',
       team1Seed: 1,
       team2Seed: 2,
       team1Points: [],
       team2Points: [],
       setResults: [],
-      fieldId: 'field_1',
-      fieldName: 'Court A',
       field: {
         $id: 'field_1',
         name: 'Court A',
@@ -95,6 +91,8 @@ describe('League schedule page', () => {
         lat: 0,
         long: 0,
       } as Field,
+      team1: buildTeam({ $id: 'team_a', name: 'Aces' }),
+      team2: buildTeam({ $id: 'team_b', name: 'Diggers' }),
     };
 
     (leagueService.listMatchesByEvent as jest.Mock).mockResolvedValue([mockMatch]);

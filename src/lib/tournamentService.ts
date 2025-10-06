@@ -1,6 +1,5 @@
 import { databases } from '@/app/appwrite';
-import { Event, UserData, Team, Field, Match } from '@/types';
-import { TournamentBracket } from '@/app/tournaments/types/tournament';
+import { Event, Team, Field, Match, TournamentBracket } from '@/types';
 import { eventService } from './eventService';
 import { authService } from './auth';
 import { Query } from 'appwrite';
@@ -84,10 +83,10 @@ class TournamentService {
                 weekNumber: response.weekNumber ?? undefined,
                 team1Seed: response.team1Seed ?? undefined,
                 team2Seed: response.team2Seed ?? undefined,
-                team1Id: response.team1Id ?? undefined,
-                team2Id: response.team2Id ?? undefined,
                 $createdAt: response.$createdAt,
                 $updatedAt: response.$updatedAt,
+                team1: typeof response.team1 === 'object' ? (response.team1 as Team) : undefined,
+                team2: typeof response.team2 === 'object' ? (response.team2 as Team) : undefined,
             };
         } catch (error) {
             console.error('Failed to update match:', error);

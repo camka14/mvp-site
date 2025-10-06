@@ -105,7 +105,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
 
     const handleBracketClick = () => {
         if (currentEvent.eventType === 'tournament') {
-            router.push(`/tournaments/${currentEvent.$id}/bracket`);
+            router.push(`/events/${currentEvent.$id}/schedule?tab=bracket`);
             onClose();
         }
     }

@@ -6,69 +6,72 @@ import {
   CreateLeagueFnInput,
   Event,
   Field,
+  Team,
 } from '@/types';
 import { eventService } from './eventService';
 import { fieldService } from './fieldService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const WEEKLY_SCHEDULES_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
+const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
 const MATCHES_COLLECTION_ID = process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!;
 const CREATE_LEAGUE_FUNCTION_ID = process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION_ID!;
 const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 
 const mapMatchRecord = (input: any, fallbackEventId: string): Match => {
-  const fieldRef = input?.field;
-  const fieldId = typeof input?.fieldId === 'string'
-    ? input.fieldId
-    : typeof fieldRef === 'string'
-      ? fieldRef
-      : fieldRef?.$id;
-
-  const fieldName = typeof input?.fieldName === 'string'
-    ? input.fieldName
-    : typeof fieldRef === 'object'
-      ? fieldRef?.name
-      : undefined;
-
-  const fieldNumber = typeof input?.fieldNumber === 'number'
-    ? input.fieldNumber
-    : typeof fieldRef === 'object'
-      ? fieldRef?.fieldNumber
-      : undefined;
-
-  const team1Id = typeof input?.team1Id === 'string'
-    ? input.team1Id
-    : typeof input?.team1 === 'string'
-      ? input.team1
-      : undefined;
-
-  const team2Id = typeof input?.team2Id === 'string'
-    ? input.team2Id
-    : typeof input?.team2 === 'string'
-      ? input.team2
-      : undefined;
-
-  return {
+  const match: Match = {
     $id: (input?.$id ?? input?.id) as string,
     eventId: (input?.eventId ?? fallbackEventId) as string,
     start: input.start,
     end: input.end,
-    timezone: input.timezone,
     matchType: input.matchType ?? 'regular',
     weekNumber: input.weekNumber,
-    team1Id,
-    team2Id,
     team1Seed: input.team1Seed,
     team2Seed: input.team2Seed,
     losersBracket: input.losersBracket,
-    fieldId,
-    fieldName,
-    fieldNumber,
-    team1Points: input.team1Points as number[],
-    team2Points: input.team2Points as number[],
-    setResults: input.setResults as number[],
-  } as Match;
+    team1Points: Array.isArray(input.team1Points) ? (input.team1Points as number[]) : [],
+    team2Points: Array.isArray(input.team2Points) ? (input.team2Points as number[]) : [],
+    setResults: Array.isArray(input.setResults) ? (input.setResults as number[]) : [],
+    previousLeftId: input.previousLeftId ?? input.previousLeftMatchId,
+    previousRightId: input.previousRightId ?? input.previousRightMatchId,
+    winnerNextMatchId: input.winnerNextMatchId ?? (input.winnerNextMatch ? (input.winnerNextMatch as Match).$id : undefined),
+    loserNextMatchId: input.loserNextMatchId ?? (input.loserNextMatch ? (input.loserNextMatch as Match).$id : undefined),
+    field: input?.field as Field,
+  };
+
+  if (input.division) {
+    match.division = input.division;
+  }
+
+  if (input.team1 && typeof input.team1 === 'object') {
+    match.team1 = input.team1 as Team;
+  }
+
+  if (input.team2 && typeof input.team2 === 'object') {
+    match.team2 = input.team2 as Team;
+  }
+
+  if (input.referee && typeof input.referee === 'object') {
+    match.referee = input.referee as Team;
+  }
+
+  if (input.previousLeftMatch) {
+    match.previousLeftMatch = input.previousLeftMatch as Match;
+  }
+
+  if (input.previousRightMatch) {
+    match.previousRightMatch = input.previousRightMatch as Match;
+  }
+
+  if (input.winnerNextMatch) {
+    match.winnerNextMatch = input.winnerNextMatch as Match;
+  }
+
+  if (input.loserNextMatch) {
+    match.loserNextMatch = input.loserNextMatch as Match;
+  }
+
+  return match;
 };
 
 export interface WeeklySlotConflict {
@@ -77,7 +80,6 @@ export interface WeeklySlotConflict {
 }
 
 export interface LeagueScheduleResponse {
-  matches: Match[];
   warnings?: string[];
   preview?: boolean;
   event?: Event;
@@ -96,7 +98,6 @@ export interface LeagueSlotCreationInput {
   dayOfWeek: TimeSlot['dayOfWeek'];
   startTime: number;
   endTime: number;
-  timezone: string;
 }
 
 export interface CreateLeagueDraftOptions {
@@ -125,7 +126,7 @@ class LeagueService {
       }
       const response = await databases.createRow({
         databaseId: DATABASE_ID,
-        tableId: WEEKLY_SCHEDULES_TABLE_ID,
+        tableId: TIME_SLOTS_TABLE_ID,
         rowId: ID.unique(),
         data: {
           event: eventId,
@@ -133,7 +134,6 @@ class LeagueService {
           dayOfWeek: slot.dayOfWeek,
           startTime,
           endTime,
-          timezone: slot.timezone,
         },
         queries: [
           Query.select([
@@ -157,7 +157,7 @@ class LeagueService {
       schedules.map((schedule) =>
         databases.deleteRow({
           databaseId: DATABASE_ID,
-          tableId: WEEKLY_SCHEDULES_TABLE_ID,
+          tableId: TIME_SLOTS_TABLE_ID,
           rowId: schedule.$id,
         })
       )
@@ -167,7 +167,7 @@ class LeagueService {
   async listWeeklySchedulesByEvent(eventId: string): Promise<TimeSlot[]> {
     const response = await databases.listRows({
       databaseId: DATABASE_ID,
-      tableId: WEEKLY_SCHEDULES_TABLE_ID,
+      tableId: TIME_SLOTS_TABLE_ID,
       queries: [
         Query.equal('event', eventId),
         Query.select([
@@ -180,7 +180,7 @@ class LeagueService {
     return response.rows.map((row: any) => this.mapRowToWeeklySchedule(row));
   }
 
-  async listWeeklySchedulesByField(fieldId: string, dayOfWeek?: number): Promise<TimeSlot[]> {
+  async listTimeSlotsByField(fieldId: string, dayOfWeek?: number): Promise<TimeSlot[]> {
     const queries = [
       Query.equal('field', fieldId),
       Query.select([
@@ -194,38 +194,11 @@ class LeagueService {
 
     const response = await databases.listRows({
       databaseId: DATABASE_ID,
-      tableId: WEEKLY_SCHEDULES_TABLE_ID,
+      tableId: TIME_SLOTS_TABLE_ID,
       queries,
     });
 
     return response.rows.map((row: any) => this.mapRowToWeeklySchedule(row));
-  }
-
-  async generateSchedule(eventId: string, dryRun = false): Promise<LeagueScheduleResponse> {
-    const response = await functions.createExecution({
-      functionId: CREATE_LEAGUE_FUNCTION_ID,
-      body: JSON.stringify({
-        eventId,
-        dryRun,
-      } as CreateLeagueFnInput),
-      async: false,
-    });
-
-    const result = JSON.parse(response.responseBody || '{}');
-
-    if (result.error) {
-      throw new Error(typeof result.error === 'string' ? result.error : 'Failed to generate league schedule');
-    }
-
-    const eventRefId = typeof result?.event?.$id === 'string' ? result.event.$id : eventId;
-    const matches = Array.isArray(result?.matches)
-      ? result.matches.map((match: any) => mapMatchRecord(match, eventRefId))
-      : [];
-
-    return {
-      ...result,
-      matches,
-    } as LeagueScheduleResponse;
   }
 
   async previewScheduleFromDocument(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
@@ -250,17 +223,12 @@ class LeagueService {
       throw new Error(typeof parsed.error === 'string' ? parsed.error : 'Failed to preview league schedule');
     }
 
-    const matches: Match[] = Array.isArray(parsed.matches)
-      ? (parsed.matches as any[]).map((match) => mapMatchRecord(match, parsed.event?.$id ?? eventDocument?.$id ?? 'preview'))
-      : [];
-
     let event: Event | undefined;
     if (parsed.event) {
       event = eventService.mapRowFromDatabase(parsed.event, true);
     }
 
     return {
-      matches,
       preview: typeof parsed.preview === 'boolean' ? parsed.preview : true,
       event,
     };
@@ -296,7 +264,6 @@ class LeagueService {
       dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
       startTime: this.normalizeTime(row.startTime),
       endTime: this.normalizeTime(row.endTime),
-      timezone: typeof row.timezone === 'string' ? row.timezone : String(row.timezone ?? 'UTC'),
       event: row.event ?? row.eventId ?? row.event?.$id,
       field: row.field ?? row.fieldId ?? row.field?.$id,
     };
