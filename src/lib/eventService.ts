@@ -12,6 +12,9 @@ import {
   TimeSlot,
   EventStatus,
   Organization,
+  EventPayload,
+  TeamPayload,
+  UserDataPayload,
 } from '@/types';
 import { ID, Query } from 'appwrite';
 
@@ -34,8 +37,6 @@ export interface LeagueGenerationMatchResult {
   field?: unknown;
   team1?: unknown;
   team2?: unknown;
-  matchType?: string;
-  weekNumber?: number | null;
   team1Seed?: number | null;
   team2Seed?: number | null;
 }
@@ -159,9 +160,9 @@ class EventService {
     }
   }
 
-  async updateEvent(eventId: string, eventData: Partial<Event> & { lat?: number; long?: number }): Promise<Event> {
+  async updateEvent(eventId: string, eventData: Partial<Event>): Promise<Event> {
     try {
-      const payload = this.buildEventMutationPayload(eventData);
+      const payload = this.buildEventPayload(eventData);
 
       const response = await databases.updateRow({
         databaseId: DATABASE_ID,
@@ -193,7 +194,7 @@ class EventService {
 
   async createEvent(newEvent: Partial<Event>): Promise<Event> {
     try {
-      const payload = this.buildEventMutationPayload(newEvent);
+      const payload = this.buildEventPayload(newEvent);
 
       const response = await databases.createRow({
         databaseId: DATABASE_ID,
@@ -223,6 +224,106 @@ class EventService {
       console.error('Failed to create event:', error);
       throw error;
     }
+  }
+
+  private buildEventPayload(event: Partial<Event>): Partial<EventPayload> {
+    const clone = { ...event } as Record<string, unknown>;
+
+    const players = Array.isArray(event.players) ? event.players : undefined;
+    const teams = Array.isArray(event.teams) ? event.teams : undefined;
+
+    [
+      '$id',
+      '$createdAt',
+      '$updatedAt',
+      'attendees',
+      'category',
+      'leagueConfig',
+      'players',
+      'teams',
+    ].forEach((key) => {
+      delete clone[key];
+    });
+
+    const cleaned = this.removeUndefined(clone) as Partial<EventPayload>;
+
+    const sanitizedPlayers = this.sanitizeUsers(players);
+    if (sanitizedPlayers) {
+      cleaned.players = sanitizedPlayers;
+    }
+
+    const sanitizedTeams = teams
+      ?.map((team) => this.sanitizeTeam(team))
+      .filter((value): value is TeamPayload => Boolean(value));
+
+    if (sanitizedTeams && sanitizedTeams.length) {
+      cleaned.teams = sanitizedTeams;
+    }
+
+    return cleaned;
+  }
+
+  private sanitizeUsers(users?: Partial<UserData>[] | null): UserDataPayload[] | undefined {
+    if (!users?.length) return undefined;
+    const sanitized = users
+      .map((user) => this.sanitizeUser(user))
+      .filter((value): value is UserDataPayload => Boolean(value));
+    return sanitized.length ? sanitized : undefined;
+  }
+
+  private sanitizeUser(user?: Partial<UserData> | null): UserDataPayload | undefined {
+    if (!user) return undefined;
+    const clone = { ...user } as Record<string, unknown>;
+    delete clone.fullName;
+    delete clone.avatarUrl;
+    const cleaned = this.removeUndefined(clone) as Partial<UserDataPayload>;
+    return Object.keys(cleaned).length ? (cleaned as UserDataPayload) : undefined;
+  }
+
+  private sanitizeTeam(team?: Partial<Team> | null): TeamPayload | undefined {
+    if (!team) return undefined;
+    const clone = { ...team } as Record<string, unknown>;
+    const players = Array.isArray(team.players) ? team.players : undefined;
+    const pendingPlayers = Array.isArray(team.pendingPlayers) ? team.pendingPlayers : undefined;
+    const captain = team.captain;
+
+    delete clone.winRate;
+    delete clone.currentSize;
+    delete clone.isFull;
+    delete clone.avatarUrl;
+    delete clone.players;
+    delete clone.pendingPlayers;
+    delete clone.captain;
+
+    const cleaned = this.removeUndefined(clone) as Partial<TeamPayload>;
+
+    const sanitizedPlayers = this.sanitizeUsers(players);
+    if (sanitizedPlayers) {
+      cleaned.players = sanitizedPlayers;
+    }
+
+    const sanitizedPending = this.sanitizeUsers(pendingPlayers);
+    if (sanitizedPending) {
+      cleaned.pendingPlayers = sanitizedPending;
+    }
+
+    const sanitizedCaptain = this.sanitizeUser(captain);
+    if (sanitizedCaptain) {
+      cleaned.captain = sanitizedCaptain;
+    }
+
+    return Object.keys(cleaned).length ? (cleaned as TeamPayload) : undefined;
+  }
+
+  private removeUndefined<T extends Record<string, unknown>>(record: T): T {
+    const result: Record<string, unknown> = {};
+    Object.keys(record).forEach((key) => {
+      const value = record[key];
+      if (value !== undefined) {
+        result[key] = value;
+      }
+    });
+    return result as T;
   }
 
   async generateLeagueSchedule(
@@ -313,10 +414,7 @@ class EventService {
           start: m.start,
           end: m.end,
           matchId: m.matchNumber ?? m.matchId,
-          eventId: m.eventId ?? m.tournamentId,
           tournamentId: m.tournamentId,
-          matchType: m.matchType ?? undefined,
-          weekNumber: m.weekNumber ?? undefined,
           team1Seed: m.team1Seed ?? undefined,
           team2Seed: m.team2Seed ?? undefined,
           losersBracket: m.losersBracket ?? undefined,
@@ -334,11 +432,11 @@ class EventService {
         }
 
         if (m.team1 && typeof m.team1 === 'object') {
-          mappedMatch.team1 = m.team1 as Team;
+          mappedMatch.team1 = event.teams?.find((team) => m.team1.$id === team.$id) as Team;
         }
 
         if (m.team2 && typeof m.team2 === 'object') {
-          mappedMatch.team2 = m.team2 as Team;
+          mappedMatch.team2 = event.teams?.find((team) => m.team2.$id === team.$id) as Team;
         }
 
         if (m.division) {
@@ -369,8 +467,8 @@ class EventService {
       });
     }
 
-    if (Array.isArray(row.weeklySchedules)) {
-      event.timeSlots = (row.weeklySchedules as any[]).map((schedule: any) => this.mapRowToTimeSlot(schedule));
+    if (Array.isArray(row.timeSlots)) {
+      event.timeSlots = (row.timeSlots as any[]).map((schedule: any) => this.mapRowToTimeSlot(schedule));
     }
 
     if (Array.isArray(row.players)) {
@@ -402,57 +500,6 @@ class EventService {
       setDurationMinutes: row.setDurationMinutes ?? undefined,
       setsPerMatch: row.setsPerMatch ?? undefined,
     };
-  }
-
-  private buildEventMutationPayload(eventData: Partial<Event> & { lat?: number; long?: number }): Record<string, unknown> {
-    const {
-      attendees,
-      category,
-      leagueConfig,
-      organization,
-      fields,
-      lat,
-      long,
-      ...rest
-    } = eventData;
-
-    const payload: Record<string, unknown> = { ...rest };
-
-    if (lat !== undefined && long !== undefined) {
-      payload.lat = lat;
-      payload.long = long;
-      payload.coordinates = [long, lat] as [number, number];
-    } else if (eventData.coordinates) {
-      payload.coordinates = eventData.coordinates;
-      payload.long = eventData.coordinates[0];
-      payload.lat = eventData.coordinates[1];
-    }
-
-    if (organization) {
-      payload.organization = typeof organization === 'string' ? organization : organization.$id;
-    }
-
-    if (fields !== undefined) {
-      payload.fields = fields;
-    }
-
-    if (leagueConfig) {
-      Object.assign(payload, leagueConfig);
-    }
-
-    return payload;
-  }
-
-  private extractId(value: any): string {
-    if (typeof value === 'string') return value;
-    if (value && typeof value === 'object' && value.$id) return value.$id;
-    return '';
-  }
-
-  private calculateWinRate(wins: number, losses: number): number {
-    const totalGames = wins + losses;
-    if (totalGames === 0) return 0;
-    return Math.round((wins / totalGames) * 100);
   }
 
   private mapRowToTimeSlot(row: any): TimeSlot {

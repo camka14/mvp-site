@@ -35,7 +35,6 @@ export interface Match {
   matchId?: number;
   team1Points: number[];
   team2Points: number[];
-  eventId?: string;
   tournamentId?: string;
   previousLeftId?: string;
   previousRightId?: string;
@@ -47,8 +46,6 @@ export interface Match {
   setResults: number[];
   side?: string;
   refCheckedIn?: boolean;
-  matchType?: 'regular' | 'playoff';
-  weekNumber?: number;
   team1Seed?: number;
   team2Seed?: number;
 
@@ -58,6 +55,7 @@ export interface Match {
   referee?: Team;
   team1?: Team;
   team2?: Team;
+  event?: Event;
 
   // Match relationships
   previousLeftMatch?: Match;
@@ -101,6 +99,8 @@ export interface UserData {
   avatarUrl: string;
 }
 
+export interface UserDataPayload extends Omit<UserData, 'fullName' | 'avatarUrl'> {}
+
 export interface Team {
   $id: string;
   name?: string;
@@ -128,6 +128,15 @@ export interface Team {
   currentSize: number;
   isFull: boolean;
   avatarUrl: string;
+}
+
+export interface TeamPayload extends Omit<
+  Team,
+  'winRate' | 'currentSize' | 'isFull' | 'avatarUrl' | 'players' | 'pendingPlayers' | 'captain'
+> {
+  players?: UserDataPayload[];
+  pendingPlayers?: UserDataPayload[];
+  captain?: UserDataPayload;
 }
 
 // Updated Field interface
@@ -215,6 +224,11 @@ export interface Event {
   // Computed properties
   attendees: number;
   category: EventCategory;
+}
+
+export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig'> {
+  players?: UserDataPayload[];
+  teams?: TeamPayload[];
 }
 
 export interface TournamentBracket {

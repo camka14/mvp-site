@@ -79,8 +79,6 @@ class TournamentService {
                 previousRightId: response.previousRightMatchId,
                 setResults: response.setResults || [],
                 refCheckedIn: response.refCheckedIn,
-                matchType: response.matchType ?? undefined,
-                weekNumber: response.weekNumber ?? undefined,
                 team1Seed: response.team1Seed ?? undefined,
                 team2Seed: response.team2Seed ?? undefined,
                 $createdAt: response.$createdAt,

@@ -18,14 +18,11 @@ const CREATE_LEAGUE_FUNCTION_ID = process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION
 const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 
-const mapMatchRecord = (input: any, fallbackEventId: string): Match => {
+const mapMatchRecord = (input: any): Match => {
   const match: Match = {
     $id: (input?.$id ?? input?.id) as string,
-    eventId: (input?.eventId ?? fallbackEventId) as string,
     start: input.start,
     end: input.end,
-    matchType: input.matchType ?? 'regular',
-    weekNumber: input.weekNumber,
     team1Seed: input.team1Seed,
     team2Seed: input.team2Seed,
     losersBracket: input.losersBracket,
@@ -37,6 +34,7 @@ const mapMatchRecord = (input: any, fallbackEventId: string): Match => {
     winnerNextMatchId: input.winnerNextMatchId ?? (input.winnerNextMatch ? (input.winnerNextMatch as Match).$id : undefined),
     loserNextMatchId: input.loserNextMatchId ?? (input.loserNextMatch ? (input.loserNextMatch as Match).$id : undefined),
     field: input?.field as Field,
+    event: input?.event as Event,
   };
 
   if (input.division) {
@@ -80,7 +78,6 @@ export interface WeeklySlotConflict {
 }
 
 export interface LeagueScheduleResponse {
-  warnings?: string[];
   preview?: boolean;
   event?: Event;
 }
@@ -144,7 +141,7 @@ class LeagueService {
         ],
       } as any);
 
-      return this.mapRowToWeeklySchedule(response as any);
+      return this.mapRowToTimeSlot(response as any);
     }));
 
     return created;
@@ -169,7 +166,7 @@ class LeagueService {
       databaseId: DATABASE_ID,
       tableId: TIME_SLOTS_TABLE_ID,
       queries: [
-        Query.equal('event', eventId),
+        Query.equal('event.$id', eventId),
         Query.select([
           '*',
           'field.*',
@@ -177,7 +174,7 @@ class LeagueService {
       ],
     });
 
-    return response.rows.map((row: any) => this.mapRowToWeeklySchedule(row));
+    return response.rows.map((row: any) => this.mapRowToTimeSlot(row));
   }
 
   async listTimeSlotsByField(fieldId: string, dayOfWeek?: number): Promise<TimeSlot[]> {
@@ -198,7 +195,7 @@ class LeagueService {
       queries,
     });
 
-    return response.rows.map((row: any) => this.mapRowToWeeklySchedule(row));
+    return response.rows.map((row: any) => this.mapRowToTimeSlot(row));
   }
 
   async previewScheduleFromDocument(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
@@ -219,7 +216,7 @@ class LeagueService {
     });
 
     const parsed = JSON.parse(execution.responseBody || '{}');
-    if (parsed.error) {
+    if (parsed.warnings) {
       throw new Error(typeof parsed.error === 'string' ? parsed.error : 'Failed to preview league schedule');
     }
 
@@ -239,12 +236,12 @@ class LeagueService {
       databaseId: DATABASE_ID,
       tableId: MATCHES_COLLECTION_ID,
       queries: [
-        Query.equal('eventId', eventId),
+        Query.equal('event.$id', eventId),
         Query.orderAsc('start'),
       ],
     });
 
-    return response.rows.map((row: any) => mapMatchRecord(row, row.eventId ?? eventId));
+    return response.rows.map((row: any) => mapMatchRecord(row));
   }
 
   async deleteMatchesByEvent(eventId: string): Promise<void> {
@@ -258,7 +255,7 @@ class LeagueService {
     ));
   }
 
-  private mapRowToWeeklySchedule(row: any): TimeSlot {
+  private mapRowToTimeSlot(row: any): TimeSlot {
     const schedule: TimeSlot = {
       $id: row.$id,
       dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
@@ -277,19 +274,6 @@ class LeagueService {
     }
 
     return schedule;
-  }
-
-  private timesOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
-    return !(endA <= startB || startA >= endB);
-  }
-
-  private dateRangesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
-    const startDateA = new Date(startA).getTime();
-    const endDateA = new Date(endA).getTime();
-    const startDateB = new Date(startB).getTime();
-    const endDateB = new Date(endB).getTime();
-
-    return !(endDateA < startDateB || startDateA > endDateB);
   }
 
   private normalizeTime(value: unknown): number {

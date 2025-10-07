@@ -18,6 +18,8 @@ interface TournamentBracketViewProps {
     isExpanded?: boolean;
     onToggleExpand?: () => void;
     isPreview?: boolean;
+    onMatchClick?: (match: Match) => void;
+    canEditMatches?: boolean;
 }
 
 export default function TournamentBracketView({
@@ -27,6 +29,8 @@ export default function TournamentBracketView({
     isExpanded,
     onToggleExpand,
     isPreview = false,
+    onMatchClick,
+    canEditMatches = false,
 }: TournamentBracketViewProps) {
     const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
     const [showScoreModal, setShowScoreModal] = useState(false);
@@ -328,9 +332,11 @@ export default function TournamentBracketView({
         return () => window.removeEventListener('wheel', onWheel as EventListener);
     }, []);
 
-    const allowScoreUpdates = !!onScoreUpdate && !isPreview;
+    const allowEditing = Boolean(canEditMatches && typeof onMatchClick === 'function');
+    const allowScoreUpdates = !!onScoreUpdate && !isPreview && !allowEditing;
 
     const canManageMatch = (match: Match) => {
+        if (allowEditing) return true;
         if (!allowScoreUpdates) return false;
         if (!currentUser) return false;
         if (!bracket.canManage && !bracket.isHost) return false;
@@ -346,6 +352,10 @@ export default function TournamentBracketView({
     }, [allowScoreUpdates]);
 
     const handleMatchClick = (match: Match) => {
+        if (allowEditing) {
+            onMatchClick?.(match);
+            return;
+        }
         if (!canManageMatch(match)) return;
         setSelectedMatch(match);
         setShowScoreModal(true);
@@ -425,7 +435,7 @@ export default function TournamentBracketView({
                             {Object.values(viewById).map((m) => {
                                 const pos = positionById.get(m.$id);
                                 if (!pos) return null;
-                                const manageable = canManageMatch(m);
+                                const manageable = allowEditing || canManageMatch(m);
                                 return (
                                     <div
                                         key={m.$id}

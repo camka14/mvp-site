@@ -123,20 +123,4 @@ describe('leagueService', () => {
     });
   });
 
-  describe('generateSchedule', () => {
-    it('calls Appwrite function and parses response', async () => {
-      appwriteModuleMock.functions.createExecution.mockResolvedValue({
-        responseBody: JSON.stringify({ matches: [] }),
-      });
-
-      const result = await leagueService.generateSchedule('event_1');
-
-      expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith({
-        functionId: CREATE_LEAGUE_FUNCTION_ID,
-        body: JSON.stringify({ eventId: 'event_1', dryRun: false }),
-        async: false,
-      });
-      expect(result.matches).toEqual([]);
-    });
-  });
 });
