@@ -156,6 +156,8 @@ export interface Field {
   organization?: Organization | string;
 }
 
+export interface FieldPayload extends Omit<Field, 'matches' | 'events'> {}
+
 // Core Event interface with relationships
 export interface Event {
   $id: string;
@@ -226,9 +228,10 @@ export interface Event {
   category: EventCategory;
 }
 
-export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig'> {
+export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'fields'> {
   players?: UserDataPayload[];
   teams?: TeamPayload[];
+  fields?: FieldPayload[];
 }
 
 export interface TournamentBracket {

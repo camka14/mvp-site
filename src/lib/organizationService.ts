@@ -4,6 +4,7 @@ import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
 import type { Event, Field, Organization, Team } from '@/types';
 import { getCategoryFromEvent } from '@/types';
+import { eventService } from './eventService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID!;
@@ -34,6 +35,11 @@ class OrganizationService {
     } as Team;
   }
   private mapRowToOrganization(row: AnyRow): Organization {
+    row.fields = row.fields?.map((f: AnyRow) => ({
+      ...(f as any),
+      events: eventService.getEventsForFieldInRange(f.$id, new Date(Date.now())),
+      matches: eventService.getMatchesForFieldInRange(f.$id, new Date(Date.now())),
+    })) as Field[];
     return {
       ...row,
     } as Organization;

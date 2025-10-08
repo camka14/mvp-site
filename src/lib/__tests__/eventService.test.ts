@@ -36,7 +36,7 @@ describe('eventService', () => {
         divisions: [],
         lat: 40,
         long: -105,
-        weeklySchedules: [
+        timeSlots: [
           {
             $id: 'slot_1',
             dayOfWeek: 1,
@@ -117,6 +117,60 @@ describe('eventService', () => {
         fieldNumber: 2,
       }),
     });
+    });
+
+    it('sanitizes nested fields before submitting to Appwrite', async () => {
+      appwriteModuleMock.ID.unique.mockReturnValueOnce('evt_nested');
+      appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
+        $id: 'evt_nested',
+        name: 'Nested Event',
+        sport: 'Volleyball',
+        teamSignup: false,
+        playerIds: [],
+        teamIds: [],
+        divisions: [],
+        lat: 40,
+        long: -105,
+      });
+
+      await eventService.createEvent({
+        name: 'Nested Event',
+        sport: 'Volleyball',
+        teamSignup: false,
+        playerIds: [],
+        teamIds: [],
+        divisions: [],
+        lat: 40,
+        long: -105,
+        fields: [
+          {
+            $id: 'field_1',
+            name: 'Court A',
+            location: 'Gym',
+            lat: 39.5,
+            long: -104.9,
+            type: 'indoor',
+            fieldNumber: 1,
+            organization: { $id: 'org_1', name: 'Org 1' } as any,
+            matches: [{ $id: 'match_1' }] as any,
+            events: [{ $id: 'evt_other' }] as any,
+          } as any,
+        ],
+      });
+
+      const [createArgs] = appwriteModuleMock.databases.createRow.mock.calls;
+      const [payload] = createArgs as [{ data: Record<string, any> }];
+      const { data } = payload;
+
+      expect(data.fields).toEqual([
+        expect.objectContaining({
+          $id: 'field_1',
+          name: 'Court A',
+          organization: 'org_1',
+        }),
+      ]);
+      expect(data.fields[0]).not.toHaveProperty('matches');
+      expect(data.fields[0]).not.toHaveProperty('events');
     });
   });
 

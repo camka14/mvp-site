@@ -8,6 +8,7 @@ jest.mock('@/lib/eventService', () => ({
     getEvent: jest.fn(),
     getEventWithRelations: jest.fn(),
     createEvent: jest.fn(),
+    mapRowFromDatabase: jest.fn(),
   },
 }));
 

@@ -7,6 +7,7 @@ import {
   Team,
   UserData,
   Field,
+  FieldPayload,
   Match,
   LeagueConfig,
   TimeSlot,
@@ -83,7 +84,6 @@ class EventService {
           'teams.*',
           'teams.matches.$id',
           'fields.*',
-          'fields.matches.$id',
           'timeSlots.*',
           'timeSlots.field.$id',
         ])
@@ -96,7 +96,7 @@ class EventService {
         queries
       });
 
-      return this.mapRowToEventWithRelations(response);
+      return await this.mapRowToEventWithRelations(response);
     } catch (error) {
       console.error('Failed to fetch event with relations:', error);
       return undefined;
@@ -231,6 +231,7 @@ class EventService {
 
     const players = Array.isArray(event.players) ? event.players : undefined;
     const teams = Array.isArray(event.teams) ? event.teams : undefined;
+    const fields = Array.isArray(event.fields) ? event.fields : undefined;
 
     [
       '$id',
@@ -241,6 +242,7 @@ class EventService {
       'leagueConfig',
       'players',
       'teams',
+      'fields',
     ].forEach((key) => {
       delete clone[key];
     });
@@ -258,6 +260,25 @@ class EventService {
 
     if (sanitizedTeams && sanitizedTeams.length) {
       cleaned.teams = sanitizedTeams;
+    }
+
+    const sanitizedFields = fields
+      ?.map((field) => this.sanitizeField(field))
+      .filter((value): value is FieldPayload => Boolean(value));
+
+    if (sanitizedFields && sanitizedFields.length) {
+      cleaned.fields = sanitizedFields;
+    }
+
+    if (typeof event.lat === 'number' && typeof event.long === 'number') {
+      cleaned.coordinates = [event.long, event.lat];
+    } else if (
+      Array.isArray(event.coordinates) &&
+      event.coordinates.length === 2 &&
+      typeof event.coordinates[0] === 'number' &&
+      typeof event.coordinates[1] === 'number'
+    ) {
+      cleaned.coordinates = event.coordinates as [number, number];
     }
 
     return cleaned;
@@ -313,6 +334,21 @@ class EventService {
     }
 
     return Object.keys(cleaned).length ? (cleaned as TeamPayload) : undefined;
+  }
+
+  private sanitizeField(field?: Partial<Field> | null): FieldPayload | undefined {
+    if (!field) return undefined;
+    const clone = { ...field } as Record<string, unknown>;
+
+    delete clone.matches;
+    delete clone.events;
+
+    if (clone.organization && typeof clone.organization === 'object' && '$id' in (clone.organization as Record<string, unknown>)) {
+      clone.organization = (clone.organization as Organization).$id;
+    }
+
+    const cleaned = this.removeUndefined(clone) as Partial<FieldPayload>;
+    return Object.keys(cleaned).length ? (cleaned as FieldPayload) : undefined;
   }
 
   private removeUndefined<T extends Record<string, unknown>>(record: T): T {
@@ -388,10 +424,38 @@ class EventService {
     };
   }
 
-  private mapRowToEventWithRelations(row: any): Event {
+  async getEventsForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Event[]> {
+    return databases.listRows({
+      databaseId: DATABASE_ID,
+      tableId: EVENTS_TABLE_ID,
+      queries: [
+        Query.equal('fields.$id', fieldId),
+        Query.greaterThanEqual('end', start instanceof Date ? start.toISOString() : start),
+        ...(end ? [Query.lessThanEqual('start', end instanceof Date ? end.toISOString() : end)] : []),
+        Query.select(['*', 'organization.$id']),
+      ],
+    }).then(response => (response.rows || []).map((row: any) => this.mapRowToEvent(row)));
+  }
+
+  async getMatchesForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Match[]> {
+    return databases.listRows({
+      databaseId: DATABASE_ID,
+      tableId: process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!,
+      queries: [
+        Query.equal('field.$id', fieldId),
+        Query.greaterThanEqual('end', start instanceof Date ? start.toISOString() : start),
+        ...(end ? [Query.lessThanEqual('start', end instanceof Date ? end.toISOString() : end)] : []),
+        Query.select(['*', 'referee.$id', 'team1.$id', 'team2.$id']),
+        Query.orderAsc('start'),
+      ],
+    }).then(response => (response.rows || []).map((row: any) => this.mapMatchRecord(row)));
+  }
+
+  private async mapRowToEventWithRelations(row: any): Promise<Event> {
     const baseEvent = this.mapRowToEvent(row);
 
     const event: Event = { ...baseEvent };
+    const fieldCache = new Map<string, { matches?: Match[]; events?: Event[] }>();
 
     if (row.organization) {
       event.organization = row.organization as Organization;
@@ -407,64 +471,42 @@ class EventService {
     }
 
     if (Array.isArray(row.matches)) {
-      event.matches = (row.matches as any[]).map((m: any) => {
-        const fieldRef = m.field && typeof m.field === 'object' ? (m.field as Field) : undefined;
-        const mappedMatch: Match = {
-          $id: m.$id ?? m.id,
-          start: m.start,
-          end: m.end,
-          matchId: m.matchNumber ?? m.matchId,
-          tournamentId: m.tournamentId,
-          team1Seed: m.team1Seed ?? undefined,
-          team2Seed: m.team2Seed ?? undefined,
-          losersBracket: m.losersBracket ?? undefined,
-          team1Points: Array.isArray(m.team1Points) ? (m.team1Points as number[]) : [],
-          team2Points: Array.isArray(m.team2Points) ? (m.team2Points as number[]) : [],
-          setResults: Array.isArray(m.setResults) ? (m.setResults as number[]) : [],
-          previousLeftId: m.previousLeftId ?? m.previousLeftMatchId,
-          previousRightId: m.previousRightId ?? m.previousRightMatchId,
-          winnerNextMatchId: m.winnerNextMatchId ?? (m.winnerNextMatch ? (m.winnerNextMatch as Match).$id : undefined),
-          loserNextMatchId: m.loserNextMatchId ?? (m.loserNextMatch ? (m.loserNextMatch as Match).$id : undefined),
-        } as Match;
+      const mappedMatches = await Promise.all(
+        (row.matches as any[]).map(async (m: any) => {
+          const fieldRef = m.field && typeof m.field === 'object' ? (m.field as Field) : undefined;
+          if (fieldRef) {
+            const cacheEntry = fieldCache.get(fieldRef.$id) ?? {};
+            if (!cacheEntry.matches) {
+              cacheEntry.matches = await this.getMatchesForFieldInRange(fieldRef.$id, event.start, event.end ?? null);
+            }
+            if (!cacheEntry.events) {
+              cacheEntry.events = await this.getEventsForFieldInRange(fieldRef.$id, event.start, event.end ?? null);
+            }
+            fieldCache.set(fieldRef.$id, cacheEntry);
+            fieldRef.matches = cacheEntry.matches;
+            fieldRef.events = cacheEntry.events;
+          }
 
-        if (fieldRef) {
-          mappedMatch.field = fieldRef;
-        }
+          const mappedMatch = this.mapMatchRecord(m);
 
-        if (m.team1 && typeof m.team1 === 'object') {
-          mappedMatch.team1 = event.teams?.find((team) => m.team1.$id === team.$id) as Team;
-        }
+          if (fieldRef) {
+            mappedMatch.field = fieldRef;
+          }
 
-        if (m.team2 && typeof m.team2 === 'object') {
-          mappedMatch.team2 = event.teams?.find((team) => m.team2.$id === team.$id) as Team;
-        }
+          if (m.team1 && typeof m.team1 === 'object') {
+            mappedMatch.team1 =
+              event.teams?.find((team) => m.team1.$id === team.$id) ?? mappedMatch.team1;
+          }
 
-        if (m.division) {
-          mappedMatch.division = m.division;
-        }
+          if (m.team2 && typeof m.team2 === 'object') {
+            mappedMatch.team2 =
+              event.teams?.find((team) => m.team2.$id === team.$id) ?? mappedMatch.team2;
+          }
 
-        if (m.referee && typeof m.referee === 'object') {
-          mappedMatch.referee = m.referee as Team;
-        }
-
-        if (m.previousLeftMatch) {
-          mappedMatch.previousLeftMatch = m.previousLeftMatch as Match;
-        }
-
-        if (m.previousRightMatch) {
-          mappedMatch.previousRightMatch = m.previousRightMatch as Match;
-        }
-
-        if (m.winnerNextMatch) {
-          mappedMatch.winnerNextMatch = m.winnerNextMatch as Match;
-        }
-
-        if (m.loserNextMatch) {
-          mappedMatch.loserNextMatch = m.loserNextMatch as Match;
-        }
-
-        return mappedMatch;
-      });
+          return mappedMatch;
+        })
+      );
+      event.matches = mappedMatches;
     }
 
     if (Array.isArray(row.timeSlots)) {
@@ -482,8 +524,65 @@ class EventService {
     return event;
   }
 
-  mapRowFromDatabase(row: any, includeRelations: boolean = false): Event {
-    return includeRelations ? this.mapRowToEventWithRelations(row) : this.mapRowToEvent(row);
+  async mapRowFromDatabase(row: any, includeRelations: boolean = false): Promise<Event> {
+    if (includeRelations) {
+      return this.mapRowToEventWithRelations(row);
+    }
+    return this.mapRowToEvent(row);
+  }
+
+  private mapMatchRecord(input: any): Match {
+    const match: Match = {
+      $id: (input?.$id ?? input?.id) as string,
+      start: input.start,
+      end: input.end,
+      team1Seed: input.team1Seed,
+      team2Seed: input.team2Seed,
+      losersBracket: input.losersBracket,
+      team1Points: Array.isArray(input.team1Points) ? (input.team1Points as number[]) : [],
+      team2Points: Array.isArray(input.team2Points) ? (input.team2Points as number[]) : [],
+      setResults: Array.isArray(input.setResults) ? (input.setResults as number[]) : [],
+      previousLeftId: input.previousLeftId ?? input.previousLeftMatchId,
+      previousRightId: input.previousRightId ?? input.previousRightMatchId,
+      winnerNextMatchId: input.winnerNextMatchId ?? (input.winnerNextMatch ? (input.winnerNextMatch as Match).$id : undefined),
+      loserNextMatchId: input.loserNextMatchId ?? (input.loserNextMatch ? (input.loserNextMatch as Match).$id : undefined),
+      field: input?.field as Field,
+      event: input?.event as Event,
+    };
+
+    if (input.division) {
+      match.division = input.division;
+    }
+
+    if (input.team1 && typeof input.team1 === 'object') {
+      match.team1 = input.team1 as Team;
+    }
+
+    if (input.team2 && typeof input.team2 === 'object') {
+      match.team2 = input.team2 as Team;
+    }
+
+    if (input.referee && typeof input.referee === 'object') {
+      match.referee = input.referee as Team;
+    }
+
+    if (input.previousLeftMatch) {
+      match.previousLeftMatch = input.previousLeftMatch as Match;
+    }
+
+    if (input.previousRightMatch) {
+      match.previousRightMatch = input.previousRightMatch as Match;
+    }
+
+    if (input.winnerNextMatch) {
+      match.winnerNextMatch = input.winnerNextMatch as Match;
+    }
+
+    if (input.loserNextMatch) {
+      match.loserNextMatch = input.loserNextMatch as Match;
+    }
+
+    return match;
   }
 
   private buildLeagueConfig(row: any): LeagueConfig | undefined {

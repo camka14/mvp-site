@@ -3,20 +3,16 @@ import { Query } from 'appwrite';
 import {
   TimeSlot,
   Match,
-  CreateLeagueFnInput,
   Event,
   Field,
   Team,
 } from '@/types';
 import { eventService } from './eventService';
-import { fieldService } from './fieldService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
 const MATCHES_COLLECTION_ID = process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!;
-const CREATE_LEAGUE_FUNCTION_ID = process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION_ID!;
 const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
-const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 
 const mapMatchRecord = (input: any): Match => {
   const match: Match = {
@@ -222,7 +218,7 @@ class LeagueService {
 
     let event: Event | undefined;
     if (parsed.event) {
-      event = eventService.mapRowFromDatabase(parsed.event, true);
+      event = await eventService.mapRowFromDatabase(parsed.event, true);
     }
 
     return {

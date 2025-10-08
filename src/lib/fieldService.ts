@@ -3,9 +3,11 @@
 import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
 import type { Field } from '@/types';
+import { eventService } from './eventService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const FIELDS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!;
+
 
 export interface CreateFieldData {
   name: string;
@@ -45,7 +47,6 @@ class FieldService {
       queries: [
         Query.select([
           '*',
-          'events.$id',
           'organization.$id',
         ]),
       ],
@@ -54,13 +55,15 @@ class FieldService {
     return this.mapRowToField(response);
   }
 
-  async listFields(filter?: string | { organizationId?: string; eventId?: string }): Promise<Field[]> {
+  async listFields(
+    filter?: string | { organizationId?: string; eventId?: string },
+    range?: { start: string; end?: string | null }
+  ): Promise<Field[]> {
     const normalizedFilter = typeof filter === 'string' ? { organizationId: filter } : (filter ?? {});
 
     const queries = [
       Query.select([
         '*',
-        'events.$id',
         'organization.$id',
       ]),
     ];
@@ -79,7 +82,32 @@ class FieldService {
       queries,
     });
 
-    return (response.rows || []).map((row: any) => this.mapRowToField(row));
+    const fields = (response.rows || []).map((row: any) => this.mapRowToField(row));
+
+    if (range?.start) {
+      return Promise.all(fields.map((field) => this.getFieldEventsMatches(field, range)));
+    }
+
+    return fields;
+  }
+
+  async getFieldEventsMatches(
+    field: Field,
+    range: { start: string; end?: string | null }
+  ): Promise<Field> {
+    const start = range.start;
+    const end = range.end ?? null;
+
+    const [events, matches] = await Promise.all([
+      eventService.getEventsForFieldInRange(field.$id, start, end),
+      eventService.getMatchesForFieldInRange(field.$id, start, end),
+    ]);
+
+    return {
+      ...field,
+      events,
+      matches,
+    };
   }
 
   private mapRowToField(row: any): Field {
@@ -100,8 +128,6 @@ class FieldService {
       type: row.type ?? '',
       fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
       divisions: row.divisions,
-      matches: row.matches,
-      events: row.events,
       organization,
     } as Field;
   }
