@@ -2,6 +2,7 @@ import { renderWithMantine } from '../../../../../../test/utils/renderWithMantin
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import LeagueSchedulePage from '../page';
 import { eventService } from '@/lib/eventService';
+import { formatLocalDateTime } from '@/lib/dateUtils';
 import type { Field, Match } from '@/types';
 import { buildTeam } from '../../../../../../test/factories';
 
@@ -58,8 +59,8 @@ jest.mock('../components/TournamentBracketView', () => () => <div data-testid="b
 const mockMatch: Match = {
   $id: 'match_1',
   eventId: 'event_1',
-  start: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
-  end: new Date(Date.now() + 28 * 60 * 60 * 1000).toISOString(),
+  start: formatLocalDateTime(new Date(Date.now() + 26 * 60 * 60 * 1000)),
+  end: formatLocalDateTime(new Date(Date.now() + 28 * 60 * 60 * 1000)),
   team1Seed: 1,
   team2Seed: 2,
   team1Points: [],
@@ -103,8 +104,8 @@ describe('League schedule page', () => {
       name: 'Summer League',
       eventType: 'league',
       status: 'draft',
-      start: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+      end: formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000)),
       location: 'Sports Center',
       hostId: 'host_1',
       teams: [

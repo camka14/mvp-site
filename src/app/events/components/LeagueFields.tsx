@@ -130,6 +130,18 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             onChange={(value) => onLeagueDataChange({ matchDurationMinutes: Number(value) || 60 })}
             disabled={leagueData.usesSets}
           />
+          <NumberInput
+            label="Rest Time Between Matches (minutes)"
+            min={0}
+            step={5}
+            value={leagueData.restTimeMinutes ?? 0}
+            onChange={(value) => {
+              const numeric = typeof value === 'number' ? value : Number(value);
+              onLeagueDataChange({
+                restTimeMinutes: Number.isFinite(numeric) && numeric >= 0 ? numeric : 0,
+              });
+            }}
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">

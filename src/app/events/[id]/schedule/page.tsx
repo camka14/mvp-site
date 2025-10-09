@@ -560,6 +560,14 @@ function EventScheduleContent() {
                 <Text size="lg">{leagueConfig?.matchDurationMinutes ? `${leagueConfig.matchDurationMinutes} min` : 'TBD'}</Text>
               </div>
               <div>
+                <Text fw={600} size="sm" c="dimmed">Rest Time</Text>
+                <Text size="lg">
+                  {leagueConfig?.restTimeMinutes !== undefined
+                    ? `${leagueConfig.restTimeMinutes} min`
+                    : 'TBD'}
+                </Text>
+              </div>
+              <div>
                 <Text fw={600} size="sm" c="dimmed">Total Matches</Text>
                 <Text size="lg">{activeMatches.length}</Text>
               </div>

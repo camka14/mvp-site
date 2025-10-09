@@ -16,8 +16,10 @@ import {
   EventPayload,
   TeamPayload,
   UserDataPayload,
+  MatchPayload,
 } from '@/types';
 import { ID, Query } from 'appwrite';
+import { ensureLocalDateTimeString, formatLocalDateTime } from '@/lib/dateUtils';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
@@ -203,22 +205,6 @@ class EventService {
         data: payload
       });
 
-      // Create fields if this is a tournament
-      if (newEvent.fieldCount && newEvent.fieldCount > 0) {
-        for (let fieldNum = 1; fieldNum <= newEvent.fieldCount; fieldNum++) {
-          await databases.createRow({
-            databaseId: DATABASE_ID,
-            tableId: process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!,
-            rowId: ID.unique(),
-            data: {
-              eventId: response.$id,
-              fieldNumber: fieldNum,
-              divisions: ["OPEN"], // Default division
-            }
-          });
-        }
-      }
-
       return this.mapRowToEvent(response);
     } catch (error) {
       console.error('Failed to create event:', error);
@@ -232,6 +218,7 @@ class EventService {
     const players = Array.isArray(event.players) ? event.players : undefined;
     const teams = Array.isArray(event.teams) ? event.teams : undefined;
     const fields = Array.isArray(event.fields) ? event.fields : undefined;
+    const matches = Array.isArray(event.matches) ? event.matches : undefined;
 
     [
       '$id',
@@ -268,6 +255,12 @@ class EventService {
 
     if (sanitizedFields && sanitizedFields.length) {
       cleaned.fields = sanitizedFields;
+    }
+
+    const sanitizedMatches = matches?.map((match) => this.sanitizeMatch(match)).filter((value): value is MatchPayload => Boolean(value));
+
+    if (sanitizedMatches && sanitizedMatches.length) {
+      cleaned.matches = sanitizedMatches;
     }
 
     if (typeof event.lat === 'number' && typeof event.long === 'number') {
@@ -351,6 +344,25 @@ class EventService {
     return Object.keys(cleaned).length ? (cleaned as FieldPayload) : undefined;
   }
 
+  private sanitizeMatch(match?: Partial<Match> | null): MatchPayload | undefined {
+    if (!match) return undefined;
+    const clone = { ...match } as Record<string, unknown>;
+
+    if (match.field && typeof match.field === 'object') {
+      const sanitizedField = this.sanitizeField(match.field);
+      if (sanitizedField) {
+        clone.field = sanitizedField;
+      } else {
+        delete clone.field;
+      }
+    } else {
+      delete clone.field;
+    }
+
+    const cleaned = this.removeUndefined(clone) as Partial<MatchPayload>;
+    return Object.keys(cleaned).length ? (cleaned as MatchPayload) : undefined;
+  }
+
   private removeUndefined<T extends Record<string, unknown>>(record: T): T {
     const result: Record<string, unknown> = {};
     Object.keys(record).forEach((key) => {
@@ -360,6 +372,17 @@ class EventService {
       }
     });
     return result as T;
+  }
+
+  private normalizeDateInput(value: Date | string | null | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+    if (value instanceof Date) {
+      const formatted = formatLocalDateTime(value);
+      return formatted || null;
+    }
+    return ensureLocalDateTimeString(value) ?? null;
   }
 
   async generateLeagueSchedule(
@@ -407,6 +430,12 @@ class EventService {
   private mapRowToEvent(row: any): Event {
     const lat = typeof row.lat === 'number' ? row.lat : Number(row.lat ?? row.coordinates?.[1] ?? 0);
     const long = typeof row.long === 'number' ? row.long : Number(row.long ?? row.coordinates?.[0] ?? 0);
+    const restTime =
+      typeof row.restTimeMinutes === 'number'
+        ? row.restTimeMinutes
+        : row.restTimeMinutes !== undefined && row.restTimeMinutes !== null
+          ? Number(row.restTimeMinutes)
+          : undefined;
 
     return {
       ...row,
@@ -415,6 +444,7 @@ class EventService {
       coordinates: [long, lat],
       lat,
       long,
+      restTimeMinutes: Number.isFinite(restTime) ? restTime : undefined,
       category: getCategoryFromEvent({ sport: row.sport } as Event),
       // Ensure divisions is always an array
       divisions: Array.isArray(row.divisions) ? row.divisions : [],
@@ -425,29 +455,53 @@ class EventService {
   }
 
   async getEventsForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Event[]> {
+    const startFilter = this.normalizeDateInput(start);
+    const endFilter = this.normalizeDateInput(end);
+
+    const queries: string[] = [
+      Query.equal('fields.$id', fieldId),
+    ];
+
+    if (startFilter) {
+      queries.push(Query.greaterThanEqual('end', startFilter));
+    }
+
+    if (endFilter) {
+      queries.push(Query.lessThanEqual('start', endFilter));
+    }
+
+    queries.push(Query.select(['*', 'organization.$id']));
+
     return databases.listRows({
       databaseId: DATABASE_ID,
       tableId: EVENTS_TABLE_ID,
-      queries: [
-        Query.equal('fields.$id', fieldId),
-        Query.greaterThanEqual('end', start instanceof Date ? start.toISOString() : start),
-        ...(end ? [Query.lessThanEqual('start', end instanceof Date ? end.toISOString() : end)] : []),
-        Query.select(['*', 'organization.$id']),
-      ],
+      queries,
     }).then(response => (response.rows || []).map((row: any) => this.mapRowToEvent(row)));
   }
 
   async getMatchesForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Match[]> {
+    const startFilter = this.normalizeDateInput(start);
+    const endFilter = this.normalizeDateInput(end);
+
+    const queries: string[] = [
+      Query.equal('field.$id', fieldId),
+    ];
+
+    if (startFilter) {
+      queries.push(Query.greaterThanEqual('end', startFilter));
+    }
+
+    if (endFilter) {
+      queries.push(Query.lessThanEqual('start', endFilter));
+    }
+
+    queries.push(Query.select(['*', 'referee.$id', 'team1.$id', 'team2.$id']));
+    queries.push(Query.orderAsc('start'));
+
     return databases.listRows({
       databaseId: DATABASE_ID,
       tableId: process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!,
-      queries: [
-        Query.equal('field.$id', fieldId),
-        Query.greaterThanEqual('end', start instanceof Date ? start.toISOString() : start),
-        ...(end ? [Query.lessThanEqual('start', end instanceof Date ? end.toISOString() : end)] : []),
-        Query.select(['*', 'referee.$id', 'team1.$id', 'team2.$id']),
-        Query.orderAsc('start'),
-      ],
+      queries,
     }).then(response => (response.rows || []).map((row: any) => this.mapMatchRecord(row)));
   }
 
@@ -590,12 +644,20 @@ class EventService {
       return undefined;
     }
 
+    const restTime =
+      typeof row.restTimeMinutes === 'number'
+        ? row.restTimeMinutes
+        : row.restTimeMinutes !== undefined && row.restTimeMinutes !== null
+          ? Number(row.restTimeMinutes)
+          : undefined;
+
     return {
       gamesPerOpponent: row.gamesPerOpponent,
       includePlayoffs: Boolean(row.includePlayoffs),
       playoffTeamCount: row.playoffTeamCount ?? undefined,
       usesSets: Boolean(row.usesSets),
       matchDurationMinutes: row.matchDurationMinutes ?? 60,
+      restTimeMinutes: Number.isFinite(restTime) ? restTime : undefined,
       setDurationMinutes: row.setDurationMinutes ?? undefined,
       setsPerMatch: row.setsPerMatch ?? undefined,
     };

@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import RefundSection from '../RefundSection';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 import { buildEvent } from '../../../../test/factories';
+import { formatLocalDateTime } from '@/lib/dateUtils';
 
 jest.mock('@/lib/paymentService', () => ({
   paymentService: {
@@ -48,7 +49,7 @@ describe('RefundSection', () => {
 
   it('handles automatic refunds when within deadline', async () => {
     useAppMock.mockReturnValue({ user: { $id: 'user_1' } });
-    const start = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const start = formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000));
     const event = buildEvent({
       $id: 'event_1',
       hostId: 'host_1',
@@ -74,7 +75,7 @@ describe('RefundSection', () => {
 
   it('requests reason when automatic refund not available', async () => {
     useAppMock.mockReturnValue({ user: { $id: 'user_1' } });
-    const start = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const start = formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
     const event = buildEvent({
       $id: 'event_1',
       hostId: 'host_2',

@@ -5,9 +5,8 @@ import {
   dateFnsLocalizer,
   EventProps,
   SlotInfo,
+  SlotGroupPropGetter,
   View,
-  ToolbarProps,
-  NavigateAction,
 } from 'react-big-calendar';
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -61,8 +60,7 @@ const coerceDateTime = (value?: string | Date | null): Date | null => {
   }
 
   const raw = String(value);
-  const withOffset = /([zZ]|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw}Z`;
-  const primary = new Date(withOffset);
+  const primary = new Date(raw);
   if (!Number.isNaN(primary.getTime())) {
     return primary;
   }
@@ -107,86 +105,7 @@ const formatHourLabel = (hour: number) => {
   return format(date, 'h a');
 };
 
-type CalendarToolbarProps = ToolbarProps<CalendarEvent, object>;
-
-interface TimeRangeToolbarProps extends CalendarToolbarProps {
-  timeRange: [number, number];
-  onTimeRangeChange: (value: [number, number]) => void;
-  showRange: boolean;
-}
-
-const TimeRangeToolbar = ({
-  label,
-  localizer: toolbarLocalizer,
-  onNavigate,
-  onView,
-  view,
-  views,
-  timeRange,
-  onTimeRangeChange,
-  showRange,
-}: TimeRangeToolbarProps) => {
-  const navigate = (action: NavigateAction) => () => onNavigate(action);
-  const viewNames = Array.isArray(views)
-    ? views
-    : Object.keys(views ?? {}) as View[];
-
-  return (
-    <div className="rbc-toolbar-wrapper">
-      <div className="rbc-toolbar">
-        <span className="rbc-btn-group">
-          <button type="button" onClick={navigate('TODAY')}>
-            {toolbarLocalizer.messages.today ?? 'Today'}
-          </button>
-          <button type="button" onClick={navigate('PREV')}>
-            {toolbarLocalizer.messages.previous ?? 'Back'}
-          </button>
-          <button type="button" onClick={navigate('NEXT')}>
-            {toolbarLocalizer.messages.next ?? 'Next'}
-          </button>
-        </span>
-        <span className="rbc-toolbar-label">{label}</span>
-        <span className="rbc-btn-group">
-          {viewNames.map((name) => (
-            <button
-              type="button"
-              key={name}
-              className={view === name ? 'rbc-active' : ''}
-              onClick={() => onView(name)}
-            >
-              {toolbarLocalizer.messages[name as 'month'] ?? name.charAt(0).toUpperCase() + name.slice(1)}
-            </button>
-          ))}
-        </span>
-      </div>
-      {showRange && (
-        <div className="rbc-toolbar-range">
-          <Text size="sm" fw={600} mb={4}>
-            Visible hours: {formatHourLabel(timeRange[0])} – {formatHourLabel(timeRange[1])}
-          </Text>
-          <RangeSlider
-            key={timeRange.join('-')}
-            min={0}
-            max={24}
-            step={1}
-            minRange={1}
-            value={timeRange}
-            onChange={(value) => onTimeRangeChange(value as [number, number])}
-            marks={[
-              { value: 0, label: '12 AM' },
-              { value: 6, label: '6 AM' },
-              { value: 12, label: '12 PM' },
-              { value: 18, label: '6 PM' },
-              { value: 24, label: '12 AM' },
-            ]}
-            label={(value) => formatHourLabel(value)}
-            size="sm"
-          />
-        </div>
-      )}
-    </div>
-  );
-};
+const MIN_CALENDAR_HEIGHT = 600;
 
 export function LeagueCalendarView({
   matches,
@@ -333,24 +252,23 @@ export function LeagueCalendarView({
 
   const showRange = calendarView === 'week' || calendarView === 'day';
 
-  const toolbar = useCallback<React.FC<CalendarToolbarProps>>(
-    (props) => (
-      <TimeRangeToolbar
-        {...props}
-        timeRange={timeRange}
-        onTimeRangeChange={setTimeRange}
-        showRange={showRange}
-      />
-    ),
-    [showRange, timeRange],
+  const visibleHourSpan = useMemo(
+    () => Math.max(1, timeRange[1] - timeRange[0]),
+    [timeRange],
   );
 
-  const componentsWithToolbar = useMemo(
-    () => ({
-      ...components,
-      toolbar,
-    }),
-    [components, toolbar],
+  const slotGroupPropGetter = useCallback<SlotGroupPropGetter>(
+    () => {
+      const baseHeight = MIN_CALENDAR_HEIGHT / visibleHourSpan;
+      return {
+        style: {
+          height: `${baseHeight}px`,
+          minHeight: `${baseHeight}px`,
+          flex: '0 0 auto',
+        },
+      };
+    },
+    [visibleHourSpan],
   );
 
   const minTime = useMemo(() => new Date(1970, 0, 1, timeRange[0], 0, 0), [timeRange]);
@@ -375,28 +293,38 @@ export function LeagueCalendarView({
           padding: 0;
           border: none;
         }
-
-        .rbc-toolbar-wrapper {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-      `}</style>
-      <style jsx global>{`
-        .rbc-toolbar-range {
-          padding: 0.5rem 0.75rem 0.25rem;
-          border: 1px solid var(--mantine-color-gray-3, #e9ecef);
-          border-radius: 8px;
-          background: var(--mantine-color-body, #ffffff);
-        }
       `}</style>
       <Paper
         withBorder
         radius="md"
         p="lg"
-        style={{ width: '100%', minHeight: 600 }}
+        style={{ width: '100%', minHeight: MIN_CALENDAR_HEIGHT + (showRange ? 120 : 0) }}
         data-testid="league-calendar"
       >
+        {showRange && (
+          <div className="mb-6">
+            <Text size="sm" fw={600} mb={8}>
+              Visible hours: {formatHourLabel(timeRange[0])} – {formatHourLabel(timeRange[1])}
+            </Text>
+            <RangeSlider
+              min={0}
+              max={24}
+              step={1}
+              minRange={1}
+              value={timeRange}
+              onChange={(value) => setTimeRange(value as [number, number])}
+              marks={[
+                { value: 0, label: '12 AM' },
+                { value: 6, label: '6 AM' },
+                { value: 12, label: '12 PM' },
+                { value: 18, label: '6 PM' },
+                { value: 24, label: '12 AM' },
+              ]}
+              label={(value) => formatHourLabel(value)}
+              size="sm"
+            />
+          </div>
+        )}
         <BigCalendar
           localizer={localizer}
           events={calendarEvents}
@@ -408,7 +336,7 @@ export function LeagueCalendarView({
           selectable
           popup
           longPressThreshold={20}
-          components={componentsWithToolbar}
+          components={components}
           eventPropGetter={eventPropGetter}
           onSelectSlot={handleSelectSlot}
           onSelectEvent={handleSelectEvent}
@@ -416,7 +344,8 @@ export function LeagueCalendarView({
           endAccessor="end"
           min={minTime}
           max={maxTime}
-          style={{ height: '100%', minHeight: 520 }}
+          style={{ height: '100%', minHeight: MIN_CALENDAR_HEIGHT }}
+          slotGroupPropGetter={slotGroupPropGetter}
         />
       </Paper>
     </>

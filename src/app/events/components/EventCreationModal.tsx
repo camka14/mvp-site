@@ -15,6 +15,7 @@ import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
 import { leagueService } from '@/lib/leagueService';
+import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
 import LeagueFields, { LeagueSlotForm } from './LeagueFields';
 import { ID } from '@/app/appwrite';
 
@@ -209,8 +210,8 @@ const createDefaultEventData = (): EventFormState => ({
     coordinates: [0, 0],
     lat: 0,
     long: 0,
-    start: new Date().toISOString(),
-    end: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    start: nowLocalDateTimeString(),
+    end: formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000)),
     eventType: 'pickup',
     sport: '',
     fieldType: 'indoor',
@@ -329,8 +330,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 winnerBracketPointsToVictory: editingEvent.winnerBracketPointsToVictory || [21],
                 loserBracketPointsToVictory: editingEvent.loserBracketPointsToVictory || [21],
                 prize: editingEvent.prize || '',
-                fieldCount: editingEvent.fieldCount ?? editingEvent.fields?.length ?? 1
-
+                fieldCount: editingEvent.fieldCount ?? editingEvent.fields?.length ?? 1,
+                restTimeMinutes: normalizeNumber(editingEvent.restTimeMinutes, 0) ?? 0,
             };
         } else {
             return {
@@ -340,7 +341,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 winnerBracketPointsToVictory: [21],
                 loserBracketPointsToVictory: [21],
                 prize: '',
-                fieldCount: 1
+                fieldCount: 1,
+                restTimeMinutes: 0,
             };
         }
     });
@@ -355,6 +357,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 playoffTeamCount: source?.playoffTeamCount ?? undefined,
                 usesSets: source?.usesSets ?? false,
                 matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
+                restTimeMinutes: normalizeNumber(source?.restTimeMinutes, 0) ?? 0,
                 setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
                 setsPerMatch: normalizeNumber(source?.setsPerMatch),
             };
@@ -365,6 +368,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             playoffTeamCount: undefined,
             usesSets: false,
             matchDurationMinutes: 60,
+            restTimeMinutes: 0,
             setDurationMinutes: undefined,
             setsPerMatch: undefined,
         };
@@ -689,6 +693,36 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }));
     }, [fields]);
 
+    const fieldsReferencedInSlots = useMemo(() => {
+        if (!leagueSlots.length) {
+            return [] as Field[];
+        }
+
+        const fieldMap = new Map<string, Field>();
+        fields.forEach(field => {
+            if (field?.$id) {
+                fieldMap.set(field.$id, field);
+            }
+        });
+
+        const seen = new Set<string>();
+        const picked: Field[] = [];
+
+        leagueSlots.forEach(slot => {
+            const slotField = slot.field;
+            const fieldId = slotField?.$id;
+            if (!slotField || !fieldId || seen.has(fieldId)) {
+                return;
+            }
+
+            const resolved = fieldMap.get(fieldId) ?? slotField;
+            picked.push(resolved);
+            seen.add(fieldId);
+        });
+
+        return picked;
+    }, [leagueSlots, fields]);
+
     // Validation state
     // Aggregated validity flags used to gate the submit button and surface inline messages.
     const [validation, setValidation] = useState({
@@ -910,9 +944,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (eventData.eventType !== 'league' || isEditMode) return;
         if (isSubmitting || !isValid) return;
 
-        const startDate = new Date(eventData.start);
-        const endDate = new Date(eventData.end);
-        if (!(startDate instanceof Date) || !(endDate instanceof Date) || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        const startDate = parseLocalDateTime(eventData.start);
+        const endDate = parseLocalDateTime(eventData.end);
+        if (!startDate || !endDate) {
             setLeagueError('Provide a valid start and end date for the league.');
             return;
         }
@@ -955,19 +989,22 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         setLeagueError(null);
 
         try {
+            const restTime = normalizeNumber(leagueData.restTimeMinutes);
             const timingFields = leagueData.usesSets
                 ? {
                     usesSets: true,
                     setDurationMinutes: normalizeNumber(leagueData.setDurationMinutes),
                     setsPerMatch: normalizeNumber(leagueData.setsPerMatch),
+                    ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
                 }
                 : {
                     usesSets: false,
                     matchDurationMinutes: normalizeNumber(leagueData.matchDurationMinutes, 60) ?? 60,
+                    ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
                 };
 
             const fieldMap = new Map<string, Field>();
-            fields.forEach(field => {
+            fieldsReferencedInSlots.forEach(field => {
                 if (field?.$id) {
                     fieldMap.set(field.$id, field);
                 }
@@ -1026,7 +1063,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 matches: [],
                 teams: [],
                 players: joinAsParticipant ? [currentUser] : [],
-                fields: fields,
+                fields: fieldsReferencedInSlots,
                 timeSlots: slotDocuments,
             };
 
@@ -1092,8 +1129,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 long: eventData.long,
             };
 
-            if (!shouldManageLocalFields && fields.length > 0) {
-                submitEvent.fields = fields;
+            if (!shouldManageLocalFields) {
+                const fieldsToInclude = fieldsReferencedInSlots;
+                if (fieldsToInclude.length) {
+                    submitEvent.fields = fieldsToInclude;
+                }
             }
 
             if (!isEditMode) {
@@ -1118,15 +1158,18 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             }
 
             if (eventData.eventType === 'league') {
+                const restTime = normalizeNumber(leagueData.restTimeMinutes);
                 const timingFields = leagueData.usesSets
                     ? {
                         usesSets: true,
                         setDurationMinutes: normalizeNumber(leagueData.setDurationMinutes),
                         setsPerMatch: normalizeNumber(leagueData.setsPerMatch),
+                        ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
                     }
                     : {
                         usesSets: false,
                         matchDurationMinutes: normalizeNumber(leagueData.matchDurationMinutes, 60) ?? 60,
+                        ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
                     };
 
                 Object.assign(submitEvent, {
@@ -1418,11 +1461,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 <DateTimePicker
                                     label="Start Date & Time"
                                     valueFormat="DD MMM YYYY hh:mm A"
-                                    value={new Date(eventData.start)}
+                                    value={parseLocalDateTime(eventData.start)}
                                     onChange={(val) => {
-                                        if (!val) return;
-                                        const d = typeof val === 'string' ? new Date(val) : (val as Date);
-                                        setEventData(prev => ({ ...prev, start: d.toISOString() }));
+                                        const parsed = parseLocalDateTime(val as Date | string | null);
+                                        if (!parsed) return;
+                                        setEventData(prev => ({ ...prev, start: formatLocalDateTime(parsed) }));
                                     }}
                                     minDate={todaysDate}
                                     timePickerProps={{
@@ -1437,13 +1480,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 <DateTimePicker
                                     label="End Date & Time"
                                     valueFormat="DD MMM YYYY hh:mm A"
-                                    value={new Date(eventData.end)}
+                                    value={parseLocalDateTime(eventData.end)}
                                     onChange={(val) => {
-                                        if (!val) return;
-                                        const d = typeof val === 'string' ? new Date(val) : (val as Date);
-                                        setEventData(prev => ({ ...prev, end: d.toISOString() }));
+                                        const parsed = parseLocalDateTime(val as Date | string | null);
+                                        if (!parsed) return;
+                                        setEventData(prev => ({ ...prev, end: formatLocalDateTime(parsed) }));
                                     }}
-                                    minDate={new Date(eventData.start)}
+                                    minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
                                     timePickerProps={{
                                         withDropdown: true,
                                         format: '12h',

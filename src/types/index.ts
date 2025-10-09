@@ -1,4 +1,5 @@
 import { storage } from "@/app/appwrite";
+import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 
 // User types
 export interface UserAccount {
@@ -25,6 +26,7 @@ export interface LeagueConfig {
   playoffTeamCount?: number;
   usesSets: boolean;
   matchDurationMinutes: number;
+  restTimeMinutes?: number;
   setDurationMinutes?: number;
   setsPerMatch?: number;
 }
@@ -65,6 +67,10 @@ export interface Match {
 
   $createdAt?: string;
   $updatedAt?: string;
+}
+
+export interface MatchPayload extends Omit<Match, 'field'> {
+  field?: FieldPayload;
 }
 
 export interface TimeSlot {
@@ -176,6 +182,7 @@ export interface Event {
   hostId: string;
   maxParticipants: number;
   teamSizeLimit: number;
+  restTimeMinutes?: number;
   teamSignup: boolean;
   singleDivision: boolean;
   waitListIds: string[];
@@ -228,10 +235,11 @@ export interface Event {
   category: EventCategory;
 }
 
-export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'fields'> {
+export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'fields' | 'matches'> {
   players?: UserDataPayload[];
   teams?: TeamPayload[];
   fields?: FieldPayload[];
+  matches?: MatchPayload[];
 }
 
 export interface TournamentBracket {
@@ -387,9 +395,13 @@ export function getTeamWinRate(team: Team): number {
 }
 
 export function getEventDateTime(event: Event): { date: string; time: string } {
-  const startDate = new Date(event.start);
+  const startDate = parseLocalDateTime(event.start);
+  if (!startDate) {
+    return { date: '', time: '' };
+  }
+  const [datePart] = formatLocalDateTime(startDate).split('T');
   return {
-    date: startDate.toISOString().split('T')[0],
+    date: datePart ?? '',
     time: startDate.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',

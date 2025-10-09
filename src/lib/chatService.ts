@@ -125,9 +125,10 @@ class ChatService {
 
             // Send push notification
             await functions.createExecution({
-                functionId: process.env.NEXT_PUBLIC_CHAT_FUNCTION_ID!,
+                functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
                 body: JSON.stringify({
-                    command: "send_chat_notification",
+                    task: "messaging",
+                    command: "send",
                     chatId,
                     message: body,
                     senderId: userId

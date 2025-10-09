@@ -36,6 +36,7 @@ describe('LeagueFields', () => {
           includePlayoffs: false,
           usesSets: false,
           matchDurationMinutes: 60,
+          restTimeMinutes: 0,
         }}
         onLeagueDataChange={noop}
         slots={[baseSlot]}
@@ -61,6 +62,7 @@ describe('LeagueFields', () => {
           includePlayoffs: false,
           usesSets: false,
           matchDurationMinutes: 60,
+          restTimeMinutes: 0,
         }}
         onLeagueDataChange={noop}
         slots={[

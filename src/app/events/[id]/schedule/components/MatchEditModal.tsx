@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 
+import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+
 import type { Field, Match, Team } from '@/types';
 
 interface MatchEditModalProps {
@@ -15,19 +17,7 @@ interface MatchEditModalProps {
   onSave: (updated: Match) => void;
 }
 
-const coerceDate = (value?: string | Date | null): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-  const withOffset = /([zZ]|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`;
-  const parsed = new Date(withOffset);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed;
-  }
-  const fallback = new Date(value);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
-};
+const coerceDate = (value?: string | Date | null): Date | null => parseLocalDateTime(value ?? null);
 
 const resolveTeamName = (team: Match['team1'], fallbackTeams: Team[]): string => {
   if (team && typeof team === 'object') {
@@ -222,12 +212,12 @@ export default function MatchEditModal({
     onClose();
   };
 
-  const handleStartDateChange = (value: string | null) => {
-    setStartValue(value ? new Date(value) : null);
+  const handleStartDateChange = (value: Date | string | null) => {
+    setStartValue(parseLocalDateTime(value));
   };
 
-  const handleEndDateChange = (value: string | null) => {
-    setEndValue(value ? new Date(value) : null);
+  const handleEndDateChange = (value: Date | string | null) => {
+    setEndValue(parseLocalDateTime(value));
   };
 
   const handlePointsChange = (team: 'team1' | 'team2', index: number, value: string | number | null) => {
@@ -305,8 +295,8 @@ export default function MatchEditModal({
 
     const updated: Match = {
       ...match,
-      start: startValue.toISOString(),
-      end: endValue.toISOString(),
+      start: formatLocalDateTime(startValue),
+      end: formatLocalDateTime(endValue),
       team1Points: sanitizePoints(team1Points),
       team2Points: sanitizePoints(team2Points),
       setResults: sanitizeResults(setResults),

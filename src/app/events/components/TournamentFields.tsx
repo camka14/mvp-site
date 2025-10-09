@@ -9,6 +9,7 @@ interface TournamentData {
     loserBracketPointsToVictory: number[];
     prize: string;
     fieldCount: number;
+    restTimeMinutes: number;
 }
 
 interface TournamentFieldsProps {
@@ -79,6 +80,21 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                         />
                     </Grid.Col>
                 )}
+
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                    <NumberInput
+                        label="Rest Time Between Matches (minutes)"
+                        min={0}
+                        step={5}
+                        value={tournamentData.restTimeMinutes}
+                        onChange={(value) =>
+                            setTournamentData((prev) => ({
+                                ...prev,
+                                restTimeMinutes: Number(value) >= 0 ? Number(value) : 0,
+                            }))
+                        }
+                    />
+                </Grid.Col>
 
                 <Grid.Col span={{ base: 12, md: 6 }}>
                     <Select
