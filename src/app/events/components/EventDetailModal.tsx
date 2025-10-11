@@ -62,36 +62,40 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         }
     }, [isOpen, event]);
 
-    const loadEventDetails = async () => {
-        if (!event) return;
+    const loadEventDetails = async (eventId?: string) => {
+        const targetId = eventId ?? event?.$id;
+        if (!targetId) return;
 
         setIsLoading(true);
         try {
-            // Always fetch the latest event snapshot first
-            const latest = await eventService.getEvent(event.$id);
+            // Fetch full event with relationships for accurate editing context
+            const latest = await eventService.getEventWithRelations(targetId);
             const baseEvent = latest || event;
+            if (!baseEvent) {
+                return;
+            }
+
             setDetailedEvent(baseEvent);
 
-            // Load participants from the latest snapshot
-            const eventPlayers: UserData[] = (latest?.players as UserData[]) || [];
-            const eventTeams: Team[] = (latest?.teams as Team[]) || [];
+            const eventPlayers: UserData[] = Array.isArray(baseEvent.players) ? (baseEvent.players as UserData[]) : [];
+            const eventTeams: Team[] = Array.isArray(baseEvent.teams) ? (baseEvent.teams as Team[]) : [];
 
             setPlayers(eventPlayers);
             setTeams(eventTeams);
 
-            // Load free agents from the latest snapshot
-            if (baseEvent.freeAgentIds && baseEvent.freeAgentIds.length > 0) {
+            if (Array.isArray(baseEvent.freeAgentIds) && baseEvent.freeAgentIds.length > 0) {
                 const agents = await userService.getUsersByIds(baseEvent.freeAgentIds);
                 setFreeAgents(agents);
             } else {
                 setFreeAgents([]);
             }
 
-            // If team signup and user is present, load user's relevant teams
             if (user && baseEvent.teamSignup) {
                 const ids = Array.isArray(user.teamIds) ? user.teamIds : [];
                 const userTeamsAll = await teamService.getTeamsByIds(ids, true);
-                const relevant = userTeamsAll.filter(t => (t.sport || '').toLowerCase() === (baseEvent.sport || '').toLowerCase());
+                const relevant = userTeamsAll.filter(
+                    (team) => (team.sport || '').toLowerCase() === (baseEvent.sport || '').toLowerCase()
+                );
                 setUserTeams(relevant);
             } else {
                 setUserTeams([]);
@@ -103,12 +107,18 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         }
     };
 
+    const handleViewSchedule = (tab?: string) => {
+        const schedulePath = `/events/${currentEvent.$id}/schedule`;
+        const target = tab ? `${schedulePath}?tab=${tab}` : schedulePath;
+        router.push(target);
+        onClose();
+    };
+
     const handleBracketClick = () => {
         if (currentEvent.eventType === 'tournament') {
-            router.push(`/events/${currentEvent.$id}/schedule?tab=bracket`);
-            onClose();
+            handleViewSchedule('bracket');
         }
-    }
+    };
 
     // Update the join event handlers
     const handleJoinEvent = async () => {
@@ -612,7 +622,18 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                     </button>
                                                 )}
 
-                                                {/* Bracket Button */}
+                                                {/* View Schedule / Bracket Buttons */}
+                                                {(currentEvent.eventType === 'league' || currentEvent.eventType === 'tournament') && (
+                                                    <Button
+                                                        fullWidth
+                                                        variant="light"
+                                                        mt="sm"
+                                                        onClick={() => handleViewSchedule()}
+                                                    >
+                                                        View Schedule
+                                                    </Button>
+                                                )}
+
                                                 {currentEvent.eventType === 'tournament' &&
                                                     <button
                                                         onClick={handleBracketClick}
@@ -734,8 +755,11 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                     onClose={() => setShowEditModal(false)}
                     onEventCreated={async (updatedEvent) => {
                         setShowEditModal(false);
-                        if (updatedEvent) {
+                        if (updatedEvent?.$id) {
                             setDetailedEvent(updatedEvent);
+                            await loadEventDetails(updatedEvent.$id);
+                        } else {
+                            await loadEventDetails();
                         }
                     }}
                     currentUser={user}

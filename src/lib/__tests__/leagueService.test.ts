@@ -29,7 +29,7 @@ const CREATE_LEAGUE_FUNCTION_ID = process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION
 const setEnv = () => {
   process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
   process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID = WEEKLY_TABLE_ID;
-  process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID = MATCHES_TABLE_ID;
+  process.env.NEXT_PUBLIC_MATCHES_TABLE_ID = MATCHES_TABLE_ID;
   process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID = EVENTS_TABLE_ID;
   process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID = EVENT_MANAGER_FUNCTION_ID;
   process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION_ID = CREATE_LEAGUE_FUNCTION_ID;
@@ -57,8 +57,8 @@ describe('leagueService', () => {
         $id: 'temp-slot',
         field,
         dayOfWeek: 2,
-        startTime: 9 * 60,
-        endTime: 10 * 60,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 10 * 60,
       };
 
       appwriteModuleMock.databases.createRow.mockResolvedValue({
@@ -87,8 +87,8 @@ describe('leagueService', () => {
 
       expect(result[0]).toMatchObject({
         $id: 'slot_1',
-        startTime: 9 * 60,
-        endTime: 10 * 60,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 10 * 60,
       });
     });
   });
@@ -117,8 +117,8 @@ describe('leagueService', () => {
         }),
       );
       expect(slots[0]).toMatchObject({
-        startTime: 600,
-        endTime: 690,
+        startTimeMinutes: 600,
+        endTimeMinutes: 690,
         field: expect.objectContaining({ name: 'Court B' }),
       });
     });

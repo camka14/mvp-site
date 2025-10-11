@@ -2,15 +2,21 @@ import { renderWithMantine } from '../../../../../../test/utils/renderWithMantin
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import LeagueSchedulePage from '../page';
 import { eventService } from '@/lib/eventService';
+import { leagueService } from '@/lib/leagueService';
 import { formatLocalDateTime } from '@/lib/dateUtils';
 import type { Field, Match } from '@/types';
 import { buildTeam } from '../../../../../../test/factories';
 
 const useSearchParamsMock = jest.fn();
+const mockRouter = {
+  push: jest.fn(),
+  replace: jest.fn(),
+  back: jest.fn(),
+};
 
 jest.mock('next/navigation', () => ({
   useParams: jest.fn(() => ({ id: 'event_1' })),
-  useRouter: jest.fn(() => ({ push: jest.fn() })),
+  useRouter: jest.fn(() => mockRouter),
   usePathname: jest.fn(() => '/events/event_1/schedule'),
   useSearchParams: () => useSearchParamsMock(),
 }));
@@ -29,6 +35,9 @@ jest.mock('@/lib/eventService', () => ({
   eventService: {
     getEventWithRelations: jest.fn(),
     deleteEvent: jest.fn(),
+    deleteUnpublishedEvent: jest.fn(),
+    updateEvent: jest.fn(),
+    createEvent: jest.fn(),
   },
 }));
 
@@ -81,7 +90,11 @@ const mockMatch: Match = {
 
 describe('League schedule page', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     useSearchParamsMock.mockReset();
+    mockRouter.push.mockReset();
+    mockRouter.replace.mockReset();
+    mockRouter.back.mockReset();
     useAppMock.mockReturnValue({
       user: { $id: 'host_1' },
       isAuthenticated: true,
@@ -103,6 +116,7 @@ describe('League schedule page', () => {
       $id: 'event_1',
       name: 'Summer League',
       eventType: 'league',
+      state: 'PUBLISHED',
       status: 'draft',
       start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
       end: formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000)),
@@ -152,5 +166,55 @@ describe('League schedule page', () => {
     fireEvent.click(editButton);
 
     expect(await screen.findByText(/Edit Match/)).toBeInTheDocument();
+  });
+
+  it('deletes unpublished events via eventService when cancelling preview', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return '1';
+        return null;
+      },
+    });
+
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
+      $id: 'event_1',
+      name: 'Summer League',
+      eventType: 'league',
+      state: 'UNPUBLISHED',
+      status: 'draft',
+      start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+      end: formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000)),
+      location: 'Sports Center',
+      hostId: 'host_1',
+      fields: [
+        { $id: 'field_1', name: 'Court A', fieldNumber: 1, type: 'indoor', location: '', lat: 0, long: 0 },
+      ],
+      matches: [mockMatch],
+      timeSlots: [],
+    });
+
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Summer League/)).toBeInTheDocument();
+    });
+
+    const cancelButton = await screen.findByRole('button', { name: /cancel league preview/i });
+    fireEvent.click(cancelButton);
+
+    await waitFor(() => {
+      expect(eventService.deleteUnpublishedEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ $id: 'event_1' })
+      );
+    });
+
+    expect(eventService.deleteEvent).not.toHaveBeenCalled();
+    expect(leagueService.deleteMatchesByEvent).not.toHaveBeenCalled();
+    expect(leagueService.deleteWeeklySchedulesForEvent).not.toHaveBeenCalled();
+    expect(eventService.getEventWithRelations).toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

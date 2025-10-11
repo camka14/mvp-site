@@ -11,7 +11,7 @@ import { eventService } from './eventService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
-const MATCHES_COLLECTION_ID = process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!;
+const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
 const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
 
 const mapMatchRecord = (input: any): Match => {
@@ -89,8 +89,8 @@ export interface LeagueSlotCreationInput {
   fieldKey?: string;
   field?: Field;
   dayOfWeek: TimeSlot['dayOfWeek'];
-  startTime: number;
-  endTime: number;
+  startTimeMinutes: number;
+  endTimeMinutes: number;
 }
 
 export interface CreateLeagueDraftOptions {
@@ -111,8 +111,8 @@ class LeagueService {
     }
 
     const created = await Promise.all(slots.map(async (slot) => {
-      const startTime = this.normalizeTime(slot.startTime);
-      const endTime = this.normalizeTime(slot.endTime);
+      const startTime = this.normalizeTime(slot.startTimeMinutes);
+      const endTime = this.normalizeTime(slot.endTimeMinutes);
       const fieldId = this.extractId(slot.field);
       if (!fieldId) {
         throw new Error('TimeSlot requires a related field');
@@ -230,7 +230,7 @@ class LeagueService {
   async listMatchesByEvent(eventId: string): Promise<Match[]> {
     const response = await databases.listRows({
       databaseId: DATABASE_ID,
-      tableId: MATCHES_COLLECTION_ID,
+      tableId: MATCHES_TABLE_ID,
       queries: [
         Query.equal('event.$id', eventId),
         Query.orderAsc('start'),
@@ -245,7 +245,7 @@ class LeagueService {
     await Promise.all(matches.map(match =>
       databases.deleteRow({
         databaseId: DATABASE_ID,
-        tableId: MATCHES_COLLECTION_ID,
+        tableId: MATCHES_TABLE_ID,
         rowId: match.$id,
       })
     ));
@@ -255,8 +255,8 @@ class LeagueService {
     const schedule: TimeSlot = {
       $id: row.$id,
       dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
-      startTime: this.normalizeTime(row.startTime),
-      endTime: this.normalizeTime(row.endTime),
+      startTimeMinutes: this.normalizeTime(row.startTimeMinutes ?? row.startTime),
+      endTimeMinutes: this.normalizeTime(row.endTimeMinutes ?? row.endTime),
       event: row.event ?? row.eventId ?? row.event?.$id,
       field: row.field ?? row.fieldId ?? row.field?.$id,
     };

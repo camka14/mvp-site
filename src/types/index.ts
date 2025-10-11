@@ -69,17 +69,20 @@ export interface Match {
   $updatedAt?: string;
 }
 
-export interface MatchPayload extends Omit<Match, 'field'> {
+export interface MatchPayload extends Omit<Match, 'field' | '$id'> {
   field?: FieldPayload;
 }
 
 export interface TimeSlot {
   $id: string;
   dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  startTime: number;
-  endTime: number;
+  startTimeMinutes: number;
+  endTimeMinutes: number;
   event?: Event;
   field?: Field;
+}
+
+export interface TimeSlotPayload extends Omit<TimeSlot, '$id'> {
 }
 
 export interface UserData {
@@ -105,7 +108,7 @@ export interface UserData {
   avatarUrl: string;
 }
 
-export interface UserDataPayload extends Omit<UserData, 'fullName' | 'avatarUrl'> {}
+export interface UserDataPayload extends Omit<UserData, 'fullName' | 'avatarUrl'> { }
 
 export interface Team {
   $id: string;
@@ -162,7 +165,7 @@ export interface Field {
   organization?: Organization | string;
 }
 
-export interface FieldPayload extends Omit<Field, 'matches' | 'events'> {}
+export interface FieldPayload extends Omit<Field, 'matches' | 'events' | '$id'> { }
 
 // Core Event interface with relationships
 export interface Event {
@@ -180,6 +183,7 @@ export interface Event {
   rating?: number;
   imageId: string;
   hostId: string;
+  state: EventState;
   maxParticipants: number;
   teamSizeLimit: number;
   restTimeMinutes?: number;
@@ -235,11 +239,12 @@ export interface Event {
   category: EventCategory;
 }
 
-export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'fields' | 'matches'> {
-  players?: UserDataPayload[];
-  teams?: TeamPayload[];
-  fields?: FieldPayload[];
-  matches?: MatchPayload[];
+export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'fields' | 'matches' | 'timeSlots'> {
+  players?: string[];
+  teams?: string[];
+  fields?: string[];
+  matches?: string[];
+  timeSlots?: TimeSlotPayload[];
 }
 
 export interface TournamentBracket {
@@ -295,6 +300,8 @@ export enum Sports {
 }
 
 export const SPORTS_LIST: string[] = Object.values(Sports);
+
+export type EventState = 'PUBLISHED' | 'UNPUBLISHED';
 
 export type EventStatus = 'draft' | 'published' | 'archived' | 'cancelled' | 'completed';
 

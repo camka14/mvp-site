@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Container, Title, Text, Group, Button, Paper, Alert, Badge, Tabs, Stack } from '@mantine/core';
 
@@ -9,7 +9,7 @@ import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
-import type { Event, Match, TournamentBracket } from '@/types';
+import type { Event, EventState, Match, TournamentBracket } from '@/types';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
@@ -25,6 +25,73 @@ const cloneValue = <T,>(value: T): T => {
   }
 
   return JSON.parse(JSON.stringify(value));
+};
+
+const EVENT_CACHE_PREFIX = 'event-cache:';
+const EVENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+type CachedEventEntry = {
+  timestamp: number;
+  event: Event;
+};
+
+const getEventCacheKey = (eventId: string): string => `${EVENT_CACHE_PREFIX}${eventId}`;
+
+const readEventFromCache = (eventId: string): Event | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getEventCacheKey(eventId));
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as CachedEventEntry;
+    if (!parsed || typeof parsed.timestamp !== 'number' || !parsed.event) {
+      window.localStorage.removeItem(getEventCacheKey(eventId));
+      return null;
+    }
+
+    if (Date.now() - parsed.timestamp > EVENT_CACHE_TTL_MS) {
+      window.localStorage.removeItem(getEventCacheKey(eventId));
+      return null;
+    }
+
+    return parsed.event as Event;
+  } catch (error) {
+    console.warn('Failed to read event cache:', error);
+    return null;
+  }
+};
+
+const writeEventToCache = (event: Event) => {
+  if (typeof window === 'undefined' || !event?.$id) {
+    return;
+  }
+
+  try {
+    const payload: CachedEventEntry = {
+      timestamp: Date.now(),
+      event,
+    };
+    window.localStorage.setItem(getEventCacheKey(event.$id), JSON.stringify(payload));
+  } catch (error) {
+    console.warn(`Failed to cache event ${event.$id}:`, error);
+  }
+};
+
+const clearEventCache = (eventId: string) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(getEventCacheKey(eventId));
+  } catch (error) {
+    console.warn(`Failed to clear cache for event ${eventId}:`, error);
+  }
 };
 
 // Main schedule page component that protects access and renders league schedule/bracket content.
@@ -61,6 +128,36 @@ function EventScheduleContent() {
   const entityLabel = isTournament ? 'Tournament' : 'League';
   const canEditMatches = Boolean(isHost && isEditingEvent && !isPreview);
 
+  const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+  useEffect(() => {
+    hasUnsavedChangesRef.current = hasUnsavedChanges;
+  }, [hasUnsavedChanges]);
+
+  const hydrateEvent = useCallback((loadedEvent: Event) => {
+    const eventClone = cloneValue(loadedEvent) as Event;
+    setEvent(eventClone);
+
+    const normalizedMatches = Array.isArray(eventClone.matches)
+      ? (cloneValue(eventClone.matches) as Match[])
+      : [];
+
+    setMatches(normalizedMatches);
+
+    setChangesEvent((prev) => {
+      if (hasUnsavedChangesRef.current && prev) {
+        return prev;
+      }
+      return cloneValue(eventClone) as Event;
+    });
+
+    setChangesMatches((prev) => {
+      if (hasUnsavedChangesRef.current && prev.length) {
+        return prev;
+      }
+      return cloneValue(normalizedMatches) as Match[];
+    });
+  }, []);
+
   const hasChangeDiffers = useMemo(() => {
     if (!event || !changesEvent) {
       return false;
@@ -93,89 +190,64 @@ function EventScheduleContent() {
   })();
 
   // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
-  useEffect(() => {
-    if (!eventId) return;
-    if (!authLoading) {
-      if (!isAuthenticated && !isGuest) {
-        router.push('/login');
-        return;
-      }
-      loadSchedule(isPreview);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, isAuthenticated, isGuest, eventId, isPreview]);
-
   // Hydrate event + match data from preview cache or Appwrite and sync local component state.
-  const loadSchedule = async (previewMode: boolean) => {
+  const loadSchedule = useCallback(async () => {
     if (!eventId) return;
+
     setLoading(true);
     setError(null);
 
+    let cachedEvent: Event | null = null;
+
+    if (typeof window !== 'undefined') {
+      cachedEvent = readEventFromCache(eventId);
+      if (cachedEvent) {
+        hydrateEvent(cachedEvent);
+        if (!hasUnsavedChangesRef.current) {
+          setHasUnsavedChanges(false);
+        }
+      }
+    }
+
     try {
-      let previewEvent: Event | null = null;
+      const fetchedEvent = (await eventService.getEventWithRelations(eventId)) ?? null;
 
-      if (previewMode && typeof window !== 'undefined') {
-        const cachedEvent = sessionStorage.getItem(`league-preview-event:${eventId}`);
-        if (cachedEvent) {
-          try {
-            previewEvent = JSON.parse(cachedEvent) as Event;
-          } catch (parseError) {
-            console.warn('Failed to parse cached preview event:', parseError);
-          }
+      if (!fetchedEvent) {
+        if (!cachedEvent) {
+          setError('League not found.');
         }
-      }
-
-      let fetchedEvent: Event | null = null;
-      if (!previewEvent) {
-        try {
-          fetchedEvent = (await eventService.getEventWithRelations(eventId)) ?? null;
-        } catch (fetchError) {
-          if (!previewMode) {
-            throw fetchError;
-          }
-          console.warn('Preview event not found in database, using cached data.');
-        }
-      }
-
-      const activeEvent: Event | null = previewEvent ?? fetchedEvent ?? null;
-      if (!activeEvent) {
-        setError('League not found.');
-        setLoading(false);
         return;
       }
 
-      setEvent(activeEvent);
-
-      const normalizedMatches = Array.isArray(activeEvent.matches)
-        ? (cloneValue(activeEvent.matches) as Match[])
-        : [];
-
-      setMatches(normalizedMatches);
-
-      setChangesEvent((prev) => {
-        if (hasUnsavedChanges && prev) {
-          return prev;
-        }
-        return activeEvent ? (cloneValue(activeEvent) as Event) : null;
-      });
-
-      setChangesMatches((prev) => {
-        if (hasUnsavedChanges && prev.length) {
-          return prev;
-        }
-        return cloneValue(normalizedMatches) as Match[];
-      });
-
-      if (!hasUnsavedChanges) {
+      hydrateEvent(fetchedEvent);
+      writeEventToCache(fetchedEvent);
+      if (!hasUnsavedChangesRef.current) {
         setHasUnsavedChanges(false);
       }
     } catch (err) {
       console.error('Failed to load league schedule:', err);
-      setError('Failed to load league schedule. Please try again.');
+      if (!cachedEvent) {
+        setError('Failed to load league schedule. Please try again.');
+      } else {
+        setInfoMessage('Showing cached schedule data. Some information may be outdated.');
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [eventId, hydrateEvent]);
+
+  useEffect(() => {
+    if (!eventId || authLoading) {
+      return;
+    }
+
+    if (!isAuthenticated && !isGuest) {
+      router.push('/login');
+      return;
+    }
+
+    loadSchedule();
+  }, [authLoading, eventId, isAuthenticated, isGuest, isPreview, loadSchedule, router]);
 
   const playoffMatches = useMemo(
     () => activeMatches.filter((match) => {
@@ -302,15 +374,17 @@ function EventScheduleContent() {
       try {
         const nextEvent = (changesEvent ? cloneValue(changesEvent) : cloneValue(activeEvent)) as Event;
         const nextMatches = cloneValue(activeMatches) as Match[];
-        nextEvent.matches = nextMatches
+        nextEvent.matches = nextMatches;
 
-        setEvent(nextEvent);
-        setMatches(nextMatches);
+        let updatedEvent = nextEvent;
         if (nextEvent.$id) {
-          await eventService.updateEvent(nextEvent.$id, nextEvent);
+          updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
         }
-        setChangesEvent(cloneValue(nextEvent) as Event);
-        setChangesMatches(cloneValue(nextMatches) as Match[]);
+
+        const hydratedEvent = { ...updatedEvent, matches: nextMatches } as Event;
+
+        hydrateEvent(hydratedEvent);
+        writeEventToCache(hydratedEvent);
         setHasUnsavedChanges(false);
 
         if (pathname) {
@@ -333,15 +407,37 @@ function EventScheduleContent() {
     setPublishing(true);
     setInfoMessage(null);
     try {
-      const sourceEvent = (changesEvent ?? activeEvent) as Partial<Event>;
+      const sourceEvent = cloneValue(changesEvent ?? activeEvent) as Event;
       const nextMatches = cloneValue(activeMatches) as Match[];
+      sourceEvent.matches = nextMatches;
+      sourceEvent.state = 'PUBLISHED' as EventState;
+      const previousEventId = activeEvent?.$id;
       const published = await eventService.createEvent(sourceEvent);
+      const publishedEvent = {
+        ...published,
+        matches: nextMatches,
+        state: (published.state ?? 'PUBLISHED') as EventState,
+      } as Event;
 
-      setEvent(published);
-      setMatches(nextMatches);
-      setChangesEvent(cloneValue(published) as Event);
-      setChangesMatches(cloneValue(nextMatches) as Match[]);
+      if (previousEventId && previousEventId !== publishedEvent.$id) {
+        clearEventCache(previousEventId);
+      }
+
+      hydrateEvent(publishedEvent);
+      writeEventToCache(publishedEvent);
       setHasUnsavedChanges(false);
+
+      if (pathname || publishedEvent.$id) {
+        const params = new URLSearchParams(searchParams?.toString() ?? '');
+        params.delete('mode');
+        params.delete('preview');
+        const query = params.toString();
+        const targetPath = publishedEvent.$id
+          ? `/events/${publishedEvent.$id}/schedule${query ? `?${query}` : ''}`
+          : `${pathname}${query ? `?${query}` : ''}`;
+        router.replace(targetPath, { scroll: false });
+      }
+
       setInfoMessage(`${entityLabel} published.`);
     } catch (err) {
       console.error(`Failed to publish ${entityLabel.toLowerCase()}:`, err);
@@ -354,15 +450,25 @@ function EventScheduleContent() {
   const handleCancel = async () => {
     if (!event || cancelling) return;
 
-    if (isPreview || event.$id?.startsWith('preview-')) {
-      if (typeof window !== 'undefined' && event.$id) {
-        try {
-          window.sessionStorage.setItem('league-preview-resume-id', event.$id);
-        } catch (storageError) {
-          console.warn('Failed to persist preview resume id:', storageError);
-        }
-      }
+    const isUnpublished = (event.state ?? 'PUBLISHED') === 'UNPUBLISHED';
 
+    if (isUnpublished) {
+      if (!window.confirm(`Cancel this ${entityLabel.toLowerCase()}? This will delete the event, schedule, and any associated fields.`)) return;
+      setCancelling(true);
+      setError(null);
+      try {
+        await eventService.deleteUnpublishedEvent(event);
+        clearEventCache(event.$id);
+        router.push('/events');
+      } catch (err) {
+        console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
+        setError(`Failed to cancel ${entityLabel.toLowerCase()}.`);
+        setCancelling(false);
+      }
+      return;
+    }
+
+    if (isPreview) {
       if (typeof window !== 'undefined' && window.history.length > 1) {
         router.back();
       } else {
@@ -388,6 +494,7 @@ function EventScheduleContent() {
       await leagueService.deleteMatchesByEvent(event.$id);
       await leagueService.deleteWeeklySchedulesForEvent(event.$id);
       await eventService.deleteEvent(event.$id);
+      clearEventCache(event.$id);
       router.push('/events');
     } catch (err) {
       console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);

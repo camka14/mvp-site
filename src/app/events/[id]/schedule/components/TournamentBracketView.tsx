@@ -55,17 +55,40 @@ export default function TournamentBracketView({
     // Subset of matches for current view, plus one-hop children from the opposite bracket
     const viewById = useMemo(() => {
         const map: Record<string, Match> = {};
-        // include all matches in current bracket
-        Object.values(bracket.matches).forEach(m => { if (m.losersBracket === isLosersBracket) map[m.$id] = m; });
-        // include one-hop children even if from opposite bracket
         const idToMatch: Record<string, Match> = Object.fromEntries(Object.values(bracket.matches).map(m => [m.$id, m]));
+
+        // include all matches in current bracket
+        Object.values(bracket.matches).forEach(m => {
+            if (m.losersBracket === isLosersBracket) {
+                map[m.$id] = m;
+            }
+        });
+
+        // include one-hop children even if from opposite bracket
         Object.values(map).forEach(parent => {
             const left = parent.previousLeftMatch ?? (parent.previousLeftId ? idToMatch[parent.previousLeftId] : undefined);
             const right = parent.previousRightMatch ?? (parent.previousRightId ? idToMatch[parent.previousRightId] : undefined);
             if (left) map[left.$id] = left;
             if (right) map[right.$id] = right;
         });
-        return map;
+
+        const filteredEntries = Object.entries(map).filter(([, match]) => {
+            const hasPrevious =
+                Boolean(match.previousLeftMatch) ||
+                Boolean(match.previousRightMatch) ||
+                Boolean(match.previousLeftId && idToMatch[match.previousLeftId]) ||
+                Boolean(match.previousRightId && idToMatch[match.previousRightId]);
+
+            const hasNext =
+                Boolean(match.winnerNextMatch) ||
+                Boolean(match.winnerNextMatchId && idToMatch[match.winnerNextMatchId]) ||
+                Boolean(match.loserNextMatch) ||
+                Boolean(match.loserNextMatchId && idToMatch[match.loserNextMatchId]);
+
+            return hasPrevious || hasNext;
+        });
+
+        return Object.fromEntries(filteredEntries);
     }, [bracket.matches, isLosersBracket]);
 
     const hasLoserMatches = useMemo(

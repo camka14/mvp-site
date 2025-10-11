@@ -11,11 +11,13 @@ const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleM
 const DATABASE_ID = 'test-db';
 const EVENTS_TABLE_ID = 'events-table';
 const FIELDS_TABLE_ID = 'fields-table';
+const MATCHES_TABLE_ID = 'matches-table';
 
 const setEnv = () => {
   process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
   process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID = EVENTS_TABLE_ID;
   process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID = FIELDS_TABLE_ID;
+  process.env.NEXT_PUBLIC_MATCHES_TABLE_ID = MATCHES_TABLE_ID;
 };
 
 describe('eventService', () => {
@@ -59,8 +61,8 @@ describe('eventService', () => {
       expect(event?.timeSlots?.[0]).toMatchObject({
         $id: 'slot_1',
         dayOfWeek: 1,
-        startTime: 540,
-        endTime: 600,
+        startTimeMinutes: 540,
+        endTimeMinutes: 600,
       });
       expect((event?.timeSlots?.[0]?.field as any)?.name).toBe('Court A');
     });
@@ -69,51 +71,58 @@ describe('eventService', () => {
   describe('createEvent', () => {
     it('sends coordinates when lat/long present and creates fields', async () => {
     appwriteModuleMock.ID.unique.mockReturnValueOnce('evt_new');
-    appwriteModuleMock.databases.createRow
-      .mockResolvedValueOnce({
-        $id: 'evt_new',
-        name: 'New Event',
-        sport: 'Volleyball',
-        teamSignup: true,
-        teamIds: [],
-          playerIds: [],
-          divisions: [],
-          lat: 40,
-          long: -105,
-        })
-        .mockResolvedValue({ $id: 'field_row' });
+    appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
+      $id: 'evt_new',
+      name: 'New Event',
+      sport: 'Volleyball',
+      teamSignup: true,
+      teamIds: [],
+      playerIds: [],
+      divisions: [],
+      lat: 40,
+      long: -105,
+    });
+    appwriteModuleMock.databases.upsertRow.mockResolvedValue({ $id: 'field_row' });
 
     await eventService.createEvent({
-        name: 'New Event',
-        lat: 40,
-        long: -105,
-        fieldCount: 2,
-      });
+      name: 'New Event',
+      lat: 40,
+      long: -105,
+      fields: [
+        { $id: 'field_1', name: 'Field A', fieldNumber: 1 } as any,
+        { $id: 'field_2', name: 'Field B', fieldNumber: 2 } as any,
+      ],
+    });
 
-    const createCalls = appwriteModuleMock.databases.createRow.mock.calls;
-    const [eventCall, ...fieldCalls] = createCalls.map(([args]) => args);
-
+    const [eventCallArgs] = appwriteModuleMock.databases.createRow.mock.calls;
+    const eventCall = eventCallArgs[0];
     expect(eventCall).toMatchObject({
       databaseId: DATABASE_ID,
       tableId: EVENTS_TABLE_ID,
       data: expect.objectContaining({
         name: 'New Event',
         coordinates: [-105, 40],
+        fields: ['field_1', 'field_2'],
       }),
     });
 
+    const fieldCalls = appwriteModuleMock.databases.upsertRow.mock.calls;
     expect(fieldCalls).toHaveLength(2);
-    expect(fieldCalls[0]).toMatchObject({
+    expect(fieldCalls[0][0]).toMatchObject({
+      databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
+      rowId: 'field_1',
       data: expect.objectContaining({
-        eventId: 'evt_new',
+        name: 'Field A',
         fieldNumber: 1,
       }),
     });
-    expect(fieldCalls[1]).toMatchObject({
+    expect(fieldCalls[1][0]).toMatchObject({
+      databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
+      rowId: 'field_2',
       data: expect.objectContaining({
-        eventId: 'evt_new',
+        name: 'Field B',
         fieldNumber: 2,
       }),
     });
@@ -158,19 +167,22 @@ describe('eventService', () => {
         ],
       });
 
-      const [createArgs] = appwriteModuleMock.databases.createRow.mock.calls;
-      const [payload] = createArgs as [{ data: Record<string, any> }];
-      const { data } = payload;
+      const fieldCalls = appwriteModuleMock.databases.upsertRow.mock.calls;
+      expect(fieldCalls).toHaveLength(1);
+      const [fieldArgs] = fieldCalls as Array<[Record<string, any>]>;
+      const fieldPayload = fieldArgs[0];
 
-      expect(data.fields).toEqual([
-        expect.objectContaining({
-          $id: 'field_1',
+      expect(fieldPayload).toMatchObject({
+        databaseId: DATABASE_ID,
+        tableId: FIELDS_TABLE_ID,
+        rowId: 'field_1',
+        data: expect.objectContaining({
           name: 'Court A',
           organization: 'org_1',
         }),
-      ]);
-      expect(data.fields[0]).not.toHaveProperty('matches');
-      expect(data.fields[0]).not.toHaveProperty('events');
+      });
+      expect(fieldPayload.data).not.toHaveProperty('matches');
+      expect(fieldPayload.data).not.toHaveProperty('events');
     });
   });
 
@@ -196,6 +208,62 @@ describe('eventService', () => {
           coordinates: [-105, 40],
         }),
       });
+    });
+  });
+
+  describe('deleteUnpublishedEvent', () => {
+    it('deletes event without removing fields when organization exists', async () => {
+      appwriteModuleMock.databases.deleteRow.mockResolvedValue(undefined);
+
+      await eventService.deleteUnpublishedEvent({
+        $id: 'evt_1',
+        state: 'UNPUBLISHED',
+        organization: 'org_1',
+      } as any);
+
+      expect(appwriteModuleMock.databases.deleteRow).toHaveBeenCalledTimes(1);
+      expect(appwriteModuleMock.databases.deleteRow).toHaveBeenCalledWith({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: 'evt_1',
+      });
+    });
+
+    it('removes fields when event lacks organization', async () => {
+      appwriteModuleMock.databases.deleteRow
+        .mockResolvedValueOnce(undefined) // event delete
+        .mockResolvedValueOnce(undefined); // field delete
+
+      await eventService.deleteUnpublishedEvent({
+        $id: 'evt_2',
+        state: 'UNPUBLISHED',
+        fields: [{ $id: 'fld_1' }],
+      } as any);
+
+      expect(appwriteModuleMock.databases.deleteRow).toHaveBeenNthCalledWith(1, {
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: 'evt_2',
+      });
+      expect(appwriteModuleMock.databases.deleteRow).toHaveBeenNthCalledWith(2, {
+        databaseId: DATABASE_ID,
+        tableId: FIELDS_TABLE_ID,
+        rowId: 'fld_1',
+      });
+    });
+
+    it('throws when field deletion fails', async () => {
+      appwriteModuleMock.databases.deleteRow
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('failed delete'));
+
+      await expect(
+        eventService.deleteUnpublishedEvent({
+          $id: 'evt_3',
+          state: 'UNPUBLISHED',
+          fields: [{ $id: 'fld_1' }],
+        } as any)
+      ).rejects.toThrow('Failed to delete fields for unpublished event');
     });
   });
 

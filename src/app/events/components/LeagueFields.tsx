@@ -68,8 +68,8 @@ export interface LeagueSlotForm {
   $id?: string;
   field?: Field;
   dayOfWeek?: TimeSlot['dayOfWeek'];
-  startTime?: number;
-  endTime?: number;
+  startTimeMinutes?: number;
+  endTimeMinutes?: number;
   conflicts: WeeklySlotConflict[];
   checking: boolean;
   error?: string;
@@ -276,15 +276,15 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
 
                     <TimeInput
                       label="Start Time"
-                      value={minutesToTimeString(slot.startTime)}
-                      onChange={(event) => onUpdateSlot(index, { startTime: parseTimeInput(event.currentTarget.value) })}
+                      value={minutesToTimeString(slot.startTimeMinutes)}
+                      onChange={(event) => onUpdateSlot(index, { startTimeMinutes: parseTimeInput(event.currentTarget.value) })}
                       withSeconds={false}
                     />
 
                   <TimeInput
                     label="End Time"
-                    value={minutesToTimeString(slot.endTime)}
-                    onChange={(event) => onUpdateSlot(index, { endTime: parseTimeInput(event.currentTarget.value) })}
+                    value={minutesToTimeString(slot.endTimeMinutes)}
+                    onChange={(event) => onUpdateSlot(index, { endTimeMinutes: parseTimeInput(event.currentTarget.value) })}
                     withSeconds={false}
                   />
                 </div>

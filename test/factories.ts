@@ -57,8 +57,8 @@ export const buildTimeSlot = (overrides: Partial<TimeSlot> = {}): TimeSlot => {
   return {
     $id: overrides.$id ?? `slot_${slotCounter}`,
     dayOfWeek: 1,
-    startTime: 9 * 60,
-    endTime: 10 * 60,
+    startTimeMinutes: 9 * 60,
+    endTimeMinutes: 10 * 60,
     field: overrides.field ?? {
       $id: 'field_1',
       name: 'Court A',

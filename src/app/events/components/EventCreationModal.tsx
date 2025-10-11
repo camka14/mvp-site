@@ -8,7 +8,7 @@ import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl, SPORTS_LIST, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization } from '@/types';
+import { getEventImageUrl, SPORTS_LIST, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, EventState } from '@/types';
 
 import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
@@ -60,15 +60,15 @@ const computeSlotError = (
 
     if (
         typeof slot.dayOfWeek !== 'number' ||
-        typeof slot.startTime !== 'number' ||
-        typeof slot.endTime !== 'number'
+        typeof slot.startTimeMinutes !== 'number' ||
+        typeof slot.endTimeMinutes !== 'number'
     ) {
         return undefined;
     }
 
     const slotDayOfWeek = slot.dayOfWeek;
-    const slotStartTime = slot.startTime;
-    const slotEndTime = slot.endTime;
+    const slotStartTime = slot.startTimeMinutes;
+    const slotEndTime = slot.endTimeMinutes;
 
     if (slotEndTime <= slotStartTime) {
         return 'Timeslot must end after it starts.';
@@ -93,14 +93,14 @@ const computeSlotError = (
         }
 
         if (
-            typeof other.startTime !== 'number' ||
-            typeof other.endTime !== 'number'
+            typeof other.startTimeMinutes !== 'number' ||
+            typeof other.endTimeMinutes !== 'number'
         ) {
             return false;
         }
 
-        const otherStartTime = other.startTime;
-        const otherEndTime = other.endTime;
+        const otherStartTime = other.startTimeMinutes;
+        const otherEndTime = other.endTimeMinutes;
 
         return slotsOverlap(slotStartTime, slotEndTime, otherStartTime, otherEndTime);
     });
@@ -296,8 +296,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         $id: slot?.$id,
         field: typeof slot?.field === 'object' && slot.field ? slot.field as Field : undefined,
         dayOfWeek: slot?.dayOfWeek,
-        startTime: slot?.startTime,
-        endTime: slot?.endTime,
+        startTimeMinutes: slot?.startTimeMinutes,
+        endTimeMinutes: slot?.endTimeMinutes,
         conflicts: [],
         checking: false,
         error: undefined,
@@ -311,27 +311,63 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     // Cached Stripe onboarding state pulled from the current user so paid inputs can be enabled/disabled.
     const [hasStripeAccount, setHasStripeAccount] = useState(currentUser?.hasStripeAccount || false);
 
+    const [hydratedEditingEvent, setHydratedEditingEvent] = useState<Event | null>(null);
+    const activeEditingEvent = hydratedEditingEvent ?? editingEvent ?? null;
+
     const isPreviewDraft = Boolean(editingEvent?.$id && editingEvent.$id.startsWith('preview-'));
-    const isEditMode = !!editingEvent && !isPreviewDraft;
+    const isEditMode = !!activeEditingEvent && !isPreviewDraft;
+
+    useEffect(() => {
+        if (!isOpen || !editingEvent) {
+            setHydratedEditingEvent(null);
+            return;
+        }
+
+        if (editingEvent.eventType !== 'league') {
+            setHydratedEditingEvent(null);
+            return;
+        }
+
+        if (Array.isArray(editingEvent.timeSlots) && editingEvent.timeSlots.length > 0) {
+            setHydratedEditingEvent(null);
+            return;
+        }
+
+        let cancelled = false;
+        (async () => {
+            try {
+                const full = await eventService.getEventWithRelations(editingEvent.$id);
+                if (!cancelled && full) {
+                    setHydratedEditingEvent(full);
+                }
+            } catch (error) {
+                console.warn('Failed to hydrate editing event with time slots:', error);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [editingEvent, isOpen]);
 
     // Complete event data state with ALL fields
     // Central event payload that binds the form inputs for basic details, logistics, and relationships.
     const [eventData, setEventData] = useState<EventFormState>(() =>
-        editingEvent ? mapEventToFormState(editingEvent) : createDefaultEventData()
+        activeEditingEvent ? mapEventToFormState(activeEditingEvent) : createDefaultEventData()
     );
 
     // Holds tournament-specific settings so the modal can conditionally render the TournamentFields block.
     const [tournamentData, setTournamentData] = useState(() => {
-        if (editingEvent && editingEvent.eventType === 'tournament') {
+        if (activeEditingEvent && activeEditingEvent.eventType === 'tournament') {
             return {
-                doubleElimination: editingEvent.doubleElimination || false,
-                winnerSetCount: editingEvent.winnerSetCount || 1,
-                loserSetCount: editingEvent.loserSetCount || 1,
-                winnerBracketPointsToVictory: editingEvent.winnerBracketPointsToVictory || [21],
-                loserBracketPointsToVictory: editingEvent.loserBracketPointsToVictory || [21],
-                prize: editingEvent.prize || '',
-                fieldCount: editingEvent.fieldCount ?? editingEvent.fields?.length ?? 1,
-                restTimeMinutes: normalizeNumber(editingEvent.restTimeMinutes, 0) ?? 0,
+                doubleElimination: activeEditingEvent.doubleElimination || false,
+                winnerSetCount: activeEditingEvent.winnerSetCount || 1,
+                loserSetCount: activeEditingEvent.loserSetCount || 1,
+                winnerBracketPointsToVictory: activeEditingEvent.winnerBracketPointsToVictory || [21],
+                loserBracketPointsToVictory: activeEditingEvent.loserBracketPointsToVictory || [21],
+                prize: activeEditingEvent.prize || '',
+                fieldCount: activeEditingEvent.fieldCount ?? activeEditingEvent.fields?.length ?? 1,
+                restTimeMinutes: normalizeNumber(activeEditingEvent.restTimeMinutes, 0) ?? 0,
             };
         } else {
             return {
@@ -349,8 +385,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Maintains league configuration sliders/toggles passed into the schedule preview pipeline.
     const [leagueData, setLeagueData] = useState<LeagueConfig>(() => {
-        if (editingEvent && editingEvent.eventType === 'league') {
-            const source = editingEvent.leagueConfig || editingEvent;
+        if (activeEditingEvent && activeEditingEvent.eventType === 'league') {
+            const source = activeEditingEvent.leagueConfig || activeEditingEvent;
             return {
                 gamesPerOpponent: source?.gamesPerOpponent ?? 1,
                 includePlayoffs: source?.includePlayoffs ?? false,
@@ -376,8 +412,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Represents weekly availability rows for league scheduling; normalized with createSlotForm.
     const [leagueSlots, setLeagueSlots] = useState<LeagueSlotForm[]>(() => {
-        if (editingEvent && editingEvent.eventType === 'league' && editingEvent.timeSlots?.length) {
-            return (editingEvent.timeSlots || []).map((slot) => {
+        if (activeEditingEvent && activeEditingEvent.eventType === 'league' && activeEditingEvent.timeSlots?.length) {
+            return (activeEditingEvent.timeSlots || []).map((slot) => {
                 const fieldRef = (() => {
                     if (slot.field && typeof slot.field === 'object') {
                         return slot.field as Field;
@@ -388,15 +424,15 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     if (!fieldId) {
                         return undefined;
                     }
-                    return editingEvent.fields?.find((field) => field.$id === fieldId);
+                    return activeEditingEvent.fields?.find((field) => field.$id === fieldId);
                 })();
 
                 return createSlotForm({
                     $id: slot.$id,
                     field: fieldRef,
                     dayOfWeek: slot.dayOfWeek,
-                    startTime: slot.startTime,
-                    endTime: slot.endTime,
+                    startTimeMinutes: slot.startTimeMinutes,
+                    endTimeMinutes: slot.endTimeMinutes,
                 });
             });
         }
@@ -407,11 +443,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const [leagueError, setLeagueError] = useState<string | null>(null);
 
     const initialFieldCount = (() => {
-        if (editingEvent?.fields?.length) {
-            return editingEvent.fields.length;
+        if (activeEditingEvent?.fields?.length) {
+            return activeEditingEvent.fields.length;
         }
-        if (editingEvent && typeof (editingEvent as any)?.fieldCount === 'number') {
-            const parsed = Number((editingEvent as any).fieldCount);
+        if (activeEditingEvent && typeof (activeEditingEvent as any)?.fieldCount === 'number') {
+            const parsed = Number((activeEditingEvent as any).fieldCount);
             return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
         }
         return 1;
@@ -422,8 +458,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Mutable list of fields either fetched from the org or generated locally for new events.
     const [fields, setFields] = useState<Field[]>(() => {
-        if (editingEvent?.fields?.length) {
-            return [...editingEvent.fields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
+        if (activeEditingEvent?.fields?.length) {
+            return [...activeEditingEvent.fields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
         }
         if (!organization) {
             return Array.from({ length: initialFieldCount }, (_, idx) => ({
@@ -456,18 +492,18 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         defaultLocationSourceRef.current = 'none';
         appliedDefaultLocationLabelRef.current = null;
 
-        if (editingEvent) {
-            setEventData(mapEventToFormState(editingEvent));
-            setSelectedImageId(editingEvent.imageId || '');
-            setSelectedImageUrl(editingEvent.imageId
-                ? getEventImageUrl({ imageId: editingEvent.imageId, width: 800 })
+        if (activeEditingEvent) {
+            setEventData(mapEventToFormState(activeEditingEvent));
+            setSelectedImageId(activeEditingEvent.imageId || '');
+            setSelectedImageUrl(activeEditingEvent.imageId
+                ? getEventImageUrl({ imageId: activeEditingEvent.imageId, width: 800 })
                 : '');
         } else {
             setEventData(createDefaultEventData());
             setSelectedImageId('');
             setSelectedImageUrl('');
         }
-    }, [editingEvent, isOpen]);
+    }, [activeEditingEvent, isOpen]);
 
     // When provisioning local fields, mirror field type/count changes into the generated list.
     useEffect(() => {
@@ -501,11 +537,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // For organizations with existing facilities, seed the field list with their saved ordering.
     useEffect(() => {
-        if (shouldManageLocalFields || !editingEvent?.fields?.length) {
+        if (shouldManageLocalFields || !activeEditingEvent?.fields?.length) {
             return;
         }
-        setFields([...editingEvent.fields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0)));
-    }, [editingEvent?.fields, shouldManageLocalFields]);
+        setFields([...activeEditingEvent.fields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0)));
+    }, [activeEditingEvent?.fields, shouldManageLocalFields]);
 
     // Clear slot field references that point to deleted ad-hoc fields when the list is regenerated.
     useEffect(() => {
@@ -585,8 +621,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Hydrate league-specific state and slots when opening the modal for an existing event.
     useEffect(() => {
-        if (editingEvent && editingEvent.eventType === 'league') {
-            const source = editingEvent.leagueConfig || editingEvent;
+        if (activeEditingEvent && activeEditingEvent.eventType === 'league') {
+            const source = activeEditingEvent.leagueConfig || activeEditingEvent;
             setLeagueData({
                 gamesPerOpponent: source?.gamesPerOpponent ?? 1,
                 includePlayoffs: source?.includePlayoffs ?? false,
@@ -597,7 +633,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 setsPerMatch: normalizeNumber(source?.setsPerMatch),
             });
 
-            const slots = (editingEvent.timeSlots || []).map(slot => {
+            const slots = (activeEditingEvent.timeSlots || []).map(slot => {
                 const fieldRef = (() => {
                     if (slot.field && typeof slot.field === 'object') {
                         return slot.field as Field;
@@ -608,21 +644,21 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     if (!fieldId) {
                         return undefined;
                     }
-                    return editingEvent.fields?.find((field) => field.$id === fieldId);
+                    return activeEditingEvent.fields?.find((field) => field.$id === fieldId);
                 })();
 
                 return createSlotForm({
                     $id: slot.$id,
                     field: fieldRef,
                     dayOfWeek: slot.dayOfWeek,
-                    startTime: slot.startTime,
-                    endTime: slot.endTime,
+                    startTimeMinutes: slot.startTimeMinutes,
+                    endTimeMinutes: slot.endTimeMinutes,
                 });
             });
 
             const initialSlots = slots.length > 0 ? slots : [createSlotForm()];
-            setLeagueSlots(normalizeSlotState(initialSlots, editingEvent.eventType));
-        } else if (!editingEvent) {
+            setLeagueSlots(normalizeSlotState(initialSlots, activeEditingEvent.eventType));
+        } else if (!activeEditingEvent) {
             setLeagueData({
                 gamesPerOpponent: 1,
                 includePlayoffs: false,
@@ -634,7 +670,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             });
             setLeagueSlots(normalizeSlotState([createSlotForm()], 'pickup'));
         }
-    }, [createSlotForm, editingEvent]);
+    }, [activeEditingEvent, createSlotForm]);
 
     // Pull the organization's fields so league/tournament creators can assign real facilities.
     useEffect(() => {
@@ -652,10 +688,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Merge any newly loaded fields from the event into local state without losing existing edits.
     useEffect(() => {
-        if (editingEvent?.fields) {
+        if (activeEditingEvent?.fields) {
             setFields(prev => {
                 const map = new Map<string, Field>();
-                [...prev, ...(editingEvent.fields as Field[])].forEach(field => {
+                [...prev, ...(activeEditingEvent.fields as Field[])].forEach(field => {
                     if (field?.$id) {
                         map.set(field.$id, field);
                     }
@@ -663,7 +699,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 return Array.from(map.values());
             });
         }
-    }, [editingEvent?.fields]);
+    }, [activeEditingEvent?.fields]);
 
     // Re-run slot normalization when the modal switches event types (e.g., league -> tournament).
     useEffect(() => {
@@ -776,8 +812,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const hasIncompleteSlot = eventData.eventType === 'league' && leagueSlots.some(slot =>
         !slot.field ||
         typeof slot.dayOfWeek !== 'number' ||
-        typeof slot.startTime !== 'number' ||
-        typeof slot.endTime !== 'number'
+        typeof slot.startTimeMinutes !== 'number' ||
+        typeof slot.endTimeMinutes !== 'number'
     );
 
     const matchDurationValid = !leagueData.usesSets
@@ -957,9 +993,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
 
         const invalidTimes = leagueSlots.some(slot =>
-            typeof slot.startTime === 'number' &&
-            typeof slot.endTime === 'number' &&
-            slot.endTime <= slot.startTime
+            typeof slot.startTimeMinutes === 'number' &&
+            typeof slot.endTimeMinutes === 'number' &&
+            slot.endTimeMinutes <= slot.startTimeMinutes
         );
 
         if (invalidTimes) {
@@ -976,8 +1012,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         const validSlots = leagueSlots.filter(slot =>
             slot.field &&
             typeof slot.dayOfWeek === 'number' &&
-            typeof slot.startTime === 'number' &&
-            typeof slot.endTime === 'number'
+            typeof slot.startTimeMinutes === 'number' &&
+            typeof slot.endTimeMinutes === 'number'
         );
 
         if (validSlots.length === 0) {
@@ -1022,8 +1058,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     return {
                         $id: slot.$id || ID.unique(),
                         dayOfWeek: slot.dayOfWeek as TimeSlot['dayOfWeek'],
-                        startTime: Number(slot.startTime),
-                        endTime: Number(slot.endTime),
+                        startTimeMinutes: Number(slot.startTimeMinutes),
+                        endTimeMinutes: Number(slot.endTimeMinutes),
                         field: {$id: fieldDetails.$id},
                     };
                 })
@@ -1051,8 +1087,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 imageId: finalImageId,
                 singleDivision: eventData.singleDivision,
                 divisions: eventData.divisions,
+                teamSizeLimit: eventData.teamSizeLimit,
                 hostId: currentUser?.$id,
                 organization: {...organization, fields: undefined, events: undefined, teams: undefined},
+                state: 'UNPUBLISHED' as EventState,
                 gamesPerOpponent: leagueData.gamesPerOpponent,
                 includePlayoffs: leagueData.includePlayoffs,
                 playoffTeamCount: leagueData.includePlayoffs ? leagueData.playoffTeamCount ?? undefined : undefined,
@@ -1110,6 +1148,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 start: eventData.start,
                 end: eventData.end,
                 eventType: eventData.eventType,
+                state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
                 sport: eventData.sport,
                 fieldType: eventData.fieldType,
                 price: eventData.price,
@@ -1193,8 +1232,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             }
 
             let resultEvent;
-            if (isEditMode) {
-                resultEvent = await eventService.updateEvent(editingEvent!.$id, submitEvent);
+            if (isEditMode && activeEditingEvent) {
+                resultEvent = await eventService.updateEvent(activeEditingEvent.$id, submitEvent);
             } else {
                 resultEvent = await eventService.createEvent(submitEvent);
             }
@@ -1584,15 +1623,15 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             }}
                         />
                     )}
-                    {isEditMode && (
+                    {isEditMode && activeEditingEvent && (
                         <button
                             type="button"
                             onClick={async () => {
-                                if (!editingEvent) return;
+                                if (!activeEditingEvent) return;
                                 if (!confirm('Delete this event? This cannot be undone.')) return;
                                 setIsSubmitting(true);
                                 try {
-                                    const ok = await eventService.deleteEvent(editingEvent.$id);
+                                    const ok = await eventService.deleteEvent(activeEditingEvent.$id);
                                     if (ok) {
                                         onClose();
                                     }

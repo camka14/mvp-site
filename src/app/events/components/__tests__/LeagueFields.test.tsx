@@ -17,8 +17,8 @@ const baseSlot: LeagueSlotForm = {
   key: 'slot-1',
   field,
   dayOfWeek: 1,
-  startTime: 9 * 60,
-  endTime: 10 * 60,
+  startTimeMinutes: 9 * 60,
+  endTimeMinutes: 10 * 60,
   conflicts: [],
   checking: false,
 };
@@ -51,7 +51,7 @@ describe('LeagueFields', () => {
     const startTimeInput = screen.getByLabelText(/Start Time/i);
     fireEvent.change(startTimeInput, { target: { value: '10:15' } });
 
-    expect(onUpdateSlot).toHaveBeenCalledWith(0, expect.objectContaining({ startTime: 615 }));
+    expect(onUpdateSlot).toHaveBeenCalledWith(0, expect.objectContaining({ startTimeMinutes: 615 }));
   });
 
   it('renders conflict alert when conflicts are present', () => {

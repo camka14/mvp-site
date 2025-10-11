@@ -6,6 +6,7 @@ export interface TablesMock {
   createRow: jest.Mock;
   updateRow: jest.Mock;
   deleteRow: jest.Mock;
+  upsertRow: jest.Mock;
 }
 
 export const createTablesMock = (): TablesMock => ({
@@ -14,6 +15,7 @@ export const createTablesMock = (): TablesMock => ({
   createRow: jest.fn(),
   updateRow: jest.fn(),
   deleteRow: jest.fn(),
+  upsertRow: jest.fn(),
 });
 
 export const createFunctionsMock = () => ({
@@ -56,4 +58,3 @@ export const createAppwriteModuleMock = (overrides: Partial<Record<string, unkno
 };
 
 export type AppwriteModuleMock = ReturnType<typeof createAppwriteModuleMock>;
-

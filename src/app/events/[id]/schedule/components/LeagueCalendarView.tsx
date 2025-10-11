@@ -240,14 +240,27 @@ export function LeagueCalendarView({
     [canManage, onMatchClick],
   );
 
+  const AgendaEventComponent = useCallback(
+    ({ event }: EventProps<CalendarEvent>) => (
+      <ScheduleMatchCard
+        match={event.resource}
+        canManage={canManage}
+        onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
+        className="max-w-full"
+      />
+    ),
+    [canManage, onMatchClick],
+  );
+
   const components = useMemo(
     () => ({
       event: WeekDayEventComponent,
       month: { event: MonthEventComponent },
       week: { event: WeekDayEventComponent },
       day: { event: WeekDayEventComponent },
+      agenda: { event: AgendaEventComponent },
     }),
-    [MonthEventComponent, WeekDayEventComponent],
+    [AgendaEventComponent, MonthEventComponent, WeekDayEventComponent],
   );
 
   const showRange = calendarView === 'week' || calendarView === 'day';
@@ -330,7 +343,7 @@ export function LeagueCalendarView({
           events={calendarEvents}
           date={calendarDate}
           view={calendarView}
-          views={['month', 'week', 'day']}
+          views={['month', 'week', 'day', 'agenda']}
           onView={handleViewChange}
           onNavigate={handleNavigate}
           selectable

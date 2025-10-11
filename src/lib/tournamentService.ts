@@ -5,7 +5,7 @@ import { authService } from './auth';
 import { Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const MATCHES_COLLECTION_ID = process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!;
+const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
 
 class TournamentService {
     async getTournamentBracket(tournamentId: string): Promise<TournamentBracket> {
@@ -62,7 +62,7 @@ class TournamentService {
 
       const response = await databases.updateRow({
         databaseId: DATABASE_ID,
-        tableId: MATCHES_COLLECTION_ID,
+        tableId: MATCHES_TABLE_ID,
         rowId: matchId,
         data: payload
       });
