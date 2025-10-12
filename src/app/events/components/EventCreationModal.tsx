@@ -298,6 +298,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         dayOfWeek: slot?.dayOfWeek,
         startTimeMinutes: slot?.startTimeMinutes,
         endTimeMinutes: slot?.endTimeMinutes,
+        repeating: slot?.repeating ?? true,
         conflicts: [],
         checking: false,
         error: undefined,
@@ -981,13 +982,18 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (isSubmitting || !isValid) return;
 
         const startDate = parseLocalDateTime(eventData.start);
-        const endDate = parseLocalDateTime(eventData.end);
-        if (!startDate || !endDate) {
-            setLeagueError('Provide a valid start and end date for the league.');
+        if (!startDate) {
+            setLeagueError('Provide a valid start date for the league.');
             return;
         }
 
-        if (startDate > endDate) {
+        const endDate = eventData.end ? parseLocalDateTime(eventData.end) : null;
+        if (eventData.end && !endDate) {
+            setLeagueError('Provide a valid end date for the league or leave it blank.');
+            return;
+        }
+
+        if (endDate && startDate > endDate) {
             setLeagueError('League end date must be after the start date.');
             return;
         }
@@ -1046,7 +1052,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 }
             });
 
-            const slotDocuments: any[] = validSlots
+        const slotDocuments: Record<string, unknown>[] = validSlots
                 .map((slot): any | null => {
                     if (!slot.field) {
                         return null;
@@ -1054,16 +1060,28 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
                     const fieldId = slot.field.$id;
                     const fieldDetails = fieldId ? fieldMap.get(fieldId) ?? slot.field : slot.field;
+                    const startDateValue = eventData.start;
+                    const endDateValue = eventData.end;
 
-                    return {
+                    const serializedSlot: Record<string, unknown> = {
                         $id: slot.$id || ID.unique(),
                         dayOfWeek: slot.dayOfWeek as TimeSlot['dayOfWeek'],
                         startTimeMinutes: Number(slot.startTimeMinutes),
                         endTimeMinutes: Number(slot.endTimeMinutes),
+                        repeating: slot.repeating !== false,
                         field: {$id: fieldDetails.$id},
                     };
+
+                    if (startDateValue) {
+                        serializedSlot.startDate = startDateValue;
+                    }
+                    if (endDateValue) {
+                        serializedSlot.endDate = endDateValue;
+                    }
+
+                    return serializedSlot;
                 })
-                .filter((slot): slot is TimeSlot => slot !== null);
+                .filter((slot): slot is Record<string, unknown> => slot !== null);
 
 
             const eventDocument: Record<string, any> = {

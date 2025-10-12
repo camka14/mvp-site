@@ -72,10 +72,6 @@ class FieldService {
       queries.push(Query.equal('organization.$id', normalizedFilter.organizationId));
     }
 
-    if (normalizedFilter.eventId) {
-      queries.push(Query.equal('events.$id', normalizedFilter.eventId));
-    }
-
     const response = await databases.listRows({
       databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,

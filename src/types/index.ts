@@ -78,6 +78,9 @@ export interface TimeSlot {
   dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   startTimeMinutes: number;
   endTimeMinutes: number;
+  startDate?: string;
+  endDate?: string | null;
+  repeating: boolean;
   event?: Event;
   field?: Field;
 }

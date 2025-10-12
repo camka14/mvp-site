@@ -470,11 +470,33 @@ class EventService {
         if (!value) {
             return null;
         }
+
+        const serializeDate = (date: Date): string | null => {
+            if (Number.isNaN(date.getTime())) {
+                return null;
+            }
+            return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+        };
+
         if (value instanceof Date) {
-            const formatted = formatLocalDateTime(value);
-            return formatted || null;
+            return serializeDate(value);
         }
-        return ensureLocalDateTimeString(value) ?? null;
+
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (!trimmed) {
+                return null;
+            }
+
+            const parsed = new Date(trimmed);
+            if (!Number.isNaN(parsed.getTime())) {
+                return serializeDate(parsed);
+            }
+
+            return ensureLocalDateTimeString(trimmed);
+        }
+
+        return null;
     }
 
     async generateLeagueSchedule(
@@ -759,15 +781,31 @@ class EventService {
     }
 
     private mapRowToTimeSlot(row: any): TimeSlot {
+        const startTime = this.normalizeTime(row.startTimeMinutes ?? row.startTime) ?? 0;
+        const endTime = this.normalizeTime(row.endTimeMinutes ?? row.endTime) ?? startTime;
         const slot: TimeSlot = {
             $id: row.$id ?? row.id,
             dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
-            startTimeMinutes: this.normalizeTime(row.startTimeMinutes ?? row.startTime),
-            endTimeMinutes: this.normalizeTime(row.endTimeMinutes ?? row.endTime),
+            startTimeMinutes: startTime,
+            endTimeMinutes: endTime,
+            repeating: row.repeating === undefined ? true : Boolean(row.repeating),
             event: row.event ?? row.eventId ?? row.event?.$id,
             field: row.field ?? row.fieldId ?? row.field?.$id,
         };
 
+        const normalizedStartDate = ensureLocalDateTimeString(row.startDate ?? row.start ?? null);
+        if (normalizedStartDate) {
+            slot.startDate = normalizedStartDate;
+        }
+
+        if (row.endDate === null) {
+            slot.endDate = null;
+        } else {
+            const normalizedEndDate = ensureLocalDateTimeString(row.endDate ?? null);
+            if (normalizedEndDate) {
+                slot.endDate = normalizedEndDate;
+            }
+        }
         if (row.field) {
             slot.field = row.field;
         }

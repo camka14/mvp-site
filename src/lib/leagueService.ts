@@ -90,7 +90,10 @@ export interface LeagueSlotCreationInput {
   field?: Field;
   dayOfWeek: TimeSlot['dayOfWeek'];
   startTimeMinutes: number;
-  endTimeMinutes: number;
+  endTimeMinutes?: number;
+  startDate?: string;
+  endDate?: string | null;
+  repeating?: boolean;
 }
 
 export interface CreateLeagueDraftOptions {
@@ -112,22 +115,38 @@ class LeagueService {
 
     const created = await Promise.all(slots.map(async (slot) => {
       const startTime = this.normalizeTime(slot.startTimeMinutes);
+      if (typeof startTime !== 'number') {
+        throw new Error('TimeSlot requires a start time');
+      }
       const endTime = this.normalizeTime(slot.endTimeMinutes);
+      if (typeof endTime !== 'number') {
+        throw new Error('TimeSlot requires an end time');
+      }
       const fieldId = this.extractId(slot.field);
       if (!fieldId) {
         throw new Error('TimeSlot requires a related field');
       }
+      const data: Record<string, unknown> = {
+        event: eventId,
+        field: fieldId,
+        dayOfWeek: slot.dayOfWeek,
+        startTime,
+        endTime,
+        repeating: typeof slot.repeating === 'boolean' ? slot.repeating : true,
+      };
+
+      if (slot.startDate) {
+        data.startDate = slot.startDate;
+      }
+      if (slot.endDate !== undefined) {
+        data.endDate = slot.endDate;
+      }
+
       const response = await databases.createRow({
         databaseId: DATABASE_ID,
         tableId: TIME_SLOTS_TABLE_ID,
         rowId: ID.unique(),
-        data: {
-          event: eventId,
-          field: fieldId,
-          dayOfWeek: slot.dayOfWeek,
-          startTime,
-          endTime,
-        },
+        data,
         queries: [
           Query.select([
             '*',
@@ -252,14 +271,25 @@ class LeagueService {
   }
 
   private mapRowToTimeSlot(row: any): TimeSlot {
+    const startTime = this.normalizeTime(row.startTimeMinutes ?? row.startTime) ?? 0;
+    const endTime = this.normalizeTime(row.endTimeMinutes ?? row.endTime) ?? startTime;
     const schedule: TimeSlot = {
       $id: row.$id,
       dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
-      startTimeMinutes: this.normalizeTime(row.startTimeMinutes ?? row.startTime),
-      endTimeMinutes: this.normalizeTime(row.endTimeMinutes ?? row.endTime),
+      startTimeMinutes: startTime,
+      endTimeMinutes: endTime,
+      repeating: row.repeating === undefined ? true : Boolean(row.repeating),
       event: row.event ?? row.eventId ?? row.event?.$id,
       field: row.field ?? row.fieldId ?? row.field?.$id,
     };
+
+    if (row.startDate) {
+      schedule.startDate = typeof row.startDate === 'string' ? row.startDate : String(row.startDate);
+    }
+
+    if (row.endDate !== undefined) {
+      schedule.endDate = row.endDate;
+    }
 
     if (row.field) {
       schedule.field = row.field;
@@ -272,7 +302,11 @@ class LeagueService {
     return schedule;
   }
 
-  private normalizeTime(value: unknown): number {
+  private normalizeTime(value: unknown): number | undefined {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+
     if (typeof value === 'number' && Number.isFinite(value)) {
       return value;
     }
@@ -288,7 +322,7 @@ class LeagueService {
       }
     }
 
-    return 0;
+    return undefined;
   }
 
   private timeStringToMinutes(time: string): number {

@@ -45,6 +45,9 @@ describe('eventService', () => {
             startTime: '09:00',
             endTime: 600,
             field: { $id: 'fld_1', name: 'Court A' },
+            startDate: '2025-10-01T00:00:00',
+            endDate: null,
+            repeating: false,
           },
         ],
       });
@@ -63,6 +66,9 @@ describe('eventService', () => {
         dayOfWeek: 1,
         startTimeMinutes: 540,
         endTimeMinutes: 600,
+        startDate: '2025-10-01T00:00:00',
+        endDate: null,
+        repeating: false,
       });
       expect((event?.timeSlots?.[0]?.field as any)?.name).toBe('Court A');
     });
@@ -298,6 +304,54 @@ describe('eventService', () => {
         data: { waitListIds: ['user_1', 'user_2'] },
       });
       expect(event.waitListIds).toEqual(['user_1', 'user_2']);
+    });
+  });
+
+  describe('date range filters', () => {
+    it('normalizes timezone offsets when fetching matches', async () => {
+      appwriteModuleMock.databases.listRows.mockResolvedValue({ rows: [] });
+
+      await eventService.getMatchesForFieldInRange(
+        'field_1',
+        '2025-10-05T00:00:00-07:00',
+        '2025-10-11T23:59:59-07:00'
+      );
+
+      const { queries } = appwriteModuleMock.databases.listRows.mock.calls[0][0];
+      const gteQuery = (queries as string[]).find((q) => q.includes('"method":"greaterThanEqual"'));
+      const lteQuery = (queries as string[]).find((q) => q.includes('"method":"lessThanEqual"'));
+
+      expect(gteQuery).toBeDefined();
+      expect(lteQuery).toBeDefined();
+
+      const greaterThanEqual = JSON.parse(gteQuery as string);
+      const lessThanEqual = JSON.parse(lteQuery as string);
+
+      expect(greaterThanEqual.values[0]).toBe('2025-10-05T07:00:00Z');
+      expect(lessThanEqual.values[0]).toBe('2025-10-12T06:59:59Z');
+    });
+
+    it('normalizes timezone offsets when fetching events', async () => {
+      appwriteModuleMock.databases.listRows.mockResolvedValue({ rows: [] });
+
+      await eventService.getEventsForFieldInRange(
+        'field_1',
+        '2025-10-05T00:00:00-07:00',
+        '2025-10-11T23:59:59-07:00'
+      );
+
+      const { queries } = appwriteModuleMock.databases.listRows.mock.calls[0][0];
+      const gteQuery = (queries as string[]).find((q) => q.includes('"method":"greaterThanEqual"'));
+      const lteQuery = (queries as string[]).find((q) => q.includes('"method":"lessThanEqual"'));
+
+      expect(gteQuery).toBeDefined();
+      expect(lteQuery).toBeDefined();
+
+      const greaterThanEqual = JSON.parse(gteQuery as string);
+      const lessThanEqual = JSON.parse(lteQuery as string);
+
+      expect(greaterThanEqual.values[0]).toBe('2025-10-05T07:00:00Z');
+      expect(lessThanEqual.values[0]).toBe('2025-10-12T06:59:59Z');
     });
   });
 });

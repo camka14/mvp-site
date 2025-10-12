@@ -70,6 +70,7 @@ export interface LeagueSlotForm {
   dayOfWeek?: TimeSlot['dayOfWeek'];
   startTimeMinutes?: number;
   endTimeMinutes?: number;
+  repeating?: boolean;
   conflicts: WeeklySlotConflict[];
   checking: boolean;
   error?: string;
@@ -281,13 +282,19 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       withSeconds={false}
                     />
 
-                  <TimeInput
-                    label="End Time"
-                    value={minutesToTimeString(slot.endTimeMinutes)}
-                    onChange={(event) => onUpdateSlot(index, { endTimeMinutes: parseTimeInput(event.currentTarget.value) })}
-                    withSeconds={false}
+                    <TimeInput
+                      label="End Time"
+                      value={minutesToTimeString(slot.endTimeMinutes)}
+                      onChange={(event) => onUpdateSlot(index, { endTimeMinutes: parseTimeInput(event.currentTarget.value) })}
+                      withSeconds={false}
+                    />
+                  </div>
+
+                  <Switch
+                    label="Repeats weekly"
+                    checked={slot.repeating !== false}
+                    onChange={(event) => onUpdateSlot(index, { repeating: event.currentTarget.checked })}
                   />
-                </div>
 
                 {conflictCount > 0 && (
                   <Alert color="red" radius="md">

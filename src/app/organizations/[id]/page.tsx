@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid } from '@mantine/core';
+import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Tabs, Pagination } from '@mantine/core';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import { useApp } from '@/app/providers';
@@ -17,8 +17,9 @@ import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
-import { format, parse, startOfWeek, endOfWeek, startOfDay, endOfDay, startOfMonth, endOfMonth, getDay } from 'date-fns';
+import { format, parse, startOfWeek, endOfWeek, startOfDay, endOfDay, startOfMonth, endOfMonth, getDay, formatISO } from 'date-fns';
 import { fieldService } from '@/lib/fieldService';
+import { buildFieldCalendarEvents } from './fieldCalendar';
 
 export default function OrganizationDetailPage() {
   return (
@@ -47,6 +48,7 @@ function OrganizationDetailContent() {
   const [fieldCalendarDate, setFieldCalendarDate] = useState<Date>(new Date());
   const [fieldScheduleLoading, setFieldScheduleLoading] = useState(false);
   const [fieldScheduleFields, setFieldScheduleFields] = useState<Field[]>([]);
+  const [fieldScheduleSelectedFieldId, setFieldScheduleSelectedFieldId] = useState<string | null>(null);
 
   const localizer = useMemo(() => dateFnsLocalizer({
     format,
@@ -125,13 +127,15 @@ function OrganizationDetailContent() {
   const loadFieldSchedule = useCallback(async (view: View, date: Date) => {
     if (!id) return;
     const { start, end } = computeFieldRange(view, date);
+    const startLocal = formatISO(start, { representation: 'complete' });
+    const endLocal = formatISO(end, { representation: 'complete' });
     setFieldScheduleLoading(true);
     try {
       const fields = await fieldService.listFields(
         { organizationId: id },
         {
-          start: start.toISOString(),
-          end: end.toISOString(),
+          start: startLocal,
+          end: endLocal,
         }
       );
       setFieldScheduleFields(fields);
@@ -149,47 +153,49 @@ function OrganizationDetailContent() {
     }
   }, [activeTab, fieldViewMode, fieldCalendarView, fieldCalendarDate, loadFieldSchedule]);
 
-  const fieldResources = useMemo(() => {
-    return fieldScheduleFields.map((field) => ({
-      id: field.$id,
-      title: field.name || `Field ${field.fieldNumber}`,
-    }));
-  }, [fieldScheduleFields]);
-
-  const fieldScheduleEvents = useMemo(() => {
-    return fieldScheduleFields.flatMap((field) => {
-      const baseTitle = field.name || `Field ${field.fieldNumber}`;
-      const events = (field.events || []).filter((evt) => evt.eventType !== 'league' && evt.eventType !== 'tournament');
-      const matches = (field.matches || []).filter((match) => {
-        const eventType = match.event?.eventType;
-        return eventType !== 'league' && eventType !== 'tournament';
-      });
-
-      const eventEntries = events.map((evt) => ({
-        id: `field-event-${field.$id}-${evt.$id}`,
-        title: evt.name,
-        start: new Date(evt.start),
-        end: new Date(evt.end ?? evt.start),
-        resourceId: field.$id,
-        resource: evt,
-        metaType: 'event' as const,
-        fieldName: baseTitle,
-      }));
-
-      const matchEntries = matches.map((match) => ({
-        id: `field-match-${field.$id}-${match.$id}`,
-        title: match.event?.name ? `${match.event.name} Match` : 'Match',
-        start: new Date(match.start),
-        end: new Date(match.end ?? match.start),
-        resourceId: field.$id,
-        resource: match,
-        metaType: 'match' as const,
-        fieldName: baseTitle,
-      }));
-
-      return [...eventEntries, ...matchEntries];
+  const sortedFieldScheduleFields = useMemo(() => {
+    return [...fieldScheduleFields].sort((a, b) => {
+      const aNumber = typeof a.fieldNumber === 'number' ? a.fieldNumber : Number.MAX_SAFE_INTEGER;
+      const bNumber = typeof b.fieldNumber === 'number' ? b.fieldNumber : Number.MAX_SAFE_INTEGER;
+      if (aNumber !== bNumber) {
+        return aNumber - bNumber;
+      }
+      const aName = a.name || '';
+      const bName = b.name || '';
+      return aName.localeCompare(bName);
     });
   }, [fieldScheduleFields]);
+
+  useEffect(() => {
+    if (sortedFieldScheduleFields.length === 0) {
+      if (fieldScheduleSelectedFieldId !== null) {
+        setFieldScheduleSelectedFieldId(null);
+      }
+      return;
+    }
+
+    if (!fieldScheduleSelectedFieldId || !sortedFieldScheduleFields.some((field) => field.$id === fieldScheduleSelectedFieldId)) {
+      setFieldScheduleSelectedFieldId(sortedFieldScheduleFields[0].$id);
+    }
+  }, [sortedFieldScheduleFields, fieldScheduleSelectedFieldId]);
+
+  const fieldScheduleEvents = useMemo(() => buildFieldCalendarEvents(fieldScheduleFields), [fieldScheduleFields]);
+  const selectedField = useMemo(
+    () => sortedFieldScheduleFields.find((field) => field.$id === fieldScheduleSelectedFieldId) ?? null,
+    [sortedFieldScheduleFields, fieldScheduleSelectedFieldId]
+  );
+  const activeField = selectedField ?? (sortedFieldScheduleFields.length ? sortedFieldScheduleFields[0] : null);
+  const activeFieldIndex = useMemo(() => {
+    if (!activeField) return -1;
+    return sortedFieldScheduleFields.findIndex((field) => field.$id === activeField.$id);
+  }, [sortedFieldScheduleFields, activeField]);
+  const filteredFieldScheduleEvents = useMemo(() => {
+    if (!activeField) {
+      return [];
+    }
+    return fieldScheduleEvents.filter((entry) => entry.resourceId === activeField.$id);
+  }, [fieldScheduleEvents, activeField]);
+  const shouldUseTabsForFields = sortedFieldScheduleFields.length > 0 && sortedFieldScheduleFields.length <= 5;
 
   if (authLoading) return <Loading fullScreen text="Loading organization..." />;
   if (!isAuthenticated || !user) return null;
@@ -367,35 +373,84 @@ function OrganizationDetailContent() {
                     <div className="py-16">
                       <Loading fullScreen={false} text="Loading field schedule..." />
                     </div>
-                  ) : fieldResources.length === 0 ? (
+                  ) : sortedFieldScheduleFields.length === 0 ? (
                     <Text size="sm" c="dimmed">No field schedules available for this timeframe.</Text>
                   ) : (
-                    <div className="h-[800px]">
-                      <BigCalendar
-                        localizer={localizer}
-                        events={fieldScheduleEvents}
-                        resources={fieldResources}
-                        resourceIdAccessor="id"
-                        resourceTitleAccessor="title"
-                        startAccessor="start"
-                        endAccessor="end"
-                        view={fieldCalendarView}
-                        date={fieldCalendarDate}
-                        onView={(v) => setFieldCalendarView(v)}
-                        onNavigate={(date) => setFieldCalendarDate(date)}
-                        onRangeChange={handleFieldRangeChange}
-                        views={["month", "week", "day", "agenda"]}
-                        components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
-                        popup
-                        selectable={false}
-                        onSelectEvent={(evt: any) => {
-                          if (evt.metaType === 'event' && evt.resource) {
-                            setSelectedEvent(evt.resource);
-                            setShowEventDetailModal(true);
-                          }
-                        }}
-                      />
-                    </div>
+                    <>
+                      {shouldUseTabsForFields ? (
+                        <Tabs
+                          value={activeField?.$id ?? ''}
+                          onChange={(value) => setFieldScheduleSelectedFieldId(value || null)}
+                          keepMounted={false}
+                        >
+                          <Tabs.List mb="md">
+                            {sortedFieldScheduleFields.map((field) => (
+                              <Tabs.Tab key={field.$id} value={field.$id}>
+                                {field.name || `Field ${field.fieldNumber ?? ''}`}
+                              </Tabs.Tab>
+                            ))}
+                          </Tabs.List>
+                        </Tabs>
+                      ) : (
+                        <Group justify="space-between" align="center" mb="md">
+                          <Text fw={500}>Select field</Text>
+                          <Pagination.Root
+                            total={sortedFieldScheduleFields.length}
+                            value={activeFieldIndex >= 0 ? activeFieldIndex + 1 : 1}
+                            onChange={(page) => {
+                              const nextField = sortedFieldScheduleFields[page - 1];
+                              setFieldScheduleSelectedFieldId(nextField ? nextField.$id : null);
+                            }}
+                            siblings={sortedFieldScheduleFields.length}
+                            boundaries={0}
+                            getItemProps={(page) => {
+                              const field = sortedFieldScheduleFields[page - 1];
+                              const label = field?.fieldNumber !== undefined ? field.fieldNumber : page;
+                              return {
+                                children: label,
+                                'aria-label': field ? (field.name || `Field ${label}`) : `Field ${label}`,
+                              };
+                            }}
+                          >
+                            <Group gap="xs" align="center">
+                              <Pagination.Previous />
+                              <Pagination.Items />
+                              <Pagination.Next />
+                            </Group>
+                          </Pagination.Root>
+                        </Group>
+                      )}
+
+                      {activeField && (
+                        <Text size="sm" c="dimmed" mb="sm">
+                          Viewing schedule for {activeField.name || (activeField.fieldNumber ? `Field ${activeField.fieldNumber}` : 'Selected field')}
+                        </Text>
+                      )}
+
+                      <div className="h-[800px]">
+                        <BigCalendar
+                          localizer={localizer}
+                          events={filteredFieldScheduleEvents}
+                          startAccessor="start"
+                          endAccessor="end"
+                          view={fieldCalendarView}
+                          date={fieldCalendarDate}
+                          onView={(v) => setFieldCalendarView(v)}
+                          onNavigate={(date) => setFieldCalendarDate(date)}
+                          onRangeChange={handleFieldRangeChange}
+                          views={["month", "week", "day", "agenda"]}
+                          components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
+                          popup
+                          selectable={false}
+                          onSelectEvent={(evt: any) => {
+                            if (evt.metaType === 'event' && evt.resource) {
+                              setSelectedEvent(evt.resource);
+                              setShowEventDetailModal(true);
+                            }
+                          }}
+                        />
+                      </div>
+                    </>
                   )
                 )}
               </Paper>

@@ -59,6 +59,9 @@ describe('leagueService', () => {
         dayOfWeek: 2,
         startTimeMinutes: 9 * 60,
         endTimeMinutes: 10 * 60,
+        startDate: '2025-10-01T00:00:00',
+        endDate: '2025-12-01T00:00:00',
+        repeating: true,
       };
 
       appwriteModuleMock.databases.createRow.mockResolvedValue({
@@ -80,6 +83,9 @@ describe('leagueService', () => {
             dayOfWeek: 2,
             startTime: 9 * 60,
             endTime: 10 * 60,
+            startDate: '2025-10-01T00:00:00',
+            endDate: '2025-12-01T00:00:00',
+            repeating: true,
           },
           queries: expect.any(Array),
         }),
@@ -89,6 +95,7 @@ describe('leagueService', () => {
         $id: 'slot_1',
         startTimeMinutes: 9 * 60,
         endTimeMinutes: 10 * 60,
+        repeating: true,
       });
     });
   });
@@ -104,6 +111,9 @@ describe('leagueService', () => {
             endTime: '11:30',
             field: { $id: 'field_1', name: 'Court B' },
             event: { $id: 'event_1' },
+            startDate: '2025-10-01T00:00:00',
+            endDate: null,
+            repeating: false,
           },
         ],
       });
@@ -119,6 +129,9 @@ describe('leagueService', () => {
       expect(slots[0]).toMatchObject({
         startTimeMinutes: 600,
         endTimeMinutes: 690,
+        startDate: '2025-10-01T00:00:00',
+        endDate: null,
+        repeating: false,
         field: expect.objectContaining({ name: 'Court B' }),
       });
     });
