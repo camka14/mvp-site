@@ -210,6 +210,7 @@ export function LeagueCalendarView({
       border: 'none',
       padding: 0,
       cursor: onMatchClick ? 'pointer' : 'default',
+      color: 'var(--mantine-color-text, #1f1f1f)',
     },
     className: 'p-0',
   }), [onMatchClick]);

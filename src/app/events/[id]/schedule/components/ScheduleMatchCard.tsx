@@ -17,6 +17,31 @@ const getTeamName = (team: Match['team1']) => {
   return 'TBD';
 };
 
+const getFieldLabel = (field: Match['field']) => {
+  if (!field) {
+    return null;
+  }
+
+  if (typeof field === 'string') {
+    return field;
+  }
+
+  if (typeof field === 'object') {
+    const fieldNumber = 'fieldNumber' in field ? field.fieldNumber : undefined;
+    const fieldName = 'name' in field ? field.name : undefined;
+
+    if (typeof fieldNumber === 'number' && Number.isFinite(fieldNumber)) {
+      return fieldName ? `Field ${fieldNumber} · ${fieldName}` : `Field ${fieldNumber}`;
+    }
+
+    if (fieldName) {
+      return fieldName;
+    }
+  }
+
+  return null;
+};
+
 export default function ScheduleMatchCard({ match, onClick, className = '', canManage }: ScheduleMatchCardProps) {
   const clickable = typeof onClick === 'function';
 
@@ -24,12 +49,14 @@ export default function ScheduleMatchCard({ match, onClick, className = '', canM
     ? 'var(--mantine-color-orange-4)'
     : 'var(--mantine-color-blue-4)';
 
+  const fieldLabel = getFieldLabel(match.field);
+
   return (
     <Paper
       withBorder
       radius="md"
       px="xs"
-      className={`flex h-full items-center justify-between border-2 bg-white transition-shadow duration-200 ${
+      className={`flex h-full flex-col justify-center gap-1 border-2 bg-white transition-shadow duration-200 ${
         clickable ? 'cursor-pointer hover:shadow-md' : ''
       } ${className}`}
       style={{ borderColor }}
@@ -47,6 +74,11 @@ export default function ScheduleMatchCard({ match, onClick, className = '', canM
           {getTeamName(match.team2)}
         </Text>
       </Group>
+      {fieldLabel && (
+        <Text size="xs" c="dimmed" className="w-full text-right">
+          {fieldLabel}
+        </Text>
+      )}
     </Paper>
   );
 }
