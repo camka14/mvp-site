@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Button, Group, TextInput, NumberInput, Select } from '@mantine/core';
 import type { Field } from '@/types';
 import { fieldService } from '@/lib/fieldService';
@@ -9,20 +9,60 @@ interface CreateFieldModalProps {
   isOpen: boolean;
   onClose: () => void;
   organizationId?: string;
-  onFieldCreated?: (field: Field) => void;
+  field?: Field | null;
+  onFieldSaved?: (field: Field) => void;
 }
 
-export default function CreateFieldModal({ isOpen, onClose, organizationId, onFieldCreated }: CreateFieldModalProps) {
+type FieldFormState = {
+  $id?: string;
+  name: string;
+  type: string;
+  location: string;
+  lat: string | number;
+  long: string | number;
+  fieldNumber: number;
+  organizationId: string;
+};
+
+const createEmptyState = (organizationId?: string): FieldFormState => ({
+  $id: undefined,
+  name: '',
+  type: 'indoor',
+  location: '',
+  lat: '',
+  long: '',
+  fieldNumber: 1,
+  organizationId: organizationId || '',
+});
+
+export default function CreateFieldModal({ isOpen, onClose, organizationId, field, onFieldSaved }: CreateFieldModalProps) {
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    name: '',
-    type: 'indoor',
-    location: '',
-    lat: '' as string | number,
-    long: '' as string | number,
-    fieldNumber: 1,
-    organizationId: organizationId || ''
-  });
+  const [form, setForm] = useState<FieldFormState>(() => createEmptyState(organizationId));
+
+  const isEditMode = useMemo(() => Boolean(field?.$id), [field]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    if (field) {
+      setForm({
+        $id: field.$id,
+        name: field.name || '',
+        type: field.type || 'indoor',
+        location: field.location || '',
+        lat: typeof field.lat === 'number' ? field.lat : '',
+        long: typeof field.long === 'number' ? field.long : '',
+        fieldNumber: typeof field.fieldNumber === 'number' ? field.fieldNumber : 1,
+        organizationId: typeof field.organization === 'string'
+          ? field.organization
+          : (field.organization as any)?.$id || organizationId || '',
+      });
+    } else {
+      setForm(createEmptyState(organizationId));
+    }
+  }, [isOpen, field, organizationId]);
 
   const isValid = form.name.trim().length > 0 && form.fieldNumber > 0;
 
@@ -32,6 +72,7 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, onFi
     setSubmitting(true);
     try {
       const payload = {
+        $id: form.$id,
         name: form.name.trim(),
         type: form.type,
         location: form.location.trim() || undefined,
@@ -40,10 +81,10 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, onFi
         fieldNumber: Number(form.fieldNumber),
         organizationId: form.organizationId || undefined,
       };
-      const created = await fieldService.createField(payload);
-      onFieldCreated?.(created);
+      const saved = await fieldService.createField(payload);
+      onFieldSaved?.(saved);
       onClose();
-      setForm({ name: '', type: 'indoor', location: '', lat: '', long: '', fieldNumber: 1, organizationId: organizationId || '' });
+      setForm(createEmptyState(organizationId));
     } catch (err) {
       console.error('Failed to create field:', err);
     } finally {
@@ -52,7 +93,7 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, onFi
   };
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title="Create Field" size="md" centered>
+    <Modal opened={isOpen} onClose={onClose} title={isEditMode ? 'Update Field' : 'Create Field'} size="md" centered>
       <form onSubmit={handleSubmit} className="space-y-4">
         <TextInput
           label="Name"
@@ -120,7 +161,9 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, onFi
 
         <Group justify="space-between" pt="sm">
           <Button variant="default" onClick={onClose} disabled={submitting}>Cancel</Button>
-          <Button type="submit" disabled={!isValid || submitting}>{submitting ? 'Creating…' : 'Create Field'}</Button>
+          <Button type="submit" disabled={!isValid || submitting}>
+            {submitting ? (isEditMode ? 'Saving…' : 'Creating…') : (isEditMode ? 'Update Field' : 'Create Field')}
+          </Button>
         </Group>
       </form>
     </Modal>

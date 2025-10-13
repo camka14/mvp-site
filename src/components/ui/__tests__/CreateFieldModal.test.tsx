@@ -19,7 +19,7 @@ describe('CreateFieldModal', () => {
         isOpen
         onClose={() => {}}
         organizationId="org_1"
-        onFieldCreated={() => {}}
+        onFieldSaved={() => {}}
       />,
     );
 

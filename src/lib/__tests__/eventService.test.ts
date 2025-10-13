@@ -70,7 +70,7 @@ describe('eventService', () => {
         endDate: null,
         repeating: false,
       });
-      expect((event?.timeSlots?.[0]?.field as any)?.name).toBe('Court A');
+      expect((event?.timeSlots?.[0]?.scheduledFieldId as any)?.name).toBe('Court A');
     });
   });
 

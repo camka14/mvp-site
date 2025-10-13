@@ -66,7 +66,7 @@ const parseTimeInput = (value: string): number | undefined => {
 export interface LeagueSlotForm {
   key: string;
   $id?: string;
-  field?: Field;
+  scheduledFieldId?: string;
   dayOfWeek?: TimeSlot['dayOfWeek'];
   startTimeMinutes?: number;
   endTimeMinutes?: number;
@@ -218,13 +218,13 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
         <Stack gap="md">
           {slots.map((slot, index) => {
             const conflictCount = slot.conflicts.length;
-            const selectedFieldId = slot.field?.$id ?? null;
-            const fieldOptionsForSlot = selectedFieldId && !availableFieldOptions.some(option => option.value === selectedFieldId)
+            const field = fields.find(field => field.$id === slot.scheduledFieldId) ?? null;
+            const fieldOptionsForSlot = slot.scheduledFieldId && !availableFieldOptions.some(option => option.value === slot.scheduledFieldId)
               ? [
                   ...availableFieldOptions,
                   {
-                    value: selectedFieldId,
-                    label: slot.field?.name || (slot.field?.fieldNumber ? `Field ${slot.field.fieldNumber}` : selectedFieldId),
+                    value: slot.scheduledFieldId,
+                    label: field?.name || (field?.fieldNumber ? `Field ${field.fieldNumber}` : slot.scheduledFieldId),
                   },
                 ]
               : availableFieldOptions;
@@ -251,10 +251,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       label="Field"
                       placeholder="Select field"
                       data={fieldOptionsForSlot}
-                      value={selectedFieldId}
+                      value={slot.scheduledFieldId}
                       onChange={(value) => {
                         if (!value) {
-                          onUpdateSlot(index, { field: undefined });
+                          onUpdateSlot(index, { scheduledFieldId: undefined });
                           return;
                         }
                         const nextField = fieldLookup.get(value)
@@ -262,7 +262,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                             value,
                             fieldOptionsForSlot.find(option => option.value === value)?.label,
                           );
-                        onUpdateSlot(index, { field: nextField });
+                        onUpdateSlot(index, { scheduledFieldId: nextField.$id });
                       }}
                       searchable
                     />

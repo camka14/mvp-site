@@ -76,13 +76,14 @@ export interface MatchPayload extends Omit<Match, 'field' | '$id'> {
 export interface TimeSlot {
   $id: string;
   dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  startTimeMinutes: number;
-  endTimeMinutes: number;
+  startTimeMinutes?: number;
+  endTimeMinutes?: number;
   startDate?: string;
   endDate?: string | null;
   repeating: boolean;
+  price?: number;
   event?: Event;
-  field?: Field;
+  scheduledFieldId?: string;
 }
 
 export interface TimeSlotPayload extends Omit<TimeSlot, '$id'> {
@@ -166,6 +167,7 @@ export interface Field {
   matches?: Match[];
   events?: Event[];
   organization?: Organization | string;
+  rentalSlots?: TimeSlot[];
 }
 
 export interface FieldPayload extends Omit<Field, 'matches' | 'events' | '$id'> { }

@@ -337,7 +337,7 @@ class EventService {
         const sanitizedTimeSlots = event.timeSlots?.map((slot: TimeSlot) => {
             const clone = { ...slot } as Record<string, unknown>;
             delete clone.$id;
-            clone.field = slot.field?.$id
+            clone.field = slot.scheduledFieldId?.$id
             const cleaned = this.removeUndefined(clone) as Partial<TimeSlotPayload>;
             return Object.keys(cleaned).length ? (cleaned as TimeSlotPayload) : undefined;
         })
@@ -790,7 +790,7 @@ class EventService {
             endTimeMinutes: endTime,
             repeating: row.repeating === undefined ? true : Boolean(row.repeating),
             event: row.event ?? row.eventId ?? row.event?.$id,
-            field: row.field ?? row.fieldId ?? row.field?.$id,
+            scheduledFieldId: row.field ?? row.fieldId ?? row.field?.$id,
         };
 
         const normalizedStartDate = ensureLocalDateTimeString(row.startDate ?? row.start ?? null);
@@ -807,7 +807,7 @@ class EventService {
             }
         }
         if (row.field) {
-            slot.field = row.field;
+            slot.scheduledFieldId = row.field;
         }
 
         if (row.event) {

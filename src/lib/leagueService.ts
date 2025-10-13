@@ -122,7 +122,7 @@ class LeagueService {
       if (typeof endTime !== 'number') {
         throw new Error('TimeSlot requires an end time');
       }
-      const fieldId = this.extractId(slot.field);
+      const fieldId = this.extractId(slot.scheduledFieldId);
       if (!fieldId) {
         throw new Error('TimeSlot requires a related field');
       }
@@ -280,7 +280,7 @@ class LeagueService {
       endTimeMinutes: endTime,
       repeating: row.repeating === undefined ? true : Boolean(row.repeating),
       event: row.event ?? row.eventId ?? row.event?.$id,
-      field: row.field ?? row.fieldId ?? row.field?.$id,
+      scheduledFieldId: row.field ?? row.fieldId ?? row.field?.$id,
     };
 
     if (row.startDate) {
@@ -292,7 +292,7 @@ class LeagueService {
     }
 
     if (row.field) {
-      schedule.field = row.field;
+      schedule.scheduledFieldId = row.field;
     }
 
     if (row.event) {

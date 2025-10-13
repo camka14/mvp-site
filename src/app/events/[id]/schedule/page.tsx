@@ -576,7 +576,7 @@ function EventScheduleContent() {
           <Paper withBorder shadow="sm" p="xl" radius="md">
             <Stack gap="md" align="center">
               <Text fw={600} size="lg">{error}</Text>
-              <Button variant="default" onClick={() => loadSchedule(isPreview)}>Try Again</Button>
+              <Button variant="default" onClick={() => loadSchedule()}>Try Again</Button>
             </Stack>
           </Paper>
         </div>

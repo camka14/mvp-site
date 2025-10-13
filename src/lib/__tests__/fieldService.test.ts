@@ -32,7 +32,7 @@ describe('fieldService', () => {
   });
 
   it('creates a field with provided payload', async () => {
-    appwriteModuleMock.databases.createRow.mockResolvedValue({
+    appwriteModuleMock.databases.upsertRow.mockResolvedValue({
       $id: 'field_1',
       name: 'Court A',
     });
@@ -42,12 +42,12 @@ describe('fieldService', () => {
       fieldNumber: 1,
     });
 
-    expect(appwriteModuleMock.databases.createRow).toHaveBeenCalledWith(expect.objectContaining({
+    expect(appwriteModuleMock.databases.upsertRow).toHaveBeenCalledWith(expect.objectContaining({
       databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
       rowId: expect.any(String),
     }));
-    expect(appwriteModuleMock.databases.createRow.mock.calls[0][0].data).toEqual(expect.objectContaining({
+    expect(appwriteModuleMock.databases.upsertRow.mock.calls[0][0].data).toEqual(expect.objectContaining({
       name: 'Court A',
       fieldNumber: 1,
     }));

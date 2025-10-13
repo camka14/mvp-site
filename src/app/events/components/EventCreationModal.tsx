@@ -53,10 +53,7 @@ const computeSlotError = (
         return undefined;
     }
 
-    const slotField = slot.field;
-    if (!slotField || typeof slotField.$id !== 'string') {
-        return undefined;
-    }
+    const slotField = slot.scheduledFieldId;
 
     if (
         typeof slot.dayOfWeek !== 'number' ||
@@ -79,12 +76,12 @@ const computeSlotError = (
             return false;
         }
 
-        const otherField = other.field;
-        if (!otherField || typeof otherField.$id !== 'string') {
+        const otherField = other.scheduledFieldId;
+        if (!otherField) {
             return false;
         }
 
-        if (otherField.$id !== slotField.$id) {
+        if (otherField !== slotField) {
             return false;
         }
 
@@ -294,7 +291,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => ({
         key: slot?.$id ?? ID.unique(),
         $id: slot?.$id,
-        field: typeof slot?.field === 'object' && slot.field ? slot.field as Field : undefined,
+        scheduledFieldId: slot?.scheduledFieldId ? slot.scheduledFieldId as string : undefined,
         dayOfWeek: slot?.dayOfWeek,
         startTimeMinutes: slot?.startTimeMinutes,
         endTimeMinutes: slot?.endTimeMinutes,
@@ -415,22 +412,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const [leagueSlots, setLeagueSlots] = useState<LeagueSlotForm[]>(() => {
         if (activeEditingEvent && activeEditingEvent.eventType === 'league' && activeEditingEvent.timeSlots?.length) {
             return (activeEditingEvent.timeSlots || []).map((slot) => {
-                const fieldRef = (() => {
-                    if (slot.field && typeof slot.field === 'object') {
-                        return slot.field as Field;
-                    }
-                    const fieldId = typeof slot.field === 'string'
-                        ? slot.field
-                        : (slot.field as any)?.$id;
-                    if (!fieldId) {
-                        return undefined;
-                    }
-                    return activeEditingEvent.fields?.find((field) => field.$id === fieldId);
-                })();
-
                 return createSlotForm({
                     $id: slot.$id,
-                    field: fieldRef,
+                    scheduledFieldId: slot.scheduledFieldId,
                     dayOfWeek: slot.dayOfWeek,
                     startTimeMinutes: slot.startTimeMinutes,
                     endTimeMinutes: slot.endTimeMinutes,
@@ -549,11 +533,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (!shouldManageLocalFields) return;
         const validIds = new Set(fields.map(field => field.$id));
         updateLeagueSlots(prev => prev.map(slot => {
-            const fieldId = slot.field?.$id;
+            const fieldId = slot.scheduledFieldId;
             if (!fieldId || validIds.has(fieldId)) {
                 return slot;
             }
-            return { ...slot, field: undefined };
+            return { ...slot, scheduledFieldId: undefined };
         }));
     }, [fields, shouldManageLocalFields, updateLeagueSlots]);
 
@@ -636,12 +620,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
             const slots = (activeEditingEvent.timeSlots || []).map(slot => {
                 const fieldRef = (() => {
-                    if (slot.field && typeof slot.field === 'object') {
-                        return slot.field as Field;
-                    }
-                    const fieldId = typeof slot.field === 'string'
-                        ? slot.field
-                        : (slot.field as any)?.$id;
+                    const fieldId = slot.scheduledFieldId
                     if (!fieldId) {
                         return undefined;
                     }
@@ -650,7 +629,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
                 return createSlotForm({
                     $id: slot.$id,
-                    field: fieldRef,
+                    scheduledFieldId: fieldRef ? fieldRef.$id : "",
                     dayOfWeek: slot.dayOfWeek,
                     startTimeMinutes: slot.startTimeMinutes,
                     endTimeMinutes: slot.endTimeMinutes,
@@ -746,15 +725,16 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         const picked: Field[] = [];
 
         leagueSlots.forEach(slot => {
-            const slotField = slot.field;
-            const fieldId = slotField?.$id;
-            if (!slotField || !fieldId || seen.has(fieldId)) {
+            const slotFieldId = slot.scheduledFieldId;
+            if (!slotFieldId || seen.has(slotFieldId)) {
                 return;
             }
 
-            const resolved = fieldMap.get(fieldId) ?? slotField;
-            picked.push(resolved);
-            seen.add(fieldId);
+            const resolved = fieldMap.get(slotFieldId);
+            if (resolved) {
+                picked.push(resolved);
+            }
+            seen.add(slotFieldId);
         });
 
         return picked;
@@ -811,7 +791,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     const hasSlotConflicts = eventData.eventType === 'league' && leagueSlots.some(slot => Boolean(slot.error));
     const hasIncompleteSlot = eventData.eventType === 'league' && leagueSlots.some(slot =>
-        !slot.field ||
+        !slot.scheduledFieldId ||
         typeof slot.dayOfWeek !== 'number' ||
         typeof slot.startTimeMinutes !== 'number' ||
         typeof slot.endTimeMinutes !== 'number'
@@ -1016,7 +996,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
 
         const validSlots = leagueSlots.filter(slot =>
-            slot.field &&
+            slot.scheduledFieldId &&
             typeof slot.dayOfWeek === 'number' &&
             typeof slot.startTimeMinutes === 'number' &&
             typeof slot.endTimeMinutes === 'number'
@@ -1052,14 +1032,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 }
             });
 
-        const slotDocuments: Record<string, unknown>[] = validSlots
+            const slotDocuments: Record<string, unknown>[] = validSlots
                 .map((slot): any | null => {
-                    if (!slot.field) {
+                    if (!slot.scheduledFieldId) {
                         return null;
                     }
 
-                    const fieldId = slot.field.$id;
-                    const fieldDetails = fieldId ? fieldMap.get(fieldId) ?? slot.field : slot.field;
+                    const fieldId = slot.scheduledFieldId;
                     const startDateValue = eventData.start;
                     const endDateValue = eventData.end;
 
@@ -1069,7 +1048,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         startTimeMinutes: Number(slot.startTimeMinutes),
                         endTimeMinutes: Number(slot.endTimeMinutes),
                         repeating: slot.repeating !== false,
-                        field: {$id: fieldDetails.$id},
+                        scheduledFieldId: fieldId,
                     };
 
                     if (startDateValue) {
@@ -1107,7 +1086,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 divisions: eventData.divisions,
                 teamSizeLimit: eventData.teamSizeLimit,
                 hostId: currentUser?.$id,
-                organization: {...organization, fields: undefined, events: undefined, teams: undefined},
+                organization: { ...organization, fields: undefined, events: undefined, teams: undefined },
                 state: 'UNPUBLISHED' as EventState,
                 gamesPerOpponent: leagueData.gamesPerOpponent,
                 includePlayoffs: leagueData.includePlayoffs,
@@ -1534,22 +1513,22 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             </div>
                             <div>
                                 {(eventData.eventType === 'pickup') &&
-                                <DateTimePicker
-                                    label="End Date & Time"
-                                    valueFormat="DD MMM YYYY hh:mm A"
-                                    value={parseLocalDateTime(eventData.end)}
-                                    onChange={(val) => {
-                                        const parsed = parseLocalDateTime(val as Date | string | null);
-                                        if (!parsed) return;
-                                        setEventData(prev => ({ ...prev, end: formatLocalDateTime(parsed) }));
-                                    }}
-                                    minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
-                                    timePickerProps={{
-                                        withDropdown: true,
-                                        format: '12h',
+                                    <DateTimePicker
+                                        label="End Date & Time"
+                                        valueFormat="DD MMM YYYY hh:mm A"
+                                        value={parseLocalDateTime(eventData.end)}
+                                        onChange={(val) => {
+                                            const parsed = parseLocalDateTime(val as Date | string | null);
+                                            if (!parsed) return;
+                                            setEventData(prev => ({ ...prev, end: formatLocalDateTime(parsed) }));
+                                        }}
+                                        minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
+                                        timePickerProps={{
+                                            withDropdown: true,
+                                            format: '12h',
 
-                                    }}
-                                />}
+                                        }}
+                                    />}
                             </div>
                         </div>
                     </div>

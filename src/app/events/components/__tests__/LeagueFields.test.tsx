@@ -15,7 +15,7 @@ const field: Field = {
 
 const baseSlot: LeagueSlotForm = {
   key: 'slot-1',
-  field,
+  scheduledFieldId: field,
   dayOfWeek: 1,
   startTimeMinutes: 9 * 60,
   endTimeMinutes: 10 * 60,

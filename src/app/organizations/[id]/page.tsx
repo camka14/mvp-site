@@ -4,19 +4,20 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Tabs, Pagination } from '@mantine/core';
+import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Tabs, Pagination, RangeSlider } from '@mantine/core';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import { useApp } from '@/app/providers';
-import type { Field, Organization } from '@/types';
+import type { Field, Organization, TimeSlot } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { storage } from '@/app/appwrite';
 import EventCreationModal from '@/app/events/components/EventCreationModal';
 import EventDetailModal from '@/app/events/components/EventDetailModal';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
+import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
+import { Calendar as BigCalendar, dateFnsLocalizer, View, SlotGroupPropGetter } from 'react-big-calendar';
 import { format, parse, startOfWeek, endOfWeek, startOfDay, endOfDay, startOfMonth, endOfMonth, getDay, formatISO } from 'date-fns';
 import { fieldService } from '@/lib/fieldService';
 import { buildFieldCalendarEvents } from './fieldCalendar';
@@ -29,6 +30,14 @@ export default function OrganizationDetailPage() {
   );
 }
 
+const formatHourLabel = (hour: number) => {
+  const date = new Date();
+  date.setHours(hour, 0, 0, 0);
+  return format(date, 'h a');
+};
+
+const MIN_FIELD_CALENDAR_HEIGHT = 800;
+
 function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
@@ -38,7 +47,10 @@ function OrganizationDetailContent() {
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields'>('overview');
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
-  const [showCreateFieldModal, setShowCreateFieldModal] = useState(false);
+  const [showFieldModal, setShowFieldModal] = useState(false);
+  const [editingField, setEditingField] = useState<Field | null>(null);
+  const [showRentalSlotModal, setShowRentalSlotModal] = useState(false);
+  const [editingRentalSlot, setEditingRentalSlot] = useState<TimeSlot | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [showEventDetailModal, setShowEventDetailModal] = useState(false);
   const [calendarView, setCalendarView] = useState<View>('month');
@@ -48,6 +60,8 @@ function OrganizationDetailContent() {
   const [fieldCalendarDate, setFieldCalendarDate] = useState<Date>(new Date());
   const [fieldScheduleLoading, setFieldScheduleLoading] = useState(false);
   const [fieldScheduleFields, setFieldScheduleFields] = useState<Field[]>([]);
+  const [fieldScheduleRange, setFieldScheduleRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
   const [fieldScheduleSelectedFieldId, setFieldScheduleSelectedFieldId] = useState<string | null>(null);
 
   const localizer = useMemo(() => dateFnsLocalizer({
@@ -64,11 +78,9 @@ function OrganizationDetailContent() {
   const CalendarEvent: any = ({ event }: any) => {
     const s: Date = event.start instanceof Date ? event.start : new Date(event.start);
     const e: Date = event.end instanceof Date ? event.end : new Date(event.end);
-    const times = `${format(s, 'p')} - ${format(e, 'p')}`; // e.g., 2:00 PM - 3:30 PM
     const title = event.resource?.name || event.title;
     return (
       <div className="leading-tight">
-        <div className="text-[11px] opacity-90">{times}</div>
         <div className="truncate">{title}</div>
       </div>
     );
@@ -130,6 +142,7 @@ function OrganizationDetailContent() {
     const startLocal = formatISO(start, { representation: 'complete' });
     const endLocal = formatISO(end, { representation: 'complete' });
     setFieldScheduleLoading(true);
+    setFieldScheduleRange({ start: new Date(start.getTime()), end: new Date((end ?? start).getTime()) });
     try {
       const fields = await fieldService.listFields(
         { organizationId: id },
@@ -147,11 +160,86 @@ function OrganizationDetailContent() {
     }
   }, [computeFieldRange, id]);
 
+  const handleRentalSlotSaved = useCallback((newField: Field) => {
+    setFieldScheduleFields((prev) => prev.map((field) => {
+      if (field.$id !== newField.$id) {
+        return field;
+      }
+
+      return newField;
+    }));
+
+    setOrg((prev) => {
+      if (!prev || !prev.fields) {
+        return prev;
+      }
+
+      const nextFields = prev.fields.map((field) => {
+        if (field.$id !== newField.$id) {
+          return field;
+        }
+
+        return newField;
+      });
+
+      return { ...prev, fields: nextFields };
+    });
+    setShowRentalSlotModal(false);
+    setEditingRentalSlot(null);
+  }, [setFieldScheduleFields, setOrg, setShowRentalSlotModal, setEditingRentalSlot]);
+
+  const handleFieldSaved = useCallback((savedField: Field) => {
+    setOrg((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const existing = Array.isArray(prev.fields) ? [...prev.fields] : [];
+      const index = existing.findIndex((field) => field.$id === savedField.$id);
+      if (index >= 0) {
+        existing[index] = savedField;
+      } else {
+        existing.push(savedField);
+      }
+
+      return { ...prev, fields: existing };
+    });
+
+    setFieldScheduleFields((prev) => {
+      const list = [...prev];
+      const index = list.findIndex((field) => field.$id === savedField.$id);
+      if (index >= 0) {
+        list[index] = savedField;
+        return list;
+      }
+
+      list.push(savedField);
+      return list;
+    });
+
+    setShowFieldModal(false);
+    setEditingField(null);
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'fields' && fieldViewMode === 'schedule') {
       loadFieldSchedule(fieldCalendarView, fieldCalendarDate);
     }
   }, [activeTab, fieldViewMode, fieldCalendarView, fieldCalendarDate, loadFieldSchedule]);
+
+  useEffect(() => {
+    if (activeTab !== 'fields' || fieldViewMode !== 'schedule') {
+      setShowRentalSlotModal(false);
+      setEditingRentalSlot(null);
+    }
+  }, [activeTab, fieldViewMode]);
+
+  useEffect(() => {
+    if (activeTab !== 'fields') {
+      setShowFieldModal(false);
+      setEditingField(null);
+    }
+  }, [activeTab]);
 
   const sortedFieldScheduleFields = useMemo(() => {
     return [...fieldScheduleFields].sort((a, b) => {
@@ -179,7 +267,56 @@ function OrganizationDetailContent() {
     }
   }, [sortedFieldScheduleFields, fieldScheduleSelectedFieldId]);
 
-  const fieldScheduleEvents = useMemo(() => buildFieldCalendarEvents(fieldScheduleFields), [fieldScheduleFields]);
+  const fieldScheduleEvents = useMemo(() => buildFieldCalendarEvents(fieldScheduleFields, fieldScheduleRange), [fieldScheduleFields, fieldScheduleRange]);
+  const defaultTimeRange = useMemo<[number, number]>(() => {
+    if (!fieldScheduleEvents.length) {
+      return [8, 22];
+    }
+
+    let earliest = 24;
+    let latest = 0;
+    fieldScheduleEvents.forEach((event) => {
+      const startHour = event.start.getHours() + event.start.getMinutes() / 60;
+      const endHour = event.end.getHours() + event.end.getMinutes() / 60;
+      earliest = Math.min(earliest, startHour);
+      latest = Math.max(latest, endHour);
+    });
+
+    const floor = Math.max(0, Math.floor(earliest));
+    const ceil = Math.min(24, Math.ceil(latest));
+    if (floor === ceil) {
+      const adjusted = Math.min(24, floor + 1);
+      return [Math.max(0, adjusted - 1), adjusted];
+    }
+    return [floor, ceil];
+  }, [fieldScheduleEvents]);
+
+  useEffect(() => {
+    setTimeRange(defaultTimeRange);
+  }, [defaultTimeRange]);
+
+  const showTimeRangeSlider = fieldCalendarView === 'week' || fieldCalendarView === 'day';
+  const visibleHourSpan = useMemo(() => Math.max(1, timeRange[1] - timeRange[0]), [timeRange]);
+
+  const slotGroupPropGetter = useCallback<SlotGroupPropGetter>(() => {
+    const baseHeight = MIN_FIELD_CALENDAR_HEIGHT / visibleHourSpan;
+    return {
+      style: {
+        height: `${baseHeight}px`,
+        minHeight: `${baseHeight}px`,
+        flex: '0 0 auto',
+      },
+    };
+  }, [visibleHourSpan]);
+
+  const minTime = useMemo(() => new Date(1970, 0, 1, timeRange[0], 0, 0), [timeRange]);
+  const maxTime = useMemo(() => {
+    const hour = Math.min(24, Math.max(timeRange[1], timeRange[0] + 1));
+    if (hour >= 24) {
+      return new Date(1970, 0, 1, 23, 59, 59, 999);
+    }
+    return new Date(1970, 0, 1, hour, 0, 0);
+  }, [timeRange]);
   const selectedField = useMemo(
     () => sortedFieldScheduleFields.find((field) => field.$id === fieldScheduleSelectedFieldId) ?? null,
     [sortedFieldScheduleFields, fieldScheduleSelectedFieldId]
@@ -351,14 +488,31 @@ function OrganizationDetailContent() {
                         { label: 'Schedule', value: 'schedule' },
                       ]}
                     />
-                    <Button onClick={() => setShowCreateFieldModal(true)}>Create Field</Button>
+                    <Button
+                      onClick={() => {
+                        setEditingField(null);
+                        setShowFieldModal(true);
+                      }}
+                    >
+                      Create Field
+                    </Button>
                   </Group>
                 </Group>
                 {fieldViewMode === 'list' ? (
                   org.fields && org.fields.length > 0 ? (
                     <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
                       {org.fields.map((f) => (
-                        <Paper key={f.$id} withBorder p="md" radius="md">
+                        <Paper
+                          key={f.$id}
+                          withBorder
+                          p="md"
+                          radius="md"
+                          className="cursor-pointer"
+                          onClick={() => {
+                            setEditingField(f);
+                            setShowFieldModal(true);
+                          }}
+                        >
                           <Text fw={500}>{f.name || `Field ${f.fieldNumber}`}</Text>
                           <Text size="sm" c="dimmed">{f.type || '—'}</Text>
                           {f.location && <Text size="xs" c="dimmed" mt={4}>{f.location}</Text>}
@@ -422,12 +576,48 @@ function OrganizationDetailContent() {
                       )}
 
                       {activeField && (
-                        <Text size="sm" c="dimmed" mb="sm">
-                          Viewing schedule for {activeField.name || (activeField.fieldNumber ? `Field ${activeField.fieldNumber}` : 'Selected field')}
-                        </Text>
+                        <Group justify="space-between" align="center" mb="sm">
+                          <Text size="sm" c="dimmed">
+                            Viewing schedule for {activeField.name || (activeField.fieldNumber ? `Field ${activeField.fieldNumber}` : 'Selected field')}
+                          </Text>
+                          <Button
+                            size="xs"
+                            variant="light"
+                            onClick={() => {
+                              setEditingRentalSlot(null);
+                              setShowRentalSlotModal(true);
+                            }}
+                          >
+                            Add rental slot
+                          </Button>
+                        </Group>
                       )}
 
-                      <div className="h-[800px]">
+                      <div className="w-full">
+                        {showTimeRangeSlider && (
+                          <div className="mb-8">
+                            <Text size="sm" fw={600} mb={8}>
+                              Visible hours: {formatHourLabel(timeRange[0])} – {formatHourLabel(timeRange[1])}
+                            </Text>
+                            <RangeSlider
+                              min={0}
+                              max={24}
+                              step={1}
+                              minRange={1}
+                              value={timeRange}
+                              onChange={(value) => setTimeRange(value as [number, number])}
+                              marks={[
+                                { value: 0, label: '12 AM' },
+                                { value: 6, label: '6 AM' },
+                                { value: 12, label: '12 PM' },
+                                { value: 18, label: '6 PM' },
+                                { value: 24, label: '12 AM' },
+                              ]}
+                              label={(value) => formatHourLabel(value)}
+                              size="sm"
+                            />
+                          </div>
+                        )}
                         <BigCalendar
                           localizer={localizer}
                           events={filteredFieldScheduleEvents}
@@ -446,8 +636,15 @@ function OrganizationDetailContent() {
                             if (evt.metaType === 'event' && evt.resource) {
                               setSelectedEvent(evt.resource);
                               setShowEventDetailModal(true);
+                            } else if (evt.metaType === 'rental' && evt.resource) {
+                              setEditingRentalSlot(evt.resource as TimeSlot);
+                              setShowRentalSlotModal(true);
                             }
                           }}
+                          min={minTime}
+                          max={maxTime}
+                          slotGroupPropGetter={slotGroupPropGetter}
+                          style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
                         />
                       </div>
                     </>
@@ -479,10 +676,24 @@ function OrganizationDetailContent() {
         onTeamCreated={async () => { setShowCreateTeamModal(false); if (id) await loadOrg(id); }}
       />
       <CreateFieldModal
-        isOpen={showCreateFieldModal}
-        onClose={() => setShowCreateFieldModal(false)}
+        isOpen={showFieldModal}
+        onClose={() => {
+          setShowFieldModal(false);
+          setEditingField(null);
+        }}
         organizationId={id}
-        onFieldCreated={async () => { setShowCreateFieldModal(false); if (id) await loadOrg(id); }}
+        field={editingField}
+        onFieldSaved={handleFieldSaved}
+      />
+      <CreateRentalSlotModal
+        opened={showRentalSlotModal}
+        onClose={() => {
+          setShowRentalSlotModal(false);
+          setEditingRentalSlot(null);
+        }}
+        field={activeField}
+        slot={editingRentalSlot}
+        onSaved={handleRentalSlotSaved}
       />
     </>
   );

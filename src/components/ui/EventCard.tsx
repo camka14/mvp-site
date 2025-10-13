@@ -71,7 +71,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
 
     if (Array.isArray(event.timeSlots)) {
       event.timeSlots.forEach((slot) => {
-        const field = slot.field;
+        const field = slot.scheduledFieldId;
         if (field && typeof field === 'object' && field.name) {
           names.add(field.name);
         }
