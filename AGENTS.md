@@ -637,7 +637,7 @@ describe('eventService.getEventWithRelations', () => {
 **Component interaction test**
 
 ```tsx
-// src/app/events/components/__tests__/LeagueFields.test.tsx
+// src/app/discover/components/__tests__/LeagueFields.test.tsx
 import { render, fireEvent } from '@testing-library/react';
 import LeagueFields from '../LeagueFields';
 

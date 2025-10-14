@@ -354,15 +354,20 @@ export default function CreateRentalSlotModal({
             label="Price (optional, USD)"
             value={price ?? undefined}
             onChange={(val) => {
-              const numeric = typeof val === 'number' ? val : Number(val);
+              if (typeof val === 'number') {
+                setPrice(val);
+                return;
+              }
+              if (val === '' || val === null || val === undefined) {
+                setPrice(null);
+                return;
+              }
+              const numeric = Number(val);
               setPrice(Number.isFinite(numeric) ? numeric : null);
             }}
-            precision={2}
             min={0}
             step={1}
             disabled={!field}
-            parser={(value) => value?.replace(/[^0-9.]/g, '') ?? ''}
-            formatter={(value) => (value === undefined || value === '' ? '' : `$${value}`)}
           />
 
           <Switch

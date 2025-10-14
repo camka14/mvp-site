@@ -108,7 +108,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     };
 
     const handleViewSchedule = (tab?: string) => {
-        const schedulePath = `/events/${currentEvent.$id}/schedule`;
+        const schedulePath = `/discover/${currentEvent.$id}/schedule`;
         const target = tab ? `${schedulePath}?tab=${tab}` : schedulePath;
         router.push(target);
         onClose();

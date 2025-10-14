@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ImageSelectionModal } from './ImageSelectionModal';
 import { Box, Button, Group, ActionIcon, Paper, Stack, Text, Image } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -11,16 +11,27 @@ interface ImageUploaderProps {
     className?: string;
     placeholder?: string;
     onChange?: (fileId: string, url: string) => void; // ✅ Pass both ID and URL
+    readOnly?: boolean;
 }
 
 export function ImageUploader({
     currentImageUrl,
     bucketId,
     placeholder = "Click to select image",
-    onChange
+    onChange,
+    readOnly = false,
 }: ImageUploaderProps) {
     const [opened, { open, close }] = useDisclosure(false);
     const [selectedImageUrl, setSelectedImageUrl] = useState(currentImageUrl || '');
+
+    useEffect(() => {
+        setSelectedImageUrl(currentImageUrl || '');
+    }, [currentImageUrl]);
+
+    const handleOpen = () => {
+        if (readOnly) return;
+        open();
+    };
 
     const handleImageSelect = (fileId: string, url: string) => {
         setSelectedImageUrl(url);
@@ -28,6 +39,7 @@ export function ImageUploader({
     };
 
     const handleRemove = () => {
+        if (readOnly) return;
         setSelectedImageUrl('');
         onChange?.('', ''); // ✅ Clear both
     };
@@ -37,20 +49,22 @@ export function ImageUploader({
             {selectedImageUrl ? (
                 <Box pos="relative">
                     <Image src={selectedImageUrl} alt="Selected image" h={160} radius="md" fit="cover" />
-                    <Group gap="xs" pos="absolute" top={8} right={8}>
-                        <ActionIcon variant="filled" color="blue" onClick={open} title="Change image">
-                            ✏️
-                        </ActionIcon>
-                        <ActionIcon variant="filled" color="red" onClick={handleRemove} title="Remove image">
-                            🗑️
-                        </ActionIcon>
-                    </Group>
+                    {!readOnly && (
+                        <Group gap="xs" pos="absolute" top={8} right={8}>
+                            <ActionIcon variant="filled" color="blue" onClick={handleOpen} title="Change image">
+                                ✏️
+                            </ActionIcon>
+                            <ActionIcon variant="filled" color="red" onClick={handleRemove} title="Remove image">
+                                🗑️
+                            </ActionIcon>
+                        </Group>
+                    )}
                 </Box>
             ) : (
                 <Paper withBorder p="md" h={160} style={{ borderStyle: 'dashed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Stack gap={2} align="center">
                         <Text fz={32}>📸</Text>
-                        <Button variant="light" onClick={open}>Select image</Button>
+                        <Button variant="light" onClick={handleOpen} disabled={readOnly}>Select image</Button>
                         <Text size="xs" c="dimmed">{placeholder}</Text>
                     </Stack>
                 </Paper>

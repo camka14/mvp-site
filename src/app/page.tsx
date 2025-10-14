@@ -12,7 +12,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!loading) {
       if (user) {
-        router.push('/events');
+        router.push('/discover');
       } else {
         router.push('/login');
       }

@@ -2,14 +2,12 @@
 
 import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
-import type { Event, Field, Organization, Team } from '@/types';
+import type { Event, Field, Organization, Team, TimeSlot } from '@/types';
 import { getCategoryFromEvent } from '@/types';
-import { eventService } from './eventService';
+import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID!;
-const FIELDS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!;
-
 type AnyRow = Record<string, any> & { $id: string };
 
 class OrganizationService {
@@ -34,15 +32,74 @@ class OrganizationService {
       avatarUrl: '',
     } as Team;
   }
+
+  private mapRowToField(row: AnyRow): Field {
+    const lat = typeof row.lat === 'number' ? row.lat : Number(row.lat ?? 0);
+    const long = typeof row.long === 'number' ? row.long : Number(row.long ?? 0);
+    const fieldNumber = typeof row.fieldNumber === 'number' ? row.fieldNumber : Number(row.fieldNumber ?? 0);
+
+    const field: Field = {
+      $id: row.$id,
+      name: row.name ?? '',
+      location: row.location ?? '',
+      lat: Number.isFinite(lat) ? lat : 0,
+      long: Number.isFinite(long) ? long : 0,
+      type: row.type ?? '',
+      fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
+      divisions: row.divisions,
+      organization: row.organization,
+    } as Field;
+
+    if (Array.isArray(row.rentalSlots) && row.rentalSlots.length) {
+      field.rentalSlots = row.rentalSlots
+        .map((slot: AnyRow) => this.mapRowToTimeSlot(slot))
+        .filter((slot): slot is TimeSlot => Boolean(slot));
+    }
+
+    return field;
+  }
+
+  private mapRowToTimeSlot(row: AnyRow): TimeSlot | null {
+    if (!row) {
+      return null;
+    }
+
+    const dayOfWeek = Number(row.dayOfWeek ?? 0);
+
+    const startDate = ensureLocalDateTimeString(row.startDate ?? row.start ?? null);
+    const endDate =
+      row.endDate === null
+        ? null
+        : ensureLocalDateTimeString(row.endDate ?? row.end ?? null) ?? undefined;
+
+    const slot: TimeSlot = {
+      $id: row.$id ?? row.id ?? '',
+      dayOfWeek: Number.isNaN(dayOfWeek) ? 0 : (dayOfWeek % 7) as TimeSlot['dayOfWeek'],
+      repeating: row.repeating === undefined ? false : Boolean(row.repeating),
+      startDate: startDate ?? undefined,
+      endDate,
+      startTimeMinutes:
+        typeof row.startTimeMinutes === 'number' ? row.startTimeMinutes : undefined,
+      endTimeMinutes:
+        typeof row.endTimeMinutes === 'number' ? row.endTimeMinutes : undefined,
+      price: typeof row.price === 'number' ? row.price : undefined,
+    };
+
+    return slot;
+  }
+
   private mapRowToOrganization(row: AnyRow): Organization {
-    row.fields = row.fields?.map((f: AnyRow) => ({
-      ...(f as any),
-      events: eventService.getEventsForFieldInRange(f.$id, new Date(Date.now())),
-      matches: eventService.getMatchesForFieldInRange(f.$id, new Date(Date.now())),
-    })) as Field[];
-    return {
-      ...row,
-    } as Organization;
+    const organization: Organization = {
+      ...(row as any),
+    };
+
+    if (Array.isArray(row.fields)) {
+      organization.fields = row.fields
+        .map((fieldRow: AnyRow) => this.mapRowToField(fieldRow))
+        .filter((field): field is Field => Boolean(field));
+    }
+
+    return organization;
   }
 
   async createOrganization(data: Partial<Organization> & { name: string; ownerId: string }): Promise<Organization> {
@@ -85,6 +142,25 @@ class OrganizationService {
     } catch (e) {
       console.error('Failed to fetch organization:', e);
       return undefined;
+    }
+  }
+
+  async listOrganizationsWithFields(limit: number = 100): Promise<Organization[]> {
+    try {
+      const response = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: ORGANIZATIONS_TABLE_ID,
+        queries: [
+          Query.select(['*', 'fields.*', 'fields.rentalSlots.*']),
+          Query.limit(limit),
+        ],
+      });
+
+      const rows = Array.isArray(response.rows) ? (response.rows as AnyRow[]) : [];
+      return rows.map((row) => this.mapRowToOrganization(row));
+    } catch (error) {
+      console.error('Failed to list organizations with fields:', error);
+      return [];
     }
   }
 }

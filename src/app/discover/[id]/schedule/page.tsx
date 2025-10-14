@@ -433,7 +433,7 @@ function EventScheduleContent() {
         params.delete('preview');
         const query = params.toString();
         const targetPath = publishedEvent.$id
-          ? `/events/${publishedEvent.$id}/schedule${query ? `?${query}` : ''}`
+          ? `/discover/${publishedEvent.$id}/schedule${query ? `?${query}` : ''}`
           : `${pathname}${query ? `?${query}` : ''}`;
         router.replace(targetPath, { scroll: false });
       }
@@ -459,7 +459,7 @@ function EventScheduleContent() {
       try {
         await eventService.deleteUnpublishedEvent(event);
         clearEventCache(event.$id);
-        router.push('/events');
+        router.push('/discover');
       } catch (err) {
         console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
         setError(`Failed to cancel ${entityLabel.toLowerCase()}.`);
@@ -472,7 +472,7 @@ function EventScheduleContent() {
       if (typeof window !== 'undefined' && window.history.length > 1) {
         router.back();
       } else {
-        router.push('/events');
+        router.push('/discover');
       }
       return;
     }
@@ -495,7 +495,7 @@ function EventScheduleContent() {
       await leagueService.deleteWeeklySchedulesForEvent(event.$id);
       await eventService.deleteEvent(event.$id);
       clearEventCache(event.$id);
-      router.push('/events');
+      router.push('/discover');
     } catch (err) {
       console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
       setError(`Failed to cancel ${entityLabel.toLowerCase()}.`);
@@ -592,7 +592,7 @@ function EventScheduleContent() {
           <Paper withBorder shadow="sm" p="xl" radius="md">
             <Stack gap="md" align="center">
               <Text fw={600} size="lg">League not found.</Text>
-              <Button variant="default" onClick={() => router.push('/events')}>Back to Events</Button>
+              <Button variant="default" onClick={() => router.push('/discover')}>Back to Events</Button>
             </Stack>
           </Paper>
         </div>

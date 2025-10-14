@@ -28,6 +28,7 @@ interface EventCreationModalProps {
     currentUser: UserData;
     editingEvent?: Event;
     organization: Organization | null;
+    immutableDefaults?: Partial<Event>;
 }
 
 type EventType = Event['eventType'];
@@ -272,7 +273,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     onEventCreated,
     currentUser,
     editingEvent,
-    organization
+    organization,
+    immutableDefaults,
 }) => {
     const router = useRouter();
     const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
@@ -315,6 +317,60 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const isPreviewDraft = Boolean(editingEvent?.$id && editingEvent.$id.startsWith('preview-'));
     const isEditMode = !!activeEditingEvent && !isPreviewDraft;
 
+    const immutableDefaultsMemo = useMemo(() => immutableDefaults ?? {}, [immutableDefaults]);
+
+    const isImmutableField = useCallback(
+        (key: keyof Event) => immutableDefaultsMemo[key] !== undefined,
+        [immutableDefaultsMemo]
+    );
+
+    const applyImmutableDefaults = useCallback((state: EventFormState): EventFormState => {
+        const defaults = immutableDefaultsMemo;
+        if (!defaults || Object.keys(defaults).length === 0) {
+            return state;
+        }
+
+        const next = { ...state };
+
+        if (defaults.name !== undefined) next.name = defaults.name ?? '';
+        if (defaults.description !== undefined) next.description = defaults.description ?? '';
+        if (defaults.location !== undefined) next.location = defaults.location ?? '';
+        if (Array.isArray(defaults.coordinates) && defaults.coordinates.length === 2) {
+            next.coordinates = defaults.coordinates as [number, number];
+        }
+        if (typeof defaults.lat === 'number') next.lat = defaults.lat;
+        if (typeof defaults.long === 'number') next.long = defaults.long;
+        if (defaults.start !== undefined) next.start = formatLocalDateTime(defaults.start);
+        if (defaults.end !== undefined) next.end = formatLocalDateTime(defaults.end);
+        if (defaults.eventType !== undefined) next.eventType = defaults.eventType as EventFormState['eventType'];
+        if (defaults.sport !== undefined) next.sport = defaults.sport ?? '';
+        if (defaults.fieldType !== undefined) next.fieldType = defaults.fieldType ?? 'indoor';
+        if (typeof defaults.price === 'number') next.price = defaults.price;
+        if (typeof defaults.maxParticipants === 'number') next.maxParticipants = defaults.maxParticipants;
+        if (typeof defaults.teamSizeLimit === 'number') next.teamSizeLimit = defaults.teamSizeLimit;
+        if (typeof defaults.teamSignup === 'boolean') next.teamSignup = defaults.teamSignup;
+        if (typeof defaults.singleDivision === 'boolean') next.singleDivision = defaults.singleDivision;
+        if (defaults.divisions !== undefined) {
+            next.divisions = Array.isArray(defaults.divisions)
+                ? defaults.divisions.map(divisionKeyFromValue)
+                : [];
+        }
+        if (typeof defaults.cancellationRefundHours === 'number') {
+            next.cancellationRefundHours = defaults.cancellationRefundHours;
+        }
+        if (typeof defaults.registrationCutoffHours === 'number') {
+            next.registrationCutoffHours = defaults.registrationCutoffHours;
+        }
+        if (defaults.imageId !== undefined) next.imageId = defaults.imageId ?? '';
+        if (typeof defaults.seedColor === 'number') next.seedColor = defaults.seedColor;
+        if (Array.isArray(defaults.waitListIds)) next.waitList = [...defaults.waitListIds];
+        if (Array.isArray(defaults.freeAgentIds)) next.freeAgents = [...defaults.freeAgentIds];
+        if (Array.isArray(defaults.players)) next.players = [...defaults.players];
+        if (Array.isArray(defaults.teams)) next.teams = [...defaults.teams];
+
+        return next;
+    }, [immutableDefaultsMemo]);
+
     useEffect(() => {
         if (!isOpen || !editingEvent) {
             setHydratedEditingEvent(null);
@@ -351,7 +407,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     // Complete event data state with ALL fields
     // Central event payload that binds the form inputs for basic details, logistics, and relationships.
     const [eventData, setEventData] = useState<EventFormState>(() =>
-        activeEditingEvent ? mapEventToFormState(activeEditingEvent) : createDefaultEventData()
+        applyImmutableDefaults(
+            activeEditingEvent ? mapEventToFormState(activeEditingEvent) : createDefaultEventData()
+        )
     );
 
     // Holds tournament-specific settings so the modal can conditionally render the TournamentFields block.
@@ -478,17 +536,30 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         appliedDefaultLocationLabelRef.current = null;
 
         if (activeEditingEvent) {
-            setEventData(mapEventToFormState(activeEditingEvent));
-            setSelectedImageId(activeEditingEvent.imageId || '');
-            setSelectedImageUrl(activeEditingEvent.imageId
-                ? getEventImageUrl({ imageId: activeEditingEvent.imageId, width: 800 })
-                : '');
+            const mapped = mapEventToFormState(activeEditingEvent);
+            const applied = applyImmutableDefaults(mapped);
+            setEventData(applied);
+
+            const imageIdDefault = immutableDefaultsMemo.imageId ?? activeEditingEvent.imageId ?? '';
+            setSelectedImageId(imageIdDefault);
+            setSelectedImageUrl(
+                imageIdDefault
+                    ? getEventImageUrl({ imageId: imageIdDefault, width: 800 })
+                    : ''
+            );
         } else {
-            setEventData(createDefaultEventData());
-            setSelectedImageId('');
-            setSelectedImageUrl('');
+            const applied = applyImmutableDefaults(createDefaultEventData());
+            setEventData(applied);
+            const imageIdDefault = immutableDefaultsMemo.imageId;
+            if (imageIdDefault) {
+                setSelectedImageId(imageIdDefault);
+                setSelectedImageUrl(getEventImageUrl({ imageId: imageIdDefault, width: 800 }));
+            } else {
+                setSelectedImageId('');
+                setSelectedImageUrl('');
+            }
         }
-    }, [activeEditingEvent, isOpen]);
+    }, [activeEditingEvent, isOpen, applyImmutableDefaults, immutableDefaultsMemo]);
 
     // When provisioning local fields, mirror field type/count changes into the generated list.
     useEffect(() => {
@@ -1110,7 +1181,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             }
 
             onClose();
-            router.push(`/events/${previewEvent.$id}/schedule?preview=1`);
+            router.push(`/discover/${previewEvent.$id}/schedule?preview=1`);
         } catch (error) {
             setLeagueError(error instanceof Error ? error.message : 'Failed to generate preview schedule.');
         } finally {
@@ -1246,10 +1317,16 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Syncs the selected hero image with component state after uploads or picker changes.
     const handleImageChange = (fileId: string, url: string) => {
+        if (isImmutableField('imageId')) {
+            return;
+        }
         setSelectedImageId(fileId);
         setSelectedImageUrl(url);
         setEventData(prev => ({ ...prev, imageId: fileId }));
     };
+
+    const allowImageEdit = !isImmutableField('imageId');
+    const isLocationImmutable = isImmutableField('location') || isImmutableField('lat') || isImmutableField('long') || isImmutableField('coordinates');
 
     if (!isOpen) return null;
 
@@ -1291,7 +1368,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                             className="w-full max-w-md"
                             placeholder="Select event image"
-                            onChange={handleImageChange}
+                            onChange={allowImageEdit ? handleImageChange : undefined}
+                            readOnly={!allowImageEdit}
                         />
                         {!validation.isImageValid && (
                             <p className="text-red-600 text-sm mt-1">An event image is required.</p>
@@ -1307,7 +1385,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <TextInput
                                 label="Event Name *"
                                 value={eventData.name}
-                                onChange={(e) => setEventData(prev => ({ ...prev, name: e.currentTarget?.value || '' }))}
+                                disabled={isImmutableField('name')}
+                                onChange={(e) => {
+                                    if (isImmutableField('name')) return;
+                                    setEventData(prev => ({ ...prev, name: e.currentTarget?.value || '' }));
+                                }}
                                 placeholder="Enter event name"
                                 error={!validation.isNameValid && !!eventData.name ? 'Event name is required' : undefined}
                             />
@@ -1317,7 +1399,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 placeholder="Select a sport"
                                 data={SPORTS_LIST}
                                 value={eventData.sport}
-                                onChange={(value) => setEventData(prev => ({ ...prev, sport: value || '' }))}
+                                disabled={isImmutableField('sport')}
+                                onChange={(value) => {
+                                    if (isImmutableField('sport')) return;
+                                    setEventData(prev => ({ ...prev, sport: value || '' }));
+                                }}
                                 searchable
                             />
                         </div>
@@ -1325,7 +1411,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         <Textarea
                             label="Description"
                             value={eventData.description}
-                            onChange={(e) => setEventData(prev => ({ ...prev, description: e.currentTarget?.value || '' }))}
+                            disabled={isImmutableField('description')}
+                            onChange={(e) => {
+                                if (isImmutableField('description')) return;
+                                setEventData(prev => ({ ...prev, description: e.currentTarget?.value || '' }));
+                            }}
                             placeholder="Describe your event..."
                             autosize
                             minRows={3}
@@ -1346,7 +1436,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     { value: 'league', label: 'League' },
                                 ]}
                                 value={eventData.eventType}
+                                disabled={isImmutableField('eventType')}
                                 onChange={(value) => {
+                                    if (isImmutableField('eventType')) return;
                                     if (!value) return;
                                     setLeagueError(null);
                                     setEventData(prev => ({
@@ -1365,7 +1457,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     { value: 'grass', label: 'Grass' },
                                 ]}
                                 value={eventData.fieldType}
-                                onChange={(value) => setEventData(prev => ({ ...prev, fieldType: value || prev.fieldType }))}
+                                disabled={isImmutableField('fieldType')}
+                                onChange={(value) => {
+                                    if (isImmutableField('fieldType')) return;
+                                    setEventData(prev => ({ ...prev, fieldType: value || prev.fieldType }));
+                                }}
                             />
                         </div>
 
@@ -1377,8 +1473,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     min={0}
                                     step={0.01}
                                     value={eventData.price}
-                                    onChange={(val) => setEventData(prev => ({ ...prev, price: Number(val) || 0 }))}
-                                    disabled={!hasStripeAccount}
+                                    onChange={(val) => {
+                                        if (isImmutableField('price')) return;
+                                        setEventData(prev => ({ ...prev, price: Number(val) || 0 }));
+                                    }}
+                                    disabled={!hasStripeAccount || isImmutableField('price')}
                                     decimalScale={2}
                                     fixedDecimalScale
                                 />
@@ -1416,7 +1515,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 label="Max Participants *"
                                 min={2}
                                 value={eventData.maxParticipants}
-                                onChange={(val) => setEventData(prev => ({ ...prev, maxParticipants: Number(val) || 10 }))}
+                                disabled={isImmutableField('maxParticipants')}
+                                onChange={(val) => {
+                                    if (isImmutableField('maxParticipants')) return;
+                                    setEventData(prev => ({ ...prev, maxParticipants: Number(val) || 10 }));
+                                }}
                                 error={!validation.isMaxParticipantsValid ? 'Enter at least 2' : undefined}
                             />
 
@@ -1424,7 +1527,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 label="Team Size Limit"
                                 min={1}
                                 value={eventData.teamSizeLimit}
-                                onChange={(val) => setEventData(prev => ({ ...prev, teamSizeLimit: Number(val) || 2 }))}
+                                disabled={isImmutableField('teamSizeLimit')}
+                                onChange={(val) => {
+                                    if (isImmutableField('teamSizeLimit')) return;
+                                    setEventData(prev => ({ ...prev, teamSizeLimit: Number(val) || 2 }));
+                                }}
                                 error={!validation.isTeamSizeValid ? 'Enter at least 1' : undefined}
                             />
                         </div>
@@ -1435,13 +1542,21 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 label="Cancellation Refund (Hours)"
                                 min={0}
                                 value={eventData.cancellationRefundHours}
-                                onChange={(val) => setEventData(prev => ({ ...prev, cancellationRefundHours: Number(val) || 24 }))}
+                                disabled={isImmutableField('cancellationRefundHours')}
+                                onChange={(val) => {
+                                    if (isImmutableField('cancellationRefundHours')) return;
+                                    setEventData(prev => ({ ...prev, cancellationRefundHours: Number(val) || 24 }));
+                                }}
                             />
                             <NumberInput
                                 label="Registration Cutoff (Hours)"
                                 min={0}
                                 value={eventData.registrationCutoffHours}
-                                onChange={(val) => setEventData(prev => ({ ...prev, registrationCutoffHours: Number(val) || 2 }))}
+                                disabled={isImmutableField('registrationCutoffHours')}
+                                onChange={(val) => {
+                                    if (isImmutableField('registrationCutoffHours')) return;
+                                    setEventData(prev => ({ ...prev, registrationCutoffHours: Number(val) || 2 }));
+                                }}
                             />
                         </div>
 
@@ -1485,9 +1600,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     lng: (eventData.long ?? userLocation?.lng ?? 0)
                                 }}
                                 onChange={(location, lat, lng) => {
+                                    if (isLocationImmutable) return;
                                     setEventData(prev => ({ ...prev, location, lat, long: lng, coordinates: [lng, lat] }));
                                 }}
                                 isValid={validation.isLocationValid}
+                                disabled={isLocationImmutable}
                             />
                         </div>
 
@@ -1498,7 +1615,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     label="Start Date & Time"
                                     valueFormat="DD MMM YYYY hh:mm A"
                                     value={parseLocalDateTime(eventData.start)}
+                                    disabled={isImmutableField('start')}
                                     onChange={(val) => {
+                                        if (isImmutableField('start')) return;
                                         const parsed = parseLocalDateTime(val as Date | string | null);
                                         if (!parsed) return;
                                         setEventData(prev => ({ ...prev, start: formatLocalDateTime(parsed) }));
@@ -1517,7 +1636,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                         label="End Date & Time"
                                         valueFormat="DD MMM YYYY hh:mm A"
                                         value={parseLocalDateTime(eventData.end)}
+                                        disabled={isImmutableField('end')}
                                         onChange={(val) => {
+                                            if (isImmutableField('end')) return;
                                             const parsed = parseLocalDateTime(val as Date | string | null);
                                             if (!parsed) return;
                                             setEventData(prev => ({ ...prev, end: formatLocalDateTime(parsed) }));
@@ -1550,7 +1671,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 { value: 'open', label: 'Open (All Skill Levels)' },
                             ]}
                             value={eventData.divisions}
-                            onChange={(vals) => setEventData(prev => ({ ...prev, divisions: vals }))}
+                            disabled={isImmutableField('divisions')}
+                            onChange={(vals) => {
+                                if (isImmutableField('divisions')) return;
+                                setEventData(prev => ({ ...prev, divisions: vals }));
+                            }}
                             clearable
                             searchable
                         />
@@ -1560,7 +1685,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <Switch
                                 label="Team Event (teams compete rather than individuals)"
                                 checked={eventData.teamSignup}
+                                disabled={isImmutableField('teamSignup')}
                                 onChange={(e) => {
+                                    if (isImmutableField('teamSignup')) return;
                                     const checked = e.currentTarget.checked;
                                     setEventData(prev => ({ ...prev, teamSignup: checked }));
                                 }}
@@ -1568,7 +1695,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <Switch
                                 label="Single Division (all skill levels play together)"
                                 checked={eventData.singleDivision}
+                                disabled={isImmutableField('singleDivision')}
                                 onChange={(e) => {
+                                    if (isImmutableField('singleDivision')) return;
                                     const checked = e.currentTarget.checked;
                                     setEventData(prev => ({ ...prev, singleDivision: checked }));
                                 }}
