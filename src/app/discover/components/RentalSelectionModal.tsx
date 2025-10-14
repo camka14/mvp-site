@@ -78,6 +78,27 @@ const minutesToDate = (base: Date, minutes: number): Date => {
   return copy;
 };
 
+const normalizeDateInput = (value: Date | string | null): Date | null => {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (match) {
+      const [, year, month, day] = match;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    }
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    }
+  }
+  return null;
+};
+
 const compareRanges = (startA: Date, endA: Date, startB: Date, endB: Date) =>
   Math.max(startA.getTime(), startB.getTime()) < Math.min(endA.getTime(), endB.getTime());
 
@@ -152,7 +173,10 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
     label: field.name || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Field'),
   })), [fields]);
 
-  const today = useMemo(() => new Date(), []);
+  const today = useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }, []);
   const firstListing = listings[0];
   const initialFieldId = firstListing?.field.$id ?? fieldOptions[0]?.value ?? '';
   const initialRange: [number, number] = firstListing
@@ -202,7 +226,9 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
   const selectedField = useMemo(() => fields.find((field) => field.$id === selection.fieldId) ?? null, [fields, selection.fieldId]);
 
   const calendarEvents = useMemo<CalendarEventData[]>(() => {
-    if (!selectedField) return [];
+    if (!selectedField) {
+      return [];
+    }
     const baseEvents = buildFieldCalendarEvents([selectedField], calendarRange) as FieldCalendarEntry[];
 
     const [startHour, endHour] = selection.range;
@@ -320,18 +346,6 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
     return `Selection: ${startLabel} – ${endLabel} · Price ${priceLabel}`;
   }, [matchingRentalSlot, existingConflicts, selectedField, selection]);
 
-  const nextOccurrences = useMemo(() => listings.map((listing) => (
-    listing.nextOccurrence
-  )), [listings]);
-
-  const minDate = nextOccurrences.length
-    ? new Date(Math.min(...nextOccurrences.map((date) => date.getTime())))
-    : new Date();
-
-  const maxDate = nextOccurrences.length
-    ? new Date(Math.max(...nextOccurrences.map((date) => date.getTime())))
-    : addHours(new Date(), 24 * 30);
-
   return (
     <Drawer
       opened={opened}
@@ -373,27 +387,26 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
           <Select
             label="Field"
             data={fieldOptions}
-            value={selection.fieldId}
+            value={selection.fieldId || null}
             onChange={(value) => {
-              if (!value) return;
-              setSelection((prev) => ({ ...prev, fieldId: value }));
+              const nextValue = value ?? '';
+              setSelection((prev) => ({ ...prev, fieldId: nextValue }));
             }}
             style={{ flex: 1 }}
+            placeholder="Select a field"
+            clearable
           />
           <DatePickerInput
             label="Date"
             value={selection.date}
             onChange={(value: Date | string | null) => {
-              if (!value) return;
-              const nextDate = typeof value === 'string' ? new Date(value) : value;
-              if (!(nextDate instanceof Date) || Number.isNaN(nextDate.getTime())) {
+              const nextDate = normalizeDateInput(value);
+              if (!nextDate) {
                 return;
               }
               setSelection((prev) => ({ ...prev, date: nextDate }));
               setCalendarDate(nextDate);
             }}
-            minDate={minDate}
-            maxDate={maxDate}
             popoverProps={{ withinPortal: true }}
           />
         </Group>
@@ -407,6 +420,7 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
             max={24}
             step={0.5}
             minRange={1}
+            disabled={!selectedField}
             value={selection.range}
             onChange={(value) => setSelection((prev) => ({ ...prev, range: value as [number, number] }))}
             marks={[
@@ -423,28 +437,42 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
 
         <Divider label="Availability" labelPosition="left" my="sm" />
 
-        <Paper withBorder radius="md" style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}>
-          <BigCalendar
-            localizer={localizer}
-            events={calendarEvents}
-            view={calendarView}
-            date={calendarDate}
-            onView={(view) => setCalendarView(view)}
-            onNavigate={(date) => setCalendarDate(date)}
-            onRangeChange={handleCalendarRangeChange}
-            views={['month', 'week', 'day', 'agenda']}
-            popup
-            startAccessor="start"
-            endAccessor="end"
-            style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
-            slotGroupPropGetter={slotGroupPropGetter}
-            min={minTime}
-            max={maxTime}
-            eventPropGetter={eventPropGetter}
-            components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
-          />
-        </Paper>
-
+        {selectedField ? (
+          <Paper withBorder radius="md" style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}>
+            <BigCalendar
+              localizer={localizer}
+              events={calendarEvents}
+              view={calendarView}
+              date={calendarDate}
+              onView={(view) => setCalendarView(view)}
+              onNavigate={(date) => setCalendarDate(date)}
+              onRangeChange={handleCalendarRangeChange}
+              views={['week', 'day']}
+              popup
+              startAccessor="start"
+              endAccessor="end"
+              style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
+              slotGroupPropGetter={slotGroupPropGetter}
+              min={minTime}
+              max={maxTime}
+              eventPropGetter={eventPropGetter}
+              components={{ event: CalendarEvent }}
+            />
+          </Paper>
+        ) : (
+          <Paper
+            withBorder
+            radius="md"
+            style={{
+              minHeight: MIN_FIELD_CALENDAR_HEIGHT,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text c="dimmed">Select a field to view availability.</Text>
+          </Paper>
+        )}
         <Text size="sm" c={isSelectionValid ? 'teal' : 'red'}>
           {summaryText}
         </Text>
