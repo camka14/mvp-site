@@ -13,6 +13,7 @@ interface CreateRentalSlotModalProps {
   field: Field | null;
   slot?: TimeSlot | null;
   onSaved?: (field: Field) => void;
+  organizationHasStripeAccount?: boolean;
 }
 
 const toTimeValue = (date: Date): string => {
@@ -92,6 +93,7 @@ export default function CreateRentalSlotModal({
   field,
   slot,
   onSaved,
+  organizationHasStripeAccount = false,
 }: CreateRentalSlotModalProps) {
   const now = useMemo(() => {
     const current = new Date();
@@ -144,7 +146,11 @@ export default function CreateRentalSlotModal({
       }
 
       setRepeating(Boolean(slot.repeating));
-      setPrice(typeof slot.price === 'number' ? slot.price / 100 : null);
+      setPrice(
+        organizationHasStripeAccount && typeof slot.price === 'number'
+          ? slot.price / 100
+          : null,
+      );
       return;
     }
 
@@ -158,7 +164,13 @@ export default function CreateRentalSlotModal({
     setEndTime(toTimeValue(baseEnd));
     setRepeating(false);
     setPrice(null);
-  }, [opened, slot]);
+  }, [opened, slot, organizationHasStripeAccount]);
+
+  useEffect(() => {
+    if (!organizationHasStripeAccount) {
+      setPrice(null);
+    }
+  }, [organizationHasStripeAccount]);
 
   useEffect(() => {
     if (!repeating && startDate && !endDate) {
@@ -259,7 +271,10 @@ export default function CreateRentalSlotModal({
         endDate: endDateValue ? formatLocalDateTime(endDateTime) : null,
         startTimeMinutes: repeating && startMinutes !== null ? startMinutes : undefined,
         endTimeMinutes: repeating && endMinutes !== null ? endMinutes : undefined,
-        price: price !== null ? Math.round(price * 100) : undefined,
+        price:
+          organizationHasStripeAccount && price !== null
+            ? Math.round(price * 100)
+            : undefined,
       };
 
       let result: ManageRentalSlotResult;
@@ -272,7 +287,7 @@ export default function CreateRentalSlotModal({
           endDate: payload.endDate ?? null,
           startTimeMinutes: payload.startTimeMinutes,
           endTimeMinutes: payload.endTimeMinutes,
-          price: payload.price,
+          price: organizationHasStripeAccount ? payload.price : undefined,
         };
         result = await fieldService.updateRentalSlot(field, updatePayload);
       } else {
@@ -350,25 +365,36 @@ export default function CreateRentalSlotModal({
             </Group>
           )}
 
-          <NumberInput
-            label="Price (optional, USD)"
-            value={price ?? undefined}
-            onChange={(val) => {
-              if (typeof val === 'number') {
-                setPrice(val);
-                return;
-              }
-              if (val === '' || val === null || val === undefined) {
-                setPrice(null);
-                return;
-              }
-              const numeric = Number(val);
-              setPrice(Number.isFinite(numeric) ? numeric : null);
-            }}
-            min={0}
-            step={1}
-            disabled={!field}
-          />
+          <div>
+            <NumberInput
+              label="Price (optional, USD)"
+              value={organizationHasStripeAccount ? price ?? undefined : undefined}
+              onChange={(val) => {
+                if (!organizationHasStripeAccount) {
+                  setPrice(null);
+                  return;
+                }
+                if (typeof val === 'number') {
+                  setPrice(val);
+                  return;
+                }
+                if (val === '' || val === null || val === undefined) {
+                  setPrice(null);
+                  return;
+                }
+                const numeric = Number(val);
+                setPrice(Number.isFinite(numeric) ? numeric : null);
+              }}
+              min={0}
+              step={1}
+              disabled={!field || !organizationHasStripeAccount}
+            />
+            {!organizationHasStripeAccount && (
+              <Text size="xs" c="dimmed" mt={4}>
+                Connect a Stripe account to charge for rentals.
+              </Text>
+            )}
+          </div>
 
           <Switch
             label="Repeats weekly"

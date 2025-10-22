@@ -2,12 +2,9 @@ import { databases, functions } from '@/app/appwrite';
 import {
     Event,
     LocationCoordinates,
-    getCategoryFromEvent,
-    Division,
     Team,
     UserData,
     Field,
-    FieldPayload,
     Match,
     LeagueConfig,
     TimeSlot,
@@ -15,9 +12,6 @@ import {
     EventState,
     Organization,
     EventPayload,
-    TeamPayload,
-    UserDataPayload,
-    MatchPayload,
     TimeSlotPayload,
 } from '@/types';
 import { ID, Query } from 'appwrite';
@@ -57,7 +51,6 @@ export interface LeagueGenerationResponse {
 }
 
 export interface EventFilters {
-    category?: string;
     query?: string;
     maxDistance?: number;
     userLocation?: LocationCoordinates;
@@ -90,8 +83,8 @@ class EventService {
                     'teams.*',
                     'teams.matches.$id',
                     'fields.*',
+                    'fields.rentalSlots.*',
                     'timeSlots.*',
-                    'timeSlots.field.$id',
                 ])
             ];
 
@@ -243,34 +236,6 @@ class EventService {
         try {
             const payload = this.buildEventPayload(newEvent);
 
-            newEvent.matches?.map(async match => {
-                try {
-                    await databases.createRow({
-                        databaseId: DATABASE_ID,
-                        tableId: MATCHES_TABLE_ID,
-                        rowId: ID.unique(),
-                        data: this.sanitizeMatch(match)
-                    })
-                } catch (error) {
-                    console.error('Failed to create event:', error);
-                    throw error;
-                }
-            })
-
-            newEvent.fields?.map(async field => {
-                try {
-                    await databases.upsertRow({
-                        databaseId: DATABASE_ID,
-                        tableId: FIELDS_TABLE_ID,
-                        rowId: field.$id,
-                        data: this.sanitizeField(field) || {}
-                    })
-                } catch (error) {
-                    console.error('Failed to create event:', error);
-                    throw error;
-                }
-            })
-
             const response = await databases.createRow({
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
@@ -337,7 +302,6 @@ class EventService {
         const sanitizedTimeSlots = event.timeSlots?.map((slot: TimeSlot) => {
             const clone = { ...slot } as Record<string, unknown>;
             delete clone.$id;
-            clone.field = slot.scheduledFieldId?.$id
             const cleaned = this.removeUndefined(clone) as Partial<TimeSlotPayload>;
             return Object.keys(cleaned).length ? (cleaned as TimeSlotPayload) : undefined;
         })
@@ -346,9 +310,7 @@ class EventService {
             cleaned.timeSlots = sanitizedTimeSlots.filter((slot): slot is TimeSlotPayload => Boolean(slot));
         }
 
-        if (typeof event.lat === 'number' && typeof event.long === 'number') {
-            cleaned.coordinates = [event.long, event.lat];
-        } else if (
+        if (
             Array.isArray(event.coordinates) &&
             event.coordinates.length === 2 &&
             typeof event.coordinates[0] === 'number' &&
@@ -358,91 +320,6 @@ class EventService {
         }
 
         return cleaned;
-    }
-
-    private sanitizeUsers(users?: Partial<UserData>[] | null): UserDataPayload[] | undefined {
-        if (!users?.length) return undefined;
-        const sanitized = users
-            .map((user) => this.sanitizeUser(user))
-            .filter((value): value is UserDataPayload => Boolean(value));
-        return sanitized.length ? sanitized : undefined;
-    }
-
-    private sanitizeUser(user?: Partial<UserData> | null): UserDataPayload | undefined {
-        if (!user) return undefined;
-        const clone = { ...user } as Record<string, unknown>;
-        delete clone.fullName;
-        delete clone.avatarUrl;
-        const cleaned = this.removeUndefined(clone) as Partial<UserDataPayload>;
-        return Object.keys(cleaned).length ? (cleaned as UserDataPayload) : undefined;
-    }
-
-    private sanitizeTeam(team?: Partial<Team> | null): TeamPayload | undefined {
-        if (!team) return undefined;
-        const clone = { ...team } as Record<string, unknown>;
-        const players = Array.isArray(team.players) ? team.players : undefined;
-        const pendingPlayers = Array.isArray(team.pendingPlayers) ? team.pendingPlayers : undefined;
-        const captain = team.captain;
-
-        delete clone.winRate;
-        delete clone.currentSize;
-        delete clone.isFull;
-        delete clone.avatarUrl;
-        delete clone.players;
-        delete clone.pendingPlayers;
-        delete clone.captain;
-
-        const cleaned = this.removeUndefined(clone) as Partial<TeamPayload>;
-
-        const sanitizedPlayers = this.sanitizeUsers(players);
-        if (sanitizedPlayers) {
-            cleaned.players = sanitizedPlayers;
-        }
-
-        const sanitizedPending = this.sanitizeUsers(pendingPlayers);
-        if (sanitizedPending) {
-            cleaned.pendingPlayers = sanitizedPending;
-        }
-
-        const sanitizedCaptain = this.sanitizeUser(captain);
-        if (sanitizedCaptain) {
-            cleaned.captain = sanitizedCaptain;
-        }
-
-        return Object.keys(cleaned).length ? (cleaned as TeamPayload) : undefined;
-    }
-
-    private sanitizeField(field?: Partial<Field> | null): FieldPayload | undefined {
-        if (!field) return undefined;
-        const clone = { ...field } as Record<string, unknown>;
-
-        delete clone.matches;
-        delete clone.events;
-
-        if (clone.organization && typeof clone.organization === 'object' && '$id' in (clone.organization as Record<string, unknown>)) {
-            clone.organization = (clone.organization as Organization).$id;
-        }
-
-        const cleaned = this.removeUndefined(clone) as Partial<FieldPayload>;
-        return Object.keys(cleaned).length ? (cleaned as FieldPayload) : undefined;
-    }
-
-    private sanitizeMatch(match: Partial<Match>): MatchPayload {
-        const clone = { ...match } as Record<string, unknown>;
-
-        if (match.field && typeof match.field === 'object') {
-            const sanitizedField = match.field.$id;
-            if (sanitizedField) {
-                clone.field = sanitizedField;
-            } else {
-                delete clone.field;
-            }
-        } else {
-            delete clone.field;
-        }
-
-        const cleaned = this.removeUndefined(clone) as Partial<MatchPayload>;
-        return cleaned as MatchPayload;
     }
 
     private removeUndefined<T extends Record<string, unknown>>(record: T): T {
@@ -542,8 +419,6 @@ class EventService {
     }
 
     private mapRowToEvent(row: any): Event {
-        const lat = typeof row.lat === 'number' ? row.lat : Number(row.lat ?? row.coordinates?.[1] ?? 0);
-        const long = typeof row.long === 'number' ? row.long : Number(row.long ?? row.coordinates?.[0] ?? 0);
         const restTime =
             typeof row.restTimeMinutes === 'number'
                 ? row.restTimeMinutes
@@ -556,11 +431,7 @@ class EventService {
             ...row,
             // Computed properties
             attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
-            coordinates: [long, lat],
-            lat,
-            long,
             restTimeMinutes: Number.isFinite(restTime) ? restTime : undefined,
-            category: getCategoryFromEvent({ sport: row.sport } as Event),
             // Ensure divisions is always an array
             divisions: Array.isArray(row.divisions) ? row.divisions : [],
             status: row.status as EventStatus | undefined,
@@ -637,7 +508,17 @@ class EventService {
         }
 
         if (Array.isArray(row.fields)) {
-            event.fields = row.fields as Field[];
+            if (event.fields) {
+                event.fields.forEach((field) => {
+                    if (Array.isArray(field.rentalSlots)) {
+                        field.rentalSlots.forEach((slot) => {
+                            if (slot && typeof slot === 'object' && 'fields' in slot) {
+                                delete (slot as any).fields;
+                            }
+                        });
+                    }
+                });
+            }
         }
 
         if (Array.isArray(row.matches)) {
@@ -790,7 +671,7 @@ class EventService {
             endTimeMinutes: endTime,
             repeating: row.repeating === undefined ? true : Boolean(row.repeating),
             event: row.event ?? row.eventId ?? row.event?.$id,
-            scheduledFieldId: row.field ?? row.fieldId ?? row.field?.$id,
+            scheduledFieldId: row.scheduledFieldId,
         };
 
         const normalizedStartDate = ensureLocalDateTimeString(row.startDate ?? row.start ?? null);
@@ -805,9 +686,6 @@ class EventService {
             if (normalizedEndDate) {
                 slot.endDate = normalizedEndDate;
             }
-        }
-        if (row.field) {
-            slot.scheduledFieldId = row.field;
         }
 
         if (row.event) {
@@ -926,6 +804,7 @@ class EventService {
 
             queries.push(Query.orderAsc('start'));
             queries.push(Query.limit(limit));
+            queries.push(Query.select(["*", "teams.*", "players.*", "organization.*"]))
             if (offset > 0) queries.push(Query.offset(offset));
 
             if (filters.eventTypes && filters.eventTypes.length > 0 && filters.eventTypes.length < 3) {
@@ -983,13 +862,6 @@ class EventService {
                     event.location.toLowerCase().includes(searchTerm) ||
                     event.sport.toLowerCase().includes(searchTerm)
                 );
-            }
-
-            if (filters.category && filters.category !== 'All') {
-                events = events.filter(event => {
-                    const eventCategory = getCategoryFromEvent(event);
-                    return eventCategory === filters.category;
-                });
             }
 
             return events;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Select,
   Group,
@@ -11,6 +11,7 @@ import {
   Divider,
   Drawer,
   ActionIcon,
+  Loader,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import {
@@ -22,10 +23,16 @@ import {
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { format, getDay, parse, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addHours } from 'date-fns';
 
-import type { Field, Organization, TimeSlot } from '@/types';
+import type { Event, Field, Organization, PaymentIntent, TimeSlot } from '@/types';
 import { formatPrice } from '@/types';
 import { buildFieldCalendarEvents, type FieldCalendarEntry } from '@/app/organizations/[id]/fieldCalendar';
-import { parseLocalDateTime } from '@/lib/dateUtils';
+import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import EventCreationModal from './EventCreationModal';
+import { paymentService } from '@/lib/paymentService';
+import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
+import { notifications } from '@mantine/notifications';
+import { useApp } from '@/app/providers';
+import { organizationService } from '@/lib/organizationService';
 
 type RentalListing = {
   organization: Organization;
@@ -60,6 +67,13 @@ type SelectionCalendarEntry = {
 };
 
 type CalendarEventData = FieldCalendarEntry | SelectionCalendarEntry;
+
+type PaymentFlowState = {
+  draftEvent: Partial<Event>;
+  paymentIntent: PaymentIntent;
+  eventSummary: PaymentEventSummary;
+  resolve: (result: boolean) => void;
+};
 
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const SELECTION_COLOR = '#FED7AA'; // matches Tailwind border-orange-200
@@ -148,6 +162,7 @@ const slotMatchesSelection = (slot: TimeSlot, field: Field, selection: Selection
 };
 
 const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onClose, organization, listings }) => {
+  const { user } = useApp();
   const localizer = useMemo(() => dateFnsLocalizer({
     format,
     parse: parse as any,
@@ -188,11 +203,30 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
 
   const [selection, setSelection] = useState<SelectionState>({
     fieldId: initialFieldId,
-    date: today,
-    range: initialRange,
-  });
+   date: today,
+   range: initialRange,
+ });
   const [calendarView, setCalendarView] = useState<View>('week');
   const [calendarDate, setCalendarDate] = useState<Date>(today);
+  const [eventCreationOpen, setEventCreationOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentFlow, setPaymentFlow] = useState<PaymentFlowState | null>(null);
+  const [hostOrganizations, setHostOrganizations] = useState<Organization[]>([]);
+  const [hostOptionsLoading, setHostOptionsLoading] = useState(false);
+  const [hostSelection, setHostSelection] = useState<string>('self');
+
+  useEffect(() => {
+    if (!opened) {
+      setEventCreationOpen(false);
+      setPaymentModalOpen(false);
+      setPaymentFlow((prev) => {
+        if (prev) {
+          prev.resolve(false);
+        }
+        return null;
+      });
+    }
+  }, [opened]);
 
   const computeCalendarRange = useMemo(() => {
     return (view: View, date: Date) => {
@@ -328,11 +362,15 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
     return (selectedField.rentalSlots || []).find((slot) => slotMatchesSelection(slot, selectedField, selection)) || null;
   }, [selectedField, selection]);
 
-  const isSelectionValid = matchingRentalSlot && existingConflicts.length === 0;
+  const isSelectionValid = Boolean(matchingRentalSlot && existingConflicts.length === 0);
+  const summaryColor = !selectedField || !user ? 'dimmed' : (isSelectionValid ? 'teal' : 'red');
 
   const summaryText = useMemo(() => {
     if (!selectedField) {
       return 'Select a field to continue.';
+    }
+    if (!user) {
+      return 'Sign in to create a rental event.';
     }
     if (existingConflicts.length) {
       return 'Selected time overlaps an existing event or match.';
@@ -344,10 +382,207 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
     const endLabel = minutesToDate(selection.date, selection.range[1] * 60).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const priceLabel = typeof matchingRentalSlot.price === 'number' ? formatPrice(matchingRentalSlot.price) : 'N/A';
     return `Selection: ${startLabel} – ${endLabel} · Price ${priceLabel}`;
-  }, [matchingRentalSlot, existingConflicts, selectedField, selection]);
+  }, [matchingRentalSlot, existingConflicts, selectedField, selection, user]);
+
+  const eventDefaults = useMemo<Partial<Event> | undefined>(() => {
+    if (!selectedField) return undefined;
+    const [startHour, endHour] = selection.range;
+    const startDate = minutesToDate(selection.date, startHour * 60);
+    const endDate = minutesToDate(selection.date, endHour * 60);
+    const organizationCoordinates = Array.isArray(organization?.coordinates)
+      ? organization!.coordinates
+      : undefined;
+    const fallbackLat = selectedField.lat;
+    const fallbackLong = selectedField.long;
+    const coordinates =
+      organizationCoordinates && organizationCoordinates.length >= 2
+        ? [Number(organizationCoordinates[0]), Number(organizationCoordinates[1])] as [number, number]
+        : (typeof fallbackLong === 'number' && typeof fallbackLat === 'number'
+            ? [fallbackLong, fallbackLat] as [number, number]
+            : undefined);
+
+    const defaults: Partial<Event> = {
+      start: formatLocalDateTime(startDate),
+      end: formatLocalDateTime(endDate),
+      location: organization?.location ?? selectedField.name ?? '',
+      fields: [selectedField],
+    };
+
+    if (coordinates) {
+      defaults.coordinates = coordinates;
+    }
+    if (selectedField.type) {
+      defaults.fieldType = selectedField.type;
+    }
+    if (matchingRentalSlot) {
+      const { event: _ignoredEvent, ...slotDefaults } = matchingRentalSlot;
+      defaults.timeSlots = [
+        {
+          ...slotDefaults,
+          scheduledFieldId: slotDefaults.scheduledFieldId ?? selectedField.$id,
+        },
+      ];
+    }
+
+    return defaults;
+  }, [matchingRentalSlot, organization, selectedField, selection]);
+
+  useEffect(() => {
+    if (!user) {
+      setHostOrganizations([]);
+      setHostSelection('self');
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setHostOptionsLoading(true);
+        const orgs = await organizationService.getOrganizationsByOwner(user.$id);
+        if (cancelled) return;
+        setHostOrganizations(orgs);
+        setHostSelection((prev) => {
+          if (prev !== 'self' && !orgs.some((org) => org.$id === prev)) {
+            return 'self';
+          }
+          return prev;
+        });
+      } catch (error) {
+        console.warn('Failed to load organizations for user:', error);
+        if (!cancelled) {
+          setHostOrganizations([]);
+          setHostSelection('self');
+        }
+      } finally {
+        if (!cancelled) {
+          setHostOptionsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const hostSelectOptions = useMemo(() => {
+    const base = [{ value: 'self', label: 'Host as Myself' }];
+    if (!hostOrganizations.length) {
+      return base;
+    }
+    return [
+      ...base,
+      ...hostOrganizations.map((org) => ({
+        value: org.$id,
+        label: org.name || 'Untitled Organization',
+      })),
+    ];
+  }, [hostOrganizations]);
+
+  const selectedHostOrganization = useMemo(
+    () => (hostSelection === 'self' ? null : hostOrganizations.find((org) => org.$id === hostSelection) ?? null),
+    [hostSelection, hostOrganizations],
+  );
+
+  const handlePaymentFlowResult = useCallback((result: boolean) => {
+    setPaymentModalOpen(false);
+    setPaymentFlow((prev) => {
+      if (prev) {
+        prev.resolve(result);
+      }
+      return null;
+    });
+  }, []);
+
+  const handleBeforeEventCreate = useCallback(
+    async (draftEvent: Partial<Event>): Promise<boolean> => {
+      if (!user) {
+        notifications.show({ color: 'yellow', message: 'Sign in to create an event.' });
+        return false;
+      }
+      const slot = matchingRentalSlot;
+      if (!slot) {
+        notifications.show({ color: 'red', message: 'Selected time is no longer available.' });
+        return false;
+      }
+
+      try {
+        const minimalOrg = organization
+          ? {
+              $id: organization.$id,
+              name: organization.name,
+              location: organization.location,
+              coordinates: Array.isArray(organization.coordinates)
+                ? [
+                    Number(organization.coordinates[0]),
+                    Number(organization.coordinates[1]),
+                  ] as [number, number]
+                : undefined,
+              hasStripeAccount: organization.hasStripeAccount ?? false,
+            }
+          : null;
+        const paymentIntent = await paymentService.createPaymentIntent(user, null, null, slot, minimalOrg ?? undefined);
+        const eventSummary: PaymentEventSummary = {
+          ...draftEvent,
+          name: draftEvent.name ?? 'Rental Event',
+          location: draftEvent.location ?? organization?.location ?? selectedField?.name ?? '',
+          eventType: (draftEvent.eventType as Event['eventType']) ?? 'pickup',
+          price: typeof draftEvent.price === 'number' ? draftEvent.price : 0,
+        };
+        if (draftEvent.imageId) {
+          eventSummary.imageId = draftEvent.imageId;
+        }
+
+        return await new Promise<boolean>((resolve) => {
+          setPaymentFlow({
+            draftEvent,
+            paymentIntent,
+            eventSummary,
+            resolve,
+          });
+          setPaymentModalOpen(true);
+        });
+      } catch (error) {
+        console.error('Failed to create payment intent:', error);
+        notifications.show({
+          color: 'red',
+          message: 'Unable to initiate payment. Please try again.',
+        });
+        return false;
+      }
+    },
+    [matchingRentalSlot, organization, selectedField, user],
+  );
+
+  const handleEventSaved = useCallback(
+    (createdEvent: Event) => {
+      setEventCreationOpen(false);
+      setPaymentModalOpen(false);
+      setPaymentFlow(null);
+      notifications.show({
+        color: 'teal',
+        message: createdEvent?.name ? `${createdEvent.name} created successfully.` : 'Event created successfully.',
+      });
+      onClose();
+    },
+    [onClose],
+  );
+
+  const handleCreateEventClick = useCallback(() => {
+    if (!user) {
+      notifications.show({ color: 'yellow', message: 'Sign in to create an event.' });
+      return;
+    }
+    if (!selectedField) {
+      notifications.show({ color: 'red', message: 'Select a field before creating an event.' });
+      return;
+    }
+    setEventCreationOpen(true);
+  }, [selectedField, user]);
 
   return (
-    <Drawer
+    <>
+      <Drawer
       opened={opened}
       onClose={onClose}
       position="bottom"
@@ -411,6 +646,18 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
           />
         </Group>
 
+        {user && (
+          <Select
+            label="Host Event As"
+            data={hostSelectOptions}
+            value={hostSelection}
+            onChange={(value) => setHostSelection(value ?? 'self')}
+            rightSection={hostOptionsLoading ? <Loader size="xs" /> : undefined}
+            rightSectionWidth={hostOptionsLoading ? 36 : undefined}
+            disabled={hostOptionsLoading && hostSelectOptions.length === 1}
+          />
+        )}
+
         <div>
           <Text size="sm" fw={600} mb={6}>
             Time Range
@@ -473,18 +720,39 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
             <Text c="dimmed">Select a field to view availability.</Text>
           </Paper>
         )}
-        <Text size="sm" c={isSelectionValid ? 'teal' : 'red'}>
+        <Text size="sm" c={summaryColor}>
           {summaryText}
         </Text>
 
         <Group justify="flex-end" mt="md">
           <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button disabled={!isSelectionValid} onClick={() => { /* TODO: trigger EventCreationModal and Payment flow */ }}>
-            Create Event (TODO)
+          <Button disabled={!isSelectionValid || !user} onClick={handleCreateEventClick}>
+            Create Event
           </Button>
         </Group>
       </div>
-    </Drawer>
+      </Drawer>
+      {user && (
+        <EventCreationModal
+          isOpen={eventCreationOpen}
+          onClose={() => setEventCreationOpen(false)}
+          onEventCreated={handleBeforeEventCreate}
+          onEventSaved={handleEventSaved}
+          currentUser={user}
+          organization={selectedHostOrganization}
+          immutableDefaults={eventDefaults}
+        />
+      )}
+      {paymentFlow && (
+        <PaymentModal
+          isOpen={paymentModalOpen}
+          onClose={() => handlePaymentFlowResult(false)}
+          event={paymentFlow.eventSummary}
+          paymentData={paymentFlow.paymentIntent}
+          onPaymentSuccess={() => handlePaymentFlowResult(true)}
+        />
+      )}
+    </>
   );
 };
 

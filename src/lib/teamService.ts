@@ -219,7 +219,7 @@ class TeamService {
 
             const queries = [
                 Query.limit(50),
-                Query.equal('$id', teamIds)
+                Query.contains('$id', teamIds)
             ];
 
             const response = await databases.listRows({

@@ -181,8 +181,6 @@ export interface Event {
   end: string;
   location: string;
   coordinates: [number, number];
-  lat?: number;
-  long?: number;
   fieldType: string;
   price: number;
   rating?: number;
@@ -241,13 +239,11 @@ export interface Event {
 
   // Computed properties
   attendees: number;
-  category: EventCategory;
 }
 
-export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'fields' | 'matches' | 'timeSlots'> {
+export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'matches' | 'timeSlots'> {
   players?: string[];
   teams?: string[];
-  fields?: string[];
   matches?: string[];
   timeSlots?: TimeSlotPayload[];
 }
@@ -268,9 +264,9 @@ export interface Organization {
   website?: string;
   logoId?: string;
   location?: string;
-  lat?: number;
-  long?: number;
+  coordinates?: [number, number];
   ownerId?: string;
+  hasStripeAccount?: boolean;
   $createdAt?: string;
   $updatedAt?: string;
 
@@ -279,17 +275,6 @@ export interface Organization {
   teams?: Team[];
   fields?: Field[];
 }
-
-// Rest of the existing interfaces remain the same...
-export type EventCategory =
-  | 'Volleyball'
-  | 'Soccer'
-  | 'Basketball'
-  | 'Tennis'
-  | 'Pickleball'
-  | 'Swimming'
-  | 'Football'
-  | 'Other';
 
 export enum Sports {
   Volleyball = 'Volleyball',
@@ -325,19 +310,6 @@ export interface LocationInfo extends LocationCoordinates {
   state?: string;
   country?: string;
   zipCode?: string;
-}
-
-// Helper functions
-export function getCategoryFromEvent(event: Event): EventCategory {
-  const sport = event.sport.toLowerCase();
-  if (sport.includes('volleyball')) return 'Volleyball';
-  if (sport.includes('soccer')) return 'Soccer';
-  if (sport.includes('basketball')) return 'Basketball';
-  if (sport.includes('tennis')) return 'Tennis';
-  if (sport.includes('pickleball')) return 'Pickleball';
-  if (sport.includes('swimming')) return 'Swimming';
-  if (sport.includes('football')) return 'Football';
-  return 'Other';
 }
 
 export function getUserFullName(user: UserData): string {
@@ -442,7 +414,6 @@ export interface RegisterFormData extends LoginFormData {
 
 export interface SearchFilters {
   query?: string;
-  category?: EventCategory | 'All';
   date?: string;
   location?: string;
   priceRange?: {

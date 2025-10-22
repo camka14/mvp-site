@@ -1,11 +1,13 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Dispatch, SetStateAction, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  ActionIcon,
   Alert,
   Button,
   Chip,
+  Collapse,
   Container,
   Group,
   Loader,
@@ -18,6 +20,8 @@ import {
   Title,
 } from '@mantine/core';
 
+import { ChevronDown, ChevronUp } from 'lucide-react';
+
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import EventCard from '@/components/ui/EventCard';
@@ -29,15 +33,7 @@ import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
-import {
-  Event,
-  EventCategory,
-  Field,
-  Organization,
-  TimeSlot,
-  formatPrice,
-  SPORTS_LIST,
-} from '@/types';
+import { Event, Field, Organization, TimeSlot, formatPrice, SPORTS_LIST } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
@@ -80,7 +76,6 @@ function DiscoverPageContent() {
   const [eventOffset, setEventOffset] = useState(0);
   const [eventsError, setEventsError] = useState<string | null>(null);
 
-  const [selectedCategory, setSelectedCategory] = useState<'All' | EventCategory>('All');
   const EVENT_TYPE_OPTIONS = useMemo(() => ['pickup', 'tournament', 'league'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
     useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['pickup', 'tournament', 'league']);
@@ -144,7 +139,6 @@ function DiscoverPageContent() {
   const filteredEvents = useMemo(() => {
     const q = (searchQuery || '').trim().toLowerCase();
     return events.filter((event) => {
-      if (selectedCategory !== 'All' && event.category !== selectedCategory) return false;
       if (selectedEventTypes.length && !selectedEventTypes.includes(event.eventType)) return false;
       if (
         selectedSports.length > 0 &&
@@ -171,7 +165,6 @@ function DiscoverPageContent() {
     });
   }, [
     events,
-    selectedCategory,
     selectedEventTypes,
     selectedSports,
     searchQuery,
@@ -182,14 +175,13 @@ function DiscoverPageContent() {
 
   const buildEventFilters = useCallback(
     () => ({
-      category: selectedCategory === 'All' ? undefined : selectedCategory,
-      eventTypes: selectedEventTypes.length === 3 ? undefined : selectedEventTypes,
+      eventTypes: selectedEventTypes.length === EVENT_TYPE_OPTIONS.length ? undefined : selectedEventTypes,
       sports: selectedSports.length > 0 ? selectedSports : undefined,
       userLocation: location || undefined,
       maxDistance: location ? maxDistance : undefined,
       query: searchQuery || undefined,
     }),
-    [selectedCategory, selectedEventTypes, selectedSports, location, maxDistance, searchQuery],
+    [selectedEventTypes, selectedSports, location, maxDistance, searchQuery, EVENT_TYPE_OPTIONS],
   );
 
   const loadFirstPage = useCallback(async () => {
@@ -484,8 +476,6 @@ function DiscoverPageContent() {
               location={location}
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
               selectedEventTypes={selectedEventTypes}
               setSelectedEventTypes={setSelectedEventTypes}
               eventTypeOptions={EVENT_TYPE_OPTIONS}
@@ -544,6 +534,7 @@ function DiscoverPageContent() {
           onEventCreated={async () => {
             setShowCreateModal(false);
             await loadFirstPage();
+            return true;
           }}
           currentUser={user}
           organization={null}
@@ -565,13 +556,11 @@ function EventsTabContent(props: {
   location: { lat: number; lng: number } | null;
   searchTerm: string;
   setSearchTerm: (value: string) => void;
-  selectedCategory: 'All' | EventCategory;
-  setSelectedCategory: (value: 'All' | EventCategory) => void;
   selectedEventTypes: ('pickup' | 'tournament' | 'league')[];
   setSelectedEventTypes: (value: ('pickup' | 'tournament' | 'league')[]) => void;
   eventTypeOptions: readonly ('pickup' | 'tournament' | 'league')[];
   selectedSports: string[];
-  setSelectedSports: (value: string[]) => void;
+  setSelectedSports: Dispatch<SetStateAction<string[]>>;
   maxDistance: number;
   setMaxDistance: (value: number) => void;
   sports: string[];
@@ -590,8 +579,6 @@ function EventsTabContent(props: {
     location,
     searchTerm,
     setSearchTerm,
-    selectedCategory,
-    setSelectedCategory,
     selectedEventTypes,
     setSelectedEventTypes,
     eventTypeOptions,
@@ -612,7 +599,9 @@ function EventsTabContent(props: {
     onCreateEvent,
   } = props;
 
-  const categories: ('All' | EventCategory)[] = ['All', 'Volleyball', 'Soccer', 'Basketball', 'Tennis', 'Pickleball', 'Swimming', 'Football', 'Other'];
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+  const allEventTypesSelected = selectedEventTypes.length === eventTypeOptions.length;
+  const allSportsSelected = selectedSports.length === 0;
 
   return (
     <>
@@ -637,84 +626,109 @@ function EventsTabContent(props: {
         </Group>
 
         <Paper withBorder p="md" radius="md">
-          <Title order={5} mb="sm">
-            Filters
-          </Title>
-          <Group gap="md" align="flex-start" wrap="wrap">
-            <div>
-              <Text size="sm" fw={600} mb={6}>
-                Category
-              </Text>
-              <Chip.Group
-                value={[selectedCategory]}
-                onChange={(values) => setSelectedCategory((values[0] as 'All' | EventCategory) || 'All')}
-              >
+          <Group justify="space-between" align="center" mb="sm">
+            <Title order={5}>
+              Filters
+            </Title>
+            <ActionIcon
+              variant="subtle"
+              onClick={() => setFiltersCollapsed((prev) => !prev)}
+              aria-label={filtersCollapsed ? 'Expand filters' : 'Collapse filters'}
+            >
+              {filtersCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            </ActionIcon>
+          </Group>
+          <Collapse in={!filtersCollapsed}>
+            <Group gap="md" align="flex-start" wrap="wrap">
+              <div>
+                <Text size="sm" fw={600} mb={6}>
+                  Event types
+                </Text>
                 <Group gap="xs">
-                  {categories.map((category) => (
-                    <Chip key={category} value={category} radius="sm">
-                      {category}
-                    </Chip>
-                  ))}
-                </Group>
-              </Chip.Group>
-            </div>
-
-            <div>
-              <Text size="sm" fw={600} mb={6}>
-                Event types
-              </Text>
-              <Chip.Group
-                multiple
-                value={selectedEventTypes}
-                onChange={(values) => {
-                  const normalized = values
-                    .map((type) => eventTypeOptions.find((option) => option === type) ?? null)
-                    .filter((value): value is ('pickup' | 'tournament' | 'league') => value !== null);
-                  setSelectedEventTypes(normalized);
-                }}
-              >
-                <Group gap="xs">
+                  <Chip
+                    radius="sm"
+                    checked={allEventTypesSelected}
+                    onChange={(checked) => setSelectedEventTypes(checked ? [...eventTypeOptions] : [])}
+                  >
+                    All
+                  </Chip>
                   {eventTypeOptions.map((type) => (
-                    <Chip key={type} value={type} radius="sm">
+                    <Chip
+                      key={type}
+                      radius="sm"
+                      checked={selectedEventTypes.includes(type)}
+                      onChange={(checked) => {
+                        if (checked) {
+                          const next = new Set(selectedEventTypes);
+                          next.add(type);
+                          setSelectedEventTypes(eventTypeOptions.filter((option) => next.has(option)));
+                        } else {
+                          setSelectedEventTypes(selectedEventTypes.filter((value) => value !== type));
+                        }
+                      }}
+                    >
                       {type.charAt(0).toUpperCase() + type.slice(1)}
                     </Chip>
                   ))}
                 </Group>
-              </Chip.Group>
-            </div>
+              </div>
 
-            <div>
-              <Text size="sm" fw={600} mb={6}>
-                Sports
-              </Text>
-              <Chip.Group multiple value={selectedSports} onChange={setSelectedSports}>
+              <div>
+                <Text size="sm" fw={600} mb={6}>
+                  Sports
+                </Text>
                 <Group gap="xs">
+                  <Chip
+                    radius="sm"
+                    checked={allSportsSelected}
+                    onChange={(checked) => {
+                      if (checked) {
+                        setSelectedSports([]);
+                      }
+                    }}
+                  >
+                    All
+                  </Chip>
                   {sports.map((sport) => (
-                    <Chip key={sport} value={sport} radius="sm">
+                    <Chip
+                      key={sport}
+                      radius="sm"
+                      checked={selectedSports.includes(sport)}
+                      onChange={(checked) => {
+                        setSelectedSports((current) => {
+                          if (checked) {
+                            const next = new Set(current);
+                            next.add(sport);
+                            return Array.from(next);
+                          }
+                          return current.filter((value) => value !== sport);
+                        });
+                      }}
+                    >
                       {sport}
                     </Chip>
                   ))}
                 </Group>
-              </Chip.Group>
-            </div>
-
-            {location && (
-              <div>
-                <Text size="sm" fw={600} mb={6}>
-                  Max distance (km)
-                </Text>
-                <Chip.Group value={[String(maxDistance)]} onChange={(values) => setMaxDistance(Number(values[0] ?? maxDistance))}>
-                  <Group gap="xs">
-                    {distanceOptions.map((distance) => (
-                      <Chip key={distance} value={String(distance)} radius="sm">
-                        {distance} km
-                      </Chip>
-                    ))}
-                  </Group>
-                </Chip.Group>
               </div>
-            )}
-          </Group>
+
+              {location && (
+                <div>
+                  <Text size="sm" fw={600} mb={6}>
+                    Max distance (km)
+                  </Text>
+                  <Chip.Group value={[String(maxDistance)]} onChange={(values) => setMaxDistance(Number(values[0] ?? maxDistance))}>
+                    <Group gap="xs">
+                      {distanceOptions.map((distance) => (
+                        <Chip key={distance} value={String(distance)} radius="sm">
+                          {distance} km
+                        </Chip>
+                      ))}
+                    </Group>
+                  </Chip.Group>
+                </div>
+              )}
+            </Group>
+          </Collapse>
         </Paper>
       </div>
 

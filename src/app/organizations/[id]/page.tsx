@@ -4,7 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Tabs, Pagination, RangeSlider } from '@mantine/core';
+import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Tabs, Pagination, RangeSlider, Stack, TextInput } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import { useApp } from '@/app/providers';
@@ -16,6 +17,8 @@ import EventDetailModal from '@/app/discover/components/EventDetailModal';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
+import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
+import { paymentService } from '@/lib/paymentService';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { Calendar as BigCalendar, dateFnsLocalizer, View, SlotGroupPropGetter } from 'react-big-calendar';
 import { format, parse, startOfWeek, endOfWeek, startOfDay, endOfDay, startOfMonth, endOfMonth, getDay, formatISO } from 'date-fns';
@@ -48,6 +51,7 @@ function OrganizationDetailContent() {
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
+  const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
   const [editingField, setEditingField] = useState<Field | null>(null);
   const [showRentalSlotModal, setShowRentalSlotModal] = useState(false);
   const [editingRentalSlot, setEditingRentalSlot] = useState<TimeSlot | null>(null);
@@ -63,6 +67,11 @@ function OrganizationDetailContent() {
   const [fieldScheduleRange, setFieldScheduleRange] = useState<{ start: Date; end: Date } | null>(null);
   const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
   const [fieldScheduleSelectedFieldId, setFieldScheduleSelectedFieldId] = useState<string | null>(null);
+  const canCreateRentalSlots = Boolean(org?.location && org.location.trim().length > 0);
+  const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
+  const [connectingStripe, setConnectingStripe] = useState(false);
+  const isOwner = Boolean(user && org && user.$id === org.ownerId);
+  const [stripeEmail, setStripeEmail] = useState<string>('');
 
   const localizer = useMemo(() => dateFnsLocalizer({
     format,
@@ -135,6 +144,26 @@ function OrganizationDetailContent() {
       setLoading(false);
     }
   };
+
+  const handleConnectStripeAccount = useCallback(async () => {
+    if (!org || !user || !isOwner) return;
+    if (!stripeEmail.trim()) {
+      notifications.show({ color: 'yellow', message: 'Provide an email address for Stripe onboarding.' });
+      return;
+    }
+    try {
+      setConnectingStripe(true);
+      const result = await paymentService.connectStripeAccount(user, org, stripeEmail.trim());
+      if (result?.onboardingUrl) {
+        window.open(result.onboardingUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      console.error('Failed to connect Stripe account', error);
+      notifications.show({ color: 'red', message: 'Unable to start Stripe onboarding right now.' });
+    } finally {
+      setConnectingStripe(false);
+    }
+  }, [org, user, isOwner, stripeEmail]);
 
   const loadFieldSchedule = useCallback(async (view: View, date: Date) => {
     if (!id) return;
@@ -386,7 +415,14 @@ function OrganizationDetailContent() {
               <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="lg">
                 <div style={{ gridColumn: 'span 2' }}>
                   <Paper withBorder p="md" radius="md" mb="md">
-                    <Title order={5} mb="xs">About</Title>
+                    <Group justify="space-between" align="flex-start" mb="xs">
+                      <Title order={5}>About</Title>
+                      {isOwner && (
+                        <Button variant="light" size="xs" onClick={() => setShowEditOrganizationModal(true)}>
+                          Edit Organization
+                        </Button>
+                      )}
+                    </Group>
                     <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-line' }}>{org.description || 'No description'}</Text>
                   </Paper>
                   <Paper withBorder p="md" radius="md">
@@ -407,6 +443,37 @@ function OrganizationDetailContent() {
                   </Paper>
                 </div>
                 <div>
+                  <Paper withBorder p="md" radius="md" mb="md">
+                    <Title order={5} mb="sm">Payments</Title>
+                    <Text size="sm" c="dimmed" mb="sm">
+                      {organizationHasStripeAccount
+                        ? 'Stripe is connected. You can set prices for rentals.'
+                        : 'Connect a Stripe account to accept payments for rentals.'}
+                    </Text>
+                    {isOwner ? (
+                      <Stack gap="sm">
+                        <TextInput
+                          label="Organization Email"
+                          placeholder="billing@example.com"
+                          value={stripeEmail}
+                          onChange={(e) => setStripeEmail(e.currentTarget.value)}
+                          disabled={organizationHasStripeAccount || connectingStripe}
+                          required
+                        />
+                        <Button
+                          size="sm"
+                          disabled={organizationHasStripeAccount || connectingStripe}
+                          onClick={handleConnectStripeAccount}
+                        >
+                          {organizationHasStripeAccount ? 'Stripe Connected' : connectingStripe ? 'Connecting…' : 'Connect Stripe Account'}
+                        </Button>
+                      </Stack>
+                    ) : (
+                      <Text size="sm" c="dimmed">
+                        Contact the organization owner to connect a Stripe account.
+                      </Text>
+                    )}
+                  </Paper>
                   <Paper withBorder p="md" radius="md">
                     <Title order={5} mb="md">Teams</Title>
                     {org.teams && org.teams.length > 0 ? (
@@ -583,7 +650,15 @@ function OrganizationDetailContent() {
                           <Button
                             size="xs"
                             variant="light"
+                            disabled={!canCreateRentalSlots}
                             onClick={() => {
+                              if (!canCreateRentalSlots) {
+                                notifications.show({
+                                  color: 'yellow',
+                                  message: 'Add a location to your organization before creating rental slots.',
+                                });
+                                return;
+                              }
                               setEditingRentalSlot(null);
                               setShowRentalSlotModal(true);
                             }}
@@ -665,7 +740,8 @@ function OrganizationDetailContent() {
       <EventCreationModal
         isOpen={showCreateEventModal}
         onClose={() => setShowCreateEventModal(false)}
-        onEventCreated={async () => { setShowCreateEventModal(false); if (id) await loadOrg(id); }}
+        onEventCreated={async () => true}
+        onEventSaved={async () => { setShowCreateEventModal(false); if (id) await loadOrg(id); }}
         currentUser={user}
         organization={org}
       />
@@ -694,6 +770,19 @@ function OrganizationDetailContent() {
         field={activeField}
         slot={editingRentalSlot}
         onSaved={handleRentalSlotSaved}
+        organizationHasStripeAccount={organizationHasStripeAccount}
+      />
+      <CreateOrganizationModal
+        isOpen={showEditOrganizationModal}
+        onClose={() => setShowEditOrganizationModal(false)}
+        currentUser={user!}
+        organization={org}
+        onUpdated={async (updatedOrg) => {
+          setOrg(updatedOrg);
+          if (id) {
+            await loadOrg(id);
+          }
+        }}
       />
     </>
   );

@@ -1,4 +1,5 @@
 import { paymentService } from '@/lib/paymentService';
+import type { Event, UserData } from '@/types';
 import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
 
 jest.mock('@/app/appwrite', () => {
@@ -24,16 +25,22 @@ describe('paymentService', () => {
         responseBody: JSON.stringify({ id: 'pi_1', clientSecret: 'secret' }),
       });
 
-      const intent = await paymentService.createPaymentIntent('event_1', 'user_1');
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockEvent = { $id: 'event_1' } as Partial<Event>;
+
+      const intent = await paymentService.createPaymentIntent(mockUser, mockEvent);
 
       expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith({
-        functionId: BILLING_FUNCTION_ID,
+        functionId: EVENT_MANAGER_FUNCTION_ID,
         body: JSON.stringify({
-          userId: 'user_1',
-          eventId: 'event_1',
-          teamId: null,
-          isTournament: false,
+          task: 'billing',
           command: 'create_purchase_intent',
+          user: mockUser,
+          event: mockEvent,
+          team: null,
+          timeSlot: null,
+          organization: null,
+          organizationEmail: undefined,
         }),
         async: false,
       });
@@ -45,9 +52,10 @@ describe('paymentService', () => {
         responseBody: JSON.stringify({ error: 'failure' }),
       });
 
-      await expect(paymentService.createPaymentIntent('event_1', 'user_1')).rejects.toThrow(
-        'failure',
-      );
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockEvent = { $id: 'event_1' } as Partial<Event>;
+
+      await expect(paymentService.createPaymentIntent(mockUser, mockEvent)).rejects.toThrow('failure');
     });
   });
 
@@ -57,17 +65,48 @@ describe('paymentService', () => {
         responseBody: JSON.stringify({ error: 'not allowed' }),
       });
 
-      await expect(paymentService.joinEvent('event_1', 'user_1')).rejects.toThrow('not allowed');
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockEvent = { $id: 'event_1' } as Partial<Event>;
+
+      await expect(paymentService.joinEvent(mockUser, mockEvent)).rejects.toThrow('not allowed');
 
       expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith({
         functionId: EVENT_MANAGER_FUNCTION_ID,
         body: JSON.stringify({
-          eventId: 'event_1',
-          userId: 'user_1',
-          teamId: null,
-          isTournament: false,
           task: 'editEvent',
           command: 'addParticipant',
+          user: mockUser,
+          event: mockEvent,
+          team: null,
+          timeSlot: null,
+          organization: null,
+        }),
+        async: false,
+      });
+    });
+  });
+
+  describe('leaveEvent', () => {
+    it('throws when event manager reports error', async () => {
+      appwriteModuleMock.functions.createExecution.mockResolvedValue({
+        responseBody: JSON.stringify({ error: 'not registered' }),
+      });
+
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockEvent = { $id: 'event_1' } as Partial<Event>;
+
+      await expect(paymentService.leaveEvent(mockUser, mockEvent)).rejects.toThrow('not registered');
+
+      expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith({
+        functionId: EVENT_MANAGER_FUNCTION_ID,
+        body: JSON.stringify({
+          task: 'editEvent',
+          command: 'removeParticipant',
+          user: mockUser,
+          event: mockEvent,
+          team: null,
+          timeSlot: null,
+          organization: null,
         }),
         async: false,
       });

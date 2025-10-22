@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Select as MantineSelect, Paper, Alert, Text } from '@mantine/core';
 import { useRouter } from 'next/navigation';
-import { Event, UserData, Team, getEventDateTime, getCategoryFromEvent, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl, formatPrice } from '@/types';
+import { Event, UserData, Team, getEventDateTime, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl, formatPrice } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
@@ -27,7 +27,8 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     const [players, setPlayers] = useState<UserData[]>([]);
     const [teams, setTeams] = useState<Team[]>([]);
     const [freeAgents, setFreeAgents] = useState<UserData[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoadingEvent, setIsLoadingEvent] = useState(false);
+    const [isLoadingTeams, setIsLoadingTeams] = useState(false);
     const [showPlayersDropdown, setShowPlayersDropdown] = useState(false);
     const [showTeamsDropdown, setShowTeamsDropdown] = useState(false);
     const [showFreeAgentsDropdown, setShowFreeAgentsDropdown] = useState(false);
@@ -57,16 +58,70 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
             setDetailedEvent(null);
             setPlayers([]);
             setTeams([]);
-            setIsLoading(false);
+            setIsLoadingEvent(false);
+            setIsLoadingTeams(false);
             setJoinError(null); // Reset error when modal closes
         }
     }, [isOpen, event]);
+
+    useEffect(() => {
+        if (!isOpen || !user) {
+            setUserTeams([]);
+            setIsLoadingTeams(false);
+            return;
+        }
+
+        const targetEvent = event;
+        if (!targetEvent || !targetEvent.teamSignup) {
+            setUserTeams([]);
+            setIsLoadingTeams(false);
+            return;
+        }
+
+        const teamIds = Array.isArray(user.teamIds) ? user.teamIds : [];
+        if (teamIds.length === 0) {
+            setUserTeams([]);
+            setIsLoadingTeams(false);
+            return;
+        }
+
+        setIsLoadingTeams(true);
+        let cancelled = false;
+        const loadTeams = async () => {
+            try {
+                const userTeamsAll = await teamService.getTeamsByIds(teamIds, true);
+                const targetSport = (targetEvent.sport || '').toLowerCase();
+                const relevantTeams = userTeamsAll.filter(
+                    (team) => (team.sport || '').toLowerCase() === targetSport
+                );
+                if (!cancelled) {
+                    setUserTeams(relevantTeams);
+                }
+            } catch (error) {
+                console.error('Failed to load user teams:', error);
+                if (!cancelled) {
+                    setUserTeams([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsLoadingTeams(false);
+                }
+            }
+        };
+
+        loadTeams();
+
+        return () => {
+            cancelled = true;
+            setIsLoadingTeams(false);
+        };
+    }, [isOpen, event, user]);
 
     const loadEventDetails = async (eventId?: string) => {
         const targetId = eventId ?? event?.$id;
         if (!targetId) return;
 
-        setIsLoading(true);
+        setIsLoadingEvent(true);
         try {
             // Fetch full event with relationships for accurate editing context
             const latest = await eventService.getEventWithRelations(targetId);
@@ -83,27 +138,25 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
             setPlayers(eventPlayers);
             setTeams(eventTeams);
 
-            if (Array.isArray(baseEvent.freeAgentIds) && baseEvent.freeAgentIds.length > 0) {
-                const agents = await userService.getUsersByIds(baseEvent.freeAgentIds);
-                setFreeAgents(agents);
+            const freeAgentIds = Array.isArray(baseEvent.freeAgentIds) ? baseEvent.freeAgentIds : [];
+            const shouldLoadFreeAgents = freeAgentIds.length > 0;
+
+            if (shouldLoadFreeAgents) {
+                try {
+                    const agents = await userService.getUsersByIds(freeAgentIds);
+                    setFreeAgents(agents);
+                } catch (error) {
+                    console.error('Failed to load free agents:', error);
+                    setFreeAgents([]);
+                }
             } else {
                 setFreeAgents([]);
             }
 
-            if (user && baseEvent.teamSignup) {
-                const ids = Array.isArray(user.teamIds) ? user.teamIds : [];
-                const userTeamsAll = await teamService.getTeamsByIds(ids, true);
-                const relevant = userTeamsAll.filter(
-                    (team) => (team.sport || '').toLowerCase() === (baseEvent.sport || '').toLowerCase()
-                );
-                setUserTeams(relevant);
-            } else {
-                setUserTeams([]);
-            }
         } catch (error) {
             console.error('Failed to load event details:', error);
         } finally {
-            setIsLoading(false);
+            setIsLoadingEvent(false);
         }
     };
 
@@ -128,18 +181,11 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         setJoinError(null);
 
         try {
-            const isTournament = currentEvent.eventType === 'tournament';
-
             if (isFreeForUser) {
-                await paymentService.joinEvent(currentEvent.$id, user.$id, undefined, isTournament);
+                await paymentService.joinEvent(user, currentEvent);
                 await loadEventDetails(); // Refresh event data
             } else {
-                const paymentIntent = await paymentService.createPaymentIntent(
-                    currentEvent.$id,
-                    user.$id,
-                    undefined,
-                    isTournament
-                );
+                const paymentIntent = await paymentService.createPaymentIntent(user, currentEvent);
 
                 setPaymentData(paymentIntent); // Store payment data
                 setShowPaymentModal(true);     // Show payment modal
@@ -157,17 +203,12 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         setJoining(true);
         setJoinError(null);
         try {
-            const isTournament = currentEvent.eventType === 'tournament';
+            const team = userTeams.find((t) => t.$id === selectedTeamId) || null;
             if (isFreeForUser) {
-                await paymentService.joinEvent(currentEvent.$id, undefined, selectedTeamId, isTournament);
+                await paymentService.joinEvent(undefined, currentEvent, team ?? undefined);
                 await loadEventDetails();
             } else {
-                const paymentIntent = await paymentService.createPaymentIntent(
-                    currentEvent.$id,
-                    user.$id,
-                    selectedTeamId,
-                    isTournament
-                );
+                const paymentIntent = await paymentService.createPaymentIntent(user, currentEvent, team ?? undefined);
                 setPaymentData(paymentIntent);
                 setShowPaymentModal(true);
             }
@@ -221,7 +262,6 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     if (!isOpen || !currentEvent) return null;
 
     const { date, time } = getEventDateTime(currentEvent);
-    const category = getCategoryFromEvent(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
     const totalParticipants = isTeamSignup ? teams.length : players.length;
     // Use expanded relations for registration state
@@ -290,10 +330,6 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                 <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Details</h2>
                                 <Paper withBorder p="md" radius="md" className="space-y-3">
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <span className="text-sm text-gray-600">Category</span>
-                                            <p className="font-medium">{category}</p>
-                                        </div>
                                         <div>
                                             <span className="text-sm text-gray-600">Type</span>
                                             <p className="font-medium capitalize">{currentEvent.eventType}</p>
@@ -379,7 +415,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                         title="Players"
                                         participants={players}
                                         totalCount={players.length}
-                                        isLoading={isLoading}
+                                        isLoading={isLoadingEvent}
                                         onClick={() => setShowPlayersDropdown(true)}
                                         getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
                                         emptyMessage="No players registered yet"
@@ -394,7 +430,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                         title="Teams"
                                         participants={teams}
                                         totalCount={teams.length}
-                                        isLoading={isLoading}
+                                        isLoading={isLoadingEvent}
                                         onClick={() => setShowTeamsDropdown(true)}
                                         getAvatarUrl={(participant) => getTeamAvatarUrl(participant as Team, 32)}
                                         emptyMessage="No teams registered yet"
@@ -409,7 +445,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                         title="Free Agents"
                                         participants={freeAgents}
                                         totalCount={currentEvent.freeAgentIds.length}
-                                        isLoading={isLoading}
+                                        isLoading={isLoadingEvent}
                                         onClick={() => setShowFreeAgentsDropdown(true)}
                                         getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
                                         emptyMessage="No free agents yet"
@@ -417,9 +453,9 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                 </div>
                             )}
 
-                                {/* Join Options (includes total participants) */}
-                                <Paper withBorder p="md" radius="md">
-                                    {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
+                            {/* Join Options (includes total participants) */}
+                            <Paper withBorder p="md" radius="md">
+                                {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
 
                                 {!user ? (
                                     <div style={{ textAlign: 'center' }}>
@@ -427,19 +463,19 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                             Sign in to join
                                         </Button>
                                     </div>
-                                    ) : isUserRegistered ? (
-                                        <>
-                                            <Text size="sm" c="green" fw={500} ta="center">
-                                                ✓ You're registered for this event
+                                ) : isUserRegistered ? (
+                                    <>
+                                        <Text size="sm" c="green" fw={500} ta="center">
+                                            ✓ You're registered for this event
+                                        </Text>
+                                        <div style={{ textAlign: 'center', marginTop: 8 }}>
+                                            <Text size="sm" c="dimmed">
+                                                {totalParticipants} / {currentEvent.maxParticipants} total participants
                                             </Text>
-                                            <div style={{ textAlign: 'center', marginTop: 8 }}>
-                                                <Text size="sm" c="dimmed">
-                                                    {totalParticipants} / {currentEvent.maxParticipants} total participants
-                                                </Text>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="space-y-3">
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="space-y-3">
                                         {!isTeamSignup ? (
                                             <div>
                                                 {totalParticipants >= currentEvent.maxParticipants ? (
@@ -484,7 +520,9 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
 
                                                 {showTeamJoinOptions && (
                                                     <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                        {userTeams.length > 0 ? (
+                                                        {isLoadingTeams ? (
+                                                            <div className="text-sm text-gray-600">Loading your teams...</div>
+                                                        ) : userTeams.length > 0 ? (
                                                             <div className="space-y-4">
                                                                 <div>
                                                                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -560,15 +598,15 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                                 >
                                                                     Create Team
                                                                 </Button>
-                                            {/* Total participants below actions */}
-                                            <div style={{ textAlign: 'center' }}>
-                                                <Text size="sm" c="dimmed">
-                                                    {totalParticipants} / {currentEvent.maxParticipants} total participants
-                                                </Text>
-                                            </div>
-                                        </div>
-                                    )}
-                                </Paper>
+                                                                {/* Total participants below actions */}
+                                                                <div style={{ textAlign: 'center' }}>
+                                                                    <Text size="sm" c="dimmed">
+                                                                        {totalParticipants} / {currentEvent.maxParticipants} total participants
+                                                                    </Text>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </Paper>
 
                                                 )}
 
@@ -654,8 +692,6 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                 userRegistered={!!isUserRegistered}
                                 onRefundSuccess={loadEventDetails}
                             />
-
-
                         </div>
                     </div>
                 </div>
@@ -667,7 +703,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                 onClose={() => setShowPlayersDropdown(false)}
                 title="Event Players"
                 participants={players}
-                isLoading={isLoading}
+                isLoading={isLoadingEvent}
                 renderParticipant={(player) => (
                     <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
                         <img
@@ -690,7 +726,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                 onClose={() => setShowTeamsDropdown(false)}
                 title="Event Teams"
                 participants={teams}
-                isLoading={isLoading}
+                isLoading={isLoadingEvent}
                 renderParticipant={(team) => (
                     <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
                         <img
@@ -718,7 +754,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                 onClose={() => setShowFreeAgentsDropdown(false)}
                 title="Free Agents"
                 participants={freeAgents}
-                isLoading={isLoading}
+                isLoading={isLoadingEvent}
                 renderParticipant={(agent) => (
                     <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
                         <img
@@ -753,7 +789,8 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                 <EventCreationModal
                     isOpen={showEditModal}
                     onClose={() => setShowEditModal(false)}
-                    onEventCreated={async (updatedEvent) => {
+                    onEventCreated={async () => true}
+                    onEventSaved={async (updatedEvent) => {
                         setShowEditModal(false);
                         if (updatedEvent?.$id) {
                             setDetailedEvent(updatedEvent);

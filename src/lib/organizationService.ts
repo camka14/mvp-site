@@ -11,11 +11,66 @@ const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TA
 type AnyRow = Record<string, any> & { $id: string };
 
 class OrganizationService {
+  private resolveCoordinates(row: AnyRow): [number, number] | undefined {
+    if (Array.isArray(row.coordinates) && row.coordinates.length >= 2) {
+      const [lngRaw, latRaw] = row.coordinates;
+      const lng = typeof lngRaw === 'number' ? lngRaw : Number(lngRaw);
+      const lat = typeof latRaw === 'number' ? latRaw : Number(latRaw);
+      if (Number.isFinite(lng) && Number.isFinite(lat)) {
+        return [lng, lat];
+      }
+    }
+
+    const latRaw = row.lat ?? row.latitude;
+    const lngRaw = row.long ?? row.longitude;
+    const lat = typeof latRaw === 'number' ? latRaw : Number(latRaw);
+    const lng = typeof lngRaw === 'number' ? lngRaw : Number(lngRaw);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return [lng, lat];
+    }
+
+    return undefined;
+  }
+
+  private buildOrganizationPayload(data: Partial<Organization> & { ownerId?: string }) {
+    const payload: Record<string, any> = {};
+
+    if (data.name !== undefined) payload.name = data.name;
+    if (data.description !== undefined) payload.description = data.description;
+    if (data.website !== undefined) payload.website = data.website;
+    if (data.location !== undefined) payload.location = data.location;
+    if (data.logoId !== undefined) payload.logoId = data.logoId;
+    if (data.ownerId !== undefined) payload.ownerId = data.ownerId;
+    if (data.hasStripeAccount !== undefined) payload.hasStripeAccount = data.hasStripeAccount;
+
+    if ('coordinates' in data) {
+      if (Array.isArray(data.coordinates) && data.coordinates.length >= 2) {
+        payload.coordinates = [
+          Number(data.coordinates[0]),
+          Number(data.coordinates[1]),
+        ];
+      } else {
+        payload.coordinates = null;
+      }
+    }
+
+    return payload;
+  }
+
   private mapRowToEvent(row: AnyRow): Event {
+    const resolvedCoordinates =
+      this.resolveCoordinates(row) ??
+      (Array.isArray(row.coordinates) && row.coordinates.length >= 2
+        ? [
+            Number(row.coordinates[0]),
+            Number(row.coordinates[1]),
+          ] as [number, number]
+        : undefined);
+
     return {
       ...(row as any),
       attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
-      coordinates: { lat: row.lat, lng: row.long },
+      coordinates: resolvedCoordinates ?? [0, 0],
       category: getCategoryFromEvent({ sport: row.sport } as Event),
     } as Event;
   }
@@ -89,9 +144,27 @@ class OrganizationService {
   }
 
   private mapRowToOrganization(row: AnyRow): Organization {
+    const coordinates = this.resolveCoordinates(row);
+
     const organization: Organization = {
-      ...(row as any),
+      $id: row.$id,
+      name: row.name ?? '',
+      description: row.description ?? undefined,
+      website: row.website ?? undefined,
+      logoId: row.logoId ?? row.logo_id ?? undefined,
+      location: row.location ?? undefined,
+      coordinates: coordinates,
+      ownerId: row.ownerId ?? row.owner_id ?? undefined,
+      hasStripeAccount: Boolean(row.hasStripeAccount),
+      $createdAt: row.$createdAt,
+      $updatedAt: row.$updatedAt,
     };
+
+    if (Array.isArray(row.events)) {
+      organization.events = row.events
+        .map((eventRow: AnyRow) => this.mapRowToEvent(eventRow))
+        .filter((event): event is Event => Boolean(event));
+    }
 
     if (Array.isArray(row.fields)) {
       organization.fields = row.fields
@@ -99,15 +172,37 @@ class OrganizationService {
         .filter((field): field is Field => Boolean(field));
     }
 
+    if (Array.isArray(row.teams)) {
+      organization.teams = row.teams
+        .map((teamRow: AnyRow) => this.mapRowToTeam(teamRow))
+        .filter((team): team is Team => Boolean(team));
+    }
+
     return organization;
   }
 
   async createOrganization(data: Partial<Organization> & { name: string; ownerId: string }): Promise<Organization> {
+    const payload = this.buildOrganizationPayload({
+      ...data,
+      hasStripeAccount: data.hasStripeAccount ?? false,
+    });
+
     const response = await databases.createRow({
       databaseId: DATABASE_ID,
       tableId: ORGANIZATIONS_TABLE_ID,
       rowId: ID.unique(),
-      data,
+      data: payload,
+    });
+    return this.mapRowToOrganization(response as AnyRow);
+  }
+
+  async updateOrganization(id: string, data: Partial<Organization>): Promise<Organization> {
+    const payload = this.buildOrganizationPayload(data);
+    const response = await databases.updateRow({
+      databaseId: DATABASE_ID,
+      tableId: ORGANIZATIONS_TABLE_ID,
+      rowId: id,
+      data: payload,
     });
     return this.mapRowToOrganization(response as AnyRow);
   }
@@ -118,7 +213,7 @@ class OrganizationService {
       tableId: ORGANIZATIONS_TABLE_ID,
       queries: [Query.equal('ownerId', ownerId), Query.orderDesc('$createdAt'), Query.limit(100)],
     });
-    return (response.rows as AnyRow[]).map(this.mapRowToOrganization);
+    return (response.rows as AnyRow[]).map((row) => this.mapRowToOrganization(row));
   }
 
   async getOrganizationById(id: string, includeRelations: boolean = true): Promise<Organization | undefined> {
@@ -135,7 +230,7 @@ class OrganizationService {
           databaseId: DATABASE_ID,
           tableId: ORGANIZATIONS_TABLE_ID,
           rowId: id,
-          queries: [Query.select(['fields.*', 'teams.*', 'events.*'])],
+          queries: [Query.select(['fields.*', "fields.rentalSlots.*", 'teams.*', 'events.*'])],
         });
       return this.mapRowToOrganization(response as AnyRow) as Organization;
       }

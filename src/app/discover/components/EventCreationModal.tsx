@@ -24,7 +24,8 @@ import { ID } from '@/app/appwrite';
 interface EventCreationModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onEventCreated: (updatedEvent?: Event) => void;
+    onEventCreated?: (draftEvent: Partial<Event>) => Promise<boolean>;
+    onEventSaved?: (createdEvent: Event) => void;
     currentUser: UserData;
     editingEvent?: Event;
     organization: Organization | null;
@@ -159,13 +160,36 @@ const formatLatLngLabel = (lat?: number, lng?: number): string => {
     return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 };
 
+const getLongitudeFromCoordinates = (coordinates?: [number, number]): number | undefined => {
+    if (!Array.isArray(coordinates)) {
+        return undefined;
+    }
+    const [lng] = coordinates;
+    return typeof lng === 'number' && Number.isFinite(lng) ? lng : undefined;
+};
+
+const getLatitudeFromCoordinates = (coordinates?: [number, number]): number | undefined => {
+    if (!Array.isArray(coordinates)) {
+        return undefined;
+    }
+    const lat = coordinates[1];
+    return typeof lat === 'number' && Number.isFinite(lat) ? lat : undefined;
+};
+
+const coordinatesAreSet = (coordinates?: [number, number]): boolean => {
+    const lat = getLatitudeFromCoordinates(coordinates);
+    const lng = getLongitudeFromCoordinates(coordinates);
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+        return false;
+    }
+    return !(lat === 0 && lng === 0);
+};
+
 type EventFormState = {
     name: string;
     description: string;
     location: string;
     coordinates: [number, number];
-    lat: number;
-    long: number;
     start: string;
     end: string;
     eventType: 'pickup' | 'tournament' | 'league';
@@ -206,8 +230,6 @@ const createDefaultEventData = (): EventFormState => ({
     description: '',
     location: '',
     coordinates: [0, 0],
-    lat: 0,
-    long: 0,
     start: nowLocalDateTimeString(),
     end: formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000)),
     eventType: 'pickup',
@@ -234,12 +256,6 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     description: event.description ?? '',
     location: event.location ?? '',
     coordinates: Array.isArray(event.coordinates) ? event.coordinates as [number, number] : [0, 0],
-    lat: Array.isArray(event.coordinates)
-        ? Number(event.coordinates[1])
-        : Number((event as any).coordinates?.lat || 0),
-    long: Array.isArray(event.coordinates)
-        ? Number(event.coordinates[0])
-        : Number((event as any).coordinates?.lng || 0),
     start: event.start,
     end: event.end,
     eventType: event.eventType,
@@ -270,7 +286,8 @@ const mapEventToFormState = (event: Event): EventFormState => ({
 const EventCreationModal: React.FC<EventCreationModalProps> = ({
     isOpen,
     onClose,
-    onEventCreated,
+    onEventCreated = async () => true,
+    onEventSaved,
     currentUser,
     editingEvent,
     organization,
@@ -309,7 +326,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     // Flag the user can toggle to add themselves to new pickup/tournament rosters on creation.
     const [joinAsParticipant, setJoinAsParticipant] = useState(false);
     // Cached Stripe onboarding state pulled from the current user so paid inputs can be enabled/disabled.
-    const [hasStripeAccount, setHasStripeAccount] = useState(currentUser?.hasStripeAccount || false);
+    const [hasStripeAccount, setHasStripeAccount] = useState(
+        Boolean(organization?.hasStripeAccount || currentUser?.hasStripeAccount),
+    );
 
     const [hydratedEditingEvent, setHydratedEditingEvent] = useState<Event | null>(null);
     const activeEditingEvent = hydratedEditingEvent ?? editingEvent ?? null;
@@ -318,6 +337,39 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const isEditMode = !!activeEditingEvent && !isPreviewDraft;
 
     const immutableDefaultsMemo = useMemo(() => immutableDefaults ?? {}, [immutableDefaults]);
+
+    const immutableFields = useMemo(() => {
+        if (!Array.isArray(immutableDefaultsMemo.fields)) {
+            return [] as Field[];
+        }
+        return (immutableDefaultsMemo.fields as Field[])
+            .filter((field): field is Field => Boolean(field && field.$id))
+            .map((field) => ({ ...field }));
+    }, [immutableDefaultsMemo.fields]);
+
+    const hasImmutableFields = immutableFields.length > 0;
+
+    const immutableTimeSlots = useMemo(() => {
+        if (!Array.isArray(immutableDefaultsMemo.timeSlots)) {
+            return [] as TimeSlot[];
+        }
+        const fallbackFieldId = immutableFields[0]?.$id;
+        return (immutableDefaultsMemo.timeSlots as TimeSlot[])
+            .map((slot) => {
+                if (!slot) {
+                    return null;
+                }
+                const { event: _ignoredEvent, ...rest } = slot;
+                const normalized: TimeSlot = {
+                    ...rest,
+                    scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                };
+                return normalized;
+            })
+            .filter((slot): slot is TimeSlot => Boolean(slot));
+    }, [immutableDefaultsMemo.timeSlots, immutableFields]);
+
+    const hasImmutableTimeSlots = immutableTimeSlots.length > 0;
 
     const isImmutableField = useCallback(
         (key: keyof Event) => immutableDefaultsMemo[key] !== undefined,
@@ -338,8 +390,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (Array.isArray(defaults.coordinates) && defaults.coordinates.length === 2) {
             next.coordinates = defaults.coordinates as [number, number];
         }
-        if (typeof defaults.lat === 'number') next.lat = defaults.lat;
-        if (typeof defaults.long === 'number') next.long = defaults.long;
         if (defaults.start !== undefined) next.start = formatLocalDateTime(defaults.start);
         if (defaults.end !== undefined) next.end = formatLocalDateTime(defaults.end);
         if (defaults.eventType !== undefined) next.eventType = defaults.eventType as EventFormState['eventType'];
@@ -468,6 +518,24 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Represents weekly availability rows for league scheduling; normalized with createSlotForm.
     const [leagueSlots, setLeagueSlots] = useState<LeagueSlotForm[]>(() => {
+        const defaults = immutableDefaults ?? {};
+        const defaultFieldId = Array.isArray(defaults.fields) && defaults.fields.length > 0
+            ? (defaults.fields[0] as Field).$id
+            : undefined;
+
+        if (Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
+            return (defaults.timeSlots as TimeSlot[]).map((slot) =>
+                createSlotForm({
+                    $id: slot.$id,
+                    scheduledFieldId: slot.scheduledFieldId ?? defaultFieldId,
+                    dayOfWeek: slot.dayOfWeek,
+                    startTimeMinutes: slot.startTimeMinutes,
+                    endTimeMinutes: slot.endTimeMinutes,
+                    repeating: slot.repeating,
+                })
+            );
+        }
+
         if (activeEditingEvent && activeEditingEvent.eventType === 'league' && activeEditingEvent.timeSlots?.length) {
             return (activeEditingEvent.timeSlots || []).map((slot) => {
                 return createSlotForm({
@@ -501,6 +569,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Mutable list of fields either fetched from the org or generated locally for new events.
     const [fields, setFields] = useState<Field[]>(() => {
+        if (hasImmutableFields) {
+            return immutableFields.map((field) => ({ ...field }));
+        }
         if (activeEditingEvent?.fields?.length) {
             return [...activeEditingEvent.fields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
         }
@@ -511,21 +582,22 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 fieldNumber: idx + 1,
                 type: eventData.fieldType,
                 location: '',
-                lat: 0,
-                long: 0,
             } as Field));
         }
         return [];
     });
     // Spinner flag while asynchronous field lookups resolve.
     const [fieldsLoading, setFieldsLoading] = useState(false);
-    const shouldProvisionFields = !organization;
+    const shouldProvisionFields = !organization && !hasImmutableFields;
     const shouldManageLocalFields = shouldProvisionFields && !isEditMode && (eventData.eventType === 'league' || eventData.eventType === 'tournament');
 
     // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
     const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
+        if (hasImmutableTimeSlots) {
+            return;
+        }
         setLeagueSlots(prev => normalizeSlotState(updater(prev), eventData.eventType));
-    }, [eventData.eventType]);
+    }, [eventData.eventType, hasImmutableTimeSlots]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -560,6 +632,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             }
         }
     }, [activeEditingEvent, isOpen, applyImmutableDefaults, immutableDefaultsMemo]);
+
+    useEffect(() => {
+        if (!hasImmutableFields) {
+            return;
+        }
+        setFields(immutableFields.map((field) => ({ ...field })));
+    }, [hasImmutableFields, immutableFields]);
 
     // When provisioning local fields, mirror field type/count changes into the generated list.
     useEffect(() => {
@@ -612,14 +691,24 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }));
     }, [fields, shouldManageLocalFields, updateLeagueSlots]);
 
+    useEffect(() => {
+        setHasStripeAccount(Boolean(organization?.hasStripeAccount || currentUser?.hasStripeAccount));
+    }, [organization?.hasStripeAccount, currentUser?.hasStripeAccount]);
+
     // Adds a blank slot row in the LeagueFields list when the user taps "Add Timeslot".
     const handleAddSlot = () => {
+        if (hasImmutableTimeSlots) {
+            return;
+        }
         setLeagueError(null);
         updateLeagueSlots(prev => [...prev, createSlotForm()]);
     };
 
     // Drops a specific slot by index, leaving at least one slot for the scheduler UI to edit.
     const handleRemoveSlot = (index: number) => {
+        if (hasImmutableTimeSlots) {
+            return;
+        }
         updateLeagueSlots(prev => {
             if (prev.length <= 1) return prev;
             return prev.filter((_, idx) => idx !== index);
@@ -628,6 +717,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Applies granular updates coming back from LeagueFields inputs before revalidating the array.
     const handleUpdateSlot = (index: number, updates: Partial<LeagueSlotForm>) => {
+        if (hasImmutableTimeSlots) {
+            return;
+        }
         const current = leagueSlots[index];
         if (!current) return;
 
@@ -647,7 +739,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Updates locally managed fields when the org lacks saved fields (new event + provisioning).
     const handleLocalFieldNameChange = (index: number, name: string) => {
-        if (!shouldManageLocalFields) {
+        if (!shouldManageLocalFields || hasImmutableFields) {
             return;
         }
         setFields(prev => {
@@ -677,6 +769,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Hydrate league-specific state and slots when opening the modal for an existing event.
     useEffect(() => {
+        if (hasImmutableTimeSlots) {
+            return;
+        }
         if (activeEditingEvent && activeEditingEvent.eventType === 'league') {
             const source = activeEditingEvent.leagueConfig || activeEditingEvent;
             setLeagueData({
@@ -721,13 +816,38 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             });
             setLeagueSlots(normalizeSlotState([createSlotForm()], 'pickup'));
         }
-    }, [activeEditingEvent, createSlotForm]);
+    }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots]);
+
+    useEffect(() => {
+        if (!hasImmutableTimeSlots) {
+            return;
+        }
+        const fallbackFieldId = immutableFields[0]?.$id;
+        const slotForms = immutableTimeSlots.map((slot) =>
+            createSlotForm({
+                $id: slot.$id,
+                scheduledFieldId: slot.scheduledFieldId ?? fallbackFieldId,
+                dayOfWeek: slot.dayOfWeek,
+                startTimeMinutes: slot.startTimeMinutes,
+                endTimeMinutes: slot.endTimeMinutes,
+                repeating: slot.repeating,
+            })
+        );
+        setLeagueSlots(normalizeSlotState(slotForms, eventData.eventType));
+    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType]);
 
     // Pull the organization's fields so league/tournament creators can assign real facilities.
     useEffect(() => {
         let isMounted = true;
+        if (hasImmutableFields) {
+            return () => {
+                isMounted = false;
+            };
+        }
         if (!organization?.fields) {
-            return;
+            return () => {
+                isMounted = false;
+            };
         }
 
         setFields(organization.fields);
@@ -735,10 +855,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         return () => {
             isMounted = false;
         };
-    }, [organization]);
+    }, [organization, hasImmutableFields]);
 
     // Merge any newly loaded fields from the event into local state without losing existing edits.
     useEffect(() => {
+        if (hasImmutableFields) {
+            return;
+        }
         if (activeEditingEvent?.fields) {
             setFields(prev => {
                 const map = new Map<string, Field>();
@@ -750,7 +873,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 return Array.from(map.values());
             });
         }
-    }, [activeEditingEvent?.fields]);
+    }, [activeEditingEvent?.fields, hasImmutableFields]);
 
     // Re-run slot normalization when the modal switches event types (e.g., league -> tournament).
     useEffect(() => {
@@ -782,7 +905,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     const fieldsReferencedInSlots = useMemo(() => {
         if (!leagueSlots.length) {
-            return [] as Field[];
+            return hasImmutableFields ? immutableFields : ([] as Field[]);
         }
 
         const fieldMap = new Map<string, Field>();
@@ -808,8 +931,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             seen.add(slotFieldId);
         });
 
+        if (!picked.length && hasImmutableFields) {
+            return immutableFields;
+        }
+
         return picked;
-    }, [leagueSlots, fields]);
+    }, [leagueSlots, fields, hasImmutableFields, immutableFields]);
 
     // Validation state
     // Aggregated validity flags used to gate the submit button and surface inline messages.
@@ -827,12 +954,14 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     // Validation effect
     // Recalculate validation every time relevant form values change so the CTA stays accurate.
     useEffect(() => {
+        const hasCoordinates = coordinatesAreSet(eventData.coordinates);
+
         setValidation({
             isNameValid: eventData.name ? eventData.name?.trim().length > 0 : false,
             isPriceValid: eventData.price !== undefined ? eventData.price >= 0 : false,
             isMaxParticipantsValid: eventData.maxParticipants ? eventData.maxParticipants > 1 : false,
             isTeamSizeValid: eventData.teamSizeLimit ? eventData.teamSizeLimit >= 1 : false,
-            isLocationValid: eventData.location ? eventData.location?.trim().length > 0 && (eventData.lat !== 0 && eventData.long !== 0) : false,
+            isLocationValid: eventData.location ? eventData.location.trim().length > 0 && hasCoordinates : false,
             isSkillLevelValid: eventData.eventType === 'league' ? true : (eventData.divisions ? eventData.divisions?.length > 0 : false),
             isImageValid: Boolean(selectedImageId || eventData.imageId || selectedImageUrl),
             isFieldCountValid: shouldManageLocalFields ? fields.length >= 1 && fields.every(field => field.name?.trim().length > 0) : true,
@@ -849,8 +978,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     // Populate human-readable location if empty
     // Converts coordinates into a city/state label when the user hasn't typed an address manually.
     useEffect(() => {
-        if (!isEditMode && eventData.location.trim().length === 0 && eventData.lat !== 0 && eventData.long !== 0) {
-            locationService.reverseGeocode(eventData.lat, eventData.long)
+        const lat = getLatitudeFromCoordinates(eventData.coordinates);
+        const lng = getLongitudeFromCoordinates(eventData.coordinates);
+        const hasCoords = coordinatesAreSet(eventData.coordinates);
+
+        if (!isEditMode && eventData.location.trim().length === 0 && hasCoords && typeof lat === 'number' && typeof lng === 'number') {
+            locationService.reverseGeocode(lat, lng)
                 .then(info => {
                     const label = [info.city, info.state].filter(Boolean).join(', ')
                         || `${info.lat.toFixed(4)}, ${info.lng.toFixed(4)}`;
@@ -858,7 +991,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 })
                 .catch(() => { /* ignore */ });
         }
-    }, [isEditMode, eventData.lat, eventData.long]);
+    }, [isEditMode, eventData.location, eventData.coordinates]);
 
     const hasSlotConflicts = eventData.eventType === 'league' && leagueSlots.some(slot => Boolean(slot.error));
     const hasIncompleteSlot = eventData.eventType === 'league' && leagueSlots.some(slot =>
@@ -912,12 +1045,17 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     }, [userLocationInfo, userLocation]);
 
     const organizationLocationLabel = (organization?.location ?? '').trim();
-    const organizationLat = typeof organization?.lat === 'number' ? organization.lat : null;
-    const organizationLong = typeof organization?.long === 'number' ? organization.long : null;
+    const organizationCoordinates = Array.isArray(organization?.coordinates) ? organization.coordinates : undefined;
+    const organizationLat = typeof organizationCoordinates?.[1] === 'number' ? organizationCoordinates[1] : null;
+    const organizationLong = typeof organizationCoordinates?.[0] === 'number' ? organizationCoordinates[0] : null;
 
     // Seeds the location picker with organization defaults or the user's saved location for new events.
     useEffect(() => {
         if (!isOpen || isEditMode) {
+            return;
+        }
+
+        if (isImmutableField('location') || isImmutableField('coordinates')) {
             return;
         }
 
@@ -943,24 +1081,18 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         Number.isFinite(organizationLat) &&
                         Number.isFinite(organizationLong)
                     ) {
-                        updates.lat = organizationLat;
-                        updates.long = organizationLong;
                         updates.coordinates = [organizationLong, organizationLat] as [number, number];
                     }
 
                     const nextLocation = updates.location ?? prev.location;
-                    const nextLat = updates.lat ?? prev.lat;
-                    const nextLong = updates.long ?? prev.long;
-                    const prevCoordinates = (prev.coordinates ?? [prev.long, prev.lat]) as [number, number];
-                    const nextCoordinates = (updates.coordinates ?? prev.coordinates ?? [nextLong, nextLat]) as [number, number];
+                    const prevCoordinates = (prev.coordinates ?? [0, 0]) as [number, number];
+                    const nextCoordinates = (updates.coordinates ?? prev.coordinates ?? [0, 0]) as [number, number];
 
                     const locationChanged = nextLocation !== prev.location;
-                    const latChanged = nextLat !== prev.lat;
-                    const longChanged = nextLong !== prev.long;
                     const coordsChanged =
                         prevCoordinates[0] !== nextCoordinates[0] || prevCoordinates[1] !== nextCoordinates[1];
 
-                    if (locationChanged || latChanged || longChanged || coordsChanged) {
+                    if (locationChanged || coordsChanged) {
                         appliedSource = 'organization';
                         appliedLabel = organizationLocationLabel;
                         return {
@@ -979,9 +1111,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     updates.location = labelCandidate;
                 }
 
-                if (prev.lat === 0 && prev.long === 0) {
-                    updates.lat = userLocation.lat;
-                    updates.long = userLocation.lng;
+                if (!coordinatesAreSet(prev.coordinates)) {
                     updates.coordinates = [userLocation.lng, userLocation.lat] as [number, number];
                 }
 
@@ -1016,10 +1146,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
     const handleConnectStripe = async () => {
+        if (!currentUser) return;
         try {
             setConnectingStripe(true);
-            const result = await paymentService.connectStripeAccount(currentUser?.$id);
-            window.open(result.onboardingUrl, '_blank', 'noopener,noreferrer');
+            const result = await paymentService.connectStripeAccount(currentUser, organization ?? null);
+            if (result?.onboardingUrl) {
+                window.location.href = result.onboardingUrl;
+            }
         } catch (error) {
             console.error('Failed to connect Stripe account:', error);
         } finally {
@@ -1134,6 +1267,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 .filter((slot): slot is Record<string, unknown> => slot !== null);
 
 
+            const organizationId = organization?.$id;
+
             const eventDocument: Record<string, any> = {
                 $id: ID.unique(),
                 name: eventData.name,
@@ -1141,8 +1276,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 start: eventData.start,
                 end: eventData.end,
                 location: eventData.location,
-                lat: eventData.lat,
-                long: eventData.long,
                 coordinates: eventData.coordinates,
                 eventType: 'league',
                 sport: eventData.sport,
@@ -1157,7 +1290,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 divisions: eventData.divisions,
                 teamSizeLimit: eventData.teamSizeLimit,
                 hostId: currentUser?.$id,
-                organization: { ...organization, fields: undefined, events: undefined, teams: undefined },
                 state: 'UNPUBLISHED' as EventState,
                 gamesPerOpponent: leagueData.gamesPerOpponent,
                 includePlayoffs: leagueData.includePlayoffs,
@@ -1171,6 +1303,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 players: joinAsParticipant ? [currentUser] : [],
                 fields: fieldsReferencedInSlots,
                 timeSlots: slotDocuments,
+                ...(organizationId ? { organization: organizationId } : {}),
             };
 
             const preview = await leagueService.previewScheduleFromDocument(eventDocument);
@@ -1207,9 +1340,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 return;
             }
 
-            const baseCoordinates: [number, number] = [eventData.long, eventData.lat];
+            const baseCoordinates: [number, number] = eventData.coordinates;
 
-            const submitEvent: Partial<Event> & { lat?: number; long?: number } = {
+            const submitEvent: Partial<Event> = {
                 name: eventData.name.trim(),
                 description: eventData.description,
                 location: eventData.location,
@@ -1232,23 +1365,30 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 waitListIds: eventData.waitList,
                 freeAgentIds: eventData.freeAgents,
                 coordinates: baseCoordinates,
-                lat: eventData.lat,
-                long: eventData.long,
+                
             };
 
+            const organizationId = organization?.$id;
+
             if (!shouldManageLocalFields) {
-                const fieldsToInclude = fieldsReferencedInSlots;
-                if (fieldsToInclude.length) {
-                    submitEvent.fields = fieldsToInclude;
+                let fieldsToInclude = fieldsReferencedInSlots;
+                if (!fieldsToInclude.length && hasImmutableFields) {
+                    fieldsToInclude = immutableFields;
                 }
+                if (fieldsToInclude.length) {
+                    submitEvent.fields = fieldsToInclude.map(field => ({ ...field }));
+                }
+            } else if (hasImmutableFields) {
+                submitEvent.fields = immutableFields.map(field => ({ ...field }));
+            }
+
+            if (organizationId) {
+                submitEvent.organization = organizationId;
             }
 
             if (!isEditMode) {
                 if (currentUser?.$id) {
                     submitEvent.hostId = currentUser.$id;
-                }
-                if (organization) {
-                    submitEvent.organization = organization;
                 }
                 submitEvent.waitListIds = [];
                 submitEvent.freeAgentIds = [];
@@ -1299,6 +1439,16 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 delete submitEvent.end;
             }
 
+            if (hasImmutableTimeSlots) {
+                submitEvent.timeSlots = immutableTimeSlots.map(slot => ({ ...slot }));
+            }
+
+            const shouldProceed = await onEventCreated(submitEvent);
+            if (!shouldProceed) {
+                setIsSubmitting(false);
+                return;
+            }
+
             let resultEvent;
             if (isEditMode && activeEditingEvent) {
                 resultEvent = await eventService.updateEvent(activeEditingEvent.$id, submitEvent);
@@ -1306,7 +1456,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 resultEvent = await eventService.createEvent(submitEvent);
             }
 
-            onEventCreated(resultEvent);
+            onEventSaved?.(resultEvent);
             onClose();
         } catch (error) {
             console.error(`Failed to ${isEditMode ? 'update' : 'create'} event:`, error);
@@ -1326,7 +1476,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     };
 
     const allowImageEdit = !isImmutableField('imageId');
-    const isLocationImmutable = isImmutableField('location') || isImmutableField('lat') || isImmutableField('long') || isImmutableField('coordinates');
+    const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates');
 
     if (!isOpen) return null;
 
@@ -1596,12 +1746,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <LocationSelector
                                 value={eventData.location}
                                 coordinates={{
-                                    lat: (eventData.lat ?? userLocation?.lat ?? 0),
-                                    lng: (eventData.long ?? userLocation?.lng ?? 0)
+                                    lat: (eventData.coordinates[1] ?? userLocation?.lat ?? 0),
+                                    lng: (eventData.coordinates[0] ?? userLocation?.lng ?? 0)
                                 }}
                                 onChange={(location, lat, lng) => {
                                     if (isLocationImmutable) return;
-                                    setEventData(prev => ({ ...prev, location, lat, long: lng, coordinates: [lng, lat] }));
+                                    setEventData(prev => ({ ...prev, location, coordinates: [lng, lat] }));
                                 }}
                                 isValid={validation.isLocationValid}
                                 disabled={isLocationImmutable}
@@ -1716,6 +1866,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             fields={fields}
                             fieldsLoading={fieldsLoading}
                             fieldOptions={leagueFieldOptions}
+                            readOnly={hasImmutableTimeSlots}
                         />
                     )}
 

@@ -86,6 +86,7 @@ interface LeagueFieldsProps {
   fields: Field[];
   fieldsLoading: boolean;
   fieldOptions?: { value: string; label: string }[];
+  readOnly?: boolean;
 }
 
 const LeagueFields: React.FC<LeagueFieldsProps> = ({
@@ -98,6 +99,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   fields,
   fieldsLoading,
   fieldOptions,
+  readOnly = false,
 }) => {
   const fieldLookup = useMemo(
     () => new Map(fields.map((field) => [field.$id, field])),
@@ -191,7 +193,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
       <div>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Weekly Timeslots</h3>
-          <Button variant="light" onClick={onAddSlot}>
+          <Button variant="light" onClick={onAddSlot} disabled={readOnly}>
             Add Timeslot
           </Button>
         </div>
@@ -239,7 +241,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                         variant="subtle"
                         color="red"
                         onClick={() => onRemoveSlot(index)}
-                        disabled={slots.length === 1}
+                        disabled={slots.length === 1 || readOnly}
                       >
                         Remove
                       </Button>
@@ -265,6 +267,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                         onUpdateSlot(index, { scheduledFieldId: nextField.$id });
                       }}
                       searchable
+                      disabled={readOnly}
                     />
 
                     <MantineSelect
@@ -273,6 +276,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       data={DAYS_OF_WEEK}
                       value={typeof slot.dayOfWeek === 'number' ? String(slot.dayOfWeek) : null}
                       onChange={(value) => onUpdateSlot(index, { dayOfWeek: value ? (Number(value) as LeagueSlotForm['dayOfWeek']) : undefined })}
+                      disabled={readOnly}
                     />
 
                     <TimeInput
@@ -280,6 +284,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       value={minutesToTimeString(slot.startTimeMinutes)}
                       onChange={(event) => onUpdateSlot(index, { startTimeMinutes: parseTimeInput(event.currentTarget.value) })}
                       withSeconds={false}
+                      disabled={readOnly}
                     />
 
                     <TimeInput
@@ -287,6 +292,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       value={minutesToTimeString(slot.endTimeMinutes)}
                       onChange={(event) => onUpdateSlot(index, { endTimeMinutes: parseTimeInput(event.currentTarget.value) })}
                       withSeconds={false}
+                      disabled={readOnly}
                     />
                   </div>
 
@@ -294,6 +300,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                     label="Repeats weekly"
                     checked={slot.repeating !== false}
                     onChange={(event) => onUpdateSlot(index, { repeating: event.currentTarget.checked })}
+                    disabled={readOnly}
                   />
 
                 {conflictCount > 0 && (

@@ -132,8 +132,8 @@ describe('leagueService', () => {
         startDate: '2025-10-01T00:00:00',
         endDate: null,
         repeating: false,
-        field: expect.objectContaining({ name: 'Court B' }),
       });
+      expect(slots[0].scheduledFieldId).toEqual(expect.objectContaining({ name: 'Court B' }));
     });
   });
 
