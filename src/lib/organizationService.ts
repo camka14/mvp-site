@@ -3,7 +3,6 @@
 import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
 import type { Event, Field, Organization, Team, TimeSlot } from '@/types';
-import { getCategoryFromEvent } from '@/types';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
@@ -71,7 +70,6 @@ class OrganizationService {
       ...(row as any),
       attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
       coordinates: resolvedCoordinates ?? [0, 0],
-      category: getCategoryFromEvent({ sport: row.sport } as Event),
     } as Event;
   }
 

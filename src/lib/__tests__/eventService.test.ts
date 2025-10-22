@@ -44,6 +44,7 @@ describe('eventService', () => {
             dayOfWeek: 1,
             startTime: '09:00',
             endTime: 600,
+            scheduledFieldId: 'fld_1',
             field: { $id: 'fld_1', name: 'Court A' },
             startDate: '2025-10-01T00:00:00',
             endDate: null,
@@ -70,68 +71,43 @@ describe('eventService', () => {
         endDate: null,
         repeating: false,
       });
-      expect((event?.timeSlots?.[0]?.scheduledFieldId as any)?.name).toBe('Court A');
+      expect(event?.timeSlots?.[0]?.scheduledFieldId).toBe('fld_1');
     });
   });
 
   describe('createEvent', () => {
-    it('sends coordinates when lat/long present and creates fields', async () => {
-    appwriteModuleMock.ID.unique.mockReturnValueOnce('evt_new');
-    appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
-      $id: 'evt_new',
-      name: 'New Event',
-      sport: 'Volleyball',
-      teamSignup: true,
-      teamIds: [],
-      playerIds: [],
-      divisions: [],
-      lat: 40,
-      long: -105,
-    });
-    appwriteModuleMock.databases.upsertRow.mockResolvedValue({ $id: 'field_row' });
+    it('sends field ids and coordinates when provided', async () => {
+      appwriteModuleMock.ID.unique.mockReturnValueOnce('evt_new');
+      appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
+        $id: 'evt_new',
+        name: 'New Event',
+        sport: 'Volleyball',
+        teamSignup: true,
+        teamIds: [],
+        playerIds: [],
+        divisions: [],
+      });
 
-    await eventService.createEvent({
-      name: 'New Event',
-      lat: 40,
-      long: -105,
-      fields: [
-        { $id: 'field_1', name: 'Field A', fieldNumber: 1 } as any,
-        { $id: 'field_2', name: 'Field B', fieldNumber: 2 } as any,
-      ],
-    });
+      await eventService.createEvent({
+        name: 'New Event',
+        coordinates: [-105, 40],
+        fields: [
+          { $id: 'field_1', name: 'Field A', fieldNumber: 1 } as any,
+          { $id: 'field_2', name: 'Field B', fieldNumber: 2 } as any,
+        ],
+      });
 
-    const [eventCallArgs] = appwriteModuleMock.databases.createRow.mock.calls;
-    const eventCall = eventCallArgs[0];
-    expect(eventCall).toMatchObject({
-      databaseId: DATABASE_ID,
-      tableId: EVENTS_TABLE_ID,
-      data: expect.objectContaining({
+      const [eventCallArgs] = appwriteModuleMock.databases.createRow.mock.calls;
+      const eventCall = eventCallArgs[0];
+      expect(eventCall).toMatchObject({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+      });
+      expect(eventCall.data).toEqual(expect.objectContaining({
         name: 'New Event',
         coordinates: [-105, 40],
         fields: ['field_1', 'field_2'],
-      }),
-    });
-
-    const fieldCalls = appwriteModuleMock.databases.upsertRow.mock.calls;
-    expect(fieldCalls).toHaveLength(2);
-    expect(fieldCalls[0][0]).toMatchObject({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-      rowId: 'field_1',
-      data: expect.objectContaining({
-        name: 'Field A',
-        fieldNumber: 1,
-      }),
-    });
-    expect(fieldCalls[1][0]).toMatchObject({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-      rowId: 'field_2',
-      data: expect.objectContaining({
-        name: 'Field B',
-        fieldNumber: 2,
-      }),
-    });
+      }));
     });
 
     it('sanitizes nested fields before submitting to Appwrite', async () => {
@@ -173,22 +149,9 @@ describe('eventService', () => {
         ],
       });
 
-      const fieldCalls = appwriteModuleMock.databases.upsertRow.mock.calls;
-      expect(fieldCalls).toHaveLength(1);
-      const [fieldArgs] = fieldCalls as Array<[Record<string, any>]>;
-      const fieldPayload = fieldArgs[0];
-
-      expect(fieldPayload).toMatchObject({
-        databaseId: DATABASE_ID,
-        tableId: FIELDS_TABLE_ID,
-        rowId: 'field_1',
-        data: expect.objectContaining({
-          name: 'Court A',
-          organization: 'org_1',
-        }),
-      });
-      expect(fieldPayload.data).not.toHaveProperty('matches');
-      expect(fieldPayload.data).not.toHaveProperty('events');
+      const [[eventPayload]] = appwriteModuleMock.databases.createRow.mock.calls;
+      expect(eventPayload.data?.fields).toEqual(['field_1']);
+      expect(eventPayload.data?.fields).not.toContainEqual(expect.objectContaining({ name: 'Court A' }));
     });
   });
 
@@ -200,11 +163,10 @@ describe('eventService', () => {
         teamSignup: false,
         playerIds: ['user_1'],
         divisions: [],
-        lat: 40,
-        long: -105,
+        coordinates: [-105, 40],
       });
 
-      await eventService.updateEvent('evt_1', { lat: 40, long: -105 });
+      await eventService.updateEvent('evt_1', { coordinates: [-105, 40] });
 
       expect(appwriteModuleMock.databases.updateRow).toHaveBeenCalledWith({
         databaseId: DATABASE_ID,

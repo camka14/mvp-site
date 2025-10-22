@@ -15,7 +15,7 @@ const field: Field = {
 
 const baseSlot: LeagueSlotForm = {
   key: 'slot-1',
-  scheduledFieldId: field,
+  scheduledFieldId: field.$id,
   dayOfWeek: 1,
   startTimeMinutes: 9 * 60,
   endTimeMinutes: 10 * 60,
@@ -99,7 +99,7 @@ describe('LeagueFields', () => {
             ...baseSlot,
             conflicts: [
               {
-                schedule: baseSlot as any,
+                schedule: { $id: 'slot-1' } as any,
                 event: { $id: 'evt_1', name: 'Other Event' } as any,
               },
             ],

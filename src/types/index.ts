@@ -241,11 +241,12 @@ export interface Event {
   attendees: number;
 }
 
-export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'matches' | 'timeSlots'> {
+export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'matches' | 'timeSlots' | 'fields'> {
   players?: string[];
   teams?: string[];
   matches?: string[];
   timeSlots?: TimeSlotPayload[];
+  fields?: string[];
 }
 
 export interface TournamentBracket {
@@ -282,7 +283,6 @@ export enum Sports {
   Basketball = 'Basketball',
   Tennis = 'Tennis',
   Pickleball = 'Pickleball',
-  Swimming = 'Swimming',
   Football = 'Football',
   Hockey = 'Hockey',
   Baseball = 'Baseball',
