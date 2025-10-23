@@ -84,7 +84,6 @@ const buildEventPayload = (event: Event): EventPayload => {
     matches,
     timeSlots,
     leagueConfig: _leagueConfig,
-    category: _category,
     attendees: _attendees,
     ...rest
   } = event;
