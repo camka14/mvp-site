@@ -37,7 +37,6 @@ export interface Match {
   matchId?: number;
   team1Points: number[];
   team2Points: number[];
-  tournamentId?: string;
   previousLeftId?: string;
   previousRightId?: string;
   winnerNextMatchId?: string;

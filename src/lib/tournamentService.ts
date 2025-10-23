@@ -52,26 +52,25 @@ class TournamentService {
         }
     }
 
-  async updateMatch(matchId: string, updates: Partial<Match>): Promise<Match> {
-    try {
-      const payload: Record<string, unknown> = { ...updates };
+    async updateMatch(matchId: string, updates: Partial<Match>): Promise<Match> {
+        try {
+            const payload: Record<string, unknown> = { ...updates };
 
-      if (payload.field && typeof payload.field === 'object' && '$id' in (payload.field as Record<string, unknown>)) {
-        payload.field = (payload.field as Field).$id;
-      }
+            if (payload.field && typeof payload.field === 'object' && '$id' in (payload.field as Record<string, unknown>)) {
+                payload.field = (payload.field as Field).$id;
+            }
 
-      const response = await databases.updateRow({
-        databaseId: DATABASE_ID,
-        tableId: MATCHES_TABLE_ID,
-        rowId: matchId,
-        data: payload
-      });
+            const response = await databases.updateRow({
+                databaseId: DATABASE_ID,
+                tableId: MATCHES_TABLE_ID,
+                rowId: matchId,
+                data: payload
+            });
 
             return {
                 $id: response.$id,
                 matchId: response.matchNumber,
-                eventId: response.eventId ?? response.tournamentId,
-                tournamentId: response.tournamentId,
+                event: response.event as Event,
                 field: response.field,
                 start: response.start,
                 end: response.end,
