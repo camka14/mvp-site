@@ -90,7 +90,7 @@ function VerifyContent() {
         {state === 'success' && (
           <button
             type="button"
-            onClick={() => router.push('/events')}
+            onClick={() => router.push('/discover')}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
           >
             Continue to App

@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MatchWithRelations } from '../../../types/tournament';
-import { Event, getTeamAvatarUrl } from '@/types';
+import { Event, getTeamAvatarUrl, Match } from '@/types';
 import { Modal, Button, Group, Paper, Text, Avatar, Badge, Title, ActionIcon } from '@mantine/core';
 
 interface ScoreUpdateModalProps {
-  match: MatchWithRelations;
-  tournament: Event & { eventType: 'tournament' };
+  match: Match
+  tournament: Event;
   canManage: boolean;
   onSubmit: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
   onClose: () => void;
@@ -119,10 +118,10 @@ export default function ScoreUpdateModal({
         <Paper withBorder p="md" radius="md">
           <Group justify="space-between" mb="sm">
             <Group>
-              {match.team1Data && (
-                <Avatar src={getTeamAvatarUrl(match.team1Data, 40)} radius="xl" size={40} alt={getTeamName(match.team1Data)} />
+              {match.team1 && (
+                <Avatar src={getTeamAvatarUrl(match.team1, 40)} radius="xl" size={40} alt={getTeamName(match.team1)} />
               )}
-              <Text fw={600}>{getTeamName(match.team1Data)}</Text>
+              <Text fw={600}>{getTeamName(match.team1)}</Text>
             </Group>
             {canIncrementScore() && (
               <Group gap="xs">
@@ -151,10 +150,10 @@ export default function ScoreUpdateModal({
         <Paper withBorder p="md" radius="md">
           <Group justify="space-between" mb="sm">
             <Group>
-              {match.team2Data && (
-                <Avatar src={getTeamAvatarUrl(match.team2Data, 40)} radius="xl" size={40} alt={getTeamName(match.team2Data)} />
+              {match.team2 && (
+                <Avatar src={getTeamAvatarUrl(match.team2, 40)} radius="xl" size={40} alt={getTeamName(match.team2)} />
               )}
-              <Text fw={600}>{getTeamName(match.team2Data)}</Text>
+              <Text fw={600}>{getTeamName(match.team2)}</Text>
             </Group>
             {canIncrementScore() && (
               <Group gap="xs">
@@ -196,4 +195,3 @@ export default function ScoreUpdateModal({
     </Modal>
   );
 }
-

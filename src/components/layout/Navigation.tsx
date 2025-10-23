@@ -8,7 +8,7 @@ import { authService } from '@/lib/auth';
 import { NavItem } from '@/types';
 
 const baseNav: NavItem[] = [
-  { label: 'Events', href: '/events' },
+  { label: 'Discover', href: '/discover' },
   { label: 'Organizations', href: '/organizations' },
   { label: 'My Teams', href: '/teams' },
   { label: 'Profile', href: '/profile' },
@@ -32,14 +32,14 @@ export default function Navigation() {
 
   if (!authUser) return null;
 
-  const items = isGuest ? baseNav.filter(i => i.href === '/events') : baseNav;
+  const items = isGuest ? baseNav.filter(i => i.href === '/discover') : baseNav;
 
   return (
     <nav className="bg-white elevation-2 sticky top-0 z-50">
       <div className="container-responsive">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href="/events" className="flex items-center space-x-2">
+          <Link href="/discover" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">M</span>
             </div>

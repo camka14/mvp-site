@@ -1,20 +1,17 @@
 import { databases } from '@/app/appwrite';
-import { Event, UserData, Team } from '@/types';
-import { Match, MatchWithRelations, TournamentBracket } from '@/app/tournaments/types/tournament';
+import { Event, Team, Field, Match, TournamentBracket } from '@/types';
 import { eventService } from './eventService';
-import { teamService } from './teamService';
-import { userService } from './userService';
 import { authService } from './auth';
 import { Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const MATCHES_COLLECTION_ID = process.env.NEXT_PUBLIC_MATCHES_COLLECTION_ID!;
+const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
 
 class TournamentService {
     async getTournamentBracket(tournamentId: string): Promise<TournamentBracket> {
         try {
-            // Get tournament details
-            const tournament = await eventService.getEvent(tournamentId);
+            // Get tournament with expanded relations (teams, etc.)
+            const tournament = await eventService.getEventWithRelations(tournamentId);
 
             if (!tournament) {
                 throw new Error('Tournament not found');
@@ -23,75 +20,31 @@ class TournamentService {
                 throw new Error('Event is not a tournament');
             }
 
-            // Get all matches for this tournament
-            const matchesResponse = await databases.listRows({
-                databaseId: DATABASE_ID,
-                tableId: MATCHES_COLLECTION_ID,
-                queries: [
-                    Query.equal('tournamentId', tournamentId),
-                    Query.limit(200),
-                ]
-            });
-
-            const matches: Match[] = matchesResponse.rows.map(row => ({
-                $id: row.$id,
-                matchId: row.matchId,
-                team1Id: row.team1Id,
-                team2Id: row.team2Id,
-                tournamentId: row.tournamentId,
-                refId: row.refId,
-                field: row.field,
-                start: row.start,
-                end: row.end,
-                division: row.division,
-                team1Points: row.team1Points || [],
-                team2Points: row.team2Points || [],
-                losersBracket: row.losersBracket || false,
-                winnerNextMatchId: row.winnerNextMatchId,
-                loserNextMatchId: row.loserNextMatchId,
-                previousLeftId: row.previousLeftId,
-                previousRightId: row.previousRightId,
-                setResults: row.setResults || [],
-                refCheckedIn: row.refCheckedIn,
-                $createdAt: row.$createdAt,
-                $updatedAt: row.$updatedAt,
-            }));
+            const matches: { [key: string]: Match } = tournament.matches?.reduce((acc, match) => {
+                acc[match.$id] = match;
+                return acc;
+            }, {} as { [key: string]: Match }) || {};
 
             // Get teams
-            const teams = await teamService.getTeamsByIds(tournament.teamIds);
+            const teams = (tournament.teams || []) as Team[];
 
             // Get user data for current user
-            const currentUser = await authService.getStoredUserData();
+            const currentUser = authService.getStoredUserData();
 
-            // Enhance matches with related data
-            const matchesWithRelations: MatchWithRelations[] = await Promise.all(
-                matches.map(async (match) => {
-                    const [team1Data, team2Data, referee] = await Promise.all([
-                        match.team1Id ? teams.find(t => t.$id === match.team1Id) : undefined,
-                        match.team2Id ? teams.find(t => t.$id === match.team2Id) : undefined,
-                        match.refId ? teams.find(t => t.$id == match.refId) : undefined,
-                    ]);
-
-                    return {
-                        ...match,
-                        team1Data,
-                        team2Data,
-                        referee,
-                    };
-                })
-            );
-
-            // Organize matches into rounds
-            const rounds = this.generateMatchTree(matchesWithRelations);
+            Object.values(matches).forEach((match) => {
+                match.winnerNextMatch = match.winnerNextMatchId ? matches[match.winnerNextMatchId] : undefined;
+                match.loserNextMatch = match.loserNextMatchId ? matches[match.loserNextMatchId] : undefined;
+                match.previousLeftMatch = match.previousLeftId ? matches[match.previousLeftId] : undefined;
+                match.previousRightMatch = match.previousRightId ? matches[match.previousRightId] : undefined;
+            });
 
             return {
                 tournament: tournament as Event & { eventType: 'tournament' },
-                matches: matchesWithRelations,
+                matches,
                 teams,
-                rounds,
                 isHost: tournament.hostId === currentUser?.$id,
                 canManage: tournament.hostId === currentUser?.$id ||
-                    matchesWithRelations.some(m => m.refId === currentUser?.$id),
+                    Object.values(matches).some(m => m.referee && (m.referee.playerIds || []).includes(currentUser?.$id || '')),
             };
         } catch (error) {
             console.error('Failed to get tournament bracket:', error);
@@ -101,21 +54,24 @@ class TournamentService {
 
     async updateMatch(matchId: string, updates: Partial<Match>): Promise<Match> {
         try {
+            const payload: Record<string, unknown> = { ...updates };
+
+            if (payload.field && typeof payload.field === 'object' && '$id' in (payload.field as Record<string, unknown>)) {
+                payload.field = (payload.field as Field).$id;
+            }
+
             const response = await databases.updateRow({
                 databaseId: DATABASE_ID,
-                tableId: MATCHES_COLLECTION_ID,
+                tableId: MATCHES_TABLE_ID,
                 rowId: matchId,
-                data: updates
+                data: payload
             });
 
             return {
                 $id: response.$id,
                 matchId: response.matchNumber,
-                team1Id: response.team1Id,
-                team2Id: response.team2Id,
-                tournamentId: response.tournamentId,
-                refId: response.refId,
-                fieldId: response.fieldId,
+                event: response.event as Event,
+                field: response.field,
                 start: response.start,
                 end: response.end,
                 division: response.division,
@@ -128,23 +84,17 @@ class TournamentService {
                 previousRightId: response.previousRightMatchId,
                 setResults: response.setResults || [],
                 refCheckedIn: response.refCheckedIn,
+                team1Seed: response.team1Seed ?? undefined,
+                team2Seed: response.team2Seed ?? undefined,
                 $createdAt: response.$createdAt,
                 $updatedAt: response.$updatedAt,
+                team1: typeof response.team1 === 'object' ? (response.team1 as Team) : undefined,
+                team2: typeof response.team2 === 'object' ? (response.team2 as Team) : undefined,
             };
         } catch (error) {
             console.error('Failed to update match:', error);
             throw error;
         }
-    }
-
-    private generateMatchTree(matches: MatchWithRelations[]): (MatchWithRelations)[] {
-        return matches.map(m => {
-            m.previousLeftMatch = matches.find(pm => pm.$id === m.previousLeftId);
-            m.previousRightMatch = matches.find(pm => pm.$id === m.previousRightId);
-            m.winnerNextMatch = matches.find(nm => nm.$id === m.winnerNextMatchId);
-            m.loserNextMatch = matches.find(nm => nm.$id === m.loserNextMatchId);
-            return m;
-        });
     }
 }
 

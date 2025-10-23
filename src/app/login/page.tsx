@@ -26,7 +26,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && user) {
-      router.push('/events');
+      router.push('/discover');
     }
   }, [user, authLoading, router]);
 
@@ -70,7 +70,7 @@ export default function LoginPage() {
         router.push('/verify');
         return;
       }
-      router.push('/events');
+      router.push('/discover');
 
     } catch (error: any) {
       console.error('Auth error:', error);
@@ -86,13 +86,13 @@ export default function LoginPage() {
     try {
       // If already in guest mode, skip creating a new session
       if (authService.isGuest()) {
-        router.push('/events');
+        router.push('/discover');
         return;
       }
 
       await authService.guestLogin();
       // Guest sessions don't have extended user data; go straight to events
-      router.push('/events');
+      router.push('/discover');
     } catch (e: any) {
       setError(e?.message || 'Failed to start guest session');
     } finally {

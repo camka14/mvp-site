@@ -230,7 +230,7 @@ export const authService = {
   },
 
   async oauthLoginWithGoogle(): Promise<void> {
-    const successUrl = `${window.location.origin}/events`;
+    const successUrl = `${window.location.origin}/discover`;
     const failureUrl = `${window.location.origin}/login`;
     // Clear any guest flag before redirecting to provider
     this.setGuest(false);

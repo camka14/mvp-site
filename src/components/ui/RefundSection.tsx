@@ -1,8 +1,7 @@
 // components/RefundSection.tsx
 import React, { useState } from 'react';
 import { Paper, Text, Button, Alert, Textarea, Group } from '@mantine/core';
-import { Event } from '@/types';
-import { eventService } from '@/lib/eventService';
+import { Event, Team } from '@/types';
 import { paymentService } from '@/lib/paymentService';
 import { useApp } from '@/app/providers';
 
@@ -73,30 +72,28 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
         if (!user) return;
         setLoading(true);
         setError(null);
+
         try {
-            const latest = await eventService.getEventById(event.$id);
-            if (!latest) throw new Error('Event not found');
-
-            let newPlayerIds = latest.playerIds || [];
-            let newTeamIds = latest.teamIds || [];
-
-            if (latest.teamSignup) {
-                // Try to remove the user's team registration first
-                const userTeamId = (user.teamIds || []).find(tid => newTeamIds.includes(tid));
-                if (userTeamId) {
-                    newTeamIds = newTeamIds.filter(id => id !== userTeamId);
-                } else {
-                    // Fallback: if user somehow joined individually, remove their playerId
-                    newPlayerIds = newPlayerIds.filter(id => id !== user.$id);
-                }
-            } else {
-                newPlayerIds = newPlayerIds.filter(id => id !== user.$id);
+            let registeredTeam: Team | null = null;
+            if (event.teamSignup) {
+                const teams = Array.isArray(event.teams) ? event.teams : [];
+                registeredTeam = teams.find((team) => {
+                    if (!team) return false;
+                    const playerIds = Array.isArray(team.playerIds) ? team.playerIds : [];
+                    if (playerIds.includes(user.$id)) {
+                        return true;
+                    }
+                    const players = Array.isArray(team.players) ? team.players : [];
+                    return players.some((player) => player?.$id === user.$id);
+                }) ?? null;
             }
 
-            await eventService.updateEventParticipants(event.$id, { playerIds: newPlayerIds, teamIds: newTeamIds });
+            await paymentService.leaveEvent(registeredTeam ? undefined : user, event, registeredTeam ?? null);
+
             onRefundSuccess();
-        } catch (e: any) {
-            setError(e?.message || 'Failed to leave event');
+        } catch (e) {
+            const message = e instanceof Error ? e.message : 'Failed to leave event';
+            setError(message);
         } finally {
             setLoading(false);
         }

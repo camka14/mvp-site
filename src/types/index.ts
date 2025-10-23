@@ -1,4 +1,5 @@
 import { storage } from "@/app/appwrite";
+import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 
 // User types
 export interface UserAccount {
@@ -10,51 +11,81 @@ export interface UserAccount {
   prefs?: Record<string, any>;
 }
 
-// Unified Event interface - using $id
-export interface Event {
-  $id: string;
+// Division interface matching Python model
+export interface Division {
+  id: string;
   name: string;
-  description: string;
+  skillLevel?: string;
+  minRating?: number;
+  maxRating?: number;
+}
+
+export interface LeagueConfig {
+  gamesPerOpponent: number;
+  includePlayoffs: boolean;
+  playoffTeamCount?: number;
+  usesSets: boolean;
+  matchDurationMinutes: number;
+  restTimeMinutes?: number;
+  setDurationMinutes?: number;
+  setsPerMatch?: number;
+}
+
+// Match interface for tournaments (matching Python model)
+export interface Match {
+  $id: string;
+  matchId?: number;
+  team1Points: number[];
+  team2Points: number[];
+  previousLeftId?: string;
+  previousRightId?: string;
+  winnerNextMatchId?: string;
+  loserNextMatchId?: string;
   start: string;
   end: string;
-  location: string;
-  coordinates: [number, number];
-  divisions: string[];
-  fieldType: string;
-  price: number;
-  rating?: number;
-  imageId: string;
-  hostId: string;
-  maxParticipants: number;
-  teamSizeLimit: number;
-  teamSignup: boolean;
-  singleDivision: boolean;
-  waitListIds: string[];
-  freeAgentIds: string[];
-  playerIds: string[];
-  teamIds: string[];
-  cancellationRefundHours: number;
-  registrationCutoffHours: number;
-  seedColor: number;
-  $createdAt: string;
-  $updatedAt: string;
-  eventType: 'pickup' | 'tournament';
-  sport: string;
+  losersBracket?: boolean;
+  setResults: number[];
+  side?: string;
+  refCheckedIn?: boolean;
+  team1Seed?: number;
+  team2Seed?: number;
 
-  // Tournament-specific fields
-  doubleElimination?: boolean;
-  winnerSetCount?: number;
-  loserSetCount?: number;
-  winnerBracketPointsToVictory?: number[];
-  loserBracketPointsToVictory?: number[];
-  winnerScoreLimitsPerSet?: number[];
-  loserScoreLimitsPerSet?: number[];
-  prize?: string;
-  fieldCount: number
+  // Relationship fields - hydrated when selected via Queries
+  division?: Division;
+  field?: Field;
+  referee?: Team;
+  team1?: Team;
+  team2?: Team;
+  event?: Event;
 
-  // Computed properties
-  attendees: number;
-  category: EventCategory;
+  // Match relationships
+  previousLeftMatch?: Match;
+  previousRightMatch?: Match;
+  winnerNextMatch?: Match;
+  loserNextMatch?: Match;
+
+  $createdAt?: string;
+  $updatedAt?: string;
+}
+
+export interface MatchPayload extends Omit<Match, 'field' | '$id'> {
+  field?: FieldPayload;
+}
+
+export interface TimeSlot {
+  $id: string;
+  dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  startTimeMinutes?: number;
+  endTimeMinutes?: number;
+  startDate?: string;
+  endDate?: string | null;
+  repeating: boolean;
+  price?: number;
+  event?: Event;
+  scheduledFieldId?: string;
+}
+
+export interface TimeSlotPayload extends Omit<TimeSlot, '$id'> {
 }
 
 export interface UserData {
@@ -80,11 +111,13 @@ export interface UserData {
   avatarUrl: string;
 }
 
+export interface UserDataPayload extends Omit<UserData, 'fullName' | 'avatarUrl'> { }
+
 export interface Team {
   $id: string;
   name?: string;
   seed: number;
-  division: string;
+  division: Division | string; // Can be expanded or just ID
   sport: string;
   wins: number;
   losses: number;
@@ -96,16 +129,29 @@ export interface Team {
   $createdAt?: string;
   $updatedAt?: string;
 
-  // Computed properties
+  // Expanded relationships
   players?: UserData[];
   captain?: UserData;
   pendingPlayers?: UserData[];
+  matches?: Match[]; // Tournament matches this team participates in
+
+  // Computed properties
   winRate: number;
   currentSize: number;
   isFull: boolean;
   avatarUrl: string;
 }
 
+export interface TeamPayload extends Omit<
+  Team,
+  'winRate' | 'currentSize' | 'isFull' | 'avatarUrl' | 'players' | 'pendingPlayers' | 'captain'
+> {
+  players?: UserDataPayload[];
+  pendingPlayers?: UserDataPayload[];
+  captain?: UserDataPayload;
+}
+
+// Updated Field interface
 export interface Field {
   $id: string;
   name: string;
@@ -114,8 +160,103 @@ export interface Field {
   long: number;
   type: string;
   fieldNumber: number;
+
+  // Relationships
+  divisions?: Division[];
+  matches?: Match[];
+  events?: Event[];
+  organization?: Organization | string;
+  rentalSlots?: TimeSlot[];
 }
 
+export interface FieldPayload extends Omit<Field, 'matches' | 'events' | '$id'> { }
+
+// Core Event interface with relationships
+export interface Event {
+  $id: string;
+  name: string;
+  description: string;
+  start: string;
+  end: string;
+  location: string;
+  coordinates: [number, number];
+  fieldType: string;
+  price: number;
+  rating?: number;
+  imageId: string;
+  hostId: string;
+  state: EventState;
+  maxParticipants: number;
+  teamSizeLimit: number;
+  restTimeMinutes?: number;
+  teamSignup: boolean;
+  singleDivision: boolean;
+  waitListIds: string[];
+  freeAgentIds: string[];
+  playerIds?: string[];
+  teamIds?: string[];
+  waitList?: string[];
+  freeAgents?: string[];
+  cancellationRefundHours: number;
+  registrationCutoffHours: number;
+  seedColor: number;
+  $createdAt: string;
+  $updatedAt: string;
+  eventType: 'pickup' | 'tournament' | 'league';
+  sport: string;
+  organization?: Organization | string;
+
+  // Relationship fields - can be IDs or expanded objects
+  divisions: Division[] | string[];
+  timeSlots?: TimeSlot[];
+
+  // Tournament-specific fields
+  doubleElimination?: boolean;
+  winnerSetCount?: number;
+  loserSetCount?: number;
+  winnerBracketPointsToVictory?: number[];
+  loserBracketPointsToVictory?: number[];
+  winnerScoreLimitsPerSet?: number[];
+  loserScoreLimitsPerSet?: number[];
+  prize?: string;
+  fieldCount?: number;
+  fields?: Field[];
+  matches?: Match[];
+  teams?: Team[];
+  players?: UserData[];
+
+  // League-specific fields (flattened for DB compatibility)
+  gamesPerOpponent?: number;
+  includePlayoffs?: boolean;
+  playoffTeamCount?: number;
+  usesSets?: boolean;
+  matchDurationMinutes?: number;
+  setDurationMinutes?: number;
+  setsPerMatch?: number;
+  status?: EventStatus;
+  leagueConfig?: LeagueConfig;
+
+  // Computed properties
+  attendees: number;
+}
+
+export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'matches' | 'timeSlots' | 'fields'> {
+  players?: string[];
+  teams?: string[];
+  matches?: string[];
+  timeSlots?: TimeSlotPayload[];
+  fields?: string[];
+}
+
+export interface TournamentBracket {
+  tournament: Event;
+  matches: Record<string, Match>;
+  teams: Team[];
+  isHost: boolean;
+  canManage: boolean;
+}
+
+// Organization interfaces
 export interface Organization {
   $id: string;
   name: string;
@@ -123,82 +264,40 @@ export interface Organization {
   website?: string;
   logoId?: string;
   location?: string;
-  lat?: number;
-  long?: number;
+  coordinates?: [number, number];
   ownerId?: string;
+  hasStripeAccount?: boolean;
   $createdAt?: string;
   $updatedAt?: string;
-}
 
-// Optional, expanded organization with relationships
-export interface OrganizationDetail extends Organization {
+  // Relationships
   events?: Event[];
   teams?: Team[];
   fields?: Field[];
 }
 
-export function getTeamAvatarUrl(team: Team, size: number = 64): string {
-  if (team.profileImageId) {
-    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: team.profileImageId, width: size, height: size });
-  }
-
-  // Use team name initials as fallback
-  const teamName = team.name || 'Team';
-  const initials = teamName.split(' ')
-    .map(word => word.charAt(0))
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
-
-  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
-}
-
-export function getEventImageUrl(params: {
-  imageId: string;
-  size?: number;
-  width?: number;
-  height?: number;
-}): string {
-  if (params.width || params.height) {
-    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: params.imageId, width: params.width, height: params.height });
-  }
-  return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: params.imageId, width: params.size, height: params.size });
-}
-
-
-
-// Rest of types remain the same...
-export type Tournament = Event & { eventType: 'tournament' };
-export type PickupEvent = Event & { eventType: 'pickup' };
-
-export type EventCategory =
-  | 'Volleyball'
-  | 'Soccer'
-  | 'Basketball'
-  | 'Tennis'
-  | 'Pickleball'
-  | 'Swimming'
-  | 'Football'
-  | 'Other';
-
-// Central list of supported sports
 export enum Sports {
   Volleyball = 'Volleyball',
   Soccer = 'Soccer',
   Basketball = 'Basketball',
   Tennis = 'Tennis',
   Pickleball = 'Pickleball',
-  Swimming = 'Swimming',
   Football = 'Football',
   Hockey = 'Hockey',
   Baseball = 'Baseball',
   Other = 'Other',
 }
 
-// Convenient iterable list for UI dropdowns
 export const SPORTS_LIST: string[] = Object.values(Sports);
 
-export type EventStatus = 'draft' | 'published' | 'cancelled' | 'completed';
+export type EventState = 'PUBLISHED' | 'UNPUBLISHED';
+
+export type EventStatus = 'draft' | 'published' | 'archived' | 'cancelled' | 'completed';
+
+export interface CreateLeagueFnInput {
+  eventId: string;
+  dryRun?: boolean;
+}
 
 export interface LocationCoordinates {
   lat: number;
@@ -212,31 +311,64 @@ export interface LocationInfo extends LocationCoordinates {
   zipCode?: string;
 }
 
-// Helper functions (no changes)
-export function getCategoryFromEvent(event: Event): EventCategory {
-  const sport = event.sport.toLowerCase();
-  if (sport.includes('volleyball')) return 'Volleyball';
-  if (sport.includes('soccer')) return 'Soccer';
-  if (sport.includes('basketball')) return 'Basketball';
-  if (sport.includes('tennis')) return 'Tennis';
-  if (sport.includes('pickleball')) return 'Pickleball';
-  if (sport.includes('swimming')) return 'Swimming';
-  if (sport.includes('football')) return 'Football';
-  return 'Other';
-}
-
 export function getUserFullName(user: UserData): string {
   return `${user.firstName} ${user.lastName}`.trim();
 }
 
 export function getUserAvatarUrl(user: UserData, size: number = 64): string {
   if (user.profileImageId) {
-    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: user.profileImageId, width: size, height: size });
+    return storage.getFilePreview({
+      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
+      fileId: user.profileImageId,
+      width: size,
+      height: size
+    });
   }
 
   const fullName = getUserFullName(user);
   const initials = fullName || user.userName || 'User';
   return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
+}
+
+export function getTeamAvatarUrl(team: Team, size: number = 64): string {
+  if (team.profileImageId) {
+    return storage.getFilePreview({
+      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
+      fileId: team.profileImageId,
+      width: size,
+      height: size
+    });
+  }
+
+  const teamName = team.name || 'Team';
+  const initials = teamName.split(' ')
+    .map(word => word.charAt(0))
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
+  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
+}
+
+export function getEventImageUrl(params: {
+  imageId: string;
+  size?: number;
+  width?: number;
+  height?: number;
+}): string {
+  if (params.width || params.height) {
+    return storage.getFilePreview({
+      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
+      fileId: params.imageId,
+      width: params.width,
+      height: params.height
+    });
+  }
+  return storage.getFilePreview({
+    bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
+    fileId: params.imageId,
+    width: params.size,
+    height: params.size
+  });
 }
 
 export function getTeamWinRate(team: Team): number {
@@ -246,9 +378,13 @@ export function getTeamWinRate(team: Team): number {
 }
 
 export function getEventDateTime(event: Event): { date: string; time: string } {
-  const startDate = new Date(event.start);
+  const startDate = parseLocalDateTime(event.start);
+  if (!startDate) {
+    return { date: '', time: '' };
+  }
+  const [datePart] = formatLocalDateTime(startDate).split('T');
   return {
-    date: startDate.toISOString().split('T')[0],
+    date: datePart ?? '',
     time: startDate.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -257,7 +393,7 @@ export function getEventDateTime(event: Event): { date: string; time: string } {
   };
 }
 
-// Rest of interfaces...
+// API and form interfaces remain the same...
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -277,7 +413,6 @@ export interface RegisterFormData extends LoginFormData {
 
 export interface SearchFilters {
   query?: string;
-  category?: EventCategory | 'All';
   date?: string;
   location?: string;
   priceRange?: {
@@ -318,6 +453,6 @@ export interface PaymentResult {
 }
 
 export function formatPrice(price?: number) {
-    if (!price) return 'Free';
-    return `$${(price/100).toFixed(2)}`;
-  };
+  if (!price) return 'Free';
+  return `$${(price / 100).toFixed(2)}`;
+}

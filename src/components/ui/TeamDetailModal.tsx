@@ -171,7 +171,9 @@ export default function TeamDetailModal({
 
     const handleInviteUser = async (userId: string) => {
         try {
-            const success = await teamService.invitePlayerToTeam(currentTeam.$id, userId);
+            const user = await userService.getUserById(userId);
+            if (!user) throw new Error('User not found');
+            const success = await teamService.invitePlayerToTeam(currentTeam, user);
 
             if (success) {
                 const invitedUser = await userService.getUserById(userId);
@@ -272,7 +274,7 @@ export default function TeamDetailModal({
                                 ) : (
                                     <Title order={3}>{currentTeam.name}</Title>
                                 )}
-                                <Text c="dimmed">{currentTeam.division} Division • {currentTeam.sport}</Text>
+                                <Text c="dimmed">{typeof currentTeam.division === 'string' ? currentTeam.division : currentTeam.division?.name || currentTeam.division?.skillLevel || 'Division'} Division • {currentTeam.sport}</Text>
                             </div>
                         </Group>
                         {isTeamCaptain && (

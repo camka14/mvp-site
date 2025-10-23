@@ -17,6 +17,10 @@ export default function TeamCard({
   className = ''
 }: TeamCardProps) {
 
+  const divisionLabel = typeof team.division === 'string'
+    ? team.division
+    : team.division?.name || team.division?.skillLevel || 'Division';
+
   return (
     <Paper withBorder radius="md" p="md" className={className} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
       <Group align="flex-start" justify="space-between" mb="sm" wrap="nowrap">
@@ -25,7 +29,7 @@ export default function TeamCard({
           <div style={{ flex: 1, minWidth: 0 }}>
             <Text fw={600} size="lg" truncate>{team.name || 'Unnamed Team'}</Text>
             <Group gap={6} mt={4}>
-              <Text size="sm" c="dimmed">{team.division} Division</Text>
+              <Text size="sm" c="dimmed">{divisionLabel} Division</Text>
               {team.sport && <Badge variant="light" color="blue" size="xs">{team.sport}</Badge>}
               {team.isFull && <Badge variant="light" color="red" size="xs">Full</Badge>}
             </Group>

@@ -9,13 +9,15 @@ interface LocationSelectorProps {
     coordinates: { lat: number; lng: number };
     onChange: (location: string, lat: number, lng: number) => void;
     isValid: boolean;
+    disabled?: boolean;
 }
 
 const LocationSelector: React.FC<LocationSelectorProps> = ({
     value,
     coordinates,
     onChange,
-    isValid
+    isValid,
+    disabled = false,
 }) => {
     const [showMap, setShowMap] = useState(false);
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
@@ -35,6 +37,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     }, [coordinates]);
 
     const onMapClick = useCallback(async (e: google.maps.MapMouseEvent) => {
+        if (disabled) return;
         if (e.latLng) {
             const lat = e.latLng.lat();
             const lng = e.latLng.lng();
@@ -55,6 +58,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     }, [onChange]);
 
     const searchLocation = async (address: string) => {
+        if (disabled) return;
         if (!address.trim()) return;
 
         try {
@@ -73,14 +77,18 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
             <div className="space-y-2">
                 <div className="flex gap-2">
                     <TextInput
+                        disabled={disabled}
                         value={value}
-                        onChange={(e) => onChange(e.currentTarget.value, coordinates.lat, coordinates.lng)}
+                        onChange={(e) => {
+                            if (disabled) return;
+                            onChange(e.currentTarget.value, coordinates.lat, coordinates.lng);
+                        }}
                         onKeyUp={(e) => (e.key === 'Enter') && searchLocation(value)}
                         placeholder="Enter address or search location"
                         error={!isValid && value.length > 0 ? 'Please select a valid location' : undefined}
                         style={{ flex: 1 }}
                     />
-                    <Button type="button" onClick={() => setShowMap(!showMap)}>
+                    <Button type="button" onClick={() => !disabled && setShowMap(!showMap)} disabled={disabled}>
                         {showMap ? 'Hide' : 'Show'} Map
                     </Button>
                 </div>

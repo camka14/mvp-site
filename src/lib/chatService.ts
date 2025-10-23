@@ -30,7 +30,7 @@ class ChatService {
         try {
             const response = await databases.listRows({
                 databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_COLLECTION_ID!,
+                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_TABLE_ID!,
                 queries: [
                     Query.contains('userIds', userId)
                 ]
@@ -56,7 +56,7 @@ class ChatService {
         try {
             const response = await databases.listRows({
                 databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID!,
+                tableId: process.env.NEXT_PUBLIC_MESSAGES_TABLE_ID!,
                 queries: [
                     Query.equal('chatId', chatId),
                     Query.orderAsc('sentTime'),
@@ -83,7 +83,7 @@ class ChatService {
         try {
             const response = await databases.listRows({
                 databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID!,
+                tableId: process.env.NEXT_PUBLIC_MESSAGES_TABLE_ID!,
                 queries: [
                     Query.equal('chatId', chatId),
                     Query.orderDesc('sentTime'),
@@ -118,16 +118,17 @@ class ChatService {
 
             const response = await databases.createRow({
                 databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID!,
+                tableId: process.env.NEXT_PUBLIC_MESSAGES_TABLE_ID!,
                 rowId: ID.unique(),
                 data: messageData
             });
 
             // Send push notification
             await functions.createExecution({
-                functionId: process.env.NEXT_PUBLIC_CHAT_FUNCTION_ID!,
+                functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
                 body: JSON.stringify({
-                    command: "send_chat_notification",
+                    task: "messaging",
+                    command: "send",
                     chatId,
                     message: body,
                     senderId: userId
@@ -160,7 +161,7 @@ class ChatService {
 
             const response = await databases.createRow({
                 databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_COLLECTION_ID!,
+                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_TABLE_ID!,
                 rowId: ID.unique(),
                 data: chatGroupData
             });
@@ -185,7 +186,7 @@ class ChatService {
             // First, try to find existing DM chat
             const response = await databases.listRows({
                 databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_COLLECTION_ID!,
+                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_TABLE_ID!,
                 queries: [
                     Query.contains('userIds', currentUserId),
                     Query.contains('userIds', otherUserId),

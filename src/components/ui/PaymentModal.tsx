@@ -3,8 +3,6 @@ import React, { useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
 import { Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
-import { useApp } from '@/app/providers';
-import { paymentService } from '@/lib/paymentService';
 import PaymentForm from './PaymentForm';
 import { Modal, Button, Group, Alert } from '@mantine/core';
 
@@ -17,10 +15,17 @@ if (!stripePublishableKey) {
 
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
+export type PaymentEventSummary = Partial<Event> & {
+    name: string;
+    location: string;
+    eventType: Event['eventType'];
+    price: number;
+};
+
 interface PaymentModalProps {
     isOpen: boolean;
     onClose: () => void;
-    event: Event;
+    event: PaymentEventSummary;
     paymentData: PaymentIntent | null;
     onPaymentSuccess: () => void;
 }
@@ -32,9 +37,12 @@ export default function PaymentModal({
     paymentData,
     onPaymentSuccess
 }: PaymentModalProps) {
-    const { user } = useApp();
     const [error, setError] = useState<string | null>(null);
     const [showConfirmation, setShowConfirmation] = useState(true);
+
+    const eventName = event.name ?? 'Event';
+    const eventLocation = event.location ?? '';
+    const eventTypeLabel = event.eventType ?? 'pickup';
 
     // Early return if modal shouldn't be shown
     if (!isOpen || !paymentData) return null;
@@ -54,7 +62,6 @@ export default function PaymentModal({
     const handlePaymentSuccess = async () => {
         try {
             onPaymentSuccess();
-            onClose();
             resetModal();
         } catch (error) {
             setError('Payment succeeded but failed to join event. Please contact support.');
@@ -81,14 +88,14 @@ export default function PaymentModal({
                                 {event.imageId && (
                                     <img
                                         src={getEventImageUrl({ imageId: event.imageId, width: 80, height: 80 })}
-                                        alt={event.name}
+                                        alt={eventName}
                                         className="w-16 h-16 rounded-lg object-cover"
                                     />
                                 )}
                                 <div>
-                                    <h4 className="font-semibold text-lg">{event.name}</h4>
-                                    <p className="text-gray-600">{event.location}</p>
-                                    <p className="text-sm text-gray-500 capitalize">{event.eventType}</p>
+                                    <h4 className="font-semibold text-lg">{eventName}</h4>
+                                    <p className="text-gray-600">{eventLocation}</p>
+                                    <p className="text-sm text-gray-500 capitalize">{eventTypeLabel}</p>
                                 </div>
                             </div>
 
@@ -140,7 +147,7 @@ export default function PaymentModal({
                                     onSuccess={handlePaymentSuccess}
                                     onError={setError}
                                     amount={paymentData.feeBreakdown?.totalCharge || 0}
-                                    eventName={event.name}
+                                    eventName={eventName}
                                 />
                             </Elements>
                         )
