@@ -7,6 +7,8 @@ import {
     Field,
     Match,
     LeagueConfig,
+    LeagueScoringConfig,
+    SportConfig,
     TimeSlot,
     EventStatus,
     EventState,
@@ -74,6 +76,8 @@ class EventService {
             const queries = [
                 Query.select([
                     '*',
+                    'sport.*',
+                    'leagueScoringConfig.*',
                     'matches.*',
                     'matches.field.$id',
                     'matches.team1.$id',
@@ -110,7 +114,15 @@ class EventService {
             const response = await databases.getRow({
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
-                rowId: id
+                rowId: id,
+                queries: [
+                    Query.select([
+                        '*',
+                        'sport.*',
+                        'leagueScoringConfig.*',
+                        'organization.$id',
+                    ])
+                ]
             });
 
             return this.mapRowToEvent(response);
@@ -126,6 +138,12 @@ class EventService {
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 queries: [
+                    Query.select([
+                        '*',
+                        'sport.*',
+                        'leagueScoringConfig.*',
+                        'organization.$id',
+                    ]),
                     Query.orderDesc('$createdAt'),
                     Query.limit(100)
                 ]
@@ -149,7 +167,15 @@ class EventService {
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: eventId,
-                data: updates
+                data: updates,
+                queries: [
+                    Query.select([
+                        '*',
+                        'sport.*',
+                        'leagueScoringConfig.*',
+                        'organization.$id',
+                    ])
+                ]
             });
 
             return this.mapRowToEvent(response);
@@ -167,7 +193,15 @@ class EventService {
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: eventId,
-                data: payload
+                data: payload,
+                queries: [
+                    Query.select([
+                        '*',
+                        'sport.*',
+                        'leagueScoringConfig.*',
+                        'organization.$id',
+                    ])
+                ]
             });
 
             return this.mapRowToEvent(response);
@@ -240,7 +274,15 @@ class EventService {
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: ID.unique(),
-                data: payload
+                data: payload,
+                queries: [
+                    Query.select([
+                        '*',
+                        'sport.*',
+                        'leagueScoringConfig.*',
+                        'organization.$id',
+                    ])
+                ]
             });
 
             return this.mapRowToEvent(response);
@@ -265,6 +307,8 @@ class EventService {
             'attendees',
             'category',
             'leagueConfig',
+            'leagueScoringConfig',
+            'sportConfig',
             'players',
             'teams',
             'fields',
@@ -426,9 +470,17 @@ class EventService {
                     ? Number(row.restTimeMinutes)
                     : undefined;
         const state = this.normalizeEventState(row.state);
+        const { sportName, config: sportConfig } = this.normalizeSport(row.sport);
+        const leagueScoringConfig = this.normalizeLeagueScoringConfig(row.leagueScoringConfig);
+        const organization = row.organization ?? row.organizationId;
+        const fallbackSportName = typeof row.sport === 'string' ? row.sport : '';
 
         return {
             ...row,
+            sport: sportName || fallbackSportName,
+            sportConfig,
+            leagueScoringConfig,
+            organization,
             // Computed properties
             attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
             restTimeMinutes: Number.isFinite(restTime) ? restTime : undefined,
@@ -437,7 +489,6 @@ class EventService {
             status: row.status as EventStatus | undefined,
             state,
             leagueConfig: this.buildLeagueConfig(row),
-            organization: row.organization ?? row.organizationId,
         };
     }
 
@@ -457,7 +508,7 @@ class EventService {
             queries.push(Query.lessThanEqual('start', endFilter));
         }
 
-        queries.push(Query.select(['*', 'organization.$id']));
+        queries.push(Query.select(['*', 'sport.*', 'leagueScoringConfig.*', 'organization.$id']));
 
         return databases.listRows({
             databaseId: DATABASE_ID,
@@ -661,6 +712,66 @@ class EventService {
         };
     }
 
+    private normalizeSport(value: unknown): { sportName: string; config?: SportConfig } {
+        if (typeof value === 'string') {
+            return { sportName: value };
+        }
+
+        if (!value || typeof value !== 'object') {
+            return { sportName: '' };
+        }
+
+        const record = value as Record<string, unknown>;
+        const cloned: Record<string, unknown> = { ...record };
+
+        if (typeof cloned.id === 'string' && typeof cloned.$id !== 'string') {
+            cloned.$id = cloned.id;
+        }
+
+        delete cloned.id;
+
+        const sportValue = cloned.sport;
+        const sportName = typeof sportValue === 'string' ? sportValue : '';
+
+        if (sportName) {
+            return {
+                sportName,
+                config: cloned as SportConfig,
+            };
+        }
+
+        if (typeof cloned.$id === 'string') {
+            return { sportName: String(cloned.$id) };
+        }
+
+        return { sportName: '' };
+    }
+
+    private normalizeLeagueScoringConfig(value: unknown): LeagueScoringConfig | undefined {
+        if (!value) {
+            return undefined;
+        }
+
+        if (typeof value === 'string') {
+            return { $id: value };
+        }
+
+        if (typeof value !== 'object') {
+            return undefined;
+        }
+
+        const record = value as Record<string, unknown>;
+        const cloned: Record<string, unknown> = { ...record };
+
+        if (typeof cloned.id === 'string' && typeof cloned.$id !== 'string') {
+            cloned.$id = cloned.id;
+        }
+
+        delete cloned.id;
+
+        return cloned as LeagueScoringConfig;
+    }
+
     private mapRowToTimeSlot(row: any): TimeSlot {
         const startTime = this.normalizeTime(row.startTimeMinutes ?? row.startTime) ?? 0;
         const endTime = this.normalizeTime(row.endTimeMinutes ?? row.endTime) ?? startTime;
@@ -804,7 +915,7 @@ class EventService {
 
             queries.push(Query.orderAsc('start'));
             queries.push(Query.limit(limit));
-            queries.push(Query.select(["*", "teams.*", "players.*", "organization.*"]))
+            queries.push(Query.select(['*', 'teams.*', 'players.*', 'organization.*', 'sport.*', 'leagueScoringConfig.*']));
             if (offset > 0) queries.push(Query.offset(offset));
 
             if (filters.eventTypes && filters.eventTypes.length > 0 && filters.eventTypes.length < 3) {
@@ -812,7 +923,7 @@ class EventService {
             }
 
             if (filters.sports && filters.sports.length > 0) {
-                queries.push(Query.equal('sport', filters.sports));
+                queries.push(Query.equal('sport.sport', filters.sports));
             }
 
             if (filters.divisions && filters.divisions.length > 0) {
