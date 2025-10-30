@@ -1,4 +1,5 @@
-import { Event, Team, TimeSlot, UserData } from '@/types';
+import { Event, LeagueScoringConfig, Sport, Team, TimeSlot, UserData } from '@/types';
+import { createLeagueScoringConfig, createSport } from '@/types/defaults';
 
 let userCounter = 0;
 let teamCounter = 0;
@@ -67,7 +68,30 @@ export const buildTimeSlot = (overrides: Partial<TimeSlot> = {}): TimeSlot => {
 
 export const buildEvent = (overrides: Partial<Event> = {}): Event => {
   eventCounter += 1;
+  const { sport: overrideSport, leagueScoringConfig: overrideLeagueConfig, ...restOverrides } = overrides;
   const id = overrides.$id ?? `event_${eventCounter}`;
+  const normalizeSport = (value: Partial<Event>['sport']) => {
+    if (!value) {
+      return createSport({ $id: 'volleyball', name: 'Volleyball' });
+    }
+    if (typeof value === 'string') {
+      return createSport({ $id: value, name: value });
+    }
+    if (typeof value === 'object') {
+      return createSport({
+        ...(value as Partial<Sport>),
+        $id: (value as Sport).$id ?? (value as any).name ?? '',
+        name: (value as Sport).name ?? (value as any).$id ?? '',
+      });
+    }
+    return createSport({ $id: 'volleyball', name: 'Volleyball' });
+  };
+
+  const leagueConfigOverrides = overrideLeagueConfig as Partial<LeagueScoringConfig> | undefined;
+  const leagueScoringConfig = createLeagueScoringConfig(leagueConfigOverrides);
+  if (!leagueScoringConfig.$id) {
+    leagueScoringConfig.$id = `league_scoring_${eventCounter}`;
+  }
 
   return {
     $id: id,
@@ -100,13 +124,14 @@ export const buildEvent = (overrides: Partial<Event> = {}): Event => {
     $createdAt: new Date().toISOString(),
     $updatedAt: new Date().toISOString(),
     eventType: 'league',
-    sport: 'Volleyball',
+    sport: normalizeSport(overrideSport),
+    leagueScoringConfig,
     divisions: [],
     matches: [],
     teams: [],
     players: [],
     attendees: 0,
     timeSlots: [],
-    ...overrides,
+    ...restOverrides,
   };
 };

@@ -158,7 +158,7 @@ class TeamService {
             name: row.name,
             seed: typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0),
             division,
-            sport: row.sport || 'Volleyball',
+            sport: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? 'Volleyball'),
             wins,
             losses,
             playerIds,

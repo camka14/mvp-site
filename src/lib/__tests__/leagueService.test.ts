@@ -55,7 +55,7 @@ describe('leagueService', () => {
 
       const slot: TimeSlot = {
         $id: 'temp-slot',
-        scheduledFieldId: field,
+        scheduledFieldId: field.$id,
         dayOfWeek: 2,
         startTimeMinutes: 9 * 60,
         endTimeMinutes: 10 * 60,

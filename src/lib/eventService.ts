@@ -8,7 +8,7 @@ import {
     Match,
     LeagueConfig,
     LeagueScoringConfig,
-    SportConfig,
+    Sport,
     TimeSlot,
     EventStatus,
     EventState,
@@ -18,6 +18,7 @@ import {
 } from '@/types';
 import { ID, Query } from 'appwrite';
 import { ensureLocalDateTimeString, formatLocalDateTime } from '@/lib/dateUtils';
+import { sportsService } from '@/lib/sportsService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
@@ -70,6 +71,8 @@ class EventService {
      * Get event with all relationships expanded (matching Python backend approach)
      * This fetches all related data in a single database call using Appwrite's relationship features
      */
+    private sportsCache: Map<string, Sport> | null = null;
+    private sportsCachePromise: Promise<Map<string, Sport>> | null = null;
     async getEventWithRelations(id: string): Promise<Event | undefined> {
         try {
             // Use Query.select to expand all relationships like in Python backend
@@ -115,44 +118,23 @@ class EventService {
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: id,
-                queries: [
-                    Query.select([
-                        '*',
-                        'sport.*',
-                        'leagueScoringConfig.*',
-                        'organization.$id',
-                    ])
-                ]
             });
+
+            await this.ensureSportRelationship(response);
+
+            if (response.leagueScoringConfigId) {
+                const leagueScoringConfig = await databases.getRow({
+                    databaseId: DATABASE_ID,
+                    tableId: process.env.NEXT_PUBLIC_APPWRITE_LEAGUE_SCORING_CONFIG_TABLE_ID!,
+                    rowId: response.leagueScoringConfigId,
+                });
+                response.leagueScoringConfig = leagueScoringConfig;
+            }
 
             return this.mapRowToEvent(response);
         } catch (error) {
             console.error('Failed to fetch event:', error);
             return undefined;
-        }
-    }
-
-    async getAllEvents(): Promise<Event[]> {
-        try {
-            const response = await databases.listRows({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                queries: [
-                    Query.select([
-                        '*',
-                        'sport.*',
-                        'leagueScoringConfig.*',
-                        'organization.$id',
-                    ]),
-                    Query.orderDesc('$createdAt'),
-                    Query.limit(100)
-                ]
-            });
-
-            return response.rows.map(row => this.mapRowToEvent(row));
-        } catch (error) {
-            console.error('Failed to fetch events:', error);
-            throw new Error('Failed to load events');
         }
     }
 
@@ -167,17 +149,15 @@ class EventService {
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: eventId,
-                data: updates,
-                queries: [
-                    Query.select([
-                        '*',
-                        'sport.*',
-                        'leagueScoringConfig.*',
-                        'organization.$id',
-                    ])
-                ]
+                data: updates
             });
 
+            const hydrated = await this.getEvent(eventId);
+            if (hydrated) {
+                return hydrated;
+            }
+
+            await this.ensureSportRelationship(response);
             return this.mapRowToEvent(response);
         } catch (error) {
             console.error('Failed to update event participants:', error);
@@ -193,17 +173,15 @@ class EventService {
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: eventId,
-                data: payload,
-                queries: [
-                    Query.select([
-                        '*',
-                        'sport.*',
-                        'leagueScoringConfig.*',
-                        'organization.$id',
-                    ])
-                ]
+                data: payload
             });
 
+            const hydrated = await this.getEvent(eventId);
+            if (hydrated) {
+                return hydrated;
+            }
+
+            await this.ensureSportRelationship(response);
             return this.mapRowToEvent(response);
         } catch (error) {
             console.error('Failed to update event:', error);
@@ -254,7 +232,7 @@ class EventService {
                 await databases.deleteRow({
                     databaseId: DATABASE_ID,
                     tableId: FIELDS_TABLE_ID,
-                    rowId: field.$id,
+                    rowId: field.$id
                 });
             })
         );
@@ -274,17 +252,18 @@ class EventService {
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: ID.unique(),
-                data: payload,
-                queries: [
-                    Query.select([
-                        '*',
-                        'sport.*',
-                        'leagueScoringConfig.*',
-                        'organization.$id',
-                    ])
-                ]
+                data: payload
             });
 
+            const eventId = response.$id ?? response.id;
+            if (eventId) {
+                const hydrated = await this.getEvent(eventId);
+                if (hydrated) {
+                    return hydrated;
+                }
+            }
+
+            await this.ensureSportRelationship(response);
             return this.mapRowToEvent(response);
         } catch (error) {
             console.error('Failed to create event:', error);
@@ -308,10 +287,10 @@ class EventService {
             'category',
             'leagueConfig',
             'leagueScoringConfig',
-            'sportConfig',
             'players',
             'teams',
             'fields',
+            'sport',
         ].forEach((key) => {
             delete clone[key];
         });
@@ -352,6 +331,19 @@ class EventService {
 
         if (sanitizedTimeSlots && sanitizedTimeSlots.length) {
             cleaned.timeSlots = sanitizedTimeSlots.filter((slot): slot is TimeSlotPayload => Boolean(slot));
+        }
+
+        if (event.sport?.$id) {
+            (cleaned as Record<string, unknown>).sport = event.sport.$id;
+        }
+
+        if (event.leagueScoringConfig && typeof event.leagueScoringConfig === 'object') {
+            const config = event.leagueScoringConfig as LeagueScoringConfig;
+            if (config.$id) {
+                (cleaned as Record<string, unknown>).leagueScoringConfig = config.$id;
+            }
+        } else if (typeof event.leagueScoringConfig === 'string') {
+            (cleaned as Record<string, unknown>).leagueScoringConfig = event.leagueScoringConfig;
         }
 
         if (
@@ -420,48 +412,6 @@ class EventService {
         return null;
     }
 
-    async generateLeagueSchedule(
-        eventId: string,
-        options: LeagueGenerationOptions = {}
-    ): Promise<LeagueGenerationResponse> {
-        try {
-            const payload: Record<string, unknown> = {
-                task: 'generateLeague',
-                eventId,
-            };
-
-            if (options.dryRun !== undefined) {
-                payload.dryRun = options.dryRun;
-            }
-            if (options.participantCount !== undefined) {
-                payload.participantCount = options.participantCount;
-            }
-            if (options.teamId) {
-                payload.teamId = options.teamId;
-            }
-            if (options.userId) {
-                payload.userId = options.userId;
-            }
-
-            const execution = await functions.createExecution({
-                functionId: EVENT_MANAGER_FUNCTION_ID,
-                body: JSON.stringify(payload),
-                async: false,
-            });
-
-            const parsed = this.parseLeagueGenerationResponse(execution.responseBody);
-            const errorPayload = this.extractLeagueGenerationError(parsed?.error);
-            if (errorPayload) {
-                throw new Error(errorPayload);
-            }
-
-            return parsed;
-        } catch (error) {
-            console.error('Failed to request league generation:', error);
-            throw error instanceof Error ? error : new Error('Failed to request league generation');
-        }
-    }
-
     private mapRowToEvent(row: any): Event {
         const restTime =
             typeof row.restTimeMinutes === 'number'
@@ -470,15 +420,13 @@ class EventService {
                     ? Number(row.restTimeMinutes)
                     : undefined;
         const state = this.normalizeEventState(row.state);
-        const { sportName, config: sportConfig } = this.normalizeSport(row.sport);
-        const leagueScoringConfig = this.normalizeLeagueScoringConfig(row.leagueScoringConfig);
+        const sport = this.resolveSport(row.sport);
+        const leagueScoringConfig = this.resolveLeagueScoringConfig(row.leagueScoringConfig);
         const organization = row.organization ?? row.organizationId;
-        const fallbackSportName = typeof row.sport === 'string' ? row.sport : '';
 
         return {
             ...row,
-            sport: sportName || fallbackSportName,
-            sportConfig,
+            sport,
             leagueScoringConfig,
             organization,
             // Computed properties
@@ -709,67 +657,8 @@ class EventService {
             restTimeMinutes: Number.isFinite(restTime) ? restTime : undefined,
             setDurationMinutes: row.setDurationMinutes ?? undefined,
             setsPerMatch: row.setsPerMatch ?? undefined,
+            pointsToVictory: Array.isArray(row.pointsToVictory) ? (row.pointsToVictory as number[]) : undefined,
         };
-    }
-
-    private normalizeSport(value: unknown): { sportName: string; config?: SportConfig } {
-        if (typeof value === 'string') {
-            return { sportName: value };
-        }
-
-        if (!value || typeof value !== 'object') {
-            return { sportName: '' };
-        }
-
-        const record = value as Record<string, unknown>;
-        const cloned: Record<string, unknown> = { ...record };
-
-        if (typeof cloned.id === 'string' && typeof cloned.$id !== 'string') {
-            cloned.$id = cloned.id;
-        }
-
-        delete cloned.id;
-
-        const sportValue = cloned.sport;
-        const sportName = typeof sportValue === 'string' ? sportValue : '';
-
-        if (sportName) {
-            return {
-                sportName,
-                config: cloned as SportConfig,
-            };
-        }
-
-        if (typeof cloned.$id === 'string') {
-            return { sportName: String(cloned.$id) };
-        }
-
-        return { sportName: '' };
-    }
-
-    private normalizeLeagueScoringConfig(value: unknown): LeagueScoringConfig | undefined {
-        if (!value) {
-            return undefined;
-        }
-
-        if (typeof value === 'string') {
-            return { $id: value };
-        }
-
-        if (typeof value !== 'object') {
-            return undefined;
-        }
-
-        const record = value as Record<string, unknown>;
-        const cloned: Record<string, unknown> = { ...record };
-
-        if (typeof cloned.id === 'string' && typeof cloned.$id !== 'string') {
-            cloned.$id = cloned.id;
-        }
-
-        delete cloned.id;
-
-        return cloned as LeagueScoringConfig;
     }
 
     private mapRowToTimeSlot(row: any): TimeSlot {
@@ -806,40 +695,90 @@ class EventService {
         return slot;
     }
 
-    private parseLeagueGenerationResponse(body?: string): LeagueGenerationResponse {
-        if (!body) {
-            return {};
+    private async ensureSportRelationship(row: any): Promise<void> {
+        if (row?.sport && typeof row.sport === 'object' && '$id' in row.sport) {
+            return;
         }
 
-        try {
-            const parsed = JSON.parse(body);
-            if (parsed && typeof parsed === 'object') {
-                return parsed as LeagueGenerationResponse;
-            }
-        } catch (error) {
-            console.error('Failed to parse league generation response:', error);
+        const sportId =
+            (row?.sport && typeof row.sport === 'string' ? row.sport : undefined) ??
+            (typeof row?.sportId === 'string' ? row.sportId : undefined);
+
+        if (!sportId) {
+            throw new Error('Event record is missing sport relationship data.');
         }
 
-        return {};
+        let sportsMap = await this.getSportsMap();
+        let sport = sportsMap.get(sportId);
+
+        if (!sport) {
+            sportsMap = await this.refreshSportsMap();
+            sport = sportsMap.get(sportId) ?? null;
+        }
+
+        if (!sport) {
+            throw new Error(`Sport with id ${sportId} could not be resolved.`);
+        }
+
+        row.sport = sport;
     }
 
-    private extractLeagueGenerationError(value: unknown): string | null {
-        if (!value) {
+    private async getSportsMap(): Promise<Map<string, Sport>> {
+        if (this.sportsCache) {
+            return this.sportsCache;
+        }
+
+        if (!this.sportsCachePromise) {
+            this.sportsCachePromise = sportsService.getAll().then((sports) => {
+                const map = new Map<string, Sport>();
+                sports.forEach((sport) => {
+                    if (sport.$id) {
+                        map.set(sport.$id, sport);
+                    }
+                });
+                this.sportsCache = map;
+                return map;
+            }).finally(() => {
+                this.sportsCachePromise = null;
+            });
+        }
+
+        return this.sportsCachePromise;
+    }
+
+    private async refreshSportsMap(): Promise<Map<string, Sport>> {
+        this.sportsCache = null;
+        this.sportsCachePromise = null;
+
+        const sports = await sportsService.getAll(true);
+        const map = new Map<string, Sport>();
+        sports.forEach((sport) => {
+            if (sport.$id) {
+                map.set(sport.$id, sport);
+            }
+        });
+        this.sportsCache = map;
+        return map;
+    }
+
+    private resolveSport(input: unknown): Sport {
+        if (!input || typeof input !== 'object') {
+            throw new Error('Event record is missing sport relationship data.');
+        }
+
+        const sport = input as Sport;
+        if (!sport.$id || !sport.name) {
+            throw new Error('Sport relationship is missing required fields.');
+        }
+
+        return sport;
+    }
+
+    private resolveLeagueScoringConfig(input: unknown): LeagueScoringConfig | null {
+        if (!input || typeof input !== 'object') {
             return null;
         }
-
-        if (typeof value === 'string') {
-            return value;
-        }
-
-        if (typeof value === 'object') {
-            const message = (value as { message?: unknown }).message;
-            if (typeof message === 'string' && message.trim().length > 0) {
-                return message;
-            }
-        }
-
-        return 'Failed to generate league schedule';
+        return input as LeagueScoringConfig;
     }
 
     private normalizeTime(value: unknown): number {
@@ -879,6 +818,7 @@ class EventService {
             rowId: eventId,
             data: { waitListIds: updated }
         });
+        await this.ensureSportRelationship(response);
         return this.mapRowToEvent(response);
     }
 
@@ -892,6 +832,7 @@ class EventService {
             rowId: eventId,
             data: { freeAgentIds: updated }
         });
+        await this.ensureSportRelationship(response);
         return this.mapRowToEvent(response);
     }
 
@@ -905,6 +846,7 @@ class EventService {
             rowId: eventId,
             data: { freeAgentIds: updated }
         });
+        await this.ensureSportRelationship(response);
         return this.mapRowToEvent(response);
     }
 
@@ -923,7 +865,7 @@ class EventService {
             }
 
             if (filters.sports && filters.sports.length > 0) {
-                queries.push(Query.equal('sport.sport', filters.sports));
+                queries.push(Query.equal('sport.name', filters.sports));
             }
 
             if (filters.divisions && filters.divisions.length > 0) {
@@ -971,7 +913,7 @@ class EventService {
                     event.name.toLowerCase().includes(searchTerm) ||
                     event.description.toLowerCase().includes(searchTerm) ||
                     event.location.toLowerCase().includes(searchTerm) ||
-                    event.sport.toLowerCase().includes(searchTerm)
+                    (event.sport?.name ?? '').toLowerCase().includes(searchTerm)
                 );
             }
 

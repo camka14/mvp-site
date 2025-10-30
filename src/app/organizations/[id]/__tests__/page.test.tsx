@@ -1,5 +1,6 @@
 import { buildFieldCalendarEvents } from '../fieldCalendar';
 import type { Field, Match } from '@/types';
+import { createSport } from '@/types/defaults';
 
 describe('buildFieldCalendarEvents', () => {
   const baseField: Field = {
@@ -28,7 +29,7 @@ describe('buildFieldCalendarEvents', () => {
       previousRightId: undefined,
       winnerNextMatchId: undefined,
       loserNextMatchId: undefined,
-      field: '68e0416e0025cd33196f',
+      field: baseField,
       event: {
         $id: '68e81149002bcfc961a1',
         name: 'Pickup Night',
@@ -52,7 +53,7 @@ describe('buildFieldCalendarEvents', () => {
         cancellationRefundHours: 0,
         registrationCutoffHours: 0,
         eventType: 'pickup',
-        sport: 'Volleyball',
+        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         divisions: [],
         attendees: 0,
         category: 'Volleyball',
@@ -74,7 +75,7 @@ describe('buildFieldCalendarEvents', () => {
   });
 
   it('falls back to a default duration when match end time is missing', () => {
-    const matchWithoutEnd: Match = {
+    const matchWithoutEnd = {
       $id: 'match_2',
       start: '2025-10-13T05:00:00.000+00:00',
       losersBracket: false,
@@ -88,9 +89,9 @@ describe('buildFieldCalendarEvents', () => {
       previousRightId: undefined,
       winnerNextMatchId: undefined,
       loserNextMatchId: undefined,
-      field: 'field_1',
+      field: baseField,
       event: undefined,
-    } as Match;
+    } as unknown as Match;
 
     const entries = buildFieldCalendarEvents([
       {

@@ -1,4 +1,6 @@
 import { eventService } from '@/lib/eventService';
+import { sportsService } from '@/lib/sportsService';
+import { createSport } from '@/types/defaults';
 import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
 
 jest.mock('@/app/appwrite', () => {
@@ -6,7 +8,14 @@ jest.mock('@/app/appwrite', () => {
   return createAppwriteModuleMock();
 });
 
+jest.mock('@/lib/sportsService', () => ({
+  sportsService: {
+    getAll: jest.fn(),
+  },
+}));
+
 const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
+const sportsServiceMock = sportsService as jest.Mocked<typeof sportsService>;
 
 const DATABASE_ID = 'test-db';
 const EVENTS_TABLE_ID = 'events-table';
@@ -24,6 +33,8 @@ describe('eventService', () => {
   beforeEach(() => {
     setEnv();
     jest.clearAllMocks();
+    sportsServiceMock.getAll.mockReset();
+    sportsServiceMock.getAll.mockResolvedValue([]);
   });
 
   describe('getEventWithRelations', () => {
@@ -31,7 +42,7 @@ describe('eventService', () => {
       appwriteModuleMock.databases.getRow.mockResolvedValue({
         $id: 'evt_1',
         name: 'League Event',
-        sport: 'Volleyball',
+        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         teamSignup: true,
         teamIds: ['team_1'],
         playerIds: [],
@@ -75,13 +86,37 @@ describe('eventService', () => {
     });
   });
 
+  describe('getEvent', () => {
+    it('hydrates sport relationship when only sportId is returned', async () => {
+      const sport = createSport({ $id: 'sport_volleyball', name: 'Volleyball' });
+      sportsServiceMock.getAll.mockResolvedValueOnce([sport]);
+
+      appwriteModuleMock.databases.getRow
+        .mockResolvedValueOnce({
+          $id: 'evt_sport_only',
+          name: 'Event',
+          sportId: 'sport_volleyball',
+          leagueScoringConfigId: 'cfg_1',
+          divisions: [],
+          teamSignup: false,
+          playerIds: [],
+        })
+        .mockResolvedValueOnce({ $id: 'cfg_1' });
+
+      const event = await eventService.getEvent('evt_sport_only');
+
+      expect(sportsServiceMock.getAll).toHaveBeenCalled();
+      expect(event?.sport).toEqual(sport);
+    });
+  });
+
   describe('createEvent', () => {
     it('sends field ids and coordinates when provided', async () => {
       appwriteModuleMock.ID.unique.mockReturnValueOnce('evt_new');
       appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
         $id: 'evt_new',
         name: 'New Event',
-        sport: 'Volleyball',
+        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         teamSignup: true,
         teamIds: [],
         playerIds: [],
@@ -115,24 +150,22 @@ describe('eventService', () => {
       appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
         $id: 'evt_nested',
         name: 'Nested Event',
-        sport: 'Volleyball',
+        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         teamSignup: false,
         playerIds: [],
         teamIds: [],
         divisions: [],
-        lat: 40,
-        long: -105,
+        coordinates: [-105, 40],
       });
 
       await eventService.createEvent({
         name: 'Nested Event',
-        sport: 'Volleyball',
+        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         teamSignup: false,
         playerIds: [],
         teamIds: [],
         divisions: [],
-        lat: 40,
-        long: -105,
+        coordinates: [-105, 40] as [number, number],
         fields: [
           {
             $id: 'field_1',
@@ -159,7 +192,7 @@ describe('eventService', () => {
     it('normalizes coordinate payloads', async () => {
       appwriteModuleMock.databases.updateRow.mockResolvedValue({
         $id: 'evt_1',
-        sport: 'Volleyball',
+        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         teamSignup: false,
         playerIds: ['user_1'],
         divisions: [],
@@ -239,7 +272,7 @@ describe('eventService', () => {
     it('adds unique waitlist entries when event exists', async () => {
       appwriteModuleMock.databases.getRow.mockResolvedValueOnce({
         $id: 'evt_1',
-        sport: 'Volleyball',
+        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         teamSignup: true,
         teamIds: [],
         playerIds: [],
@@ -249,7 +282,7 @@ describe('eventService', () => {
 
       appwriteModuleMock.databases.updateRow.mockResolvedValue({
         $id: 'evt_1',
-        sport: 'Volleyball',
+        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         teamSignup: true,
         teamIds: [],
         playerIds: [],

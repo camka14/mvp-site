@@ -217,7 +217,6 @@ class LeagueService {
     const payload: Record<string, any> = {
       task: 'generateLeague',
       eventDocument,
-      persist: false,
     };
 
     if (typeof options.participantCount === 'number') {

@@ -98,9 +98,9 @@ export default function EventCard({ event, showDistance = false, userLocation, o
             <span className="mr-1">{eventTypeInfo.icon}</span>
             {eventTypeInfo.label}
           </span>
-          {event.sport && (
+          {event.sport?.name && (
             <span className="bg-white/90 backdrop-blur-sm text-gray-900 px-2 py-1 rounded-full text-xs font-medium capitalize">
-              {event.sport}
+              {event.sport.name}
             </span>
           )}
         </div>

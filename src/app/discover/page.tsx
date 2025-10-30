@@ -33,10 +33,11 @@ import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
-import { Event, Field, Organization, TimeSlot, formatPrice, SPORTS_LIST } from '@/types';
+import { Event, Field, Organization, TimeSlot, formatPrice } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
+import { useSports } from '@/app/hooks/useSports';
 
 type RentalListing = {
   organization: Organization;
@@ -90,6 +91,9 @@ function DiscoverPageContent() {
   const [resumePreviewEvent, setResumePreviewEvent] = useState<Event | null>(null);
   const resumePreviewHandled = useRef(false);
 
+  const { sports, loading: sportsLoading, error: sportsError } = useSports();
+  const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
+
   /**
    * Rentals tab state
    */
@@ -133,6 +137,13 @@ function DiscoverPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
 
+  useEffect(() => {
+    if (sportsLoading) return;
+    setSelectedSports((current) =>
+      current.filter((sport) => sportOptions.includes(sport))
+    );
+  }, [sportOptions, sportsLoading]);
+
   /**
    * Derived events list with filters applied on the client to avoid flicker.
    */
@@ -142,7 +153,7 @@ function DiscoverPageContent() {
       if (selectedEventTypes.length && !selectedEventTypes.includes(event.eventType)) return false;
       if (
         selectedSports.length > 0 &&
-        !selectedSports.map((sport) => sport.toLowerCase()).includes(event.sport.toLowerCase())
+        !selectedSports.map((sport) => sport.toLowerCase()).includes((event.sport?.name ?? '').toLowerCase())
       ) {
         return false;
       }
@@ -483,7 +494,9 @@ function DiscoverPageContent() {
               setSelectedSports={setSelectedSports}
               maxDistance={maxDistance}
               setMaxDistance={setMaxDistance}
-              sports={SPORTS_LIST}
+              sports={sportOptions}
+              sportsLoading={sportsLoading}
+              sportsError={sportsError?.message ?? null}
               distanceOptions={DISTANCE_OPTIONS}
               filteredEvents={filteredEvents}
               isLoadingInitial={isLoadingInitial}
@@ -564,6 +577,8 @@ function EventsTabContent(props: {
   maxDistance: number;
   setMaxDistance: (value: number) => void;
   sports: string[];
+  sportsLoading: boolean;
+  sportsError: string | null;
   distanceOptions: number[];
   filteredEvents: Event[];
   isLoadingInitial: boolean;
@@ -587,6 +602,8 @@ function EventsTabContent(props: {
     maxDistance,
     setMaxDistance,
     sports,
+    sportsLoading,
+    sportsError,
     distanceOptions,
     filteredEvents,
     isLoadingInitial,
@@ -677,10 +694,11 @@ function EventsTabContent(props: {
                 <Text size="sm" fw={600} mb={6}>
                   Sports
                 </Text>
-                <Group gap="xs">
+                <Group gap="xs" align="center">
                   <Chip
                     radius="sm"
                     checked={allSportsSelected}
+                    disabled={sportsLoading || !sports.length}
                     onChange={(checked) => {
                       if (checked) {
                         setSelectedSports([]);
@@ -689,26 +707,39 @@ function EventsTabContent(props: {
                   >
                     All
                   </Chip>
-                  {sports.map((sport) => (
-                    <Chip
-                      key={sport}
-                      radius="sm"
-                      checked={selectedSports.includes(sport)}
-                      onChange={(checked) => {
-                        setSelectedSports((current) => {
-                          if (checked) {
-                            const next = new Set(current);
-                            next.add(sport);
-                            return Array.from(next);
-                          }
-                          return current.filter((value) => value !== sport);
-                        });
-                      }}
-                    >
-                      {sport}
-                    </Chip>
-                  ))}
+                  {sportsLoading ? (
+                    <Loader size="sm" aria-label="Loading sports" />
+                  ) : sports.length ? (
+                    sports.map((sport) => (
+                      <Chip
+                        key={sport}
+                        radius="sm"
+                        checked={selectedSports.includes(sport)}
+                        onChange={(checked) => {
+                          setSelectedSports((current) => {
+                            if (checked) {
+                              const next = new Set(current);
+                              next.add(sport);
+                              return Array.from(next);
+                            }
+                            return current.filter((value) => value !== sport);
+                          });
+                        }}
+                      >
+                        {sport}
+                      </Chip>
+                    ))
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      No sports available
+                    </Text>
+                  )}
                 </Group>
+                {sportsError && (
+                  <Alert color="red" radius="md" mt="sm">
+                    {sportsError}
+                  </Alert>
+                )}
               </div>
 
               {location && (

@@ -291,7 +291,7 @@ export default function TeamDetailModal({
                     {/* Event Context Banner */}
                     {eventContext && (
                         <Alert color="blue" variant="light" mb="md" title={`Managing team for: ${eventContext.name}`}>
-                            <Text size="sm" c="blue">{eventContext.location} • {eventContext.sport}</Text>
+                            <Text size="sm" c="blue">{eventContext.location} • {eventContext.sport?.name}</Text>
                             {getFilteredFreeAgents().length > 0 && (
                                 <Text size="sm" c="blue">{getFilteredFreeAgents().length} free agents available to invite.</Text>
                             )}

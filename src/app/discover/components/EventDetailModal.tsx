@@ -90,7 +90,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
         const loadTeams = async () => {
             try {
                 const userTeamsAll = await teamService.getTeamsByIds(teamIds, true);
-                const targetSport = (targetEvent.sport || '').toLowerCase();
+                const targetSport = (targetEvent.sport?.name || '').toLowerCase();
                 const relevantTeams = userTeamsAll.filter(
                     (team) => (team.sport || '').toLowerCase() === targetSport
                 );
@@ -588,7 +588,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                         ) : (
                                                             <div className="text-center space-y-3">
                                                                 <p className="text-sm text-gray-600">
-                                                                    You have no teams for {currentEvent.sport}.
+                                                                    You have no teams for {currentEvent.sport?.name}.
                                                                 </p>
                                                                 <Button variant="default"
                                                                     onClick={() => {

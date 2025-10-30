@@ -29,105 +29,117 @@ export interface LeagueConfig {
   restTimeMinutes?: number;
   setDurationMinutes?: number;
   setsPerMatch?: number;
+  pointsToVictory?: number[];
 }
 
-export interface SportConfig {
-  $id?: string;
-  sport: string;
-  usePointsForWin?: boolean;
-  usePointsForDraw?: boolean;
-  usePointsForLoss?: boolean;
-  usePointsForForfeitWin?: boolean;
-  usePointsForForfeitLoss?: boolean;
-  usePointsPerSetWin?: boolean;
-  usePointsPerSetLoss?: boolean;
-  usePointsPerGameWin?: boolean;
-  usePointsPerGameLoss?: boolean;
-  usePointsPerGoalScored?: boolean;
-  usePointsPerGoalConceded?: boolean;
-  useMaxGoalBonusPoints?: boolean;
-  useMinGoalBonusThreshold?: boolean;
-  usePointsForShutout?: boolean;
-  usePointsForCleanSheet?: boolean;
-  useApplyShutoutOnlyIfWin?: boolean;
-  usePointsPerGoalDifference?: boolean;
-  useMaxGoalDifferencePoints?: boolean;
-  usePointsPenaltyPerGoalDifference?: boolean;
-  usePointsForParticipation?: boolean;
-  usePointsForNoShow?: boolean;
-  usePointsForWinStreakBonus?: boolean;
-  useWinStreakThreshold?: boolean;
-  usePointsForOvertimeWin?: boolean;
-  usePointsForOvertimeLoss?: boolean;
-  useOvertimeEnabled?: boolean;
-  usePointsPerRedCard?: boolean;
-  usePointsPerYellowCard?: boolean;
-  usePointsPerPenalty?: boolean;
-  useMaxPenaltyDeductions?: boolean;
-  useMaxPointsPerMatch?: boolean;
-  useMinPointsPerMatch?: boolean;
-  useGoalDifferenceTiebreaker?: boolean;
-  useHeadToHeadTiebreaker?: boolean;
-  useTotalGoalsTiebreaker?: boolean;
-  useEnableBonusForComebackWin?: boolean;
-  useBonusPointsForComebackWin?: boolean;
-  useEnableBonusForHighScoringMatch?: boolean;
-  useHighScoringThreshold?: boolean;
-  useBonusPointsForHighScoringMatch?: boolean;
-  useEnablePenaltyUnsporting?: boolean;
-  usePenaltyPointsUnsporting?: boolean;
-  usePointPrecision?: boolean;
-  $createdAt?: string;
-  $updatedAt?: string;
+export interface TournamentConfig {
+  doubleElimination: boolean;
+  winnerSetCount: number;
+  loserSetCount: number;
+  winnerBracketPointsToVictory: number[];
+  loserBracketPointsToVictory: number[];
+  prize: string;
+  fieldCount: number;
+  restTimeMinutes: number;
+}
+
+export interface Sport {
+  $id: string;
+  name: string;
+  usePointsForWin: boolean;
+  usePointsForDraw: boolean;
+  usePointsForLoss: boolean;
+  usePointsForForfeitWin: boolean;
+  usePointsForForfeitLoss: boolean;
+  usePointsPerSetWin: boolean;
+  usePointsPerSetLoss: boolean;
+  usePointsPerGameWin: boolean;
+  usePointsPerGameLoss: boolean;
+  usePointsPerGoalScored: boolean;
+  usePointsPerGoalConceded: boolean;
+  useMaxGoalBonusPoints: boolean;
+  useMinGoalBonusThreshold: boolean;
+  usePointsForShutout: boolean;
+  usePointsForCleanSheet: boolean;
+  useApplyShutoutOnlyIfWin: boolean;
+  usePointsPerGoalDifference: boolean;
+  useMaxGoalDifferencePoints: boolean;
+  usePointsPenaltyPerGoalDifference: boolean;
+  usePointsForParticipation: boolean;
+  usePointsForNoShow: boolean;
+  usePointsForWinStreakBonus: boolean;
+  useWinStreakThreshold: boolean;
+  usePointsForOvertimeWin: boolean;
+  usePointsForOvertimeLoss: boolean;
+  useOvertimeEnabled: boolean;
+  usePointsPerRedCard: boolean;
+  usePointsPerYellowCard: boolean;
+  usePointsPerPenalty: boolean;
+  useMaxPenaltyDeductions: boolean;
+  useMaxPointsPerMatch: boolean;
+  useMinPointsPerMatch: boolean;
+  useGoalDifferenceTiebreaker: boolean;
+  useHeadToHeadTiebreaker: boolean;
+  useTotalGoalsTiebreaker: boolean;
+  useEnableBonusForComebackWin: boolean;
+  useBonusPointsForComebackWin: boolean;
+  useEnableBonusForHighScoringMatch: boolean;
+  useHighScoringThreshold: boolean;
+  useBonusPointsForHighScoringMatch: boolean;
+  useEnablePenaltyUnsporting: boolean;
+  usePenaltyPointsUnsporting: boolean;
+  usePointPrecision: boolean;
+  $createdAt: string;
+  $updatedAt: string;
 }
 
 export interface LeagueScoringConfig {
   $id?: string;
-  pointsForWin?: number;
-  pointsForDraw?: number;
-  pointsForLoss?: number;
-  pointsForForfeitWin?: number;
-  pointsForForfeitLoss?: number;
-  pointsPerSetWin?: number;
-  pointsPerSetLoss?: number;
-  pointsPerGameWin?: number;
-  pointsPerGameLoss?: number;
-  pointsPerGoalScored?: number;
-  pointsPerGoalConceded?: number;
-  maxGoalBonusPoints?: number;
-  minGoalBonusThreshold?: number;
-  pointsForShutout?: number;
-  pointsForCleanSheet?: number;
-  applyShutoutOnlyIfWin?: boolean;
-  pointsPerGoalDifference?: number;
-  maxGoalDifferencePoints?: number;
-  pointsPenaltyPerGoalDifference?: number;
-  pointsForParticipation?: number;
-  pointsForNoShow?: number;
-  pointsForWinStreakBonus?: number;
-  winStreakThreshold?: number;
-  pointsForOvertimeWin?: number;
-  pointsForOvertimeLoss?: number;
-  overtimeEnabled?: boolean;
-  pointsPerRedCard?: number;
-  pointsPerYellowCard?: number;
-  pointsPerPenalty?: number;
-  maxPenaltyDeductions?: number;
-  maxPointsPerMatch?: number;
-  minPointsPerMatch?: number;
-  goalDifferenceTiebreaker?: boolean;
-  headToHeadTiebreaker?: boolean;
-  totalGoalsTiebreaker?: boolean;
-  enableBonusForComebackWin?: boolean;
-  bonusPointsForComebackWin?: number;
-  enableBonusForHighScoringMatch?: boolean;
-  highScoringThreshold?: number;
-  bonusPointsForHighScoringMatch?: number;
-  enablePenaltyForUnsportingBehavior?: boolean;
-  penaltyPointsForUnsportingBehavior?: number;
-  pointPrecision?: number;
-  $createdAt?: string;
-  $updatedAt?: string;
+  pointsForWin: number;
+  pointsForDraw: number;
+  pointsForLoss: number;
+  pointsForForfeitWin: number;
+  pointsForForfeitLoss: number;
+  pointsPerSetWin: number;
+  pointsPerSetLoss: number;
+  pointsPerGameWin: number;
+  pointsPerGameLoss: number;
+  pointsPerGoalScored: number;
+  pointsPerGoalConceded: number;
+  maxGoalBonusPoints: number;
+  minGoalBonusThreshold: number;
+  pointsForShutout: number;
+  pointsForCleanSheet: number;
+  applyShutoutOnlyIfWin: boolean;
+  pointsPerGoalDifference: number;
+  maxGoalDifferencePoints: number;
+  pointsPenaltyPerGoalDifference: number;
+  pointsForParticipation: number;
+  pointsForNoShow: number;
+  pointsForWinStreakBonus: number;
+  winStreakThreshold: number;
+  pointsForOvertimeWin: number;
+  pointsForOvertimeLoss: number;
+  overtimeEnabled: boolean;
+  pointsPerRedCard: number;
+  pointsPerYellowCard: number;
+  pointsPerPenalty: number;
+  maxPenaltyDeductions: number;
+  maxPointsPerMatch: number;
+  minPointsPerMatch: number;
+  goalDifferenceTiebreaker: boolean;
+  headToHeadTiebreaker: boolean;
+  totalGoalsTiebreaker: boolean;
+  enableBonusForComebackWin: boolean;
+  bonusPointsForComebackWin: number;
+  enableBonusForHighScoringMatch: boolean;
+  highScoringThreshold: number;
+  bonusPointsForHighScoringMatch: number;
+  enablePenaltyForUnsportingBehavior: boolean;
+  penaltyPointsForUnsportingBehavior: number;
+  pointPrecision: number;
+  $createdAt: string;
+  $updatedAt: string;
 }
 
 // Match interface for tournaments (matching Python model)
@@ -302,8 +314,7 @@ export interface Event {
   $createdAt: string;
   $updatedAt: string;
   eventType: 'pickup' | 'tournament' | 'league';
-  sport: string;
-  sportConfig?: SportConfig;
+  sport: Sport;
   organization?: Organization | string;
 
   // Relationship fields - can be IDs or expanded objects
@@ -316,8 +327,6 @@ export interface Event {
   loserSetCount?: number;
   winnerBracketPointsToVictory?: number[];
   loserBracketPointsToVictory?: number[];
-  winnerScoreLimitsPerSet?: number[];
-  loserScoreLimitsPerSet?: number[];
   prize?: string;
   fieldCount?: number;
   fields?: Field[];
@@ -333,15 +342,18 @@ export interface Event {
   matchDurationMinutes?: number;
   setDurationMinutes?: number;
   setsPerMatch?: number;
+  pointsToVictory?: number[];
   status?: EventStatus;
   leagueConfig?: LeagueConfig;
-  leagueScoringConfig?: LeagueScoringConfig | string | null;
+  leagueScoringConfig?: LeagueScoringConfig | null;
+  playoffConfig?: TournamentConfig | null;
 
   // Computed properties
   attendees: number;
 }
 
-export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'leagueScoringConfig' | 'sportConfig' | 'matches' | 'timeSlots' | 'fields'> {
+export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'matches' | 'timeSlots' | 'fields' | 'sport'> {
+  sport?: string;
   players?: string[];
   teams?: string[];
   matches?: string[];

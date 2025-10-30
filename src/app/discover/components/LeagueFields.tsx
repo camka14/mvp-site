@@ -11,9 +11,12 @@ import {
   Loader,
   Stack,
   Badge,
+  SimpleGrid,
+  Paper,
+  Title,
 } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
-import type { Field, LeagueConfig, TimeSlot } from '@/types';
+import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 
 const DAYS_OF_WEEK = [
@@ -78,6 +81,7 @@ export interface LeagueSlotForm {
 
 interface LeagueFieldsProps {
   leagueData: LeagueConfig;
+  sport?: Sport;
   onLeagueDataChange: (updates: Partial<LeagueConfig>) => void;
   slots: LeagueSlotForm[];
   onAddSlot: () => void;
@@ -91,6 +95,7 @@ interface LeagueFieldsProps {
 
 const LeagueFields: React.FC<LeagueFieldsProps> = ({
   leagueData,
+  sport,
   onLeagueDataChange,
   slots,
   onAddSlot,
@@ -105,6 +110,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
     () => new Map(fields.map((field) => [field.$id, field])),
     [fields],
   );
+  const requiresSets = Boolean(sport?.usePointsPerSetWin);
 
   const availableFieldOptions = (fieldOptions && fieldOptions.length > 0)
     ? fieldOptions
@@ -113,11 +119,46 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
         label: field.name || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Unnamed field'),
       }));
 
+  const setsPerMatch = leagueData.setsPerMatch ?? 1;
+  const pointsToVictory = leagueData.pointsToVictory ?? [];
+
+  const syncPoints = (targetLength: number) => {
+    const next = pointsToVictory.slice(0, targetLength);
+    while (next.length < targetLength) {
+      next.push(21);
+    }
+    return next;
+  };
+
+  const handleSetsPerMatchChange = (value: string | null) => {
+    const count = parseInt(value || '1', 10);
+    const normalized = Number.isNaN(count) ? 1 : count;
+    const nextPoints = syncPoints(normalized);
+    onLeagueDataChange({
+      setsPerMatch: normalized,
+      pointsToVictory: nextPoints,
+      usesSets: requiresSets,
+    });
+  };
+
+  const handlePointChange = (index: number, value: number | string) => {
+    const numeric = Number(value) || 1;
+    const updated = syncPoints(setsPerMatch);
+    updated[index] = numeric;
+    onLeagueDataChange({
+      pointsToVictory: updated,
+      usesSets: requiresSets,
+    });
+  };
+
   return (
-    <Stack gap="lg">
-      <div>
-        <h3 className="text-lg font-semibold mb-4">League Configuration</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+      <Stack gap="lg">
+        <div>
+          <Title order={4} mb="md">
+            League Configuration
+          </Title>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <NumberInput
             label="Games per Opponent"
             min={1}
@@ -125,14 +166,16 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             onChange={(value) => onLeagueDataChange({ gamesPerOpponent: Number(value) || 1 })}
           />
 
-          <NumberInput
-            label="Match Duration (minutes)"
-            min={15}
-            step={5}
-            value={leagueData.matchDurationMinutes}
-            onChange={(value) => onLeagueDataChange({ matchDurationMinutes: Number(value) || 60 })}
-            disabled={leagueData.usesSets}
-          />
+          {!requiresSets && (
+            <NumberInput
+              label="Match Duration (minutes)"
+              min={15}
+              step={5}
+              value={leagueData.matchDurationMinutes}
+              onChange={(value) => onLeagueDataChange({ matchDurationMinutes: Number(value) || 60 })}
+            />
+          )}
+
           <NumberInput
             label="Rest Time Between Matches (minutes)"
             min={0}
@@ -153,12 +196,6 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             checked={leagueData.includePlayoffs}
             onChange={(event) => onLeagueDataChange({ includePlayoffs: event.currentTarget.checked })}
           />
-
-          <Switch
-            label="Matches play in sets"
-            checked={leagueData.usesSets}
-            onChange={(event) => onLeagueDataChange({ usesSets: event.currentTarget.checked })}
-          />
         </div>
 
         {leagueData.includePlayoffs && (
@@ -171,13 +208,17 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           />
         )}
 
-        {leagueData.usesSets && (
+        {requiresSets && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <NumberInput
+            <MantineSelect
               label="Sets per Match"
-              min={1}
-              value={leagueData.setsPerMatch || undefined}
-              onChange={(value) => onLeagueDataChange({ setsPerMatch: Number(value) || undefined })}
+              value={String(setsPerMatch)}
+              onChange={handleSetsPerMatchChange}
+              data={[
+                { value: '1', label: 'Best of 1' },
+                { value: '3', label: 'Best of 3' },
+                { value: '5', label: 'Best of 5' },
+              ]}
             />
             <NumberInput
               label="Set Duration (minutes)"
@@ -188,41 +229,65 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             />
           </div>
         )}
-      </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Weekly Timeslots</h3>
-          <Button variant="light" onClick={onAddSlot} disabled={readOnly}>
-            Add Timeslot
-          </Button>
-        </div>
-
-        {fieldsLoading && (
-          <div className="flex items-center gap-2 mb-4 text-sm text-gray-600">
-            <Loader size="sm" />
-            Loading fields...
+        {requiresSets && (
+          <div className="mt-6">
+            <Text fw={600} mb="xs">
+              Points to Victory
+            </Text>
+            <Text size="sm" c="dimmed" mb="sm">
+              Configure the points required to win each set.
+            </Text>
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
+              {Array.from({ length: setsPerMatch }).map((_, idx) => (
+                <NumberInput
+                  key={`points-set-${idx}`}
+                  label={`Set ${idx + 1}`}
+                  min={1}
+                  value={pointsToVictory[idx] ?? 21}
+                  onChange={(value) => handlePointChange(idx, value)}
+                />
+              ))}
+            </SimpleGrid>
           </div>
         )}
+      </div>
 
-        {!fieldsLoading && availableFieldOptions.length === 0 && (
-          <Alert color="yellow" radius="md" className="mb-4">
-            No fields found. Create a field first so you can attach weekly availability.
-          </Alert>
-        )}
+        <div>
+          <div className="flex items-center justify-between mb-4 gap-3">
+            <Title order={4} className="m-0">
+              Weekly Timeslots
+            </Title>
+            <Button variant="light" onClick={onAddSlot} disabled={readOnly}>
+              Add Timeslot
+            </Button>
+          </div>
 
-        {slots.length === 0 && (
-          <Alert color="blue" radius="md" className="mb-4">
-            Add at least one weekly timeslot so we know where to schedule matches.
-          </Alert>
-        )}
+          {fieldsLoading && (
+            <div className="flex items-center gap-2 mb-4 text-sm text-gray-600">
+              <Loader size="sm" />
+              Loading fields...
+            </div>
+          )}
 
-        <Stack gap="md">
-          {slots.map((slot, index) => {
-            const conflictCount = slot.conflicts.length;
-            const field = fields.find(field => field.$id === slot.scheduledFieldId) ?? null;
-            const fieldOptionsForSlot = slot.scheduledFieldId && !availableFieldOptions.some(option => option.value === slot.scheduledFieldId)
-              ? [
+          {!fieldsLoading && availableFieldOptions.length === 0 && (
+            <Alert color="yellow" radius="md" className="mb-4">
+              No fields found. Create a field first so you can attach weekly availability.
+            </Alert>
+          )}
+
+          {slots.length === 0 && (
+            <Alert color="blue" radius="md" className="mb-4">
+              Add at least one weekly timeslot so we know where to schedule matches.
+            </Alert>
+          )}
+
+          <Stack gap="md">
+            {slots.map((slot, index) => {
+              const conflictCount = slot.conflicts.length;
+              const field = fields.find(field => field.$id === slot.scheduledFieldId) ?? null;
+              const fieldOptionsForSlot = slot.scheduledFieldId && !availableFieldOptions.some(option => option.value === slot.scheduledFieldId)
+                ? [
                   ...availableFieldOptions,
                   {
                     value: slot.scheduledFieldId,
@@ -329,9 +394,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               </Card>
             );
           })}
-        </Stack>
-      </div>
-    </Stack>
+          </Stack>
+        </div>
+      </Stack>
+    </Paper>
   );
 };
 

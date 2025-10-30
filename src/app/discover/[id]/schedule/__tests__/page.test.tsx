@@ -65,9 +65,24 @@ jest.mock('../components/LeagueCalendarView', () => {
 
 jest.mock('../components/TournamentBracketView', () => () => <div data-testid="bracket-view" />);
 
+jest.mock('@/app/hooks/useSports', () => {
+  const { createSport } = require('@/types/defaults');
+  return {
+    useSports: () => {
+      const sport = createSport({ $id: 'volleyball', name: 'Volleyball' });
+      return {
+        sports: [sport],
+        sportsById: new Map([[sport.$id, sport]]),
+        sportsByName: new Map([[sport.name.toLowerCase(), sport]]),
+        loading: false,
+        error: null,
+      };
+    },
+  };
+});
+
 const mockMatch: Match = {
   $id: 'match_1',
-  eventId: 'event_1',
   start: formatLocalDateTime(new Date(Date.now() + 26 * 60 * 60 * 1000)),
   end: formatLocalDateTime(new Date(Date.now() + 28 * 60 * 60 * 1000)),
   team1Seed: 1,

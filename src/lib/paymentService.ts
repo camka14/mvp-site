@@ -3,6 +3,7 @@ import type {
   Event,
   EventPayload,
   Field,
+  LeagueScoringConfig,
   Match,
   Organization,
   PaymentIntent,
@@ -85,6 +86,8 @@ const buildEventPayload = (event: Event): EventPayload => {
     timeSlots,
     leagueConfig: _leagueConfig,
     attendees: _attendees,
+    sport,
+    leagueScoringConfig,
     ...rest
   } = event;
 
@@ -108,6 +111,14 @@ const buildEventPayload = (event: Event): EventPayload => {
   const sanitizedSlots = sanitizeTimeSlots(timeSlots);
   if (sanitizedSlots) {
     payload.timeSlots = sanitizedSlots;
+  }
+
+  if (leagueScoringConfig) {
+    payload.leagueScoringConfig = leagueScoringConfig as LeagueScoringConfig;
+  }
+
+  if (sport?.$id) {
+    payload.sport = sport.$id;
   }
 
   return payload;

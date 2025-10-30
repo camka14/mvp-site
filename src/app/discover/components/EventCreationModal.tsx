@@ -8,9 +8,13 @@ import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl, SPORTS_LIST, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, EventState } from '@/types';
+import { getEventImageUrl, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, EventState, LeagueScoringConfig, Sport, TournamentConfig } from '@/types';
+import { createLeagueScoringConfig } from '@/types/defaults';
+import LeagueScoringConfigPanel from './LeagueScoringConfigPanel';
+import SportConfigPanel from './SportConfigPanel';
+import { useSports } from '@/app/hooks/useSports';
 
-import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert } from '@mantine/core';
+import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
@@ -193,7 +197,8 @@ type EventFormState = {
     start: string;
     end: string;
     eventType: 'pickup' | 'tournament' | 'league';
-    sport: string;
+    sportId: string;
+    sportConfig: Sport | null;
     fieldType: string;
     price: number;
     maxParticipants: number;
@@ -209,6 +214,7 @@ type EventFormState = {
     freeAgents: string[];
     players: UserData[];
     teams: Team[];
+    leagueScoringConfig: LeagueScoringConfig;
 };
 
 const divisionKeyFromValue = (value: string | CoreDivision): string => {
@@ -225,6 +231,32 @@ const divisionKeyFromValue = (value: string | CoreDivision): string => {
     return fallback.toLowerCase() || 'open';
 };
 
+const buildTournamentConfig = (source?: Partial<TournamentConfig>): TournamentConfig => {
+    const normalizePoints = (points: number[] | undefined, len: number): number[] => {
+        const next = Array.isArray(points) ? points.slice(0, len) : [];
+        while (next.length < len) next.push(21);
+        return next;
+    };
+
+    const doubleElimination = Boolean(source?.doubleElimination);
+    const winnerSetCount = source?.winnerSetCount ?? 1;
+    const loserSetCount = doubleElimination ? source?.loserSetCount ?? 1 : source?.loserSetCount ?? 1;
+
+    return {
+        doubleElimination,
+        winnerSetCount,
+        loserSetCount,
+        winnerBracketPointsToVictory: normalizePoints(source?.winnerBracketPointsToVictory, winnerSetCount),
+        loserBracketPointsToVictory: normalizePoints(
+            source?.loserBracketPointsToVictory,
+            doubleElimination ? loserSetCount : 1
+        ),
+        prize: source?.prize ?? '',
+        fieldCount: source?.fieldCount ?? 1,
+        restTimeMinutes: source?.restTimeMinutes ?? 0,
+    };
+};
+
 const createDefaultEventData = (): EventFormState => ({
     name: '',
     description: '',
@@ -233,7 +265,8 @@ const createDefaultEventData = (): EventFormState => ({
     start: nowLocalDateTimeString(),
     end: formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000)),
     eventType: 'pickup',
-    sport: '',
+    sportId: '',
+    sportConfig: null,
     fieldType: 'indoor',
     price: 0,
     maxParticipants: 10,
@@ -249,6 +282,7 @@ const createDefaultEventData = (): EventFormState => ({
     freeAgents: [],
     players: [],
     teams: [],
+    leagueScoringConfig: createLeagueScoringConfig(),
 });
 
 const mapEventToFormState = (event: Event): EventFormState => ({
@@ -259,7 +293,18 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     start: event.start,
     end: event.end,
     eventType: event.eventType,
-    sport: event.sport ?? '',
+    sportId: (() => {
+        if (event.sport && typeof event.sport === 'object' && '$id' in event.sport) {
+            return (event.sport as Sport).$id;
+        }
+        if (typeof event.sport === 'string') {
+            return event.sport;
+        }
+        return '';
+    })(),
+    sportConfig: typeof event.sport === 'object' && event.sport !== null
+        ? { ...(event.sport as Sport) }
+        : null,
     fieldType: event.fieldType ?? 'indoor',
     price: Number.isFinite(event.price) ? event.price : 0,
     maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
@@ -281,6 +326,11 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     freeAgents: event.freeAgentIds || [],
     players: event.players || [],
     teams: event.teams || [],
+    leagueScoringConfig: createLeagueScoringConfig(
+        typeof event.leagueScoringConfig === 'object'
+            ? (event.leagueScoringConfig as Partial<LeagueScoringConfig>)
+            : undefined
+    ),
 });
 
 const EventCreationModal: React.FC<EventCreationModalProps> = ({
@@ -335,6 +385,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     const isPreviewDraft = Boolean(editingEvent?.$id && editingEvent.$id.startsWith('preview-'));
     const isEditMode = !!activeEditingEvent && !isPreviewDraft;
+
+    const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
+    const sportOptions = useMemo(() => sports.map((sport) => ({ value: sport.$id, label: sport.name })), [sports]);
 
     const immutableDefaultsMemo = useMemo(() => immutableDefaults ?? {}, [immutableDefaults]);
 
@@ -393,7 +446,24 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (defaults.start !== undefined) next.start = formatLocalDateTime(defaults.start);
         if (defaults.end !== undefined) next.end = formatLocalDateTime(defaults.end);
         if (defaults.eventType !== undefined) next.eventType = defaults.eventType as EventFormState['eventType'];
-        if (defaults.sport !== undefined) next.sport = defaults.sport ?? '';
+        if (defaults.sport !== undefined) {
+            if (typeof defaults.sport === 'string') {
+                const sportId = defaults.sport ?? '';
+                next.sportId = sportId;
+                next.sportConfig = sportsById.get(sportId) ?? null;
+            } else if (defaults.sport && typeof defaults.sport === 'object') {
+                const sport = defaults.sport as Sport;
+                const sportId = sport.$id ?? sport.name ?? '';
+                next.sportId = sportId;
+                next.sportConfig = sportsById.get(sportId) ?? { ...sport };
+            } else {
+                next.sportId = '';
+                next.sportConfig = null;
+            }
+        }
+        if (defaults.leagueScoringConfig && typeof defaults.leagueScoringConfig === 'object') {
+            next.leagueScoringConfig = createLeagueScoringConfig(defaults.leagueScoringConfig as Partial<LeagueScoringConfig>);
+        }
         if (defaults.fieldType !== undefined) next.fieldType = defaults.fieldType ?? 'indoor';
         if (typeof defaults.price === 'number') next.price = defaults.price;
         if (typeof defaults.maxParticipants === 'number') next.maxParticipants = defaults.maxParticipants;
@@ -419,7 +489,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (Array.isArray(defaults.teams)) next.teams = [...defaults.teams];
 
         return next;
-    }, [immutableDefaultsMemo]);
+    }, [immutableDefaultsMemo, sportsById]);
 
     useEffect(() => {
         if (!isOpen || !editingEvent) {
@@ -463,31 +533,23 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     );
 
     // Holds tournament-specific settings so the modal can conditionally render the TournamentFields block.
-    const [tournamentData, setTournamentData] = useState(() => {
+    const [tournamentData, setTournamentData] = useState<TournamentConfig>(() => {
         if (activeEditingEvent && activeEditingEvent.eventType === 'tournament') {
-            return {
-                doubleElimination: activeEditingEvent.doubleElimination || false,
-                winnerSetCount: activeEditingEvent.winnerSetCount || 1,
-                loserSetCount: activeEditingEvent.loserSetCount || 1,
-                winnerBracketPointsToVictory: activeEditingEvent.winnerBracketPointsToVictory || [21],
-                loserBracketPointsToVictory: activeEditingEvent.loserBracketPointsToVictory || [21],
-                prize: activeEditingEvent.prize || '',
+            return buildTournamentConfig({
+                doubleElimination: activeEditingEvent.doubleElimination,
+                winnerSetCount: activeEditingEvent.winnerSetCount,
+                loserSetCount: activeEditingEvent.loserSetCount,
+                winnerBracketPointsToVictory: activeEditingEvent.winnerBracketPointsToVictory,
+                loserBracketPointsToVictory: activeEditingEvent.loserBracketPointsToVictory,
+                prize: activeEditingEvent.prize,
                 fieldCount: activeEditingEvent.fieldCount ?? activeEditingEvent.fields?.length ?? 1,
                 restTimeMinutes: normalizeNumber(activeEditingEvent.restTimeMinutes, 0) ?? 0,
-            };
-        } else {
-            return {
-                doubleElimination: false,
-                winnerSetCount: 1,
-                loserSetCount: 1,
-                winnerBracketPointsToVictory: [21],
-                loserBracketPointsToVictory: [21],
-                prize: '',
-                fieldCount: 1,
-                restTimeMinutes: 0,
-            };
+            });
         }
+        return buildTournamentConfig();
     });
+
+    const [playoffData, setPlayoffData] = useState<TournamentConfig>(() => buildTournamentConfig());
 
     // Maintains league configuration sliders/toggles passed into the schedule preview pipeline.
     const [leagueData, setLeagueData] = useState<LeagueConfig>(() => {
@@ -497,11 +559,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 gamesPerOpponent: source?.gamesPerOpponent ?? 1,
                 includePlayoffs: source?.includePlayoffs ?? false,
                 playoffTeamCount: source?.playoffTeamCount ?? undefined,
-                usesSets: source?.usesSets ?? false,
+                usesSets: Boolean(source?.usesSets),
                 matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
                 restTimeMinutes: normalizeNumber(source?.restTimeMinutes, 0) ?? 0,
                 setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
                 setsPerMatch: normalizeNumber(source?.setsPerMatch),
+                pointsToVictory: Array.isArray(source?.pointsToVictory) ? [...(source.pointsToVictory as number[])] : undefined,
             };
         }
         return {
@@ -513,6 +576,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             restTimeMinutes: 0,
             setDurationMinutes: undefined,
             setsPerMatch: undefined,
+            pointsToVictory: undefined,
         };
     });
 
@@ -598,6 +662,105 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
         setLeagueSlots(prev => normalizeSlotState(updater(prev), eventData.eventType));
     }, [eventData.eventType, hasImmutableTimeSlots]);
+
+    const handleLeagueScoringConfigChange = useCallback(
+        (key: keyof LeagueScoringConfig, value: LeagueScoringConfig[keyof LeagueScoringConfig]) => {
+            setEventData(prev => ({
+                ...prev,
+                leagueScoringConfig: {
+                    ...prev.leagueScoringConfig,
+                    [key]: value,
+                },
+            }));
+        },
+        []
+    );
+
+    useEffect(() => {
+        if (sportsLoading) {
+            return;
+        }
+        setEventData((prev) => {
+            if (prev.sportId) {
+                const selected = sportsById.get(prev.sportId);
+                if (selected && (!prev.sportConfig || prev.sportConfig.$id !== selected.$id)) {
+                    return { ...prev, sportConfig: selected };
+                }
+                return prev;
+            }
+            if (!isEditMode && sports.length > 0) {
+                const fallback = sports[0];
+                if (prev.sportId === fallback.$id && prev.sportConfig?.$id === fallback.$id) {
+                    return prev;
+                }
+                return { ...prev, sportId: fallback.$id, sportConfig: fallback };
+            }
+            return prev;
+        });
+    }, [sportsLoading, sports, sportsById, isEditMode]);
+
+    useEffect(() => {
+        const requiresSets = Boolean(eventData.sportConfig?.usePointsPerSetWin);
+        setLeagueData((prev) => {
+            const next = { ...prev };
+            let changed = false;
+
+            if (next.usesSets !== requiresSets) {
+                next.usesSets = requiresSets;
+                changed = true;
+            }
+
+            if (requiresSets) {
+                const allowed = [1, 3, 5];
+                const currentSets = next.setsPerMatch && allowed.includes(next.setsPerMatch)
+                    ? next.setsPerMatch
+                    : 1;
+                if (next.setsPerMatch !== currentSets) {
+                    next.setsPerMatch = currentSets;
+                    changed = true;
+                }
+
+                if (!Number.isFinite(next.setDurationMinutes)) {
+                    next.setDurationMinutes = 20;
+                    changed = true;
+                }
+
+                const targetLength = currentSets;
+                const existingPoints = Array.isArray(next.pointsToVictory)
+                    ? next.pointsToVictory
+                    : [];
+                const points = existingPoints.slice(0, targetLength);
+                while (points.length < targetLength) points.push(21);
+                if (
+                    points.length !== existingPoints.length ||
+                    points.some((value, index) => value !== existingPoints[index])
+                ) {
+                    next.pointsToVictory = points;
+                    changed = true;
+                }
+            } else {
+                if (next.setsPerMatch !== undefined) {
+                    next.setsPerMatch = undefined;
+                    changed = true;
+                }
+                if (next.setDurationMinutes !== undefined) {
+                    next.setDurationMinutes = undefined;
+                    changed = true;
+                }
+                if (next.pointsToVictory !== undefined) {
+                    next.pointsToVictory = undefined;
+                    changed = true;
+                }
+            }
+
+            if (!Number.isFinite(next.matchDurationMinutes)) {
+                next.matchDurationMinutes = 60;
+                changed = true;
+            }
+
+            return changed ? next : prev;
+        });
+    }, [eventData.sportConfig, setLeagueData]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -782,7 +945,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
                 setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
                 setsPerMatch: normalizeNumber(source?.setsPerMatch),
+                pointsToVictory: Array.isArray(source?.pointsToVictory) ? source.pointsToVictory as number[] : undefined,
             });
+
+            const playoffSource = (activeEditingEvent as any)?.playoffConfig;
+            if (playoffSource) {
+                setPlayoffData(buildTournamentConfig(playoffSource as Partial<TournamentConfig>));
+            }
 
             const slots = (activeEditingEvent.timeSlots || []).map(slot => {
                 const fieldRef = (() => {
@@ -949,6 +1118,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         isSkillLevelValid: false,
         isImageValid: false,
         isFieldCountValid: true,
+        isSportValid: false,
     });
 
     // Validation effect
@@ -965,6 +1135,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             isSkillLevelValid: eventData.eventType === 'league' ? true : (eventData.divisions ? eventData.divisions?.length > 0 : false),
             isImageValid: Boolean(selectedImageId || eventData.imageId || selectedImageUrl),
             isFieldCountValid: shouldManageLocalFields ? fields.length >= 1 && fields.every(field => field.name?.trim().length > 0) : true,
+            isSportValid: Boolean(eventData.sportId),
         });
     }, [eventData, fieldCount, fields, selectedImageId, selectedImageUrl, shouldManageLocalFields]);
 
@@ -1001,12 +1172,17 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         typeof slot.endTimeMinutes !== 'number'
     );
 
-    const matchDurationValid = !leagueData.usesSets
+    const requiresSets = Boolean(eventData.sportConfig?.usePointsPerSetWin);
+    const matchDurationValid = !requiresSets
         ? (normalizeNumber(leagueData.matchDurationMinutes) ?? 0) > 0
         : true;
-    const setTimingValid = !leagueData.usesSets
+    const setTimingValid = !requiresSets
         ? true
         : ((normalizeNumber(leagueData.setsPerMatch) ?? 0) > 0 && (normalizeNumber(leagueData.setDurationMinutes) ?? 0) > 0);
+    const pointsValid = !requiresSets
+        ? true
+        : ((leagueData.pointsToVictory?.length ?? 0) === (leagueData.setsPerMatch ?? 0) &&
+            (leagueData.pointsToVictory ?? []).every((value) => Number(value) > 0));
 
     const leagueFormValid = eventData.eventType !== 'league'
         ? true
@@ -1015,6 +1191,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             matchDurationValid &&
             (!leagueData.includePlayoffs || (leagueData.playoffTeamCount && leagueData.playoffTeamCount > 1)) &&
             setTimingValid &&
+            pointsValid &&
             !hasSlotConflicts &&
             !hasIncompleteSlot &&
             (!shouldManageLocalFields || fields.length === Math.max(1, fieldCount)) &&
@@ -1193,6 +1370,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             return;
         }
 
+        const sportSelection = eventData.sportConfig;
+        if (!sportSelection) {
+            setLeagueError('Select a sport before previewing the schedule.');
+            return;
+        }
+
         const finalImageId = selectedImageId || eventData.imageId;
         if (!finalImageId) {
             setLeagueError('Add an event image before previewing the schedule.');
@@ -1216,11 +1399,24 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
         try {
             const restTime = normalizeNumber(leagueData.restTimeMinutes);
-            const timingFields = leagueData.usesSets
+            const previewRequiresSets = Boolean(sportSelection.usePointsPerSetWin);
+            const setsPerMatchValue = leagueData.setsPerMatch ?? 1;
+            const normalizedPoints = previewRequiresSets
+                ? (() => {
+                    const base = Array.isArray(leagueData.pointsToVictory)
+                        ? leagueData.pointsToVictory.slice(0, setsPerMatchValue)
+                        : [];
+                    while (base.length < setsPerMatchValue) base.push(21);
+                    return base;
+                })()
+                : undefined;
+
+            const timingFields = previewRequiresSets
                 ? {
                     usesSets: true,
-                    setDurationMinutes: normalizeNumber(leagueData.setDurationMinutes),
-                    setsPerMatch: normalizeNumber(leagueData.setsPerMatch),
+                    setDurationMinutes: normalizeNumber(leagueData.setDurationMinutes) ?? 20,
+                    setsPerMatch: setsPerMatchValue,
+                    pointsToVictory: normalizedPoints,
                     ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
                 }
                 : {
@@ -1278,7 +1474,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 location: eventData.location,
                 coordinates: eventData.coordinates,
                 eventType: 'league',
-                sport: eventData.sport,
+                sport: sportSelection.$id,
                 fieldType: eventData.fieldType,
                 price: eventData.price,
                 maxParticipants: eventData.maxParticipants,
@@ -1304,7 +1500,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 fields: fieldsReferencedInSlots,
                 timeSlots: slotDocuments,
                 ...(organizationId ? { organization: organizationId } : {}),
+                leagueScoringConfig: eventData.leagueScoringConfig,
             };
+
+            if (leagueData.includePlayoffs) {
+                eventDocument.playoffConfig = playoffData;
+            }
 
             const preview = await leagueService.previewScheduleFromDocument(eventDocument);
             const previewEvent = (preview.event as Event);
@@ -1340,6 +1541,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 return;
             }
 
+            const sportSelection = eventData.sportConfig;
+            if (!sportSelection) {
+                setIsSubmitting(false);
+                return;
+            }
+
             const baseCoordinates: [number, number] = eventData.coordinates;
 
             const submitEvent: Partial<Event> = {
@@ -1350,7 +1557,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 end: eventData.end,
                 eventType: eventData.eventType,
                 state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
-                sport: eventData.sport,
+                sport: sportSelection,
                 fieldType: eventData.fieldType,
                 price: eventData.price,
                 maxParticipants: eventData.maxParticipants,
@@ -1404,13 +1611,26 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 }
             }
 
-            if (eventData.eventType === 'league') {
+        if (eventData.eventType === 'league') {
                 const restTime = normalizeNumber(leagueData.restTimeMinutes);
-                const timingFields = leagueData.usesSets
+                const submitRequiresSets = Boolean(sportSelection.usePointsPerSetWin);
+                const setsPerMatchValue = leagueData.setsPerMatch ?? 1;
+                const normalizedPoints = submitRequiresSets
+                    ? (() => {
+                        const base = Array.isArray(leagueData.pointsToVictory)
+                            ? leagueData.pointsToVictory.slice(0, setsPerMatchValue)
+                            : [];
+                        while (base.length < setsPerMatchValue) base.push(21);
+                        return base;
+                    })()
+                    : undefined;
+
+                const timingFields = submitRequiresSets
                     ? {
                         usesSets: true,
-                        setDurationMinutes: normalizeNumber(leagueData.setDurationMinutes),
-                        setsPerMatch: normalizeNumber(leagueData.setsPerMatch),
+                        setDurationMinutes: normalizeNumber(leagueData.setDurationMinutes) ?? 20,
+                        setsPerMatch: setsPerMatchValue,
+                        pointsToVictory: normalizedPoints,
                         ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
                     }
                     : {
@@ -1425,6 +1645,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     playoffTeamCount: leagueData.includePlayoffs ? leagueData.playoffTeamCount ?? undefined : undefined,
                     ...timingFields,
                 });
+
+                if (leagueData.includePlayoffs) {
+                    submitEvent.playoffConfig = playoffData;
+                }
 
                 if (!isEditMode) {
                     submitEvent.status = 'draft' as EventStatus;
@@ -1529,7 +1753,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
                 <form onSubmit={handleSubmit} className="space-y-8">
                     {/* Basic Information */}
-                    <div className="bg-gray-50 rounded-lg p-6">
+                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
                         <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <TextInput
@@ -1546,17 +1770,40 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
                             <MantineSelect
                                 label="Sport *"
-                                placeholder="Select a sport"
-                                data={SPORTS_LIST}
-                                value={eventData.sport}
-                                disabled={isImmutableField('sport')}
+                                placeholder={sportsLoading ? 'Loading sports...' : 'Select a sport'}
+                                data={sportOptions}
+                                value={eventData.sportId}
+                                disabled={isImmutableField('sport') || sportsLoading}
                                 onChange={(value) => {
                                     if (isImmutableField('sport')) return;
-                                    setEventData(prev => ({ ...prev, sport: value || '' }));
+                                    if (!value) {
+                                        setEventData(prev => ({
+                                            ...prev,
+                                            sportId: '',
+                                            sportConfig: null,
+                                        }));
+                                        return;
+                                    }
+                                    const selected = sportsById.get(value);
+                                    setEventData(prev => ({
+                                        ...prev,
+                                        sportId: value,
+                                        sportConfig: selected ?? null,
+                                    }));
                                 }}
                                 searchable
+                                nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
+                                rightSection={sportsLoading ? <Loader size="xs" /> : undefined}
+                                error={!validation.isSportValid && !sportsLoading ? 'Select a sport' : undefined}
+                                withAsterisk
                             />
                         </div>
+
+                        {sportsError && (
+                            <Alert color="red" radius="md" mt="sm">
+                                Unable to load sports at the moment. Please refresh the page and try again.
+                            </Alert>
+                        )}
 
                         <Textarea
                             label="Description"
@@ -1571,10 +1818,16 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             minRows={3}
                             className="mt-4"
                         />
-                    </div>
+
+                        {eventData.sportConfig && (
+                            <div className="mt-6">
+                                <SportConfigPanel sport={eventData.sportConfig} />
+                            </div>
+                        )}
+                    </Paper>
 
                     {/* Event Details */}
-                    <div className="bg-gray-50 rounded-lg p-6">
+                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
                         <h3 className="text-lg font-semibold mb-4">Event Details</h3>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1614,6 +1867,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 }}
                             />
                         </div>
+                    </Paper>
+                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
 
                         {/* Pricing and Participant Details */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1736,10 +1991,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 </div>
                             </div>
                         )}
-                    </div>
+                    </Paper>
 
                     {/* Location & Time */}
-                    <div className="bg-gray-50 rounded-lg p-6">
+                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
                         <h3 className="text-lg font-semibold mb-4">Location & Time</h3>
 
                         <div className="mb-6">
@@ -1802,12 +2057,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     />}
                             </div>
                         </div>
-                    </div>
+                    </Paper>
 
                     {/* legacy date/time inputs removed after migration to Mantine DateTimePicker */}
 
                     {/* Skills & Settings */}
-                    <div className="bg-gray-50 rounded-lg p-6">
+                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
                         <h3 className="text-lg font-semibold mb-4">Event Settings</h3>
 
                         <MantineMultiSelect
@@ -1853,21 +2108,42 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 }}
                             />
                         </div>
-                    </div>
+                    </Paper>
 
                     {eventData.eventType === 'league' && (
-                        <LeagueFields
-                            leagueData={leagueData}
-                            onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
-                            slots={leagueSlots}
-                            onAddSlot={handleAddSlot}
-                            onUpdateSlot={handleUpdateSlot}
-                            onRemoveSlot={handleRemoveSlot}
-                            fields={fields}
-                            fieldsLoading={fieldsLoading}
-                            fieldOptions={leagueFieldOptions}
-                            readOnly={hasImmutableTimeSlots}
-                        />
+                        <>
+                            <LeagueScoringConfigPanel
+                                value={eventData.leagueScoringConfig}
+                                sport={eventData.sportConfig ?? undefined}
+                                editable={!isImmutableField('leagueScoringConfig')}
+                                onChange={handleLeagueScoringConfigChange}
+                            />
+
+                            <LeagueFields
+                                leagueData={leagueData}
+                                sport={eventData.sportConfig ?? undefined}
+                                onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
+                                slots={leagueSlots}
+                                onAddSlot={handleAddSlot}
+                                onUpdateSlot={handleUpdateSlot}
+                                onRemoveSlot={handleRemoveSlot}
+                                fields={fields}
+                                fieldsLoading={fieldsLoading}
+                                fieldOptions={leagueFieldOptions}
+                                readOnly={hasImmutableTimeSlots}
+                            />
+
+                            {leagueData.includePlayoffs && (
+                                <TournamentFields
+                                    title="Playoffs Configuration"
+                                    tournamentData={playoffData}
+                                    setTournamentData={setPlayoffData}
+                                    showFieldCountSelector={!shouldProvisionFields}
+                                    fieldCountOverride={shouldProvisionFields ? fieldCount : undefined}
+                                    sport={eventData.sportConfig ?? undefined}
+                                />
+                            )}
+                        </>
                     )}
 
                     {/* Tournament Fields */}
@@ -1877,6 +2153,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             setTournamentData={setTournamentData}
                             showFieldCountSelector={!shouldProvisionFields}
                             fieldCountOverride={shouldProvisionFields ? fieldCount : undefined}
+                            sport={eventData.sportConfig ?? undefined}
                         />
                     )}
                 </form>
