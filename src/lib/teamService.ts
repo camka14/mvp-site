@@ -1,42 +1,14 @@
 import { databases } from '@/app/appwrite';
-import { Team, UserData, getTeamWinRate, getTeamAvatarUrl, Division } from '@/types';
+import { Team, UserData, getTeamWinRate, getTeamAvatarUrl } from '@/types';
 import { userService } from './userService';
 import { ID, Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const TEAMS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID!;
 
+const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
+
 class TeamService {
-    /**
-     * Get team with all relationships expanded
-     */
-    async getTeamWithRelations(id: string): Promise<Team | undefined> {
-        try {
-            // Use Query.select to expand relationships
-            const queries = [
-                Query.select([
-                    '*',
-                    'players.*',
-                    'captain.*',
-                    'pending.*',
-                    'matches.*'
-                ])
-            ];
-
-            const response = await databases.getRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: id,
-                queries
-            });
-
-            return this.mapRowToTeamWithRelations(response);
-        } catch (error) {
-            console.error('Failed to fetch team with relations:', error);
-            return undefined;
-        }
-    }
-
     async getTeamById(id: string, includeRelations: boolean = false): Promise<Team | undefined> {
         try {
             const response = await databases.getRow({
@@ -48,17 +20,7 @@ class TeamService {
             const team = this.mapRowToTeam(response);
 
             if (includeRelations) {
-                if (team.playerIds.length > 0) {
-                    team.players = await userService.getUsersByIds(team.playerIds);
-                }
-
-                if (team.captainId) {
-                    team.captain = await userService.getUserById(team.captainId);
-                }
-
-                if (team.pending.length > 0) {
-                    team.pendingPlayers = await userService.getUsersByIds(team.pending);
-                }
+                await this.hydrateTeamRelations(team);
             }
 
             return team;
@@ -66,6 +28,42 @@ class TeamService {
             console.error('Failed to fetch team:', error);
             return undefined;
         }
+    }
+
+    private async hydrateTeamRelations(team: Team): Promise<void> {
+        if (!team) {
+            return;
+        }
+
+        const [players, pendingPlayers] = await Promise.all([
+            team.playerIds.length > 0 ? userService.getUsersByIds(team.playerIds) : Promise.resolve<UserData[]>([]),
+            team.pending.length > 0 ? userService.getUsersByIds(team.pending) : Promise.resolve<UserData[]>([]),
+        ]);
+
+        const playersById = new Map(players.map((player) => [player.$id, player]));
+        const pendingById = new Map(pendingPlayers.map((player) => [player.$id, player]));
+
+        team.players = team.playerIds
+            .map((playerId) => playersById.get(playerId))
+            .filter(isDefined);
+
+        team.pendingPlayers = team.pending
+            .map((pendingId) => pendingById.get(pendingId))
+            .filter(isDefined);
+
+        if (team.captainId) {
+            team.captain = playersById.get(team.captainId)
+                ?? pendingById.get(team.captainId)
+                ?? await userService.getUserById(team.captainId)
+                ?? undefined;
+        } else {
+            team.captain = undefined;
+        }
+
+        team.currentSize = team.playerIds.length;
+        team.isFull = team.currentSize >= team.teamSize;
+        team.winRate = getTeamWinRate(team);
+        team.avatarUrl = getTeamAvatarUrl(team);
     }
 
     async createTeam(
@@ -140,24 +138,21 @@ class TeamService {
     }
 
     private mapRowToTeam(row: any): Team {
-        const playerIds = Array.isArray(row.playerIds) ? row.playerIds : [];
-        const pending = Array.isArray(row.pending) ? row.pending : [];
+        const playerIds = Array.isArray(row.playerIds)
+            ? row.playerIds.filter((value: any): value is string => typeof value === 'string')
+            : [];
+        const pending = Array.isArray(row.pending)
+            ? row.pending.filter((value: any): value is string => typeof value === 'string')
+            : [];
         const teamSize = typeof row.teamSize === 'number' ? row.teamSize : playerIds.length;
         const wins = typeof row.wins === 'number' ? row.wins : Number(row.wins ?? 0);
         const losses = typeof row.losses === 'number' ? row.losses : Number(row.losses ?? 0);
-
-        let division: Division | string;
-        if (row.division && typeof row.division === 'object' && ('id' in row.division || 'name' in row.division)) {
-            division = row.division as Division;
-        } else {
-            division = (row.division as string) || 'Open';
-        }
 
         const team: Team = {
             $id: row.$id,
             name: row.name,
             seed: typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0),
-            division,
+            division: typeof row.division === 'string' ? row.division : (row.division?.name ?? 'Open'),
             sport: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? 'Volleyball'),
             wins,
             losses,
@@ -165,7 +160,7 @@ class TeamService {
             captainId: row.captainId,
             pending,
             teamSize,
-            profileImageId: row.profileImage || row.profileImageId || row.profileImageID,
+            profileImageId: row.profileImageId || row.profileImage || row.profileImageID,
             $createdAt: row.$createdAt,
             $updatedAt: row.$updatedAt,
             winRate: 0,
@@ -174,45 +169,12 @@ class TeamService {
             avatarUrl: '',
         };
 
-        const totalMatches = team.wins + team.losses;
-        team.winRate = totalMatches === 0 ? 0 : Math.round((team.wins / totalMatches) * 100);
+        team.winRate = getTeamWinRate(team);
         team.avatarUrl = getTeamAvatarUrl(team);
 
         return team;
     }
 
-    private mapRowToTeamWithRelations(row: any): Team {
-        const team = this.mapRowToTeam(row);
-
-        // Process expanded relationships
-        if (row.players && Array.isArray(row.players)) {
-            team.players = row.players.map((playerData: any) => ({
-                ...playerData,
-                fullName: `${playerData.firstName || ''} ${playerData.lastName || ''}`.trim(),
-                avatarUrl: '' // Will be computed by helper function
-            }));
-        }
-
-        if (row.captain) {
-            team.captain = {
-                ...row.captain,
-                fullName: `${row.captain.firstName || ''} ${row.captain.lastName || ''}`.trim(),
-                avatarUrl: ''
-            };
-        }
-
-        if (row.pending && Array.isArray(row.pending)) {
-            team.pendingPlayers = row.pending.map((playerData: any) => ({
-                ...playerData,
-                fullName: `${playerData.firstName || ''} ${playerData.lastName || ''}`.trim(),
-                avatarUrl: ''
-            }));
-        }
-
-        return team;
-    }
-
-    // Rest of the methods remain the same as they don't need relationship changes
     async getTeamsByIds(teamIds: string[], includeRelations: boolean = false): Promise<Team[]> {
         try {
             if (teamIds.length === 0) return [];
@@ -231,20 +193,7 @@ class TeamService {
             const teams = response.rows.map(row => this.mapRowToTeam(row));
 
             if (includeRelations) {
-                // Fetch players for each team
-                const playerIds = Array.from(new Set(teams.flatMap(team => team.playerIds)));
-                const playersMap: { [key: string]: UserData } = {};
-
-                if (playerIds.length > 0) {
-                    const players = await userService.getUsersByIds(playerIds);
-                    players.forEach(player => {
-                        playersMap[player.$id] = player;
-                    });
-                }
-
-                teams.forEach(team => {
-                    team.players = team.playerIds.map(id => playersMap[id]).filter(Boolean);
-                });
+                await Promise.all(teams.map((team) => this.hydrateTeamRelations(team)));
             }
 
             return teams;

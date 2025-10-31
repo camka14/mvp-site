@@ -5,7 +5,6 @@ import {
   Match,
   Event,
   Field,
-  Team,
 } from '@/types';
 import { eventService } from './eventService';
 
@@ -13,60 +12,7 @@ const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
 const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
 const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
-
-const mapMatchRecord = (input: any): Match => {
-  const match: Match = {
-    $id: (input?.$id ?? input?.id) as string,
-    start: input.start,
-    end: input.end,
-    team1Seed: input.team1Seed,
-    team2Seed: input.team2Seed,
-    losersBracket: input.losersBracket,
-    team1Points: Array.isArray(input.team1Points) ? (input.team1Points as number[]) : [],
-    team2Points: Array.isArray(input.team2Points) ? (input.team2Points as number[]) : [],
-    setResults: Array.isArray(input.setResults) ? (input.setResults as number[]) : [],
-    previousLeftId: input.previousLeftId ?? input.previousLeftMatchId,
-    previousRightId: input.previousRightId ?? input.previousRightMatchId,
-    winnerNextMatchId: input.winnerNextMatchId ?? (input.winnerNextMatch ? (input.winnerNextMatch as Match).$id : undefined),
-    loserNextMatchId: input.loserNextMatchId ?? (input.loserNextMatch ? (input.loserNextMatch as Match).$id : undefined),
-    field: input?.field as Field,
-    event: input?.event as Event,
-  };
-
-  if (input.division) {
-    match.division = input.division;
-  }
-
-  if (input.team1 && typeof input.team1 === 'object') {
-    match.team1 = input.team1 as Team;
-  }
-
-  if (input.team2 && typeof input.team2 === 'object') {
-    match.team2 = input.team2 as Team;
-  }
-
-  if (input.referee && typeof input.referee === 'object') {
-    match.referee = input.referee as Team;
-  }
-
-  if (input.previousLeftMatch) {
-    match.previousLeftMatch = input.previousLeftMatch as Match;
-  }
-
-  if (input.previousRightMatch) {
-    match.previousRightMatch = input.previousRightMatch as Match;
-  }
-
-  if (input.winnerNextMatch) {
-    match.winnerNextMatch = input.winnerNextMatch as Match;
-  }
-
-  if (input.loserNextMatch) {
-    match.loserNextMatch = input.loserNextMatch as Match;
-  }
-
-  return match;
-};
+const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 
 export interface WeeklySlotConflict {
   schedule: TimeSlot;
@@ -127,11 +73,11 @@ class LeagueService {
         throw new Error('TimeSlot requires a related field');
       }
       const data: Record<string, unknown> = {
-        event: eventId,
-        field: fieldId,
+        eventId,
+        scheduledFieldId: fieldId,
         dayOfWeek: slot.dayOfWeek,
-        startTime,
-        endTime,
+        startTimeMinutes: startTime,
+        endTimeMinutes: endTime,
         repeating: typeof slot.repeating === 'boolean' ? slot.repeating : true,
       };
 
@@ -147,17 +93,12 @@ class LeagueService {
         tableId: TIME_SLOTS_TABLE_ID,
         rowId: ID.unique(),
         data,
-        queries: [
-          Query.select([
-            '*',
-            'field.*',
-            'event.$id',
-          ]),
-        ],
-      } as any);
+      });
 
       return this.mapRowToTimeSlot(response as any);
     }));
+
+    await this.appendTimeSlotsToEvent(eventId, created.map((slot) => slot.$id));
 
     return created;
   }
@@ -174,31 +115,18 @@ class LeagueService {
         })
       )
     );
+
+    await this.removeTimeSlotsFromEvent(eventId, schedules.map((schedule) => schedule.$id));
   }
 
   async listWeeklySchedulesByEvent(eventId: string): Promise<TimeSlot[]> {
-    const response = await databases.listRows({
-      databaseId: DATABASE_ID,
-      tableId: TIME_SLOTS_TABLE_ID,
-      queries: [
-        Query.equal('event.$id', eventId),
-        Query.select([
-          '*',
-          'field.*',
-        ]),
-      ],
-    });
-
-    return response.rows.map((row: any) => this.mapRowToTimeSlot(row));
+    const event = await eventService.getEventWithRelations(eventId);
+    return event?.timeSlots ?? [];
   }
 
   async listTimeSlotsByField(fieldId: string, dayOfWeek?: number): Promise<TimeSlot[]> {
     const queries = [
-      Query.equal('field', fieldId),
-      Query.select([
-        '*',
-        'field.*',
-      ]),
+      Query.equal('scheduledFieldId', fieldId),
     ];
     if (typeof dayOfWeek === 'number') {
       queries.push(Query.equal('dayOfWeek', dayOfWeek));
@@ -246,16 +174,8 @@ class LeagueService {
   }
 
   async listMatchesByEvent(eventId: string): Promise<Match[]> {
-    const response = await databases.listRows({
-      databaseId: DATABASE_ID,
-      tableId: MATCHES_TABLE_ID,
-      queries: [
-        Query.equal('event.$id', eventId),
-        Query.orderAsc('start'),
-      ],
-    });
-
-    return response.rows.map((row: any) => mapMatchRecord(row));
+    const event = await eventService.getEventWithRelations(eventId);
+    return (event?.matches ?? []).sort((a, b) => a.start.localeCompare(b.start));
   }
 
   async deleteMatchesByEvent(eventId: string): Promise<void> {
@@ -269,17 +189,81 @@ class LeagueService {
     ));
   }
 
+  private async appendTimeSlotsToEvent(eventId: string, slotIds: string[]): Promise<void> {
+    if (!slotIds.length) {
+      return;
+    }
+
+    try {
+      const eventRow = await databases.getRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+      });
+      const existing = Array.isArray(eventRow.timeSlotIds) ? eventRow.timeSlotIds : [];
+      const next = Array.from(new Set([...existing, ...slotIds]));
+      await databases.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+        data: { timeSlotIds: next },
+      });
+    } catch (error) {
+      console.error('Failed to append time slots to event:', error);
+      throw error;
+    }
+  }
+
+  private async removeTimeSlotsFromEvent(eventId: string, slotIds: string[]): Promise<void> {
+    if (!slotIds.length) {
+      return;
+    }
+
+    try {
+      const eventRow = await databases.getRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+      });
+      const existing = Array.isArray(eventRow.timeSlotIds) ? eventRow.timeSlotIds : [];
+      const next = existing.filter((id: string) => !slotIds.includes(id));
+      await databases.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: EVENTS_TABLE_ID,
+        rowId: eventId,
+        data: { timeSlotIds: next },
+      });
+    } catch (error) {
+      console.error('Failed to remove time slots from event:', error);
+      throw error;
+    }
+  }
+
   private mapRowToTimeSlot(row: any): TimeSlot {
     const startTime = this.normalizeTime(row.startTimeMinutes ?? row.startTime) ?? 0;
     const endTime = this.normalizeTime(row.endTimeMinutes ?? row.endTime) ?? startTime;
     const schedule: TimeSlot = {
-      $id: row.$id,
+      $id: String(row.$id ?? row.id ?? ''),
       dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
       startTimeMinutes: startTime,
       endTimeMinutes: endTime,
       repeating: row.repeating === undefined ? true : Boolean(row.repeating),
-      event: row.event ?? row.eventId ?? row.event?.$id,
-      scheduledFieldId: row.field ?? row.fieldId ?? row.field?.$id,
+      event:
+        typeof row.eventId === 'string'
+          ? row.eventId
+          : row.event && typeof row.event === 'object' && '$id' in row.event
+          ? (row.event as { $id?: string }).$id ?? undefined
+          : undefined,
+      scheduledFieldId:
+        typeof row.scheduledFieldId === 'string'
+          ? row.scheduledFieldId
+          : typeof row.fieldId === 'string'
+          ? row.fieldId
+          : typeof row.field === 'string'
+          ? row.field
+          : row.field && typeof row.field === 'object' && '$id' in row.field
+          ? (row.field as { $id?: string }).$id ?? undefined
+          : undefined,
     };
 
     if (row.startDate) {
@@ -288,14 +272,6 @@ class LeagueService {
 
     if (row.endDate !== undefined) {
       schedule.endDate = row.endDate;
-    }
-
-    if (row.field) {
-      schedule.scheduledFieldId = row.field;
-    }
-
-    if (row.event) {
-      schedule.event = row.event;
     }
 
     return schedule;

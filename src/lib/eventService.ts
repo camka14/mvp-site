@@ -1,4 +1,4 @@
-import { databases, functions } from '@/app/appwrite';
+import { databases } from '@/app/appwrite';
 import {
     Event,
     LocationCoordinates,
@@ -13,18 +13,25 @@ import {
     EventStatus,
     EventState,
     Organization,
-    EventPayload,
-    TimeSlotPayload,
+    getTeamAvatarUrl,
+    getTeamWinRate,
 } from '@/types';
 import { ID, Query } from 'appwrite';
-import { ensureLocalDateTimeString, formatLocalDateTime } from '@/lib/dateUtils';
+import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 import { sportsService } from '@/lib/sportsService';
+import { userService } from '@/lib/userService';
+import { buildPayload } from './utils';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
 const FIELDS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!;
 const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
+const TEAMS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID!;
+const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
+const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
+const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID!;
+const LEAGUE_SCORING_CONFIG_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_LEAGUE_SCORING_CONFIG_TABLE_ID!;
 
 export interface LeagueGenerationOptions {
     dryRun?: boolean;
@@ -75,34 +82,17 @@ class EventService {
     private sportsCachePromise: Promise<Map<string, Sport>> | null = null;
     async getEventWithRelations(id: string): Promise<Event | undefined> {
         try {
-            // Use Query.select to expand all relationships like in Python backend
-            const queries = [
-                Query.select([
-                    '*',
-                    'sport.*',
-                    'leagueScoringConfig.*',
-                    'matches.*',
-                    'matches.field.$id',
-                    'matches.team1.$id',
-                    'matches.team2.$id',
-                    'matches.referee.$id',
-                    'players.*',
-                    'teams.*',
-                    'teams.matches.$id',
-                    'fields.*',
-                    'fields.rentalSlots.*',
-                    'timeSlots.*',
-                ])
-            ];
-
             const response = await databases.getRow({
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: id,
-                queries
             });
 
-            return await this.mapRowToEventWithRelations(response);
+            await this.ensureSportRelationship(response);
+            await this.ensureLeagueScoringConfig(response);
+
+            const baseEvent = this.mapRowToEvent(response);
+            return await this.hydrateEventRelations(baseEvent, response);
         } catch (error) {
             console.error('Failed to fetch event with relations:', error);
             return undefined;
@@ -121,15 +111,7 @@ class EventService {
             });
 
             await this.ensureSportRelationship(response);
-
-            if (response.leagueScoringConfigId) {
-                const leagueScoringConfig = await databases.getRow({
-                    databaseId: DATABASE_ID,
-                    tableId: process.env.NEXT_PUBLIC_APPWRITE_LEAGUE_SCORING_CONFIG_TABLE_ID!,
-                    rowId: response.leagueScoringConfigId,
-                });
-                response.leagueScoringConfig = leagueScoringConfig;
-            }
+            await this.ensureLeagueScoringConfig(response);
 
             return this.mapRowToEvent(response);
         } catch (error) {
@@ -158,6 +140,7 @@ class EventService {
             }
 
             await this.ensureSportRelationship(response);
+            await this.ensureLeagueScoringConfig(response);
             return this.mapRowToEvent(response);
         } catch (error) {
             console.error('Failed to update event participants:', error);
@@ -167,13 +150,11 @@ class EventService {
 
     async updateEvent(eventId: string, eventData: Partial<Event>): Promise<Event> {
         try {
-            const payload = this.buildEventPayload(eventData);
-
             const response = await databases.updateRow({
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
                 rowId: eventId,
-                data: payload
+                data: eventData
             });
 
             const hydrated = await this.getEvent(eventId);
@@ -182,6 +163,7 @@ class EventService {
             }
 
             await this.ensureSportRelationship(response);
+            await this.ensureLeagueScoringConfig(response);
             return this.mapRowToEvent(response);
         } catch (error) {
             console.error('Failed to update event:', error);
@@ -246,8 +228,7 @@ class EventService {
 
     async createEvent(newEvent: Partial<Event>): Promise<Event> {
         try {
-            const payload = this.buildEventPayload(newEvent);
-
+            const payload = buildPayload(newEvent);
             const response = await databases.createRow({
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
@@ -271,103 +252,6 @@ class EventService {
         }
     }
 
-    private buildEventPayload(event: Partial<Event>): Partial<EventPayload> {
-        const clone = { ...event } as Record<string, unknown>;
-
-        const players = Array.isArray(event.players) ? event.players : undefined;
-        const teams = Array.isArray(event.teams) ? event.teams : undefined;
-        const fields = Array.isArray(event.fields) ? event.fields : undefined;
-        const matches = Array.isArray(event.matches) ? event.matches : undefined;
-
-        [
-            '$id',
-            '$createdAt',
-            '$updatedAt',
-            'attendees',
-            'category',
-            'leagueConfig',
-            'leagueScoringConfig',
-            'players',
-            'teams',
-            'fields',
-            'sport',
-        ].forEach((key) => {
-            delete clone[key];
-        });
-
-        const cleaned = this.removeUndefined(clone) as Partial<EventPayload>;
-
-        const sanitizedPlayers = players?.map((player) => player.$id);
-        if (sanitizedPlayers) {
-            cleaned.players = sanitizedPlayers;
-        }
-
-        const sanitizedTeams = teams
-            ?.map((team) => team.$id);
-
-        if (sanitizedTeams && sanitizedTeams.length) {
-            cleaned.teams = sanitizedTeams;
-        }
-
-        const sanitizedFields = fields
-            ?.map((field) => field.$id);
-
-        if (sanitizedFields && sanitizedFields.length) {
-            cleaned.fields = sanitizedFields;
-        }
-
-        const sanitizedMatches = matches?.map((match) => match.$id);
-
-        if (sanitizedMatches && sanitizedMatches.length) {
-            cleaned.matches = sanitizedMatches;
-        }
-
-        const sanitizedTimeSlots = event.timeSlots?.map((slot: TimeSlot) => {
-            const clone = { ...slot } as Record<string, unknown>;
-            delete clone.$id;
-            const cleaned = this.removeUndefined(clone) as Partial<TimeSlotPayload>;
-            return Object.keys(cleaned).length ? (cleaned as TimeSlotPayload) : undefined;
-        })
-
-        if (sanitizedTimeSlots && sanitizedTimeSlots.length) {
-            cleaned.timeSlots = sanitizedTimeSlots.filter((slot): slot is TimeSlotPayload => Boolean(slot));
-        }
-
-        if (event.sport?.$id) {
-            (cleaned as Record<string, unknown>).sport = event.sport.$id;
-        }
-
-        if (event.leagueScoringConfig && typeof event.leagueScoringConfig === 'object') {
-            const config = event.leagueScoringConfig as LeagueScoringConfig;
-            if (config.$id) {
-                (cleaned as Record<string, unknown>).leagueScoringConfig = config.$id;
-            }
-        } else if (typeof event.leagueScoringConfig === 'string') {
-            (cleaned as Record<string, unknown>).leagueScoringConfig = event.leagueScoringConfig;
-        }
-
-        if (
-            Array.isArray(event.coordinates) &&
-            event.coordinates.length === 2 &&
-            typeof event.coordinates[0] === 'number' &&
-            typeof event.coordinates[1] === 'number'
-        ) {
-            cleaned.coordinates = event.coordinates as [number, number];
-        }
-
-        return cleaned;
-    }
-
-    private removeUndefined<T extends Record<string, unknown>>(record: T): T {
-        const result: Record<string, unknown> = {};
-        Object.keys(record).forEach((key) => {
-            const value = record[key];
-            if (value !== undefined) {
-                result[key] = value;
-            }
-        });
-        return result as T;
-    }
 
     private normalizeEventState(value: unknown): EventState {
         if (typeof value === 'string') {
@@ -420,14 +304,10 @@ class EventService {
                     ? Number(row.restTimeMinutes)
                     : undefined;
         const state = this.normalizeEventState(row.state);
-        const sport = this.resolveSport(row.sport);
-        const leagueScoringConfig = this.resolveLeagueScoringConfig(row.leagueScoringConfig);
         const organization = row.organization ?? row.organizationId;
 
         return {
             ...row,
-            sport,
-            leagueScoringConfig,
             organization,
             // Computed properties
             attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
@@ -445,7 +325,7 @@ class EventService {
         const endFilter = this.normalizeDateInput(end);
 
         const queries: string[] = [
-            Query.equal('fields.$id', fieldId),
+            Query.contains('fieldIds', [fieldId]),
         ];
 
         if (startFilter) {
@@ -456,132 +336,591 @@ class EventService {
             queries.push(Query.lessThanEqual('start', endFilter));
         }
 
-        queries.push(Query.select(['*', 'sport.*', 'leagueScoringConfig.*', 'organization.$id']));
-
-        return databases.listRows({
+        const response = await databases.listRows({
             databaseId: DATABASE_ID,
             tableId: EVENTS_TABLE_ID,
             queries,
-        }).then(response => (response.rows || []).map((row: any) => this.mapRowToEvent(row)));
+        });
+
+        const rows = response.rows ?? [];
+        const events: Event[] = [];
+        for (const row of rows) {
+            await this.ensureSportRelationship(row);
+            await this.ensureLeagueScoringConfig(row);
+            events.push(this.mapRowToEvent(row));
+        }
+
+        return events;
     }
 
     async getMatchesForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Match[]> {
         const startFilter = this.normalizeDateInput(start);
         const endFilter = this.normalizeDateInput(end);
 
-        const queries: string[] = [
-            Query.equal('field.$id', fieldId),
-        ];
+        const limit = 100;
+        let offset = 0;
+        const rows: any[] = [];
 
-        if (startFilter) {
-            queries.push(Query.greaterThanEqual('end', startFilter));
+        while (true) {
+            const queries: string[] = [Query.equal('fieldId', fieldId), Query.orderAsc('start'), Query.limit(limit)];
+            if (startFilter) {
+                queries.push(Query.greaterThanEqual('end', startFilter));
+            }
+            if (endFilter) {
+                queries.push(Query.lessThanEqual('start', endFilter));
+            }
+            if (offset > 0) {
+                queries.push(Query.offset(offset));
+            }
+
+            const response = await databases.listRows({
+                databaseId: DATABASE_ID,
+                tableId: MATCHES_TABLE_ID,
+                queries,
+            });
+
+            const batch = response.rows ?? [];
+            rows.push(...batch);
+            if (batch.length < limit) {
+                break;
+            }
+            offset += limit;
         }
 
-        if (endFilter) {
-            queries.push(Query.lessThanEqual('start', endFilter));
+        if (!rows.length) {
+            return [];
         }
 
-        queries.push(Query.select(['*', 'referee.$id', 'team1.$id', 'team2.$id']));
-        queries.push(Query.orderAsc('start'));
+        const teamIds = new Set<string>();
+        const eventIds = new Set<string>();
 
-        return databases.listRows({
-            databaseId: DATABASE_ID,
-            tableId: MATCHES_TABLE_ID,
-            queries,
-        }).then(response => (response.rows || []).map((row: any) => this.mapMatchRecord(row)));
+        rows.forEach((row) => {
+            if (typeof row.team1Id === 'string') {
+                teamIds.add(row.team1Id);
+            }
+            if (typeof row.team2Id === 'string') {
+                teamIds.add(row.team2Id);
+            }
+            if (typeof row.refereeId === 'string') {
+                teamIds.add(row.refereeId);
+            }
+            if (typeof row.eventId === 'string') {
+                eventIds.add(row.eventId);
+            }
+        });
+
+        const [teams, fields, events] = await Promise.all([
+            this.fetchTeamsByIds(Array.from(teamIds)),
+            this.fetchFieldsByIds([fieldId]),
+            this.fetchEventsByIds(Array.from(eventIds)),
+        ]);
+
+        const teamsById = new Map(teams.map((team) => [team.$id, team]));
+        const fieldsById = new Map(fields.map((field) => [field.$id, field]));
+        const eventsById = new Map(events.map((event) => [event.$id, event]));
+
+        return rows.map((row) => {
+            const match = this.mapMatchRecord(row, { teamsById, fieldsById });
+            const eventId = typeof row.eventId === 'string' ? row.eventId : undefined;
+            if (eventId && eventsById.has(eventId)) {
+                match.event = eventsById.get(eventId);
+            }
+            return match;
+        });
     }
 
-    private async mapRowToEventWithRelations(row: any): Promise<Event> {
-        const baseEvent = this.mapRowToEvent(row);
-
-        const event: Event = { ...baseEvent };
-        const fieldCache = new Map<string, { matches?: Match[]; events?: Event[] }>();
-
-        if (row.organization) {
-            event.organization = row.organization as Organization;
+    async mapRowFromDatabase(row: any, includeRelations: boolean = false): Promise<Event> {
+        await this.ensureSportRelationship(row);
+        await this.ensureLeagueScoringConfig(row);
+        const event = this.mapRowToEvent(row);
+        if (includeRelations) {
+            return this.hydrateEventRelations(event, row);
         }
+        return event;
+    }
 
-        // Simply cast lists from Appwrite; only compute player fullName.
-        if (Array.isArray(row.teams)) {
-            event.teams = row.teams as Team[];
-        }
+    private async hydrateEventRelations(event: Event, source: any): Promise<Event> {
+        const data = source ?? event;
 
-        if (Array.isArray(row.fields)) {
-            if (event.fields) {
-                event.fields.forEach((field) => {
-                    if (Array.isArray(field.rentalSlots)) {
-                        field.rentalSlots.forEach((slot) => {
-                            if (slot && typeof slot === 'object' && 'fields' in slot) {
-                                delete (slot as any).fields;
-                            }
-                        });
-                    }
-                });
+        const teamIds = this.extractStringIds(data.teamIds ?? event.teamIds ?? []);
+        const fieldIds = this.extractStringIds(data.fieldIds ?? event.fieldIds ?? []);
+        const timeSlotIds = this.extractStringIds(data.timeSlotIds ?? event.timeSlotIds ?? []);
+        const playerIds = this.extractStringIds(data.playerIds ?? data.userIds ?? event.playerIds ?? []);
+
+        const [teams, players, fields, timeSlots, organization] = await Promise.all([
+            this.resolveTeams(data.teams, teamIds),
+            this.resolvePlayers(data.players, playerIds),
+            this.resolveFields(data.fields, fieldIds),
+            this.resolveTimeSlots(data.timeSlots, timeSlotIds),
+            this.resolveOrganization(data.organization ?? data.organizationId ?? event.organization),
+        ]);
+
+        const matches = await this.resolveMatches(event, data.matches, teams, fields);
+
+        const matchesByField = new Map<string, Match[]>();
+        matches.forEach((match) => {
+            const fieldId = match.field?.$id;
+            if (!fieldId) {
+                return;
             }
-        }
+            const bucket = matchesByField.get(fieldId) ?? [];
+            bucket.push(match);
+            matchesByField.set(fieldId, bucket);
+        });
 
-        if (Array.isArray(row.matches)) {
-            const mappedMatches = await Promise.all(
-                (row.matches as any[]).map(async (m: any) => {
-                    const fieldRef = m.field && typeof m.field === 'object' ? (m.field as Field) : undefined;
-                    if (fieldRef) {
-                        const cacheEntry = fieldCache.get(fieldRef.$id) ?? {};
-                        if (!cacheEntry.matches) {
-                            cacheEntry.matches = await this.getMatchesForFieldInRange(fieldRef.$id, event.start, event.end ?? null);
-                        }
-                        if (!cacheEntry.events) {
-                            cacheEntry.events = await this.getEventsForFieldInRange(fieldRef.$id, event.start, event.end ?? null);
-                        }
-                        fieldCache.set(fieldRef.$id, cacheEntry);
-                        fieldRef.matches = cacheEntry.matches;
-                        fieldRef.events = cacheEntry.events;
-                    }
+        fields.forEach((field) => {
+            field.matches = matchesByField.get(field.$id) ?? [];
+        });
 
-                    const mappedMatch = this.mapMatchRecord(m);
-
-                    if (fieldRef) {
-                        mappedMatch.field = fieldRef;
-                    }
-
-                    if (m.team1 && typeof m.team1 === 'object') {
-                        mappedMatch.team1 =
-                            event.teams?.find((team) => m.team1.$id === team.$id) ?? mappedMatch.team1;
-                    }
-
-                    if (m.team2 && typeof m.team2 === 'object') {
-                        mappedMatch.team2 =
-                            event.teams?.find((team) => m.team2.$id === team.$id) ?? mappedMatch.team2;
-                    }
-
-                    return mappedMatch;
-                })
-            );
-            event.matches = mappedMatches;
-        }
-
-        if (Array.isArray(row.timeSlots)) {
-            event.timeSlots = (row.timeSlots as any[]).map((schedule: any) => this.mapRowToTimeSlot(schedule));
-        }
-
-        if (Array.isArray(row.players)) {
-            event.players = (row.players as any[]).map((p: any) => ({
-                ...p,
-                fullName: `${p.firstName || ''} ${p.lastName || ''}`.trim(),
-                avatarUrl: p.avatarUrl ?? '',
-            } as UserData));
+        event.teams = teams;
+        event.players = players;
+        event.fields = fields;
+        event.timeSlots = timeSlots;
+        event.matches = matches;
+        if (organization) {
+            event.organization = organization;
         }
 
         return event;
     }
 
-    async mapRowFromDatabase(row: any, includeRelations: boolean = false): Promise<Event> {
-        if (includeRelations) {
-            return this.mapRowToEventWithRelations(row);
+    private extractStringIds(value: unknown): string[] {
+        if (!value) {
+            return [];
         }
-        return this.mapRowToEvent(row);
+        if (Array.isArray(value)) {
+            return Array.from(
+                new Set(
+                    value
+                        .map((item) => {
+                            if (typeof item === 'string') return item;
+                            if (item && typeof item === 'object' && '$id' in item) {
+                                return (item as { $id?: string }).$id ?? '';
+                            }
+                            return '';
+                        })
+                        .filter((id): id is string => Boolean(id && typeof id === 'string')),
+                ),
+            );
+        }
+        if (typeof value === 'string') {
+            return [value];
+        }
+        return [];
     }
 
-    private mapMatchRecord(input: any): Match {
+    private chunkIds(ids: string[], size: number = 100): string[][] {
+        const chunks: string[][] = [];
+        for (let i = 0; i < ids.length; i += size) {
+            chunks.push(ids.slice(i, i + size));
+        }
+        return chunks;
+    }
+
+    private async resolveTeams(existing: any, ids: string[]): Promise<Team[]> {
+        if (Array.isArray(existing) && existing.length) {
+            return existing.map((entry) => this.mapTeamRow(entry));
+        }
+        if (!ids.length) {
+            return [];
+        }
+        return this.fetchTeamsByIds(ids);
+    }
+
+    private async fetchTeamsByIds(ids: string[]): Promise<Team[]> {
+        const unique = Array.from(new Set(ids.filter(Boolean)));
+        if (!unique.length) {
+            return [];
+        }
+
+        const responses = await Promise.all(
+            this.chunkIds(unique).map((batch) =>
+                databases.listRows({
+                    databaseId: DATABASE_ID,
+                    tableId: TEAMS_TABLE_ID,
+                    queries: [Query.equal('$id', batch)],
+                }),
+            ),
+        );
+
+        return responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapTeamRow(row)));
+    }
+
+    private mapTeamRow(row: any): Team {
+        const playerIds = Array.isArray(row.playerIds) ? row.playerIds.map(String) : [];
+        const pending = Array.isArray(row.pending) ? row.pending.map(String) : [];
+        const teamSize =
+            typeof row.teamSize === 'number'
+                ? row.teamSize
+                : Number.isFinite(Number(row.teamSize))
+                ? Number(row.teamSize)
+                : playerIds.length;
+        const wins = typeof row.wins === 'number' ? row.wins : Number(row.wins ?? 0);
+        const losses = typeof row.losses === 'number' ? row.losses : Number(row.losses ?? 0);
+        const seed = typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0);
+
+        let division: any = 'Open';
+        if (row.division && typeof row.division === 'object' && ('name' in row.division || 'id' in row.division)) {
+            division = row.division;
+        } else if (typeof row.division === 'string' && row.division.trim()) {
+            division = row.division;
+        }
+
+        const team: Team = {
+            $id: String(row.$id ?? row.id ?? ''),
+            name: row.name ?? '',
+            seed,
+            division,
+            sport: typeof row.sport === 'string' ? row.sport : row.sport?.name ?? '',
+            wins,
+            losses,
+            playerIds,
+            captainId:
+                typeof row.captainId === 'string'
+                    ? row.captainId
+                    : row.captain && typeof row.captain === 'object'
+                    ? (row.captain as { $id?: string }).$id ?? undefined
+                    : undefined,
+            pending,
+            teamSize,
+            profileImageId: row.profileImage || row.profileImageId || row.profileImageID,
+            $createdAt: row.$createdAt,
+            $updatedAt: row.$updatedAt,
+            winRate: 0,
+            currentSize: playerIds.length,
+            isFull: playerIds.length >= teamSize,
+            avatarUrl: '',
+        };
+
+        team.winRate = getTeamWinRate(team);
+        team.avatarUrl = getTeamAvatarUrl(team);
+        return team;
+    }
+
+    private async resolvePlayers(existing: any, ids: string[]): Promise<UserData[]> {
+        if (Array.isArray(existing) && existing.length) {
+            return existing.map((entry) => ({
+                ...entry,
+                fullName: `${entry.firstName || ''} ${entry.lastName || ''}`.trim(),
+                avatarUrl: entry.avatarUrl ?? '',
+            })) as UserData[];
+        }
+        if (!ids.length) {
+            return [];
+        }
+        return userService.getUsersByIds(ids);
+    }
+
+    private async resolveFields(existing: any, ids: string[]): Promise<Field[]> {
+        if (Array.isArray(existing) && existing.length) {
+            const fields = existing.map((entry) => this.mapFieldRow(entry));
+            await this.hydrateFieldRentalSlots(fields);
+            return fields;
+        }
+        if (!ids.length) {
+            return [];
+        }
+        return this.fetchFieldsByIds(ids);
+    }
+
+    private async fetchFieldsByIds(ids: string[]): Promise<Field[]> {
+        const unique = Array.from(new Set(ids.filter(Boolean)));
+        if (!unique.length) {
+            return [];
+        }
+
+        const responses = await Promise.all(
+            this.chunkIds(unique).map((batch) =>
+                databases.listRows({
+                    databaseId: DATABASE_ID,
+                    tableId: FIELDS_TABLE_ID,
+                    queries: [Query.equal('$id', batch)],
+                }),
+            ),
+        );
+
+        const fields = responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapFieldRow(row)));
+        await this.hydrateFieldRentalSlots(fields);
+        return fields;
+    }
+
+    private mapFieldRow(row: any): Field {
+        const lat = typeof row.lat === 'number' ? row.lat : Number(row.lat ?? 0);
+        const long = typeof row.long === 'number' ? row.long : Number(row.long ?? 0);
+        const fieldNumber = typeof row.fieldNumber === 'number' ? row.fieldNumber : Number(row.fieldNumber ?? 0);
+        const rentalSlotIds = Array.isArray(row.rentalSlotIds)
+            ? row.rentalSlotIds.map((value: unknown) => String(value))
+            : undefined;
+
+        const field: Field = {
+            $id: String(row.$id ?? row.id ?? ''),
+            name: row.name ?? '',
+            location: row.location ?? '',
+            lat: Number.isFinite(lat) ? lat : 0,
+            long: Number.isFinite(long) ? long : 0,
+            type: row.type ?? '',
+            fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
+            divisions: Array.isArray(row.divisions) ? row.divisions : undefined,
+            organization: row.organization ?? row.organizationId ?? undefined,
+            rentalSlotIds,
+        } as Field;
+
+        return field;
+    }
+
+    private async hydrateFieldRentalSlots(fields: Field[]): Promise<void> {
+        const allIds = Array.from(
+            new Set(
+                fields.flatMap((field) => (Array.isArray(field.rentalSlotIds) ? field.rentalSlotIds : [])),
+            ),
+        );
+
+        if (!allIds.length) {
+            fields.forEach((field) => {
+                if (!field.rentalSlots) {
+                    field.rentalSlots = [];
+                }
+            });
+            return;
+        }
+
+        const slots = await this.fetchTimeSlotsByIds(allIds);
+        const slotMap = new Map(slots.map((slot) => [slot.$id, slot]));
+
+        fields.forEach((field) => {
+            const ids = field.rentalSlotIds ?? [];
+            field.rentalSlots = ids.map((id) => slotMap.get(id)).filter((slot): slot is TimeSlot => Boolean(slot));
+        });
+    }
+
+    private async resolveTimeSlots(existing: any, ids: string[]): Promise<TimeSlot[]> {
+        if (Array.isArray(existing) && existing.length) {
+            return existing.map((entry) => this.mapRowToTimeSlot(entry));
+        }
+        if (!ids.length) {
+            return [];
+        }
+        return this.fetchTimeSlotsByIds(ids);
+    }
+
+    private async fetchTimeSlotsByIds(ids: string[]): Promise<TimeSlot[]> {
+        const unique = Array.from(new Set(ids.filter(Boolean)));
+        if (!unique.length) {
+            return [];
+        }
+
+        const responses = await Promise.all(
+            this.chunkIds(unique).map((batch) =>
+                databases.listRows({
+                    databaseId: DATABASE_ID,
+                    tableId: TIME_SLOTS_TABLE_ID,
+                    queries: [Query.equal('$id', batch)],
+                }),
+            ),
+        );
+
+        return responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapRowToTimeSlot(row)));
+    }
+
+    private async resolveMatches(event: Event, existing: any, teams: Team[], fields: Field[]): Promise<Match[]> {
+        const rows = Array.isArray(existing) && existing.length ? existing : await this.fetchMatchesByEventId(event.$id);
+        if (!rows.length) {
+            return [];
+        }
+
+        const teamsById = new Map(teams.map((team) => [team.$id, team]));
+        const fieldsById = new Map(fields.map((field) => [field.$id, field]));
+
+        return (rows as any[]).map((row) => {
+            const match = this.mapMatchRecord(row, { teamsById, fieldsById });
+            match.event = event;
+            return match;
+        });
+    }
+
+    private async fetchMatchesByEventId(eventId: string): Promise<any[]> {
+        const results: any[] = [];
+        let offset = 0;
+        const limit = 100;
+
+        while (true) {
+            const queries: string[] = [Query.equal('eventId', eventId), Query.limit(limit)];
+            if (offset > 0) {
+                queries.push(Query.offset(offset));
+            }
+            const response = await databases.listRows({
+                databaseId: DATABASE_ID,
+                tableId: MATCHES_TABLE_ID,
+                queries,
+            });
+            const rows = response.rows ?? [];
+            results.push(...rows);
+            if (rows.length < limit) {
+                break;
+            }
+            offset += limit;
+        }
+
+        return results;
+    }
+
+    private async fetchEventsByIds(ids: string[]): Promise<Event[]> {
+        const unique = Array.from(new Set(ids.filter(Boolean)));
+        if (!unique.length) {
+            return [];
+        }
+
+        const responses = await Promise.all(
+            this.chunkIds(unique).map((batch) =>
+                databases.listRows({
+                    databaseId: DATABASE_ID,
+                    tableId: EVENTS_TABLE_ID,
+                    queries: [Query.equal('$id', batch)],
+                }),
+            ),
+        );
+
+        const events: Event[] = [];
+        for (const row of responses.flatMap((response) => response.rows ?? [])) {
+            await this.ensureSportRelationship(row);
+            await this.ensureLeagueScoringConfig(row);
+            events.push(this.mapRowToEvent(row));
+        }
+
+        return events;
+    }
+
+    private async resolveOrganization(input: unknown): Promise<Organization | string | undefined> {
+        if (!input) {
+            return undefined;
+        }
+
+        if (typeof input === 'string') {
+            return this.fetchOrganizationById(input);
+        }
+
+        if (typeof input === 'object' && '$id' in (input as Record<string, unknown>)) {
+            return this.mapOrganizationRow(input as any);
+        }
+
+        return undefined;
+    }
+
+    private async fetchOrganizationById(id: string): Promise<Organization | undefined> {
+        if (!id) {
+            return undefined;
+        }
+
+        try {
+            const row = await databases.getRow({
+                databaseId: DATABASE_ID,
+                tableId: ORGANIZATIONS_TABLE_ID,
+                rowId: id,
+            });
+            return this.mapOrganizationRow(row);
+        } catch (error) {
+            console.error('Failed to fetch organization:', error);
+            return undefined;
+        }
+    }
+
+    private mapOrganizationRow(row: any): Organization {
+        const coordinates = Array.isArray(row.coordinates)
+            ? (row.coordinates.slice(0, 2).map((value: unknown) => Number(value)) as [number, number])
+            : undefined;
+
+        return {
+            $id: String(row.$id ?? row.id ?? ''),
+            name: row.name ?? '',
+            description: row.description ?? undefined,
+            website: row.website ?? undefined,
+            logoId: row.logoId ?? undefined,
+            location: row.location ?? undefined,
+            coordinates: coordinates,
+            ownerId: row.ownerId ?? undefined,
+            hasStripeAccount: typeof row.hasStripeAccount === 'boolean' ? row.hasStripeAccount : Boolean(row.hasStripeAccount),
+            $createdAt: row.$createdAt,
+            $updatedAt: row.$updatedAt,
+        };
+    }
+
+    private async ensureLeagueScoringConfig(row: any): Promise<void> {
+        if (row?.leagueScoringConfig && typeof row.leagueScoringConfig === 'object') {
+            return;
+        }
+
+        const configId =
+            typeof row?.leagueScoringConfig === 'string'
+                ? row.leagueScoringConfig
+                : typeof row?.leagueScoringConfigId === 'string'
+                ? row.leagueScoringConfigId
+                : undefined;
+
+        if (!configId) {
+            row.leagueScoringConfig = null;
+            return;
+        }
+
+        try {
+            const config = await databases.getRow({
+                databaseId: DATABASE_ID,
+                tableId: LEAGUE_SCORING_CONFIG_TABLE_ID,
+                rowId: configId,
+            });
+            row.leagueScoringConfig = config;
+        } catch (error) {
+            console.error('Failed to fetch league scoring config:', error);
+            row.leagueScoringConfig = null;
+        }
+    }
+
+    private mapMatchRecord(
+        input: any,
+        context?: { teamsById?: Map<string, Team>; fieldsById?: Map<string, Field> },
+    ): Match {
+        const eventId =
+            typeof input.eventId === 'string'
+                ? input.eventId
+                : input.event && typeof input.event === 'object' && '$id' in input.event
+                ? (input.event as { $id?: string }).$id ?? undefined
+                : undefined;
+
+        const fieldId =
+            typeof input.fieldId === 'string'
+                ? input.fieldId
+                : typeof input.field === 'string'
+                ? input.field
+                : input.field && typeof input.field === 'object' && '$id' in input.field
+                ? (input.field as { $id?: string }).$id ?? undefined
+                : undefined;
+
+        const team1Id =
+            typeof input.team1Id === 'string'
+                ? input.team1Id
+                : typeof input.team1 === 'string'
+                ? input.team1
+                : input.team1 && typeof input.team1 === 'object' && '$id' in input.team1
+                ? (input.team1 as { $id?: string }).$id ?? undefined
+                : undefined;
+
+        const team2Id =
+            typeof input.team2Id === 'string'
+                ? input.team2Id
+                : typeof input.team2 === 'string'
+                ? input.team2
+                : input.team2 && typeof input.team2 === 'object' && '$id' in input.team2
+                ? (input.team2 as { $id?: string }).$id ?? undefined
+                : undefined;
+
+        const refereeId =
+            typeof input.refereeId === 'string'
+                ? input.refereeId
+                : typeof input.referee === 'string'
+                ? input.referee
+                : input.referee && typeof input.referee === 'object' && '$id' in input.referee
+                ? (input.referee as { $id?: string }).$id ?? undefined
+                : undefined;
+
         const match: Match = {
             $id: (input?.$id ?? input?.id) as string,
             start: input.start,
@@ -595,9 +934,11 @@ class EventService {
             setResults: Array.isArray(input.setResults) ? (input.setResults as number[]) : [],
             previousLeftId: input.previousLeftId ?? input.previousLeftMatchId,
             previousRightId: input.previousRightId ?? input.previousRightMatchId,
-            winnerNextMatchId: input.winnerNextMatchId ?? (input.winnerNextMatch ? (input.winnerNextMatch as Match).$id : undefined),
-            loserNextMatchId: input.loserNextMatchId ?? (input.loserNextMatch ? (input.loserNextMatch as Match).$id : undefined),
-            field: input?.field as Field,
+            winnerNextMatchId:
+                input.winnerNextMatchId ?? (input.winnerNextMatch ? (input.winnerNextMatch as Match).$id : undefined),
+            loserNextMatchId:
+                input.loserNextMatchId ?? (input.loserNextMatch ? (input.loserNextMatch as Match).$id : undefined),
+            field: fieldId ? context?.fieldsById?.get(fieldId) : undefined,
             event: input?.event as Event,
         };
 
@@ -605,15 +946,21 @@ class EventService {
             match.division = input.division;
         }
 
-        if (input.team1 && typeof input.team1 === 'object') {
+        if (team1Id && context?.teamsById?.has(team1Id)) {
+            match.team1 = context.teamsById.get(team1Id);
+        } else if (input.team1 && typeof input.team1 === 'object') {
             match.team1 = input.team1 as Team;
         }
 
-        if (input.team2 && typeof input.team2 === 'object') {
+        if (team2Id && context?.teamsById?.has(team2Id)) {
+            match.team2 = context.teamsById.get(team2Id);
+        } else if (input.team2 && typeof input.team2 === 'object') {
             match.team2 = input.team2 as Team;
         }
 
-        if (input.referee && typeof input.referee === 'object') {
+        if (refereeId && context?.teamsById?.has(refereeId)) {
+            match.referee = context.teamsById.get(refereeId);
+        } else if (input.referee && typeof input.referee === 'object') {
             match.referee = input.referee as Team;
         }
 
@@ -632,6 +979,17 @@ class EventService {
         if (input.loserNextMatch) {
             match.loserNextMatch = input.loserNextMatch as Match;
         }
+
+        if (!match.field && fieldId && context?.fieldsById) {
+            match.field = context.fieldsById.get(fieldId);
+        }
+
+        match.eventId = eventId;
+        match.fieldId = fieldId ?? null;
+        match.team1Id = team1Id ?? null;
+        match.team2Id = team2Id ?? null;
+        match.refereeId = refereeId ?? null;
+        match.refereeCheckedIn = match.refereeCheckedIn ?? input.refereeCheckedIn ?? undefined;
 
         return match;
     }
@@ -713,7 +1071,7 @@ class EventService {
 
         if (!sport) {
             sportsMap = await this.refreshSportsMap();
-            sport = sportsMap.get(sportId) ?? null;
+            sport = sportsMap.get(sportId);
         }
 
         if (!sport) {
@@ -750,7 +1108,7 @@ class EventService {
         this.sportsCache = null;
         this.sportsCachePromise = null;
 
-        const sports = await sportsService.getAll(true);
+        const sports = await sportsService.getAll();
         const map = new Map<string, Sport>();
         sports.forEach((sport) => {
             if (sport.$id) {
@@ -819,6 +1177,7 @@ class EventService {
             data: { waitListIds: updated }
         });
         await this.ensureSportRelationship(response);
+        await this.ensureLeagueScoringConfig(response);
         return this.mapRowToEvent(response);
     }
 
@@ -833,6 +1192,7 @@ class EventService {
             data: { freeAgentIds: updated }
         });
         await this.ensureSportRelationship(response);
+        await this.ensureLeagueScoringConfig(response);
         return this.mapRowToEvent(response);
     }
 
@@ -847,6 +1207,7 @@ class EventService {
             data: { freeAgentIds: updated }
         });
         await this.ensureSportRelationship(response);
+        await this.ensureLeagueScoringConfig(response);
         return this.mapRowToEvent(response);
     }
 
@@ -857,15 +1218,10 @@ class EventService {
 
             queries.push(Query.orderAsc('start'));
             queries.push(Query.limit(limit));
-            queries.push(Query.select(['*', 'teams.*', 'players.*', 'organization.*', 'sport.*', 'leagueScoringConfig.*']));
             if (offset > 0) queries.push(Query.offset(offset));
 
             if (filters.eventTypes && filters.eventTypes.length > 0 && filters.eventTypes.length < 3) {
                 queries.push(Query.equal('eventType', filters.eventTypes));
-            }
-
-            if (filters.sports && filters.sports.length > 0) {
-                queries.push(Query.equal('sport.name', filters.sports));
             }
 
             if (filters.divisions && filters.divisions.length > 0) {
@@ -904,12 +1260,27 @@ class EventService {
                 queries
             });
 
-            let events = response.rows.map(row => this.mapRowToEvent(row));
+            const rows = response.rows ?? [];
+            const events: Event[] = [];
+            for (const row of rows) {
+                await this.ensureSportRelationship(row);
+                await this.ensureLeagueScoringConfig(row);
+                events.push(this.mapRowToEvent(row));
+            }
+
+            let filtered = events;
+
+            if (filters.sports && filters.sports.length > 0) {
+                const lower = filters.sports.map((sport) => sport.toLowerCase());
+                filtered = filtered.filter(
+                    (event) => event.sport && lower.includes(event.sport.name.toLowerCase()),
+                );
+            }
 
             // Apply client-side filtering
             if (filters.query) {
                 const searchTerm = filters.query.toLowerCase();
-                events = events.filter(event =>
+                filtered = filtered.filter(event =>
                     event.name.toLowerCase().includes(searchTerm) ||
                     event.description.toLowerCase().includes(searchTerm) ||
                     event.location.toLowerCase().includes(searchTerm) ||
@@ -917,7 +1288,7 @@ class EventService {
                 );
             }
 
-            return events;
+            return filtered;
         } catch (error) {
             console.error('Failed to fetch paginated events:', error);
             throw new Error('Failed to load events');

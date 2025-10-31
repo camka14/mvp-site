@@ -2,13 +2,13 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Button, Group, TextInput, NumberInput, Select } from '@mantine/core';
-import type { Field } from '@/types';
+import type { Field, Organization } from '@/types';
 import { fieldService } from '@/lib/fieldService';
 
 interface CreateFieldModalProps {
   isOpen: boolean;
   onClose: () => void;
-  organizationId?: string;
+  organization?: Organization;
   field?: Field | null;
   onFieldSaved?: (field: Field) => void;
 }
@@ -21,10 +21,10 @@ type FieldFormState = {
   lat: string | number;
   long: string | number;
   fieldNumber: number;
-  organizationId: string;
+  organization?: Organization;
 };
 
-const createEmptyState = (organizationId?: string): FieldFormState => ({
+const createEmptyState = (organization?: Organization): FieldFormState => ({
   $id: undefined,
   name: '',
   type: 'indoor',
@@ -32,12 +32,13 @@ const createEmptyState = (organizationId?: string): FieldFormState => ({
   lat: '',
   long: '',
   fieldNumber: 1,
-  organizationId: organizationId || '',
+  organization: organization
 });
 
-export default function CreateFieldModal({ isOpen, onClose, organizationId, field, onFieldSaved }: CreateFieldModalProps) {
+export default function CreateFieldModal(props: CreateFieldModalProps) {
+  const { isOpen, onClose, organization, field, onFieldSaved } = props;
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState<FieldFormState>(() => createEmptyState(organizationId));
+  const [form, setForm] = useState<FieldFormState>(() => createEmptyState(organization));
 
   const isEditMode = useMemo(() => Boolean(field?.$id), [field]);
 
@@ -55,14 +56,12 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, fiel
         lat: typeof field.lat === 'number' ? field.lat : '',
         long: typeof field.long === 'number' ? field.long : '',
         fieldNumber: typeof field.fieldNumber === 'number' ? field.fieldNumber : 1,
-        organizationId: typeof field.organization === 'string'
-          ? field.organization
-          : (field.organization as any)?.$id || organizationId || '',
+        organization: field.organization
       });
     } else {
-      setForm(createEmptyState(organizationId));
+      setForm(createEmptyState(organization));
     }
-  }, [isOpen, field, organizationId]);
+  }, [isOpen, field, organization]);
 
   const isValid = form.name.trim().length > 0 && form.fieldNumber > 0;
 
@@ -79,12 +78,12 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, fiel
         lat: form.lat === '' ? undefined : Number(form.lat),
         long: form.long === '' ? undefined : Number(form.long),
         fieldNumber: Number(form.fieldNumber),
-        organizationId: form.organizationId || undefined,
+        organization: form.organization || undefined,
       };
       const saved = await fieldService.createField(payload);
       onFieldSaved?.(saved);
       onClose();
-      setForm(createEmptyState(organizationId));
+      setForm(createEmptyState(organization));
     } catch (err) {
       console.error('Failed to create field:', err);
     } finally {
@@ -146,18 +145,6 @@ export default function CreateFieldModal({ isOpen, onClose, organizationId, fiel
             step={0.000001}
           />
         </div>
-
-        {!organizationId && (
-          <TextInput
-            label="Organization ID (optional)"
-            placeholder="Link this field to an organization"
-            value={form.organizationId}
-            onChange={(e) => {
-              const value = e.currentTarget.value;
-              setForm(prev => ({ ...prev, organizationId: value }));
-            }}
-          />
-        )}
 
         <Group justify="space-between" pt="sm">
           <Button variant="default" onClick={onClose} disabled={submitting}>Cancel</Button>

@@ -2,12 +2,14 @@
 
 import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
-import type { Field, TimeSlot } from '@/types';
+import type { Field, Organization, TimeSlot } from '@/types';
 import { eventService } from './eventService';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
+import { organizationService } from './organizationService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const FIELDS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!;
+const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
 
 export interface CreateFieldData {
   $id?: string;
@@ -17,7 +19,9 @@ export interface CreateFieldData {
   lat?: number;
   long?: number;
   fieldNumber: number;
-  organizationId?: string;
+  heading?: number;
+  inUse?: boolean;
+  organization?: Organization;
   eventId?: string;
 }
 
@@ -37,58 +41,59 @@ class FieldService {
       lat: data.lat,
       long: data.long,
       fieldNumber: data.fieldNumber,
+      heading: data.heading,
+      inUse: data.inUse,
     };
-
-    if (data.organizationId) {
-      payload.organization = data.organizationId;
-    }
-
-    if (data.eventId) {
-      payload.events = [data.eventId];
-    }
 
     const response = await databases.upsertRow({
       databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
       rowId,
       data: payload,
-      queries: [
-        Query.select([
-          '*',
-          'organization.$id',
-          'rentalSlots.*',
-        ]),
-      ],
-    } as any);
+    });
+    if (data.organization) {
+      data.organization?.fieldIds?.push(rowId)
+      organizationService.updateOrganization(data.organization.$id, data.organization)
+    }
 
-    return this.mapRowToField(response);
+    const field = this.mapRowToField(response);
+    return field;
   }
 
   async listFields(
-    filter?: string | { organizationId?: string; eventId?: string },
+    filter?: { fieldIds?: string[]; eventId?: string },
     range?: { start: string; end?: string | null }
   ): Promise<Field[]> {
-    const normalizedFilter = typeof filter === 'string' ? { organizationId: filter } : (filter ?? {});
+    const normalizedFilter = filter ?? {};
+    const rows: any[] = [];
 
-    const queries = [
-      Query.select([
-        '*',
-        'organization.$id',
-        'rentalSlots.*',
-      ]),
-    ];
+    if (normalizedFilter.fieldIds?.length) {
+      const chunks = this.chunkIds(normalizedFilter.fieldIds);
+      for (const chunk of chunks) {
+        const response = await databases.listRows({
+          databaseId: DATABASE_ID,
+          tableId: FIELDS_TABLE_ID,
+          queries: [Query.equal('$id', chunk)],
+        });
+        rows.push(...(response.rows ?? []));
+      }
+    } else {
+      const queries: string[] = [];
 
-    if (normalizedFilter.organizationId) {
-      queries.push(Query.equal('organization.$id', normalizedFilter.organizationId));
+      if (normalizedFilter.eventId) {
+        queries.push(Query.equal('eventId', normalizedFilter.eventId));
+      }
+
+      const response = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: FIELDS_TABLE_ID,
+        queries,
+      });
+      rows.push(...(response.rows ?? []));
     }
 
-    const response = await databases.listRows({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-      queries,
-    });
-
-    const fields = (response.rows || []).map((row: any) => this.mapRowToField(row));
+    const fields = rows.map((row: any) => this.mapRowToField(row));
+    await this.hydrateFieldRentalSlots(fields);
 
     if (range?.start) {
       return Promise.all(fields.map((field) => this.getFieldEventsMatches(field, range)));
@@ -120,48 +125,29 @@ class FieldService {
     const lat = typeof row.lat === 'number' ? row.lat : Number(row.lat ?? 0);
     const long = typeof row.long === 'number' ? row.long : Number(row.long ?? 0);
     const fieldNumber = typeof row.fieldNumber === 'number' ? row.fieldNumber : Number(row.fieldNumber ?? 0);
+    const heading = typeof row.heading === 'number' ? row.heading : Number(row.heading ?? NaN);
+    const inUse = typeof row.inUse === 'boolean' ? row.inUse : row.inUse !== undefined ? Boolean(row.inUse) : undefined;
+    const rentalSlotIds = Array.isArray(row.rentalSlotIds)
+      ? row.rentalSlotIds.map((value: unknown) => String(value))
+      : undefined;
 
-    const organization = Array.isArray(row.organization)
-      ? row.organization[0]
-      : row.organization;
-
-    const mappedField: Field = {
-      $id: row.$id,
-      name: row.name,
+    const field: Field = {
+      $id: String(row.$id ?? row.id ?? ''),
+      name: row.name ?? '',
       location: row.location ?? '',
       lat: Number.isFinite(lat) ? lat : 0,
       long: Number.isFinite(long) ? long : 0,
       type: row.type ?? '',
       fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
-      divisions: row.divisions,
-      organization,
+      heading: Number.isFinite(heading) ? heading : undefined,
+      inUse: inUse,
+      divisions: Array.isArray(row.divisions) ? row.divisions : undefined,
+      organization: row.organization ?? row.organizationId ?? undefined,
+      rentalSlotIds,
+      rentalSlots: [],
     } as Field;
 
-    const rentalSlots = this.extractRentalSlots(row.rentalSlots);
-    if (rentalSlots) {
-      mappedField.rentalSlots = rentalSlots;
-    }
-
-    return mappedField;
-  }
-
-  private extractRentalSlots(value: unknown): TimeSlot[] | undefined {
-    if (!Array.isArray(value)) {
-      return undefined;
-    }
-
-    const slots: TimeSlot[] = [];
-
-    value.forEach((entry) => {
-      if (!entry) return;
-
-      if (typeof entry === 'object') {
-        const slot = this.mapRowToTimeSlot(entry);
-        slots.push(slot);
-      }
-    });
-
-    return slots.length ? slots : undefined;
+    return field;
   }
 
   private coerceMinutes(value: unknown): number | undefined {
@@ -183,17 +169,18 @@ class FieldService {
     const startMinutes = this.coerceMinutes(row.startTimeMinutes ?? row.startTime);
     const endMinutes = this.coerceMinutes(row.endTimeMinutes ?? row.endTime);
     const slot: TimeSlot = {
-      $id: row.$id ?? row.id,
+      $id: String(row.$id ?? row.id ?? ''),
       dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
       repeating: row.repeating === undefined ? false : Boolean(row.repeating),
-      scheduledFieldId: row.scheduledFieldId ?? undefined,
+      scheduledFieldId: typeof row.scheduledFieldId === 'string' ? row.scheduledFieldId : row.fieldId ?? undefined,
+      eventId: typeof row.eventId === 'string' ? row.eventId : undefined,
     };
 
-    if (slot.repeating && typeof startMinutes === 'number') {
+    if (typeof startMinutes === 'number') {
       slot.startTimeMinutes = startMinutes;
     }
 
-    if (slot.repeating && typeof endMinutes === 'number') {
+    if (typeof endMinutes === 'number') {
       slot.endTimeMinutes = endMinutes;
     }
 
@@ -218,90 +205,120 @@ class FieldService {
     return slot;
   }
 
-  private serializeRentalSlotForMutation(
-    slot: Partial<TimeSlot> & { dayOfWeek: TimeSlot['dayOfWeek']; repeating?: boolean },
-    options: { includeId?: boolean; fieldId: string }
+  private chunkIds(ids: string[], size: number = 100): string[][] {
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += size) {
+      chunks.push(ids.slice(i, i + size));
+    }
+    return chunks;
+  }
+
+  private async hydrateFieldRentalSlots(fields: Field[]): Promise<void> {
+    if (!fields.length) {
+      return;
+    }
+
+    const allIds = Array.from(new Set(fields.flatMap((field) => field.rentalSlotIds ?? [])));
+    if (!allIds.length) {
+      fields.forEach((field) => {
+        if (!field.rentalSlots) {
+          field.rentalSlots = [];
+        }
+      });
+      return;
+    }
+
+    const slotRows = await this.fetchTimeSlotsByIds(allIds);
+    const slotMap = new Map(slotRows.map((slot) => [slot.$id, slot]));
+
+    fields.forEach((field) => {
+      const ids = field.rentalSlotIds ?? [];
+      field.rentalSlots = ids.map((id) => slotMap.get(id)).filter((slot): slot is TimeSlot => Boolean(slot));
+    });
+  }
+
+  private async fetchTimeSlotsByIds(ids: string[]): Promise<TimeSlot[]> {
+    const unique = Array.from(new Set(ids.filter(Boolean)));
+    if (!unique.length) {
+      return [];
+    }
+
+    const responses = await Promise.all(
+      this.chunkIds(unique).map((batch) =>
+        databases.listRows({
+          databaseId: DATABASE_ID,
+          tableId: TIME_SLOTS_TABLE_ID,
+          queries: [Query.equal('$id', batch)],
+        }),
+      ),
+    );
+
+    return responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapRowToTimeSlot(row)));
+  }
+
+  private serializeTimeSlotForUpsert(
+    slot: Partial<TimeSlot> & { dayOfWeek: TimeSlot['dayOfWeek'] },
+    options: { slotId?: string; fieldId: string }
   ): Record<string, unknown> {
     const payload: Record<string, unknown> = {
       dayOfWeek: slot.dayOfWeek,
-      repeating: Boolean(slot.repeating),
+      repeating: slot.repeating ?? false,
       scheduledFieldId: options.fieldId,
-      startDate: slot.startDate ?? null,
-      endDate: slot.endDate ?? null,
       startTimeMinutes: slot.startTimeMinutes ?? null,
       endTimeMinutes: slot.endTimeMinutes ?? null,
+      startDate: slot.startDate ?? null,
+      endDate: slot.endDate ?? null,
       price: slot.price ?? null,
+      eventId: slot.eventId ?? null,
     };
 
-    if (options.includeId && slot.$id) {
-      payload.$id = slot.$id;
+    if (options.slotId) {
+      payload.$id = options.slotId;
     }
 
     return payload;
-  }
-
-  private extractSlotIds(field: Field): Set<string> {
-    const ids = new Set<string>();
-    (field.rentalSlots || []).forEach((slot) => {
-      if (slot && typeof slot.$id === 'string') {
-        ids.add(slot.$id);
-      }
-    });
-    return ids;
-  }
-
-  private buildExistingSlotRefs(field: Field, excludeId?: string): (string | Record<string, unknown>)[] {
-    const refs: (string | Record<string, unknown>)[] = [];
-    (field.rentalSlots || []).forEach((slot) => {
-      if (!slot || typeof slot.$id !== 'string') {
-        return;
-      }
-
-      if (excludeId && slot.$id === excludeId) {
-        return;
-      }
-
-      refs.push(slot.$id);
-    });
-    return refs;
   }
 
   async createRentalSlot(
     field: Field,
     slotInput: Partial<TimeSlot> & { dayOfWeek: TimeSlot['dayOfWeek'] }
   ): Promise<ManageRentalSlotResult> {
-    const existingIds = this.extractSlotIds(field);
-    const existingRefs = this.buildExistingSlotRefs(field);
-
-    const newSlotPayload = this.serializeRentalSlotForMutation(slotInput, {
+    const slotId = ID.unique();
+    const slotPayload = this.serializeTimeSlotForUpsert(slotInput, {
+      slotId,
       fieldId: field.$id,
     });
 
-    const fieldResponse = await databases.updateRow({
+    const slotResponse = await databases.upsertRow({
+      databaseId: DATABASE_ID,
+      tableId: TIME_SLOTS_TABLE_ID,
+      rowId: slotId,
+      data: slotPayload,
+    });
+
+    const rentalSlotIds = Array.isArray(field.rentalSlotIds)
+      ? Array.from(new Set([...field.rentalSlotIds, slotId]))
+      : [slotId];
+
+    await databases.updateRow({
       databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
       rowId: field.$id,
       data: {
-        rentalSlots: [...existingRefs, newSlotPayload],
+        rentalSlotIds,
       },
-      queries: [
-        Query.select([
-          '*',
-          'organization.$id',
-          'rentalSlots.*',
-        ]),
-      ],
-    } as any);
+    });
 
-    const updatedField = this.mapRowToField(fieldResponse as any);
-    const createdSlot = (updatedField.rentalSlots || []).find((slot) => {
-      const id = slot?.$id;
-      return typeof id === 'string' && !existingIds.has(id);
-    }) || (updatedField.rentalSlots || []).slice(-1)[0];
+    const fieldRow = await databases.getRow({
+      databaseId: DATABASE_ID,
+      tableId: FIELDS_TABLE_ID,
+      rowId: field.$id,
+    });
 
-    if (!createdSlot) {
-      throw new Error('Failed to create rental slot');
-    }
+    const updatedField = this.mapRowToField(fieldRow);
+    await this.hydrateFieldRentalSlots([updatedField]);
+
+    const createdSlot = this.mapRowToTimeSlot(slotResponse);
 
     return { field: updatedField, slot: createdSlot };
   }
@@ -315,50 +332,28 @@ class FieldService {
       throw new Error('Rental slot update requires an id');
     }
 
-    const serializedSlots: (string | Record<string, unknown>)[] = [];
-    let found = false;
-
-    (field.rentalSlots || []).forEach((slot) => {
-      if (!slot || typeof slot.$id !== 'string') {
-        return;
-      }
-
-      if (slot.$id === slotId) {
-        serializedSlots.push(
-          this.serializeRentalSlotForMutation(slotInput, {
-            includeId: true,
-            fieldId: field.$id,
-          }),
-        );
-        found = true;
-      } else {
-        serializedSlots.push(slot.$id);
-      }
+    const slotPayload = this.serializeTimeSlotForUpsert(slotInput, {
+      slotId,
+      fieldId: field.$id,
     });
 
-    if (!found) {
-      throw new Error('Rental slot not found on field');
-    }
+    await databases.updateRow({
+      databaseId: DATABASE_ID,
+      tableId: TIME_SLOTS_TABLE_ID,
+      rowId: slotId,
+      data: slotPayload,
+    });
 
-    const fieldResponse = await databases.updateRow({
+    const fieldRow = await databases.getRow({
       databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
       rowId: field.$id,
-      data: {
-        rentalSlots: serializedSlots,
-      },
-      queries: [
-        Query.select([
-          '*',
-          'organization.$id',
-          'rentalSlots.*',
-        ]),
-      ],
-    } as any);
+    });
 
-    const updatedField = this.mapRowToField(fieldResponse as any);
+    const updatedField = this.mapRowToField(fieldRow);
+    await this.hydrateFieldRentalSlots([updatedField]);
+
     const updatedSlot = (updatedField.rentalSlots || []).find((slot) => slot?.$id === slotId);
-
     if (!updatedSlot) {
       throw new Error('Failed to update rental slot');
     }

@@ -2,7 +2,6 @@ import { databases } from '@/app/appwrite';
 import { Event, Team, Field, Match, TournamentBracket } from '@/types';
 import { eventService } from './eventService';
 import { authService } from './auth';
-import { Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
@@ -54,24 +53,111 @@ class TournamentService {
 
     async updateMatch(matchId: string, updates: Partial<Match>): Promise<Match> {
         try {
-            const payload: Record<string, unknown> = { ...updates };
+            const payload: Record<string, unknown> = {};
 
-            if (payload.field && typeof payload.field === 'object' && '$id' in (payload.field as Record<string, unknown>)) {
-                payload.field = (payload.field as Field).$id;
-            }
+            Object.entries(updates).forEach(([key, value]) => {
+                switch (key) {
+                    case 'field':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.fieldId = (value as Field).$id;
+                        } else if (typeof value === 'string') {
+                            payload.fieldId = value;
+                        } else if (value === null) {
+                            payload.fieldId = null;
+                        }
+                        break;
+                    case 'team1':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.team1Id = (value as Team).$id;
+                        } else if (typeof value === 'string') {
+                            payload.team1Id = value;
+                        } else if (value === null) {
+                            payload.team1Id = null;
+                        }
+                        break;
+                    case 'team2':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.team2Id = (value as Team).$id;
+                        } else if (typeof value === 'string') {
+                            payload.team2Id = value;
+                        } else if (value === null) {
+                            payload.team2Id = null;
+                        }
+                        break;
+                    case 'referee':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.refereeId = (value as Team).$id;
+                        } else if (typeof value === 'string') {
+                            payload.refereeId = value;
+                        } else if (value === null) {
+                            payload.refereeId = null;
+                        }
+                        break;
+                    case 'previousLeftMatch':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.previousLeftId = (value as Match).$id;
+                        } else if (typeof value === 'string') {
+                            payload.previousLeftId = value;
+                        } else if (value === null) {
+                            payload.previousLeftId = null;
+                        }
+                        break;
+                    case 'previousRightMatch':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.previousRightId = (value as Match).$id;
+                        } else if (typeof value === 'string') {
+                            payload.previousRightId = value;
+                        } else if (value === null) {
+                            payload.previousRightId = null;
+                        }
+                        break;
+                    case 'winnerNextMatch':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.winnerNextMatchId = (value as Match).$id;
+                        } else if (typeof value === 'string') {
+                            payload.winnerNextMatchId = value;
+                        } else if (value === null) {
+                            payload.winnerNextMatchId = null;
+                        }
+                        break;
+                    case 'loserNextMatch':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.loserNextMatchId = (value as Match).$id;
+                        } else if (typeof value === 'string') {
+                            payload.loserNextMatchId = value;
+                        } else if (value === null) {
+                            payload.loserNextMatchId = null;
+                        }
+                        break;
+                    default:
+                        payload[key] = value;
+                }
+            });
 
             const response = await databases.updateRow({
                 databaseId: DATABASE_ID,
                 tableId: MATCHES_TABLE_ID,
                 rowId: matchId,
-                data: payload
+                data: payload,
             });
+
+            const eventId: string | undefined =
+                (typeof response.eventId === 'string' && response.eventId) ||
+                (response.event && typeof response.event === 'object' && '$id' in response.event ? response.event.$id : undefined);
+
+            if (eventId) {
+                const tournament = await eventService.getEventWithRelations(eventId);
+                const hydratedMatch = tournament?.matches?.find((match) => match.$id === response.$id);
+                if (hydratedMatch) {
+                    return hydratedMatch;
+                }
+            }
 
             return {
                 $id: response.$id,
-                matchId: response.matchNumber,
-                event: response.event as Event,
-                field: response.field,
+                matchId: response.matchNumber ?? response.matchId,
+                event: undefined,
+                field: undefined,
                 start: response.start,
                 end: response.end,
                 division: response.division,
@@ -80,16 +166,14 @@ class TournamentService {
                 losersBracket: response.losersBracket || false,
                 winnerNextMatchId: response.winnerNextMatchId,
                 loserNextMatchId: response.loserNextMatchId,
-                previousLeftId: response.previousLeftMatchId,
-                previousRightId: response.previousRightMatchId,
+                previousLeftId: response.previousLeftId ?? response.previousLeftMatchId,
+                previousRightId: response.previousRightId ?? response.previousRightMatchId,
                 setResults: response.setResults || [],
-                refCheckedIn: response.refCheckedIn,
+                refCheckedIn: response.refCheckedIn ?? response.refereeCheckedIn,
                 team1Seed: response.team1Seed ?? undefined,
                 team2Seed: response.team2Seed ?? undefined,
                 $createdAt: response.$createdAt,
                 $updatedAt: response.$updatedAt,
-                team1: typeof response.team1 === 'object' ? (response.team1 as Team) : undefined,
-                team2: typeof response.team2 === 'object' ? (response.team2 as Team) : undefined,
             };
         } catch (error) {
             console.error('Failed to update match:', error);

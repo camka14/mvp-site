@@ -21,12 +21,22 @@ const DATABASE_ID = 'test-db';
 const EVENTS_TABLE_ID = 'events-table';
 const FIELDS_TABLE_ID = 'fields-table';
 const MATCHES_TABLE_ID = 'matches-table';
+const TEAMS_TABLE_ID = 'teams-table';
+const USERS_TABLE_ID = 'users-table';
+const WEEKLY_TABLE_ID = 'weekly';
+const LEAGUE_SCORING_TABLE_ID = 'league-config';
+const ORGANIZATIONS_TABLE_ID = 'org-table';
 
 const setEnv = () => {
   process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
   process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID = EVENTS_TABLE_ID;
   process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID = FIELDS_TABLE_ID;
   process.env.NEXT_PUBLIC_MATCHES_TABLE_ID = MATCHES_TABLE_ID;
+  process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID = TEAMS_TABLE_ID;
+  process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID = USERS_TABLE_ID;
+  process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID = WEEKLY_TABLE_ID;
+  process.env.NEXT_PUBLIC_APPWRITE_LEAGUE_SCORING_CONFIG_TABLE_ID = LEAGUE_SCORING_TABLE_ID;
+  process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID = ORGANIZATIONS_TABLE_ID;
 };
 
 describe('eventService', () => {
@@ -35,6 +45,7 @@ describe('eventService', () => {
     jest.clearAllMocks();
     sportsServiceMock.getAll.mockReset();
     sportsServiceMock.getAll.mockResolvedValue([]);
+    appwriteModuleMock.databases.listRows.mockResolvedValue({ rows: [] });
   });
 
   describe('getEventWithRelations', () => {
@@ -66,12 +77,11 @@ describe('eventService', () => {
 
       const event = await eventService.getEventWithRelations('evt_1');
 
-      expect(appwriteModuleMock.databases.getRow).toHaveBeenCalledWith({
+      expect(appwriteModuleMock.databases.getRow).toHaveBeenNthCalledWith(1, expect.objectContaining({
         databaseId: DATABASE_ID,
         tableId: EVENTS_TABLE_ID,
         rowId: 'evt_1',
-        queries: expect.any(Array),
-      });
+      }));
 
       expect(event?.timeSlots?.[0]).toMatchObject({
         $id: 'slot_1',
@@ -141,7 +151,10 @@ describe('eventService', () => {
       expect(eventCall.data).toEqual(expect.objectContaining({
         name: 'New Event',
         coordinates: [-105, 40],
-        fields: ['field_1', 'field_2'],
+        fields: [
+          expect.objectContaining({ $id: 'field_1', name: 'Field A', fieldNumber: 1 }),
+          expect.objectContaining({ $id: 'field_2', name: 'Field B', fieldNumber: 2 }),
+        ],
       }));
     });
 
@@ -183,8 +196,9 @@ describe('eventService', () => {
       });
 
       const [[eventPayload]] = appwriteModuleMock.databases.createRow.mock.calls;
-      expect(eventPayload.data?.fields).toEqual(['field_1']);
-      expect(eventPayload.data?.fields).not.toContainEqual(expect.objectContaining({ name: 'Court A' }));
+      expect(eventPayload.data?.fields).toEqual([
+        expect.objectContaining({ $id: 'field_1', name: 'Court A' }),
+      ]);
     });
   });
 

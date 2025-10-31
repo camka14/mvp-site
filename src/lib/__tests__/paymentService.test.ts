@@ -46,13 +46,7 @@ describe('paymentService', () => {
       });
       expect(parsedBody.organizationEmail ?? undefined).toBeUndefined();
       expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
-      expect(parsedBody.event).toEqual(
-        expect.objectContaining({
-          sport: mockEvent.sport.$id,
-        }),
-      );
-      expect(parsedBody.event?.leagueScoringConfig).toEqual(mockEvent.leagueScoringConfig);
-      expect(typeof parsedBody.event.sport).toBe('string');
+      expect(parsedBody.event).toEqual(mockEvent);
       expect(intent).toEqual({ id: 'pi_1', clientSecret: 'secret' });
     });
 
@@ -93,12 +87,7 @@ describe('paymentService', () => {
         organization: null,
       });
       expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
-      expect(parsedBody.event).toEqual(
-        expect.objectContaining({
-          sport: mockEvent.sport.$id,
-        }),
-      );
-      expect(parsedBody.event?.leagueScoringConfig).toEqual(mockEvent.leagueScoringConfig);
+      expect(parsedBody.event).toEqual(mockEvent);
     });
   });
 
@@ -127,12 +116,7 @@ describe('paymentService', () => {
         organization: null,
       });
       expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
-      expect(parsedBody.event).toEqual(
-        expect.objectContaining({
-          sport: mockEvent.sport.$id,
-        }),
-      );
-      expect(parsedBody.event?.leagueScoringConfig).toEqual(mockEvent.leagueScoringConfig);
+      expect(parsedBody.event).toEqual(mockEvent);
     });
   });
 });

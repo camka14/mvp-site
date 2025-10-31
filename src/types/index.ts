@@ -146,6 +146,11 @@ export interface LeagueScoringConfig {
 export interface Match {
   $id: string;
   matchId?: number;
+  eventId?: string;
+  fieldId?: string | null;
+  team1Id?: string | null;
+  team2Id?: string | null;
+  refereeId?: string | null;
   team1Points: number[];
   team2Points: number[];
   previousLeftId?: string;
@@ -158,6 +163,7 @@ export interface Match {
   setResults: number[];
   side?: string;
   refCheckedIn?: boolean;
+  refereeCheckedIn?: boolean;
   team1Seed?: number;
   team2Seed?: number;
 
@@ -179,10 +185,6 @@ export interface Match {
   $updatedAt?: string;
 }
 
-export interface MatchPayload extends Omit<Match, 'field' | '$id'> {
-  field?: FieldPayload;
-}
-
 export interface TimeSlot {
   $id: string;
   dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -193,10 +195,8 @@ export interface TimeSlot {
   repeating: boolean;
   price?: number;
   event?: Event;
+  eventId?: string;
   scheduledFieldId?: string;
-}
-
-export interface TimeSlotPayload extends Omit<TimeSlot, '$id'> {
 }
 
 export interface UserData {
@@ -222,11 +222,30 @@ export interface UserData {
   avatarUrl: string;
 }
 
-export interface UserDataPayload extends Omit<UserData, 'fullName' | 'avatarUrl'> { }
+// Updated Field interface
+export interface Field {
+  $id: string;
+  name: string;
+  location: string;
+  lat: number;
+  long: number;
+  type: string;
+  fieldNumber: number;
+  heading?: number;
+  inUse?: boolean;
+  rentalSlotIds?: string[];
+
+  // Relationships
+  divisions?: (Division | string)[];
+  matches?: Match[];
+  events?: Event[];
+  organization?: Organization;
+  rentalSlots?: TimeSlot[];
+}
 
 export interface Team {
   $id: string;
-  name?: string;
+  name: string;
   seed: number;
   division: Division | string; // Can be expanded or just ID
   sport: string;
@@ -239,48 +258,17 @@ export interface Team {
   profileImageId?: string;
   $createdAt?: string;
   $updatedAt?: string;
-
   // Expanded relationships
   players?: UserData[];
   captain?: UserData;
   pendingPlayers?: UserData[];
   matches?: Match[]; // Tournament matches this team participates in
-
   // Computed properties
   winRate: number;
   currentSize: number;
   isFull: boolean;
   avatarUrl: string;
 }
-
-export interface TeamPayload extends Omit<
-  Team,
-  'winRate' | 'currentSize' | 'isFull' | 'avatarUrl' | 'players' | 'pendingPlayers' | 'captain'
-> {
-  players?: UserDataPayload[];
-  pendingPlayers?: UserDataPayload[];
-  captain?: UserDataPayload;
-}
-
-// Updated Field interface
-export interface Field {
-  $id: string;
-  name: string;
-  location: string;
-  lat: number;
-  long: number;
-  type: string;
-  fieldNumber: number;
-
-  // Relationships
-  divisions?: Division[];
-  matches?: Match[];
-  events?: Event[];
-  organization?: Organization | string;
-  rentalSlots?: TimeSlot[];
-}
-
-export interface FieldPayload extends Omit<Field, 'matches' | 'events' | '$id'> { }
 
 // Core Event interface with relationships
 export interface Event {
@@ -306,6 +294,9 @@ export interface Event {
   freeAgentIds: string[];
   playerIds?: string[];
   teamIds?: string[];
+  userIds?: string[];
+  fieldIds?: string[];
+  timeSlotIds?: string[];
   waitList?: string[];
   freeAgents?: string[];
   cancellationRefundHours: number;
@@ -315,6 +306,9 @@ export interface Event {
   $updatedAt: string;
   eventType: 'pickup' | 'tournament' | 'league';
   sport: Sport;
+  sportId?: string;
+  leagueScoringConfigId?: string | null;
+  organizationId?: string | null;
   organization?: Organization | string;
 
   // Relationship fields - can be IDs or expanded objects
@@ -342,6 +336,7 @@ export interface Event {
   matchDurationMinutes?: number;
   setDurationMinutes?: number;
   setsPerMatch?: number;
+  refType?: string;
   pointsToVictory?: number[];
   status?: EventStatus;
   leagueConfig?: LeagueConfig;
@@ -352,14 +347,7 @@ export interface Event {
   attendees: number;
 }
 
-export interface EventPayload extends Omit<Event, 'attendees' | 'category' | 'players' | 'teams' | 'leagueConfig' | 'matches' | 'timeSlots' | 'fields' | 'sport'> {
-  sport?: string;
-  players?: string[];
-  teams?: string[];
-  matches?: string[];
-  timeSlots?: TimeSlotPayload[];
-  fields?: string[];
-}
+
 
 export interface TournamentBracket {
   tournament: Event;
@@ -380,6 +368,8 @@ export interface Organization {
   coordinates?: [number, number];
   ownerId?: string;
   hasStripeAccount?: boolean;
+  fieldIds?: string[];
+  refIds?: string[];
   $createdAt?: string;
   $updatedAt?: string;
 

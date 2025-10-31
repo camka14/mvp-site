@@ -206,14 +206,6 @@ function DiscoverPageContent() {
       const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, 0);
 
       let result = page;
-      try {
-        const sample = await eventService.getEvent(DEFAULT_EVENT_ID);
-        if (sample && !page.some((event) => event.$id === sample.$id)) {
-          result = [sample, ...page];
-        }
-      } catch {
-        // ignore sample fetch problems
-      }
 
       setEvents(result);
       setEventOffset(page.length);

@@ -45,7 +45,7 @@ function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
   const { user, loading: authLoading, isAuthenticated } = useApp();
-  const [org, setOrg] = useState<Organization | null>(null);
+  const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields'>('overview');
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
@@ -72,6 +72,7 @@ function OrganizationDetailContent() {
   const [connectingStripe, setConnectingStripe] = useState(false);
   const isOwner = Boolean(user && org && user.$id === org.ownerId);
   const [stripeEmail, setStripeEmail] = useState<string>('');
+  const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
 
   const localizer = useMemo(() => dateFnsLocalizer({
     format,
@@ -147,19 +148,27 @@ function OrganizationDetailContent() {
 
   const handleConnectStripeAccount = useCallback(async () => {
     if (!org || !user || !isOwner) return;
-    if (!stripeEmail.trim()) {
-      notifications.show({ color: 'yellow', message: 'Provide an email address for Stripe onboarding.' });
+    const trimmedEmail = stripeEmail.trim();
+    if (!trimmedEmail) {
+      setStripeEmailError('Enter an email address before starting Stripe onboarding.');
+      notifications.show({ color: 'yellow', message: 'Enter an email address before starting Stripe onboarding.' });
       return;
     }
     try {
       setConnectingStripe(true);
-      const result = await paymentService.connectStripeAccount(user, org, stripeEmail.trim());
+      setStripeEmailError(null);
+      const result = await paymentService.connectStripeAccount(null, org, trimmedEmail);
       if (result?.onboardingUrl) {
         window.open(result.onboardingUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        notifications.show({ color: 'red', message: 'Stripe onboarding did not return a link. Try again later.' });
       }
     } catch (error) {
       console.error('Failed to connect Stripe account', error);
-      notifications.show({ color: 'red', message: 'Unable to start Stripe onboarding right now.' });
+      const message = error instanceof Error && error.message
+        ? error.message
+        : 'Unable to start Stripe onboarding right now.';
+      notifications.show({ color: 'red', message });
     } finally {
       setConnectingStripe(false);
     }
@@ -167,6 +176,11 @@ function OrganizationDetailContent() {
 
   const loadFieldSchedule = useCallback(async (view: View, date: Date) => {
     if (!id) return;
+    const fieldIds = org?.fieldIds?.filter((value): value is string => typeof value === 'string' && value.length > 0) ?? [];
+    if (!fieldIds.length) {
+      setFieldScheduleFields([]);
+      return;
+    }
     const { start, end } = computeFieldRange(view, date);
     const startLocal = formatISO(start, { representation: 'complete' });
     const endLocal = formatISO(end, { representation: 'complete' });
@@ -174,7 +188,7 @@ function OrganizationDetailContent() {
     setFieldScheduleRange({ start: new Date(start.getTime()), end: new Date((end ?? start).getTime()) });
     try {
       const fields = await fieldService.listFields(
-        { organizationId: id },
+        { fieldIds },
         {
           start: startLocal,
           end: endLocal,
@@ -187,7 +201,7 @@ function OrganizationDetailContent() {
     } finally {
       setFieldScheduleLoading(false);
     }
-  }, [computeFieldRange, id]);
+  }, [computeFieldRange, id, org?.fieldIds]);
 
   const handleRentalSlotSaved = useCallback((newField: Field) => {
     setFieldScheduleFields((prev) => prev.map((field) => {
@@ -456,8 +470,14 @@ function OrganizationDetailContent() {
                           label="Organization Email"
                           placeholder="billing@example.com"
                           value={stripeEmail}
-                          onChange={(e) => setStripeEmail(e.currentTarget.value)}
+                          onChange={(e) => {
+                            setStripeEmail(e.currentTarget.value);
+                            if (stripeEmailError) {
+                              setStripeEmailError(null);
+                            }
+                          }}
                           disabled={organizationHasStripeAccount || connectingStripe}
+                          error={stripeEmailError ?? undefined}
                           required
                         />
                         <Button
@@ -743,7 +763,7 @@ function OrganizationDetailContent() {
         onEventCreated={async () => true}
         onEventSaved={async () => { setShowCreateEventModal(false); if (id) await loadOrg(id); }}
         currentUser={user}
-        organization={org}
+        organization={org ? org : null}
       />
       <CreateTeamModal
         isOpen={showCreateTeamModal}
@@ -757,7 +777,7 @@ function OrganizationDetailContent() {
           setShowFieldModal(false);
           setEditingField(null);
         }}
-        organizationId={id}
+        organization={org}
         field={editingField}
         onFieldSaved={handleFieldSaved}
       />

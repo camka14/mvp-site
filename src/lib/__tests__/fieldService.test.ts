@@ -21,11 +21,13 @@ const eventServiceMock = jest.requireMock('@/lib/eventService').eventService as 
 
 const DATABASE_ID = 'test-db';
 const FIELDS_TABLE_ID = 'fields-table';
+const TIME_SLOTS_TABLE_ID = 'time-slots-table';
 
 describe('fieldService', () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
     process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID = FIELDS_TABLE_ID;
+    process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID = TIME_SLOTS_TABLE_ID;
     jest.clearAllMocks();
     eventServiceMock.getEventsForFieldInRange.mockResolvedValue([]);
     eventServiceMock.getMatchesForFieldInRange.mockResolvedValue([]);
@@ -54,21 +56,19 @@ describe('fieldService', () => {
     expect(field.$id).toBe('field_1');
   });
 
-  it('lists fields with optional organization filter', async () => {
+  it('lists fields by ids when provided', async () => {
     appwriteModuleMock.databases.listRows.mockResolvedValue({
       rows: [{ $id: 'field_1', name: 'Court A' }],
     });
 
-    const fields = await fieldService.listFields('org_1');
+    const fields = await fieldService.listFields({ fieldIds: ['field_1'] });
 
     expect(appwriteModuleMock.databases.listRows).toHaveBeenCalledWith(expect.objectContaining({
       databaseId: DATABASE_ID,
       tableId: FIELDS_TABLE_ID,
     }));
     const queries = appwriteModuleMock.databases.listRows.mock.calls[0][0].queries;
-    expect(queries).toEqual(expect.arrayContaining([
-      expect.stringContaining('organization.$id'),
-    ]));
+    expect(queries).toEqual(expect.arrayContaining([expect.stringContaining('$id')]));
     expect(fields[0].name).toBe('Court A');
   });
 
@@ -82,7 +82,10 @@ describe('fieldService', () => {
       { $id: 'match_1', start: '2024-01-01T10:00:00Z', end: '2024-01-01T11:00:00Z' } as any,
     ]);
 
-    const fields = await fieldService.listFields('org_1', { start: '2024-01-01T00:00:00Z', end: '2024-01-07T00:00:00Z' });
+    const fields = await fieldService.listFields(
+      { fieldIds: ['field_1'] },
+      { start: '2024-01-01T00:00:00Z', end: '2024-01-07T00:00:00Z' }
+    );
 
     expect(eventServiceMock.getEventsForFieldInRange).toHaveBeenCalledWith('field_1', '2024-01-01T00:00:00Z', '2024-01-07T00:00:00Z');
     expect(eventServiceMock.getMatchesForFieldInRange).toHaveBeenCalledWith('field_1', '2024-01-01T00:00:00Z', '2024-01-07T00:00:00Z');

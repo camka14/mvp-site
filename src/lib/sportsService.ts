@@ -4,7 +4,7 @@ import { Sport } from '@/types';
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const SPORTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_SPORTS_TABLE_ID!;
 const CACHE_KEY = 'sports-cache-v1';
-const CACHE_DURATION_MS = 24 * 60 * 60 * 1000;
+const CACHE_DURATION_MS = 1;
 
 let cachedSports: Sport[] | null = null;
 let cachedAt: number | null = null;

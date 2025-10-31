@@ -145,10 +145,10 @@ export interface UserData {
   lastName: string;
   userName: string;
   email?: string;
-  teams?: Team[];           // relationship column when selected (see Query.select)
-  teamIds?: string[];       // if you keep raw IDs for compatibility
-  friends?: UserData[];     // self relation (many-to-many) when selected
-  friendIds?: string[];     // optional raw ID array
+  teamIds: string[];        // persisted IDs (hydrate manually)
+  teams?: Team[];           // hydrated in services
+  friendIds: string[];      // persisted IDs for social graph
+  friends?: UserData[];     // hydrated in services
   uploadedImages?: string[];
   profileImageId?: string;
   $createdAt?: string;
@@ -163,9 +163,12 @@ export interface Team {
   name: string;
   sport: string;
   division: string;
-  players?: UserData[];     // relationship column (two-way to users)
-  captain?: UserData | null;// many-to-one user
-  pending?: UserData[];     // optional relation for invites
+  playerIds: string[];      // persisted IDs
+  players?: UserData[];     // hydrated in services
+  captainId?: string | null;
+  captain?: UserData | null;
+  pending: string[];        // persisted invite IDs
+  pendingPlayers?: UserData[];
   teamSize: number;
   profileImageId?: string;
   wins: number;
@@ -177,7 +180,7 @@ export interface Team {
 }
 ```
 
-> **Tip**: Prefer **relationship columns** like `players`, `teams`, `captain` instead of keeping only `playerIds`/`teamIds`. When you **select** relationships, SDK returns full related **rows** under those keys.
+> **Tip**: Persist ID arrays (`playerIds`, `teamIds`, `friendIds`) and let service modules hydrate them on demand. This keeps writes simple and makes it obvious which additional reads are required.
 
 ## Mantine UI (site-wide)
 
@@ -258,180 +261,91 @@ export async function logout() {
 }
 ```
 
-## TablesDB — Relationships done right
+## TablesDB — ID-centric modeling
 
-### 1) Define relationship columns (one-time, in Console or Server SDK)
+We no longer rely on Appwrite relationship columns. Every association is stored explicitly through string ID columns (for example `sportId`, `teamIds`, `fieldIds`). Service modules must hydrate these IDs into full domain models before returning data to UI components.
 
-- **Users ↔ Teams**: two-way **many-to-many** via `users.teams` ↔ `teams.players`
-- **Teams → captain**: **many-to-one** from teams to users via `teams.captain`
-- **Events ↔ Teams/Users**: many-to-many depending on your participation model
+### Modeling rules
 
-> Create in Console (Databases → *your db* → Tables → *table* → Columns → **Relationship**), or via Server SDK (admin key):
+- Keep schema aligned with `/database/appwrite.config.json`; add `<name>Id` or `<name>Ids` columns for each link.
+- Persist raw string IDs when creating or updating rows. Do not send nested objects to TablesDB APIs.
+- Hydrate inside service modules by fetching the base row first, then issuing follow-up `getRow`/`listRows` calls using `Query.equal('$id', ids)` (chunk to ≤100) or `Query.contains('fieldIds', someId)` for array membership.
+- Throw when a referenced ID cannot be resolved so data issues surface early.
+- Cache selectively (for example sports metadata) to avoid redundant reads.
 
-```ts
-// Server-side (Node) setup script – run once
-import { Client, TablesDB, RelationshipType, RelationMutate } from 'node-appwrite';
-
-const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!);
-
-const tablesDB = new TablesDB(client);
-
-// Teams.players ↔ Users.teams (two-way many)
-await tablesDB.createRelationshipColumn({
-  databaseId: process.env.APPWRITE_DB_ID!,
-  tableId: process.env.TEAMS_TABLE_ID!,
-  relatedTableId: process.env.USERS_TABLE_ID!,
-  type: RelationshipType.OneToMany,   // one team -> many users
-  twoWay: true,
-  key: 'players',                     // on Teams
-  twoWayKey: 'teams',                 // on Users
-  onDelete: RelationMutate.Restrict,  // prevent deleting teams with members
-});
-
-// Teams.captain (many teams -> one user), optional two-way key "captainOf"
-await tablesDB.createRelationshipColumn({
-  databaseId: process.env.APPWRITE_DB_ID!,
-  tableId: process.env.TEAMS_TABLE_ID!,
-  relatedTableId: process.env.USERS_TABLE_ID!,
-  type: RelationshipType.ManyToOne,   // many teams -> one user
-  twoWay: true,
-  key: 'captain',                     // on Teams
-  twoWayKey: 'captainOf',             // on Users (array)
-  onDelete: RelationMutate.SetNull,   // if captain deleted, null out on teams
-});
-```
-
-### 2) Create rows (reference or nested)
-
-**By reference (typical for MVP-site):**
+### Hydration pattern
 
 ```ts
-// Create team with existing user members
-import { tables, ID } from './appwrite';
+import { databases, Query } from '@/app/appwrite';
 
-export async function createTeam(data: {
-  name: string;
-  sport: string;
-  division: string;
-  playerIds?: string[]; // user row IDs
-  captainId?: string;   // user row ID
-  teamSize: number;
-}) {
-  return tables.createRow({
+async function listByIds(tableId: string, ids: string[]) {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (!unique.length) return [];
+  const batches: string[][] = [];
+  for (let i = 0; i < unique.length; i += 100) {
+    batches.push(unique.slice(i, i + 100));
+  }
+  const responses = await Promise.all(
+    batches.map(batch =>
+      databases.listRows({
+        databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+        tableId,
+        queries: [Query.equal('$id', batch)],
+      })
+    ),
+  );
+  return responses.flatMap(res => res.rows ?? []);
+}
+
+export async function getEvent(eventId: string) {
+  const base = await databases.getRow({
     databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    tableId: process.env.NEXT_PUBLIC_TEAMS_TABLE_ID!,
-    rowId: ID.unique(),
-    data: {
-      name: data.name,
-      sport: data.sport,
-      division: data.division,
-      players: data.playerIds ?? [],
-      captain: data.captainId ?? null,
-      teamSize: data.teamSize,
-    },
+    tableId: process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!,
+    rowId: eventId,
   });
+
+  const event = mapRowToEvent(base); // converts primitives, enums, coordinates
+
+  const [teams, matches, fields] = await Promise.all([
+    listByIds(process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID!, event.teamIds ?? []),
+    databases.listRows({
+      databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+      tableId: process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!,
+      queries: [Query.equal('eventId', event.$id)],
+    }).then(res => res.rows ?? []),
+    listByIds(process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!, event.fieldIds ?? []),
+  ]);
+
+  const teamsById = new Map(teams.map(row => [row.$id, mapRowToTeam(row)]));
+  const fieldsById = new Map(fields.map(row => [row.$id, mapRowToField(row)]));
+
+  event.teams = [...teamsById.values()];
+  event.matches = matches.map(row => {
+    const match = mapRowToMatch(row);
+    match.team1 = match.team1Id ? teamsById.get(match.team1Id) : undefined;
+    match.team2 = match.team2Id ? teamsById.get(match.team2Id) : undefined;
+    match.field = match.fieldId ? fieldsById.get(match.fieldId) : undefined;
+    return match;
+  });
+  event.fields = [...fieldsById.values()];
+
+  return event;
 }
 ```
 
-**Nested (optional):** you can create parent + child rows together by **nesting** related row data in `data` (IDs auto-assigned when omitted). Prefer this when bootstrapping seed data.
+### Query helpers
 
-### 3) Read rows with related data (opt-in selection)
+- `Query.equal('$id', ids)` – fetch rows whose primary key is in `ids`.
+- `Query.contains('teamIds', [teamId])` – array membership when performing reverse lookups.
+- `Query.greaterThanEqual('end', startIso)` / `Query.lessThanEqual('start', endIso)` – date windows.
 
-By default, you get only the row’s own columns. To load related rows, **select them explicitly**:
+### Testing expectations
 
-```ts
-// Get a team WITH players and captain
-import { tables, Query } from './appwrite';
+- Service tests mock Appwrite responses and assert that hydration issues follow-up queries for every referenced ID.
+- Regression tests must ensure missing IDs surface as thrown errors rather than silent omissions.
+- UI-level tests continue to rely on fully hydrated domain objects; keep the runtime shape identical to `src/types/index.ts`.
 
-export async function getTeam(teamId: string, withRelations = true) {
-  const queries = withRelations ? [Query.select(['*', 'players.*', 'captain.*'])] : [];
-  return tables.getRow({
-    databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    tableId: process.env.NEXT_PUBLIC_TEAMS_TABLE_ID!,
-    rowId: teamId,
-    queries,
-  });
-}
-
-// List teams for a given user
-export async function listTeamsForUser(userId: string) {
-  return tables.listRows({
-    databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    tableId: process.env.NEXT_PUBLIC_TEAMS_TABLE_ID!,
-    queries: [
-      // array-contains works on relationship columns
-      Query.contains('players', userId),
-      Query.limit(50),
-      Query.select(['*', 'players.*', 'captain.*']),
-    ],
-  });
-}
-```
-
-### 4) Update / unlink relationships
-
-Relationships are updated by changing the relationship **column**:
-
-```ts
-// Add a player to a team
-export async function addPlayer(teamId: string, userId: string) {
-  const team = await tables.getRow({
-    databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    tableId: process.env.NEXT_PUBLIC_TEAMS_TABLE_ID!,
-    rowId: teamId,
-  });
-
-  const players: string[] = Array.isArray((team as any).players) ? (team as any).players : [];
-  const next = Array.from(new Set([...players, userId]));
-
-  return tables.updateRow({
-    databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    tableId: process.env.NEXT_PUBLIC_TEAMS_TABLE_ID!,
-    rowId: teamId,
-    data: { players: next },
-  });
-}
-
-// Remove a player (unlink)
-export async function removePlayer(teamId: string, userId: string) {
-  const team = await tables.getRow({
-    databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    tableId: process.env.NEXT_PUBLIC_TEAMS_TABLE_ID!,
-    rowId: teamId,
-  });
-
-  const players: string[] = Array.isArray((team as any).players) ? (team as any).players : [];
-  const next = players.filter((id) => id !== userId);
-
-  return tables.updateRow({
-    databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    tableId: process.env.NEXT_PUBLIC_TEAMS_TABLE_ID!,
-    rowId: teamId,
-    data: { players: next },
-  });
-}
-
-// Clear a one-to-one relation: set column to null
-export async function clearCaptain(teamId: string) {
-  return tables.updateRow({
-    databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    tableId: process.env.NEXT_PUBLIC_TEAMS_TABLE_ID!,
-    rowId: teamId,
-    data: { captain: null },
-  });
-}
-```
-
-> **On delete**: behavior follows your relationship `onDelete` setting (`restrict`, `cascade`, `setNull`). For example, deleting a user with `setNull` on `teams.captain` will null-out the captain column on related teams.
-
-### 5) Permissions
-
-- To access related rows, the user must have permission on both the parent and child rows.
-- When creating nested rows, child rows **inherit** permissions from the parent unless overridden.
-- Use document security (row-level) with roles like `user:$id` and Teams.
+> **Reminder:** The persistence layer now saves IDs only. Any time the UI or downstream service needs related data, load it explicitly in the service layer before returning.
 
 ## Storage — images & avatars (object arguments)
 

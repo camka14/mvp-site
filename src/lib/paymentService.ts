@@ -1,15 +1,10 @@
 import { functions } from '@/app/appwrite';
 import type {
   Event,
-  EventPayload,
-  Field,
-  LeagueScoringConfig,
-  Match,
   Organization,
   PaymentIntent,
   Team,
   TimeSlot,
-  TimeSlotPayload,
   UserData,
 } from '@/types';
 
@@ -21,7 +16,7 @@ type EventManagerCommand = 'create_purchase_intent' | 'addParticipant' | 'remove
 interface EventManagerPayload {
   task: EventManagerTask;
   command: EventManagerCommand | string;
-  event: EventPayload | null;
+  event: Event | null;
   timeSlot: TimeSlot | null;
   user: UserData | null;
   team: Team | null;
@@ -29,105 +24,10 @@ interface EventManagerPayload {
   organizationEmail?: string;
 }
 
-const removeUndefined = <T extends Record<string, unknown>>(record: T): T => {
-  const result: Record<string, unknown> = {};
-  Object.keys(record).forEach((key) => {
-    const value = record[key];
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  });
-  return result as T;
-};
-
-const mapItemsToIds = <T extends { $id?: string }>(items?: (T | string)[] | null): string[] | undefined => {
-  if (!items?.length) {
-    return undefined;
-  }
-
-  const ids = items
-    .map((item) => (typeof item === 'string' ? item : item?.$id))
-    .filter((value): value is string => Boolean(value));
-
-  return ids.length ? ids : undefined;
-};
-
-const sanitizeTimeSlots = (slots?: TimeSlot[] | null): TimeSlotPayload[] | undefined => {
-  if (!slots?.length) {
-    return undefined;
-  }
-
-  const sanitized = slots
-    .map((slot) => {
-      if (!slot) {
-        return undefined;
-      }
-
-      const { $id: _slotId, event: _slotEvent, ...rest } = slot;
-      const clone = { ...rest } as Record<string, unknown>;
-
-      if (slot.scheduledFieldId) {
-        clone.field = slot.scheduledFieldId;
-      }
-
-      const cleaned = removeUndefined(clone) as Partial<TimeSlotPayload>;
-      return Object.keys(cleaned).length ? (cleaned as TimeSlotPayload) : undefined;
-    })
-    .filter((slot): slot is TimeSlotPayload => Boolean(slot));
-
-  return sanitized.length ? sanitized : undefined;
-};
-
-const buildEventPayload = (event: Event): EventPayload => {
-  const {
-    players,
-    teams,
-    matches,
-    timeSlots,
-    leagueConfig: _leagueConfig,
-    attendees: _attendees,
-    sport,
-    leagueScoringConfig,
-    ...rest
-  } = event;
-
-  const payload = removeUndefined({ ...rest }) as EventPayload;
-
-  const playerIds = mapItemsToIds<UserData>(players as unknown as (UserData | string)[] | undefined);
-  if (playerIds) {
-    payload.players = playerIds;
-  }
-
-  const teamIds = mapItemsToIds<Team>(teams as unknown as (Team | string)[] | undefined);
-  if (teamIds) {
-    payload.teams = teamIds;
-  }
-
-  const matchIds = mapItemsToIds<Match>(matches as unknown as (Match | string)[] | undefined);
-  if (matchIds) {
-    payload.matches = matchIds;
-  }
-
-  const sanitizedSlots = sanitizeTimeSlots(timeSlots);
-  if (sanitizedSlots) {
-    payload.timeSlots = sanitizedSlots;
-  }
-
-  if (leagueScoringConfig) {
-    payload.leagueScoringConfig = leagueScoringConfig as LeagueScoringConfig;
-  }
-
-  if (sport?.$id) {
-    payload.sport = sport.$id;
-  }
-
-  return payload;
-};
-
 const buildEventManagerPayload = (
   task: EventManagerTask,
   command: EventManagerCommand | string,
-  user?: UserData,
+  user?: UserData | null,
   event?: Event | null,
   team?: Team | null,
   timeSlot?: TimeSlot | null,
@@ -138,13 +38,11 @@ const buildEventManagerPayload = (
     throw new Error('Payment actions require at least an event, time slot, or organization context.');
   }
 
-  const payloadEvent = event ? buildEventPayload(event) : null;
-
   return {
     task,
     command,
     user: user ?? null,
-    event: payloadEvent,
+    event: event ?? null,
     team: team ?? null,
     timeSlot: timeSlot ?? null,
     organization: organization ?? null,
@@ -299,7 +197,7 @@ class PaymentService {
   }
 
   async connectStripeAccount(
-    user: UserData,
+    user?: UserData | null,
     organization?: PaymentOrganizationContext | null,
     organizationEmail?: string,
   ): Promise<{ onboardingUrl: string }> {
@@ -307,7 +205,7 @@ class PaymentService {
       const payload = buildEventManagerPayload(
         'billing',
         'connect_host_account',
-        user,
+        user ?? null,
         null,
         null,
         null,

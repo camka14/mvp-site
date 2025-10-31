@@ -18,7 +18,6 @@ describe('CreateFieldModal', () => {
       <CreateFieldModal
         isOpen
         onClose={() => {}}
-        organizationId="org_1"
         onFieldSaved={() => {}}
       />,
     );
