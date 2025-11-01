@@ -16,37 +16,56 @@ type EventManagerCommand = 'create_purchase_intent' | 'addParticipant' | 'remove
 interface EventManagerPayload {
   task: EventManagerTask;
   command: EventManagerCommand | string;
-  event: Event | null;
-  timeSlot: TimeSlot | null;
-  user: UserData | null;
-  team: Team | null;
-  organization: PaymentOrganizationContext | null;
+  event?: Event;
+  timeSlot?: TimeSlot;
+  user?: UserData;
+  team?: Team;
+  organization?: PaymentOrganizationContext;
   organizationEmail?: string;
+  refreshUrl?: string;
+  returnUrl?: string;
 }
 
-const buildEventManagerPayload = (
-  task: EventManagerTask,
-  command: EventManagerCommand | string,
-  user?: UserData | null,
-  event?: Event | null,
-  team?: Team | null,
-  timeSlot?: TimeSlot | null,
-  organization?: PaymentOrganizationContext | null,
-  organizationEmail?: string,
-): EventManagerPayload => {
-  if (!event && !timeSlot && !organization) {
-    throw new Error('Payment actions require at least an event, time slot, or organization context.');
+interface BuildEventManagerPayloadOptions {
+  task: EventManagerTask;
+  command: EventManagerCommand | string;
+  user?: UserData;
+  event?: Event;
+  team?: Team;
+  timeSlot?: TimeSlot;
+  organization?: PaymentOrganizationContext;
+  organizationEmail?: string;
+  refreshUrl?: string;
+  returnUrl?: string;
+}
+
+const buildEventManagerPayload = ({
+  task,
+  command,
+  user,
+  event,
+  team,
+  timeSlot,
+  organization,
+  organizationEmail,
+  refreshUrl,
+  returnUrl,
+}: BuildEventManagerPayloadOptions): EventManagerPayload => {
+  if (!event && !timeSlot && !organization && !user && !team) {
+    throw new Error('Payment actions require at least a user, team, event, time slot, or organization context.');
   }
 
   return {
     task,
     command,
-    user: user ?? null,
-    event: event ?? null,
-    team: team ?? null,
-    timeSlot: timeSlot ?? null,
-    organization: organization ?? null,
+    user,
+    event,
+    team,
+    timeSlot,
+    organization,
     organizationEmail,
+    refreshUrl,
+    returnUrl,
   };
 };
 
@@ -62,26 +81,31 @@ const parseExecutionResponse = <T = unknown>(responseBody: string | null | undef
   }
 };
 
+type StripeOnboardingLinkResult = {
+  onboardingUrl: string;
+  expiresAt?: number;
+};
+
 class PaymentService {
   async createPaymentIntent(
     user: UserData,
-    event?: Event | null,
-    team?: Team | null,
-    timeSlot?: TimeSlot | null,
-    organization?: PaymentOrganizationContext | null,
+    event?: Event,
+    team?: Team,
+    timeSlot?: TimeSlot,
+    organization?: PaymentOrganizationContext,
     organizationEmail?: string,
   ): Promise<PaymentIntent> {
     try {
-      const payload = buildEventManagerPayload(
-        'billing',
-        'create_purchase_intent',
+      const payload = buildEventManagerPayload({
+        task: 'billing',
+        command: 'create_purchase_intent',
         user,
         event,
         team,
         timeSlot,
         organization,
         organizationEmail,
-      );
+      });
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
@@ -108,13 +132,21 @@ class PaymentService {
 
   async joinEvent(
     user?: UserData,
-    event?: Event | null,
-    team?: Team | null,
-    timeSlot?: TimeSlot | null,
-    organization?: PaymentOrganizationContext | null,
+    event?: Event,
+    team?: Team,
+    timeSlot?: TimeSlot,
+    organization?: PaymentOrganizationContext,
   ): Promise<void> {
     try {
-      const payload = buildEventManagerPayload('editEvent', 'addParticipant', user, event, team, timeSlot, organization);
+      const payload = buildEventManagerPayload({
+        task: 'editEvent',
+        command: 'addParticipant',
+        user,
+        event,
+        team,
+        timeSlot,
+        organization,
+      });
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
@@ -135,13 +167,21 @@ class PaymentService {
 
   async leaveEvent(
     user?: UserData,
-    event?: Event | null,
-    team?: Team | null,
-    timeSlot?: TimeSlot | null,
-    organization?: PaymentOrganizationContext | null,
+    event?: Event,
+    team?: Team,
+    timeSlot?: TimeSlot,
+    organization?: PaymentOrganizationContext,
   ): Promise<void> {
     try {
-      const payload = buildEventManagerPayload('editEvent', 'removeParticipant', user, event, team, timeSlot, organization);
+      const payload = buildEventManagerPayload({
+        task: 'editEvent',
+        command: 'removeParticipant',
+        user,
+        event,
+        team,
+        timeSlot,
+        organization,
+      });
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
@@ -197,21 +237,30 @@ class PaymentService {
   }
 
   async connectStripeAccount(
-    user?: UserData | null,
-    organization?: PaymentOrganizationContext | null,
-    organizationEmail?: string,
-  ): Promise<{ onboardingUrl: string }> {
+    {
+      user,
+      organization,
+      organizationEmail,
+      refreshUrl,
+      returnUrl,
+    }: {
+      user?: UserData;
+      organization?: PaymentOrganizationContext;
+      organizationEmail?: string;
+      refreshUrl: string;
+      returnUrl: string;
+    },
+  ): Promise<StripeOnboardingLinkResult> {
     try {
-      const payload = buildEventManagerPayload(
-        'billing',
-        'connect_host_account',
-        user ?? null,
-        null,
-        null,
-        null,
-        organization ?? null,
+      const payload = buildEventManagerPayload({
+        task: 'billing',
+        command: 'connect_host_account',
+        user,
+        organization,
         organizationEmail,
-      );
+        refreshUrl,
+        returnUrl,
+      });
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
@@ -219,7 +268,7 @@ class PaymentService {
         async: false,
       });
 
-      const result = parseExecutionResponse<{ onboardingUrl: string; error?: string }>(response.responseBody);
+      const result = parseExecutionResponse<StripeOnboardingLinkResult & { error?: string }>(response.responseBody);
 
       if (result.error) {
         throw new Error(result.error);
@@ -229,6 +278,46 @@ class PaymentService {
     } catch (error) {
       console.error('Failed to connect Stripe account:', error);
       throw new Error(error instanceof Error ? error.message : 'Failed to connect Stripe account');
+    }
+  }
+
+  async manageStripeAccount({
+    user,
+    organization,
+    refreshUrl,
+    returnUrl,
+  }: {
+    user?: UserData;
+    organization?: PaymentOrganizationContext;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<StripeOnboardingLinkResult> {
+    try {
+      const payload = buildEventManagerPayload({
+        task: 'billing',
+        command: 'get_host_onboarding_link',
+        user,
+        organization,
+        refreshUrl,
+        returnUrl,
+      });
+
+      const response = await functions.createExecution({
+        functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
+        body: JSON.stringify(payload),
+        async: false,
+      });
+
+      const result = parseExecutionResponse<StripeOnboardingLinkResult & { error?: string }>(response.responseBody);
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Failed to manage Stripe account:', error);
+      throw new Error(error instanceof Error ? error.message : 'Failed to manage Stripe account');
     }
   }
 }

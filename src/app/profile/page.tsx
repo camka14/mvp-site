@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/app/providers';
 import { userService } from '@/lib/userService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
@@ -8,6 +8,8 @@ import { getUserAvatarUrl } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
 import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { paymentService } from '@/lib/paymentService';
 
 export default function ProfilePage() {
     const { user, loading, setUser } = useApp();
@@ -35,6 +37,10 @@ export default function ProfilePage() {
         newPassword: '',
         confirmPassword: ''
     });
+    const [connectingStripe, setConnectingStripe] = useState(false);
+    const [managingStripe, setManagingStripe] = useState(false);
+
+    const userHasStripeAccount = Boolean(user?.hasStripeAccount || user?.stripeAccountId);
 
     // Initialize form data when user changes
     useEffect(() => {
@@ -132,6 +138,66 @@ export default function ProfilePage() {
             setSaving(false);
         }
     };
+
+    const handleConnectStripeAccount = useCallback(async () => {
+        if (!user) return;
+        if (typeof window === 'undefined') {
+            notifications.show({ color: 'red', message: 'Stripe onboarding is only available in the browser.' });
+            return;
+        }
+        try {
+            setConnectingStripe(true);
+            const origin = window.location.origin;
+            const refreshUrl = `${origin}/profile?stripe=refresh`;
+            const returnUrl = `${origin}/profile?stripe=return`;
+            const result = await paymentService.connectStripeAccount({
+                user,
+                refreshUrl,
+                returnUrl,
+            });
+            if (result?.onboardingUrl) {
+                window.open(result.onboardingUrl, '_blank', 'noopener,noreferrer');
+            } else {
+                notifications.show({ color: 'red', message: 'Stripe onboarding did not return a link. Try again later.' });
+            }
+        } catch (err) {
+            console.error('Failed to connect Stripe account:', err);
+            const message = err instanceof Error && err.message ? err.message : 'Unable to start Stripe onboarding right now.';
+            notifications.show({ color: 'red', message });
+        } finally {
+            setConnectingStripe(false);
+        }
+    }, [user]);
+
+    const handleManageStripeAccount = useCallback(async () => {
+        if (!user) return;
+        if (typeof window === 'undefined') {
+            notifications.show({ color: 'red', message: 'Stripe account management is only available in the browser.' });
+            return;
+        }
+        try {
+            setManagingStripe(true);
+            const origin = window.location.origin;
+            const refreshUrl = `${origin}/profile?stripe=refresh`;
+            const returnUrl = `${origin}/profile?stripe=return`;
+            const result = await paymentService.manageStripeAccount({
+                user,
+                refreshUrl,
+                returnUrl,
+            });
+            if (result?.onboardingUrl) {
+                window.open(result.onboardingUrl, '_blank', 'noopener,noreferrer');
+            } else {
+                notifications.show({ color: 'red', message: 'Stripe did not return a management link. Try again later.' });
+            }
+        } catch (err) {
+            console.error('Failed to manage Stripe account:', err);
+            const message = err instanceof Error && err.message ? err.message : 'Unable to open Stripe management right now.';
+            notifications.show({ color: 'red', message });
+        } finally {
+            setManagingStripe(false);
+        }
+    }, [user]);
 
     if (loading) {
         return <Loading />;
@@ -275,6 +341,24 @@ export default function ProfilePage() {
                     {/* Account Settings */}
                     {!isEditing && (
                         <div className="mt-8 space-y-6">
+                            {/* Payments */}
+                            <Paper withBorder radius="md" p="md">
+                                <Group justify="space-between" mb="sm">
+                                    <Title order={4}>Payments</Title>
+                                </Group>
+                                <Text c="dimmed" mb="sm">
+                                    {userHasStripeAccount
+                                        ? 'Manage your Stripe account to update payout details.'
+                                        : 'Connect a Stripe account to accept payments for your events and rentals.'}
+                                </Text>
+                                <Button
+                                    loading={userHasStripeAccount ? managingStripe : connectingStripe}
+                                    onClick={userHasStripeAccount ? handleManageStripeAccount : handleConnectStripeAccount}
+                                >
+                                    {userHasStripeAccount ? 'Manage Stripe Account' : 'Connect Stripe Account'}
+                                </Button>
+                            </Paper>
+
                             {/* Email Section */}
                             <Paper withBorder radius="md" p="md">
                                 <Group justify="space-between" mb="sm">

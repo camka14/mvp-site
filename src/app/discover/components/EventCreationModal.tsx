@@ -1324,9 +1324,17 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
     const handleConnectStripe = async () => {
         if (!currentUser) return;
+        if (typeof window === 'undefined') return;
         try {
             setConnectingStripe(true);
-            const result = await paymentService.connectStripeAccount(currentUser, organization ?? null);
+            const origin = window.location.origin;
+            const refreshUrl = `${origin}/discover?stripe=refresh`;
+            const returnUrl = `${origin}/discover?stripe=return`;
+            const result = await paymentService.connectStripeAccount({
+                user: currentUser,
+                refreshUrl,
+                returnUrl,
+            });
             if (result?.onboardingUrl) {
                 window.location.href = result.onboardingUrl;
             }

@@ -70,9 +70,8 @@ function OrganizationDetailContent() {
   const canCreateRentalSlots = Boolean(org?.location && org.location.trim().length > 0);
   const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
   const [connectingStripe, setConnectingStripe] = useState(false);
+  const [managingStripe, setManagingStripe] = useState(false);
   const isOwner = Boolean(user && org && user.$id === org.ownerId);
-  const [stripeEmail, setStripeEmail] = useState<string>('');
-  const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
 
   const localizer = useMemo(() => dateFnsLocalizer({
     format,
@@ -147,17 +146,22 @@ function OrganizationDetailContent() {
   };
 
   const handleConnectStripeAccount = useCallback(async () => {
-    if (!org || !user || !isOwner) return;
-    const trimmedEmail = stripeEmail.trim();
-    if (!trimmedEmail) {
-      setStripeEmailError('Enter an email address before starting Stripe onboarding.');
-      notifications.show({ color: 'yellow', message: 'Enter an email address before starting Stripe onboarding.' });
+    if (!org || !isOwner) return;
+    if (typeof window === 'undefined') {
+      notifications.show({ color: 'red', message: 'Stripe onboarding is only available in the browser.' });
       return;
     }
     try {
       setConnectingStripe(true);
-      setStripeEmailError(null);
-      const result = await paymentService.connectStripeAccount(null, org, trimmedEmail);
+      const origin = window.location.origin;
+      const basePath = `/organizations/${org.$id}`;
+      const refreshUrl = `${origin}${basePath}?stripe=refresh`;
+      const returnUrl = `${origin}${basePath}?stripe=return`;
+      const result = await paymentService.connectStripeAccount({
+        organization: org,
+        refreshUrl,
+        returnUrl,
+      });
       if (result?.onboardingUrl) {
         window.open(result.onboardingUrl, '_blank', 'noopener,noreferrer');
       } else {
@@ -165,43 +169,71 @@ function OrganizationDetailContent() {
       }
     } catch (error) {
       console.error('Failed to connect Stripe account', error);
-      const message = error instanceof Error && error.message
-        ? error.message
-        : 'Unable to start Stripe onboarding right now.';
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Unable to start Stripe onboarding right now.';
       notifications.show({ color: 'red', message });
     } finally {
       setConnectingStripe(false);
     }
-  }, [org, user, isOwner, stripeEmail]);
+  }, [org, isOwner]);
+
+  const handleManageStripeAccount = useCallback(async () => {
+    if (!org || !isOwner) return;
+    if (typeof window === 'undefined') {
+      notifications.show({ color: 'red', message: 'Stripe management is only available in the browser.' });
+      return;
+    }
+    try {
+      setManagingStripe(true);
+      const origin = window.location.origin;
+      const basePath = `/organizations/${org.$id}`;
+      const refreshUrl = `${origin}${basePath}?stripe=refresh`;
+      const returnUrl = `${origin}${basePath}?stripe=return`;
+      const result = await paymentService.manageStripeAccount({
+        organization: org,
+        refreshUrl,
+        returnUrl,
+      });
+      if (result?.onboardingUrl) {
+        window.open(result.onboardingUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        notifications.show({ color: 'red', message: 'Stripe did not return a management link. Try again later.' });
+      }
+    } catch (error) {
+      console.error('Failed to manage Stripe account', error);
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Unable to open Stripe management right now.';
+      notifications.show({ color: 'red', message });
+    } finally {
+      setManagingStripe(false);
+    }
+  }, [org, isOwner]);
 
   const loadFieldSchedule = useCallback(async (view: View, date: Date) => {
     if (!id) return;
-    const fieldIds = org?.fieldIds?.filter((value): value is string => typeof value === 'string' && value.length > 0) ?? [];
-    if (!fieldIds.length) {
-      setFieldScheduleFields([]);
-      return;
-    }
     const { start, end } = computeFieldRange(view, date);
     const startLocal = formatISO(start, { representation: 'complete' });
     const endLocal = formatISO(end, { representation: 'complete' });
     setFieldScheduleLoading(true);
     setFieldScheduleRange({ start: new Date(start.getTime()), end: new Date((end ?? start).getTime()) });
     try {
-      const fields = await fieldService.listFields(
-        { fieldIds },
-        {
-          start: startLocal,
-          end: endLocal,
-        }
-      );
-      setFieldScheduleFields(fields);
+
+      if (org?.fields) {
+        const fields = await Promise.all(org?.fields.map((field) => fieldService.getFieldEventsMatches(field, { start: startLocal, end: endLocal })));
+
+        setFieldScheduleFields(fields);
+      }
     } catch (error) {
       console.error('Failed to load field schedule:', error);
       setFieldScheduleFields([]);
     } finally {
       setFieldScheduleLoading(false);
     }
-  }, [computeFieldRange, id, org?.fieldIds]);
+  }, [computeFieldRange, id, org]);
 
   const handleRentalSlotSaved = useCallback((newField: Field) => {
     setFieldScheduleFields((prev) => prev.map((field) => {
@@ -461,32 +493,23 @@ function OrganizationDetailContent() {
                     <Title order={5} mb="sm">Payments</Title>
                     <Text size="sm" c="dimmed" mb="sm">
                       {organizationHasStripeAccount
-                        ? 'Stripe is connected. You can set prices for rentals.'
+                        ? 'Stripe is connected. Manage your payout details when needed.'
                         : 'Connect a Stripe account to accept payments for rentals.'}
                     </Text>
                     {isOwner ? (
-                      <Stack gap="sm">
-                        <TextInput
-                          label="Organization Email"
-                          placeholder="billing@example.com"
-                          value={stripeEmail}
-                          onChange={(e) => {
-                            setStripeEmail(e.currentTarget.value);
-                            if (stripeEmailError) {
-                              setStripeEmailError(null);
-                            }
-                          }}
-                          disabled={organizationHasStripeAccount || connectingStripe}
-                          error={stripeEmailError ?? undefined}
-                          required
-                        />
+                      <Stack gap="xs">
                         <Button
                           size="sm"
-                          disabled={organizationHasStripeAccount || connectingStripe}
-                          onClick={handleConnectStripeAccount}
+                          loading={organizationHasStripeAccount ? managingStripe : connectingStripe}
+                          onClick={organizationHasStripeAccount ? handleManageStripeAccount : handleConnectStripeAccount}
                         >
-                          {organizationHasStripeAccount ? 'Stripe Connected' : connectingStripe ? 'Connecting…' : 'Connect Stripe Account'}
+                          {organizationHasStripeAccount ? 'Manage Stripe Account' : 'Connect Stripe Account'}
                         </Button>
+                        {!organizationHasStripeAccount && (
+                          <Text size="xs" c="dimmed">
+                            Completing onboarding enables paid rentals for this organization.
+                          </Text>
+                        )}
                       </Stack>
                     ) : (
                       <Text size="sm" c="dimmed">
@@ -518,26 +541,26 @@ function OrganizationDetailContent() {
                 </Group>
                 <div className="h-[800px]">
                   <BigCalendar
-                      localizer={localizer}
-                      events={(org.events || []).map(e => ({
-                        title: e.name,
-                        start: new Date(e.start),
-                        end: new Date(e.end),
-                        resource: e,
-                      }))}
-                      startAccessor="start"
-                      endAccessor="end"
-                      views={["month","week","day","agenda"]}
-                      view={calendarView}
-                      date={calendarDate}
-                      onView={(v) => setCalendarView(v)}
-                      onNavigate={(date) => setCalendarDate(date)}
-                      step={30}
-                      popup
-                      selectable
-                      components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
-                      onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailModal(true); }}
-                      onSelectSlot={() => setShowCreateEventModal(true)}
+                    localizer={localizer}
+                    events={(org.events || []).map(e => ({
+                      title: e.name,
+                      start: new Date(e.start),
+                      end: new Date(e.end),
+                      resource: e,
+                    }))}
+                    startAccessor="start"
+                    endAccessor="end"
+                    views={["month", "week", "day", "agenda"]}
+                    view={calendarView}
+                    date={calendarDate}
+                    onView={(v) => setCalendarView(v)}
+                    onNavigate={(date) => setCalendarDate(date)}
+                    step={30}
+                    popup
+                    selectable
+                    components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
+                    onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailModal(true); }}
+                    onSelectSlot={() => setShowCreateEventModal(true)}
                   />
                 </div>
               </Paper>
