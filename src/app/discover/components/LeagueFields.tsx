@@ -295,6 +295,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                   },
                 ]
               : availableFieldOptions;
+            const fieldMissing = !slot.scheduledFieldId;
+            const dayMissing = typeof slot.dayOfWeek !== 'number';
+            const startMissing = !(typeof slot.startTimeMinutes === 'number' && Number.isFinite(slot.startTimeMinutes));
+            const endMissing = !(typeof slot.endTimeMinutes === 'number' && Number.isFinite(slot.endTimeMinutes));
             return (
               <Card key={slot.key} shadow="xs" radius="md" padding="lg" withBorder>
                 <div className="flex flex-col gap-4">
@@ -316,6 +320,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <MantineSelect
                       label="Field"
+                      withAsterisk
                       placeholder="Select field"
                       data={fieldOptionsForSlot}
                       value={slot.scheduledFieldId}
@@ -333,31 +338,38 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       }}
                       searchable
                       disabled={readOnly}
+                      error={fieldMissing && !readOnly ? 'Select a field' : undefined}
                     />
 
                     <MantineSelect
                       label="Day of Week"
+                      withAsterisk
                       placeholder="Select day"
                       data={DAYS_OF_WEEK}
                       value={typeof slot.dayOfWeek === 'number' ? String(slot.dayOfWeek) : null}
                       onChange={(value) => onUpdateSlot(index, { dayOfWeek: value ? (Number(value) as LeagueSlotForm['dayOfWeek']) : undefined })}
                       disabled={readOnly}
+                      error={dayMissing && !readOnly ? 'Select a day' : undefined}
                     />
 
                     <TimeInput
                       label="Start Time"
+                      withAsterisk
                       value={minutesToTimeString(slot.startTimeMinutes)}
                       onChange={(event) => onUpdateSlot(index, { startTimeMinutes: parseTimeInput(event.currentTarget.value) })}
                       withSeconds={false}
                       disabled={readOnly}
+                      error={startMissing && !readOnly ? 'Select a start time' : undefined}
                     />
 
                     <TimeInput
                       label="End Time"
+                      withAsterisk
                       value={minutesToTimeString(slot.endTimeMinutes)}
                       onChange={(event) => onUpdateSlot(index, { endTimeMinutes: parseTimeInput(event.currentTarget.value) })}
                       withSeconds={false}
                       disabled={readOnly}
+                      error={endMissing && !readOnly ? 'Select an end time' : undefined}
                     />
                   </div>
 

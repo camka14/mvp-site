@@ -615,17 +615,19 @@ function EventsTabContent(props: {
   return (
     <>
       <div className="space-y-6 mb-8">
-        <Group justify="space-between" align="stretch" gap="md" wrap="wrap">
-          <Group align="center" gap="md" style={{ flex: 1, minWidth: 320 }}>
-            <div style={{ minWidth: 270 }}>
-              <TextInput
-                label="Search events"
-                placeholder="Search by name or description"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.currentTarget.value)}
-              />
-            </div>
-            <div style={{ minWidth: 270 }}>
+        <Group justify="space-between" align="center" gap="md" wrap="wrap">
+          <Group align="center" gap="sm" wrap="wrap" style={{ flex: 1, minWidth: 320 }}>
+            <Text fw={600} size="sm">
+              Search events
+            </Text>
+            <TextInput
+              aria-label="Search events"
+              placeholder="Search by name or description"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.currentTarget.value)}
+              style={{ flex: 1, minWidth: 220 }}
+            />
+            <div style={{ minWidth: 170, flexShrink: 0 }}>
               <LocationSearch />
             </div>
           </Group>

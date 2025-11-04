@@ -113,16 +113,6 @@ function OrganizationDetailContent() {
     };
   }, []);
 
-  const handleFieldRangeChange = useCallback((range: any) => {
-    if (Array.isArray(range) && range.length > 0) {
-      setFieldCalendarDate(range[0]);
-      return;
-    }
-    if (range?.start) {
-      setFieldCalendarDate(range.start);
-    }
-  }, []);
-
   useEffect(() => {
     if (!authLoading) {
       if (!isAuthenticated || !user) {
@@ -553,8 +543,8 @@ function OrganizationDetailContent() {
                     views={["month", "week", "day", "agenda"]}
                     view={calendarView}
                     date={calendarDate}
-                    onView={(v) => setCalendarView(v)}
-                    onNavigate={(date) => setCalendarDate(date)}
+                    onView={(view) => setCalendarView(view)}
+                    onNavigate={(date) => setCalendarDate(new Date(date))}
                     step={30}
                     popup
                     selectable
@@ -744,8 +734,7 @@ function OrganizationDetailContent() {
                           view={fieldCalendarView}
                           date={fieldCalendarDate}
                           onView={(v) => setFieldCalendarView(v)}
-                          onNavigate={(date) => setFieldCalendarDate(date)}
-                          onRangeChange={handleFieldRangeChange}
+                          onNavigate={(date) => setFieldCalendarDate(new Date(date))}
                           views={["month", "week", "day", "agenda"]}
                           components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
                           popup

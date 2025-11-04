@@ -341,7 +341,6 @@ export interface Event {
   status?: EventStatus;
   leagueConfig?: LeagueConfig;
   leagueScoringConfig?: LeagueScoringConfig | null;
-  playoffConfig?: TournamentConfig | null;
 
   // Computed properties
   attendees: number;

@@ -43,17 +43,6 @@ export function buildPayload(data: Record<string, any>) {
       return sanitizedItems.length ? sanitizedItems : undefined;
     }
 
-    if (isPlainObject(value) && depth < 5) {
-      const sanitizedObject: Record<string, unknown> = {};
-      for (const [key, nestedValue] of Object.entries(value)) {
-        const sanitized = sanitizeValue(nestedValue, depth + 1);
-        if (sanitized !== undefined) {
-          sanitizedObject[key] = sanitized;
-        }
-      }
-      return Object.keys(sanitizedObject).length ? sanitizedObject : undefined;
-    }
-
     return undefined;
   };
 

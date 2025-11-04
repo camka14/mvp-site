@@ -158,8 +158,12 @@ class LeagueService {
     });
 
     const parsed = JSON.parse(execution.responseBody || '{}');
-    if (parsed.warnings) {
-      throw new Error(typeof parsed.error === 'string' ? parsed.error : 'Failed to preview league schedule');
+    if (parsed.error) {
+      throw new Error(
+        typeof parsed.error === 'string' && parsed.error.length > 0
+          ? parsed.error
+          : 'Failed to preview league schedule'
+      );
     }
 
     let event: Event | undefined;

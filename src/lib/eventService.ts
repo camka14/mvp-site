@@ -56,8 +56,7 @@ export interface LeagueGenerationResponse {
     preview?: boolean;
     status?: string;
     matches?: LeagueGenerationMatchResult[];
-    warnings?: string[];
-    error?: unknown;
+    error?: string | null;
 }
 
 export interface EventFilters {

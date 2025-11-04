@@ -16,8 +16,6 @@ import type { Sport, TournamentConfig } from '@/types';
 interface TournamentFieldsProps {
   tournamentData: TournamentConfig;
   setTournamentData: React.Dispatch<React.SetStateAction<TournamentConfig>>;
-  showFieldCountSelector?: boolean;
-  fieldCountOverride?: number;
   title?: string;
   sport?: Sport;
 }
@@ -37,24 +35,10 @@ const syncArrayLength = (arr: number[], len: number, fill = 21) => {
 const TournamentFields: React.FC<TournamentFieldsProps> = ({
   tournamentData,
   setTournamentData,
-  showFieldCountSelector = true,
-  fieldCountOverride,
   title = 'Tournament Settings',
   sport,
 }) => {
   const requiresSets = Boolean(sport?.usePointsPerSetWin);
-
-  useEffect(() => {
-    if (
-      typeof fieldCountOverride === 'number' &&
-      tournamentData.fieldCount !== fieldCountOverride
-    ) {
-      setTournamentData((prev) => ({
-        ...prev,
-        fieldCount: fieldCountOverride,
-      }));
-    }
-  }, [fieldCountOverride, setTournamentData, tournamentData.fieldCount]);
 
   useEffect(() => {
     if (requiresSets) {
@@ -156,25 +140,6 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
             ]}
           />
         </Grid.Col>
-
-        {showFieldCountSelector && (
-          <Grid.Col span={{ base: 12, md: 6 }}>
-            <Select
-              label="Field Count"
-              value={String(fieldCountOverride ?? tournamentData.fieldCount)}
-              onChange={(value) =>
-                setTournamentData((prev) => ({
-                  ...prev,
-                  fieldCount: parseInt(value || '1', 10),
-                }))
-              }
-              data={[1, 2, 3, 4, 5, 6, 7, 8].map((count) => ({
-                value: String(count),
-                label: `${count} ${count === 1 ? 'Field' : 'Fields'}`,
-              }))}
-            />
-          </Grid.Col>
-        )}
 
         <Grid.Col span={{ base: 12, md: 6 }}>
           <NumberInput

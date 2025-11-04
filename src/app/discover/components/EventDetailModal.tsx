@@ -383,6 +383,30 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                 </div>
                             )}
 
+                            {/* League Playoff Details */}
+                            {currentEvent.eventType === 'league' && currentEvent.includePlayoffs && (
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Playoff Format</h3>
+                                    <Paper withBorder p="md" radius="md" className="space-y-2">
+                                        <p>
+                                            <span className="font-medium">Teams Included:</span>{' '}
+                                            {currentEvent.playoffTeamCount ?? 'Configured'}
+                                        </p>
+                                        {typeof currentEvent.doubleElimination === 'boolean' && (
+                                            <p>
+                                                <span className="font-medium">Format:</span>{' '}
+                                                {currentEvent.doubleElimination ? 'Double Elimination' : 'Single Elimination'}
+                                            </p>
+                                        )}
+                                        {typeof currentEvent.winnerSetCount === 'number' && currentEvent.winnerSetCount > 0 && (
+                                            <p>
+                                                <span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}
+                                            </p>
+                                        )}
+                                    </Paper>
+                                </div>
+                            )}
+
                             {/* Event Stats */}
                             <Paper withBorder p="md" radius="md">
                                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Event Stats</h3>

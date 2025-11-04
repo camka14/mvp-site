@@ -269,7 +269,6 @@ class FieldService {
       startDate: slot.startDate ?? null,
       endDate: slot.endDate ?? null,
       price: slot.price ?? null,
-      eventId: slot.eventId ?? null,
     };
 
     if (options.slotId) {
