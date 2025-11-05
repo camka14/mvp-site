@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Badge, Tabs, Stack } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Badge, Tabs, Stack, Table, UnstyledButton } from '@mantine/core';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
+import { deepEqual } from '@/app/utils';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
-import type { Event, EventState, Match, TournamentBracket } from '@/types';
+import type { Event, EventState, Match, Team, TournamentBracket } from '@/types';
+import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
@@ -24,7 +26,39 @@ const cloneValue = <T,>(value: T): T => {
     return structuredCloneFn(value);
   }
 
-  return JSON.parse(JSON.stringify(value));
+  // Fallback handles circular references by walking the graph manually
+  const seen = new WeakMap<object, any>();
+  const cloneRecursive = (input: any): any => {
+    if (input === null || typeof input !== 'object') {
+      return input;
+    }
+
+    if (seen.has(input)) {
+      return seen.get(input);
+    }
+
+    if (Array.isArray(input)) {
+      const arr: any[] = [];
+      seen.set(input, arr);
+      for (const item of input) {
+        arr.push(cloneRecursive(item));
+      }
+      return arr;
+    }
+
+    if (input instanceof Date) {
+      return new Date(input.getTime());
+    }
+
+    const cloned: Record<string, unknown> = {};
+    seen.set(input, cloned);
+    for (const key of Object.keys(input)) {
+      cloned[key] = cloneRecursive(input[key]);
+    }
+    return cloned;
+  };
+
+  return cloneRecursive(value);
 };
 
 const EVENT_CACHE_PREFIX = 'event-cache:';
@@ -34,6 +68,23 @@ type CachedEventEntry = {
   timestamp: number;
   event: Event;
 };
+
+type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
+
+type StandingsRow = {
+  teamId: string;
+  teamName: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  matchesPlayed: number;
+  points: number;
+};
+
+type RankedStandingsRow = StandingsRow & { rank: number };
 
 const getEventCacheKey = (eventId: string): string => `${EVENT_CACHE_PREFIX}${eventId}`;
 
@@ -117,6 +168,10 @@ function EventScheduleContent() {
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('schedule');
   const [isMatchEditorOpen, setIsMatchEditorOpen] = useState(false);
+  const [standingsSort, setStandingsSort] = useState<{ field: StandingsSortField; direction: 'asc' | 'desc' }>({
+    field: 'points',
+    direction: 'desc',
+  });
   const [matchBeingEdited, setMatchBeingEdited] = useState<Match | null>(null);
 
   const isEditingEvent = isPreview || isEditParam;
@@ -163,8 +218,7 @@ function EventScheduleContent() {
       return false;
     }
 
-    const eventDiffers = JSON.stringify(event) !== JSON.stringify(changesEvent);
-    if (eventDiffers) {
+    if (!deepEqual(event, changesEvent)) {
       return true;
     }
 
@@ -172,7 +226,7 @@ function EventScheduleContent() {
       return false;
     }
 
-    return JSON.stringify(matches) !== JSON.stringify(changesMatches);
+    return !deepEqual(matches, changesMatches);
   }, [event, changesEvent, matches, changesMatches]);
 
   useEffect(() => {
@@ -290,6 +344,221 @@ function EventScheduleContent() {
 
     return map;
   }, [playoffMatches]);
+
+  const playoffMatchIds = useMemo(() => new Set(playoffMatches.map((match) => match.$id)), [playoffMatches]);
+
+  const leagueScoring = useMemo(
+    () =>
+      createLeagueScoringConfig(
+        activeEvent && typeof activeEvent.leagueScoringConfig === 'object'
+          ? activeEvent.leagueScoringConfig
+          : null,
+      ),
+    [activeEvent?.leagueScoringConfig],
+  );
+
+  const baseStandings = useMemo<StandingsRow[]>(() => {
+    if (!activeEvent) {
+      return [];
+    }
+
+    const teamsArray = Array.isArray(activeEvent.teams) ? (activeEvent.teams as Team[]) : [];
+    const teamsById = new Map<string, Team>();
+    teamsArray.forEach((team) => {
+      if (team?.$id) {
+        teamsById.set(team.$id, team);
+      }
+    });
+
+    const rows = new Map<string, StandingsRow>();
+    const ensureRow = (teamId: string, team?: Team | null): StandingsRow | null => {
+      if (!teamId) {
+        return null;
+      }
+      if (team && !teamsById.has(teamId)) {
+        teamsById.set(teamId, team);
+      }
+      if (!rows.has(teamId)) {
+        const resolved = team ?? teamsById.get(teamId) ?? null;
+        rows.set(teamId, {
+          teamId,
+          teamName: resolved?.name || `Team ${teamId.slice(0, 6)}`,
+          wins: 0,
+          losses: 0,
+          draws: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          goalDifference: 0,
+          matchesPlayed: 0,
+          points: 0,
+        });
+      }
+      return rows.get(teamId) ?? null;
+    };
+
+    teamsArray.forEach((team) => {
+      if (team?.$id) {
+        ensureRow(team.$id, team);
+      }
+    });
+
+    const sumPoints = (values: number[] | null | undefined): number =>
+      Array.isArray(values)
+        ? values.reduce((total, value) => (Number.isFinite(value) ? total + Number(value) : total), 0)
+        : 0;
+
+    activeMatches.forEach((match) => {
+      if (playoffMatchIds.has(match.$id)) {
+        return;
+      }
+
+      const team1Id =
+        (match.team1 && typeof match.team1 === 'object' && '$id' in match.team1
+          ? match.team1.$id
+          : undefined) ?? (typeof match.team1Id === 'string' ? match.team1Id : null);
+      const team2Id =
+        (match.team2 && typeof match.team2 === 'object' && '$id' in match.team2
+          ? match.team2.$id
+          : undefined) ?? (typeof match.team2Id === 'string' ? match.team2Id : null);
+
+      if (!team1Id || !team2Id) {
+        return;
+      }
+
+      const team1 = (match.team1 as Team | undefined) ?? teamsById.get(team1Id) ?? null;
+      const team2 = (match.team2 as Team | undefined) ?? teamsById.get(team2Id) ?? null;
+
+      const row1 = ensureRow(team1Id, team1);
+      const row2 = ensureRow(team2Id, team2);
+      if (!row1 || !row2) {
+        return;
+      }
+
+      const setResults = Array.isArray(match.setResults) ? match.setResults : [];
+      const team1Wins = setResults.filter((result) => result === 1).length;
+      const team2Wins = setResults.filter((result) => result === 2).length;
+      const allSetsResolved = setResults.length > 0 && setResults.every((result) => result === 1 || result === 2);
+
+      const team1Total = sumPoints(match.team1Points);
+      const team2Total = sumPoints(match.team2Points);
+
+      let outcome: 'team1' | 'team2' | 'draw' | null = null;
+      if (team1Wins > team2Wins) {
+        outcome = 'team1';
+      } else if (team2Wins > team1Wins) {
+        outcome = 'team2';
+      } else if (allSetsResolved) {
+        outcome = 'draw';
+      } else if (team1Total > 0 || team2Total > 0) {
+        if (team1Total > team2Total) {
+          outcome = 'team1';
+        } else if (team2Total > team1Total) {
+          outcome = 'team2';
+        } else {
+          outcome = 'draw';
+        }
+      }
+
+      if (!outcome) {
+        return;
+      }
+
+      row1.goalsFor += team1Total;
+      row1.goalsAgainst += team2Total;
+      row2.goalsFor += team2Total;
+      row2.goalsAgainst += team1Total;
+
+      if (outcome === 'team1') {
+        row1.wins += 1;
+        row2.losses += 1;
+      } else if (outcome === 'team2') {
+        row2.wins += 1;
+        row1.losses += 1;
+      } else {
+        row1.draws += 1;
+        row2.draws += 1;
+      }
+    });
+
+    const precision = Math.max(0, leagueScoring.pointPrecision ?? 0);
+    const multiplier = precision > 0 ? 10 ** precision : 1;
+
+    rows.forEach((row) => {
+      row.matchesPlayed = row.wins + row.losses + row.draws;
+      row.goalDifference = row.goalsFor - row.goalsAgainst;
+      const basePoints =
+        row.wins * leagueScoring.pointsForWin +
+        row.draws * leagueScoring.pointsForDraw +
+        row.losses * leagueScoring.pointsForLoss;
+      const goalPoints =
+        row.goalsFor * leagueScoring.pointsPerGoalScored +
+        row.goalsAgainst * leagueScoring.pointsPerGoalConceded;
+      const totalPoints = basePoints + goalPoints;
+      row.points = precision > 0 ? Math.round(totalPoints * multiplier) / multiplier : totalPoints;
+    });
+
+    return Array.from(rows.values()).map((row) => ({ ...row }));
+  }, [activeEvent, activeMatches, playoffMatchIds, leagueScoring]);
+
+  const standings = useMemo<RankedStandingsRow[]>(() => {
+    if (baseStandings.length === 0) {
+      return [];
+    }
+
+    const sorted = [...baseStandings];
+    const modifier = standingsSort.direction === 'asc' ? 1 : -1;
+
+    sorted.sort((a, b) => {
+      let comparison: number;
+      switch (standingsSort.field) {
+        case 'team':
+          comparison = a.teamName.localeCompare(b.teamName);
+          break;
+        case 'wins':
+          comparison = a.wins - b.wins;
+          break;
+        case 'losses':
+          comparison = a.losses - b.losses;
+          break;
+        case 'draws':
+          comparison = a.draws - b.draws;
+          break;
+        case 'points':
+        default:
+          comparison = a.points - b.points;
+          break;
+      }
+
+      if (comparison !== 0) {
+        return comparison * modifier;
+      }
+
+      const tieBreakers = [
+        (x: StandingsRow, y: StandingsRow) => y.points - x.points,
+        (x: StandingsRow, y: StandingsRow) => y.wins - x.wins,
+        (x: StandingsRow, y: StandingsRow) => y.goalDifference - x.goalDifference,
+        (x: StandingsRow, y: StandingsRow) => y.goalsFor - x.goalsFor,
+        (x: StandingsRow, y: StandingsRow) => x.teamName.localeCompare(y.teamName),
+      ];
+
+      for (const tie of tieBreakers) {
+        const result = tie(a, b);
+        if (result !== 0) {
+          return result;
+        }
+      }
+
+      return 0;
+    });
+
+    return sorted.map((row, index) => ({
+      ...row,
+      rank: index + 1,
+    }));
+  }, [baseStandings, standingsSort]);
+
+  const hasRecordedMatches = standings.some((row) => row.matchesPlayed > 0);
+  const pointsDisplayPrecision = Math.max(0, leagueScoring.pointPrecision ?? 0);
 
   const bracketData = useMemo<TournamentBracket | null>(() => {
     if (!activeEvent || !bracketMatchesMap) {
@@ -493,7 +762,7 @@ function EventScheduleContent() {
     try {
       await leagueService.deleteMatchesByEvent(event.$id);
       await leagueService.deleteWeeklySchedulesForEvent(event.$id);
-      await eventService.deleteEvent(event.$id);
+      await eventService.deleteEvent(event);
       clearEventCache(event.$id);
       router.push('/discover');
     } catch (err) {
@@ -554,6 +823,39 @@ function EventScheduleContent() {
   }, [matches]);
 
   const canClearChanges = Boolean(event && changesEvent && hasChangeDiffers);
+
+  const handleStandingsSortChange = useCallback((field: StandingsSortField) => {
+    setStandingsSort((prev) => {
+      if (prev.field === field) {
+        return {
+          field,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return {
+        field,
+        direction: field === 'team' ? 'asc' : 'desc',
+      };
+    });
+  }, []);
+
+  const renderSortIndicator = (field: StandingsSortField) => {
+    if (standingsSort.field !== field) {
+      return <span className="ml-1 text-xs text-gray-400">↕</span>;
+    }
+    return (
+      <span className="ml-1 text-xs font-semibold text-gray-700">
+        {standingsSort.direction === 'asc' ? '↑' : '↓'}
+      </span>
+    );
+  };
+
+  const formatPoints = (value: number): string => {
+    if (pointsDisplayPrecision > 0) {
+      return value.toFixed(pointsDisplayPrecision);
+    }
+    return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+  };
 
   if (authLoading || !eventId) {
     return <Loading fullScreen text="Loading schedule..." />;
@@ -691,7 +993,7 @@ function EventScheduleContent() {
             <Tabs.List>
               <Tabs.Tab value="schedule">Schedule</Tabs.Tab>
               {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
-              <Tabs.Tab value="standings" disabled>Standings</Tabs.Tab>
+              <Tabs.Tab value="standings">Standings</Tabs.Tab>
             </Tabs.List>
 
             <Tabs.Panel value="schedule" pt="md">
@@ -729,9 +1031,91 @@ function EventScheduleContent() {
             )}
 
             <Tabs.Panel value="standings" pt="md">
-              <Paper withBorder radius="md" p="xl" ta="center">
-                <Text c="dimmed">Standings coming soon.</Text>
-              </Paper>
+              {standings.length === 0 ? (
+                <Paper withBorder radius="md" p="xl" ta="center">
+                  <Text>No teams available yet.</Text>
+                </Paper>
+              ) : (
+                <Paper withBorder radius="md" p={0}>
+                  {!hasRecordedMatches && (
+                    <div className="px-4 pt-4">
+                      <Text size="sm" c="dimmed">
+                        Standings will update automatically as match results are recorded.
+                      </Text>
+                    </div>
+                  )}
+                  <div className="overflow-x-auto">
+                    <Table striped highlightOnHover>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th className="w-12 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            #
+                          </Table.Th>
+                          <Table.Th className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            <UnstyledButton
+                              className="flex items-center gap-1 text-sm font-semibold text-gray-700"
+                              onClick={() => handleStandingsSortChange('team')}
+                            >
+                              Team
+                              {renderSortIndicator('team')}
+                            </UnstyledButton>
+                          </Table.Th>
+                          <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            <UnstyledButton
+                              className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                              onClick={() => handleStandingsSortChange('wins')}
+                            >
+                              W
+                              {renderSortIndicator('wins')}
+                            </UnstyledButton>
+                          </Table.Th>
+                          <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            <UnstyledButton
+                              className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                              onClick={() => handleStandingsSortChange('losses')}
+                            >
+                              L
+                              {renderSortIndicator('losses')}
+                            </UnstyledButton>
+                          </Table.Th>
+                          <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            <UnstyledButton
+                              className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                              onClick={() => handleStandingsSortChange('draws')}
+                            >
+                              D
+                              {renderSortIndicator('draws')}
+                            </UnstyledButton>
+                          </Table.Th>
+                          <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            <UnstyledButton
+                              className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                              onClick={() => handleStandingsSortChange('points')}
+                            >
+                              P
+                              {renderSortIndicator('points')}
+                            </UnstyledButton>
+                          </Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {standings.map((row) => (
+                          <Table.Tr key={row.teamId}>
+                            <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
+                            <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
+                            <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
+                            <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
+                            <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
+                            <Table.Td className="text-right text-sm font-semibold text-gray-900">
+                              {formatPoints(row.points)}
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </div>
+                </Paper>
+              )}
             </Tabs.Panel>
           </Tabs>
         </Stack>

@@ -7,7 +7,7 @@ import { TournamentBracket, Match, UserData } from '@/types';
 import MatchCard from './MatchCard';
 
 import ScoreUpdateModal from './ScoreUpdateModal';
-import { xor } from '@/app/uitl';
+import { xor } from '@/app/utils';
 import { Paper, Group, Button, ActionIcon, Text, SegmentedControl, Badge } from '@mantine/core';
 
 

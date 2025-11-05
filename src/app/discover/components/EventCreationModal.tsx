@@ -8,7 +8,7 @@ import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, EventState, LeagueScoringConfig, Sport, TournamentConfig } from '@/types';
+import { getEventImageUrl, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, EventState, LeagueScoringConfig, Sport, TournamentConfig, toEventPayload } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from './LeagueScoringConfigPanel';
 import SportConfigPanel from './SportConfigPanel';
@@ -1566,7 +1566,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 location: eventData.location,
                 coordinates: eventData.coordinates,
                 eventType: 'league',
-                sport: sportSelection.$id,
+                sportId: sportSelection.$id,
                 fieldType: eventData.fieldType,
                 price: eventData.price,
                 maxParticipants: eventData.maxParticipants,
@@ -1591,7 +1591,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 players: joinAsParticipant ? [currentUser] : [],
                 fields: fieldsReferencedInSlots,
                 timeSlots: slotDocuments,
-                ...(organizationId ? { organization: organizationId } : {}),
+                organizationId: organizationId,
                 leagueScoringConfig: eventData.leagueScoringConfig,
             };
 
@@ -1602,14 +1602,23 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             }
 
             const preview = await leagueService.previewScheduleFromDocument(eventDocument);
-            const previewEvent = (preview.event as Event);
+            const previewEvent = preview.event as Event | undefined;
+            if (!previewEvent) {
+                throw new Error('Failed to generate preview schedule.');
+            }
+
+            const previewPayload = toEventPayload(previewEvent);
 
             if (typeof window !== 'undefined') {
-                sessionStorage.setItem(`league-preview-event:${previewEvent.$id}`, JSON.stringify(previewEvent));
+                sessionStorage.setItem(
+                    `league-preview-event:${previewPayload.$id}`,
+                    JSON.stringify(previewPayload)
+                );
+                sessionStorage.setItem('league-preview-resume-id', previewPayload.$id);
             }
 
             onClose();
-            router.push(`/discover/${previewEvent.$id}/schedule?preview=1`);
+            router.push(`/discover/${previewPayload.$id}/schedule?preview=1`);
         } catch (error) {
             setLeagueError(error instanceof Error ? error.message : 'Failed to generate preview schedule.');
         } finally {
@@ -1665,7 +1674,6 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 end: eventData.end,
                 eventType: eventData.eventType,
                 state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
-                sport: sportSelection,
                 sportId: sportId || undefined,
                 fieldType: eventData.fieldType,
                 price: eventData.price,
@@ -2324,7 +2332,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 if (!confirm('Delete this event? This cannot be undone.')) return;
                                 setIsSubmitting(true);
                                 try {
-                                    const ok = await eventService.deleteEvent(activeEditingEvent.$id);
+                                    const ok = await eventService.deleteEvent(activeEditingEvent);
                                     if (ok) {
                                         onClose();
                                     }

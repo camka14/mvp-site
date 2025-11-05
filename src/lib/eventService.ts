@@ -1,4 +1,4 @@
-import { databases } from '@/app/appwrite';
+import { databases, functions } from '@/app/appwrite';
 import {
     Event,
     LocationCoordinates,
@@ -170,13 +170,18 @@ class EventService {
         }
     }
 
-    async deleteEvent(eventId: string): Promise<boolean> {
+    async deleteEvent(event: Event): Promise<boolean> {
         try {
-            await databases.deleteRow({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                rowId: eventId
-            });
+            const payload = buildPayload(event);
+            const response = await functions.createExecution({
+                    functionId: EVENT_MANAGER_FUNCTION_ID,
+                    body: JSON.stringify({ task: "editEvent", command: 'deleteEvent', event: payload }),
+                    async: false,
+            })
+            if (response.errors && response.errors.length > 0) {
+                console.error('Event Manager function returned errors:', response.errors);
+                return false;
+            }
             return true;
         } catch (error) {
             console.error('Failed to delete event:', error);
@@ -391,7 +396,6 @@ class EventService {
         }
 
         const teamIds = new Set<string>();
-        const eventIds = new Set<string>();
 
         rows.forEach((row) => {
             if (typeof row.team1Id === 'string') {
@@ -403,28 +407,14 @@ class EventService {
             if (typeof row.refereeId === 'string') {
                 teamIds.add(row.refereeId);
             }
-            if (typeof row.eventId === 'string') {
-                eventIds.add(row.eventId);
-            }
         });
 
-        const [teams, fields, events] = await Promise.all([
-            this.fetchTeamsByIds(Array.from(teamIds)),
-            this.fetchFieldsByIds([fieldId]),
-            this.fetchEventsByIds(Array.from(eventIds)),
-        ]);
+        const teams = await this.fetchTeamsByIds(Array.from(teamIds));
 
         const teamsById = new Map(teams.map((team) => [team.$id, team]));
-        const fieldsById = new Map(fields.map((field) => [field.$id, field]));
-        const eventsById = new Map(events.map((event) => [event.$id, event]));
 
         return rows.map((row) => {
-            const match = this.mapMatchRecord(row, { teamsById, fieldsById });
-            const eventId = typeof row.eventId === 'string' ? row.eventId : undefined;
-            if (eventId && eventsById.has(eventId)) {
-                match.event = eventsById.get(eventId);
-            }
-            return match;
+            return this.mapMatchRecord(row, { teamsById });
         });
     }
 
@@ -732,7 +722,6 @@ class EventService {
 
         return (rows as any[]).map((row) => {
             const match = this.mapMatchRecord(row, { teamsById, fieldsById });
-            match.event = event;
             return match;
         });
     }
@@ -938,7 +927,6 @@ class EventService {
             loserNextMatchId:
                 input.loserNextMatchId ?? (input.loserNextMatch ? (input.loserNextMatch as Match).$id : undefined),
             field: fieldId ? context?.fieldsById?.get(fieldId) : undefined,
-            event: input?.event as Event,
         };
 
         if (input.division) {

@@ -173,7 +173,6 @@ export interface Match {
   referee?: Team;
   team1?: Team;
   team2?: Team;
-  event?: Event;
 
   // Match relationships
   previousLeftMatch?: Match;
@@ -184,6 +183,21 @@ export interface Match {
   $createdAt?: string;
   $updatedAt?: string;
 }
+
+type MatchRelationKeys =
+  | 'division'
+  | 'field'
+  | 'referee'
+  | 'team1'
+  | 'team2'
+  | 'previousLeftMatch'
+  | 'previousRightMatch'
+  | 'winnerNextMatch'
+  | 'loserNextMatch';
+
+export type MatchPayload = Omit<Match, MatchRelationKeys> & {
+  division?: string | null;
+};
 
 export interface TimeSlot {
   $id: string;
@@ -198,6 +212,8 @@ export interface TimeSlot {
   eventId?: string;
   scheduledFieldId?: string;
 }
+
+export type TimeSlotPayload = Omit<TimeSlot, 'event'>;
 
 export interface UserData {
   $id: string;
@@ -243,6 +259,16 @@ export interface Field {
   rentalSlots?: TimeSlot[];
 }
 
+type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'rentalSlots' | 'rentalSlotIds';
+
+export type FieldPayload = Omit<Field, FieldRelationKeys> & {
+  divisions?: string[];
+  matchIds?: string[];
+  eventIds?: string[];
+  organizationId?: string;
+  rentalSlotIds?: string[];
+};
+
 export interface Team {
   $id: string;
   name: string;
@@ -269,6 +295,10 @@ export interface Team {
   isFull: boolean;
   avatarUrl: string;
 }
+
+export type TeamPayload = Omit<Team, 'matches'> & {
+  matchIds?: string[];
+};
 
 // Core Event interface with relationships
 export interface Event {
@@ -346,6 +376,15 @@ export interface Event {
   attendees: number;
 }
 
+export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization'> & {
+  fields?: FieldPayload[];
+  matches?: MatchPayload[];
+  teams?: TeamPayload[];
+  timeSlots?: TimeSlotPayload[];
+  organization?: string | null;
+  organizationId?: string | null;
+};
+
 
 
 export interface TournamentBracket {
@@ -411,6 +450,267 @@ export interface LocationInfo extends LocationCoordinates {
   state?: string;
   country?: string;
   zipCode?: string;
+}
+
+const extractId = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidate = value as { $id?: unknown; id?: unknown };
+  if (typeof candidate.$id === 'string' && candidate.$id.length > 0) {
+    return candidate.$id;
+  }
+  if (typeof candidate.id === 'string' && candidate.id.length > 0) {
+    return candidate.id;
+  }
+  return undefined;
+};
+
+const uniqueIds = (values: (string | undefined | null)[]): string[] => {
+  const seen = new Set<string>();
+  values.forEach((value) => {
+    if (typeof value === 'string' && value.length > 0) {
+      seen.add(value);
+    }
+  });
+  return Array.from(seen);
+};
+
+export function toMatchPayload(match: Match): MatchPayload {
+  const {
+    division,
+    field,
+    referee,
+    team1,
+    team2,
+    previousLeftMatch,
+    previousRightMatch,
+    winnerNextMatch,
+    loserNextMatch,
+    ...base
+  } = match;
+
+  const payload: MatchPayload = {
+    ...base,
+  };
+
+  const divisionId = extractId(division);
+  if (divisionId) {
+    payload.division = divisionId;
+  }
+
+  if (payload.fieldId == null) {
+    const fieldId = extractId(field);
+    if (fieldId) {
+      payload.fieldId = fieldId;
+    }
+  }
+
+  if (payload.refereeId == null) {
+    const refereeId = extractId(referee);
+    if (refereeId) {
+      payload.refereeId = refereeId;
+    }
+  }
+
+  if (payload.team1Id == null) {
+    const team1Id = extractId(team1);
+    if (team1Id) {
+      payload.team1Id = team1Id;
+    }
+  }
+
+  if (payload.team2Id == null) {
+    const team2Id = extractId(team2);
+    if (team2Id) {
+      payload.team2Id = team2Id;
+    }
+  }
+
+  if (!payload.previousLeftId) {
+    const previousLeftId = extractId(previousLeftMatch);
+    if (previousLeftId) {
+      payload.previousLeftId = previousLeftId;
+    }
+  }
+
+  if (!payload.previousRightId) {
+    const previousRightId = extractId(previousRightMatch);
+    if (previousRightId) {
+      payload.previousRightId = previousRightId;
+    }
+  }
+
+  if (!payload.winnerNextMatchId) {
+    const winnerNextId = extractId(winnerNextMatch);
+    if (winnerNextId) {
+      payload.winnerNextMatchId = winnerNextId;
+    }
+  }
+
+  if (!payload.loserNextMatchId) {
+    const loserNextId = extractId(loserNextMatch);
+    if (loserNextId) {
+      payload.loserNextMatchId = loserNextId;
+    }
+  }
+
+  return payload;
+}
+
+export function toFieldPayload(field: Field, matchIdsByField?: Map<string, string[]>): FieldPayload {
+  const {
+    divisions,
+    matches,
+    events,
+    organization,
+    rentalSlots,
+    rentalSlotIds,
+    ...base
+  } = field;
+
+  const payload: FieldPayload = {
+    ...base,
+  };
+
+  const divisionIds = Array.isArray(divisions)
+    ? uniqueIds(
+        divisions.map((divisionEntry) =>
+          typeof divisionEntry === 'string' ? divisionEntry : extractId(divisionEntry),
+        ),
+      )
+    : [];
+  if (divisionIds.length) {
+    payload.divisions = divisionIds;
+  }
+
+  const matchIdSet = new Set<string>();
+  if (Array.isArray(matches)) {
+    matches.forEach((matchEntry) => {
+      const id = extractId(matchEntry);
+      if (id) {
+        matchIdSet.add(id);
+      }
+    });
+  }
+  if (field.$id && matchIdsByField?.has(field.$id)) {
+    matchIdsByField.get(field.$id)?.forEach((id) => {
+      if (id) {
+        matchIdSet.add(id);
+      }
+    });
+  }
+  if (matchIdSet.size) {
+    payload.matchIds = Array.from(matchIdSet);
+  }
+
+  const eventIds = Array.isArray(events)
+    ? uniqueIds(events.map((eventEntry) => extractId(eventEntry)))
+    : [];
+  if (eventIds.length) {
+    payload.eventIds = eventIds;
+  }
+
+  const organizationId = extractId(organization);
+  if (organizationId) {
+    payload.organizationId = organizationId;
+  }
+
+  const rentalIds = Array.isArray(rentalSlots)
+    ? rentalSlots.map((slot) => extractId(slot)).filter((id): id is string => Boolean(id))
+    : [];
+  const combinedRentalIds = uniqueIds([...(rentalSlotIds ?? []), ...rentalIds]);
+  if (combinedRentalIds.length) {
+    payload.rentalSlotIds = combinedRentalIds;
+  }
+
+  return payload;
+}
+
+export function toEventPayload(event: Event): EventPayload {
+  const { matches, fields, teams, timeSlots, organization, ...rest } = event;
+
+  const matchPayloads = Array.isArray(matches) && matches.length
+    ? matches.map(toMatchPayload)
+    : undefined;
+
+  const matchIdsByField = new Map<string, string[]>();
+  matchPayloads?.forEach((match) => {
+    if (!match.$id) {
+      return;
+    }
+    const fieldId = typeof match.fieldId === 'string' && match.fieldId.length > 0 ? match.fieldId : undefined;
+    if (!fieldId) {
+      return;
+    }
+    const bucket = matchIdsByField.get(fieldId) ?? [];
+    bucket.push(match.$id);
+    matchIdsByField.set(fieldId, bucket);
+  });
+
+  const fieldPayloads = Array.isArray(fields) && fields.length
+    ? fields.map((field) => toFieldPayload(field, matchIdsByField))
+    : undefined;
+
+  const teamPayloads = Array.isArray(teams) && teams.length
+    ? teams.map((team) => {
+        const { matches: teamMatches, ...teamRest } = team;
+        const teamMatchIds = Array.isArray(teamMatches)
+          ? uniqueIds(teamMatches.map((teamMatch) => extractId(teamMatch)))
+          : [];
+        const teamPayload: TeamPayload = {
+          ...teamRest,
+        };
+        if (teamMatchIds.length) {
+          teamPayload.matchIds = teamMatchIds;
+        }
+        return teamPayload;
+      })
+    : undefined;
+
+  const timeSlotPayloads = Array.isArray(timeSlots) && timeSlots.length
+    ? timeSlots.map((slot) => {
+        const { event: slotEvent, ...slotRest } = slot;
+        return slotRest;
+      })
+    : undefined;
+
+  const resolvedOrganizationId =
+    extractId(organization) ??
+    (typeof rest.organizationId === 'string' ? rest.organizationId : undefined);
+
+  const payload: EventPayload = {
+    ...rest,
+  };
+
+  if (resolvedOrganizationId) {
+    payload.organization = resolvedOrganizationId;
+    payload.organizationId = resolvedOrganizationId;
+  } else if (typeof payload.organizationId === 'undefined') {
+    payload.organizationId = null;
+  }
+
+  if (matchPayloads?.length) {
+    payload.matches = matchPayloads;
+  }
+
+  if (fieldPayloads?.length) {
+    payload.fields = fieldPayloads;
+  }
+
+  if (teamPayloads?.length) {
+    payload.teams = teamPayloads;
+  }
+
+  if (timeSlotPayloads?.length) {
+    payload.timeSlots = timeSlotPayloads;
+  }
+
+  return payload;
 }
 
 export function getUserFullName(user: UserData): string {
