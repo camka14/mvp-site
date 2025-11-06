@@ -83,7 +83,7 @@ function TeamsPageContent() {
         return;
       }
       try {
-        const evt = await eventService.getEventById(eventId);
+        const evt = await eventService.getEvent(eventId);
         if (evt) {
           setEventContext(evt);
           if (evt.freeAgentIds && evt.freeAgentIds.length > 0) {

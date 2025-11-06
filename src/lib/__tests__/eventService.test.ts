@@ -121,7 +121,7 @@ describe('eventService', () => {
   });
 
   describe('createEvent', () => {
-    it('sends field ids and coordinates when provided', async () => {
+    it('sends coordinates when provided', async () => {
       appwriteModuleMock.ID.unique.mockReturnValueOnce('evt_new');
       appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
         $id: 'evt_new',
@@ -136,10 +136,6 @@ describe('eventService', () => {
       await eventService.createEvent({
         name: 'New Event',
         coordinates: [-105, 40],
-        fields: [
-          { $id: 'field_1', name: 'Field A', fieldNumber: 1 } as any,
-          { $id: 'field_2', name: 'Field B', fieldNumber: 2 } as any,
-        ],
       });
 
       const [eventCallArgs] = appwriteModuleMock.databases.createRow.mock.calls;
@@ -151,54 +147,7 @@ describe('eventService', () => {
       expect(eventCall.data).toEqual(expect.objectContaining({
         name: 'New Event',
         coordinates: [-105, 40],
-        fields: [
-          expect.objectContaining({ $id: 'field_1', name: 'Field A', fieldNumber: 1 }),
-          expect.objectContaining({ $id: 'field_2', name: 'Field B', fieldNumber: 2 }),
-        ],
       }));
-    });
-
-    it('sanitizes nested fields before submitting to Appwrite', async () => {
-      appwriteModuleMock.ID.unique.mockReturnValueOnce('evt_nested');
-      appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
-        $id: 'evt_nested',
-        name: 'Nested Event',
-        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
-        teamSignup: false,
-        playerIds: [],
-        teamIds: [],
-        divisions: [],
-        coordinates: [-105, 40],
-      });
-
-      await eventService.createEvent({
-        name: 'Nested Event',
-        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
-        teamSignup: false,
-        playerIds: [],
-        teamIds: [],
-        divisions: [],
-        coordinates: [-105, 40] as [number, number],
-        fields: [
-          {
-            $id: 'field_1',
-            name: 'Court A',
-            location: 'Gym',
-            lat: 39.5,
-            long: -104.9,
-            type: 'indoor',
-            fieldNumber: 1,
-            organization: { $id: 'org_1', name: 'Org 1' } as any,
-            matches: [{ $id: 'match_1' }] as any,
-            events: [{ $id: 'evt_other' }] as any,
-          } as any,
-        ],
-      });
-
-      const [[eventPayload]] = appwriteModuleMock.databases.createRow.mock.calls;
-      expect(eventPayload.data?.fields).toEqual([
-        expect.objectContaining({ $id: 'field_1', name: 'Court A' }),
-      ]);
     });
   });
 

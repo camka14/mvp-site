@@ -11,15 +11,7 @@ export function buildPayload(data: Record<string, any>) {
   const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
 
-  const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-      return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-  };
-
-  const sanitizeValue = (value: unknown, depth: number = 0): unknown => {
+  const sanitizeValue = (value: unknown): unknown => {
     if (value === undefined || value === null) {
       return undefined;
     }
@@ -38,7 +30,7 @@ export function buildPayload(data: Record<string, any>) {
 
     if (Array.isArray(value)) {
       const sanitizedItems = value
-        .map((item) => sanitizeValue(item, depth + 1))
+        .map((item) => sanitizeValue(item))
         .filter((item) => item !== undefined);
       return sanitizedItems.length ? sanitizedItems : undefined;
     }
