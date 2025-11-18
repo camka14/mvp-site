@@ -8,7 +8,7 @@ import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from './TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, EventState, LeagueScoringConfig, Sport, TournamentConfig, toEventPayload } from '@/types';
+import { getEventImageUrl, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, EventState, LeagueScoringConfig, Sport, TournamentConfig, toEventPayload } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from './LeagueScoringConfigPanel';
 import SportConfigPanel from './SportConfigPanel';
@@ -50,7 +50,7 @@ const computeSlotError = (
     index: number,
     eventType: EventType
 ): string | undefined => {
-    if (eventType !== 'league') {
+    if (eventType !== 'LEAGUE') {
         return undefined;
     }
 
@@ -196,10 +196,10 @@ type EventFormState = {
     coordinates: [number, number];
     start: string;
     end: string;
-    eventType: 'pickup' | 'tournament' | 'league';
+    eventType: EventType;
     sportId: string;
     sportConfig: Sport | null;
-    fieldType: string;
+    fieldType: FieldSurfaceType;
     price: number;
     maxParticipants: number;
     teamSizeLimit: number;
@@ -325,10 +325,10 @@ const createDefaultEventData = (): EventFormState => ({
     coordinates: [0, 0],
     start: nowLocalDateTimeString(),
     end: formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000)),
-    eventType: 'pickup',
+    eventType: 'PICKUP',
     sportId: '',
     sportConfig: null,
-    fieldType: 'indoor',
+    fieldType: 'INDOOR',
     price: 0,
     maxParticipants: 10,
     teamSizeLimit: 2,
@@ -366,7 +366,7 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     sportConfig: typeof event.sport === 'object' && event.sport !== null
         ? { ...(event.sport as Sport) }
         : null,
-    fieldType: event.fieldType ?? 'indoor',
+    fieldType: event.fieldType ?? 'INDOOR',
     price: Number.isFinite(event.price) ? event.price : 0,
     maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
     teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : 2,
@@ -525,7 +525,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (defaults.leagueScoringConfig && typeof defaults.leagueScoringConfig === 'object') {
             next.leagueScoringConfig = createLeagueScoringConfig(defaults.leagueScoringConfig as Partial<LeagueScoringConfig>);
         }
-        if (defaults.fieldType !== undefined) next.fieldType = defaults.fieldType ?? 'indoor';
+        if (defaults.fieldType !== undefined) next.fieldType = defaults.fieldType ?? 'INDOOR';
         if (typeof defaults.price === 'number') next.price = defaults.price;
         if (typeof defaults.maxParticipants === 'number') next.maxParticipants = defaults.maxParticipants;
         if (typeof defaults.teamSizeLimit === 'number') next.teamSizeLimit = defaults.teamSizeLimit;
@@ -558,7 +558,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             return;
         }
 
-        if (editingEvent.eventType !== 'league') {
+        if (editingEvent.eventType !== 'LEAGUE') {
             setHydratedEditingEvent(null);
             return;
         }
@@ -595,7 +595,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Holds tournament-specific settings so the modal can conditionally render the TournamentFields block.
     const [tournamentData, setTournamentData] = useState<TournamentConfig>(() => {
-        if (activeEditingEvent && activeEditingEvent.eventType === 'tournament') {
+        if (activeEditingEvent && activeEditingEvent.eventType === 'TOURNAMENT') {
             return buildTournamentConfig({
                 doubleElimination: activeEditingEvent.doubleElimination,
                 winnerSetCount: activeEditingEvent.winnerSetCount,
@@ -614,7 +614,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Maintains league configuration sliders/toggles passed into the schedule preview pipeline.
     const [leagueData, setLeagueData] = useState<LeagueConfig>(() => {
-        if (activeEditingEvent && activeEditingEvent.eventType === 'league') {
+        if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE') {
             const source = activeEditingEvent.leagueConfig || activeEditingEvent;
             return {
                 gamesPerOpponent: source?.gamesPerOpponent ?? 1,
@@ -661,7 +661,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             );
         }
 
-        if (activeEditingEvent && activeEditingEvent.eventType === 'league' && activeEditingEvent.timeSlots?.length) {
+        if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE' && activeEditingEvent.timeSlots?.length) {
             return (activeEditingEvent.timeSlots || []).map((slot) => {
                 return createSlotForm({
                     $id: slot.$id,
@@ -714,7 +714,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     // Spinner flag while asynchronous field lookups resolve.
     const [fieldsLoading, setFieldsLoading] = useState(false);
     const shouldProvisionFields = !organization && !hasImmutableFields;
-    const shouldManageLocalFields = shouldProvisionFields && !isEditMode && (eventData.eventType === 'league' || eventData.eventType === 'tournament');
+    const shouldManageLocalFields = shouldProvisionFields && !isEditMode && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
 
     // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
     const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
@@ -981,7 +981,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             return;
         }
 
-        if ((eventData.eventType === 'league' || eventData.eventType === 'tournament') && eventData.start) {
+        if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') && eventData.start) {
             setEventData(prev => {
                 if (prev.end === prev.start) {
                     return prev;
@@ -996,7 +996,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (hasImmutableTimeSlots) {
             return;
         }
-        if (activeEditingEvent && activeEditingEvent.eventType === 'league') {
+        if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE') {
             const source = activeEditingEvent.leagueConfig || activeEditingEvent;
             setLeagueData({
                 gamesPerOpponent: source?.gamesPerOpponent ?? 1,
@@ -1050,7 +1050,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 setDurationMinutes: undefined,
                 setsPerMatch: undefined,
             });
-            setLeagueSlots(normalizeSlotState([createSlotForm()], 'pickup'));
+            setLeagueSlots(normalizeSlotState([createSlotForm()], 'PICKUP'));
             setPlayoffData(buildTournamentConfig());
         }
     }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots]);
@@ -1121,12 +1121,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const modalTitle = isEditMode ? 'Edit Event' : 'Create New Event';
     const submitButtonText = isEditMode
         ? 'Update Event'
-        : eventData.eventType === 'league'
+        : eventData.eventType === 'LEAGUE'
             ? 'Preview Schedule'
             : 'Create Event';
     const submittingText = isEditMode
         ? 'Updating...'
-        : eventData.eventType === 'league'
+        : eventData.eventType === 'LEAGUE'
             ? 'Generating schedule...'
             : 'Creating...';
 
@@ -1200,7 +1200,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             isMaxParticipantsValid: eventData.maxParticipants ? eventData.maxParticipants > 1 : false,
             isTeamSizeValid: eventData.teamSizeLimit ? eventData.teamSizeLimit >= 1 : false,
             isLocationValid: eventData.location ? eventData.location.trim().length > 0 && hasCoordinates : false,
-            isSkillLevelValid: eventData.eventType === 'league' ? true : (eventData.divisions ? eventData.divisions?.length > 0 : false),
+            isSkillLevelValid: eventData.eventType === 'LEAGUE' ? true : (eventData.divisions ? eventData.divisions?.length > 0 : false),
             isImageValid: Boolean(selectedImageId || eventData.imageId || selectedImageUrl),
             isFieldCountValid: shouldManageLocalFields ? fields.length >= 1 && fields.every(field => field.name?.trim().length > 0) : true,
             isSportValid: Boolean(eventData.sportId),
@@ -1208,7 +1208,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     }, [eventData, fieldCount, fields, selectedImageId, selectedImageUrl, shouldManageLocalFields]);
 
     useEffect(() => {
-        if ((eventData.eventType === 'league' || eventData.eventType === 'tournament') &&
+        if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') &&
             (!eventData.teamSignup || !eventData.singleDivision)) {
             setEventData(prev => {
                 if (prev.teamSignup && prev.singleDivision) {
@@ -1248,8 +1248,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         }
     }, [isEditMode, eventData.location, eventData.coordinates]);
 
-    const hasSlotConflicts = eventData.eventType === 'league' && leagueSlots.some(slot => Boolean(slot.error));
-    const hasIncompleteSlot = eventData.eventType === 'league' && leagueSlots.some(slot =>
+    const hasSlotConflicts = eventData.eventType === 'LEAGUE' && leagueSlots.some(slot => Boolean(slot.error));
+    const hasIncompleteSlot = eventData.eventType === 'LEAGUE' && leagueSlots.some(slot =>
         !slot.scheduledFieldId ||
         typeof slot.dayOfWeek !== 'number' ||
         typeof slot.startTimeMinutes !== 'number' ||
@@ -1268,7 +1268,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         : ((leagueData.pointsToVictory?.length ?? 0) === (leagueData.setsPerMatch ?? 0) &&
             (leagueData.pointsToVictory ?? []).every((value) => Number(value) > 0));
 
-    const leagueFormValid = eventData.eventType !== 'league'
+    const leagueFormValid = eventData.eventType !== 'LEAGUE'
         ? true
         : (
             leagueData.gamesPerOpponent >= 1 &&
@@ -1431,7 +1431,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Generates an in-memory league schedule and navigates to the preview page for new leagues.
     const handleLeaguePreview = async () => {
-        if (eventData.eventType !== 'league' || isEditMode) return;
+        if (eventData.eventType !== 'LEAGUE' || isEditMode) return;
         if (isSubmitting || !isValid) return;
 
         const startDate = parseLocalDateTime(eventData.start);
@@ -1565,7 +1565,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 end: eventData.end,
                 location: eventData.location,
                 coordinates: eventData.coordinates,
-                eventType: 'league',
+                eventType: 'LEAGUE',
                 sportId: sportSelection.$id,
                 fieldType: eventData.fieldType,
                 price: eventData.price,
@@ -1631,7 +1631,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         e.preventDefault();
         if (isSubmitting || !isValid) return;
 
-        if (!isEditMode && eventData.eventType === 'league') {
+        if (!isEditMode && eventData.eventType === 'LEAGUE') {
             await handleLeaguePreview();
             return;
         }
@@ -1734,14 +1734,14 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 }
             }
 
-            if (eventData.eventType === 'tournament') {
+            if (eventData.eventType === 'TOURNAMENT') {
                 Object.assign(submitEvent, tournamentData);
                 if (!isEditMode && shouldProvisionFields) {
                     submitEvent.fieldCount = fieldCount;
                 }
             }
 
-        if (eventData.eventType === 'league') {
+        if (eventData.eventType === 'LEAGUE') {
                 const restTime = normalizeNumber(leagueData.restTimeMinutes);
                 const submitRequiresSets = Boolean(sportSelection.usePointsPerSetWin);
                 const setsPerMatchValue = leagueData.setsPerMatch ?? 1;
@@ -1791,7 +1791,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 }
             }
 
-            if (eventData.eventType === 'tournament' || eventData.eventType === 'league') {
+            if (eventData.eventType === 'TOURNAMENT' || eventData.eventType === 'LEAGUE') {
                 delete submitEvent.end;
             }
 
@@ -1958,9 +1958,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <MantineSelect
                                 label="Event Type"
                                 data={[
-                                    { value: 'pickup', label: 'Pickup Game' },
-                                    { value: 'tournament', label: 'Tournament' },
-                                    { value: 'league', label: 'League' },
+                                    { value: 'PICKUP', label: 'Pickup Game' },
+                                    { value: 'TOURNAMENT', label: 'Tournament' },
+                                    { value: 'LEAGUE', label: 'League' },
                                 ]}
                                 value={eventData.eventType}
                                 disabled={isImmutableField('eventType')}
@@ -1968,8 +1968,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     if (isImmutableField('eventType')) return;
                                     if (!value) return;
                                     setLeagueError(null);
-                                    const nextType = value as 'pickup' | 'tournament' | 'league';
-                                    const enforcingTeamSettings = nextType === 'league' || nextType === 'tournament';
+                                    const nextType = value as EventType;
+                                    const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
                                     setEventData(prev => ({
                                         ...prev,
                                         eventType: nextType,
@@ -1982,16 +1982,19 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             <MantineSelect
                                 label="Field Type"
                                 data={[
-                                    { value: 'indoor', label: 'Indoor' },
-                                    { value: 'outdoor', label: 'Outdoor' },
-                                    { value: 'sand', label: 'Sand' },
-                                    { value: 'grass', label: 'Grass' },
+                                    { value: 'INDOOR', label: 'Indoor' },
+                                    { value: 'OUTDOOR', label: 'Outdoor' },
+                                    { value: 'SAND', label: 'Sand' },
+                                    { value: 'GRASS', label: 'Grass' },
                                 ]}
                                 value={eventData.fieldType}
                                 disabled={isImmutableField('fieldType')}
                                 onChange={(value) => {
                                     if (isImmutableField('fieldType')) return;
-                                    setEventData(prev => ({ ...prev, fieldType: value || prev.fieldType }));
+                                    setEventData(prev => ({
+                                        ...prev,
+                                        fieldType: (value?.toUpperCase() as FieldSurfaceType) || prev.fieldType,
+                                    }));
                                 }}
                             />
                         </div>
@@ -2167,7 +2170,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                 />
                             </div>
                             <div>
-                                {(eventData.eventType === 'pickup') &&
+                                {(eventData.eventType === 'PICKUP') &&
                                     <DateTimePicker
                                         label="End Date & Time"
                                         valueFormat="DD MMM YYYY hh:mm A"
@@ -2219,7 +2222,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         />
 
                         {/* Team Settings */}
-                        {eventData.eventType === 'pickup' ? (
+                        {eventData.eventType === 'PICKUP' ? (
                             <div className="mt-6 space-y-3">
                                 <Switch
                                     label="Team Event (teams compete rather than individuals)"
@@ -2261,7 +2264,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         )}
                     </Paper>
 
-                    {eventData.eventType === 'league' && (
+                    {eventData.eventType === 'LEAGUE' && (
                         <>
                             <LeagueScoringConfigPanel
                                 value={eventData.leagueScoringConfig}
@@ -2296,7 +2299,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     )}
 
                     {/* Tournament Fields */}
-                    {eventData.eventType === 'tournament' && (
+                    {eventData.eventType === 'TOURNAMENT' && (
                         <TournamentFields
                             tournamentData={tournamentData}
                             setTournamentData={setTournamentData}
@@ -2314,7 +2317,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             {leagueError}
                         </Alert>
                     )}
-                    {!isEditMode && !eventData.teamSignup && eventData.eventType !== 'league' && (
+                    {!isEditMode && !eventData.teamSignup && eventData.eventType !== 'LEAGUE' && (
                         <Switch
                             label="Join as participant"
                             checked={joinAsParticipant}

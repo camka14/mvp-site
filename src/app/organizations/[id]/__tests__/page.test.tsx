@@ -9,7 +9,7 @@ describe('buildFieldCalendarEvents', () => {
     location: '',
     lat: 0,
     long: 0,
-    type: 'indoor',
+    type: 'INDOOR',
     fieldNumber: 1,
   } as Field;
 
@@ -38,7 +38,7 @@ describe('buildFieldCalendarEvents', () => {
         end: '2025-10-12T02:00:00.000+00:00',
         location: '',
         coordinates: [0, 0],
-        fieldType: 'indoor',
+        fieldType: 'INDOOR',
         price: 0,
         imageId: '',
         hostId: 'host_1',
@@ -52,7 +52,7 @@ describe('buildFieldCalendarEvents', () => {
         seedColor: 0,
         cancellationRefundHours: 0,
         registrationCutoffHours: 0,
-        eventType: 'pickup',
+        eventType: 'PICKUP',
         sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         divisions: [],
         attendees: 0,

@@ -58,11 +58,12 @@ type CalendarRange = { start: Date; end: Date } | null;
 export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange = null): FieldCalendarEntry[] => {
   return fields.flatMap((field) => {
     const baseTitle = field.name || `Field ${field.fieldNumber}`;
-    const events = (field.events || []).filter((evt) => evt.eventType !== 'league' && evt.eventType !== 'tournament');
+    const events = (field.events || []).filter((evt) => evt.eventType !== 'LEAGUE' && evt.eventType !== 'TOURNAMENT');
     const matches = (field.matches || []).filter((match) => {
-      const eventRef = typeof match.event === 'object' ? (match.event as EventRecord | null) : null;
+      const matchWithEvent = match as Match & { event?: EventRecord | null };
+      const eventRef = typeof matchWithEvent.event === 'object' ? matchWithEvent.event ?? null : null;
       const eventType = eventRef?.eventType;
-      return eventType !== 'league' && eventType !== 'tournament';
+      return eventType !== 'LEAGUE' && eventType !== 'TOURNAMENT';
     });
 
     const eventEntries: FieldCalendarEntry[] = events.map((evt) => {
@@ -83,7 +84,10 @@ export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange =
     const matchEntries: FieldCalendarEntry[] = matches.map((match) => {
       const start = parseToDate(match.start) ?? new Date();
       const end = ensureEndDate(start, match.end, ONE_HOUR_IN_MINUTES);
-      const eventRef = typeof match.event === 'object' && match.event ? (match.event as EventRecord) : null;
+      const eventRef =
+        typeof (match as Match & { event?: EventRecord | null }).event === 'object'
+          ? ((match as Match & { event?: EventRecord | null }).event ?? null)
+          : null;
       return {
         id: `field-match-${field.$id}-${match.$id}`,
         title: eventRef?.name ? `${eventRef.name} Match` : 'Match',

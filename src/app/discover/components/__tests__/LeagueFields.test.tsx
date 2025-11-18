@@ -9,7 +9,7 @@ const field: Field = {
   location: '',
   lat: 0,
   long: 0,
-  type: 'indoor',
+  type: 'INDOOR',
   fieldNumber: 1,
 };
 

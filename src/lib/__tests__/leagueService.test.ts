@@ -49,7 +49,7 @@ describe('leagueService', () => {
         location: '',
         lat: 0,
         long: 0,
-        type: 'indoor',
+        type: 'INDOOR',
         fieldNumber: 1,
       };
 

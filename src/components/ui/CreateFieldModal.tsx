@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Button, Group, TextInput, NumberInput, Select } from '@mantine/core';
-import type { Field, Organization } from '@/types';
+import type { Field, FieldSurfaceType, Organization } from '@/types';
 import { fieldService } from '@/lib/fieldService';
 
 interface CreateFieldModalProps {
@@ -16,7 +16,7 @@ interface CreateFieldModalProps {
 type FieldFormState = {
   $id?: string;
   name: string;
-  type: string;
+  type: FieldSurfaceType;
   location: string;
   lat: string | number;
   long: string | number;
@@ -27,7 +27,7 @@ type FieldFormState = {
 const createEmptyState = (organization?: Organization): FieldFormState => ({
   $id: undefined,
   name: '',
-  type: 'indoor',
+  type: 'INDOOR',
   location: '',
   lat: '',
   long: '',
@@ -51,7 +51,7 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
       setForm({
         $id: field.$id,
         name: field.name || '',
-        type: field.type || 'indoor',
+        type: (field.type as FieldSurfaceType) || 'INDOOR',
         location: field.location || '',
         lat: typeof field.lat === 'number' ? field.lat : '',
         long: typeof field.long === 'number' ? field.long : '',
@@ -108,9 +108,14 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Select
             label="Type"
-            data={[{ value: 'indoor', label: 'Indoor' }, { value: 'outdoor', label: 'Outdoor' }]}
+            data={[{ value: 'INDOOR', label: 'Indoor' }, { value: 'OUTDOOR', label: 'Outdoor' }]}
             value={form.type}
-            onChange={(value) => setForm(prev => ({ ...prev, type: value || prev.type }))}
+            onChange={(value) =>
+              setForm(prev => ({
+                ...prev,
+                type: (value?.toUpperCase() as FieldSurfaceType) || prev.type,
+              }))
+            }
           />
           <NumberInput
             label="Field Number"

@@ -10,7 +10,8 @@ import { useApp } from '@/app/providers';
 import { deepEqual } from '@/app/utils';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
-import type { Event, EventState, Match, Team, TournamentBracket } from '@/types';
+import type { Event, EventPayload, EventState, Field, Match, TimeSlot, Team, TournamentBracket } from '@/types';
+import { toEventPayload } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
@@ -174,11 +175,12 @@ function EventScheduleContent() {
   });
   const [matchBeingEdited, setMatchBeingEdited] = useState<Match | null>(null);
 
-  const isEditingEvent = isPreview || isEditParam;
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
+  const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED';
+  const isEditingEvent = isPreview || isEditParam || isUnpublished;
   const activeMatches = usingChangeCopies ? changesMatches : matches;
-  const isTournament = activeEvent?.eventType === 'tournament';
+  const isTournament = activeEvent?.eventType === 'TOURNAMENT';
   const isHost = activeEvent?.hostId === user?.$id;
   const entityLabel = isTournament ? 'Tournament' : 'League';
   const canEditMatches = Boolean(isHost && isEditingEvent && !isPreview);
@@ -233,7 +235,7 @@ function EventScheduleContent() {
     setHasUnsavedChanges((prev) => (prev === hasChangeDiffers ? prev : hasChangeDiffers));
   }, [hasChangeDiffers]);
   const publishButtonLabel = (() => {
-    if (!activeEvent || isPreview) return `Publish ${entityLabel}`;
+    if (!activeEvent || isPreview || isUnpublished) return `Publish ${entityLabel}`;
     if (!isEditingEvent) return `Edit ${entityLabel}`;
     return `Save ${entityLabel} Changes`;
   })();
@@ -621,7 +623,7 @@ function EventScheduleContent() {
   const handlePublish = async () => {
     if (!activeEvent || publishing) return;
 
-    if (!isPreview && !isEditingEvent) {
+    if (!isPreview && !isEditingEvent && !isUnpublished) {
       if (!pathname) return;
       const params = new URLSearchParams(searchParams?.toString() ?? '');
       params.set('mode', 'edit');
@@ -630,7 +632,7 @@ function EventScheduleContent() {
       return;
     }
 
-    if (isEditingEvent && !isPreview) {
+    if (isEditingEvent) {
       if (!event) {
         setError(`Unable to save ${entityLabel.toLowerCase()} changes without the original event context.`);
         return;
@@ -639,21 +641,33 @@ function EventScheduleContent() {
       setPublishing(true);
       setError(null);
       setInfoMessage(null);
+      const shouldPublish = isUnpublished && !isPreview;
 
       try {
         const nextEvent = (changesEvent ? cloneValue(changesEvent) : cloneValue(activeEvent)) as Event;
         const nextMatches = cloneValue(activeMatches) as Match[];
         nextEvent.matches = nextMatches;
+        if (Array.isArray(nextEvent.fields)) {
+          nextEvent.fields = nextEvent.fields.map((field) => {
+            const sanitized = { ...field };
+            delete sanitized.rentalSlotIds;
+            return sanitized;
+          });
+        }
+        if ('attendees' in nextEvent) {
+          delete (nextEvent as Partial<Event>).attendees;
+        }
+        if (shouldPublish) {
+          nextEvent.state = 'PUBLISHED' as EventState;
+        }
 
         let updatedEvent = nextEvent;
         if (nextEvent.$id) {
           updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
         }
 
-        const hydratedEvent = { ...updatedEvent, matches: nextMatches } as Event;
-
-        hydrateEvent(hydratedEvent);
-        writeEventToCache(hydratedEvent);
+        hydrateEvent(updatedEvent);
+        writeEventToCache(updatedEvent);
         setHasUnsavedChanges(false);
 
         if (pathname) {
@@ -663,56 +677,14 @@ function EventScheduleContent() {
           router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
         }
 
-        setInfoMessage(`${entityLabel} changes saved.`);
+        setInfoMessage(shouldPublish ? `${entityLabel} published.` : `${entityLabel} changes saved.`);
       } catch (err) {
         console.error(`Failed to save ${entityLabel.toLowerCase()} changes:`, err);
-        setError(`Failed to save ${entityLabel.toLowerCase()} changes.`);
+        setError(shouldPublish ? `Failed to publish ${entityLabel.toLowerCase()}.` : `Failed to save ${entityLabel.toLowerCase()} changes.`);
       } finally {
         setPublishing(false);
       }
       return;
-    }
-
-    setPublishing(true);
-    setInfoMessage(null);
-    try {
-      const sourceEvent = cloneValue(changesEvent ?? activeEvent) as Event;
-      const nextMatches = cloneValue(activeMatches) as Match[];
-      sourceEvent.matches = nextMatches;
-      sourceEvent.state = 'PUBLISHED' as EventState;
-      const previousEventId = activeEvent?.$id;
-      const published = await eventService.createEvent(sourceEvent);
-      const publishedEvent = {
-        ...published,
-        matches: nextMatches,
-        state: (published.state ?? 'PUBLISHED') as EventState,
-      } as Event;
-
-      if (previousEventId && previousEventId !== publishedEvent.$id) {
-        clearEventCache(previousEventId);
-      }
-
-      hydrateEvent(publishedEvent);
-      writeEventToCache(publishedEvent);
-      setHasUnsavedChanges(false);
-
-      if (pathname || publishedEvent.$id) {
-        const params = new URLSearchParams(searchParams?.toString() ?? '');
-        params.delete('mode');
-        params.delete('preview');
-        const query = params.toString();
-        const targetPath = publishedEvent.$id
-          ? `/discover/${publishedEvent.$id}/schedule${query ? `?${query}` : ''}`
-          : `${pathname}${query ? `?${query}` : ''}`;
-        router.replace(targetPath, { scroll: false });
-      }
-
-      setInfoMessage(`${entityLabel} published.`);
-    } catch (err) {
-      console.error(`Failed to publish ${entityLabel.toLowerCase()}:`, err);
-      setError(`Failed to publish ${entityLabel.toLowerCase()}.`);
-    } finally {
-      setPublishing(false);
     }
   };
 

@@ -13,7 +13,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
   const { date, time } = getEventDateTime(event);
 
   const getEventTypeInfo = () => {
-    if (event.eventType === 'tournament') {
+    if (event.eventType === 'TOURNAMENT') {
       return {
         label: 'Tournament',
         bgColor: 'bg-purple-600',
@@ -21,7 +21,7 @@ export default function EventCard({ event, showDistance = false, userLocation, o
       };
     }
 
-    if (event.eventType === 'league') {
+    if (event.eventType === 'LEAGUE') {
       return {
         label: 'League',
         bgColor: 'bg-emerald-600',

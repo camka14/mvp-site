@@ -6,6 +6,7 @@ import type { Field, Organization, TimeSlot } from '@/types';
 import { eventService } from './eventService';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 import { organizationService } from './organizationService';
+import { normalizeEnumValue } from '@/lib/enumUtils';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const FIELDS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!;
@@ -33,16 +34,18 @@ export interface ManageRentalSlotResult {
 class FieldService {
   async createField(data: CreateFieldData): Promise<Field> {
     const rowId = data.$id ?? ID.unique();
+    const normalizedType = normalizeEnumValue(data.type);
 
     const payload: Record<string, unknown> = {
       name: data.name,
-      type: data.type,
+      type: normalizedType ?? data.type,
       location: data.location,
       lat: data.lat,
       long: data.long,
       fieldNumber: data.fieldNumber,
       heading: data.heading,
       inUse: data.inUse,
+      organizationId: data.organization?.$id
     };
 
     const response = await databases.upsertRow({
@@ -131,13 +134,17 @@ class FieldService {
       ? row.rentalSlotIds.map((value: unknown) => String(value))
       : undefined;
 
+    const normalizedType =
+      normalizeEnumValue(row.type) ??
+      (typeof row.type === 'string' ? row.type.toUpperCase() : undefined);
+
     const field: Field = {
       $id: String(row.$id ?? row.id ?? ''),
       name: row.name ?? '',
       location: row.location ?? '',
       lat: Number.isFinite(lat) ? lat : 0,
       long: Number.isFinite(long) ? long : 0,
-      type: row.type ?? '',
+      type: (normalizedType ?? 'UNKNOWN') as Field['type'],
       fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
       heading: Number.isFinite(heading) ? heading : undefined,
       inUse: inUse,

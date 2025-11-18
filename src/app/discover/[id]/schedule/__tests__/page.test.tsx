@@ -94,7 +94,7 @@ const mockMatch: Match = {
     $id: 'field_1',
     name: 'Court A',
     fieldNumber: 1,
-    type: 'indoor',
+    type: 'INDOOR',
     location: 'Sports Center',
     lat: 0,
     long: 0,
@@ -130,7 +130,7 @@ describe('League schedule page', () => {
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
       $id: 'event_1',
       name: 'Summer League',
-      eventType: 'league',
+      eventType: 'LEAGUE',
       state: 'PUBLISHED',
       status: 'draft',
       start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
@@ -142,7 +142,7 @@ describe('League schedule page', () => {
         buildTeam({ $id: 'team_b', name: 'Diggers' }),
       ],
       fields: [
-        { $id: 'field_1', name: 'Court A', fieldNumber: 1, type: 'indoor', location: '', lat: 0, long: 0 },
+        { $id: 'field_1', name: 'Court A', fieldNumber: 1, type: 'INDOOR', location: '', lat: 0, long: 0 },
       ],
       timeSlots: [],
       matches: [mockMatch],
@@ -195,7 +195,7 @@ describe('League schedule page', () => {
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
       $id: 'event_1',
       name: 'Summer League',
-      eventType: 'league',
+      eventType: 'LEAGUE',
       state: 'UNPUBLISHED',
       status: 'draft',
       start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
@@ -203,7 +203,7 @@ describe('League schedule page', () => {
       location: 'Sports Center',
       hostId: 'host_1',
       fields: [
-        { $id: 'field_1', name: 'Court A', fieldNumber: 1, type: 'indoor', location: '', lat: 0, long: 0 },
+        { $id: 'field_1', name: 'Court A', fieldNumber: 1, type: 'INDOOR', location: '', lat: 0, long: 0 },
       ],
       matches: [mockMatch],
       timeSlots: [],
@@ -231,5 +231,95 @@ describe('League schedule page', () => {
     expect(leagueService.deleteWeeklySchedulesForEvent).not.toHaveBeenCalled();
     expect(eventService.getEventWithRelations).toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+
+  it('publishes an unpublished league by updating state and related data', async () => {
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
+      $id: 'event_unpublished',
+      name: 'Draft League',
+      eventType: 'LEAGUE',
+      state: 'UNPUBLISHED',
+      status: 'draft',
+      attendees: 12,
+      start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+      end: formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000)),
+      location: 'Sports Center',
+      hostId: 'host_1',
+      teams: [
+        buildTeam({ $id: 'team_a', name: 'Aces' }),
+        buildTeam({ $id: 'team_b', name: 'Diggers' }),
+      ],
+      fields: [
+        {
+          $id: 'field_1',
+          name: 'Court A',
+          fieldNumber: 1,
+          type: 'INDOOR',
+          location: '',
+          lat: 0,
+          long: 0,
+          rentalSlotIds: ['rental_1'],
+          rentalSlots: [
+            {
+              $id: 'rental_1',
+              dayOfWeek: 0,
+              startTimeMinutes: 480,
+              endTimeMinutes: 540,
+              repeating: true,
+            },
+          ],
+        },
+      ],
+      matches: [
+        {
+          ...mockMatch,
+          $id: 'match_publish',
+          field: {
+            $id: 'field_1',
+            name: 'Court A',
+            fieldNumber: 1,
+            type: 'INDOOR',
+            location: '',
+            lat: 0,
+            long: 0,
+          } as Field,
+        },
+      ],
+      timeSlots: [
+        {
+          $id: 'slot_1',
+          dayOfWeek: 1,
+          startTimeMinutes: 600,
+          endTimeMinutes: 660,
+          repeating: true,
+          event: 'event_unpublished',
+        },
+      ],
+    });
+
+    (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
+      Promise.resolve({
+        ...payload,
+        $id: 'event_unpublished',
+        state: 'PUBLISHED',
+      }),
+    );
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const publishButton = await screen.findByRole('button', { name: /publish league/i });
+    fireEvent.click(publishButton);
+
+    await waitFor(() => {
+      expect(eventService.updateEvent).toHaveBeenCalledTimes(1);
+    });
+
+    const [, payload] = (eventService.updateEvent as jest.Mock).mock.calls[0];
+    expect(payload.state).toBe('PUBLISHED');
+    expect(payload.matches).toHaveLength(1);
+    expect(payload.timeSlots).toHaveLength(1);
+    expect(payload.fields?.[0]?.rentalSlotIds).toBeUndefined();
+    expect(payload).not.toHaveProperty('attendees');
+    expect(eventService.createEvent).not.toHaveBeenCalled();
   });
 });

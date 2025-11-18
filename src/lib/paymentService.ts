@@ -16,27 +16,27 @@ type EventManagerCommand = 'create_purchase_intent' | 'addParticipant' | 'remove
 interface EventManagerPayload {
   task: EventManagerTask;
   command: EventManagerCommand | string;
-  event?: Event;
-  timeSlot?: TimeSlot;
-  user?: UserData;
-  team?: Team;
-  organization?: PaymentOrganizationContext;
-  organizationEmail?: string;
-  refreshUrl?: string;
-  returnUrl?: string;
+  event?: Event | null;
+  timeSlot?: TimeSlot | null;
+  user?: UserData | null;
+  team?: Team | null;
+  organization?: PaymentOrganizationContext | null;
+  organizationEmail?: string | null;
+  refreshUrl?: string | null;
+  returnUrl?: string | null;
 }
 
 interface BuildEventManagerPayloadOptions {
   task: EventManagerTask;
   command: EventManagerCommand | string;
-  user?: UserData;
-  event?: Event;
-  team?: Team;
-  timeSlot?: TimeSlot;
-  organization?: PaymentOrganizationContext;
-  organizationEmail?: string;
-  refreshUrl?: string;
-  returnUrl?: string;
+  user?: UserData | null;
+  event?: Event | null;
+  team?: Team | null;
+  timeSlot?: TimeSlot | null;
+  organization?: PaymentOrganizationContext | null;
+  organizationEmail?: string | null;
+  refreshUrl?: string | null;
+  returnUrl?: string | null;
 }
 
 const buildEventManagerPayload = ({
@@ -58,14 +58,14 @@ const buildEventManagerPayload = ({
   return {
     task,
     command,
-    user,
-    event,
-    team,
-    timeSlot,
-    organization,
-    organizationEmail,
-    refreshUrl,
-    returnUrl,
+    user: user ?? null,
+    event: event ?? null,
+    team: team ?? null,
+    timeSlot: timeSlot ?? null,
+    organization: organization ?? null,
+    organizationEmail: organizationEmail ?? null,
+    refreshUrl: refreshUrl ?? null,
+    returnUrl: returnUrl ?? null,
   };
 };
 

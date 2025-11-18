@@ -168,7 +168,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
     };
 
     const handleBracketClick = () => {
-        if (currentEvent.eventType === 'tournament') {
+        if (currentEvent.eventType === 'TOURNAMENT') {
             handleViewSchedule('bracket');
         }
     };
@@ -366,7 +366,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                             </Paper>
 
                             {/* Tournament Details */}
-                            {currentEvent.eventType === 'tournament' && (
+                            {currentEvent.eventType === 'TOURNAMENT' && (
                                 <div>
                                     <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Format</h3>
                                     <Paper withBorder p="md" radius="md" className="space-y-2">
@@ -384,7 +384,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                             )}
 
                             {/* League Playoff Details */}
-                            {currentEvent.eventType === 'league' && currentEvent.includePlayoffs && (
+                            {currentEvent.eventType === 'LEAGUE' && currentEvent.includePlayoffs && (
                                 <div>
                                     <h3 className="text-lg font-semibold text-gray-900 mb-2">Playoff Format</h3>
                                     <Paper withBorder p="md" radius="md" className="space-y-2">
@@ -685,7 +685,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                 )}
 
                                                 {/* View Schedule / Bracket Buttons */}
-                                                {(currentEvent.eventType === 'league' || currentEvent.eventType === 'tournament') && (
+                                                {(currentEvent.eventType === 'LEAGUE' || currentEvent.eventType === 'TOURNAMENT') && (
                                                     <Button
                                                         fullWidth
                                                         variant="light"
@@ -696,7 +696,7 @@ export default function EventDetailModal({ event, isOpen, onClose }: EventDetail
                                                     </Button>
                                                 )}
 
-                                                {currentEvent.eventType === 'tournament' &&
+                                                {currentEvent.eventType === 'TOURNAMENT' &&
                                                     <button
                                                         onClick={handleBracketClick}
                                                         className="w-full mt-2 py-2 px-4 rounded-lg bg-green-600 text-white hover:bg-green-700"

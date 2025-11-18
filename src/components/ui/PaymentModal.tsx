@@ -42,7 +42,7 @@ export default function PaymentModal({
 
     const eventName = event.name ?? 'Event';
     const eventLocation = event.location ?? '';
-    const eventTypeLabel = event.eventType ?? 'pickup';
+    const eventTypeLabel = event.eventType ?? 'PICKUP';
 
     // Early return if modal shouldn't be shown
     if (!isOpen || !paymentData) return null;

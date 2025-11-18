@@ -1,5 +1,5 @@
 import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 
 
-export function buildPayload(data: Record<string, any>) {
+export function buildPayload<T>(data: Record<string, any>, omitKeys: string[] = []): Record<string, unknown> {
   const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
 
@@ -40,6 +40,9 @@ export function buildPayload(data: Record<string, any>) {
 
   const payload: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
+    if (omitKeys.includes(key)) {
+      continue;
+    }
     const sanitized = sanitizeValue(value);
     if (sanitized !== undefined) {
       payload[key] = sanitized;

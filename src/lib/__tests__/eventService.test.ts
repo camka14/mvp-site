@@ -153,7 +153,10 @@ describe('eventService', () => {
 
   describe('updateEvent', () => {
     it('normalizes coordinate payloads', async () => {
-      appwriteModuleMock.databases.updateRow.mockResolvedValue({
+      appwriteModuleMock.functions.createExecution.mockResolvedValue({
+        responseBody: JSON.stringify({}),
+      });
+      appwriteModuleMock.databases.getRow.mockResolvedValueOnce({
         $id: 'evt_1',
         sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         teamSignup: false,
@@ -164,14 +167,16 @@ describe('eventService', () => {
 
       await eventService.updateEvent('evt_1', { coordinates: [-105, 40] });
 
-      expect(appwriteModuleMock.databases.updateRow).toHaveBeenCalledWith({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: 'evt_1',
-        data: expect.objectContaining({
-          coordinates: [-105, 40],
+      expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID,
+          async: false,
         }),
-      });
+      );
+
+      const executionCall = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
+      const payload = JSON.parse(executionCall.body);
+      expect(payload.event.coordinates).toEqual([-105, 40]);
     });
   });
 

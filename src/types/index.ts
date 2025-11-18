@@ -1,5 +1,6 @@
 import { storage } from "@/app/appwrite";
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { normalizeEnumValue } from '@/lib/enumUtils';
 
 // User types
 export interface UserAccount {
@@ -230,6 +231,7 @@ export interface UserData {
   hasStripeAccount?: boolean;
   uploadedImages: string[];
   profileImageId?: string;
+  stripeAccountId?: string | null;
   $createdAt?: string;
   $updatedAt?: string;
 
@@ -245,7 +247,7 @@ export interface Field {
   location: string;
   lat: number;
   long: number;
-  type: string;
+  type: FieldSurfaceType;
   fieldNumber: number;
   heading?: number;
   inUse?: boolean;
@@ -258,6 +260,9 @@ export interface Field {
   organization?: Organization;
   rentalSlots?: TimeSlot[];
 }
+
+export type FieldSurfaceType = Uppercase<string>;
+export type EventType = 'PICKUP' | 'TOURNAMENT' | 'LEAGUE';
 
 type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'rentalSlots' | 'rentalSlotIds';
 
@@ -309,7 +314,7 @@ export interface Event {
   end: string;
   location: string;
   coordinates: [number, number];
-  fieldType: string;
+  fieldType: FieldSurfaceType;
   price: number;
   rating?: number;
   imageId: string;
@@ -334,7 +339,7 @@ export interface Event {
   seedColor: number;
   $createdAt: string;
   $updatedAt: string;
-  eventType: 'pickup' | 'tournament' | 'league';
+  eventType: EventType;
   sport: Sport;
   sportId?: string;
   leagueScoringConfigId?: string | null;
@@ -376,16 +381,13 @@ export interface Event {
   attendees: number;
 }
 
-export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization'> & {
+export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees'> & {
   fields?: FieldPayload[];
   matches?: MatchPayload[];
   teams?: TeamPayload[];
   timeSlots?: TimeSlotPayload[];
   organization?: string | null;
-  organizationId?: string | null;
 };
-
-
 
 export interface TournamentBracket {
   tournament: Event;
@@ -577,6 +579,13 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
     ...base,
   };
 
+  if (typeof payload.type === 'string') {
+    const normalizedType = normalizeEnumValue(payload.type);
+    if (normalizedType) {
+      payload.type = normalizedType as FieldSurfaceType;
+    }
+  }
+
   const divisionIds = Array.isArray(divisions)
     ? uniqueIds(
         divisions.map((divisionEntry) =>
@@ -618,14 +627,6 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
   const organizationId = extractId(organization);
   if (organizationId) {
     payload.organizationId = organizationId;
-  }
-
-  const rentalIds = Array.isArray(rentalSlots)
-    ? rentalSlots.map((slot) => extractId(slot)).filter((id): id is string => Boolean(id))
-    : [];
-  const combinedRentalIds = uniqueIds([...(rentalSlotIds ?? []), ...rentalIds]);
-  if (combinedRentalIds.length) {
-    payload.rentalSlotIds = combinedRentalIds;
   }
 
   return payload;
@@ -686,6 +687,16 @@ export function toEventPayload(event: Event): EventPayload {
   const payload: EventPayload = {
     ...rest,
   };
+
+  const normalizedEventType = normalizeEnumValue(payload.eventType);
+  if (normalizedEventType) {
+    payload.eventType = normalizedEventType as EventType;
+  }
+
+  const normalizedFieldType = normalizeEnumValue(payload.fieldType);
+  if (normalizedFieldType) {
+    payload.fieldType = normalizedFieldType as FieldSurfaceType;
+  }
 
   if (resolvedOrganizationId) {
     payload.organization = resolvedOrganizationId;

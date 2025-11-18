@@ -15,7 +15,7 @@ class TournamentService {
             if (!tournament) {
                 throw new Error('Tournament not found');
             }
-            if (tournament.eventType !== 'tournament') {
+            if (tournament.eventType !== 'TOURNAMENT') {
                 throw new Error('Event is not a tournament');
             }
 
@@ -38,7 +38,7 @@ class TournamentService {
             });
 
             return {
-                tournament: tournament as Event & { eventType: 'tournament' },
+                tournament: tournament as Event & { eventType: 'TOURNAMENT' },
                 matches,
                 teams,
                 isHost: tournament.hostId === currentUser?.$id,
@@ -156,7 +156,6 @@ class TournamentService {
             return {
                 $id: response.$id,
                 matchId: response.matchNumber ?? response.matchId,
-                event: undefined,
                 field: undefined,
                 start: response.start,
                 end: response.end,

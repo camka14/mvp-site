@@ -88,7 +88,7 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
                 }) ?? null;
             }
 
-            await paymentService.leaveEvent(registeredTeam ? undefined : user, event, registeredTeam ?? null);
+            await paymentService.leaveEvent(registeredTeam ? undefined : user, event, registeredTeam ?? undefined);
 
             onRefundSuccess();
         } catch (e) {

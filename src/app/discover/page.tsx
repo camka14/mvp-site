@@ -77,9 +77,9 @@ function DiscoverPageContent() {
   const [eventOffset, setEventOffset] = useState(0);
   const [eventsError, setEventsError] = useState<string | null>(null);
 
-  const EVENT_TYPE_OPTIONS = useMemo(() => ['pickup', 'tournament', 'league'] as const, []);
+  const EVENT_TYPE_OPTIONS = useMemo(() => ['PICKUP', 'TOURNAMENT', 'LEAGUE'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
-    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['pickup', 'tournament', 'league']);
+    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['PICKUP', 'TOURNAMENT', 'LEAGUE']);
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
   const [maxDistance, setMaxDistance] = useState<number>(50);
   const searchQuery = searchParams.get('q') || '';
@@ -205,9 +205,7 @@ function DiscoverPageContent() {
       const filters = buildEventFilters();
       const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, 0);
 
-      let result = page;
-
-      setEvents(result);
+      setEvents(page);
       setEventOffset(page.length);
       setHasMoreEvents(page.length === EVENTS_LIMIT);
     } catch (error) {
@@ -561,9 +559,9 @@ function EventsTabContent(props: {
   location: { lat: number; lng: number } | null;
   searchTerm: string;
   setSearchTerm: (value: string) => void;
-  selectedEventTypes: ('pickup' | 'tournament' | 'league')[];
-  setSelectedEventTypes: (value: ('pickup' | 'tournament' | 'league')[]) => void;
-  eventTypeOptions: readonly ('pickup' | 'tournament' | 'league')[];
+  selectedEventTypes: Event['eventType'][];
+  setSelectedEventTypes: (value: Event['eventType'][]) => void;
+  eventTypeOptions: readonly Event['eventType'][];
   selectedSports: string[];
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
   maxDistance: number;

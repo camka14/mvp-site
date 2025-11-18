@@ -1,10 +1,12 @@
 import { databases, functions } from '@/app/appwrite';
 import {
     Event,
+    EventType,
+    Field,
+    FieldSurfaceType,
     LocationCoordinates,
     Team,
     UserData,
-    Field,
     Match,
     LeagueConfig,
     LeagueScoringConfig,
@@ -15,12 +17,14 @@ import {
     Organization,
     getTeamAvatarUrl,
     getTeamWinRate,
+    toEventPayload,
 } from '@/types';
 import { ID, Query } from 'appwrite';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 import { sportsService } from '@/lib/sportsService';
 import { userService } from '@/lib/userService';
 import { buildPayload } from './utils';
+import { normalizeEnumValue } from '@/lib/enumUtils';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
@@ -66,10 +70,10 @@ export interface EventFilters {
     dateFrom?: string;
     dateTo?: string;
     priceMax?: number;
-    eventTypes?: ('pickup' | 'tournament' | 'league')[];
+    eventTypes?: EventType[];
     sports?: string[];
     divisions?: string[];
-    fieldType?: string;
+    fieldType?: FieldSurfaceType;
 }
 
 class EventService {
@@ -149,21 +153,32 @@ class EventService {
 
     async updateEvent(eventId: string, eventData: Partial<Event>): Promise<Event> {
         try {
-            const response = await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                rowId: eventId,
-                data: eventData
-            });
+            const payload = toEventPayload(eventData as Event)
+            const response = await functions.createExecution({
+                functionId: EVENT_MANAGER_FUNCTION_ID,
+                body: JSON.stringify({
+                    "task": "editEvent",
+                    "command": "updateEvent",
+                    "event": payload
+                }),
+                async: false
+            })
+
+            if (response.errors) {
+                throw Error("Failed to Update: " + response.errors)
+            }
+
+            const body = JSON.parse(response.responseBody)
+            if (body.error) {
+                throw Error("Failed to Update: " + body.error)
+            }
 
             const hydrated = await this.getEvent(eventId);
             if (hydrated) {
                 return hydrated;
             }
 
-            await this.ensureSportRelationship(response);
-            await this.ensureLeagueScoringConfig(response);
-            return this.mapRowToEvent(response);
+            throw new Error('Failed to hydrate updated event');
         } catch (error) {
             console.error('Failed to update event:', error);
             throw error;
@@ -172,11 +187,11 @@ class EventService {
 
     async deleteEvent(event: Event): Promise<boolean> {
         try {
-            const payload = buildPayload(event);
+            const payload = buildPayload(this.withNormalizedEventEnums(event));
             const response = await functions.createExecution({
-                    functionId: EVENT_MANAGER_FUNCTION_ID,
-                    body: JSON.stringify({ task: "editEvent", command: 'deleteEvent', event: payload }),
-                    async: false,
+                functionId: EVENT_MANAGER_FUNCTION_ID,
+                body: JSON.stringify({ task: "editEvent", command: 'deleteEvent', event: payload }),
+                async: false,
             })
             if (response.errors && response.errors.length > 0) {
                 console.error('Event Manager function returned errors:', response.errors);
@@ -232,7 +247,7 @@ class EventService {
 
     async createEvent(newEvent: Partial<Event>): Promise<Event> {
         try {
-            const payload = buildPayload(newEvent);
+            const payload = buildPayload(this.withNormalizedEventEnums(newEvent));
             const response = await databases.createRow({
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
@@ -256,6 +271,16 @@ class EventService {
         }
     }
 
+
+    private withNormalizedEventEnums<T extends Partial<Event>>(event: T): T {
+        const normalizedEventType = normalizeEnumValue(event.eventType);
+        const normalizedFieldType = normalizeEnumValue(event.fieldType);
+        return {
+            ...event,
+            ...(normalizedEventType ? { eventType: normalizedEventType as Event['eventType'] } : {}),
+            ...(normalizedFieldType ? { fieldType: normalizedFieldType as FieldSurfaceType } : {}),
+        };
+    }
 
     private normalizeEventState(value: unknown): EventState {
         if (typeof value === 'string') {
@@ -301,23 +326,75 @@ class EventService {
     }
 
     private mapRowToEvent(row: any): Event {
-        const restTime =
-            typeof row.restTimeMinutes === 'number'
-                ? row.restTimeMinutes
-                : row.restTimeMinutes !== undefined && row.restTimeMinutes !== null
-                    ? Number(row.restTimeMinutes)
-                    : undefined;
         const state = this.normalizeEventState(row.state);
         const organization = row.organization ?? row.organizationId;
+        const normalizedFieldType =
+            normalizeEnumValue(row.fieldType) ??
+            (typeof row.fieldType === 'string' ? row.fieldType.toUpperCase() : undefined);
+        const normalizedEventType =
+            normalizeEnumValue(row.eventType) ??
+            (typeof row.eventType === 'string' ? row.eventType.toUpperCase() : undefined);
 
         return {
-            ...row,
+            $id: row.$id,
+            name: row.name,
+            description: row.description,
+            start: row.start,
+            end: row.end,
+            location: row.location,
+            coordinates: row.coordinates,
+            fieldType: (normalizedFieldType ?? 'UNKNOWN') as FieldSurfaceType,
+            price: row.price,
+            rating: row.rating,
+            imageId: row.imageId,
+            hostId: row.hostId,
+            maxParticipants: row.maxParticipants,
+            teamSizeLimit: row.teamSizeLimit,
+            restTimeMinutes: row.restTimeMinutes,
+            teamSignup: row.teamSignup,
+            singleDivision: row.singleDivision,
+            waitListIds: row.waitListIds,
+            freeAgentIds: row.freeAgentIds,
+            playerIds: row.playerIds,
+            teamIds: row.teamIds,
+            userIds: row.userIds,
+            fieldIds: row.fieldIds,
+            timeSlotIds: row.timeSlotIds,
+            waitList: row.waitList,
+            freeAgents: row.freeAgents,
+            cancellationRefundHours: row.cancellationRefundHours,
+            registrationCutoffHours: row.registrationCutoffHours,
+            seedColor: row.seedColor,
+            $createdAt: row.$createdAt,
+            $updatedAt: row.$updatedAt,
+            eventType: (normalizedEventType ?? 'PICKUP') as EventType,
+            sport: row.sport,
+            sportId: row.sportId,
+            leagueScoringConfigId: row.leagueScoringConfigId,
+            organizationId: row.organizationId,
+            divisions: row.divisions,
+            timeSlots: row.timeSlots,
+            doubleElimination: row.doubleElimination,
+            winnerSetCount: row.winnerSetCount,
+            loserSetCount: row.loserSetCount,
+            winnerBracketPointsToVictory: row.winnerBracketPointsToVictory,
+            loserBracketPointsToVictory: row.loserBracketPointsToVictory,
+            prize: row.prize,
+            fieldCount: row.fieldCount,
+            gamesPerOpponent: row.gamesPerOpponent,
+            includePlayoffs: row.includePlayoffs,
+            playoffTeamCount: row.playoffTeamCount,
+            usesSets: row.usesSets,
+            matchDurationMinutes: row.matchDurationMinutes,
+            setDurationMinutes: row.setDurationMinutes,
+            setsPerMatch: row.setsPerMatch,
+            refType: row.refType,
+            pointsToVictory: row.pointsToVictory,
+
+            // Computed properties
             organization,
             // Computed properties
             attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
-            restTimeMinutes: Number.isFinite(restTime) ? restTime : undefined,
-            // Ensure divisions is always an array
-            divisions: Array.isArray(row.divisions) ? row.divisions : [],
             status: row.status as EventStatus | undefined,
             state,
             leagueConfig: this.buildLeagueConfig(row),
@@ -542,8 +619,8 @@ class EventService {
             typeof row.teamSize === 'number'
                 ? row.teamSize
                 : Number.isFinite(Number(row.teamSize))
-                ? Number(row.teamSize)
-                : playerIds.length;
+                    ? Number(row.teamSize)
+                    : playerIds.length;
         const wins = typeof row.wins === 'number' ? row.wins : Number(row.wins ?? 0);
         const losses = typeof row.losses === 'number' ? row.losses : Number(row.losses ?? 0);
         const seed = typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0);
@@ -568,8 +645,8 @@ class EventService {
                 typeof row.captainId === 'string'
                     ? row.captainId
                     : row.captain && typeof row.captain === 'object'
-                    ? (row.captain as { $id?: string }).$id ?? undefined
-                    : undefined,
+                        ? (row.captain as { $id?: string }).$id ?? undefined
+                        : undefined,
             pending,
             teamSize,
             profileImageId: row.profileImage || row.profileImageId || row.profileImageID,
@@ -841,8 +918,8 @@ class EventService {
             typeof row?.leagueScoringConfig === 'string'
                 ? row.leagueScoringConfig
                 : typeof row?.leagueScoringConfigId === 'string'
-                ? row.leagueScoringConfigId
-                : undefined;
+                    ? row.leagueScoringConfigId
+                    : undefined;
 
         if (!configId) {
             row.leagueScoringConfig = null;
@@ -870,44 +947,44 @@ class EventService {
             typeof input.eventId === 'string'
                 ? input.eventId
                 : input.event && typeof input.event === 'object' && '$id' in input.event
-                ? (input.event as { $id?: string }).$id ?? undefined
-                : undefined;
+                    ? (input.event as { $id?: string }).$id ?? undefined
+                    : undefined;
 
         const fieldId =
             typeof input.fieldId === 'string'
                 ? input.fieldId
                 : typeof input.field === 'string'
-                ? input.field
-                : input.field && typeof input.field === 'object' && '$id' in input.field
-                ? (input.field as { $id?: string }).$id ?? undefined
-                : undefined;
+                    ? input.field
+                    : input.field && typeof input.field === 'object' && '$id' in input.field
+                        ? (input.field as { $id?: string }).$id ?? undefined
+                        : undefined;
 
         const team1Id =
             typeof input.team1Id === 'string'
                 ? input.team1Id
                 : typeof input.team1 === 'string'
-                ? input.team1
-                : input.team1 && typeof input.team1 === 'object' && '$id' in input.team1
-                ? (input.team1 as { $id?: string }).$id ?? undefined
-                : undefined;
+                    ? input.team1
+                    : input.team1 && typeof input.team1 === 'object' && '$id' in input.team1
+                        ? (input.team1 as { $id?: string }).$id ?? undefined
+                        : undefined;
 
         const team2Id =
             typeof input.team2Id === 'string'
                 ? input.team2Id
                 : typeof input.team2 === 'string'
-                ? input.team2
-                : input.team2 && typeof input.team2 === 'object' && '$id' in input.team2
-                ? (input.team2 as { $id?: string }).$id ?? undefined
-                : undefined;
+                    ? input.team2
+                    : input.team2 && typeof input.team2 === 'object' && '$id' in input.team2
+                        ? (input.team2 as { $id?: string }).$id ?? undefined
+                        : undefined;
 
         const refereeId =
             typeof input.refereeId === 'string'
                 ? input.refereeId
                 : typeof input.referee === 'string'
-                ? input.referee
-                : input.referee && typeof input.referee === 'object' && '$id' in input.referee
-                ? (input.referee as { $id?: string }).$id ?? undefined
-                : undefined;
+                    ? input.referee
+                    : input.referee && typeof input.referee === 'object' && '$id' in input.referee
+                        ? (input.referee as { $id?: string }).$id ?? undefined
+                        : undefined;
 
         const match: Match = {
             $id: (input?.$id ?? input?.id) as string,
@@ -1207,16 +1284,20 @@ class EventService {
             queries.push(Query.limit(limit));
             if (offset > 0) queries.push(Query.offset(offset));
 
-            if (filters.eventTypes && filters.eventTypes.length > 0 && filters.eventTypes.length < 3) {
-                queries.push(Query.equal('eventType', filters.eventTypes));
+            const normalizedEventTypes = filters.eventTypes
+                ?.map((type) => normalizeEnumValue(type))
+                .filter((type): type is string => Boolean(type));
+            if (normalizedEventTypes && normalizedEventTypes.length > 0 && normalizedEventTypes.length < 3) {
+                queries.push(Query.equal('eventType', normalizedEventTypes));
             }
 
             if (filters.divisions && filters.divisions.length > 0) {
                 queries.push(Query.contains('divisions', filters.divisions));
             }
 
-            if (filters.fieldType) {
-                queries.push(Query.equal('fieldType', filters.fieldType));
+            const normalizedFieldType = normalizeEnumValue(filters.fieldType);
+            if (normalizedFieldType) {
+                queries.push(Query.equal('fieldType', normalizedFieldType));
             }
 
             if (filters.dateFrom) {

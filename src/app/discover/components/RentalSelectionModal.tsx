@@ -521,12 +521,18 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
               hasStripeAccount: organization.hasStripeAccount ?? false,
             }
           : null;
-        const paymentIntent = await paymentService.createPaymentIntent(user, null, null, slot, minimalOrg ?? undefined);
+        const paymentIntent = await paymentService.createPaymentIntent(
+          user,
+          undefined,
+          undefined,
+          slot,
+          minimalOrg ?? undefined,
+        );
         const eventSummary: PaymentEventSummary = {
           ...draftEvent,
           name: draftEvent.name ?? 'Rental Event',
           location: draftEvent.location ?? organization?.location ?? selectedField?.name ?? '',
-          eventType: (draftEvent.eventType as Event['eventType']) ?? 'pickup',
+          eventType: (draftEvent.eventType as Event['eventType']) ?? 'PICKUP',
           price: typeof draftEvent.price === 'number' ? draftEvent.price : 0,
         };
         if (draftEvent.imageId) {
