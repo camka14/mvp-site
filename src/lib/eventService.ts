@@ -398,6 +398,7 @@ class EventService {
             status: row.status as EventStatus | undefined,
             state,
             leagueConfig: this.buildLeagueConfig(row),
+            leagueScoringConfig: row.leagueScoringConfig
         };
     }
 

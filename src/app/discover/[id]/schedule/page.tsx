@@ -306,16 +306,15 @@ function EventScheduleContent() {
   }, [authLoading, eventId, isAuthenticated, isGuest, isPreview, loadSchedule, router]);
 
   const playoffMatches = useMemo(
-    () => activeMatches.filter((match) => {
-      if (typeof match.matchId === 'number' && match.matchId > 0) return true;
-      return Boolean(
-        match.losersBracket ||
-        match.previousLeftId ||
-        match.previousRightId ||
-        match.winnerNextMatchId ||
-        match.loserNextMatchId
-      );
-    }),
+    () =>
+      activeMatches.filter((match) =>
+        Boolean(
+          match.previousLeftId ||
+            match.previousRightId ||
+            match.winnerNextMatchId ||
+            match.loserNextMatchId,
+        ),
+      ),
     [activeMatches],
   );
 
