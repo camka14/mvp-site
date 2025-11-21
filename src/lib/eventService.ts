@@ -1350,7 +1350,7 @@ class EventService {
         return (Number.isNaN(hours) ? 0 : hours) * 60 + (Number.isNaN(minutes) ? 0 : minutes);
     }
 
-    // Waitlist and free-agent helpers used by EventDetailModal
+    // Waitlist and free-agent helpers used by EventDetailSheet
     async addToWaitlist(eventId: string, participantId: string): Promise<Event> {
         const existing = await this.getEvent(eventId);
         if (!existing) throw new Error('Event not found');

@@ -45,7 +45,7 @@ Key files to touch:
 - src/lib/tournamentService.ts updates matches and computes permissions.
 - UI: src/app/discover/[id]/schedule/page.tsx, src/app/discover/[id]/schedule/components/MatchEditModal.tsx, src/app/discover/[id]/schedule/components/MatchCard.tsx.
 - UI: src/app/organizations/[id]/page.tsx for org detail tabs and overview.
-- Event creation: src/app/discover/components/EventCreationModal.tsx (and any helper components) to seed refereeIds and let creators edit them.
+- Event creation: src/app/discover/components/EventCreationSheet.tsx (and any helper components) to seed refereeIds and let creators edit them.
 - Player search pattern to reuse: src/app/teams/components/InvitePlayersModal.tsx.
 
 Assumptions:
@@ -54,7 +54,7 @@ Assumptions:
 
 ## Plan of Work
 
-Update data models and services first so UI can rely on hydrated refs. Extend Match to hold both `referee` (UserData) and `teamReferee` (Team) with corresponding IDs; extend Event with `refereeIds`, `referees`, and `doTeamsRef`; extend Organization with `refIds`/`referees`. Adjust eventService mapping/hydration to resolve referee users and team referees on matches, and propagate the correct IDs in payloads. Update tournamentService permission logic and match updates to write the right fields. Refresh schedule UI to display both refs: MatchCard shows user and team refs when present; MatchEditModal allows selecting either user ref (from event.referees/search) or team ref depending on `doTeamsRef`, and persists to `refereeId` vs `teamRefereeId`. In the schedule page, ensure event data pulls referees and caches correctly. Add an Organization “Referees” tab: list current refs with avatars/names, allow search/add (reuse player search) and remove, persist updates via organizationService, and surface a summary list on the overview tab. In EventCreationModal, fetch organization referees when an org is selected, prefill `refereeIds` with that list for new events, allow adding/removing refs with the search UX, and include `doTeamsRef` toggle plus refereeIds in the submit payload. Keep new UI responsive and consistent with Mantine styles.
+Update data models and services first so UI can rely on hydrated refs. Extend Match to hold both `referee` (UserData) and `teamReferee` (Team) with corresponding IDs; extend Event with `refereeIds`, `referees`, and `doTeamsRef`; extend Organization with `refIds`/`referees`. Adjust eventService mapping/hydration to resolve referee users and team referees on matches, and propagate the correct IDs in payloads. Update tournamentService permission logic and match updates to write the right fields. Refresh schedule UI to display both refs: MatchCard shows user and team refs when present; MatchEditModal allows selecting either user ref (from event.referees/search) or team ref depending on `doTeamsRef`, and persists to `refereeId` vs `teamRefereeId`. In the schedule page, ensure event data pulls referees and caches correctly. Add an Organization “Referees” tab: list current refs with avatars/names, allow search/add (reuse player search) and remove, persist updates via organizationService, and surface a summary list on the overview tab. In EventCreationSheet, fetch organization referees when an org is selected, prefill `refereeIds` with that list for new events, allow adding/removing refs with the search UX, and include `doTeamsRef` toggle plus refereeIds in the submit payload. Keep new UI responsive and consistent with Mantine styles.
 
 ## Concrete Steps
 
@@ -72,7 +72,7 @@ Work in /home/camka/MVP/mvp-site.
    - Extend src/app/organizations/[id]/page.tsx with a “Referees” tab showing current refs, search/add via userService.searchUsers, and remove actions (persisting back to organizationService).
    - Show a summary of current referees on the overview tab.
 4) Event creation integration:
-   - In src/app/discover/components/EventCreationModal.tsx, when an organization is selected, preload its referees into event form state, allow editing (list + search/add/remove), include refereeIds and doTeamsRef toggle in validation and submit payload, and surface refs in preview/hydration paths.
+   - In src/app/discover/components/EventCreationSheet.tsx, when an organization is selected, preload its referees into event form state, allow editing (list + search/add/remove), include refereeIds and doTeamsRef toggle in validation and submit payload, and surface refs in preview/hydration paths.
 5) Validation:
    - Run targeted type check if feasible (e.g., npm run lint or tsc) and jest tests if time permits; at minimum ensure build/type safety for touched areas.
 

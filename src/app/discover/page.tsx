@@ -27,8 +27,8 @@ import Loading from '@/components/ui/Loading';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import RentalSelectionModal from '@/app/discover/components/RentalSelectionModal';
-import EventDetailModal from './components/EventDetailModal';
-import EventCreationModal from './components/EventCreationModal';
+import EventDetailSheet from './components/EventDetailSheet';
+import EventCreationSheet from './components/EventCreationSheet';
 import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
@@ -86,8 +86,8 @@ function DiscoverPageContent() {
   const [searchTerm, setSearchTerm] = useState(searchQuery);
   const debouncedSearch = useDebounce(searchTerm, 500);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [showEventModal, setShowEventModal] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEventSheet, setShowEventSheet] = useState(false);
+  const [showCreateSheet, setShowCreateSheet] = useState(false);
   const [resumePreviewEvent, setResumePreviewEvent] = useState<Event | null>(null);
   const resumePreviewHandled = useRef(false);
 
@@ -318,7 +318,7 @@ function DiscoverPageContent() {
       setResumePreviewEvent(null);
     }
 
-    setShowCreateModal(true);
+    setShowCreateSheet(true);
   }, [authLoading, user]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -497,9 +497,9 @@ function DiscoverPageContent() {
               eventsError={eventsError}
               onEventClick={(event) => {
                 setSelectedEvent(event);
-                setShowEventModal(true);
+                setShowEventSheet(true);
               }}
-              onCreateEvent={() => setShowCreateModal(true)}
+              onCreateEvent={() => setShowCreateSheet(true)}
             />
           </Tabs.Panel>
 
@@ -520,22 +520,21 @@ function DiscoverPageContent() {
       </Container>
 
       {selectedEvent && (
-        <EventDetailModal
+        <EventDetailSheet
           event={selectedEvent}
-          isOpen={showEventModal}
+          isOpen={showEventSheet}
           onClose={() => {
-            setShowEventModal(false);
-            setSelectedEvent(null);
+            setShowEventSheet(false);
           }}
         />
       )}
 
       {user && (
-        <EventCreationModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
+        <EventCreationSheet
+          isOpen={showCreateSheet}
+          onClose={() => setShowCreateSheet(false)}
           onEventCreated={async () => {
-            setShowCreateModal(false);
+            setShowCreateSheet(false);
             await loadFirstPage();
             return true;
           }}

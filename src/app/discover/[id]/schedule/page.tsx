@@ -70,6 +70,138 @@ type CachedEventEntry = {
   event: Event;
 };
 
+const toId = (value: unknown): string | undefined => {
+  if (!value) return undefined;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && '$id' in (value as any) && typeof (value as any).$id === 'string') {
+    return (value as any).$id;
+  }
+  if (typeof value === 'object' && 'matchId' in (value as any)) {
+    const matchIdValue = (value as any).matchId;
+    if (typeof matchIdValue === 'string') return matchIdValue;
+    if (typeof matchIdValue === 'number') return String(matchIdValue);
+  }
+  return undefined;
+};
+
+const sanitizeMatchForCache = (match: Match): Match => {
+  const {
+    field,
+    team1,
+    team2,
+    division,
+    referee,
+    teamReferee,
+    previousLeftMatch,
+    previousRightMatch,
+    winnerNextMatch,
+    loserNextMatch,
+    ...rest
+  } = match;
+
+  return {
+    ...rest,
+    fieldId: rest.fieldId ?? toId(field),
+    team1Id: rest.team1Id ?? toId(team1),
+    team2Id: rest.team2Id ?? toId(team2),
+    refereeId: rest.refereeId ?? toId(referee),
+    teamRefereeId: rest.teamRefereeId ?? toId(teamReferee),
+    previousLeftId: rest.previousLeftId ?? toId(previousLeftMatch),
+    previousRightId: rest.previousRightId ?? toId(previousRightMatch),
+    winnerNextMatchId: rest.winnerNextMatchId ?? toId(winnerNextMatch),
+    loserNextMatchId: rest.loserNextMatchId ?? toId(loserNextMatch),
+  };
+};
+
+const sanitizeFieldForCache = (field: Field): Field => {
+  const { matches, events, organization, rentalSlots, divisions, ...rest } = field;
+  return {
+    ...rest,
+    divisions: Array.isArray(divisions)
+      ? divisions
+          .map((division) => (typeof division === 'string' ? division : toId(division) ?? division))
+          .filter(Boolean) as string[]
+      : undefined,
+  };
+};
+
+const sanitizeTeamForCache = (team: Team): Team => {
+  const { matches, players, pendingPlayers, captain, ...rest } = team;
+  return {
+    ...rest,
+    players,
+    pendingPlayers,
+    captain,
+  };
+};
+
+const sanitizeTimeSlotsForCache = (slots?: TimeSlot[]) =>
+  Array.isArray(slots)
+    ? slots.map((slot) => {
+        const { event, ...rest } = slot;
+        return rest;
+      })
+    : undefined;
+
+const sanitizeEventForCache = (event: Event): Event => {
+  const clone = cloneValue(event) as Event;
+
+  if (Array.isArray(clone.matches)) {
+    clone.matches = clone.matches.map(sanitizeMatchForCache);
+  }
+
+  if (Array.isArray(clone.fields)) {
+    clone.fields = clone.fields.map(sanitizeFieldForCache);
+  }
+
+  if (Array.isArray(clone.teams)) {
+    clone.teams = clone.teams.map(sanitizeTeamForCache);
+  }
+
+  clone.timeSlots = sanitizeTimeSlotsForCache(clone.timeSlots);
+
+  return clone;
+};
+
+const rehydrateCachedEvent = (cached: Event): Event => {
+  const clone = cloneValue(cached) as Event;
+  const fieldMap = new Map<string, Field>();
+  if (Array.isArray(clone.fields)) {
+    clone.fields.forEach((field) => {
+      if (field?.$id) {
+        fieldMap.set(field.$id, field);
+      }
+    });
+  }
+
+  const teamMap = new Map<string, Team>();
+  if (Array.isArray(clone.teams)) {
+    clone.teams.forEach((team) => {
+      if (team?.$id) {
+        teamMap.set(team.$id, team);
+      }
+    });
+  }
+
+  if (Array.isArray(clone.matches)) {
+    clone.matches = clone.matches.map((match) => {
+      const hydrated = { ...match };
+      if (!hydrated.field && hydrated.fieldId && fieldMap.has(hydrated.fieldId)) {
+        hydrated.field = fieldMap.get(hydrated.fieldId);
+      }
+      if (!hydrated.team1 && hydrated.team1Id && teamMap.has(hydrated.team1Id)) {
+        hydrated.team1 = teamMap.get(hydrated.team1Id);
+      }
+      if (!hydrated.team2 && hydrated.team2Id && teamMap.has(hydrated.team2Id)) {
+        hydrated.team2 = teamMap.get(hydrated.team2Id);
+      }
+      return hydrated;
+    });
+  }
+
+  return clone;
+};
+
 type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
 
 type StandingsRow = {
@@ -111,7 +243,7 @@ const readEventFromCache = (eventId: string): Event | null => {
       return null;
     }
 
-    return parsed.event as Event;
+    return rehydrateCachedEvent(parsed.event as Event);
   } catch (error) {
     console.warn('Failed to read event cache:', error);
     return null;
@@ -126,7 +258,7 @@ const writeEventToCache = (event: Event) => {
   try {
     const payload: CachedEventEntry = {
       timestamp: Date.now(),
-      event,
+      event: sanitizeEventForCache(event),
     };
     window.localStorage.setItem(getEventCacheKey(event.$id), JSON.stringify(payload));
   } catch (error) {
@@ -183,7 +315,14 @@ function EventScheduleContent() {
   const isTournament = activeEvent?.eventType === 'TOURNAMENT';
   const isHost = activeEvent?.hostId === user?.$id;
   const entityLabel = isTournament ? 'Tournament' : 'League';
-  const canEditMatches = Boolean(isHost && isEditingEvent && !isPreview);
+  const canEditMatches = Boolean(isHost && isEditingEvent);
+  const showDateOnMatches = useMemo(() => {
+    if (!activeEvent?.start || !activeEvent?.end) return false;
+    const start = new Date(activeEvent.start);
+    const end = new Date(activeEvent.end);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+    return end.getTime() - start.getTime() > 24 * 60 * 60 * 1000;
+  }, [activeEvent?.start, activeEvent?.end]);
 
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
   useEffect(() => {
@@ -992,6 +1131,7 @@ function EventScheduleContent() {
                     isPreview={isPreview}
                     onMatchClick={canEditMatches ? handleMatchEditRequest : undefined}
                     canEditMatches={canEditMatches}
+                    showDateOnMatches={showDateOnMatches}
                   />
                 ) : (
                   <Paper withBorder radius="md" p="xl" ta="center">

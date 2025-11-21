@@ -50,7 +50,7 @@ export default function PaymentModal({
     // Handle Stripe configuration error
     if (!stripePromise) {
         return (
-            <Modal opened={true} onClose={onClose} title="Configuration Error" centered>
+            <Modal opened={true} onClose={onClose} title="Configuration Error" centered zIndex={1500}>
                 <Alert color="red" variant="light" mb="md">
                     Payment system is not properly configured. Please contact support.
                 </Alert>
@@ -74,7 +74,14 @@ export default function PaymentModal({
     };
 
     return (
-        <Modal opened={isOpen} onClose={() => { onClose(); resetModal(); }} title={showConfirmation ? 'Confirm Registration' : 'Payment'} size="lg" centered>
+        <Modal
+            opened={isOpen}
+            onClose={() => { onClose(); resetModal(); }}
+            title={showConfirmation ? 'Confirm Registration' : 'Payment'}
+            size="lg"
+            centered
+            zIndex={1500}
+        >
                 {/* Error Display */}
                 {error && (
                     <Alert color="red" variant="light" mb="md">{error}</Alert>

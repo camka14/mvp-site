@@ -38,6 +38,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
   title = 'Tournament Settings',
   sport,
 }) => {
+  const comboboxProps = { withinPortal: true, zIndex: 1800 };
   const requiresSets = Boolean(sport?.usePointsPerSetWin);
 
   useEffect(() => {
@@ -138,6 +139,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
               { value: 'single', label: 'Single Elimination' },
               { value: 'double', label: 'Double Elimination' },
             ]}
+            comboboxProps={comboboxProps}
           />
         </Grid.Col>
 
@@ -175,6 +177,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                 })
               }
               data={BEST_OF_OPTIONS}
+              comboboxProps={comboboxProps}
             />
           </Grid.Col>
         )}
@@ -198,6 +201,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                 })
               }
               data={BEST_OF_OPTIONS}
+              comboboxProps={comboboxProps}
             />
           </Grid.Col>
         )}

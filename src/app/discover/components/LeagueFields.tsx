@@ -19,6 +19,8 @@ import { TimeInput } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 
+const DROPDOWN_PROPS = { withinPortal: true, zIndex: 1800 };
+
 const DAYS_OF_WEEK = [
   { value: '0', label: 'Monday' },
   { value: '1', label: 'Tuesday' },
@@ -219,6 +221,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                 { value: '3', label: 'Best of 3' },
                 { value: '5', label: 'Best of 5' },
               ]}
+              comboboxProps={DROPDOWN_PROPS}
             />
             <NumberInput
               label="Set Duration (minutes)"
@@ -324,6 +327,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       placeholder="Select field"
                       data={fieldOptionsForSlot}
                       value={slot.scheduledFieldId}
+                      comboboxProps={DROPDOWN_PROPS}
                       onChange={(value) => {
                         if (!value) {
                           onUpdateSlot(index, { scheduledFieldId: undefined });
@@ -341,26 +345,27 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       error={fieldMissing && !readOnly ? 'Select a field' : undefined}
                     />
 
-                    <MantineSelect
-                      label="Day of Week"
-                      withAsterisk
-                      placeholder="Select day"
-                      data={DAYS_OF_WEEK}
-                      value={typeof slot.dayOfWeek === 'number' ? String(slot.dayOfWeek) : null}
-                      onChange={(value) => onUpdateSlot(index, { dayOfWeek: value ? (Number(value) as LeagueSlotForm['dayOfWeek']) : undefined })}
-                      disabled={readOnly}
-                      error={dayMissing && !readOnly ? 'Select a day' : undefined}
-                    />
+                  <MantineSelect
+                    label="Day of Week"
+                    withAsterisk
+                    placeholder="Select day"
+                    data={DAYS_OF_WEEK}
+                    value={typeof slot.dayOfWeek === 'number' ? String(slot.dayOfWeek) : null}
+                    comboboxProps={DROPDOWN_PROPS}
+                    onChange={(value) => onUpdateSlot(index, { dayOfWeek: value ? (Number(value) as LeagueSlotForm['dayOfWeek']) : undefined })}
+                    disabled={readOnly}
+                    error={dayMissing && !readOnly ? 'Select a day' : undefined}
+                  />
 
                     <TimeInput
-                      label="Start Time"
-                      withAsterisk
-                      value={minutesToTimeString(slot.startTimeMinutes)}
-                      onChange={(event) => onUpdateSlot(index, { startTimeMinutes: parseTimeInput(event.currentTarget.value) })}
-                      withSeconds={false}
-                      disabled={readOnly}
-                      error={startMissing && !readOnly ? 'Select a start time' : undefined}
-                    />
+                    label="Start Time"
+                    withAsterisk
+                    value={minutesToTimeString(slot.startTimeMinutes)}
+                    onChange={(event) => onUpdateSlot(index, { startTimeMinutes: parseTimeInput(event.currentTarget.value) })}
+                    withSeconds={false}
+                    disabled={readOnly}
+                    error={startMissing && !readOnly ? 'Select a start time' : undefined}
+                  />
 
                     <TimeInput
                       label="End Time"

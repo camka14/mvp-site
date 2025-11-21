@@ -12,7 +12,7 @@ import { format, getDay, parse, startOfWeek } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 import type { Match } from '@/types';
-import ScheduleMatchCard from './ScheduleMatchCard';
+import MatchCard from './MatchCard';
 
 interface LeagueCalendarViewProps {
   matches: Match[];
@@ -20,6 +20,7 @@ interface LeagueCalendarViewProps {
   eventEnd?: string;
   onMatchClick?: (match: Match) => void;
   canManage?: boolean;
+  matchCardPaddingY?: string;
 }
 
 const parseDateInput = (value?: string | Date | null): Date | null => {
@@ -113,6 +114,7 @@ export function LeagueCalendarView({
   eventEnd,
   onMatchClick,
   canManage = false,
+  matchCardPaddingY = 'my-2',
 }: LeagueCalendarViewProps) {
   const calendarEvents = useMemo(() => {
     return matches
@@ -231,26 +233,32 @@ export function LeagueCalendarView({
 
   const WeekDayEventComponent = useCallback(
     ({ event }: EventProps<CalendarEvent>) => (
-      <ScheduleMatchCard
+      <MatchCard
         match={event.resource}
         canManage={canManage}
         onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-        className="h-full"
+        className={`h-full ${matchCardPaddingY}`}
+        layout="horizontal"
+        hideTimeBadge
+        showRefereeInHeader
       />
     ),
-    [canManage, onMatchClick],
+    [canManage, onMatchClick, matchCardPaddingY],
   );
 
   const AgendaEventComponent = useCallback(
     ({ event }: EventProps<CalendarEvent>) => (
-      <ScheduleMatchCard
+      <MatchCard
         match={event.resource}
         canManage={canManage}
         onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-        className="max-w-full"
+        className={`max-w-full ${matchCardPaddingY}`}
+        layout="horizontal"
+        hideTimeBadge
+        showRefereeInHeader
       />
     ),
-    [canManage, onMatchClick],
+    [canManage, onMatchClick, matchCardPaddingY],
   );
 
   const components = useMemo(

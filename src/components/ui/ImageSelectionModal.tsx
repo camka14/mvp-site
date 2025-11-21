@@ -88,7 +88,14 @@ export function ImageSelectionModal({
     };
 
     return (
-        <Modal opened={isOpen} onClose={onClose} title="Select image" size="xl" centered>
+        <Modal
+            opened={isOpen}
+            onClose={onClose}
+            title="Select image"
+            size="xl"
+            centered
+            zIndex={1600}
+        >
             <Stack gap="md">
                 {error && (
                     <Alert color="red" variant="light">{error}</Alert>

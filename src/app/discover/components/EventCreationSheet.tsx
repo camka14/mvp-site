@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, ClockIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { eventService } from '@/lib/eventService';
@@ -11,10 +10,9 @@ import { useLocation } from '@/app/hooks/useLocation';
 import { getEventImageUrl, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, EventState, LeagueScoringConfig, Sport, TournamentConfig, toEventPayload } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from './LeagueScoringConfigPanel';
-import SportConfigPanel from './SportConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
 
-import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper, Text, Title, Stack } from '@mantine/core';
+import { Drawer, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
@@ -27,7 +25,7 @@ import UserCard from '@/components/ui/UserCard';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
-interface EventCreationModalProps {
+interface EventCreationSheetProps {
     isOpen: boolean;
     onClose: () => void;
     onEventCreated?: (draftEvent: Partial<Event>) => Promise<boolean>;
@@ -41,6 +39,10 @@ interface EventCreationModalProps {
 type EventType = Event['eventType'];
 
 type DefaultLocationSource = 'none' | 'user' | 'organization';
+
+const SHEET_POPOVER_Z_INDEX = 1800;
+const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
+const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 
 // Compares two numeric start/end pairs to detect overlapping minutes within the same day.
 const slotsOverlap = (startA: number, endA: number, startB: number, endB: number): boolean =>
@@ -405,7 +407,7 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     ),
 });
 
-const EventCreationModal: React.FC<EventCreationModalProps> = ({
+const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
     isOpen,
     onClose,
     onEventCreated = async () => true,
@@ -1697,6 +1699,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 ...timingFields,
                 matches: [],
                 teams: [],
+                referees: eventData.referees,
                 players: joinAsParticipant ? [currentUser] : [],
                 fields: fieldsReferencedInSlots,
                 timeSlots: slotDocuments,
@@ -1964,390 +1967,430 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const allowImageEdit = !isImmutableField('imageId');
     const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates');
 
-    if (!isOpen) return null;
-
     return (
-        <Modal opened={isOpen} onClose={onClose} title={modalTitle} size="xl" centered>
-            <div className="p-6">
-                <div className="mb-6">
-                    <div className="block text-sm font-medium mb-2">Event Image</div>
-                    <ImageUploader
-                        currentImageUrl={selectedImageUrl}
-                        bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
-                        className="w-full max-w-md"
-                        placeholder="Select event image"
-                        onChange={allowImageEdit ? handleImageChange : undefined}
-                        readOnly={!allowImageEdit}
-                    />
-                    {!validation.isImageValid && (
-                        <p className="text-red-600 text-sm mt-1">An event image is required.</p>
-                    )}
-                </div>
+        <Drawer
+            opened={isOpen}
+            onClose={onClose}
+            position="bottom"
+            size="100%"
+            withCloseButton={false}
+            zIndex={1300}
+            transitionProps={{ transition: 'slide-up', duration: 250 }}
+            styles={{
+                content: {
+                    padding: '1.5rem',
+                    paddingBottom: '2rem',
+                    borderTopLeftRadius: '1rem',
+                    borderTopRightRadius: '1rem',
+                    height: 'calc(100vh - 80px)',
+                    overflow: 'auto',
+                },
+                inner: {
+                    alignItems: 'flex-end',
+                },
+            }}
+            overlayProps={{ opacity: 0.45, blur: 3 }}
+        >
+            <div className="space-y-6">
+                <Group justify="space-between" align="center">
+                    <div>
+                        <Text fw={700} size="lg">
+                            {modalTitle}
+                        </Text>
+                        <Text size="sm" c="dimmed">
+                            {isEditMode ? 'Update your event details.' : 'Create a new event with schedule, pricing, and fields.'}
+                        </Text>
+                    </div>
+                    <ActionIcon variant="subtle" radius="xl" aria-label="Close" onClick={onClose}>
+                        ×
+                    </ActionIcon>
+                </Group>
 
-                <h2 className="text-3xl font-bold mb-4">{modalTitle}</h2>
-
-                <form onSubmit={handleSubmit} className="space-y-8">
-                    {/* Basic Information */}
-                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
-                        <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <TextInput
-                                label="Event Name"
-                                withAsterisk
-                                value={eventData.name}
-                                disabled={isImmutableField('name')}
-                                onChange={(e) => {
-                                    if (isImmutableField('name')) return;
-                                    setEventData(prev => ({ ...prev, name: e.currentTarget?.value || '' }));
-                                }}
-                                placeholder="Enter event name"
-                                error={!validation.isNameValid ? 'Event name is required' : undefined}
+                <div className="p-2 space-y-6">
+                    <div className="p-6">
+                        <div className="mb-6">
+                            <div className="block text-sm font-medium mb-2">Event Image</div>
+                            <ImageUploader
+                                currentImageUrl={selectedImageUrl}
+                                bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
+                                className="w-full max-w-md"
+                                placeholder="Select event image"
+                                onChange={allowImageEdit ? handleImageChange : undefined}
+                                readOnly={!allowImageEdit}
                             />
-
-                            <MantineSelect
-                                label="Sport"
-                                placeholder={sportsLoading ? 'Loading sports...' : 'Select a sport'}
-                                data={sportOptions}
-                                value={eventData.sportId}
-                                disabled={isImmutableField('sport') || sportsLoading}
-                                onChange={(value) => {
-                                    if (isImmutableField('sport')) return;
-                                    if (!value) {
-                                        setEventData(prev => ({
-                                            ...prev,
-                                            sportId: '',
-                                            sportConfig: null,
-                                        }));
-                                        return;
-                                    }
-                                    const selected = sportsById.get(value);
-                                    setEventData(prev => ({
-                                        ...prev,
-                                        sportId: value,
-                                        sportConfig: selected ?? null,
-                                    }));
-                                }}
-                                searchable
-                                nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
-                                rightSection={sportsLoading ? <Loader size="xs" /> : undefined}
-                                error={!validation.isSportValid && !sportsLoading ? 'Select a sport' : undefined}
-                                withAsterisk
-                            />
+                            {!validation.isImageValid && (
+                                <p className="text-red-600 text-sm mt-1">An event image is required.</p>
+                            )}
                         </div>
 
-                        {sportsError && (
-                            <Alert color="red" radius="md" mt="sm">
-                                Unable to load sports at the moment. Please refresh the page and try again.
-                            </Alert>
-                        )}
+                        <h2 className="text-3xl font-bold mb-4">{modalTitle}</h2>
 
-                        <Textarea
-                            label="Description"
-                            value={eventData.description}
-                            disabled={isImmutableField('description')}
-                            onChange={(e) => {
-                                if (isImmutableField('description')) return;
-                                setEventData(prev => ({ ...prev, description: e.currentTarget?.value || '' }));
-                            }}
-                            placeholder="Describe your event..."
-                            autosize
-                            minRows={3}
-                            className="mt-4"
-                        />
+                        <form onSubmit={handleSubmit} className="space-y-8">
+                            {/* Basic Information */}
+                            <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+                                <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <TextInput
+                                        label="Event Name"
+                                        withAsterisk
+                                        value={eventData.name}
+                                        disabled={isImmutableField('name')}
+                                        onChange={(e) => {
+                                            if (isImmutableField('name')) return;
+                                            setEventData(prev => ({ ...prev, name: e.currentTarget?.value || '' }));
+                                        }}
+                                        placeholder="Enter event name"
+                                        error={!validation.isNameValid ? 'Event name is required' : undefined}
+                                    />
 
-                        {eventData.sportConfig && (
-                            <div className="mt-6">
-                                <SportConfigPanel sport={eventData.sportConfig} />
-                            </div>
-                        )}
-                    </Paper>
+                                    <MantineSelect
+                                        label="Sport"
+                                        placeholder={sportsLoading ? 'Loading sports...' : 'Select a sport'}
+                                        data={sportOptions}
+                                        value={eventData.sportId}
+                                        comboboxProps={sharedComboboxProps}
+                                        disabled={isImmutableField('sport') || sportsLoading}
+                                        onChange={(value) => {
+                                            if (isImmutableField('sport')) return;
+                                            if (!value) {
+                                                setEventData(prev => ({
+                                                    ...prev,
+                                                    sportId: '',
+                                                    sportConfig: null,
+                                                }));
+                                                return;
+                                            }
+                                            const selected = sportsById.get(value);
+                                            setEventData(prev => ({
+                                                ...prev,
+                                                sportId: value,
+                                                sportConfig: selected ?? null,
+                                            }));
+                                        }}
+                                        searchable
+                                        nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
+                                        rightSection={sportsLoading ? <Loader size="xs" /> : undefined}
+                                        error={!validation.isSportValid && !sportsLoading ? 'Select a sport' : undefined}
+                                        withAsterisk
+                                    />
+                                </div>
 
-                    {/* Event Details */}
-                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
-                        <h3 className="text-lg font-semibold mb-4">Event Details</h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <MantineSelect
-                                label="Event Type"
-                                data={[
-                                    { value: 'PICKUP', label: 'Pickup Game' },
-                                    { value: 'TOURNAMENT', label: 'Tournament' },
-                                    { value: 'LEAGUE', label: 'League' },
-                                ]}
-                                value={eventData.eventType}
-                                disabled={isImmutableField('eventType')}
-                                onChange={(value) => {
-                                    if (isImmutableField('eventType')) return;
-                                    if (!value) return;
-                                    setLeagueError(null);
-                                    const nextType = value as EventType;
-                                    const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
-                                    setEventData(prev => ({
-                                        ...prev,
-                                        eventType: nextType,
-                                        teamSignup: enforcingTeamSettings ? true : prev.teamSignup,
-                                        singleDivision: enforcingTeamSettings ? true : prev.singleDivision,
-                                    }));
-                                }}
-                            />
-
-                            <MantineSelect
-                                label="Field Type"
-                                data={[
-                                    { value: 'INDOOR', label: 'Indoor' },
-                                    { value: 'OUTDOOR', label: 'Outdoor' },
-                                    { value: 'SAND', label: 'Sand' },
-                                    { value: 'GRASS', label: 'Grass' },
-                                ]}
-                                value={eventData.fieldType}
-                                disabled={isImmutableField('fieldType')}
-                                onChange={(value) => {
-                                    if (isImmutableField('fieldType')) return;
-                                    setEventData(prev => ({
-                                        ...prev,
-                                        fieldType: (value?.toUpperCase() as FieldSurfaceType) || prev.fieldType,
-                                    }));
-                                }}
-                            />
-                        </div>
-                    </Paper>
-
-                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
-                        <h3 className="text-lg font-semibold mb-4">Referees</h3>
-                        <Stack gap="sm">
-                            <Switch
-                                label="Teams provide referees"
-                                description="Allow assigning team referees alongside dedicated refs."
-                                checked={eventData.doTeamsRef}
-                                onChange={(e) => setEventData((prev) => ({ ...prev, doTeamsRef: e.currentTarget.checked }))}
-                            />
-
-                            <div>
-                                <Title order={6} mb="xs">Selected referees</Title>
-                                {eventData.referees.length > 0 ? (
-                                    <Stack gap="xs">
-                                        {eventData.referees.map((referee) => (
-                                            <Group key={referee.$id} justify="space-between" align="center" gap="sm">
-                                                <UserCard user={referee} className="!p-0 !shadow-none flex-1" />
-                                                <Button
-                                                    variant="subtle"
-                                                    color="red"
-                                                    size="xs"
-                                                    onClick={() => handleRemoveReferee(referee.$id)}
-                                                >
-                                                    Remove
-                                                </Button>
-                                            </Group>
-                                        ))}
-                                    </Stack>
-                                ) : (
-                                    <Text size="sm" c="dimmed">No referees selected.</Text>
+                                {sportsError && (
+                                    <Alert color="red" radius="md" mt="sm">
+                                        Unable to load sports at the moment. Please refresh the page and try again.
+                                    </Alert>
                                 )}
-                            </div>
 
-                            <div>
-                                <Title order={6} mb="xs">Add referees</Title>
-                                <TextInput
-                                    value={refereeSearch}
-                                    onChange={(e) => handleSearchReferees(e.currentTarget.value)}
-                                    placeholder="Search by name or username"
-                                    mb="xs"
-                                />
-                                {refereeError && (
-                                    <Text size="xs" c="red" mb="xs">
-                                        {refereeError}
-                                    </Text>
-                                )}
-                                {refereeSearchLoading ? (
-                                    <Text size="sm" c="dimmed">Searching referees...</Text>
-                                ) : refereeSearch.length < 2 ? (
-                                    <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
-                                ) : refereeResults.length > 0 ? (
-                                    <Stack gap="xs">
-                                        {refereeResults.map((result) => (
-                                            <Group key={result.$id} justify="space-between" align="center" gap="sm">
-                                                <UserCard user={result} className="!p-0 !shadow-none flex-1" />
-                                                <Button size="xs" onClick={() => handleAddReferee(result)}>
-                                                    Add
-                                                </Button>
-                                            </Group>
-                                        ))}
-                                    </Stack>
-                                ) : (
-                                    <Text size="sm" c="dimmed">No referees found.</Text>
-                                )}
-                            </div>
-                        </Stack>
-                    </Paper>
-
-                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
-
-                        {/* Pricing and Participant Details */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <NumberInput
-                                    label="Price ($)"
-                                    min={0}
-                                    step={0.01}
-                                    value={eventData.price}
-                                    onChange={(val) => {
-                                        if (isImmutableField('price')) return;
-                                        setEventData(prev => ({ ...prev, price: Number(val) || 0 }));
+                                <Textarea
+                                    label="Description"
+                                    value={eventData.description}
+                                    disabled={isImmutableField('description')}
+                                    onChange={(e) => {
+                                        if (isImmutableField('description')) return;
+                                        setEventData(prev => ({ ...prev, description: e.currentTarget?.value || '' }));
                                     }}
-                                    disabled={!hasStripeAccount || isImmutableField('price')}
-                                    decimalScale={2}
-                                    fixedDecimalScale
+                                    placeholder="Describe your event..."
+                                    autosize
+                                    minRows={3}
+                                    className="mt-4"
                                 />
 
-                                {/* Always show connect Stripe when no account */}
-                                {!hasStripeAccount && (
-                                    <div className="mt-2">
-                                        <button
-                                            type="button"
-                                            onClick={handleConnectStripe}
-                                            disabled={connectingStripe}
-                                            className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                        >
-                                            {connectingStripe ? (
-                                                <span className="inline-flex items-center gap-2">
-                                                    <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                                                    Connecting…
-                                                </span>
-                                            ) : (
-                                                'Connect Stripe Account'
-                                            )}
-                                        </button>
-                                        <p className="text-sm text-gray-600 mt-1">
-                                            Connect your Stripe account to enable paid events and set a price.
+                            </Paper>
+
+                            {/* Event Details */}
+                            <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+                                <h3 className="text-lg font-semibold mb-4">Event Details</h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <MantineSelect
+                                        label="Event Type"
+                                        data={[
+                                            { value: 'PICKUP', label: 'Pickup Game' },
+                                            { value: 'TOURNAMENT', label: 'Tournament' },
+                                            { value: 'LEAGUE', label: 'League' },
+                                        ]}
+                                        value={eventData.eventType}
+                                        comboboxProps={sharedComboboxProps}
+                                        disabled={isImmutableField('eventType')}
+                                        onChange={(value) => {
+                                            if (isImmutableField('eventType')) return;
+                                            if (!value) return;
+                                            setLeagueError(null);
+                                            const nextType = value as EventType;
+                                            const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
+                                            setEventData(prev => ({
+                                                ...prev,
+                                                eventType: nextType,
+                                                teamSignup: enforcingTeamSettings ? true : prev.teamSignup,
+                                                singleDivision: enforcingTeamSettings ? true : prev.singleDivision,
+                                            }));
+                                        }}
+                                    />
+
+                                    <MantineSelect
+                                        label="Field Type"
+                                        data={[
+                                            { value: 'INDOOR', label: 'Indoor' },
+                                            { value: 'OUTDOOR', label: 'Outdoor' },
+                                            { value: 'SAND', label: 'Sand' },
+                                            { value: 'GRASS', label: 'Grass' },
+                                        ]}
+                                        value={eventData.fieldType}
+                                        comboboxProps={sharedComboboxProps}
+                                        disabled={isImmutableField('fieldType')}
+                                        onChange={(value) => {
+                                            if (isImmutableField('fieldType')) return;
+                                            setEventData(prev => ({
+                                                ...prev,
+                                                fieldType: (value?.toUpperCase() as FieldSurfaceType) || prev.fieldType,
+                                            }));
+                                        }}
+                                    />
+                                </div>
+                            </Paper>
+
+                            <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+                                <h3 className="text-lg font-semibold mb-4">Referees</h3>
+                                <Stack gap="sm">
+                                    <Switch
+                                        label="Teams provide referees"
+                                        description="Allow assigning team referees alongside dedicated refs."
+                                        checked={eventData.doTeamsRef}
+                                        onChange={(e) =>
+                                            setEventData((prev) => ({
+                                                ...prev,
+                                                doTeamsRef: e?.currentTarget?.checked ?? prev.doTeamsRef,
+                                            }))
+                                        }
+                                    />
+
+                                    <div>
+                                        <Title order={6} mb="xs">Selected referees</Title>
+                                        {eventData.referees.length > 0 ? (
+                                            <Stack gap="xs">
+                                                {eventData.referees.map((referee) => (
+                                                    <Group key={referee.$id} justify="space-between" align="center" gap="sm">
+                                                        <UserCard user={referee} className="!p-0 !shadow-none flex-1" />
+                                                        <Button
+                                                            variant="subtle"
+                                                            color="red"
+                                                            size="xs"
+                                                            onClick={() => handleRemoveReferee(referee.$id)}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </Group>
+                                                ))}
+                                            </Stack>
+                                        ) : (
+                                            <Text size="sm" c="dimmed">No referees selected.</Text>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <Title order={6} mb="xs">Add referees</Title>
+                                        <TextInput
+                                            value={refereeSearch}
+                                            onChange={(e) => handleSearchReferees(e.currentTarget.value)}
+                                            placeholder="Search by name or username"
+                                            mb="xs"
+                                        />
+                                        {refereeError && (
+                                            <Text size="xs" c="red" mb="xs">
+                                                {refereeError}
+                                            </Text>
+                                        )}
+                                        {refereeSearchLoading ? (
+                                            <Text size="sm" c="dimmed">Searching referees...</Text>
+                                        ) : refereeSearch.length < 2 ? (
+                                            <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
+                                        ) : refereeResults.length > 0 ? (
+                                            <Stack gap="xs">
+                                                {refereeResults.map((result) => (
+                                                    <Group key={result.$id} justify="space-between" align="center" gap="sm">
+                                                        <UserCard user={result} className="!p-0 !shadow-none flex-1" />
+                                                        <Button size="xs" onClick={() => handleAddReferee(result)}>
+                                                            Add
+                                                        </Button>
+                                                    </Group>
+                                                ))}
+                                            </Stack>
+                                        ) : (
+                                            <Text size="sm" c="dimmed">No referees found.</Text>
+                                        )}
+                                    </div>
+                                </Stack>
+                            </Paper>
+
+                            <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+
+                                {/* Pricing and Participant Details */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <NumberInput
+                                            label="Price ($)"
+                                            min={0}
+                                            step={0.01}
+                                            value={eventData.price}
+                                            onChange={(val) => {
+                                                if (isImmutableField('price')) return;
+                                                setEventData(prev => ({ ...prev, price: Number(val) || 0 }));
+                                            }}
+                                            disabled={!hasStripeAccount || isImmutableField('price')}
+                                            decimalScale={2}
+                                            fixedDecimalScale
+                                        />
+
+                                        {/* Always show connect Stripe when no account */}
+                                        {!hasStripeAccount && (
+                                            <div className="mt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleConnectStripe}
+                                                    disabled={connectingStripe}
+                                                    className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                >
+                                                    {connectingStripe ? (
+                                                        <span className="inline-flex items-center gap-2">
+                                                            <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                                                            Connecting…
+                                                        </span>
+                                                    ) : (
+                                                        'Connect Stripe Account'
+                                                    )}
+                                                </button>
+                                                <p className="text-sm text-gray-600 mt-1">
+                                                    Connect your Stripe account to enable paid events and set a price.
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        <p className="text-sm text-gray-500">
+                                            {eventData.price === 0 ? 'Free' : `$${eventData.price?.toFixed(2)}`}
                                         </p>
                                     </div>
-                                )}
 
-                                <p className="text-sm text-gray-500">
-                                    {eventData.price === 0 ? 'Free' : `$${eventData.price?.toFixed(2)}`}
-                                </p>
-                            </div>
-
-                            <NumberInput
-                                label="Max Participants"
-                                min={2}
-                                value={eventData.maxParticipants}
-                                disabled={isImmutableField('maxParticipants')}
-                                onChange={(val) => {
-                                    if (isImmutableField('maxParticipants')) return;
-                                    setEventData(prev => ({ ...prev, maxParticipants: Number(val) || 10 }));
-                                }}
-                                error={!validation.isMaxParticipantsValid ? 'Enter at least 2' : undefined}
-                            />
-
-                            <NumberInput
-                                label="Team Size Limit"
-                                min={1}
-                                value={eventData.teamSizeLimit}
-                                disabled={isImmutableField('teamSizeLimit')}
-                                onChange={(val) => {
-                                    if (isImmutableField('teamSizeLimit')) return;
-                                    setEventData(prev => ({ ...prev, teamSizeLimit: Number(val) || 2 }));
-                                }}
-                                error={!validation.isTeamSizeValid ? 'Enter at least 1' : undefined}
-                            />
-                        </div>
-
-                        {/* Policy Settings */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <NumberInput
-                                label="Cancellation Refund (Hours)"
-                                min={0}
-                                value={eventData.cancellationRefundHours}
-                                disabled={isImmutableField('cancellationRefundHours')}
-                                onChange={(val) => {
-                                    if (isImmutableField('cancellationRefundHours')) return;
-                                    setEventData(prev => ({ ...prev, cancellationRefundHours: Number(val) || 24 }));
-                                }}
-                            />
-                            <NumberInput
-                                label="Registration Cutoff (Hours)"
-                                min={0}
-                                value={eventData.registrationCutoffHours}
-                                disabled={isImmutableField('registrationCutoffHours')}
-                                onChange={(val) => {
-                                    if (isImmutableField('registrationCutoffHours')) return;
-                                    setEventData(prev => ({ ...prev, registrationCutoffHours: Number(val) || 2 }));
-                                }}
-                            />
-                        </div>
-
-                        {shouldManageLocalFields && (
-                            <div className="mt-4 space-y-4">
-                                <div>
                                     <NumberInput
-                                        label="Number of Fields"
-                                        min={1}
-                                        value={fieldCount}
-                                        onChange={(val) => setFieldCount(Number(val) || 1)}
-                                        error={!validation.isFieldCountValid ? 'Specify at least one field' : undefined}
+                                        label="Max Participants"
+                                        min={2}
+                                        value={eventData.maxParticipants}
+                                        disabled={isImmutableField('maxParticipants')}
+                                        onChange={(val) => {
+                                            if (isImmutableField('maxParticipants')) return;
+                                            setEventData(prev => ({ ...prev, maxParticipants: Number(val) || 10 }));
+                                        }}
+                                        error={!validation.isMaxParticipantsValid ? 'Enter at least 2' : undefined}
                                     />
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Fields will be created for this event using the names you provide below.
-                                    </p>
+
+                                    <NumberInput
+                                        label="Team Size Limit"
+                                        min={1}
+                                        value={eventData.teamSizeLimit}
+                                        disabled={isImmutableField('teamSizeLimit')}
+                                        onChange={(val) => {
+                                            if (isImmutableField('teamSizeLimit')) return;
+                                            setEventData(prev => ({ ...prev, teamSizeLimit: Number(val) || 2 }));
+                                        }}
+                                        error={!validation.isTeamSizeValid ? 'Enter at least 1' : undefined}
+                                    />
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {fields.map((field, index) => (
-                                        <TextInput
-                                            key={field.$id}
-                                            label={`Field ${field.fieldNumber ?? index + 1} Name`}
-                                            value={field.name ?? ''}
-                                            onChange={(event) => handleLocalFieldNameChange(index, event.currentTarget.value)}
-                                        />
-                                    ))}
+
+                                {/* Policy Settings */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <NumberInput
+                                        label="Cancellation Refund (Hours)"
+                                        min={0}
+                                        value={eventData.cancellationRefundHours}
+                                        disabled={isImmutableField('cancellationRefundHours')}
+                                        onChange={(val) => {
+                                            if (isImmutableField('cancellationRefundHours')) return;
+                                            setEventData(prev => ({ ...prev, cancellationRefundHours: Number(val) || 24 }));
+                                        }}
+                                    />
+                                    <NumberInput
+                                        label="Registration Cutoff (Hours)"
+                                        min={0}
+                                        value={eventData.registrationCutoffHours}
+                                        disabled={isImmutableField('registrationCutoffHours')}
+                                        onChange={(val) => {
+                                            if (isImmutableField('registrationCutoffHours')) return;
+                                            setEventData(prev => ({ ...prev, registrationCutoffHours: Number(val) || 2 }));
+                                        }}
+                                    />
                                 </div>
-                            </div>
-                        )}
-                    </Paper>
 
-                    {/* Location & Time */}
-                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
-                        <h3 className="text-lg font-semibold mb-4">Location & Time</h3>
+                                {shouldManageLocalFields && (
+                                    <div className="mt-4 space-y-4">
+                                        <div>
+                                            <NumberInput
+                                                label="Number of Fields"
+                                                min={1}
+                                                value={fieldCount}
+                                                onChange={(val) => setFieldCount(Number(val) || 1)}
+                                                error={!validation.isFieldCountValid ? 'Specify at least one field' : undefined}
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                Fields will be created for this event using the names you provide below.
+                                            </p>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {fields.map((field, index) => (
+                                                <TextInput
+                                                    key={field.$id}
+                                                    label={`Field ${field.fieldNumber ?? index + 1} Name`}
+                                                    value={field.name ?? ''}
+                                                    onChange={(event) => handleLocalFieldNameChange(index, event.currentTarget.value)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </Paper>
 
-                        <div className="mb-6">
-                            <LocationSelector
-                                value={eventData.location}
-                                coordinates={{
-                                    lat: (eventData.coordinates[1] ?? userLocation?.lat ?? 0),
-                                    lng: (eventData.coordinates[0] ?? userLocation?.lng ?? 0)
-                                }}
-                                onChange={(location, lat, lng) => {
-                                    if (isLocationImmutable) return;
-                                    setEventData(prev => ({ ...prev, location, coordinates: [lng, lat] }));
-                                }}
-                                isValid={validation.isLocationValid}
-                                disabled={isLocationImmutable}
-                                label="Location"
-                                required
-                                errorMessage="Location is required"
-                            />
-                        </div>
+                            {/* Location & Time */}
+                            <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+                                <h3 className="text-lg font-semibold mb-4">Location & Time</h3>
 
-                        {/* Mantine DateTime pickers */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div>
+                                <div className="mb-6">
+                                    <LocationSelector
+                                        value={eventData.location}
+                                        coordinates={{
+                                            lat: (eventData.coordinates[1] ?? userLocation?.lat ?? 0),
+                                            lng: (eventData.coordinates[0] ?? userLocation?.lng ?? 0)
+                                        }}
+                                        onChange={(location, lat, lng) => {
+                                            if (isLocationImmutable) return;
+                                            setEventData(prev => ({ ...prev, location, coordinates: [lng, lat] }));
+                                        }}
+                                        isValid={validation.isLocationValid}
+                                        disabled={isLocationImmutable}
+                                        label="Location"
+                                        required
+                                        errorMessage="Location is required"
+                                    />
+                                </div>
+
+                                {/* Mantine DateTime pickers */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                    <div>
                                 <DateTimePicker
                                     label="Start Date & Time"
                                     valueFormat="DD MMM YYYY hh:mm A"
                                     value={parseLocalDateTime(eventData.start)}
                                     disabled={isImmutableField('start')}
                                     onChange={(val) => {
-                                        if (isImmutableField('start')) return;
-                                        const parsed = parseLocalDateTime(val as Date | string | null);
-                                        if (!parsed) return;
-                                        setEventData(prev => ({ ...prev, start: formatLocalDateTime(parsed) }));
-                                    }}
+                                                if (isImmutableField('start')) return;
+                                                const parsed = parseLocalDateTime(val as Date | string | null);
+                                                if (!parsed) return;
+                                                setEventData(prev => ({ ...prev, start: formatLocalDateTime(parsed) }));
+                                            }}
                                     minDate={todaysDate}
                                     timePickerProps={{
                                         withDropdown: true,
                                         format: '12h',
 
                                     }}
+                                    popoverProps={sharedPopoverProps}
                                 />
                             </div>
                             <div>
@@ -2369,30 +2412,32 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                             format: '12h',
 
                                         }}
+                                        popoverProps={sharedPopoverProps}
                                     />}
                             </div>
                         </div>
-                    </Paper>
+                            </Paper>
 
-                    {/* legacy date/time inputs removed after migration to Mantine DateTimePicker */}
+                            {/* legacy date/time inputs removed after migration to Mantine DateTimePicker */}
 
-                    {/* Skills & Settings */}
-                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
-                        <h3 className="text-lg font-semibold mb-4">Event Settings</h3>
+                            {/* Skills & Settings */}
+                            <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+                                <h3 className="text-lg font-semibold mb-4">Event Settings</h3>
 
                         <MantineMultiSelect
                             label="Divisions"
                             withAsterisk
                             placeholder="Select divisions"
                             data={[
-                                { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
-                                { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
-                                { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
-                                { value: 'expert', label: 'Expert (4.5+)' },
-                                { value: 'open', label: 'Open (All Skill Levels)' },
-                            ]}
+                                        { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
+                                        { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
+                                        { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
+                                        { value: 'expert', label: 'Expert (4.5+)' },
+                                        { value: 'open', label: 'Open (All Skill Levels)' },
+                                    ]}
                             value={eventData.divisions}
                             disabled={isImmutableField('divisions')}
+                            comboboxProps={sharedComboboxProps}
                             onChange={(vals) => {
                                 if (isImmutableField('divisions')) return;
                                 setEventData(prev => ({ ...prev, divisions: vals }));
@@ -2402,144 +2447,146 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             error={!validation.isSkillLevelValid ? 'Select at least one division' : undefined}
                         />
 
-                        {/* Team Settings */}
-                        {eventData.eventType === 'PICKUP' ? (
-                            <div className="mt-6 space-y-3">
-                                <Switch
-                                    label="Team Event (teams compete rather than individuals)"
-                                    checked={eventData.teamSignup}
-                                    disabled={isImmutableField('teamSignup')}
-                                    onChange={(e) => {
-                                        if (isImmutableField('teamSignup')) return;
-                                        const checked = e.currentTarget.checked;
-                                        setEventData(prev => ({ ...prev, teamSignup: checked }));
-                                    }}
-                                />
-                                <Switch
-                                    label="Single Division (all skill levels play together)"
-                                    checked={eventData.singleDivision}
-                                    disabled={isImmutableField('singleDivision')}
-                                    onChange={(e) => {
-                                        if (isImmutableField('singleDivision')) return;
-                                        const checked = e.currentTarget.checked;
-                                        setEventData(prev => ({ ...prev, singleDivision: checked }));
-                                    }}
-                                />
-                            </div>
-                        ) : (
-                            <div className="mt-6 space-y-2">
-                                <Switch
-                                    label="Team Event (teams compete rather than individuals)"
-                                    checked
-                                    disabled
-                                />
-                                <Switch
-                                    label="Single Division (all skill levels play together)"
-                                    checked
-                                    disabled
-                                />
-                                <Text size="sm" c="dimmed">
-                                    Leagues and tournaments are always team events and use a single division.
-                                </Text>
-                            </div>
-                        )}
-                    </Paper>
+                                {/* Team Settings */}
+                                {eventData.eventType === 'PICKUP' ? (
+                                    <div className="mt-6 space-y-3">
+                                        <Switch
+                                            label="Team Event (teams compete rather than individuals)"
+                                            checked={eventData.teamSignup}
+                                            disabled={isImmutableField('teamSignup')}
+                                            onChange={(e) => {
+                                                if (isImmutableField('teamSignup')) return;
+                                                const checked = e?.currentTarget?.checked ?? eventData.teamSignup;
+                                                setEventData(prev => ({ ...prev, teamSignup: checked }));
+                                            }}
+                                        />
+                                        <Switch
+                                            label="Single Division (all skill levels play together)"
+                                            checked={eventData.singleDivision}
+                                            disabled={isImmutableField('singleDivision')}
+                                            onChange={(e) => {
+                                                if (isImmutableField('singleDivision')) return;
+                                                const checked = e?.currentTarget?.checked ?? eventData.singleDivision;
+                                                setEventData(prev => ({ ...prev, singleDivision: checked }));
+                                            }}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="mt-6 space-y-2">
+                                        <Switch
+                                            label="Team Event (teams compete rather than individuals)"
+                                            checked
+                                            disabled
+                                        />
+                                        <Switch
+                                            label="Single Division (all skill levels play together)"
+                                            checked
+                                            disabled
+                                        />
+                                        <Text size="sm" c="dimmed">
+                                            Leagues and tournaments are always team events and use a single division.
+                                        </Text>
+                                    </div>
+                                )}
+                            </Paper>
 
-                    {eventData.eventType === 'LEAGUE' && (
-                        <>
-                            <LeagueScoringConfigPanel
-                                value={eventData.leagueScoringConfig}
-                                sport={eventData.sportConfig ?? undefined}
-                                editable={!isImmutableField('leagueScoringConfig')}
-                                onChange={handleLeagueScoringConfigChange}
-                            />
+                            {eventData.eventType === 'LEAGUE' && (
+                                <>
+                                    <LeagueScoringConfigPanel
+                                        value={eventData.leagueScoringConfig}
+                                        sport={eventData.sportConfig ?? undefined}
+                                        editable={!isImmutableField('leagueScoringConfig')}
+                                        onChange={handleLeagueScoringConfigChange}
+                                    />
 
-                            <LeagueFields
-                                leagueData={leagueData}
-                                sport={eventData.sportConfig ?? undefined}
-                                onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
-                                slots={leagueSlots}
-                                onAddSlot={handleAddSlot}
-                                onUpdateSlot={handleUpdateSlot}
-                                onRemoveSlot={handleRemoveSlot}
-                                fields={fields}
-                                fieldsLoading={fieldsLoading}
-                                fieldOptions={leagueFieldOptions}
-                                readOnly={hasImmutableTimeSlots}
-                            />
+                                    <LeagueFields
+                                        leagueData={leagueData}
+                                        sport={eventData.sportConfig ?? undefined}
+                                        onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
+                                        slots={leagueSlots}
+                                        onAddSlot={handleAddSlot}
+                                        onUpdateSlot={handleUpdateSlot}
+                                        onRemoveSlot={handleRemoveSlot}
+                                        fields={fields}
+                                        fieldsLoading={fieldsLoading}
+                                        fieldOptions={leagueFieldOptions}
+                                        readOnly={hasImmutableTimeSlots}
+                                    />
 
-                            {leagueData.includePlayoffs && (
+                                    {leagueData.includePlayoffs && (
+                                        <TournamentFields
+                                            title="Playoffs Configuration"
+                                            tournamentData={playoffData}
+                                            setTournamentData={setPlayoffData}
+                                            sport={eventData.sportConfig ?? undefined}
+                                        />
+                                    )}
+                                </>
+                            )}
+
+                            {/* Tournament Fields */}
+                            {eventData.eventType === 'TOURNAMENT' && (
                                 <TournamentFields
-                                    title="Playoffs Configuration"
-                                    tournamentData={playoffData}
-                                    setTournamentData={setPlayoffData}
+                                    tournamentData={tournamentData}
+                                    setTournamentData={setTournamentData}
                                     sport={eventData.sportConfig ?? undefined}
                                 />
                             )}
-                        </>
-                    )}
+                        </form>
+                    </div>
 
-                    {/* Tournament Fields */}
-                    {eventData.eventType === 'TOURNAMENT' && (
-                        <TournamentFields
-                            tournamentData={tournamentData}
-                            setTournamentData={setTournamentData}
-                            sport={eventData.sportConfig ?? undefined}
-                        />
-                    )}
-                </form>
-            </div>
+                    {/* Footer */}
+                    <div className="border-t p-6 flex justify-between items-center">
+                        <div className="flex flex-col gap-3">
+                            {leagueError && (
+                                <Alert color="red" radius="md">
+                                    {leagueError}
+                                </Alert>
+                            )}
+                            {!isEditMode && !eventData.teamSignup && eventData.eventType !== 'LEAGUE' && (
+                                <Switch
+                                    label="Join as participant"
+                                    checked={joinAsParticipant}
+                                    onChange={(e) => {
+                                        const checked = e?.currentTarget?.checked ?? joinAsParticipant;
+                                        setJoinAsParticipant(checked);
+                                    }}
+                                />
+                            )}
+                            {isEditMode && activeEditingEvent && (
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        if (!activeEditingEvent) return;
+                                        if (!confirm('Delete this event? This cannot be undone.')) return;
+                                        setIsSubmitting(true);
+                                        try {
+                                            const ok = await eventService.deleteEvent(activeEditingEvent);
+                                            if (ok) {
+                                                onClose();
+                                            }
+                                        } finally {
+                                            setIsSubmitting(false);
+                                        }
+                                    }}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                >
+                                    Delete Event
+                                </button>
+                            )}
+                        </div>
 
-            {/* Footer */}
-            <div className="border-t p-6 flex justify-between items-center">
-                <div className="flex flex-col gap-3">
-                    {leagueError && (
-                        <Alert color="red" radius="md">
-                            {leagueError}
-                        </Alert>
-                    )}
-                    {!isEditMode && !eventData.teamSignup && eventData.eventType !== 'LEAGUE' && (
-                        <Switch
-                            label="Join as participant"
-                            checked={joinAsParticipant}
-                            onChange={(e) => {
-                                const checked = e.currentTarget.checked;
-                                setJoinAsParticipant(checked);
-                            }}
-                        />
-                    )}
-                    {isEditMode && activeEditingEvent && (
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                if (!activeEditingEvent) return;
-                                if (!confirm('Delete this event? This cannot be undone.')) return;
-                                setIsSubmitting(true);
-                                try {
-                                    const ok = await eventService.deleteEvent(activeEditingEvent);
-                                    if (ok) {
-                                        onClose();
-                                    }
-                                } finally {
-                                    setIsSubmitting(false);
-                                }
-                            }}
-                            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                        >
-                            Delete Event
-                        </button>
-                    )}
+                        <Group gap="sm">
+                            <Button variant="default" onClick={onClose}>Cancel</Button>
+                            <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
+                                {isSubmitting ? submittingText : submitButtonText}
+                            </Button>
+                        </Group>
+                    </div>
                 </div>
-
-                <Group gap="sm">
-                    <Button variant="default" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-                        {isSubmitting ? submittingText : submitButtonText}
-                    </Button>
-                </Group>
             </div>
-        </Modal>
+        </Drawer>
     );
 };
 
-export default EventCreationModal;
+export default EventCreationSheet;

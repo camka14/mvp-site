@@ -20,6 +20,7 @@ interface TournamentBracketViewProps {
     isPreview?: boolean;
     onMatchClick?: (match: Match) => void;
     canEditMatches?: boolean;
+    showDateOnMatches?: boolean;
 }
 
 export default function TournamentBracketView({
@@ -31,6 +32,7 @@ export default function TournamentBracketView({
     isPreview = false,
     onMatchClick,
     canEditMatches = false,
+    showDateOnMatches = false,
 }: TournamentBracketViewProps) {
     const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
     const [showScoreModal, setShowScoreModal] = useState(false);
@@ -475,6 +477,7 @@ export default function TournamentBracketView({
                                             onClick={manageable ? () => handleMatchClick(m) : undefined}
                                             canManage={manageable}
                                             className="w-full h-full"
+                                            showDate={showDateOnMatches}
                                         />
                                     </div>
                                 );

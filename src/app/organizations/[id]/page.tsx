@@ -13,8 +13,8 @@ import { useApp } from '@/app/providers';
 import type { Field, Organization, TimeSlot, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { storage } from '@/app/appwrite';
-import EventCreationModal from '@/app/discover/components/EventCreationModal';
-import EventDetailModal from '@/app/discover/components/EventDetailModal';
+import EventCreationSheet from '@/app/discover/components/EventCreationSheet';
+import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
@@ -50,7 +50,7 @@ function OrganizationDetailContent() {
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees'>('overview');
-  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
+  const [showCreateEventSheet, setShowCreateEventSheet] = useState(false);
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
@@ -58,7 +58,7 @@ function OrganizationDetailContent() {
   const [showRentalSlotModal, setShowRentalSlotModal] = useState(false);
   const [editingRentalSlot, setEditingRentalSlot] = useState<TimeSlot | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
-  const [showEventDetailModal, setShowEventDetailModal] = useState(false);
+  const [showEventDetailSheet, setShowEventDetailSheet] = useState(false);
   const [calendarView, setCalendarView] = useState<View>('month');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [fieldViewMode, setFieldViewMode] = useState<'list' | 'schedule'>('list');
@@ -550,7 +550,7 @@ function OrganizationDetailContent() {
                           <EventCard
                             key={e.$id}
                             event={e}
-                            onClick={() => { setSelectedEvent(e); setShowEventDetailModal(true); }}
+                            onClick={() => { setSelectedEvent(e); setShowEventDetailSheet(true); }}
                           />
                         ))}
                       </SimpleGrid>
@@ -620,7 +620,7 @@ function OrganizationDetailContent() {
               <Paper withBorder p="md" radius="md">
                 <Group justify="space-between" mb="sm">
                   <Title order={5}>Events Calendar</Title>
-                  <Button onClick={() => setShowCreateEventModal(true)}>+ Create Event</Button>
+                  <Button onClick={() => setShowCreateEventSheet(true)}>+ Create Event</Button>
                 </Group>
                 <div className="h-[800px]">
                   <BigCalendar
@@ -642,8 +642,8 @@ function OrganizationDetailContent() {
                     popup
                     selectable
                     components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
-                    onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailModal(true); }}
-                    onSelectSlot={() => setShowCreateEventModal(true)}
+                    onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailSheet(true); }}
+                    onSelectSlot={() => setShowCreateEventSheet(true)}
                   />
                 </div>
               </Paper>
@@ -910,7 +910,7 @@ function OrganizationDetailContent() {
                           onSelectEvent={(evt: any) => {
                             if (evt.metaType === 'event' && evt.resource) {
                               setSelectedEvent(evt.resource);
-                              setShowEventDetailModal(true);
+                              setShowEventDetailSheet(true);
                             } else if (evt.metaType === 'rental' && evt.resource) {
                               setEditingRentalSlot(evt.resource as TimeSlot);
                               setShowRentalSlotModal(true);
@@ -932,16 +932,16 @@ function OrganizationDetailContent() {
       </Container>
 
       {/* Modals */}
-      <EventDetailModal
+      <EventDetailSheet
         event={selectedEvent!}
-        isOpen={showEventDetailModal}
-        onClose={() => { setShowEventDetailModal(false); setSelectedEvent(null); }}
+        isOpen={showEventDetailSheet}
+        onClose={() => { setShowEventDetailSheet(false); }}
       />
-      <EventCreationModal
-        isOpen={showCreateEventModal}
-        onClose={() => setShowCreateEventModal(false)}
+      <EventCreationSheet
+        isOpen={showCreateEventSheet}
+        onClose={() => setShowCreateEventSheet(false)}
         onEventCreated={async () => true}
-        onEventSaved={async () => { setShowCreateEventModal(false); if (id) await loadOrg(id); }}
+        onEventSaved={async () => { setShowCreateEventSheet(false); if (id) await loadOrg(id); }}
         currentUser={user}
         organization={org ? org : null}
       />

@@ -27,7 +27,7 @@ import type { Event, Field, Organization, PaymentIntent, TimeSlot } from '@/type
 import { formatPrice } from '@/types';
 import { buildFieldCalendarEvents, type FieldCalendarEntry } from '@/app/organizations/[id]/fieldCalendar';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
-import EventCreationModal from './EventCreationModal';
+import EventCreationSheet from './EventCreationSheet';
 import { paymentService } from '@/lib/paymentService';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 import { notifications } from '@mantine/notifications';
@@ -739,7 +739,7 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
       </div>
       </Drawer>
       {user && (
-        <EventCreationModal
+        <EventCreationSheet
           isOpen={eventCreationOpen}
           onClose={() => setEventCreationOpen(false)}
           onEventCreated={handleBeforeEventCreate}
