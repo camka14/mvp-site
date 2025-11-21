@@ -187,7 +187,11 @@ class EventService {
 
     async deleteEvent(event: Event): Promise<boolean> {
         try {
-            const payload = buildPayload(this.withNormalizedEventEnums(event));
+            const normalizedEvent = this.withNormalizedReferees(this.withNormalizedEventEnums(event));
+            const payload = buildPayload(normalizedEvent);
+            if (Object.prototype.hasOwnProperty.call(normalizedEvent, 'refereeIds')) {
+                payload.refereeIds = normalizedEvent.refereeIds ?? [];
+            }
             const response = await functions.createExecution({
                 functionId: EVENT_MANAGER_FUNCTION_ID,
                 body: JSON.stringify({ task: "editEvent", command: 'deleteEvent', event: payload }),
@@ -247,7 +251,11 @@ class EventService {
 
     async createEvent(newEvent: Partial<Event>): Promise<Event> {
         try {
-            const payload = buildPayload(this.withNormalizedEventEnums(newEvent));
+            const normalizedEvent = this.withNormalizedReferees(this.withNormalizedEventEnums(newEvent));
+            const payload = buildPayload(normalizedEvent);
+            if (Object.prototype.hasOwnProperty.call(normalizedEvent, 'refereeIds')) {
+                payload.refereeIds = normalizedEvent.refereeIds ?? [];
+            }
             const response = await databases.createRow({
                 databaseId: DATABASE_ID,
                 tableId: EVENTS_TABLE_ID,
@@ -280,6 +288,33 @@ class EventService {
             ...(normalizedEventType ? { eventType: normalizedEventType as Event['eventType'] } : {}),
             ...(normalizedFieldType ? { fieldType: normalizedFieldType as FieldSurfaceType } : {}),
         };
+    }
+
+    private withNormalizedReferees<T extends Partial<Event>>(event: T): T {
+        const explicitRefereeIds = Array.isArray(event.refereeIds)
+            ? event.refereeIds.map((id) => String(id))
+            : event.refereeIds === undefined
+                ? undefined
+                : [];
+
+        if (explicitRefereeIds !== undefined) {
+            return { ...event, refereeIds: explicitRefereeIds } as T;
+        }
+
+        if (Array.isArray((event as any).referees)) {
+            const derived = (event as any).referees
+                .map((ref: any) => {
+                    if (typeof ref === 'string') return ref;
+                    if (ref && typeof ref === 'object' && '$id' in ref) {
+                        return (ref as { $id?: string }).$id ?? '';
+                    }
+                    return '';
+                })
+                .filter((id: string) => Boolean(id));
+            return { ...event, refereeIds: derived } as T;
+        }
+
+        return event;
     }
 
     private normalizeEventState(value: unknown): EventState {
@@ -360,6 +395,7 @@ class EventService {
             userIds: row.userIds,
             fieldIds: row.fieldIds,
             timeSlotIds: row.timeSlotIds,
+            refereeIds: Array.isArray(row.refereeIds) ? row.refereeIds.map((id: unknown) => String(id)) : [],
             waitList: row.waitList,
             freeAgents: row.freeAgents,
             cancellationRefundHours: row.cancellationRefundHours,
@@ -374,6 +410,7 @@ class EventService {
             organizationId: row.organizationId,
             divisions: row.divisions,
             timeSlots: row.timeSlots,
+            referees: Array.isArray(row.referees) ? (row.referees as UserData[]) : undefined,
             doubleElimination: row.doubleElimination,
             winnerSetCount: row.winnerSetCount,
             loserSetCount: row.loserSetCount,
@@ -388,6 +425,7 @@ class EventService {
             matchDurationMinutes: row.matchDurationMinutes,
             setDurationMinutes: row.setDurationMinutes,
             setsPerMatch: row.setsPerMatch,
+            doTeamsRef: typeof row.doTeamsRef === 'boolean' ? row.doTeamsRef : undefined,
             refType: row.refType,
             pointsToVictory: row.pointsToVictory,
 
@@ -474,6 +512,7 @@ class EventService {
         }
 
         const teamIds = new Set<string>();
+        const refereeUserIds = new Set<string>();
 
         rows.forEach((row) => {
             if (typeof row.team1Id === 'string') {
@@ -482,17 +521,25 @@ class EventService {
             if (typeof row.team2Id === 'string') {
                 teamIds.add(row.team2Id);
             }
+            if (typeof row.teamRefereeId === 'string') {
+                teamIds.add(row.teamRefereeId);
+            }
             if (typeof row.refereeId === 'string') {
+                refereeUserIds.add(row.refereeId);
                 teamIds.add(row.refereeId);
             }
         });
 
-        const teams = await this.fetchTeamsByIds(Array.from(teamIds));
+        const [teams, referees] = await Promise.all([
+            this.fetchTeamsByIds(Array.from(teamIds)),
+            userService.getUsersByIds(Array.from(refereeUserIds)),
+        ]);
 
         const teamsById = new Map(teams.map((team) => [team.$id, team]));
+        const refereesById = new Map(referees.map((ref) => [ref.$id, ref]));
 
         return rows.map((row) => {
-            return this.mapMatchRecord(row, { teamsById });
+            return this.mapMatchRecord(row, { teamsById, refereesById });
         });
     }
 
@@ -513,16 +560,18 @@ class EventService {
         const fieldIds = this.extractStringIds(data.fieldIds ?? event.fieldIds ?? []);
         const timeSlotIds = this.extractStringIds(data.timeSlotIds ?? event.timeSlotIds ?? []);
         const playerIds = this.extractStringIds(data.playerIds ?? data.userIds ?? event.playerIds ?? []);
+        const refereeIds = this.extractStringIds(data.refereeIds ?? event.refereeIds ?? []);
 
-        const [teams, players, fields, timeSlots, organization] = await Promise.all([
+        const [teams, players, fields, timeSlots, organization, referees] = await Promise.all([
             this.resolveTeams(data.teams, teamIds),
             this.resolvePlayers(data.players, playerIds),
             this.resolveFields(data.fields, fieldIds),
             this.resolveTimeSlots(data.timeSlots, timeSlotIds),
             this.resolveOrganization(data.organization ?? data.organizationId ?? event.organization),
+            this.resolvePlayers(data.referees, refereeIds),
         ]);
 
-        const matches = await this.resolveMatches(event, data.matches, teams, fields);
+        const matches = await this.resolveMatches(event, data.matches, teams, fields, referees);
 
         const matchesByField = new Map<string, Match[]>();
         matches.forEach((match) => {
@@ -541,6 +590,8 @@ class EventService {
 
         event.teams = teams;
         event.players = players;
+        event.refereeIds = refereeIds;
+        event.referees = referees;
         event.fields = fields;
         event.timeSlots = timeSlots;
         event.matches = matches;
@@ -789,7 +840,13 @@ class EventService {
         return responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapRowToTimeSlot(row)));
     }
 
-    private async resolveMatches(event: Event, existing: any, teams: Team[], fields: Field[]): Promise<Match[]> {
+    private async resolveMatches(
+        event: Event,
+        existing: any,
+        teams: Team[],
+        fields: Field[],
+        referees: UserData[] = [],
+    ): Promise<Match[]> {
         const rows = Array.isArray(existing) && existing.length ? existing : await this.fetchMatchesByEventId(event.$id);
         if (!rows.length) {
             return [];
@@ -797,9 +854,34 @@ class EventService {
 
         const teamsById = new Map(teams.map((team) => [team.$id, team]));
         const fieldsById = new Map(fields.map((field) => [field.$id, field]));
+        const refereesById = new Map(referees.map((ref) => [ref.$id, ref]));
+
+        const teamRefereeIds = new Set<string>();
+        const refereeIds = new Set<string>();
+
+        rows.forEach((row) => {
+            if (typeof row.teamRefereeId === 'string') {
+                teamRefereeIds.add(row.teamRefereeId);
+            }
+            if (typeof row.refereeId === 'string') {
+                refereeIds.add(row.refereeId);
+            }
+        });
+
+        const missingTeamRefIds = Array.from(teamRefereeIds).filter((id) => !teamsById.has(id));
+        if (missingTeamRefIds.length) {
+            const fetchedTeamRefs = await this.fetchTeamsByIds(missingTeamRefIds);
+            fetchedTeamRefs.forEach((team) => teamsById.set(team.$id, team));
+        }
+
+        const missingRefereeIds = Array.from(refereeIds).filter((id) => !refereesById.has(id));
+        if (missingRefereeIds.length) {
+            const fetchedRefs = await userService.getUsersByIds(missingRefereeIds);
+            fetchedRefs.forEach((ref) => refereesById.set(ref.$id, ref));
+        }
 
         return (rows as any[]).map((row) => {
-            const match = this.mapMatchRecord(row, { teamsById, fieldsById });
+            const match = this.mapMatchRecord(row, { teamsById, fieldsById, refereesById });
             return match;
         });
     }
@@ -942,7 +1024,7 @@ class EventService {
 
     private mapMatchRecord(
         input: any,
-        context?: { teamsById?: Map<string, Team>; fieldsById?: Map<string, Field> },
+        context?: { teamsById?: Map<string, Team>; fieldsById?: Map<string, Field>; refereesById?: Map<string, UserData> },
     ): Match {
         const eventId =
             typeof input.eventId === 'string'
@@ -987,6 +1069,33 @@ class EventService {
                         ? (input.referee as { $id?: string }).$id ?? undefined
                         : undefined;
 
+        const teamRefereeId =
+            typeof input.teamRefereeId === 'string'
+                ? input.teamRefereeId
+                : typeof input.teamReferee === 'string'
+                    ? input.teamReferee
+                    : input.teamReferee && typeof input.teamReferee === 'object' && '$id' in input.teamReferee
+                        ? (input.teamReferee as { $id?: string }).$id ?? undefined
+                        : undefined;
+
+        let resolvedRefereeId = refereeId;
+        let resolvedTeamRefereeId = teamRefereeId;
+
+        if (!resolvedTeamRefereeId && input.referee && typeof input.referee === 'object') {
+            const candidateId = '$id' in input.referee ? (input.referee as { $id?: string }).$id : undefined;
+            const looksLikeTeam =
+                Array.isArray((input.referee as any).playerIds) || typeof (input.referee as any).teamSize === 'number';
+            if (candidateId && looksLikeTeam) {
+                resolvedTeamRefereeId = candidateId;
+                resolvedRefereeId = undefined;
+            }
+        }
+
+        if (!resolvedTeamRefereeId && resolvedRefereeId && context?.teamsById?.has(resolvedRefereeId)) {
+            resolvedTeamRefereeId = resolvedRefereeId;
+            resolvedRefereeId = undefined;
+        }
+
         const match: Match = {
             $id: (input?.$id ?? input?.id) as string,
             start: input.start,
@@ -1023,10 +1132,20 @@ class EventService {
             match.team2 = input.team2 as Team;
         }
 
-        if (refereeId && context?.teamsById?.has(refereeId)) {
-            match.referee = context.teamsById.get(refereeId);
-        } else if (input.referee && typeof input.referee === 'object') {
-            match.referee = input.referee as Team;
+        if (resolvedTeamRefereeId && context?.teamsById?.has(resolvedTeamRefereeId)) {
+            match.teamReferee = context.teamsById.get(resolvedTeamRefereeId);
+        } else if (input.teamReferee && typeof input.teamReferee === 'object') {
+            match.teamReferee = input.teamReferee as Team;
+        }
+
+        if (resolvedRefereeId && context?.refereesById?.has(resolvedRefereeId)) {
+            match.referee = context.refereesById.get(resolvedRefereeId);
+        } else if (
+            input.referee &&
+            typeof input.referee === 'object' &&
+            !Array.isArray((input.referee as any).playerIds)
+        ) {
+            match.referee = input.referee as UserData;
         }
 
         if (input.previousLeftMatch) {
@@ -1053,7 +1172,8 @@ class EventService {
         match.fieldId = fieldId ?? null;
         match.team1Id = team1Id ?? null;
         match.team2Id = team2Id ?? null;
-        match.refereeId = refereeId ?? null;
+        match.teamRefereeId = resolvedTeamRefereeId ?? null;
+        match.refereeId = resolvedRefereeId ?? null;
         match.refereeCheckedIn = match.refereeCheckedIn ?? input.refereeCheckedIn ?? undefined;
 
         return match;

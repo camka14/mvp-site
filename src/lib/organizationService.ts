@@ -2,11 +2,11 @@
 
 import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
-import type { Event, Field, Organization, Team } from '@/types';
+import type { Event, Field, Organization, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
-import { teamService } from './teamService';
 import { buildPayload } from './utils';
+import { userService } from './userService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID!;
@@ -61,6 +61,7 @@ class OrganizationService {
       events: [],
       teams: [],
       fields: [],
+      referees: [],
     };
 
     return organization;
@@ -71,6 +72,10 @@ class OrganizationService {
       ...data,
       hasStripeAccount: data.hasStripeAccount ?? false,
     });
+
+    if (data.refIds !== undefined) {
+      payload.refIds = Array.isArray(data.refIds) ? data.refIds : [];
+    }
 
     const response = await databases.createRow({
       databaseId: DATABASE_ID,
@@ -83,6 +88,9 @@ class OrganizationService {
 
   async updateOrganization(id: string, data: Partial<Organization>): Promise<Organization> {
     const payload = buildPayload(data);
+    if (data.refIds !== undefined) {
+      payload.refIds = Array.isArray(data.refIds) ? data.refIds : [];
+    }
     const response = await databases.updateRow({
       databaseId: DATABASE_ID,
       tableId: ORGANIZATIONS_TABLE_ID,
@@ -144,25 +152,30 @@ class OrganizationService {
     }
   }
 
-  private async withRelations(organization: Organization): Promise<Organization> {
-    const fieldIds = Array.isArray(organization.fieldIds)
-      ? organization.fieldIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
-      : [];
+    private async withRelations(organization: Organization): Promise<Organization> {
+      const fieldIds = Array.isArray(organization.fieldIds)
+        ? organization.fieldIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : [];
 
-    const fieldsPromise = fieldIds.length ? fieldService.listFields({ fieldIds }) : Promise.resolve<Field[]>([]);
+      const fieldsPromise = fieldIds.length ? fieldService.listFields({ fieldIds }) : Promise.resolve<Field[]>([]);
+      const refereeIds = Array.isArray(organization.refIds)
+        ? organization.refIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : [];
+      const refereesPromise = refereeIds.length ? userService.getUsersByIds(refereeIds) : Promise.resolve<UserData[]>([]);
 
-    const [fields, events, teams] = await Promise.all([
-      fieldsPromise,
-      this.fetchEventsByOrganization(organization.$id),
-      this.fetchTeamsByOrganization(organization),
-    ]);
+      const [fields, events, referees] = await Promise.all([
+        fieldsPromise,
+        this.fetchEventsByOrganization(organization.$id),
+        refereesPromise,
+      ]);
 
-    organization.fields = fields;
-    organization.events = events;
-    organization.teams = teams;
+      organization.fields = fields;
+      organization.events = events;
+      organization.referees = referees;
+      organization.teams = organization.teams ?? [];
 
-    return organization;
-  }
+      return organization;
+    }
 
   private async fetchEventsByOrganization(organizationId: string): Promise<Event[]> {
     const response = await databases.listRows({
@@ -176,16 +189,6 @@ class OrganizationService {
       rows.map((row: any) => eventService.mapRowFromDatabase(row, false)),
     );
     return events.filter((event): event is Event => Boolean(event));
-  }
-
-  private async fetchTeamsByOrganization(organization: Organization): Promise<Team[]> {
-    const teamIds = Array.isArray(organization.refIds) ? organization.refIds.filter(Boolean) : [];
-    if (!teamIds.length) {
-      return [];
-    }
-
-    const teams = await Promise.all(teamIds.map((id) => teamService.getTeamById(id, true)));
-    return teams.filter((team): team is Team => Boolean(team));
   }
 }
 

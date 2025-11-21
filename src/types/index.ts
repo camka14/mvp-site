@@ -1,6 +1,7 @@
-import { storage } from "@/app/appwrite";
+import { avatars, storage } from "@/app/appwrite";
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
+import { Avatars } from "appwrite";
 
 // User types
 export interface UserAccount {
@@ -152,6 +153,7 @@ export interface Match {
   team1Id?: string | null;
   team2Id?: string | null;
   refereeId?: string | null;
+  teamRefereeId?: string | null;
   team1Points: number[];
   team2Points: number[];
   previousLeftId?: string;
@@ -171,7 +173,8 @@ export interface Match {
   // Relationship fields - hydrated when selected via Queries
   division?: Division;
   field?: Field;
-  referee?: Team;
+  referee?: UserData;
+  teamReferee?: Team;
   team1?: Team;
   team2?: Team;
 
@@ -189,6 +192,7 @@ type MatchRelationKeys =
   | 'division'
   | 'field'
   | 'referee'
+  | 'teamReferee'
   | 'team1'
   | 'team2'
   | 'previousLeftMatch'
@@ -332,6 +336,7 @@ export interface Event {
   userIds?: string[];
   fieldIds?: string[];
   timeSlotIds?: string[];
+  refereeIds?: string[];
   waitList?: string[];
   freeAgents?: string[];
   cancellationRefundHours: number;
@@ -362,6 +367,7 @@ export interface Event {
   matches?: Match[];
   teams?: Team[];
   players?: UserData[];
+  referees?: UserData[];
 
   // League-specific fields (flattened for DB compatibility)
   gamesPerOpponent?: number;
@@ -371,6 +377,7 @@ export interface Event {
   matchDurationMinutes?: number;
   setDurationMinutes?: number;
   setsPerMatch?: number;
+  doTeamsRef?: boolean;
   refType?: string;
   pointsToVictory?: number[];
   status?: EventStatus;
@@ -381,7 +388,7 @@ export interface Event {
   attendees: number;
 }
 
-export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees'> & {
+export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'referees'> & {
   fields?: FieldPayload[];
   matches?: MatchPayload[];
   teams?: TeamPayload[];
@@ -417,6 +424,7 @@ export interface Organization {
   events?: Event[];
   teams?: Team[];
   fields?: Field[];
+  referees?: UserData[];
 }
 
 export enum Sports {
@@ -487,6 +495,7 @@ export function toMatchPayload(match: Match): MatchPayload {
     division,
     field,
     referee,
+    teamReferee,
     team1,
     team2,
     previousLeftMatch,
@@ -516,6 +525,13 @@ export function toMatchPayload(match: Match): MatchPayload {
     const refereeId = extractId(referee);
     if (refereeId) {
       payload.refereeId = refereeId;
+    }
+  }
+
+  if (payload.teamRefereeId == null) {
+    const teamRefereeId = extractId(teamReferee);
+    if (teamRefereeId) {
+      payload.teamRefereeId = teamRefereeId;
     }
   }
 
@@ -633,7 +649,7 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
 }
 
 export function toEventPayload(event: Event): EventPayload {
-  const { matches, fields, teams, timeSlots, organization, ...rest } = event;
+  const { matches, fields, teams, timeSlots, organization, referees, ...rest } = event;
 
   const matchPayloads = Array.isArray(matches) && matches.length
     ? matches.map(toMatchPayload)
@@ -688,6 +704,19 @@ export function toEventPayload(event: Event): EventPayload {
     ...rest,
   };
 
+  const hasExplicitReferees = Object.prototype.hasOwnProperty.call(rest, 'refereeIds');
+  const explicitRefereeIds = Array.isArray(rest.refereeIds)
+    ? uniqueIds(rest.refereeIds.map((id) => (typeof id === 'string' ? id : extractId(id))))
+    : [];
+  if (hasExplicitReferees) {
+    payload.refereeIds = explicitRefereeIds;
+  } else if (Array.isArray(referees)) {
+    const derivedRefereeIds = uniqueIds(referees.map((referee) => extractId(referee)));
+    if (derivedRefereeIds.length) {
+      payload.refereeIds = derivedRefereeIds;
+    }
+  }
+
   const normalizedEventType = normalizeEnumValue(payload.eventType);
   if (normalizedEventType) {
     payload.eventType = normalizedEventType as EventType;
@@ -740,7 +769,14 @@ export function getUserAvatarUrl(user: UserData, size: number = 64): string {
 
   const fullName = getUserFullName(user);
   const initials = fullName || user.userName || 'User';
-  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
+  if (avatars && typeof avatars.getInitials === 'function') {
+    return avatars.getInitials({
+      name: initials,
+      width: size,
+      height: size
+    });
+  }
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=${size}`;
 }
 
 export function getTeamAvatarUrl(team: Team, size: number = 64): string {
@@ -759,7 +795,14 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
     .join('')
     .substring(0, 2)
     .toUpperCase();
-  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
+  if (avatars && typeof avatars.getInitials === 'function') {
+    return avatars.getInitials({
+      name: initials,
+      width: size,
+      height: size
+    });
+  }
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=${size}`;
 }
 
 export function getEventImageUrl(params: {

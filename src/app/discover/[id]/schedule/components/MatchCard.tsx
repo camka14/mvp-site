@@ -1,6 +1,6 @@
 'use client';
 
-import { getTeamAvatarUrl, Match } from '@/types';
+import { getTeamAvatarUrl, getUserAvatarUrl, Match } from '@/types';
 
 interface MatchCardProps {
     match: Match;
@@ -16,6 +16,18 @@ export default function MatchCard({ match, onClick, canManage = false, className
             return teamData.players.map((p: any) => `${p.firstName}.${p.lastName.charAt(0)}`).join(' & ');
         }
         return 'TBD';
+    };
+
+    const getUserName = (userData: any) => {
+        if (!userData) return 'Referee';
+        const name = [userData.firstName, userData.lastName].filter(Boolean).join(' ').trim();
+        if (name) {
+            return name;
+        }
+        if (userData.userName) {
+            return userData.userName;
+        }
+        return 'Referee';
     };
 
     const getMatchResult = () => {
@@ -173,21 +185,32 @@ export default function MatchCard({ match, onClick, canManage = false, className
 
             {/* Referee Info */}
             <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2">
-                <div className="bg-white rounded-full px-2 py-1 text-xs text-gray-700 border shadow-sm flex items-center gap-2">
-                    {match.referee ? (
-                        <>
+                <div className="bg-white rounded-full px-3 py-1 text-xs text-gray-700 border shadow-sm flex items-center gap-3">
+                    {match.referee && (
+                        <div className="flex items-center gap-1">
                             <img
-                                src={getTeamAvatarUrl(match.referee, 18)}
-                                alt={match.referee.name || 'Ref Team'}
+                                src={getUserAvatarUrl(match.referee, 18)}
+                                alt={getUserName(match.referee)}
                                 className="w-4 h-4 rounded-full"
                             />
-                            <span className="font-medium truncate max-w-[140px]">
-                                {match.referee.name || 'Ref Team'}
+                            <span className="font-medium truncate max-w-[120px]">
+                                {getUserName(match.referee)}
                             </span>
-                        </>
-                    ) : (
-                        <span>Ref: TBD</span>
+                        </div>
                     )}
+                    {match.teamReferee && (
+                        <div className="flex items-center gap-1">
+                            <img
+                                src={getTeamAvatarUrl(match.teamReferee, 18)}
+                                alt={match.teamReferee.name || 'Ref Team'}
+                                className="w-4 h-4 rounded-full"
+                            />
+                            <span className="font-medium truncate max-w-[120px]">
+                                {match.teamReferee.name || 'Ref Team'}
+                            </span>
+                        </div>
+                    )}
+                    {!match.referee && !match.teamReferee && <span>Ref: TBD</span>}
                 </div>
             </div>
         </div>

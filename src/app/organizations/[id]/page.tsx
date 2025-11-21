@@ -8,8 +8,9 @@ import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleG
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
+import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { Field, Organization, TimeSlot } from '@/types';
+import type { Field, Organization, TimeSlot, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { storage } from '@/app/appwrite';
 import EventCreationModal from '@/app/discover/components/EventCreationModal';
@@ -19,6 +20,7 @@ import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import { paymentService } from '@/lib/paymentService';
+import { userService } from '@/lib/userService';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { Calendar as BigCalendar, dateFnsLocalizer, View, SlotGroupPropGetter } from 'react-big-calendar';
 import { format, parse, startOfWeek, endOfWeek, startOfDay, endOfDay, startOfMonth, endOfMonth, getDay, formatISO } from 'date-fns';
@@ -47,7 +49,7 @@ function OrganizationDetailContent() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees'>('overview');
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
@@ -67,6 +69,10 @@ function OrganizationDetailContent() {
   const [fieldScheduleRange, setFieldScheduleRange] = useState<{ start: Date; end: Date } | null>(null);
   const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
   const [fieldScheduleSelectedFieldId, setFieldScheduleSelectedFieldId] = useState<string | null>(null);
+  const [refereeSearch, setRefereeSearch] = useState('');
+  const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
+  const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
+  const [refereeError, setRefereeError] = useState<string | null>(null);
   const canCreateRentalSlots = Boolean(org?.location && org.location.trim().length > 0);
   const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
   const [connectingStripe, setConnectingStripe] = useState(false);
@@ -112,6 +118,13 @@ function OrganizationDetailContent() {
       }
     };
   }, []);
+
+  const currentRefereeIds = useMemo(
+    () => (Array.isArray(org?.refIds) ? org.refIds.filter((id): id is string => typeof id === 'string') : []),
+    [org?.refIds],
+  );
+
+  const currentReferees = useMemo(() => org?.referees ?? [], [org?.referees]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -202,6 +215,73 @@ function OrganizationDetailContent() {
       setManagingStripe(false);
     }
   }, [org, isOwner]);
+
+  const handleSearchReferees = useCallback(
+    async (query: string) => {
+      setRefereeSearch(query);
+      setRefereeError(null);
+      if (query.trim().length < 2) {
+        setRefereeResults([]);
+        return;
+      }
+      try {
+        setRefereeSearchLoading(true);
+        const results = await userService.searchUsers(query.trim());
+        const filtered = results.filter((candidate) => !currentRefereeIds.includes(candidate.$id));
+        setRefereeResults(filtered);
+      } catch (error) {
+        console.error('Failed to search referees:', error);
+        setRefereeError('Failed to search referees. Try again.');
+      } finally {
+        setRefereeSearchLoading(false);
+      }
+    },
+    [currentRefereeIds],
+  );
+
+  const handleAddReferee = useCallback(
+    async (referee: UserData) => {
+      if (!org || !isOwner) return;
+      const nextRefIds = Array.from(new Set([...(org.refIds ?? []), referee.$id]));
+      try {
+        await organizationService.updateOrganization(org.$id, { refIds: nextRefIds });
+        setOrg((prev) => {
+          if (!prev) return prev;
+          const existingRefs = prev.referees ?? [];
+          const nextRefs = existingRefs.some((r) => r.$id === referee.$id) ? existingRefs : [...existingRefs, referee];
+          return { ...prev, refIds: nextRefIds, referees: nextRefs };
+        });
+        setRefereeResults((prev) => prev.filter((candidate) => candidate.$id !== referee.$id));
+        notifications.show({
+          color: 'green',
+          message: `${referee.firstName || referee.userName || 'Referee'} added to roster.`,
+        });
+      } catch (error) {
+        console.error('Failed to add referee:', error);
+        notifications.show({ color: 'red', message: 'Failed to add referee.' });
+      }
+    },
+    [org, isOwner],
+  );
+
+  const handleRemoveReferee = useCallback(
+    async (refereeId: string) => {
+      if (!org || !isOwner) return;
+      const nextRefIds = (org.refIds ?? []).filter((id) => id !== refereeId);
+      try {
+        await organizationService.updateOrganization(org.$id, { refIds: nextRefIds });
+        setOrg((prev) => {
+          if (!prev) return prev;
+          const nextRefs = (prev.referees ?? []).filter((ref) => ref.$id !== refereeId);
+          return { ...prev, refIds: nextRefIds, referees: nextRefs };
+        });
+      } catch (error) {
+        console.error('Failed to remove referee:', error);
+        notifications.show({ color: 'red', message: 'Failed to remove referee.' });
+      }
+    },
+    [org, isOwner],
+  );
 
   const loadFieldSchedule = useCallback(async (view: View, date: Date) => {
     if (!id) return;
@@ -442,6 +522,7 @@ function OrganizationDetailContent() {
                 { label: 'Overview', value: 'overview' },
                 { label: 'Events', value: 'events' },
                 { label: 'Teams', value: 'teams' },
+                { label: 'Referees', value: 'referees' },
                 { label: 'Fields', value: 'fields' },
               ]}
               mb="lg"
@@ -519,6 +600,18 @@ function OrganizationDetailContent() {
                       <Text size="sm" c="dimmed">No teams yet.</Text>
                     )}
                   </Paper>
+                  <Paper withBorder p="md" radius="md" mt="md">
+                    <Title order={5} mb="md">Referees</Title>
+                    {currentReferees.length > 0 ? (
+                      <div className="space-y-3">
+                        {currentReferees.slice(0, 4).map((ref) => (
+                          <UserCard key={ref.$id} user={ref} className="!p-0 !shadow-none" />
+                        ))}
+                      </div>
+                    ) : (
+                      <Text size="sm" c="dimmed">No referees yet.</Text>
+                    )}
+                  </Paper>
                 </div>
               </SimpleGrid>
             )}
@@ -571,6 +664,81 @@ function OrganizationDetailContent() {
                 ) : (
                   <Text size="sm" c="dimmed">No teams yet.</Text>
                 )}
+              </Paper>
+            )}
+
+            {activeTab === 'referees' && (
+              <Paper withBorder p="md" radius="md">
+                <Group justify="space-between" mb="md">
+                  <Title order={5}>Referees</Title>
+                  {isOwner && <Text size="sm" c="dimmed">Manage your referee roster</Text>}
+                </Group>
+
+                <Stack gap="md">
+                  <div>
+                    <Title order={6} mb="sm">Current Referees</Title>
+                    {currentReferees.length > 0 ? (
+                      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
+                        {currentReferees.map((ref) => (
+                          <Paper key={ref.$id} withBorder p="sm" radius="md">
+                            <Group justify="space-between" align="center" gap="sm">
+                              <UserCard user={ref} className="!p-0 !shadow-none flex-1" />
+                              {isOwner && (
+                                <Button
+                                  size="xs"
+                                  variant="subtle"
+                                  color="red"
+                                  onClick={() => handleRemoveReferee(ref.$id)}
+                                >
+                                  Remove
+                                </Button>
+                              )}
+                            </Group>
+                          </Paper>
+                        ))}
+                      </SimpleGrid>
+                    ) : (
+                      <Text size="sm" c="dimmed">No referees yet.</Text>
+                    )}
+                  </div>
+
+                  {isOwner && (
+                    <Paper withBorder p="md" radius="md">
+                      <Title order={6} mb="xs">Add Referees</Title>
+                      <TextInput
+                        value={refereeSearch}
+                        onChange={(e) => handleSearchReferees(e.currentTarget.value)}
+                        placeholder="Search referees by name or username"
+                        mb="xs"
+                      />
+                      {refereeError && (
+                        <Text size="xs" c="red" mb="xs">
+                          {refereeError}
+                        </Text>
+                      )}
+                      {refereeSearchLoading ? (
+                        <Text size="sm" c="dimmed">Searching referees...</Text>
+                      ) : refereeSearch.length < 2 ? (
+                        <Text size="sm" c="dimmed">Type at least 2 characters to search for referees.</Text>
+                      ) : refereeResults.length > 0 ? (
+                        <Stack gap="xs">
+                          {refereeResults.map((result) => (
+                            <Paper key={result.$id} withBorder p="sm" radius="md">
+                              <Group justify="space-between" align="center" gap="sm">
+                                <UserCard user={result} className="!p-0 !shadow-none flex-1" />
+                                <Button size="xs" onClick={() => handleAddReferee(result)}>
+                                  Add
+                                </Button>
+                              </Group>
+                            </Paper>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Text size="sm" c="dimmed">No referees found.</Text>
+                      )}
+                    </Paper>
+                  )}
+                </Stack>
               </Paper>
             )}
 

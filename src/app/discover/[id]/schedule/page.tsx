@@ -1096,6 +1096,8 @@ function EventScheduleContent() {
         match={matchBeingEdited}
         fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
         teams={Array.isArray(activeEvent.teams) ? activeEvent.teams : []}
+        referees={Array.isArray(activeEvent.referees) ? activeEvent.referees : []}
+        doTeamsRef={Boolean(activeEvent.doTeamsRef)}
         onClose={handleMatchEditClose}
         onSave={handleMatchEditSave}
       />

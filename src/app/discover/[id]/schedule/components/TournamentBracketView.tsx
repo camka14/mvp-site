@@ -364,7 +364,11 @@ export default function TournamentBracketView({
         if (!currentUser) return false;
         if (!bracket.canManage && !bracket.isHost) return false;
         if (bracket.isHost) return true;
-        return match.referee?.$id === currentUser.$id;
+        if (match.refereeId && match.refereeId === currentUser.$id) {
+            return true;
+        }
+        const teamRefPlayers = match.teamReferee?.playerIds || [];
+        return teamRefPlayers.includes(currentUser.$id);
     };
 
     useEffect(() => {

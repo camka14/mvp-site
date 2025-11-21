@@ -1,5 +1,5 @@
 import { databases } from '@/app/appwrite';
-import { Event, Team, Field, Match, TournamentBracket } from '@/types';
+import { Event, Team, Field, Match, TournamentBracket, UserData } from '@/types';
 import { eventService } from './eventService';
 import { authService } from './auth';
 
@@ -37,13 +37,21 @@ class TournamentService {
                 match.previousRightMatch = match.previousRightId ? matches[match.previousRightId] : undefined;
             });
 
+            const isHost = tournament.hostId === currentUser?.$id;
+            const canManageMatches = Object.values(matches).some((match) => {
+                if (currentUser?.$id && match.refereeId === currentUser.$id) {
+                    return true;
+                }
+                const teamPlayers = match.teamReferee?.playerIds || [];
+                return currentUser?.$id ? teamPlayers.includes(currentUser.$id) : false;
+            });
+
             return {
                 tournament: tournament as Event & { eventType: 'TOURNAMENT' },
                 matches,
                 teams,
-                isHost: tournament.hostId === currentUser?.$id,
-                canManage: tournament.hostId === currentUser?.$id ||
-                    Object.values(matches).some(m => m.referee && (m.referee.playerIds || []).includes(currentUser?.$id || '')),
+                isHost,
+                canManage: isHost || canManageMatches,
             };
         } catch (error) {
             console.error('Failed to get tournament bracket:', error);
@@ -86,11 +94,34 @@ class TournamentService {
                         break;
                     case 'referee':
                         if (value && typeof value === 'object' && '$id' in value) {
-                            payload.refereeId = (value as Team).$id;
+                            payload.refereeId = (value as UserData).$id;
                         } else if (typeof value === 'string') {
                             payload.refereeId = value;
                         } else if (value === null) {
                             payload.refereeId = null;
+                        }
+                        break;
+                    case 'refereeId':
+                        if (typeof value === 'string') {
+                            payload.refereeId = value;
+                        } else if (value === null) {
+                            payload.refereeId = null;
+                        }
+                        break;
+                    case 'teamReferee':
+                        if (value && typeof value === 'object' && '$id' in value) {
+                            payload.teamRefereeId = (value as Team).$id;
+                        } else if (typeof value === 'string') {
+                            payload.teamRefereeId = value;
+                        } else if (value === null) {
+                            payload.teamRefereeId = null;
+                        }
+                        break;
+                    case 'teamRefereeId':
+                        if (typeof value === 'string') {
+                            payload.teamRefereeId = value;
+                        } else if (value === null) {
+                            payload.teamRefereeId = null;
                         }
                         break;
                     case 'previousLeftMatch':
@@ -169,6 +200,8 @@ class TournamentService {
                 previousRightId: response.previousRightId ?? response.previousRightMatchId,
                 setResults: response.setResults || [],
                 refCheckedIn: response.refCheckedIn ?? response.refereeCheckedIn,
+                refereeId: response.refereeId ?? null,
+                teamRefereeId: response.teamRefereeId ?? null,
                 team1Seed: response.team1Seed ?? undefined,
                 team2Seed: response.team2Seed ?? undefined,
                 $createdAt: response.$createdAt,

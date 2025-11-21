@@ -6,13 +6,15 @@ import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 
-import type { Field, Match, Team } from '@/types';
+import type { Field, Match, Team, UserData } from '@/types';
 
 interface MatchEditModalProps {
   opened: boolean;
   match: Match | null;
   fields?: Field[];
   teams?: Team[];
+  referees?: UserData[];
+  doTeamsRef?: boolean;
   onClose: () => void;
   onSave: (updated: Match) => void;
 }
@@ -53,6 +55,27 @@ const getTeamId = (team?: Match['team1']): string | null => {
     return (team as Team).$id;
   }
   return null;
+};
+
+const getUserId = (user?: Match['referee']): string | null => {
+  if (!user) return null;
+  if (typeof user === 'string') return user;
+  if (typeof user === 'object' && '$id' in user && typeof (user as UserData).$id === 'string') {
+    return (user as UserData).$id;
+  }
+  return null;
+};
+
+const formatUserLabel = (user?: Partial<UserData> | null): string => {
+  if (!user) return 'Referee';
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  if (name) {
+    return name;
+  }
+  if (user.userName) {
+    return user.userName;
+  }
+  return 'Referee';
 };
 
 const findTeamById = (id: string | null, allTeams: Team[], fallback?: Match['team1']): Team | undefined => {
@@ -97,6 +120,8 @@ export default function MatchEditModal({
   match,
   fields = [],
   teams = [],
+  referees = [],
+  doTeamsRef = false,
   onClose,
   onSave,
 }: MatchEditModalProps) {
@@ -105,7 +130,8 @@ export default function MatchEditModal({
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [team1Id, setTeam1Id] = useState<string | null>(null);
   const [team2Id, setTeam2Id] = useState<string | null>(null);
-  const [refereeId, setRefereeId] = useState<string | null>(null);
+  const [teamRefereeId, setTeamRefereeId] = useState<string | null>(null);
+  const [userRefereeId, setUserRefereeId] = useState<string | null>(null);
   const [team1Points, setTeam1Points] = useState<number[]>([0]);
   const [team2Points, setTeam2Points] = useState<number[]>([0]);
   const [setResults, setSetResults] = useState<number[]>([0]);
@@ -118,7 +144,8 @@ export default function MatchEditModal({
       setFieldId(null);
       setTeam1Id(null);
       setTeam2Id(null);
-      setRefereeId(null);
+      setTeamRefereeId(null);
+      setUserRefereeId(null);
       setTeam1Points([0]);
       setTeam2Points([0]);
       setSetResults([0]);
@@ -131,7 +158,13 @@ export default function MatchEditModal({
     setFieldId(match.field && typeof match.field === 'object' ? match.field.$id : null);
     setTeam1Id(getTeamId(match.team1));
     setTeam2Id(getTeamId(match.team2));
-    setRefereeId(getTeamId(match.referee));
+    const initialTeamRefId =
+      match.teamRefereeId ??
+      getTeamId(match.teamReferee) ??
+      // Legacy fallback when referee held team data
+      getTeamId((match as any).referee);
+    setTeamRefereeId(initialTeamRefId);
+    setUserRefereeId(match.refereeId ?? getUserId(match.referee));
 
     const aligned = extractSetData(match);
     setTeam1Points(aligned.team1);
@@ -142,7 +175,14 @@ export default function MatchEditModal({
 
   const matchTeam1Id = useMemo(() => getTeamId(match?.team1), [match?.team1]);
   const matchTeam2Id = useMemo(() => getTeamId(match?.team2), [match?.team2]);
-  const matchRefereeId = useMemo(() => getTeamId(match?.referee), [match?.referee]);
+  const matchTeamRefereeId = useMemo(
+    () => match?.teamRefereeId ?? getTeamId(match?.teamReferee) ?? getTeamId((match as any)?.referee),
+    [match?.teamRefereeId, match?.teamReferee, match?.referee],
+  );
+  const matchUserRefereeId = useMemo(
+    () => match?.refereeId ?? getUserId(match?.referee),
+    [match?.refereeId, match?.referee],
+  );
 
   const teamOptions = useMemo(() => {
     const options = teams.map((team) => ({
@@ -159,10 +199,28 @@ export default function MatchEditModal({
 
     ensureOption(matchTeam1Id, resolveTeamName(match?.team1, teams));
     ensureOption(matchTeam2Id, resolveTeamName(match?.team2, teams));
-    ensureOption(matchRefereeId, resolveTeamName(match?.referee, teams));
+    ensureOption(matchTeamRefereeId, resolveTeamName(match?.teamReferee ?? (match as any)?.referee, teams));
 
     return options.sort((a, b) => a.label.localeCompare(b.label));
-  }, [teams, matchTeam1Id, matchTeam2Id, matchRefereeId, match?.team1, match?.team2, match?.referee]);
+  }, [teams, matchTeam1Id, matchTeam2Id, matchTeamRefereeId, match?.team1, match?.team2, match?.teamReferee, match?.referee]);
+
+  const refereeOptions = useMemo(() => {
+    const options = (referees ?? []).map((referee) => ({
+      value: referee.$id,
+      label: formatUserLabel(referee),
+    }));
+
+    const ensureOption = (id: string | null, label: string) => {
+      if (!id || !label) return;
+      if (!options.some((option) => option.value === id)) {
+        options.push({ value: id, label });
+      }
+    };
+
+    ensureOption(matchUserRefereeId, formatUserLabel(match?.referee as UserData));
+
+    return options.sort((a, b) => a.label.localeCompare(b.label));
+  }, [referees, matchUserRefereeId, match?.referee]);
 
   const team1Options = useMemo(
     () => teamOptions.filter((option) => !team2Id || option.value === team1Id || option.value !== team2Id),
@@ -190,10 +248,20 @@ export default function MatchEditModal({
     () => findTeamById(team2Id, teams, match?.team2),
     [team2Id, teams, match?.team2],
   );
-  const selectedReferee = useMemo(
-    () => findTeamById(refereeId, teams, match?.referee),
-    [refereeId, teams, match?.referee],
+  const selectedTeamReferee = useMemo(
+    () => findTeamById(teamRefereeId, teams, match?.teamReferee ?? (match as any)?.referee),
+    [teamRefereeId, teams, match?.teamReferee, match?.referee],
   );
+  const selectedUserReferee = useMemo(() => {
+    const fromList = referees.find((referee) => referee.$id === userRefereeId);
+    if (fromList) {
+      return fromList;
+    }
+    if (match?.referee && getUserId(match.referee) === userRefereeId && typeof match.referee === 'object') {
+      return match.referee as UserData;
+    }
+    return undefined;
+  }, [referees, userRefereeId, match?.referee]);
 
   const team1DisplayName = selectedTeam1 ? resolveTeamName(selectedTeam1, teams) : 'TBD';
   const team2DisplayName = selectedTeam2 ? resolveTeamName(selectedTeam2, teams) : 'TBD';
@@ -323,9 +391,18 @@ export default function MatchEditModal({
       delete (updated as any).team2;
     }
 
-    const nextRef = selectedReferee;
-    if (nextRef) {
-      updated.referee = { ...nextRef };
+    updated.teamRefereeId = teamRefereeId ?? null;
+    const nextTeamRef = selectedTeamReferee;
+    if (nextTeamRef) {
+      updated.teamReferee = { ...nextTeamRef };
+    } else {
+      delete (updated as any).teamReferee;
+    }
+
+    updated.refereeId = userRefereeId ?? null;
+    const nextUserRef = selectedUserReferee;
+    if (nextUserRef) {
+      updated.referee = { ...nextUserRef };
     } else {
       delete (updated as any).referee;
     }
@@ -373,12 +450,23 @@ export default function MatchEditModal({
           clearable
         />
         <Select
-          label="Referee"
+          label="Team Referee"
+          description={doTeamsRef ? undefined : 'Optional when teams are not providing referees.'}
           data={teamOptions}
-          value={refereeId}
-          onChange={setRefereeId}
+          value={teamRefereeId}
+          onChange={setTeamRefereeId}
           placeholder="Select referee team"
           clearable
+        />
+        <Select
+          label="Referee"
+          data={refereeOptions}
+          value={userRefereeId}
+          onChange={setUserRefereeId}
+          placeholder="Select referee"
+          clearable
+          searchable
+          nothingFoundMessage={refereeOptions.length ? 'No matches' : 'No referees available'}
         />
 
         {fieldOptions.length > 0 && (

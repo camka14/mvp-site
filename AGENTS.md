@@ -20,6 +20,10 @@ lastUpdated: "2025-09-29"
 
 ## Project Overview
 
+# ExecPlans
+When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
+
+
 This guide covers best practices for developing a **full-stack web application** with **Next.js 13** (React 18) as the front-end framework, **TypeScript** for type safety, **Mantine** as the UI component library, and **Appwrite** as the backend platform. The example project is a volleyball event platform (MVP-site) where users can sign up, create profiles, form teams, join events, chat with other players, and handle payments for event registrations. We emphasize a **modular architecture**: Next.js for routing and SSR, Mantine for cohesive UI components, and Appwrite for authentication, **TablesDB** (tables/rows + relationship columns), file storage for images, and cloud functions for advanced logic (like Stripe payments and notifications). By following this guide, you will learn how to structure a scalable Next.js project, use Mantine components effectively, and integrate Appwrite services (auth, tables/rows **with object-argument SDK calls**, storage, functions) properly for a robust, maintainable application.
 
 > **What changed?** Appwrite’s modern SDKs use **Tables/Rows** (not collections/documents) and **object-style arguments** (not positional). This guide uses `TablesDB` and object arguments everywhere.

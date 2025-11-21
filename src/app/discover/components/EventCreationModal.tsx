@@ -14,14 +14,16 @@ import LeagueScoringConfigPanel from './LeagueScoringConfigPanel';
 import SportConfigPanel from './SportConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
 
-import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper, Text } from '@mantine/core';
+import { Modal, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper, Text, Title, Stack } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
 import { leagueService } from '@/lib/leagueService';
+import { userService } from '@/lib/userService';
 import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
 import LeagueFields, { LeagueSlotForm } from './LeagueFields';
 import { ID } from '@/app/appwrite';
+import UserCard from '@/components/ui/UserCard';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -214,6 +216,9 @@ type EventFormState = {
     freeAgents: string[];
     players: UserData[];
     teams: Team[];
+    referees: UserData[];
+    refereeIds: string[];
+    doTeamsRef: boolean;
     leagueScoringConfig: LeagueScoringConfig;
 };
 
@@ -343,6 +348,9 @@ const createDefaultEventData = (): EventFormState => ({
     freeAgents: [],
     players: [],
     teams: [],
+    referees: [],
+    refereeIds: [],
+    doTeamsRef: false,
     leagueScoringConfig: createLeagueScoringConfig(),
 });
 
@@ -387,6 +395,9 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     freeAgents: event.freeAgentIds || [],
     players: event.players || [],
     teams: event.teams || [],
+    referees: event.referees || [],
+    refereeIds: event.refereeIds || [],
+    doTeamsRef: Boolean(event.doTeamsRef),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
             ? (event.leagueScoringConfig as Partial<LeagueScoringConfig>)
@@ -409,6 +420,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const modalRef = useRef<HTMLDivElement>(null);
     const defaultLocationSourceRef = useRef<DefaultLocationSource>('none');
     const appliedDefaultLocationLabelRef = useRef<string | null>(null);
+    const refsPrefilledRef = useRef<boolean>(false);
     // Stores the persisted file ID for the event image so submissions reference storage assets.
     const [selectedImageId, setSelectedImageId] = useState<string>(editingEvent?.imageId || '');
 
@@ -593,6 +605,34 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         )
     );
 
+    useEffect(() => {
+        const ids = eventData.refereeIds || [];
+        const refs = eventData.referees || [];
+        const missingIds = ids.filter((id) => !refs.some((ref) => ref.$id === id));
+        if (!missingIds.length) {
+            return;
+        }
+
+        let cancelled = false;
+        (async () => {
+            try {
+                const fetched = await userService.getUsersByIds(missingIds);
+                if (!cancelled && fetched.length) {
+                    setEventData((prev) => ({
+                        ...prev,
+                        referees: [...(prev.referees || []), ...fetched.filter((ref) => ref.$id)],
+                    }));
+                }
+            } catch (error) {
+                console.warn('Failed to hydrate referees for event:', error);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [eventData.refereeIds, eventData.referees]);
+
     // Holds tournament-specific settings so the modal can conditionally render the TournamentFields block.
     const [tournamentData, setTournamentData] = useState<TournamentConfig>(() => {
         if (activeEditingEvent && activeEditingEvent.eventType === 'TOURNAMENT') {
@@ -677,6 +717,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
 
     // Surface-level validation message shown beneath the LeagueFields component.
     const [leagueError, setLeagueError] = useState<string | null>(null);
+    const [refereeSearch, setRefereeSearch] = useState('');
+    const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
+    const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
+    const [refereeError, setRefereeError] = useState<string | null>(null);
 
     const initialFieldCount = (() => {
         if (activeEditingEvent?.fields?.length) {
@@ -715,6 +759,48 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     const [fieldsLoading, setFieldsLoading] = useState(false);
     const shouldProvisionFields = !organization && !hasImmutableFields;
     const shouldManageLocalFields = shouldProvisionFields && !isEditMode && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
+
+    const handleSearchReferees = useCallback(
+        async (query: string) => {
+            setRefereeSearch(query);
+            setRefereeError(null);
+            if (query.trim().length < 2) {
+                setRefereeResults([]);
+                return;
+            }
+            try {
+                setRefereeSearchLoading(true);
+                const results = await userService.searchUsers(query.trim());
+                const filtered = results.filter((candidate) => !(eventData.refereeIds || []).includes(candidate.$id));
+                setRefereeResults(filtered);
+            } catch (error) {
+                console.error('Failed to search referees:', error);
+                setRefereeError('Failed to search referees. Try again.');
+            } finally {
+                setRefereeSearchLoading(false);
+            }
+        },
+        [eventData.refereeIds],
+    );
+
+    const handleAddReferee = useCallback((referee: UserData) => {
+        setEventData((prev) => {
+            const nextIds = Array.from(new Set([...(prev.refereeIds || []), referee.$id]));
+            const nextRefs = (prev.referees || []).some((ref) => ref.$id === referee.$id)
+                ? prev.referees
+                : [...(prev.referees || []), referee];
+            return { ...prev, refereeIds: nextIds, referees: nextRefs };
+        });
+        setRefereeResults((prev) => prev.filter((candidate) => candidate.$id !== referee.$id));
+    }, []);
+
+    const handleRemoveReferee = useCallback((refereeId: string) => {
+        setEventData((prev) => ({
+            ...prev,
+            refereeIds: (prev.refereeIds || []).filter((id) => id !== refereeId),
+            referees: (prev.referees || []).filter((ref) => ref.$id !== refereeId),
+        }));
+    }, []);
 
     // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
     const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
@@ -1403,6 +1489,29 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         userLocationLabel,
     ]);
 
+    useEffect(() => {
+        refsPrefilledRef.current = false;
+    }, [organization?.$id]);
+
+    useEffect(() => {
+        if (isEditMode || !organization) {
+            return;
+        }
+        if (refsPrefilledRef.current) {
+            return;
+        }
+        const orgRefIds = organization.refIds ?? [];
+        const orgReferees = organization.referees ?? [];
+        if (orgRefIds.length || orgReferees.length) {
+            setEventData((prev) => ({
+                ...prev,
+                refereeIds: orgRefIds,
+                referees: orgReferees.length ? orgReferees : prev.referees,
+            }));
+            refsPrefilledRef.current = true;
+        }
+    }, [organization, isEditMode]);
+
     const isValid = Object.values(validation).every(v => v) && leagueFormValid;
 
     // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
@@ -1690,6 +1799,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 freeAgentIds: eventData.freeAgents,
                 teams: eventData.teams,
                 players: eventData.players,
+                referees: eventData.referees,
+                refereeIds: eventData.refereeIds,
+                doTeamsRef: eventData.doTeamsRef,
                 coordinates: baseCoordinates,
                 
             };
@@ -1999,6 +2111,75 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             />
                         </div>
                     </Paper>
+
+                    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+                        <h3 className="text-lg font-semibold mb-4">Referees</h3>
+                        <Stack gap="sm">
+                            <Switch
+                                label="Teams provide referees"
+                                description="Allow assigning team referees alongside dedicated refs."
+                                checked={eventData.doTeamsRef}
+                                onChange={(e) => setEventData((prev) => ({ ...prev, doTeamsRef: e.currentTarget.checked }))}
+                            />
+
+                            <div>
+                                <Title order={6} mb="xs">Selected referees</Title>
+                                {eventData.referees.length > 0 ? (
+                                    <Stack gap="xs">
+                                        {eventData.referees.map((referee) => (
+                                            <Group key={referee.$id} justify="space-between" align="center" gap="sm">
+                                                <UserCard user={referee} className="!p-0 !shadow-none flex-1" />
+                                                <Button
+                                                    variant="subtle"
+                                                    color="red"
+                                                    size="xs"
+                                                    onClick={() => handleRemoveReferee(referee.$id)}
+                                                >
+                                                    Remove
+                                                </Button>
+                                            </Group>
+                                        ))}
+                                    </Stack>
+                                ) : (
+                                    <Text size="sm" c="dimmed">No referees selected.</Text>
+                                )}
+                            </div>
+
+                            <div>
+                                <Title order={6} mb="xs">Add referees</Title>
+                                <TextInput
+                                    value={refereeSearch}
+                                    onChange={(e) => handleSearchReferees(e.currentTarget.value)}
+                                    placeholder="Search by name or username"
+                                    mb="xs"
+                                />
+                                {refereeError && (
+                                    <Text size="xs" c="red" mb="xs">
+                                        {refereeError}
+                                    </Text>
+                                )}
+                                {refereeSearchLoading ? (
+                                    <Text size="sm" c="dimmed">Searching referees...</Text>
+                                ) : refereeSearch.length < 2 ? (
+                                    <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
+                                ) : refereeResults.length > 0 ? (
+                                    <Stack gap="xs">
+                                        {refereeResults.map((result) => (
+                                            <Group key={result.$id} justify="space-between" align="center" gap="sm">
+                                                <UserCard user={result} className="!p-0 !shadow-none flex-1" />
+                                                <Button size="xs" onClick={() => handleAddReferee(result)}>
+                                                    Add
+                                                </Button>
+                                            </Group>
+                                        ))}
+                                    </Stack>
+                                ) : (
+                                    <Text size="sm" c="dimmed">No referees found.</Text>
+                                )}
+                            </div>
+                        </Stack>
+                    </Paper>
+
                     <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
 
                         {/* Pricing and Participant Details */}
