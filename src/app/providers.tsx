@@ -17,6 +17,7 @@ interface AppContextType {
   authUser: UserAccount | null;
   loading: boolean;
   setUser: (user: UserData | null) => void;
+  setAuthUser: (authUser: UserAccount | null) => void;
   updateUser: (updates: Partial<UserData>) => Promise<UserData | null>;
   refreshUser: () => Promise<void>;
   isGuest: boolean;
@@ -42,7 +43,7 @@ export function Providers({ children }: ProvidersProps) {
   const [user, setUserState] = useState<UserData | null>(() => {
     return typeof window !== 'undefined' ? authService.getStoredUserData() : null;
   });
-  const [authUser, setAuthUser] = useState<UserAccount | null>(() => {
+  const [authUser, setAuthUserState] = useState<UserAccount | null>(() => {
     return typeof window !== 'undefined' ? authService.getStoredAuthUser() : null;
   });
   const [loading, setLoading] = useState(true);
@@ -147,6 +148,10 @@ export function Providers({ children }: ProvidersProps) {
     setUserState(value);
     authService.setCurrentUserData(value);
   };
+  const setAuthUser = (value: UserAccount | null) => {
+    setAuthUserState(value);
+    authService.setCurrentAuthUser(value);
+  };
 
   const refreshUser = async () => {
     if (!authUser) return;
@@ -170,7 +175,7 @@ export function Providers({ children }: ProvidersProps) {
     }
   };
 
-  const isAuthenticated = authUser !== null && user !== null;
+  const isAuthenticated = (authUser !== null || user !== null) && !isGuest;
 
   return (
     <AppContext.Provider value={{
@@ -178,6 +183,7 @@ export function Providers({ children }: ProvidersProps) {
       authUser,
       loading,
       setUser,
+      setAuthUser,
       updateUser,
       refreshUser,
       isGuest,

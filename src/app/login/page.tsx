@@ -20,7 +20,7 @@ export default function LoginPage() {
   const [formData, setFormData] = useState<FormData>({ email: '', password: '', firstName: '', lastName: '', userName: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { user, setUser, loading: authLoading } = useApp();
+  const { user, setUser, setAuthUser, loading: authLoading } = useApp();
   const router = useRouter();
 
   // Redirect if already authenticated
@@ -41,7 +41,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      let authUser;
+      let authUser: { $id: string } | null = null;
       if (isLogin) {
         authUser = await authService.login(formData.email, formData.password);
       } else {
@@ -65,6 +65,14 @@ export default function LoginPage() {
       }
 
       setUser(extendedUser);
+      if (authUser) {
+        setAuthUser({
+          $id: authUser.$id,
+          email: formData.email,
+          name: `${formData.firstName} ${formData.lastName}`.trim() || undefined,
+        });
+      }
+      setAuthUser(authUser as any);
       // After signup, direct users to the verification page
       if (!isLogin) {
         router.push('/verify');
