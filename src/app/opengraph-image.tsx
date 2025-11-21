@@ -1,6 +1,4 @@
 import { ImageResponse } from 'next/og';
-
-export const runtime = 'edge';
 export const size = {
   width: 1200,
   height: 630,
@@ -51,13 +49,15 @@ export default function Image() {
             }}
           >
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#8fb4ff', boxShadow: '0 0 0 8px rgba(143, 180, 255, 0.18)' }} />
-            Volleyball Event Platform
+            Multi-sport Event Platform
           </div>
 
           <div style={{ fontSize: 68, lineHeight: 1.08, fontWeight: 800 }}>
             Razumly MVP
             <br />
             Manage teams, events, and chat in one place.
+            <br />
+            Any sport. One platform.
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#8fb4ff', fontSize: 22, fontWeight: 600 }}>
@@ -87,7 +87,7 @@ export default function Image() {
         >
           <div style={{ color: '#c7d9ff', fontSize: 18, letterSpacing: '0.02em' }}>Highlights</div>
 
-          {["Event scheduling", "Stripe-powered payments", "Real-time chat", "Team & roster management"].map((item) => (
+          {["Event scheduling", "Stripe-powered payments", "Real-time chat", "Team & roster management", "Multi-sport support"].map((item) => (
             <div key={item} style={{ display: 'flex', gap: '12px', alignItems: 'center', color: '#f1f5ff', fontSize: 20, fontWeight: 600 }}>
               <span
                 style={{
