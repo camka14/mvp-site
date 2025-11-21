@@ -804,6 +804,10 @@ function EventScheduleContent() {
           updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
         }
 
+        if (!Array.isArray(updatedEvent.matches) || updatedEvent.matches.length === 0) {
+          updatedEvent.matches = nextMatches;
+        }
+
         hydrateEvent(updatedEvent);
         writeEventToCache(updatedEvent);
         setHasUnsavedChanges(false);
