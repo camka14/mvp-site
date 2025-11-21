@@ -7,7 +7,7 @@ export const size = {
 };
 export const contentType = 'image/png';
 
-export async function GET() {
+export default function Image() {
   const year = new Date().getFullYear();
 
   return new ImageResponse(
