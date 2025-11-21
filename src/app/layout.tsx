@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import '@mantine/core/styles.css';
@@ -11,10 +12,33 @@ import { ChatComponents } from '@/components/chat/ChatComponents';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
-  title: 'MVP - Volleyball Event Platform',
-  description: 'Find and join exciting volleyball events in your area',
-  keywords: 'volleyball, sports, events, tournaments, pickup games',
+export const metadata: Metadata = {
+  metadataBase: new URL('https://mvp.razumly.com'),
+  title: 'MVP | Sports Event Platform',
+  description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
+  keywords: ['sports', 'events', 'tournaments', 'leagues', 'pickup games', 'teams'],
+  openGraph: {
+    title: 'MVP | Sports Event Platform',
+    description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
+    url: 'https://mvp.razumly.com',
+    siteName: 'MVP',
+    images: [
+      {
+        url: '/opengraph-image',
+        width: 1200,
+        height: 630,
+        alt: 'Preview of the MVP multi-sport event platform.',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'MVP | Sports Event Platform',
+    description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
+    images: ['/opengraph-image'],
+  },
 };
 
 interface RootLayoutProps {
