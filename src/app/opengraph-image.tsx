@@ -37,7 +37,7 @@ export default function Image() {
         <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '24px', zIndex: 1 }}>
           <div
             style={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
               gap: '10px',
               padding: '10px 14px',
@@ -52,16 +52,14 @@ export default function Image() {
             Multi-sport Event Platform
           </div>
 
-          <div style={{ fontSize: 68, lineHeight: 1.08, fontWeight: 800 }}>
-            Razumly MVP
-            <br />
-            Manage teams, events, and chat in one place.
-            <br />
-            Any sport. One platform.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 68, lineHeight: 1.08, fontWeight: 800 }}>
+            <span>Razumly MVP</span>
+            <span>Manage teams, events, and chat in one place.</span>
+            <span>Any sport. One platform.</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#8fb4ff', fontSize: 22, fontWeight: 600 }}>
-            <span style={{ display: 'inline-flex', width: 12, height: 12, borderRadius: '50%', background: '#7bffb1', boxShadow: '0 0 0 10px rgba(123, 255, 177, 0.12)' }} />
+            <span style={{ display: 'flex', width: 12, height: 12, borderRadius: '50%', background: '#7bffb1', boxShadow: '0 0 0 10px rgba(123, 255, 177, 0.12)' }} />
             mvp.razumly.com
           </div>
 
@@ -81,7 +79,8 @@ export default function Image() {
             background: 'rgba(13, 22, 45, 0.85)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             boxShadow: '0 20px 60px rgba(7, 12, 28, 0.45)',
-            display: 'grid',
+            display: 'flex',
+            flexDirection: 'column',
             gap: '18px',
           }}
         >
