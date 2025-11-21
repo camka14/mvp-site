@@ -1,26 +1,46 @@
-# Next.js starter kit with Appwrite
+# Razumly MVP — Multi-sport Event Platform
 
-Kickstart your Next.js development with this ready-to-use starter project integrated with [Appwrite](https://www.appwrite.io)
+Full-stack Next.js app that lets organizers and players run pickup games, leagues, and tournaments for any sport. Built with TypeScript, Mantine UI, and Appwrite (TablesDB/Storage/Functions) for auth, data, media, and billing.
 
-## 🚀Getting started
+Live: https://mvp.razumly.com — Open Graph preview at `/opengraph-image`.
 
-###
-Clone the Project
-Clone this repository to your local machine using Git:
+## Highlights
+- Create and manage multi-sport events (pickup, leagues, brackets) with scheduling and field/court slots
+- Team and roster management with real-time chat for coordination
+- Stripe-powered payments and receipts via Appwrite Functions
+- Image uploads via Appwrite Storage (with previews)
+- Mantine-driven UI, responsive layouts, and Next.js App Router
 
-`git clone https://github.com/appwrite/starter-for-nextjs`
+## Tech Stack
+- Next.js 14 (App Router) + TypeScript
+- Mantine UI + Emotion
+- Appwrite: Account, TablesDB, Storage, Functions (object-argument SDK)
+- Jest + Testing Library for UI/service tests
 
-## 🛠️ Development guid
-1. **Configure Appwrite**<br/>
-   Navigate to `.env` and update the values to match your Appwrite project credentials.
-2. **Customize as needed**<br/>
-   Modify the starter kit to suit your app's requirements. Adjust UI, features, or backend
-   integrations as per your needs.
-3. **Install dependencies**<br/>
-   Run `npm install` to install all dependencies.
-4. **Run the app**<br/>
-   Start the project by running `npm run dev`.
+## Getting Started
+1) Install dependencies
+```bash
+npm install
+```
+2) Environment
+- Copy `.env.example` to `.env.local`
+- Set `NEXT_PUBLIC_APPWRITE_ENDPOINT`, `NEXT_PUBLIC_APPWRITE_PROJECT_ID`, `NEXT_PUBLIC_APPWRITE_DATABASE_ID`, and table/bucket/function IDs used in the app.
+3) Run locally
+```bash
+npm run dev
+# open http://localhost:3000
+```
 
-## 💡 Additional notes
-- This starter project is designed to streamline your Next.js development with Appwrite.
-- Refer to the [Appwrite documentation](https://appwrite.io/docs) for detailed integration guidance.
+## Scripts
+- `npm run dev` — start dev server
+- `npm run build` — production build
+- `npm start` — run built app
+- `npm run test` — Jest suite
+- `npm run lint` — Next.js lint
+
+## Architecture
+- `src/app` — routes (App Router) and metadata; OG image at `opengraph-image.tsx`
+- `src/components` — UI components (Mantine, chat widgets)
+- `src/context` — chat/state providers
+- `src/lib` — Appwrite client/services; Stripe calls routed through Functions
+- `public` — static assets
