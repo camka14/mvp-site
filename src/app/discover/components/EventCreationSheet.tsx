@@ -212,6 +212,7 @@ type EventFormState = {
     divisions: string[];
     cancellationRefundHours: number;
     registrationCutoffHours: number;
+    organizationId?: string;
     imageId: string;
     seedColor: number;
     waitList: string[];
@@ -344,6 +345,7 @@ const createDefaultEventData = (): EventFormState => ({
     divisions: [],
     cancellationRefundHours: 24,
     registrationCutoffHours: 2,
+    organizationId: undefined,
     imageId: '',
     seedColor: 0,
     waitList: [],
@@ -382,6 +384,7 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : 2,
     teamSignup: Boolean(event.teamSignup),
     singleDivision: Boolean(event.singleDivision),
+    organizationId: event.organizationId || undefined,
     divisions: Array.isArray(event.divisions)
         ? (event.divisions as (string | CoreDivision)[]).map(divisionKeyFromValue)
         : [],
@@ -1412,6 +1415,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
         let appliedLabel: string | null = null;
 
         setEventData(prev => {
+            prev.organizationId = organization?.$id;
             if (organizationLocationLabel && defaultLocationSourceRef.current !== 'organization') {
                 const canOverride =
                     defaultLocationSourceRef.current === 'none' ||
@@ -1490,10 +1494,6 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
         userLocation,
         userLocationLabel,
     ]);
-
-    useEffect(() => {
-        refsPrefilledRef.current = false;
-    }, [organization?.$id]);
 
     useEffect(() => {
         if (isEditMode || !organization) {
@@ -1806,7 +1806,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                 refereeIds: eventData.refereeIds,
                 doTeamsRef: eventData.doTeamsRef,
                 coordinates: baseCoordinates,
-                
+
             };
 
             const organizationId = organization?.$id;
@@ -1856,7 +1856,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                 }
             }
 
-        if (eventData.eventType === 'LEAGUE') {
+            if (eventData.eventType === 'LEAGUE') {
                 const restTime = normalizeNumber(leagueData.restTimeMinutes);
                 const submitRequiresSets = Boolean(sportSelection.usePointsPerSetWin);
                 const setsPerMatchValue = leagueData.setsPerMatch ?? 1;
@@ -2373,49 +2373,49 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                                 {/* Mantine DateTime pickers */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                                     <div>
-                                <DateTimePicker
-                                    label="Start Date & Time"
-                                    valueFormat="DD MMM YYYY hh:mm A"
-                                    value={parseLocalDateTime(eventData.start)}
-                                    disabled={isImmutableField('start')}
-                                    onChange={(val) => {
+                                        <DateTimePicker
+                                            label="Start Date & Time"
+                                            valueFormat="DD MMM YYYY hh:mm A"
+                                            value={parseLocalDateTime(eventData.start)}
+                                            disabled={isImmutableField('start')}
+                                            onChange={(val) => {
                                                 if (isImmutableField('start')) return;
                                                 const parsed = parseLocalDateTime(val as Date | string | null);
                                                 if (!parsed) return;
                                                 setEventData(prev => ({ ...prev, start: formatLocalDateTime(parsed) }));
                                             }}
-                                    minDate={todaysDate}
-                                    timePickerProps={{
-                                        withDropdown: true,
-                                        format: '12h',
+                                            minDate={todaysDate}
+                                            timePickerProps={{
+                                                withDropdown: true,
+                                                format: '12h',
 
-                                    }}
-                                    popoverProps={sharedPopoverProps}
-                                />
-                            </div>
-                            <div>
-                                {(eventData.eventType === 'PICKUP') &&
-                                    <DateTimePicker
-                                        label="End Date & Time"
-                                        valueFormat="DD MMM YYYY hh:mm A"
-                                        value={parseLocalDateTime(eventData.end)}
-                                        disabled={isImmutableField('end')}
-                                        onChange={(val) => {
-                                            if (isImmutableField('end')) return;
-                                            const parsed = parseLocalDateTime(val as Date | string | null);
-                                            if (!parsed) return;
-                                            setEventData(prev => ({ ...prev, end: formatLocalDateTime(parsed) }));
-                                        }}
-                                        minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
-                                        timePickerProps={{
-                                            withDropdown: true,
-                                            format: '12h',
+                                            }}
+                                            popoverProps={sharedPopoverProps}
+                                        />
+                                    </div>
+                                    <div>
+                                        {(eventData.eventType === 'PICKUP') &&
+                                            <DateTimePicker
+                                                label="End Date & Time"
+                                                valueFormat="DD MMM YYYY hh:mm A"
+                                                value={parseLocalDateTime(eventData.end)}
+                                                disabled={isImmutableField('end')}
+                                                onChange={(val) => {
+                                                    if (isImmutableField('end')) return;
+                                                    const parsed = parseLocalDateTime(val as Date | string | null);
+                                                    if (!parsed) return;
+                                                    setEventData(prev => ({ ...prev, end: formatLocalDateTime(parsed) }));
+                                                }}
+                                                minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
+                                                timePickerProps={{
+                                                    withDropdown: true,
+                                                    format: '12h',
 
-                                        }}
-                                        popoverProps={sharedPopoverProps}
-                                    />}
-                            </div>
-                        </div>
+                                                }}
+                                                popoverProps={sharedPopoverProps}
+                                            />}
+                                    </div>
+                                </div>
                             </Paper>
 
                             {/* legacy date/time inputs removed after migration to Mantine DateTimePicker */}
@@ -2424,28 +2424,28 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                             <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
                                 <h3 className="text-lg font-semibold mb-4">Event Settings</h3>
 
-                        <MantineMultiSelect
-                            label="Divisions"
-                            withAsterisk
-                            placeholder="Select divisions"
-                            data={[
+                                <MantineMultiSelect
+                                    label="Divisions"
+                                    withAsterisk
+                                    placeholder="Select divisions"
+                                    data={[
                                         { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
                                         { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
                                         { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
                                         { value: 'expert', label: 'Expert (4.5+)' },
                                         { value: 'open', label: 'Open (All Skill Levels)' },
                                     ]}
-                            value={eventData.divisions}
-                            disabled={isImmutableField('divisions')}
-                            comboboxProps={sharedComboboxProps}
-                            onChange={(vals) => {
-                                if (isImmutableField('divisions')) return;
-                                setEventData(prev => ({ ...prev, divisions: vals }));
-                            }}
-                            clearable
-                            searchable
-                            error={!validation.isSkillLevelValid ? 'Select at least one division' : undefined}
-                        />
+                                    value={eventData.divisions}
+                                    disabled={isImmutableField('divisions')}
+                                    comboboxProps={sharedComboboxProps}
+                                    onChange={(vals) => {
+                                        if (isImmutableField('divisions')) return;
+                                        setEventData(prev => ({ ...prev, divisions: vals }));
+                                    }}
+                                    clearable
+                                    searchable
+                                    error={!validation.isSkillLevelValid ? 'Select at least one division' : undefined}
+                                />
 
                                 {/* Team Settings */}
                                 {eventData.eventType === 'PICKUP' ? (

@@ -779,7 +779,6 @@ function EventScheduleContent() {
       setPublishing(true);
       setError(null);
       setInfoMessage(null);
-      const shouldPublish = isUnpublished && !isPreview;
 
       try {
         const nextEvent = (changesEvent ? cloneValue(changesEvent) : cloneValue(activeEvent)) as Event;
@@ -795,7 +794,7 @@ function EventScheduleContent() {
         if ('attendees' in nextEvent) {
           delete (nextEvent as Partial<Event>).attendees;
         }
-        if (shouldPublish) {
+        if (isUnpublished) {
           nextEvent.state = 'PUBLISHED' as EventState;
         }
 
@@ -819,10 +818,10 @@ function EventScheduleContent() {
           router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
         }
 
-        setInfoMessage(shouldPublish ? `${entityLabel} published.` : `${entityLabel} changes saved.`);
+        setInfoMessage(isUnpublished ? `${entityLabel} published.` : `${entityLabel} changes saved.`);
       } catch (err) {
         console.error(`Failed to save ${entityLabel.toLowerCase()} changes:`, err);
-        setError(shouldPublish ? `Failed to publish ${entityLabel.toLowerCase()}.` : `Failed to save ${entityLabel.toLowerCase()} changes.`);
+        setError(isUnpublished ? `Failed to publish ${entityLabel.toLowerCase()}.` : `Failed to save ${entityLabel.toLowerCase()} changes.`);
       } finally {
         setPublishing(false);
       }
