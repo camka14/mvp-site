@@ -20,6 +20,10 @@ interface EventDetailSheetProps {
     onClose: () => void;
 }
 
+const SHEET_POPOVER_Z_INDEX = 1800;
+const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
+const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
+
 export default function EventDetailSheet({ event, isOpen, onClose }: EventDetailSheetProps) {
     const { user } = useApp();
     const router = useRouter();
@@ -274,18 +278,18 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
     return (
         <>
             <Drawer
-            opened={isOpen}
-            onClose={onClose}
-            position="bottom"
-            size="100%"
-            withCloseButton={false}
-            zIndex={1200}
-            transitionProps={{ transition: 'slide-up', duration: 250 }}
-            styles={{
-                content: {
-                    padding: '1.5rem',
-                    paddingBottom: '2rem',
-                    borderTopLeftRadius: '1rem',
+                opened={isOpen}
+                onClose={onClose}
+                position="bottom"
+                size="100%"
+                withCloseButton={false}
+                zIndex={1200}
+                transitionProps={{ transition: 'slide-up', duration: 250 }}
+                styles={{
+                    content: {
+                        padding: '1.5rem',
+                        paddingBottom: '2rem',
+                        borderTopLeftRadius: '1rem',
                         borderTopRightRadius: '1rem',
                         height: 'calc(100vh - 80px)',
                         overflow: 'auto',
@@ -599,6 +603,7 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
                                                                                 value={selectedTeamId}
                                                                                 onChange={(value) => setSelectedTeamId(value || '')}
                                                                                 searchable
+                                                                                comboboxProps={sharedComboboxProps}
                                                                             />
                                                                         </div>
 
