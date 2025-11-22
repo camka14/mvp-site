@@ -532,7 +532,7 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
           ...draftEvent,
           name: draftEvent.name ?? 'Rental Event',
           location: draftEvent.location ?? organization?.location ?? selectedField?.name ?? '',
-          eventType: (draftEvent.eventType as Event['eventType']) ?? 'PICKUP',
+          eventType: (draftEvent.eventType as Event['eventType']) ?? 'EVENT',
           price: typeof draftEvent.price === 'number' ? draftEvent.price : 0,
         };
         if (draftEvent.imageId) {

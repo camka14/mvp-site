@@ -403,7 +403,7 @@ class EventService {
             seedColor: row.seedColor,
             $createdAt: row.$createdAt,
             $updatedAt: row.$updatedAt,
-            eventType: (normalizedEventType ?? 'PICKUP') as EventType,
+            eventType: (normalizedEventType ?? 'EVENT') as EventType,
             sport: row.sport,
             sportId: row.sportId,
             leagueScoringConfigId: row.leagueScoringConfigId,

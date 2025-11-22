@@ -333,7 +333,7 @@ const createDefaultEventData = (): EventFormState => ({
     coordinates: [0, 0],
     start: nowLocalDateTimeString(),
     end: formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000)),
-    eventType: 'PICKUP',
+    eventType: 'EVENT',
     sportId: '',
     sportConfig: null,
     fieldType: 'INDOOR',
@@ -1141,7 +1141,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                 setDurationMinutes: undefined,
                 setsPerMatch: undefined,
             });
-            setLeagueSlots(normalizeSlotState([createSlotForm()], 'PICKUP'));
+            setLeagueSlots(normalizeSlotState([createSlotForm()], 'EVENT'));
             setPlayoffData(buildTournamentConfig());
         }
     }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots]);
@@ -2105,7 +2105,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                                     <MantineSelect
                                         label="Event Type"
                                         data={[
-                                            { value: 'PICKUP', label: 'Pickup Game' },
+                                            { value: 'EVENT', label: 'Pickup Game' },
                                             { value: 'TOURNAMENT', label: 'Tournament' },
                                             { value: 'LEAGUE', label: 'League' },
                                         ]}
@@ -2394,7 +2394,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                                         />
                                     </div>
                                     <div>
-                                        {(eventData.eventType === 'PICKUP') &&
+                                        {(eventData.eventType === 'EVENT') &&
                                             <DateTimePicker
                                                 label="End Date & Time"
                                                 valueFormat="DD MMM YYYY hh:mm A"
@@ -2448,7 +2448,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                                 />
 
                                 {/* Team Settings */}
-                                {eventData.eventType === 'PICKUP' ? (
+                                {eventData.eventType === 'EVENT' ? (
                                     <div className="mt-6 space-y-3">
                                         <Switch
                                             label="Team Event (teams compete rather than individuals)"

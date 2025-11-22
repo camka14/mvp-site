@@ -52,7 +52,7 @@ describe('buildFieldCalendarEvents', () => {
         seedColor: 0,
         cancellationRefundHours: 0,
         registrationCutoffHours: 0,
-        eventType: 'PICKUP',
+        eventType: 'EVENT',
         sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
         divisions: [],
         attendees: 0,

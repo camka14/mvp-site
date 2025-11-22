@@ -266,7 +266,7 @@ export interface Field {
 }
 
 export type FieldSurfaceType = Uppercase<string>;
-export type EventType = 'PICKUP' | 'TOURNAMENT' | 'LEAGUE';
+export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE';
 
 type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'rentalSlots' | 'rentalSlotIds';
 
