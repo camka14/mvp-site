@@ -19,7 +19,7 @@ ensureEnv('NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION_ID', 'create-league');
 ensureEnv('NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID', 'teams-table');
 ensureEnv('NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID', 'users-table');
 ensureEnv('NEXT_PUBLIC_BILLING_FUNCTION_ID', 'billing-fn');
-ensureEnv('NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID', 'event-manager-fn');
+ensureEnv('NEXT_PUBLIC_SERVER_FUNCTION_ID', 'event-manager-fn');
 
 class ResizeObserverMock {
   observe() {}

@@ -108,7 +108,7 @@ class PaymentService {
       });
 
       const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
+        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
         body: JSON.stringify(payload),
         async: false,
       });
@@ -149,7 +149,7 @@ class PaymentService {
       });
 
       const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
+        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
         body: JSON.stringify(payload),
         async: false,
       });
@@ -184,7 +184,7 @@ class PaymentService {
       });
 
       const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
+        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
         body: JSON.stringify(payload),
         async: false,
       });
@@ -207,7 +207,7 @@ class PaymentService {
   }> {
     try {
       const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
+        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
         body: JSON.stringify({
           eventId,
           userId,
@@ -263,7 +263,7 @@ class PaymentService {
       });
 
       const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
+        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
         body: JSON.stringify(payload),
         async: false,
       });
@@ -303,7 +303,7 @@ class PaymentService {
       });
 
       const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!,
+        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
         body: JSON.stringify(payload),
         async: false,
       });

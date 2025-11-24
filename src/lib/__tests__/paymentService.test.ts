@@ -11,12 +11,12 @@ jest.mock('@/app/appwrite', () => {
 const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
 
 const BILLING_FUNCTION_ID = 'billing-fn';
-const EVENT_MANAGER_FUNCTION_ID = 'event-manager-fn';
+const SERVER_FUNCTION_ID = 'event-manager-fn';
 
 describe('paymentService', () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_BILLING_FUNCTION_ID = BILLING_FUNCTION_ID;
-    process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID = EVENT_MANAGER_FUNCTION_ID;
+    process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID = SERVER_FUNCTION_ID;
     jest.clearAllMocks();
   });
 
@@ -33,7 +33,7 @@ describe('paymentService', () => {
 
       expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledTimes(1);
       const executionArgs = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
-      expect(executionArgs.functionId).toBe(EVENT_MANAGER_FUNCTION_ID);
+      expect(executionArgs.functionId).toBe(SERVER_FUNCTION_ID);
       expect(executionArgs.async).toBe(false);
 
       const parsedBody = JSON.parse(executionArgs.body);
@@ -75,7 +75,7 @@ describe('paymentService', () => {
 
       expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledTimes(1);
       const executionArgs = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
-      expect(executionArgs.functionId).toBe(EVENT_MANAGER_FUNCTION_ID);
+      expect(executionArgs.functionId).toBe(SERVER_FUNCTION_ID);
       expect(executionArgs.async).toBe(false);
 
       const parsedBody = JSON.parse(executionArgs.body);
@@ -104,7 +104,7 @@ describe('paymentService', () => {
 
       expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledTimes(1);
       const executionArgs = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
-      expect(executionArgs.functionId).toBe(EVENT_MANAGER_FUNCTION_ID);
+      expect(executionArgs.functionId).toBe(SERVER_FUNCTION_ID);
       expect(executionArgs.async).toBe(false);
 
       const parsedBody = JSON.parse(executionArgs.body);

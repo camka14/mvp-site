@@ -12,7 +12,7 @@ import { eventService } from './eventService';
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
 const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
-const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID!;
+const SERVER_FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 
 export interface WeeklySlotConflict {
@@ -153,7 +153,7 @@ class LeagueService {
     }
 
     const execution = await functions.createExecution({
-      functionId: EVENT_MANAGER_FUNCTION_ID,
+      functionId: SERVER_FUNCTION_ID,
       body: JSON.stringify(payload),
       async: false,
     });

@@ -169,7 +169,7 @@ describe('eventService', () => {
 
       expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith(
         expect.objectContaining({
-          functionId: process.env.NEXT_PUBLIC_EVENT_MANAGER_FUNCTION_ID,
+          functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID,
           async: false,
         }),
       );
