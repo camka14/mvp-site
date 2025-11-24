@@ -10,12 +10,12 @@ import type {
 
 type PaymentOrganizationContext = Partial<Organization>;
 
-type EventManagerTask = 'billing' | 'editEvent';
-type EventManagerCommand = 'create_purchase_intent' | 'addParticipant' | 'removeParticipant';
+type ServerTask = 'billing' | 'editEvent';
+type ServerCommand = 'create_purchase_intent' | 'addParticipant' | 'removeParticipant';
 
-interface EventManagerPayload {
-  task: EventManagerTask;
-  command: EventManagerCommand | string;
+interface ServerPayload {
+  task: ServerTask;
+  command: ServerCommand | string;
   event?: Event | null;
   timeSlot?: TimeSlot | null;
   user?: UserData | null;
@@ -26,9 +26,9 @@ interface EventManagerPayload {
   returnUrl?: string | null;
 }
 
-interface BuildEventManagerPayloadOptions {
-  task: EventManagerTask;
-  command: EventManagerCommand | string;
+interface BuildServerPayloadOptions {
+  task: ServerTask;
+  command: ServerCommand | string;
   user?: UserData | null;
   event?: Event | null;
   team?: Team | null;
@@ -39,7 +39,7 @@ interface BuildEventManagerPayloadOptions {
   returnUrl?: string | null;
 }
 
-const buildEventManagerPayload = ({
+const buildServerPayload = ({
   task,
   command,
   user,
@@ -50,7 +50,7 @@ const buildEventManagerPayload = ({
   organizationEmail,
   refreshUrl,
   returnUrl,
-}: BuildEventManagerPayloadOptions): EventManagerPayload => {
+}: BuildServerPayloadOptions): ServerPayload => {
   if (!event && !timeSlot && !organization && !user && !team) {
     throw new Error('Payment actions require at least a user, team, event, time slot, or organization context.');
   }
@@ -96,7 +96,7 @@ class PaymentService {
     organizationEmail?: string,
   ): Promise<PaymentIntent> {
     try {
-      const payload = buildEventManagerPayload({
+      const payload = buildServerPayload({
         task: 'billing',
         command: 'create_purchase_intent',
         user,
@@ -138,7 +138,7 @@ class PaymentService {
     organization?: PaymentOrganizationContext,
   ): Promise<void> {
     try {
-      const payload = buildEventManagerPayload({
+      const payload = buildServerPayload({
         task: 'editEvent',
         command: 'addParticipant',
         user,
@@ -173,7 +173,7 @@ class PaymentService {
     organization?: PaymentOrganizationContext,
   ): Promise<void> {
     try {
-      const payload = buildEventManagerPayload({
+      const payload = buildServerPayload({
         task: 'editEvent',
         command: 'removeParticipant',
         user,
@@ -252,7 +252,7 @@ class PaymentService {
     },
   ): Promise<StripeOnboardingLinkResult> {
     try {
-      const payload = buildEventManagerPayload({
+      const payload = buildServerPayload({
         task: 'billing',
         command: 'connect_host_account',
         user,
@@ -293,7 +293,7 @@ class PaymentService {
     returnUrl: string;
   }): Promise<StripeOnboardingLinkResult> {
     try {
-      const payload = buildEventManagerPayload({
+      const payload = buildServerPayload({
         task: 'billing',
         command: 'get_host_onboarding_link',
         user,

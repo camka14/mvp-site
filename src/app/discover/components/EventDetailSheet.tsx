@@ -647,7 +647,13 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
                                                                                     disabled={joining || !selectedTeamId || confirmingPurchase}
                                                                                     color="green"
                                                                                 >
-                                                                                    {confirmingPurchase ? 'Confirming purchase...' : (joining ? 'Joining...' : 'Confirm Join')}
+                                                                                    {confirmingPurchase
+                                                                                        ? 'Confirming purchase...'
+                                                                                        : joining
+                                                                                            ? 'Joining...'
+                                                                                            : (!isFreeForUser && currentEvent.price > 0)
+                                                                                                ? `Join for ${formatPrice(currentEvent.price)}`
+                                                                                                : 'Join Event'}
                                                                                 </Button>
                                                                             )}
                                                                         </div>
