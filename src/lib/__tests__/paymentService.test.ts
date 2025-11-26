@@ -2,6 +2,7 @@ import { paymentService } from '@/lib/paymentService';
 import type { Event, UserData } from '@/types';
 import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
 import { buildEvent } from '../../../test/factories';
+import { ExecutionMethod } from 'appwrite';
 
 jest.mock('@/app/appwrite', () => {
   const { createAppwriteModuleMock } = require('../../../test/mocks/appwrite');
@@ -37,16 +38,10 @@ describe('paymentService', () => {
       expect(executionArgs.async).toBe(false);
 
       const parsedBody = JSON.parse(executionArgs.body);
-      expect(parsedBody).toMatchObject({
-        task: 'billing',
-        command: 'create_purchase_intent',
-        team: null,
-        timeSlot: null,
-        organization: null,
-      });
-      expect(parsedBody.organizationEmail ?? undefined).toBeUndefined();
+      expect(executionArgs.xpath).toBe('/billing/purchase-intent');
+      expect(executionArgs.method).toBe(ExecutionMethod.POST);
       expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
-      expect(parsedBody.event).toEqual(mockEvent);
+      expect(parsedBody.event).toEqual(expect.objectContaining({ $id: mockEvent.$id }));
       expect(intent).toEqual({ id: 'pi_1', clientSecret: 'secret' });
     });
 
@@ -79,15 +74,10 @@ describe('paymentService', () => {
       expect(executionArgs.async).toBe(false);
 
       const parsedBody = JSON.parse(executionArgs.body);
-      expect(parsedBody).toMatchObject({
-        task: 'editEvent',
-        command: 'addParticipant',
-        team: null,
-        timeSlot: null,
-        organization: null,
-      });
+      expect(executionArgs.xpath).toBe(`/events/${mockEvent.$id}/participants`);
+      expect(executionArgs.method).toBe(ExecutionMethod.POST);
       expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
-      expect(parsedBody.event).toEqual(mockEvent);
+      expect(parsedBody.event).toEqual(expect.objectContaining({ $id: mockEvent.$id }));
     });
   });
 
@@ -108,15 +98,10 @@ describe('paymentService', () => {
       expect(executionArgs.async).toBe(false);
 
       const parsedBody = JSON.parse(executionArgs.body);
-      expect(parsedBody).toMatchObject({
-        task: 'editEvent',
-        command: 'removeParticipant',
-        team: null,
-        timeSlot: null,
-        organization: null,
-      });
+      expect(executionArgs.xpath).toBe(`/events/${mockEvent.$id}/participants`);
+      expect(executionArgs.method).toBe(ExecutionMethod.DELETE);
       expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
-      expect(parsedBody.event).toEqual(mockEvent);
+      expect(parsedBody.event).toEqual(expect.objectContaining({ $id: mockEvent.$id }));
     });
   });
 });

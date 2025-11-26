@@ -7,67 +7,9 @@ import type {
   TimeSlot,
   UserData,
 } from '@/types';
+import { ExecutionMethod } from 'appwrite';
 
 type PaymentOrganizationContext = Partial<Organization>;
-
-type ServerTask = 'billing' | 'editEvent';
-type ServerCommand = 'create_purchase_intent' | 'addParticipant' | 'removeParticipant';
-
-interface ServerPayload {
-  task: ServerTask;
-  command: ServerCommand | string;
-  event?: Event | null;
-  timeSlot?: TimeSlot | null;
-  user?: UserData | null;
-  team?: Team | null;
-  organization?: PaymentOrganizationContext | null;
-  organizationEmail?: string | null;
-  refreshUrl?: string | null;
-  returnUrl?: string | null;
-}
-
-interface BuildServerPayloadOptions {
-  task: ServerTask;
-  command: ServerCommand | string;
-  user?: UserData | null;
-  event?: Event | null;
-  team?: Team | null;
-  timeSlot?: TimeSlot | null;
-  organization?: PaymentOrganizationContext | null;
-  organizationEmail?: string | null;
-  refreshUrl?: string | null;
-  returnUrl?: string | null;
-}
-
-const buildServerPayload = ({
-  task,
-  command,
-  user,
-  event,
-  team,
-  timeSlot,
-  organization,
-  organizationEmail,
-  refreshUrl,
-  returnUrl,
-}: BuildServerPayloadOptions): ServerPayload => {
-  if (!event && !timeSlot && !organization && !user && !team) {
-    throw new Error('Payment actions require at least a user, team, event, time slot, or organization context.');
-  }
-
-  return {
-    task,
-    command,
-    user: user ?? null,
-    event: event ?? null,
-    team: team ?? null,
-    timeSlot: timeSlot ?? null,
-    organization: organization ?? null,
-    organizationEmail: organizationEmail ?? null,
-    refreshUrl: refreshUrl ?? null,
-    returnUrl: returnUrl ?? null,
-  };
-};
 
 const parseExecutionResponse = <T = unknown>(responseBody: string | null | undefined): T => {
   if (!responseBody) {
@@ -96,19 +38,19 @@ class PaymentService {
     organizationEmail?: string,
   ): Promise<PaymentIntent> {
     try {
-      const payload = buildServerPayload({
-        task: 'billing',
-        command: 'create_purchase_intent',
+      const payload = {
         user,
-        event,
+        event: event,
         team,
         timeSlot,
         organization,
         organizationEmail,
-      });
+      };
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+        xpath: '/billing/purchase-intent',
+        method: ExecutionMethod.POST,
         body: JSON.stringify(payload),
         async: false,
       });
@@ -138,18 +80,22 @@ class PaymentService {
     organization?: PaymentOrganizationContext,
   ): Promise<void> {
     try {
-      const payload = buildServerPayload({
-        task: 'editEvent',
-        command: 'addParticipant',
+      if (!event?.$id) {
+        throw new Error('Event is required to join.');
+      }
+
+      const payload = {
         user,
         event,
         team,
         timeSlot,
         organization,
-      });
+      };
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+        xpath: `/events/${event.$id}/participants`,
+        method: ExecutionMethod.POST,
         body: JSON.stringify(payload),
         async: false,
       });
@@ -173,18 +119,22 @@ class PaymentService {
     organization?: PaymentOrganizationContext,
   ): Promise<void> {
     try {
-      const payload = buildServerPayload({
-        task: 'editEvent',
-        command: 'removeParticipant',
+      if (!event?.$id) {
+        throw new Error('Event is required to leave.');
+      }
+
+      const payload = {
         user,
         event,
         team,
         timeSlot,
         organization,
-      });
+      };
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+        xpath: `/events/${event.$id}/participants`,
+        method: ExecutionMethod.DELETE,
         body: JSON.stringify(payload),
         async: false,
       });
@@ -200,7 +150,7 @@ class PaymentService {
     }
   }
 
-  async requestRefund(eventId: string, userId: string, reason?: string): Promise<{
+  async requestRefund(event: Event, user: UserData, reason?: string): Promise<{
     success: boolean;
     message?: string;
     emailSent?: boolean;
@@ -208,11 +158,12 @@ class PaymentService {
     try {
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+        xpath: '/billing/refund',
+        method: ExecutionMethod.POST,
         body: JSON.stringify({
-          eventId,
-          userId,
+          event,
+          user,
           reason: reason || 'requested_by_customer',
-          command: 'refund_payment',
         }),
         async: false,
       });
@@ -252,18 +203,18 @@ class PaymentService {
     },
   ): Promise<StripeOnboardingLinkResult> {
     try {
-      const payload = buildServerPayload({
-        task: 'billing',
-        command: 'connect_host_account',
+      const payload = {
         user,
         organization,
         organizationEmail,
         refreshUrl,
         returnUrl,
-      });
+      };
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+        xpath: '/billing/host/connect',
+        method: ExecutionMethod.POST,
         body: JSON.stringify(payload),
         async: false,
       });
@@ -293,17 +244,17 @@ class PaymentService {
     returnUrl: string;
   }): Promise<StripeOnboardingLinkResult> {
     try {
-      const payload = buildServerPayload({
-        task: 'billing',
-        command: 'get_host_onboarding_link',
+      const payload = {
         user,
         organization,
         refreshUrl,
         returnUrl,
-      });
+      };
 
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+        xpath: '/billing/host/onboarding-link',
+        method: ExecutionMethod.POST,
         body: JSON.stringify(payload),
         async: false,
       });

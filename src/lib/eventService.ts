@@ -25,6 +25,7 @@ import { sportsService } from '@/lib/sportsService';
 import { userService } from '@/lib/userService';
 import { buildPayload } from './utils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
+import { ExecutionMethod } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
@@ -156,10 +157,10 @@ class EventService {
             const payload = toEventPayload(eventData as Event)
             const response = await functions.createExecution({
                 functionId: EVENT_MANAGER_FUNCTION_ID,
+                xpath: `/events/${eventId}`,
+                method: ExecutionMethod.PATCH,
                 body: JSON.stringify({
-                    "task": "editEvent",
-                    "command": "updateEvent",
-                    "event": payload
+                    event: payload
                 }),
                 async: false
             })
@@ -194,7 +195,9 @@ class EventService {
             }
             const response = await functions.createExecution({
                 functionId: EVENT_MANAGER_FUNCTION_ID,
-                body: JSON.stringify({ task: "editEvent", command: 'deleteEvent', event: payload }),
+                xpath: `/events/${event.$id}`,
+                method: ExecutionMethod.DELETE,
+                body: JSON.stringify({ event: payload }),
                 async: false,
             })
             if (response.errors && response.errors.length > 0) {

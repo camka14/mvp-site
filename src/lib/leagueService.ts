@@ -1,5 +1,5 @@
 import { databases, ID, functions } from '@/app/appwrite';
-import { Query } from 'appwrite';
+import { ExecutionMethod, Query } from 'appwrite';
 import {
   TimeSlot,
   Match,
@@ -144,7 +144,6 @@ class LeagueService {
 
   async previewScheduleFromDocument(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
     const payload: Record<string, any> = {
-      task: 'generateLeague',
       eventDocument,
     };
 
@@ -154,6 +153,8 @@ class LeagueService {
 
     const execution = await functions.createExecution({
       functionId: SERVER_FUNCTION_ID,
+      xpath: '/events/schedule',
+      method: ExecutionMethod.POST,
       body: JSON.stringify(payload),
       async: false,
     });

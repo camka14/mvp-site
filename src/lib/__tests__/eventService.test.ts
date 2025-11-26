@@ -2,6 +2,7 @@ import { eventService } from '@/lib/eventService';
 import { sportsService } from '@/lib/sportsService';
 import { createSport } from '@/types/defaults';
 import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
+import { ExecutionMethod } from 'appwrite';
 
 jest.mock('@/app/appwrite', () => {
   const { createAppwriteModuleMock } = require('../../../test/mocks/appwrite');
@@ -169,13 +170,14 @@ describe('eventService', () => {
 
       expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith(
         expect.objectContaining({
-          functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID,
+          xpath: '/events/evt_1',
+          method: ExecutionMethod.PATCH,
           async: false,
         }),
       );
 
       const executionCall = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
-      const payload = JSON.parse(executionCall.body);
+      const payload = JSON.parse(executionCall.body as string);
       expect(payload.event.coordinates).toEqual([-105, 40]);
     });
   });

@@ -1,5 +1,5 @@
 import { functions, databases } from '@/app/appwrite';
-import { ID, Query } from 'appwrite';
+import { ID, Query, ExecutionMethod } from 'appwrite';
 
 export interface ChatGroup {
     $id: string;
@@ -126,11 +126,12 @@ class ChatService {
             // Send push notification
             await functions.createExecution({
                 functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+                xpath: `/messaging/topics/${chatId}/messages`,
+                method: ExecutionMethod.POST,
                 body: JSON.stringify({
-                    task: "messaging",
-                    command: "send",
-                    chatId,
-                    message: body,
+                    title: '',
+                    body,
+                    userIds: [],
                     senderId: userId
                 }),
                 async: true
