@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Badge, Tabs, Stack, Table, UnstyledButton } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton } from '@mantine/core';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -10,12 +10,12 @@ import { useApp } from '@/app/providers';
 import { deepEqual } from '@/app/utils';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
-import type { Event, EventPayload, EventState, Field, Match, TimeSlot, Team, TournamentBracket } from '@/types';
-import { toEventPayload } from '@/types';
+import type { Event, EventState, Field, Match, TimeSlot, Team, TournamentBracket, Organization } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
+import EventCreationSheet from '@/app/discover/components/EventCreationSheet';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 
 const cloneValue = <T,>(value: T): T => {
@@ -766,6 +766,13 @@ function EventScheduleContent() {
     setActiveTab('schedule');
   }, []);
 
+  const handleEventSaved = useCallback((updatedEvent: Event) => {
+    hydrateEvent(updatedEvent);
+    writeEventToCache(updatedEvent);
+    setHasUnsavedChanges(false);
+    setInfoMessage(`${entityLabel} details saved.`);
+  }, [entityLabel, hydrateEvent, writeEventToCache]);
+
   // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
     if (!activeEvent || publishing) return;
@@ -1025,6 +1032,10 @@ function EventScheduleContent() {
   }
 
   const leagueConfig = activeEvent.leagueConfig;
+  const activeOrganization: Organization | null =
+    activeEvent && typeof activeEvent.organization === 'object'
+      ? (activeEvent.organization as Organization)
+      : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1063,39 +1074,6 @@ function EventScheduleContent() {
             )}
           </Group>
 
-          <Paper withBorder radius="md" p="lg">
-            <Group gap="xl" wrap="wrap">
-              <div>
-                <Text fw={600} size="sm" c="dimmed">Games per Opponent</Text>
-                <Text size="lg">{leagueConfig?.gamesPerOpponent ?? '—'}</Text>
-              </div>
-              <div>
-                <Text fw={600} size="sm" c="dimmed">Playoffs</Text>
-                <Text size="lg">
-                  {leagueConfig?.includePlayoffs
-                    ? `${leagueConfig.playoffTeamCount || activeEvent.teams?.length || 'TBD'} teams`
-                    : 'No'}
-                </Text>
-              </div>
-              <div>
-                <Text fw={600} size="sm" c="dimmed">Match Duration</Text>
-                <Text size="lg">{leagueConfig?.matchDurationMinutes ? `${leagueConfig.matchDurationMinutes} min` : 'TBD'}</Text>
-              </div>
-              <div>
-                <Text fw={600} size="sm" c="dimmed">Rest Time</Text>
-                <Text size="lg">
-                  {leagueConfig?.restTimeMinutes !== undefined
-                    ? `${leagueConfig.restTimeMinutes} min`
-                    : 'TBD'}
-                </Text>
-              </div>
-              <div>
-                <Text fw={600} size="sm" c="dimmed">Total Matches</Text>
-                <Text size="lg">{activeMatches.length}</Text>
-              </div>
-            </Group>
-          </Paper>
-
           {infoMessage && (
             <Alert color="green" radius="md" onClose={() => setInfoMessage(null)} withCloseButton>
               {infoMessage}
@@ -1111,12 +1089,24 @@ function EventScheduleContent() {
             </Tabs.List>
 
             <Tabs.Panel value="details" pt="md">
-              <EventDetailSheet
-                event={activeEvent}
-                isOpen={activeTab === 'details'}
-                renderInline
-                onClose={handleDetailsClose}
-              />
+              {isEditingEvent && isHost && user ? (
+                <EventCreationSheet
+                  renderInline
+                  isOpen={activeTab === 'details'}
+                  onClose={handleDetailsClose}
+                  currentUser={user}
+                  editingEvent={activeEvent ?? undefined}
+                  organization={activeOrganization}
+                  onEventSaved={handleEventSaved}
+                />
+              ) : (
+                <EventDetailSheet
+                  event={activeEvent}
+                  isOpen={activeTab === 'details'}
+                  renderInline
+                  onClose={handleDetailsClose}
+                />
+              )}
             </Tabs.Panel>
 
             <Tabs.Panel value="schedule" pt="md">

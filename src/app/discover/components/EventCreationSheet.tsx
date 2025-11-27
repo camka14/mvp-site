@@ -34,6 +34,7 @@ interface EventCreationSheetProps {
     editingEvent?: Event;
     organization: Organization | null;
     immutableDefaults?: Partial<Event>;
+    renderInline?: boolean;
 }
 
 type EventType = Event['eventType'];
@@ -419,6 +420,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
     editingEvent,
     organization,
     immutableDefaults,
+    renderInline = false,
 }) => {
     const router = useRouter();
     const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
@@ -1967,30 +1969,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
     const allowImageEdit = !isImmutableField('imageId');
     const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates');
 
-    return (
-        <Drawer
-            opened={isOpen}
-            onClose={onClose}
-            position="bottom"
-            size="100%"
-            withCloseButton={false}
-            zIndex={1300}
-            transitionProps={{ transition: 'slide-up', duration: 250 }}
-            styles={{
-                content: {
-                    padding: '1.5rem',
-                    paddingBottom: '2rem',
-                    borderTopLeftRadius: '1rem',
-                    borderTopRightRadius: '1rem',
-                    height: 'calc(100vh - 80px)',
-                    overflow: 'auto',
-                },
-                inner: {
-                    alignItems: 'flex-end',
-                },
-            }}
-            overlayProps={{ opacity: 0.45, blur: 3 }}
-        >
+    const sheetContent = (
             <div className="space-y-6">
                 <Group justify="space-between" align="center">
                     <div>
@@ -2585,6 +2564,44 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                     </div>
                 </div>
             </div>
+    );
+
+    if (renderInline) {
+        if (!isOpen) {
+            return null;
+        }
+        return (
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 pb-8">
+                {sheetContent}
+            </div>
+        );
+    }
+
+    return (
+        <Drawer
+            opened={isOpen}
+            onClose={onClose}
+            position="bottom"
+            size="100%"
+            withCloseButton={false}
+            zIndex={1300}
+            transitionProps={{ transition: 'slide-up', duration: 250 }}
+            styles={{
+                content: {
+                    padding: '1.5rem',
+                    paddingBottom: '2rem',
+                    borderTopLeftRadius: '1rem',
+                    borderTopRightRadius: '1rem',
+                    height: 'calc(100vh - 80px)',
+                    overflow: 'auto',
+                },
+                inner: {
+                    alignItems: 'flex-end',
+                },
+            }}
+            overlayProps={{ opacity: 0.45, blur: 3 }}
+        >
+            {sheetContent}
         </Drawer>
     );
 };
