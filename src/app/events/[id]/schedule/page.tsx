@@ -16,6 +16,7 @@ import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
+import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 
 const cloneValue = <T,>(value: T): T => {
   if (value === null || typeof value !== 'object') {
@@ -735,13 +736,17 @@ function EventScheduleContent() {
       return;
     }
 
-    if (request === 'schedule' || request === 'bracket' || request === 'standings') {
+    if (request === 'schedule' || request === 'bracket' || request === 'standings' || request === 'details') {
       setActiveTab(request);
     }
   }, [searchParams, shouldShowBracketTab]);
 
   const handleTabChange = (value: string | null) => {
     if (!value) return;
+    if (value === 'bracket' && !shouldShowBracketTab) {
+      setActiveTab('schedule');
+      return;
+    }
     setActiveTab(value);
 
     if (!pathname) return;
@@ -756,6 +761,10 @@ function EventScheduleContent() {
     const query = params.toString();
     router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
   };
+
+  const handleDetailsClose = useCallback(() => {
+    setActiveTab('schedule');
+  }, []);
 
   // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
@@ -1022,17 +1031,8 @@ function EventScheduleContent() {
       <Navigation />
       <Container size="lg" py="xl">
         <Stack gap="lg">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <Title order={2} mb="xs">{activeEvent.name}</Title>
-              <Group gap="sm">
-                {activeEvent.status && <Badge color={activeEvent.status === 'published' ? 'green' : 'blue'} radius="sm" variant="light">
-                  {activeEvent.status.toUpperCase()}
-                </Badge>}
-                <Badge radius="sm" variant="light">{new Date(activeEvent.start).toLocaleDateString()} – {new Date(activeEvent.end).toLocaleDateString()}</Badge>
-              </Group>
-              <Text c="dimmed" mt="sm">{activeEvent.location}</Text>
-            </div>
+          <Group justify="space-between" align="flex-start">
+            <Title order={2} mb="xs">{activeEvent.name}</Title>
 
             {isHost && (
               <Group gap="sm">
@@ -1061,7 +1061,7 @@ function EventScheduleContent() {
                 </Button>
               </Group>
             )}
-          </div>
+          </Group>
 
           <Paper withBorder radius="md" p="lg">
             <Group gap="xl" wrap="wrap">
@@ -1104,10 +1104,20 @@ function EventScheduleContent() {
 
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tabs.List>
+              <Tabs.Tab value="details">Details</Tabs.Tab>
               <Tabs.Tab value="schedule">Schedule</Tabs.Tab>
               {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
               <Tabs.Tab value="standings">Standings</Tabs.Tab>
             </Tabs.List>
+
+            <Tabs.Panel value="details" pt="md">
+              <EventDetailSheet
+                event={activeEvent}
+                isOpen={activeTab === 'details'}
+                renderInline
+                onClose={handleDetailsClose}
+              />
+            </Tabs.Panel>
 
             <Tabs.Panel value="schedule" pt="md">
               {activeMatches.length === 0 ? (

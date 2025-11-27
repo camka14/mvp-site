@@ -18,13 +18,14 @@ interface EventDetailSheetProps {
     event: Event;
     isOpen: boolean;
     onClose: () => void;
+    renderInline?: boolean;
 }
 
 const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 
-export default function EventDetailSheet({ event, isOpen, onClose }: EventDetailSheetProps) {
+export default function EventDetailSheet({ event, isOpen, onClose, renderInline = false }: EventDetailSheetProps) {
     const { user } = useApp();
     const router = useRouter();
     const [detailedEvent, setDetailedEvent] = useState<Event | null>(null);
@@ -54,8 +55,10 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
     const isFreeEvent = currentEvent && currentEvent.price === 0;
     const isFreeForUser = isFreeEvent || isEventHost;
 
+    const isActive = renderInline ? Boolean(isOpen) : isOpen;
+
     useEffect(() => {
-        if (isOpen && event) {
+        if (isActive && event) {
             setDetailedEvent(event);
             loadEventDetails();
         } else {
@@ -66,10 +69,10 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
             setIsLoadingTeams(false);
             setJoinError(null); // Reset error when modal closes
         }
-    }, [isOpen, event]);
+    }, [isActive, event]);
 
     useEffect(() => {
-        if (!isOpen || !user) {
+        if (!isActive || !user) {
             setUserTeams([]);
             setIsLoadingTeams(false);
             return;
@@ -119,7 +122,7 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
             cancelled = true;
             setIsLoadingTeams(false);
         };
-    }, [isOpen, event, user]);
+    }, [isActive, event, user]);
 
     const loadEventDetails = async (eventId?: string) => {
         const targetId = eventId ?? event?.$id;
@@ -263,7 +266,7 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
         }
     };
 
-    if (!currentEvent) return null;
+    if (!isActive || !currentEvent) return null;
 
     const { date, time } = getEventDateTime(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
@@ -289,235 +292,213 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
 
-    return (
-        <>
-            <Drawer
-                opened={isOpen}
-                onClose={onClose}
-                position="bottom"
-                size="100%"
-                withCloseButton={false}
-                zIndex={1200}
-                transitionProps={{ transition: 'slide-up', duration: 250 }}
-                styles={{
-                    content: {
-                        padding: '1.5rem',
-                        paddingBottom: '2rem',
-                        borderTopLeftRadius: '1rem',
-                        borderTopRightRadius: '1rem',
-                        height: 'calc(100vh - 80px)',
-                        overflow: 'auto',
-                    },
-                    inner: {
-                        alignItems: 'flex-end',
-                    },
-                }}
-                overlayProps={{ opacity: 0.45, blur: 3 }}
-            >
-                <div className="space-y-6">
-                    <div
+    const content = (
+        <div className="space-y-6">
+            {!renderInline && (
+                <div
+                    style={{
+                        position: 'sticky',
+                        top: 12,
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        zIndex: SHEET_POPOVER_Z_INDEX + 20,
+                    }}
+                >
+                    <ActionIcon
+                        variant="filled"
+                        color="gray"
+                        radius="xl"
+                        aria-label="Close"
+                        onClick={onClose}
                         style={{
-                            position: 'sticky',
-                            top: 12,
-                            display: 'flex',
-                            justifyContent: 'flex-end',
-                            zIndex: SHEET_POPOVER_Z_INDEX + 20,
+                            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
                         }}
                     >
-                        <ActionIcon
-                            variant="filled"
-                            color="gray"
-                            radius="xl"
-                            aria-label="Close"
-                            onClick={onClose}
-                            style={{
-                                boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                            }}
-                        >
-                            ×
-                        </ActionIcon>
-                    </div>
-                    <Group justify="space-between" align="center">
-                        <div>
-                            <Text fw={700} size="lg">
-                                {currentEvent.name}
-                            </Text>
-                            <Text size="sm" c="dimmed">
+                        ×
+                    </ActionIcon>
+                </div>
+            )}
+            <Group justify="space-between" align="center">
+                <div>
+                    <Text fw={700} size="lg">
+                        {currentEvent.name}
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                        {currentEvent.location}
+                    </Text>
+                </div>
+            </Group>
+
+            <div className="rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm">
+                {/* Optional hero banner */}
+                <div className="relative">
+                    <img
+                        src={getEventImageUrl({ imageId: currentEvent.imageId, width: 800 })}
+                        alt={currentEvent.name}
+                        className="w-full h-48 object-cover"
+                        onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=200&fit=crop';
+                        }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+
+                    {/* Event Info Overlay */}
+                    <div className="absolute bottom-4 left-6 text-white">
+                        <div className="flex items-center space-x-4 text-sm">
+                            <div className="flex items-center">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                {date} at {time}
+                            </div>
+                            <div className="flex items-center">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
                                 {currentEvent.location}
-                            </Text>
+                            </div>
                         </div>
-                    </Group>
+                    </div>
 
-                    <div className="rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm">
-                        {/* Optional hero banner */}
-                        <div className="relative">
-                            <img
-                                src={getEventImageUrl({ imageId: currentEvent.imageId, width: 800 })}
-                                alt={currentEvent.name}
-                                className="w-full h-48 object-cover"
-                                onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.src = 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=200&fit=crop';
-                                }}
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    {/* ✅ Edit Button - Only visible to event host */}
+                    {isEventHost && (
+                        <button
+                            onClick={() => setShowEditSheet(true)}
+                            className="absolute top-4 left-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            <span>Edit Event</span>
+                        </button>
+                    )}
+                </div>
 
-                            {/* Event Info Overlay */}
-                            <div className="absolute bottom-4 left-6 text-white">
-                                <div className="flex items-center space-x-4 text-sm">
-                                    <div className="flex items-center">
-                                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                        </svg>
-                                        {date} at {time}
+                {/* Content */}
+                <div className="p-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Main Content */}
+                        <div className="lg:col-span-2 space-y-6">
+                            {/* Event Info */}
+                            <div>
+                                <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Details</h2>
+                                <Paper withBorder p="md" radius="md" className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <span className="text-sm text-gray-600">Type</span>
+                                            <p className="font-medium capitalize">{currentEvent.eventType}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-sm text-gray-600">Price</span>
+                                            <p className="font-medium">{currentEvent.price === 0 ? 'Free' : `${formatPrice(currentEvent.price)}`}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-sm text-gray-600">Field Type</span>
+                                            <p className="font-medium">{currentEvent.fieldType}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center">
-                                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        </svg>
-                                        {currentEvent.location}
-                                    </div>
-                                </div>
+
+                                    {currentEvent.divisions && currentEvent.divisions.length > 0 && (
+                                        <div>
+                                            <span className="text-sm text-gray-600">Divisions</span>
+                                            <div className="flex flex-wrap gap-2 mt-1">
+                                                {currentEvent.divisions.map((division, index) => (
+                                                    <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                                                        {typeof division === 'string' ? division : (division?.name || division?.id || 'Division')}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </Paper>
                             </div>
 
-                            {/* ✅ Edit Button - Only visible to event host */}
-                            {isEventHost && (
-                                <button
-                                    onClick={() => setShowEditSheet(true)}
-                                    className="absolute top-4 left-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                    </svg>
-                                    <span>Edit Event</span>
-                                </button>
-                            )}
-                        </div>
+                            {/* Description */}
+                            <Paper withBorder p="md" radius="md">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
+                                <p className="text-gray-700 leading-relaxed">{currentEvent.description}</p>
+                            </Paper>
 
-                        {/* Content */}
-                        <div className="p-6">
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                {/* Main Content */}
-                                <div className="lg:col-span-2 space-y-6">
-                                    {/* Event Info */}
-                                    <div>
-                                        <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Details</h2>
-                                        <Paper withBorder p="md" radius="md" className="space-y-3">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Type</span>
-                                                    <p className="font-medium capitalize">{currentEvent.eventType}</p>
-                                                </div>
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Price</span>
-                                                    <p className="font-medium">{currentEvent.price === 0 ? 'Free' : `${formatPrice(currentEvent.price)}`}</p>
-                                                </div>
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Field Type</span>
-                                                    <p className="font-medium">{currentEvent.fieldType}</p>
-                                                </div>
-                                            </div>
-
-                                            {currentEvent.divisions && currentEvent.divisions.length > 0 && (
-                                                <div>
-                                                    <span className="text-sm text-gray-600">Divisions</span>
-                                                    <div className="flex flex-wrap gap-2 mt-1">
-                                                        {currentEvent.divisions.map((division, index) => (
-                                                            <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                                                                {typeof division === 'string' ? division : (division?.name || division?.id || 'Division')}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </div>
+                            {googleMapsLink && mapEmbedSrc && (
+                                <Paper withBorder p="md" radius="md" className="space-y-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <Text size="sm" c="dimmed">Location</Text>
+                                            <Text fw={600}>{currentEvent.location || 'Location coming soon'}</Text>
+                                            {hasValidCoords && (
+                                                <Text size="xs" c="dimmed">
+                                                    {mapLat.toFixed(4)}, {mapLng.toFixed(4)}
+                                                </Text>
                                             )}
-                                        </Paper>
+                                        </div>
+                                        <Button
+                                            component="a"
+                                            href={googleMapsLink}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            variant="light"
+                                            size="sm"
+                                        >
+                                            Open in Google Maps
+                                        </Button>
                                     </div>
+                                    <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
+                                        <iframe
+                                            title="Event location preview"
+                                            src={mapEmbedSrc}
+                                            className="w-full h-full"
+                                            loading="lazy"
+                                            allowFullScreen
+                                        />
+                                    </div>
+                                </Paper>
+                            )}
 
-                                    {/* Description */}
-                                    <Paper withBorder p="md" radius="md">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
-                                        <p className="text-gray-700 leading-relaxed">{currentEvent.description}</p>
+                            {/* Tournament Details */}
+                            {currentEvent.eventType === 'TOURNAMENT' && (
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Format</h3>
+                                    <Paper withBorder p="md" radius="md" className="space-y-2">
+                                        {currentEvent.doubleElimination && (
+                                            <p><span className="font-medium">Format:</span> Double Elimination</p>
+                                        )}
+                                        {currentEvent.prize && (
+                                            <p><span className="font-medium">Prize:</span> {currentEvent.prize}</p>
+                                        )}
+                                        {currentEvent.winnerSetCount && (
+                                            <p><span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}</p>
+                                        )}
                                     </Paper>
+                                </div>
+                            )}
 
-                                    {googleMapsLink && mapEmbedSrc && (
-                                        <Paper withBorder p="md" radius="md" className="space-y-3">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <Text size="sm" c="dimmed">Location</Text>
-                                                    <Text fw={600}>{currentEvent.location || 'Location coming soon'}</Text>
-                                                    {hasValidCoords && (
-                                                        <Text size="xs" c="dimmed">
-                                                            {mapLat.toFixed(4)}, {mapLng.toFixed(4)}
-                                                        </Text>
-                                                    )}
-                                                </div>
-                                                <Button
-                                                    component="a"
-                                                    href={googleMapsLink}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    variant="light"
-                                                    size="sm"
-                                                >
-                                                    Open in Google Maps
-                                                </Button>
-                                            </div>
-                                            <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
-                                                <iframe
-                                                    title="Event location preview"
-                                                    src={mapEmbedSrc}
-                                                    className="w-full h-full"
-                                                    loading="lazy"
-                                                    allowFullScreen
-                                                />
-                                            </div>
-                                        </Paper>
-                                    )}
+                            {/* League Playoff Details */}
+                            {currentEvent.eventType === 'LEAGUE' && currentEvent.includePlayoffs && (
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Playoff Format</h3>
+                                    <Paper withBorder p="md" radius="md" className="space-y-2">
+                                        <p>
+                                            <span className="font-medium">Teams Included:</span>{' '}
+                                            {currentEvent.playoffTeamCount ?? 'Configured'}
+                                        </p>
+                                        {typeof currentEvent.doubleElimination === 'boolean' && (
+                                            <p>
+                                                <span className="font-medium">Format:</span>{' '}
+                                                {currentEvent.doubleElimination ? 'Double Elimination' : 'Single Elimination'}
+                                            </p>
+                                        )}
+                                        {typeof currentEvent.winnerSetCount === 'number' && currentEvent.winnerSetCount > 0 && (
+                                            <p>
+                                                <span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}
+                                            </p>
+                                        )}
+                                    </Paper>
+                                </div>
+                            )}
 
-                                    {/* Tournament Details */}
-                                    {currentEvent.eventType === 'TOURNAMENT' && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Format</h3>
-                                            <Paper withBorder p="md" radius="md" className="space-y-2">
-                                                {currentEvent.doubleElimination && (
-                                                    <p><span className="font-medium">Format:</span> Double Elimination</p>
-                                                )}
-                                                {currentEvent.prize && (
-                                                    <p><span className="font-medium">Prize:</span> {currentEvent.prize}</p>
-                                                )}
-                                                {currentEvent.winnerSetCount && (
-                                                    <p><span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}</p>
-                                                )}
-                                            </Paper>
-                                        </div>
-                                    )}
-
-                                    {/* League Playoff Details */}
-                                    {currentEvent.eventType === 'LEAGUE' && currentEvent.includePlayoffs && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Playoff Format</h3>
-                                            <Paper withBorder p="md" radius="md" className="space-y-2">
-                                                <p>
-                                                    <span className="font-medium">Teams Included:</span>{' '}
-                                                    {currentEvent.playoffTeamCount ?? 'Configured'}
-                                                </p>
-                                                {typeof currentEvent.doubleElimination === 'boolean' && (
-                                                    <p>
-                                                        <span className="font-medium">Format:</span>{' '}
-                                                        {currentEvent.doubleElimination ? 'Double Elimination' : 'Single Elimination'}
-                                                    </p>
-                                                )}
-                                                {typeof currentEvent.winnerSetCount === 'number' && currentEvent.winnerSetCount > 0 && (
-                                                    <p>
-                                                        <span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}
-                                                    </p>
-                                                )}
-                                            </Paper>
-                                        </div>
-                                    )}
-
-                                    {/* Event Stats */}
+                            {/* Event Stats */}
                                     <Paper withBorder p="md" radius="md">
                                         <h3 className="text-lg font-semibold text-gray-900 mb-2">Event Stats</h3>
                                         <div className="space-y-2 text-sm">
@@ -837,8 +818,40 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
                             </div>
                         </div>
                     </div>
-                </div>
-            </Drawer>
+        </div>
+    );
+
+    return (
+        <>
+            {renderInline ? (
+                content
+            ) : (
+                <Drawer
+                    opened={isOpen}
+                    onClose={onClose}
+                    position="bottom"
+                    size="100%"
+                    withCloseButton={false}
+                    zIndex={1200}
+                    transitionProps={{ transition: 'slide-up', duration: 250 }}
+                    styles={{
+                        content: {
+                            padding: '1.5rem',
+                            paddingBottom: '2rem',
+                            borderTopLeftRadius: '1rem',
+                            borderTopRightRadius: '1rem',
+                            height: 'calc(100vh - 80px)',
+                            overflow: 'auto',
+                        },
+                        inner: {
+                            alignItems: 'flex-end',
+                        },
+                    }}
+                    overlayProps={{ opacity: 0.45, blur: 3 }}
+                >
+                    {content}
+                </Drawer>
+            )}
 
             {/* Players Dropdown */}
             <ParticipantsDropdown
