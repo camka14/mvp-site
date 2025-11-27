@@ -1730,7 +1730,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
             }
 
             onClose();
-            router.push(`/discover/${previewPayload.$id}/schedule?preview=1`);
+            router.push(`/events/${previewPayload.$id}/schedule?preview=1`);
         } catch (error) {
             setLeagueError(error instanceof Error ? error.message : 'Failed to generate preview schedule.');
         } finally {

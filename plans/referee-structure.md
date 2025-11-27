@@ -43,7 +43,7 @@ Key files to touch:
 - src/lib/eventService.ts hydrates events/matches and builds payloads.
 - src/lib/organizationService.ts maps org rows and fetches related data.
 - src/lib/tournamentService.ts updates matches and computes permissions.
-- UI: src/app/discover/[id]/schedule/page.tsx, src/app/discover/[id]/schedule/components/MatchEditModal.tsx, src/app/discover/[id]/schedule/components/MatchCard.tsx.
+- UI: src/app/events/[id]/schedule/page.tsx, src/app/events/[id]/schedule/components/MatchEditModal.tsx, src/app/events/[id]/schedule/components/MatchCard.tsx.
 - UI: src/app/organizations/[id]/page.tsx for org detail tabs and overview.
 - Event creation: src/app/discover/components/EventCreationSheet.tsx (and any helper components) to seed refereeIds and let creators edit them.
 - Player search pattern to reuse: src/app/teams/components/InvitePlayersModal.tsx.
@@ -65,7 +65,7 @@ Work in /home/camka/MVP/mvp-site.
    - In src/lib/organizationService.ts hydrate referees via userService, adjust withRelations to fetch refs, and add helpers to update refIds if needed.
    - In src/lib/tournamentService.ts update permission checks and updateMatch payload handling for user vs team refs.
 2) Schedule UI updates:
-   - Update src/app/discover/[id]/schedule/page.tsx to store referees on event, pass options into MatchEditModal (including doTeamsRef and referee lists), and ensure match updates carry correct ref fields.
+   - Update src/app/events/[id]/schedule/page.tsx to store referees on event, pass options into MatchEditModal (including doTeamsRef and referee lists), and ensure match updates carry correct ref fields.
    - Enhance MatchEditModal to edit refereeId (user) and teamRefereeId separately, using search/select sourced from event refs/teams; preserve existing set editing.
    - Update MatchCard to render both user ref and team ref badges when available.
 3) Organization referees management:

@@ -841,7 +841,7 @@ function EventScheduleContent() {
       try {
         await eventService.deleteUnpublishedEvent(event);
         clearEventCache(event.$id);
-        router.push('/discover');
+        router.push('/events');
       } catch (err) {
         console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
         setError(`Failed to cancel ${entityLabel.toLowerCase()}.`);
@@ -854,7 +854,7 @@ function EventScheduleContent() {
       if (typeof window !== 'undefined' && window.history.length > 1) {
         router.back();
       } else {
-        router.push('/discover');
+        router.push('/events');
       }
       return;
     }
@@ -877,7 +877,7 @@ function EventScheduleContent() {
       await leagueService.deleteWeeklySchedulesForEvent(event.$id);
       await eventService.deleteEvent(event);
       clearEventCache(event.$id);
-      router.push('/discover');
+      router.push('/events');
     } catch (err) {
       console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
       setError(`Failed to cancel ${entityLabel.toLowerCase()}.`);
@@ -1007,7 +1007,7 @@ function EventScheduleContent() {
           <Paper withBorder shadow="sm" p="xl" radius="md">
             <Stack gap="md" align="center">
               <Text fw={600} size="lg">League not found.</Text>
-              <Button variant="default" onClick={() => router.push('/discover')}>Back to Events</Button>
+              <Button variant="default" onClick={() => router.push('/events')}>Back to Events</Button>
             </Stack>
           </Paper>
         </div>

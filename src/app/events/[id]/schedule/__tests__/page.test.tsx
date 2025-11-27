@@ -17,7 +17,7 @@ const mockRouter = {
 jest.mock('next/navigation', () => ({
   useParams: jest.fn(() => ({ id: 'event_1' })),
   useRouter: jest.fn(() => mockRouter),
-  usePathname: jest.fn(() => '/discover/event_1/schedule'),
+  usePathname: jest.fn(() => '/events/event_1/schedule'),
   useSearchParams: () => useSearchParamsMock(),
 }));
 
