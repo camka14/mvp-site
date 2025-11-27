@@ -48,7 +48,8 @@ describe('RefundSection', () => {
   });
 
   it('handles automatic refunds when within deadline', async () => {
-    useAppMock.mockReturnValue({ user: { $id: 'user_1' } });
+    const user = { $id: 'user_1' };
+    useAppMock.mockReturnValue({ user });
     const start = formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000));
     const event = buildEvent({
       $id: 'event_1',
@@ -68,13 +69,14 @@ describe('RefundSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /Get Refund/i }));
 
     await waitFor(() =>
-      expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith('event_1', 'user_1', undefined),
+      expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith(event, user, undefined),
     );
     await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
   });
 
   it('requests reason when automatic refund not available', async () => {
-    useAppMock.mockReturnValue({ user: { $id: 'user_1' } });
+    const user = { $id: 'user_1' };
+    useAppMock.mockReturnValue({ user });
     const start = formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
     const event = buildEvent({
       $id: 'event_1',
@@ -99,8 +101,8 @@ describe('RefundSection', () => {
 
     await waitFor(() =>
       expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith(
-        'event_1',
-        'user_1',
+        event,
+        user,
         'Can no longer attend',
       ),
     );
