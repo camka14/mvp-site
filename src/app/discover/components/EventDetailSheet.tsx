@@ -274,6 +274,20 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
         (isTeamSignup && teams.some(t => (t.playerIds || []).includes(user.$id)))
     );
     const isUserFreeAgent = !!user && (currentEvent.freeAgentIds || []).includes(user.$id);
+    const hasCoordinates = Array.isArray(currentEvent.coordinates) && currentEvent.coordinates.length >= 2;
+    const mapLat = hasCoordinates ? Number(currentEvent.coordinates[1]) : undefined;
+    const mapLng = hasCoordinates ? Number(currentEvent.coordinates[0]) : undefined;
+    const hasValidCoords = typeof mapLat === 'number' && typeof mapLng === 'number' && !Number.isNaN(mapLat) && !Number.isNaN(mapLng);
+    const mapQuery = hasValidCoords
+        ? `${mapLat},${mapLng}`
+        : (currentEvent.location || '').trim();
+    const encodedMapQuery = encodeURIComponent(mapQuery);
+    const googleMapsLink = mapQuery
+        ? `https://www.google.com/maps/search/?api=1&query=${encodedMapQuery}`
+        : null;
+    const mapEmbedSrc = mapQuery
+        ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
+        : null;
 
     return (
         <>
@@ -301,6 +315,28 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
                 overlayProps={{ opacity: 0.45, blur: 3 }}
             >
                 <div className="space-y-6">
+                    <div
+                        style={{
+                            position: 'sticky',
+                            top: 12,
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            zIndex: SHEET_POPOVER_Z_INDEX + 20,
+                        }}
+                    >
+                        <ActionIcon
+                            variant="filled"
+                            color="gray"
+                            radius="xl"
+                            aria-label="Close"
+                            onClick={onClose}
+                            style={{
+                                boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                            }}
+                        >
+                            ×
+                        </ActionIcon>
+                    </div>
                     <Group justify="space-between" align="center">
                         <div>
                             <Text fw={700} size="lg">
@@ -310,9 +346,6 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
                                 {currentEvent.location}
                             </Text>
                         </div>
-                        <ActionIcon variant="subtle" radius="xl" aria-label="Close" onClick={onClose}>
-                            ×
-                        </ActionIcon>
                     </Group>
 
                     <div className="rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm">
@@ -406,6 +439,41 @@ export default function EventDetailSheet({ event, isOpen, onClose }: EventDetail
                                         <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
                                         <p className="text-gray-700 leading-relaxed">{currentEvent.description}</p>
                                     </Paper>
+
+                                    {googleMapsLink && mapEmbedSrc && (
+                                        <Paper withBorder p="md" radius="md" className="space-y-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <Text size="sm" c="dimmed">Location</Text>
+                                                    <Text fw={600}>{currentEvent.location || 'Location coming soon'}</Text>
+                                                    {hasValidCoords && (
+                                                        <Text size="xs" c="dimmed">
+                                                            {mapLat.toFixed(4)}, {mapLng.toFixed(4)}
+                                                        </Text>
+                                                    )}
+                                                </div>
+                                                <Button
+                                                    component="a"
+                                                    href={googleMapsLink}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    variant="light"
+                                                    size="sm"
+                                                >
+                                                    Open in Google Maps
+                                                </Button>
+                                            </div>
+                                            <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
+                                                <iframe
+                                                    title="Event location preview"
+                                                    src={mapEmbedSrc}
+                                                    className="w-full h-full"
+                                                    loading="lazy"
+                                                    allowFullScreen
+                                                />
+                                            </div>
+                                        </Paper>
+                                    )}
 
                                     {/* Tournament Details */}
                                     {currentEvent.eventType === 'TOURNAMENT' && (

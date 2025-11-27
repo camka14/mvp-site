@@ -37,14 +37,15 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
             setError('Please provide a reason for the refund request');
             return;
         }
+        if (!user) return;
 
         setLoading(true);
         setError(null);
 
         try {
             const result = await paymentService.requestRefund(
-                event.$id,
-                user!.$id,
+                event,
+                user,
                 canAutoRefund ? undefined : refundReason
             );
 

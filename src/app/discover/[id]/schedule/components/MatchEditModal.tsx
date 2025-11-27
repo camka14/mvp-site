@@ -185,15 +185,20 @@ export default function MatchEditModal({
   );
 
   const teamOptions = useMemo(() => {
-    const options = teams.map((team) => ({
-      value: team.$id,
-      label: resolveTeamName(team, teams),
-    }));
+    // Deduplicate by team id to avoid double entries when upstream data repeats teams.
+    const optionsMap = new Map<string, { value: string; label: string }>();
+
+    teams.forEach((team) => {
+      optionsMap.set(team.$id, {
+        value: team.$id,
+        label: resolveTeamName(team, teams),
+      });
+    });
 
     const ensureOption = (id: string | null, label: string) => {
       if (!id || !label) return;
-      if (!options.some((option) => option.value === id)) {
-        options.push({ value: id, label });
+      if (!optionsMap.has(id)) {
+        optionsMap.set(id, { value: id, label });
       }
     };
 
@@ -201,7 +206,7 @@ export default function MatchEditModal({
     ensureOption(matchTeam2Id, resolveTeamName(match?.team2, teams));
     ensureOption(matchTeamRefereeId, resolveTeamName(match?.teamReferee ?? (match as any)?.referee, teams));
 
-    return options.sort((a, b) => a.label.localeCompare(b.label));
+    return Array.from(optionsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [teams, matchTeam1Id, matchTeam2Id, matchTeamRefereeId, match?.team1, match?.team2, match?.teamReferee, match?.referee]);
 
   const refereeOptions = useMemo(() => {

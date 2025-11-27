@@ -158,7 +158,7 @@ class PaymentService {
     try {
       const response = await functions.createExecution({
         functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-        xpath: '/billing/refund',
+        xpath: '/billing/refund_payment',
         method: ExecutionMethod.POST,
         body: JSON.stringify({
           event,
