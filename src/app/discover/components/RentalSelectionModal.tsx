@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Select,
   Group,
@@ -23,16 +24,14 @@ import {
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { format, getDay, parse, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addHours } from 'date-fns';
 
-import type { Event, Field, Organization, PaymentIntent, TimeSlot } from '@/types';
+import type { Event, Field, Organization, TimeSlot } from '@/types';
 import { formatPrice } from '@/types';
 import { buildFieldCalendarEvents, type FieldCalendarEntry } from '@/app/organizations/[id]/fieldCalendar';
-import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
-import EventCreationSheet from './EventCreationSheet';
-import { paymentService } from '@/lib/paymentService';
-import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
+import { parseLocalDateTime } from '@/lib/dateUtils';
 import { notifications } from '@mantine/notifications';
 import { useApp } from '@/app/providers';
 import { organizationService } from '@/lib/organizationService';
+import { ID } from '@/app/appwrite';
 
 type RentalListing = {
   organization: Organization;
@@ -67,13 +66,6 @@ type SelectionCalendarEntry = {
 };
 
 type CalendarEventData = FieldCalendarEntry | SelectionCalendarEntry;
-
-type PaymentFlowState = {
-  draftEvent: Partial<Event>;
-  paymentIntent: PaymentIntent;
-  eventSummary: PaymentEventSummary;
-  resolve: (result: boolean) => void;
-};
 
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const SELECTION_COLOR = '#FED7AA'; // matches Tailwind border-orange-200
@@ -182,6 +174,7 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
     );
   };
 
+  const router = useRouter();
   const fields = useMemo<Field[]>(() => organization?.fields ?? [], [organization]);
   const fieldOptions = useMemo(() => fields.map((field) => ({
     value: field.$id,
@@ -203,30 +196,14 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
 
   const [selection, setSelection] = useState<SelectionState>({
     fieldId: initialFieldId,
-   date: today,
-   range: initialRange,
- });
+    date: today,
+    range: initialRange,
+  });
   const [calendarView, setCalendarView] = useState<View>('week');
   const [calendarDate, setCalendarDate] = useState<Date>(today);
-  const [eventCreationOpen, setEventCreationOpen] = useState(false);
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentFlow, setPaymentFlow] = useState<PaymentFlowState | null>(null);
   const [hostOrganizations, setHostOrganizations] = useState<Organization[]>([]);
   const [hostOptionsLoading, setHostOptionsLoading] = useState(false);
   const [hostSelection, setHostSelection] = useState<string>('self');
-
-  useEffect(() => {
-    if (!opened) {
-      setEventCreationOpen(false);
-      setPaymentModalOpen(false);
-      setPaymentFlow((prev) => {
-        if (prev) {
-          prev.resolve(false);
-        }
-        return null;
-      });
-    }
-  }, [opened]);
 
   const computeCalendarRange = useMemo(() => {
     return (view: View, date: Date) => {
@@ -384,49 +361,6 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
     return `Selection: ${startLabel} – ${endLabel} · Price ${priceLabel}`;
   }, [matchingRentalSlot, existingConflicts, selectedField, selection, user]);
 
-  const eventDefaults = useMemo<Partial<Event> | undefined>(() => {
-    if (!selectedField) return undefined;
-    const [startHour, endHour] = selection.range;
-    const startDate = minutesToDate(selection.date, startHour * 60);
-    const endDate = minutesToDate(selection.date, endHour * 60);
-    const organizationCoordinates = Array.isArray(organization?.coordinates)
-      ? organization!.coordinates
-      : undefined;
-    const fallbackLat = selectedField.lat;
-    const fallbackLong = selectedField.long;
-    const coordinates =
-      organizationCoordinates && organizationCoordinates.length >= 2
-        ? [Number(organizationCoordinates[0]), Number(organizationCoordinates[1])] as [number, number]
-        : (typeof fallbackLong === 'number' && typeof fallbackLat === 'number'
-            ? [fallbackLong, fallbackLat] as [number, number]
-            : undefined);
-
-    const defaults: Partial<Event> = {
-      start: formatLocalDateTime(startDate),
-      end: formatLocalDateTime(endDate),
-      location: organization?.location ?? selectedField.name ?? '',
-      fields: [selectedField],
-    };
-
-    if (coordinates) {
-      defaults.coordinates = coordinates;
-    }
-    if (selectedField.type) {
-      defaults.fieldType = selectedField.type;
-    }
-    if (matchingRentalSlot) {
-      const { event: _ignoredEvent, ...slotDefaults } = matchingRentalSlot;
-      defaults.timeSlots = [
-        {
-          ...slotDefaults,
-          scheduledFieldId: slotDefaults.scheduledFieldId ?? selectedField.$id,
-        },
-      ];
-    }
-
-    return defaults;
-  }, [matchingRentalSlot, organization, selectedField, selection]);
-
   useEffect(() => {
     if (!user) {
       setHostOrganizations([]);
@@ -479,112 +413,19 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
     ];
   }, [hostOrganizations]);
 
-  const selectedHostOrganization = useMemo(
-    () => (hostSelection === 'self' ? null : hostOrganizations.find((org) => org.$id === hostSelection) ?? null),
-    [hostSelection, hostOrganizations],
-  );
-
-  const handlePaymentFlowResult = useCallback((result: boolean) => {
-    setPaymentModalOpen(false);
-    setPaymentFlow((prev) => {
-      if (prev) {
-        prev.resolve(result);
-      }
-      return null;
-    });
-  }, []);
-
-  const handleBeforeEventCreate = useCallback(
-    async (draftEvent: Partial<Event>): Promise<boolean> => {
-      if (!user) {
-        notifications.show({ color: 'yellow', message: 'Sign in to create an event.' });
-        return false;
-      }
-      const slot = matchingRentalSlot;
-      if (!slot) {
-        notifications.show({ color: 'red', message: 'Selected time is no longer available.' });
-        return false;
-      }
-
-      try {
-        const minimalOrg = organization
-          ? {
-              $id: organization.$id,
-              name: organization.name,
-              location: organization.location,
-              coordinates: Array.isArray(organization.coordinates)
-                ? [
-                    Number(organization.coordinates[0]),
-                    Number(organization.coordinates[1]),
-                  ] as [number, number]
-                : undefined,
-              hasStripeAccount: organization.hasStripeAccount ?? false,
-            }
-          : null;
-        const paymentIntent = await paymentService.createPaymentIntent(
-          user,
-          undefined,
-          undefined,
-          slot,
-          minimalOrg ?? undefined,
-        );
-        const eventSummary: PaymentEventSummary = {
-          ...draftEvent,
-          name: draftEvent.name ?? 'Rental Event',
-          location: draftEvent.location ?? organization?.location ?? selectedField?.name ?? '',
-          eventType: (draftEvent.eventType as Event['eventType']) ?? 'EVENT',
-          price: typeof draftEvent.price === 'number' ? draftEvent.price : 0,
-        };
-        if (draftEvent.imageId) {
-          eventSummary.imageId = draftEvent.imageId;
-        }
-
-        return await new Promise<boolean>((resolve) => {
-          setPaymentFlow({
-            draftEvent,
-            paymentIntent,
-            eventSummary,
-            resolve,
-          });
-          setPaymentModalOpen(true);
-        });
-      } catch (error) {
-        console.error('Failed to create payment intent:', error);
-        notifications.show({
-          color: 'red',
-          message: 'Unable to initiate payment. Please try again.',
-        });
-        return false;
-      }
-    },
-    [matchingRentalSlot, organization, selectedField, user],
-  );
-
-  const handleEventSaved = useCallback(
-    (createdEvent: Event) => {
-      setEventCreationOpen(false);
-      setPaymentModalOpen(false);
-      setPaymentFlow(null);
-      notifications.show({
-        color: 'teal',
-        message: createdEvent?.name ? `${createdEvent.name} created successfully.` : 'Event created successfully.',
-      });
-      onClose();
-    },
-    [onClose],
-  );
-
   const handleCreateEventClick = useCallback(() => {
     if (!user) {
       notifications.show({ color: 'yellow', message: 'Sign in to create an event.' });
       return;
     }
-    if (!selectedField) {
-      notifications.show({ color: 'red', message: 'Select a field before creating an event.' });
+    if (!selectedField || !isSelectionValid) {
+      notifications.show({ color: 'red', message: 'Select a valid field and time before creating an event.' });
       return;
     }
-    setEventCreationOpen(true);
-  }, [selectedField, user]);
+    const newId = ID.unique();
+    router.push(`/events/${newId}/schedule?create=1`);
+    onClose();
+  }, [isSelectionValid, onClose, router, selectedField, user]);
 
   return (
     <>
@@ -738,26 +579,6 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
         </Group>
       </div>
       </Drawer>
-      {user && (
-        <EventCreationSheet
-          isOpen={eventCreationOpen}
-          onClose={() => setEventCreationOpen(false)}
-          onEventCreated={handleBeforeEventCreate}
-          onEventSaved={handleEventSaved}
-          currentUser={user}
-          organization={selectedHostOrganization}
-          immutableDefaults={eventDefaults}
-        />
-      )}
-      {paymentFlow && (
-        <PaymentModal
-          isOpen={paymentModalOpen}
-          onClose={() => handlePaymentFlowResult(false)}
-          event={paymentFlow.eventSummary}
-          paymentData={paymentFlow.paymentIntent}
-          onPaymentSuccess={() => handlePaymentFlowResult(true)}
-        />
-      )}
     </>
   );
 };

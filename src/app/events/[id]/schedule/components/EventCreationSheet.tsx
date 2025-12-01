@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { format } from 'date-fns';
-import { useRouter } from 'next/navigation';
 
 import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
-import TournamentFields from './TournamentFields';
+import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { useLocation } from '@/app/hooks/useLocation';
-import { getEventImageUrl, Event, EventStatus, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, EventState, LeagueScoringConfig, Sport, TournamentConfig, toEventPayload } from '@/types';
+import { getEventImageUrl, Event, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, toEventPayload } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
-import LeagueScoringConfigPanel from './LeagueScoringConfigPanel';
+import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
 
 import { Drawer, TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon } from '@mantine/core';
@@ -19,7 +17,7 @@ import { locationService } from '@/lib/locationService';
 import { leagueService } from '@/lib/leagueService';
 import { userService } from '@/lib/userService';
 import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
-import LeagueFields, { LeagueSlotForm } from './LeagueFields';
+import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { ID } from '@/app/appwrite';
 import UserCard from '@/components/ui/UserCard';
 
@@ -28,10 +26,10 @@ import UserCard from '@/components/ui/UserCard';
 interface EventCreationSheetProps {
     isOpen: boolean;
     onClose: () => void;
-    onEventCreated?: (draftEvent: Partial<Event>) => Promise<boolean>;
-    onEventSaved?: (createdEvent: Event) => void;
+    onDraftChange?: (draftEvent: Partial<Event>) => void;
     currentUser: UserData;
-    editingEvent?: Event;
+    event?: Event | null;
+    editingEvent?: Event; // backward compat
     organization: Organization | null;
     immutableDefaults?: Partial<Event>;
     renderInline?: boolean;
@@ -194,7 +192,47 @@ const coordinatesAreSet = (coordinates?: [number, number]): boolean => {
     return !(lat === 0 && lng === 0);
 };
 
+// Produces a stable string representation so we can cheaply detect no-op state changes.
+const stableSerialize = (value: unknown): string => {
+    const seen = new WeakSet<object>();
+    const normalize = (input: unknown): unknown => {
+        if (input && typeof input === 'object') {
+            if (seen.has(input as object)) {
+                return '[Circular]';
+            }
+            seen.add(input as object);
+
+            if (Array.isArray(input)) {
+                return input.map((entry) => normalize(entry));
+            }
+
+            const sortedKeys = Object.keys(input as Record<string, unknown>).sort();
+            const normalized: Record<string, unknown> = {};
+            sortedKeys.forEach((key) => {
+                normalized[key] = normalize((input as Record<string, unknown>)[key]);
+            });
+            return normalized;
+        }
+        return input;
+    };
+
+    return JSON.stringify(normalize(value));
+};
+
+// Wrap toEventPayload to strip circular references before serialization.
+const serializeDraft = (draft: Partial<Event> | null | undefined): string => {
+    if (!draft) {
+        return '';
+    }
+    try {
+        return stableSerialize(toEventPayload(draft as Event));
+    } catch (error) {
+        return stableSerialize(draft);
+    }
+};
+
 type EventFormState = {
+    $id: string;
     name: string;
     description: string;
     location: string;
@@ -328,6 +366,7 @@ const clearTournamentConfigFromEvent = (target: Partial<Event>): void => {
 };
 
 const createDefaultEventData = (): EventFormState => ({
+    $id: ID.unique(),
     name: '',
     description: '',
     location: '',
@@ -360,6 +399,7 @@ const createDefaultEventData = (): EventFormState => ({
 });
 
 const mapEventToFormState = (event: Event): EventFormState => ({
+    $id: event.$id,
     name: event.name,
     description: event.description ?? '',
     location: event.location ?? '',
@@ -414,27 +454,28 @@ const mapEventToFormState = (event: Event): EventFormState => ({
 const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
     isOpen,
     onClose,
-    onEventCreated = async () => true,
-    onEventSaved,
+    onDraftChange,
     currentUser,
+    event: initialEvent,
     editingEvent,
     organization,
     immutableDefaults,
     renderInline = false,
 }) => {
-    const router = useRouter();
     const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
     const modalRef = useRef<HTMLDivElement>(null);
     const defaultLocationSourceRef = useRef<DefaultLocationSource>('none');
     const appliedDefaultLocationLabelRef = useRef<string | null>(null);
     const refsPrefilledRef = useRef<boolean>(false);
+    const lastDraftRef = useRef<string | null>(null);
     // Stores the persisted file ID for the event image so submissions reference storage assets.
-    const [selectedImageId, setSelectedImageId] = useState<string>(editingEvent?.imageId || '');
+    const incomingEvent = initialEvent ?? editingEvent ?? null;
+    const [selectedImageId, setSelectedImageId] = useState<string>(incomingEvent?.imageId || '');
 
 
     // Mirrors the event image URL for live preview.
     const [selectedImageUrl, setSelectedImageUrl] = useState(
-        editingEvent ? getEventImageUrl({ imageId: editingEvent.imageId, width: 800 }) : ''
+        incomingEvent ? getEventImageUrl({ imageId: incomingEvent.imageId, width: 800 }) : ''
     );
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => ({
@@ -449,8 +490,6 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
         checking: false,
         error: undefined,
     }), []);
-    // Guards the submit button and spinner while create/update or preview requests are in-flight.
-    const [isSubmitting, setIsSubmitting] = useState(false);
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);
     // Flag the user can toggle to add themselves to new pickup/tournament rosters on creation.
@@ -461,9 +500,9 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
     );
 
     const [hydratedEditingEvent, setHydratedEditingEvent] = useState<Event | null>(null);
-    const activeEditingEvent = hydratedEditingEvent ?? editingEvent ?? null;
+    const activeEditingEvent = hydratedEditingEvent ?? incomingEvent ?? null;
 
-    const isPreviewDraft = Boolean(editingEvent?.$id && editingEvent.$id.startsWith('preview-'));
+    const isPreviewDraft = Boolean(activeEditingEvent?.$id && activeEditingEvent.$id.startsWith('preview-'));
     const isEditMode = !!activeEditingEvent && !isPreviewDraft;
 
     const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
@@ -572,17 +611,17 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
     }, [immutableDefaultsMemo, sportsById]);
 
     useEffect(() => {
-        if (!isOpen || !editingEvent) {
+        if (!isOpen || !incomingEvent) {
             setHydratedEditingEvent(null);
             return;
         }
 
-        if (editingEvent.eventType !== 'LEAGUE') {
+        if (incomingEvent.eventType !== 'LEAGUE') {
             setHydratedEditingEvent(null);
             return;
         }
 
-        if (Array.isArray(editingEvent.timeSlots) && editingEvent.timeSlots.length > 0) {
+        if (Array.isArray(incomingEvent.timeSlots) && incomingEvent.timeSlots.length > 0) {
             setHydratedEditingEvent(null);
             return;
         }
@@ -590,7 +629,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
         let cancelled = false;
         (async () => {
             try {
-                const full = await eventService.getEventWithRelations(editingEvent.$id);
+                const full = await eventService.getEventWithRelations(incomingEvent.$id);
                 if (!cancelled && full) {
                     setHydratedEditingEvent(full);
                 }
@@ -602,7 +641,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
         return () => {
             cancelled = true;
         };
-    }, [editingEvent, isOpen]);
+    }, [incomingEvent, isOpen]);
 
     // Complete event data state with ALL fields
     // Central event payload that binds the form inputs for basic details, logistics, and relationships.
@@ -611,6 +650,17 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
             activeEditingEvent ? mapEventToFormState(activeEditingEvent) : createDefaultEventData()
         )
     );
+
+    const applyFormState = useCallback((next: EventFormState) => {
+        setEventData((prev) => {
+            const prevSerialized = stableSerialize(prev);
+            const nextSerialized = stableSerialize(next);
+            if (prevSerialized === nextSerialized) {
+                return prev;
+            }
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         const ids = eventData.refereeIds || [];
@@ -927,7 +977,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
         if (activeEditingEvent) {
             const mapped = mapEventToFormState(activeEditingEvent);
             const applied = applyImmutableDefaults(mapped);
-            setEventData(applied);
+            applyFormState(applied);
 
             const imageIdDefault = immutableDefaultsMemo.imageId ?? activeEditingEvent.imageId ?? '';
             setSelectedImageId(imageIdDefault);
@@ -938,7 +988,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
             );
         } else {
             const applied = applyImmutableDefaults(createDefaultEventData());
-            setEventData(applied);
+            applyFormState(applied);
             const imageIdDefault = immutableDefaultsMemo.imageId;
             if (imageIdDefault) {
                 setSelectedImageId(imageIdDefault);
@@ -948,7 +998,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                 setSelectedImageUrl('');
             }
         }
-    }, [activeEditingEvent, isOpen, applyImmutableDefaults, immutableDefaultsMemo]);
+    }, [activeEditingEvent, isOpen, applyImmutableDefaults, immutableDefaultsMemo, applyFormState]);
 
     useEffect(() => {
         if (!hasImmutableFields) {
@@ -1542,419 +1592,166 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
         }
     };
 
-    // Generates an in-memory league schedule and navigates to the preview page for new leagues.
-    const handleLeaguePreview = async () => {
-        if (eventData.eventType !== 'LEAGUE' || isEditMode) return;
-        if (isSubmitting || !isValid) return;
-
-        const startDate = parseLocalDateTime(eventData.start);
-        if (!startDate) {
-            setLeagueError('Provide a valid start date for the league.');
-            return;
-        }
-
-        const endDate = eventData.end ? parseLocalDateTime(eventData.end) : null;
-        if (eventData.end && !endDate) {
-            setLeagueError('Provide a valid end date for the league or leave it blank.');
-            return;
-        }
-
-        if (endDate && startDate > endDate) {
-            setLeagueError('League end date must be after the start date.');
-            return;
-        }
-
-        const invalidTimes = leagueSlots.some(slot =>
-            typeof slot.startTimeMinutes === 'number' &&
-            typeof slot.endTimeMinutes === 'number' &&
-            slot.endTimeMinutes <= slot.startTimeMinutes
-        );
-
-        if (invalidTimes) {
-            setLeagueError('Each timeslot must end after it starts.');
-            return;
-        }
-
-        const sportSelection = eventData.sportConfig;
-        if (!sportSelection) {
-            setLeagueError('Select a sport before previewing the schedule.');
-            return;
-        }
-
-        const finalImageId = selectedImageId || eventData.imageId;
-        if (!finalImageId) {
-            setLeagueError('Add an event image before previewing the schedule.');
-            return;
-        }
-
-        const validSlots = leagueSlots.filter(slot =>
-            slot.scheduledFieldId &&
-            typeof slot.dayOfWeek === 'number' &&
-            typeof slot.startTimeMinutes === 'number' &&
-            typeof slot.endTimeMinutes === 'number'
-        );
-
-        if (validSlots.length === 0) {
-            setLeagueError('Add at least one complete weekly timeslot to continue.');
-            return;
-        }
-
-        setIsSubmitting(true);
-        setLeagueError(null);
-
-        try {
-            const restTime = normalizeNumber(leagueData.restTimeMinutes);
-            const previewRequiresSets = Boolean(sportSelection.usePointsPerSetWin);
-            const setsPerMatchValue = leagueData.setsPerMatch ?? 1;
-            const normalizedPoints = previewRequiresSets
-                ? (() => {
-                    const base = Array.isArray(leagueData.pointsToVictory)
-                        ? leagueData.pointsToVictory.slice(0, setsPerMatchValue)
-                        : [];
-                    while (base.length < setsPerMatchValue) base.push(21);
-                    return base;
-                })()
-                : undefined;
-
-            const timingFields = previewRequiresSets
-                ? {
-                    usesSets: true,
-                    setDurationMinutes: normalizeNumber(leagueData.setDurationMinutes) ?? 20,
-                    setsPerMatch: setsPerMatchValue,
-                    pointsToVictory: normalizedPoints,
-                    ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
-                }
-                : {
-                    usesSets: false,
-                    matchDurationMinutes: normalizeNumber(leagueData.matchDurationMinutes, 60) ?? 60,
-                    ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
-                };
-
-            const fieldMap = new Map<string, Field>();
-            fieldsReferencedInSlots.forEach(field => {
-                if (field?.$id) {
-                    fieldMap.set(field.$id, field);
-                }
-            });
-
-            const slotDocuments: Record<string, unknown>[] = validSlots
-                .map((slot): any | null => {
-                    if (!slot.scheduledFieldId) {
-                        return null;
-                    }
-
-                    const fieldId = slot.scheduledFieldId;
-                    const startDateValue = eventData.start;
-                    const endDateValue = eventData.end;
-
-                    const serializedSlot: Record<string, unknown> = {
-                        $id: slot.$id || ID.unique(),
-                        dayOfWeek: slot.dayOfWeek as TimeSlot['dayOfWeek'],
-                        startTimeMinutes: Number(slot.startTimeMinutes),
-                        endTimeMinutes: Number(slot.endTimeMinutes),
-                        repeating: slot.repeating !== false,
-                        scheduledFieldId: fieldId,
-                    };
-
-                    if (startDateValue) {
-                        serializedSlot.startDate = startDateValue;
-                    }
-                    if (endDateValue) {
-                        serializedSlot.endDate = endDateValue;
-                    }
-
-                    return serializedSlot;
-                })
-                .filter((slot): slot is Record<string, unknown> => slot !== null);
-
-
-            const organizationId = organization?.$id;
-
-            const eventDocument: Record<string, any> = {
-                $id: ID.unique(),
-                name: eventData.name,
-                description: eventData.description,
-                start: eventData.start,
-                end: eventData.end,
-                location: eventData.location,
-                coordinates: eventData.coordinates,
-                eventType: 'LEAGUE',
-                sportId: sportSelection.$id,
-                fieldType: eventData.fieldType,
-                price: eventData.price,
-                maxParticipants: eventData.maxParticipants,
-                teamSignup: eventData.teamSignup,
-                waitListIds: eventData.waitList,
-                freeAgentIds: eventData.freeAgents,
-                imageId: finalImageId,
-                singleDivision: eventData.singleDivision,
-                divisions: eventData.divisions,
-                teamSizeLimit: eventData.teamSizeLimit,
-                hostId: currentUser?.$id,
-                state: 'UNPUBLISHED' as EventState,
-                gamesPerOpponent: leagueData.gamesPerOpponent,
-                includePlayoffs: leagueData.includePlayoffs,
-                playoffTeamCount: leagueData.includePlayoffs ? leagueData.playoffTeamCount ?? undefined : undefined,
-                seedColor: eventData.seedColor,
-                cancellationRefundHours: eventData.cancellationRefundHours,
-                registrationCutoffHours: eventData.registrationCutoffHours,
-                ...timingFields,
-                matches: [],
-                teams: [],
-                referees: eventData.referees,
-                players: joinAsParticipant ? [currentUser] : [],
-                fields: fieldsReferencedInSlots,
-                timeSlots: slotDocuments,
-                organizationId: organizationId,
-                leagueScoringConfig: eventData.leagueScoringConfig,
-            };
-
-            if (leagueData.includePlayoffs) {
-                applyTournamentConfigToEvent(eventDocument as Partial<Event>, playoffData);
-            } else {
-                clearTournamentConfigFromEvent(eventDocument as Partial<Event>);
-            }
-
-            const preview = await leagueService.previewScheduleFromDocument(eventDocument);
-            const previewEvent = preview.event as Event | undefined;
-            if (!previewEvent) {
-                throw new Error('Failed to generate preview schedule.');
-            }
-
-            const previewPayload = toEventPayload(previewEvent);
-
-            if (typeof window !== 'undefined') {
-                sessionStorage.setItem(
-                    `league-preview-event:${previewPayload.$id}`,
-                    JSON.stringify(previewPayload)
-                );
-                sessionStorage.setItem('league-preview-resume-id', previewPayload.$id);
-            }
-
-            onClose();
-            router.push(`/events/${previewPayload.$id}/schedule?preview=1`);
-        } catch (error) {
-            setLeagueError(error instanceof Error ? error.message : 'Failed to generate preview schedule.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     // Persists the event (or triggers preview for new leagues) when the modal form is submitted.
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (isSubmitting || !isValid) return;
-
-        if (!isEditMode && eventData.eventType === 'LEAGUE') {
-            await handleLeaguePreview();
-            return;
+    const buildDraftEvent = useCallback((): Partial<Event> | null => {
+        const finalImageId = selectedImageId || eventData.imageId;
+        const sportSelection = eventData.sportConfig;
+        if (!finalImageId || !sportSelection) {
+            return null;
         }
-
-        setIsSubmitting(true);
-        try {
-            const finalImageId = selectedImageId || eventData.imageId;
-            if (!finalImageId) {
-                setIsSubmitting(false);
-                return;
+        const sportId = (sportSelection.$id && String(sportSelection.$id)) || (eventData.sportId?.trim() || '');
+        const baseCoordinates: [number, number] = eventData.coordinates;
+        const toIdList = <T extends { $id?: string | undefined }>(items: T[] | undefined): string[] => {
+            if (!Array.isArray(items)) {
+                return [];
             }
-
-            const sportSelection = eventData.sportConfig;
-            if (!sportSelection) {
-                setIsSubmitting(false);
-                return;
-            }
-            const sportId = (sportSelection.$id && String(sportSelection.$id)) || (eventData.sportId?.trim() || '');
-
-            const baseCoordinates: [number, number] = eventData.coordinates;
-            const toIdList = <T extends { $id?: string | undefined }>(items: T[] | undefined): string[] => {
-                if (!Array.isArray(items)) {
-                    return [];
-                }
-                return items
-                    .map((item) => {
-                        if (item && typeof item === 'object' && item.$id) {
-                            return String(item.$id);
-                        }
-                        return '';
-                    })
-                    .filter((id): id is string => id.length > 0);
-            };
-
-            const submitEvent: Partial<Event> = {
-                name: eventData.name.trim(),
-                description: eventData.description,
-                location: eventData.location,
-                start: eventData.start,
-                end: eventData.end,
-                eventType: eventData.eventType,
-                state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
-                sportId: sportId || undefined,
-                fieldType: eventData.fieldType,
-                price: eventData.price,
-                maxParticipants: eventData.maxParticipants,
-                teamSizeLimit: eventData.teamSizeLimit,
-                teamSignup: eventData.teamSignup,
-                singleDivision: eventData.singleDivision,
-                divisions: eventData.divisions,
-                cancellationRefundHours: eventData.cancellationRefundHours,
-                registrationCutoffHours: eventData.registrationCutoffHours,
-                imageId: finalImageId,
-                seedColor: eventData.seedColor,
-                waitListIds: eventData.waitList,
-                freeAgentIds: eventData.freeAgents,
-                teams: eventData.teams,
-                players: eventData.players,
-                referees: eventData.referees,
-                refereeIds: eventData.refereeIds,
-                doTeamsRef: eventData.doTeamsRef,
-                coordinates: baseCoordinates,
-
-            };
-
-            const organizationId = organization?.$id;
-
-            if (!shouldManageLocalFields) {
-                let fieldsToInclude = fieldsReferencedInSlots;
-                if (!fieldsToInclude.length && hasImmutableFields) {
-                    fieldsToInclude = immutableFields;
-                }
-                if (fieldsToInclude.length) {
-                    submitEvent.fields = fieldsToInclude.map(field => ({ ...field }));
-                    const fieldIds = toIdList(fieldsToInclude);
-                    if (fieldIds.length) {
-                        submitEvent.fieldIds = fieldIds;
+            return items
+                .map((item) => {
+                    if (item && typeof item === 'object' && item.$id) {
+                        return String(item.$id);
                     }
-                }
-            } else if (hasImmutableFields) {
-                submitEvent.fields = immutableFields.map(field => ({ ...field }));
-                const fieldIds = toIdList(immutableFields);
+                    return '';
+                })
+                .filter((id): id is string => id.length > 0);
+        };
+
+        const draft: Partial<Event> = {
+            $id: activeEditingEvent?.$id,
+            name: eventData.name.trim(),
+            description: eventData.description,
+            location: eventData.location,
+            start: eventData.start,
+            end: eventData.end,
+            eventType: eventData.eventType,
+            state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
+            sportId: sportId || undefined,
+            fieldType: eventData.fieldType,
+            price: eventData.price,
+            maxParticipants: eventData.maxParticipants,
+            teamSizeLimit: eventData.teamSizeLimit,
+            teamSignup: eventData.teamSignup,
+            singleDivision: eventData.singleDivision,
+            divisions: eventData.divisions,
+            cancellationRefundHours: eventData.cancellationRefundHours,
+            registrationCutoffHours: eventData.registrationCutoffHours,
+            imageId: finalImageId,
+            seedColor: eventData.seedColor,
+            waitListIds: eventData.waitList,
+            freeAgentIds: eventData.freeAgents,
+            teams: eventData.teams,
+            players: eventData.players,
+            referees: eventData.referees,
+            refereeIds: eventData.refereeIds,
+            doTeamsRef: eventData.doTeamsRef,
+            coordinates: baseCoordinates,
+        };
+
+        const organizationId = organization?.$id;
+
+        if (!shouldManageLocalFields) {
+            let fieldsToInclude = fieldsReferencedInSlots;
+            if (!fieldsToInclude.length && hasImmutableFields) {
+                fieldsToInclude = immutableFields;
+            }
+            if (fieldsToInclude.length) {
+                draft.fields = fieldsToInclude.map(field => ({ ...field }));
+                const fieldIds = toIdList(fieldsToInclude);
                 if (fieldIds.length) {
-                    submitEvent.fieldIds = fieldIds;
+                    draft.fieldIds = fieldIds;
                 }
             }
-
-            if (organizationId) {
-                submitEvent.organization = organizationId;
-                submitEvent.organizationId = organizationId;
+        } else if (hasImmutableFields) {
+            draft.fields = immutableFields.map(field => ({ ...field }));
+            const fieldIds = toIdList(immutableFields);
+            if (fieldIds.length) {
+                draft.fieldIds = fieldIds;
             }
+        }
 
-            if (!isEditMode) {
-                if (currentUser?.$id) {
-                    submitEvent.hostId = currentUser.$id;
-                }
-                submitEvent.waitListIds = [];
-                submitEvent.freeAgentIds = [];
-                submitEvent.players = joinAsParticipant && currentUser ? [currentUser] : [];
-                submitEvent.userIds = joinAsParticipant && currentUser?.$id ? [currentUser.$id] : [];
-                if (shouldProvisionFields) {
-                    submitEvent.fieldCount = fieldCount;
-                }
+        if (organizationId) {
+            draft.organization = organizationId;
+            draft.organizationId = organizationId;
+        }
+
+        if (!isEditMode) {
+            if (currentUser?.$id) {
+                draft.hostId = currentUser.$id;
             }
-
-            if (eventData.eventType === 'TOURNAMENT') {
-                Object.assign(submitEvent, tournamentData);
-                if (!isEditMode && shouldProvisionFields) {
-                    submitEvent.fieldCount = fieldCount;
-                }
+            draft.waitListIds = [];
+            draft.freeAgentIds = [];
+            draft.players = joinAsParticipant && currentUser ? [currentUser] : [];
+            draft.userIds = joinAsParticipant && currentUser?.$id ? [currentUser.$id] : [];
+            if (shouldProvisionFields) {
+                draft.fieldCount = fieldCount;
             }
+        }
 
-            if (eventData.eventType === 'LEAGUE') {
-                const restTime = normalizeNumber(leagueData.restTimeMinutes);
-                const submitRequiresSets = Boolean(sportSelection.usePointsPerSetWin);
-                const setsPerMatchValue = leagueData.setsPerMatch ?? 1;
-                const normalizedPoints = submitRequiresSets
-                    ? (() => {
-                        const base = Array.isArray(leagueData.pointsToVictory)
-                            ? leagueData.pointsToVictory.slice(0, setsPerMatchValue)
-                            : [];
-                        while (base.length < setsPerMatchValue) base.push(21);
-                        return base;
-                    })()
-                    : undefined;
-
-                const timingFields = submitRequiresSets
-                    ? {
-                        usesSets: true,
-                        setDurationMinutes: normalizeNumber(leagueData.setDurationMinutes) ?? 20,
-                        setsPerMatch: setsPerMatchValue,
-                        pointsToVictory: normalizedPoints,
-                        ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
-                    }
-                    : {
-                        usesSets: false,
-                        matchDurationMinutes: normalizeNumber(leagueData.matchDurationMinutes, 60) ?? 60,
-                        ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
-                    };
-
-                Object.assign(submitEvent, {
-                    gamesPerOpponent: leagueData.gamesPerOpponent,
-                    includePlayoffs: leagueData.includePlayoffs,
-                    playoffTeamCount: leagueData.includePlayoffs ? leagueData.playoffTeamCount ?? undefined : undefined,
-                    ...timingFields,
-                });
-
-                if (leagueData.includePlayoffs) {
-                    applyTournamentConfigToEvent(submitEvent, playoffData);
-                } else {
-                    clearTournamentConfigFromEvent(submitEvent);
-                }
-
-                if (!isEditMode) {
-                    submitEvent.status = 'draft' as EventStatus;
-                }
-
-                if (!isEditMode && shouldProvisionFields && !shouldManageLocalFields) {
-                    submitEvent.fieldCount = fieldCount;
-                }
+        if (hasImmutableTimeSlots) {
+            draft.timeSlots = immutableTimeSlots.map(slot => ({ ...slot }));
+            const slotIds = toIdList(immutableTimeSlots);
+            if (slotIds.length) {
+                draft.timeSlotIds = slotIds;
             }
+        }
 
-            if (eventData.eventType === 'TOURNAMENT' || eventData.eventType === 'LEAGUE') {
-                delete submitEvent.end;
-            }
+        const teamIds = toIdList(draft.teams as Team[] | undefined);
+        if (teamIds.length) {
+            draft.teamIds = teamIds;
+        }
 
-            if (hasImmutableTimeSlots) {
-                submitEvent.timeSlots = immutableTimeSlots.map(slot => ({ ...slot }));
-                const slotIds = toIdList(immutableTimeSlots);
-                if (slotIds.length) {
-                    submitEvent.timeSlotIds = slotIds;
-                }
-            }
+        const userIds = toIdList(draft.players as UserData[] | undefined);
+        if (userIds.length && !draft.userIds?.length) {
+            draft.userIds = userIds;
+        }
 
-            const teamIds = toIdList(submitEvent.teams as Team[] | undefined);
-            if (teamIds.length) {
-                submitEvent.teamIds = teamIds;
-            }
+        if (eventData.leagueScoringConfig?.$id) {
+            draft.leagueScoringConfigId = eventData.leagueScoringConfig.$id;
+        }
 
-            const userIds = toIdList(submitEvent.players as UserData[] | undefined);
-            if (userIds.length && !submitEvent.userIds?.length) {
-                submitEvent.userIds = userIds;
-            }
+        return draft;
+    }, [
+        activeEditingEvent?.state,
+        activeEditingEvent?.$id,
+        eventData,
+        fieldsReferencedInSlots,
+        hasImmutableFields,
+        hasImmutableTimeSlots,
+        immutableFields,
+        immutableTimeSlots,
+        isEditMode,
+        organization,
+        currentUser,
+        joinAsParticipant,
+        shouldManageLocalFields,
+        shouldProvisionFields,
+        fieldCount,
+        selectedImageId,
+    ]);
 
-            if (eventData.leagueScoringConfig?.$id) {
-                submitEvent.leagueScoringConfigId = eventData.leagueScoringConfig.$id;
-            }
-
-            const shouldProceed = await onEventCreated(submitEvent);
-            if (!shouldProceed) {
-                setIsSubmitting(false);
+    const emitDraft = useCallback(
+        (draft: Partial<Event> | null) => {
+            if (!draft || !onDraftChange) {
                 return;
             }
-
-            let resultEvent;
-            if (isEditMode && activeEditingEvent) {
-                resultEvent = await eventService.updateEvent(activeEditingEvent.$id, submitEvent);
-            } else {
-                resultEvent = await eventService.createEvent(submitEvent);
+            const serialized = serializeDraft(draft);
+            if (serialized === lastDraftRef.current) {
+                return;
             }
+            lastDraftRef.current = serialized;
+            onDraftChange(draft);
+        },
+        [onDraftChange],
+    );
 
-            onEventSaved?.(resultEvent);
-            onClose();
-        } catch (error) {
-            console.error(`Failed to ${isEditMode ? 'update' : 'create'} event:`, error);
-        } finally {
-            setIsSubmitting(false);
-        }
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!isValid) return;
+        emitDraft(buildDraftEvent());
     };
+
+    useEffect(() => {
+        emitDraft(buildDraftEvent());
+    }, [buildDraftEvent, emitDraft]);
 
     // Syncs the selected event image with component state after uploads or picker changes.
     const handleImageChange = (fileId: string, _url: string) => {
@@ -2522,44 +2319,9 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                                     {leagueError}
                                 </Alert>
                             )}
-                            {!isEditMode && !eventData.teamSignup && eventData.eventType !== 'LEAGUE' && (
-                                <Switch
-                                    label="Join as participant"
-                                    checked={joinAsParticipant}
-                                    onChange={(e) => {
-                                        const checked = e?.currentTarget?.checked ?? joinAsParticipant;
-                                        setJoinAsParticipant(checked);
-                                    }}
-                                />
-                            )}
-                            {isEditMode && activeEditingEvent && (
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        if (!activeEditingEvent) return;
-                                        if (!confirm('Delete this event? This cannot be undone.')) return;
-                                        setIsSubmitting(true);
-                                        try {
-                                            const ok = await eventService.deleteEvent(activeEditingEvent);
-                                            if (ok) {
-                                                onClose();
-                                            }
-                                        } finally {
-                                            setIsSubmitting(false);
-                                        }
-                                    }}
-                                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                                >
-                                    Delete Event
-                                </button>
-                            )}
                         </div>
-
                         <Group gap="sm">
-                            <Button variant="default" onClick={onClose}>Cancel</Button>
-                            <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-                                {isSubmitting ? submittingText : submitButtonText}
-                            </Button>
+                            <Button variant="default" onClick={onClose}>Close</Button>
                         </Group>
                     </div>
                 </div>

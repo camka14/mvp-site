@@ -28,7 +28,6 @@ import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import RentalSelectionModal from '@/app/discover/components/RentalSelectionModal';
 import EventDetailSheet from './components/EventDetailSheet';
-import EventCreationSheet from './components/EventCreationSheet';
 import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
@@ -38,6 +37,7 @@ import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
 import { useSports } from '@/app/hooks/useSports';
+import { ID } from '@/app/appwrite';
 
 type RentalListing = {
   organization: Organization;
@@ -87,9 +87,6 @@ function DiscoverPageContent() {
   const debouncedSearch = useDebounce(searchTerm, 500);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventSheet, setShowEventSheet] = useState(false);
-  const [showCreateSheet, setShowCreateSheet] = useState(false);
-  const [resumePreviewEvent, setResumePreviewEvent] = useState<Event | null>(null);
-  const resumePreviewHandled = useRef(false);
 
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
@@ -288,38 +285,14 @@ function DiscoverPageContent() {
     }
   }, [activeTab, loadRentals]);
 
-  useEffect(() => {
-    if (authLoading || resumePreviewHandled.current) {
+  const handleCreateEventNavigation = useCallback(() => {
+    if (!user) {
+      router.push('/login');
       return;
     }
-    if (!user || typeof window === 'undefined') {
-      return;
-    }
-
-    const resumeId = window.sessionStorage.getItem('league-preview-resume-id');
-    if (!resumeId) {
-      resumePreviewHandled.current = true;
-      return;
-    }
-
-    resumePreviewHandled.current = true;
-    window.sessionStorage.removeItem('league-preview-resume-id');
-
-    const cachedEvent = window.sessionStorage.getItem(`league-preview-event:${resumeId}`);
-    if (cachedEvent) {
-      try {
-        const parsed = JSON.parse(cachedEvent) as Event;
-        setResumePreviewEvent(parsed);
-      } catch (parseError) {
-        console.warn('Failed to hydrate preview draft from cache:', parseError);
-        setResumePreviewEvent(null);
-      }
-    } else {
-      setResumePreviewEvent(null);
-    }
-
-    setShowCreateSheet(true);
-  }, [authLoading, user]);
+    const newId = ID.unique();
+    router.push(`/events/${newId}/schedule?create=1`);
+  }, [router, user]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -499,7 +472,7 @@ function DiscoverPageContent() {
                 setSelectedEvent(event);
                 setShowEventSheet(true);
               }}
-              onCreateEvent={() => setShowCreateSheet(true)}
+              onCreateEvent={handleCreateEventNavigation}
             />
           </Tabs.Panel>
 
@@ -526,21 +499,6 @@ function DiscoverPageContent() {
           onClose={() => {
             setShowEventSheet(false);
           }}
-        />
-      )}
-
-      {user && (
-        <EventCreationSheet
-          isOpen={showCreateSheet}
-          onClose={() => setShowCreateSheet(false)}
-          onEventCreated={async () => {
-            setShowCreateSheet(false);
-            await loadFirstPage();
-            return true;
-          }}
-          currentUser={user}
-          organization={null}
-          editingEvent={resumePreviewEvent ?? undefined}
         />
       )}
 

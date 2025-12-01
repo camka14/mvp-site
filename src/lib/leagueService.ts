@@ -142,7 +142,7 @@ class LeagueService {
     return response.rows.map((row: any) => this.mapRowToTimeSlot(row));
   }
 
-  async previewScheduleFromDocument(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
+  async scheduleEvent(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
     const payload: Record<string, any> = {
       eventDocument,
     };

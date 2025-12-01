@@ -13,7 +13,6 @@ import { useApp } from '@/app/providers';
 import type { Field, Organization, TimeSlot, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { storage } from '@/app/appwrite';
-import EventCreationSheet from '@/app/discover/components/EventCreationSheet';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
@@ -26,6 +25,7 @@ import { Calendar as BigCalendar, dateFnsLocalizer, View, SlotGroupPropGetter } 
 import { format, parse, startOfWeek, endOfWeek, startOfDay, endOfDay, startOfMonth, endOfMonth, getDay, formatISO } from 'date-fns';
 import { fieldService } from '@/lib/fieldService';
 import { buildFieldCalendarEvents } from './fieldCalendar';
+import { ID } from '@/app/appwrite';
 
 export default function OrganizationDetailPage() {
   return (
@@ -50,7 +50,6 @@ function OrganizationDetailContent() {
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees'>('overview');
-  const [showCreateEventSheet, setShowCreateEventSheet] = useState(false);
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
@@ -147,6 +146,11 @@ function OrganizationDetailContent() {
       setLoading(false);
     }
   };
+
+  const handleCreateEvent = useCallback(() => {
+    const newId = ID.unique();
+    router.push(`/events/${newId}/schedule?create=1`);
+  }, [router]);
 
   const handleConnectStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;
@@ -620,7 +624,7 @@ function OrganizationDetailContent() {
               <Paper withBorder p="md" radius="md">
                 <Group justify="space-between" mb="sm">
                   <Title order={5}>Events Calendar</Title>
-                  <Button onClick={() => setShowCreateEventSheet(true)}>+ Create Event</Button>
+                  <Button onClick={handleCreateEvent}>+ Create Event</Button>
                 </Group>
                 <div className="h-[800px]">
                   <BigCalendar
@@ -643,7 +647,7 @@ function OrganizationDetailContent() {
                     selectable
                     components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
                     onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailSheet(true); }}
-                    onSelectSlot={() => setShowCreateEventSheet(true)}
+                    onSelectSlot={handleCreateEvent}
                   />
                 </div>
               </Paper>
@@ -936,14 +940,6 @@ function OrganizationDetailContent() {
         event={selectedEvent!}
         isOpen={showEventDetailSheet}
         onClose={() => { setShowEventDetailSheet(false); }}
-      />
-      <EventCreationSheet
-        isOpen={showCreateEventSheet}
-        onClose={() => setShowCreateEventSheet(false)}
-        onEventCreated={async () => true}
-        onEventSaved={async () => { setShowCreateEventSheet(false); if (id) await loadOrg(id); }}
-        currentUser={user}
-        organization={org ? org : null}
       />
       <CreateTeamModal
         isOpen={showCreateTeamModal}

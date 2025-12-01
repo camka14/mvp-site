@@ -15,7 +15,7 @@ import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
-import EventCreationSheet from '@/app/discover/components/EventCreationSheet';
+import EventCreationSheet from './components/EventCreationSheet';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 
 const cloneValue = <T,>(value: T): T => {
@@ -289,6 +289,7 @@ function EventScheduleContent() {
   const eventId = params?.id as string | undefined;
   const isPreview = searchParams?.get('preview') === '1';
   const isEditParam = searchParams?.get('mode') === 'edit';
+  const isCreateMode = searchParams?.get('create') === '1';
 
   const [event, setEvent] = useState<Event | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -389,6 +390,15 @@ function EventScheduleContent() {
   // Hydrate event + match data from preview cache or Appwrite and sync local component state.
   const loadSchedule = useCallback(async () => {
     if (!eventId) return;
+    if (isCreateMode) {
+      setEvent(null);
+      setMatches([]);
+      setChangesEvent(null);
+      setChangesMatches([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -430,7 +440,7 @@ function EventScheduleContent() {
     } finally {
       setLoading(false);
     }
-  }, [eventId, hydrateEvent]);
+  }, [eventId, hydrateEvent, isCreateMode]);
 
   useEffect(() => {
     if (!eventId || authLoading) {
@@ -766,12 +776,22 @@ function EventScheduleContent() {
     setActiveTab('schedule');
   }, []);
 
-  const handleEventSaved = useCallback((updatedEvent: Event) => {
-    hydrateEvent(updatedEvent);
-    writeEventToCache(updatedEvent);
-    setHasUnsavedChanges(false);
-    setInfoMessage(`${entityLabel} details saved.`);
-  }, [entityLabel, hydrateEvent, writeEventToCache]);
+  const handleEventDraftChange = useCallback(
+    (draft: Partial<Event>) => {
+      const withId = draft.$id ? draft : { ...draft, $id: draft.$id ?? eventId };
+      setChangesEvent((prev) => ({ ...(prev ?? (activeEvent ?? {} as Event)), ...(withId as Event) }));
+      setHasUnsavedChanges(true);
+    },
+    [activeEvent, eventId],
+  );
+
+  // Seed a draft event when entering create mode
+  useEffect(() => {
+    if (isCreateMode && !changesEvent) {
+      setChangesEvent({ $id: eventId, state: 'DRAFT' } as any);
+      setHasUnsavedChanges(true);
+    }
+  }, [changesEvent, eventId, isCreateMode]);
 
   // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
@@ -999,6 +1019,32 @@ function EventScheduleContent() {
     );
   }
 
+  if (isCreateMode && !activeEvent) {
+    return (
+      <>
+        <Navigation />
+        <Container size="lg" py="xl">
+          <Stack gap="md">
+            <Title order={2}>Create Event</Title>
+            {user ? (
+              <EventCreationSheet
+                renderInline
+                isOpen
+                onClose={() => router.push('/events')}
+                currentUser={user}
+                organization={null}
+                event={changesEvent ?? undefined}
+                onDraftChange={handleEventDraftChange}
+              />
+            ) : (
+              <Loading text="Loading user..." />
+            )}
+          </Stack>
+        </Container>
+      </>
+    );
+  }
+
   if (error) {
     return (
       <>
@@ -1095,9 +1141,9 @@ function EventScheduleContent() {
                   isOpen={activeTab === 'details'}
                   onClose={handleDetailsClose}
                   currentUser={user}
-                  editingEvent={activeEvent ?? undefined}
+                  event={activeEvent ?? undefined}
                   organization={activeOrganization}
-                  onEventSaved={handleEventSaved}
+                  onDraftChange={handleEventDraftChange}
                 />
               ) : (
                 <EventDetailSheet
