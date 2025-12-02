@@ -126,6 +126,7 @@ function EventScheduleContent() {
   const isHost = activeEvent?.hostId === user?.$id;
   const entityLabel = isTournament ? 'Tournament' : 'League';
   const canEditMatches = Boolean(isHost && isEditingEvent);
+  const shouldShowCreationSheet = Boolean(isCreateMode || (isEditingEvent && isHost && user));
   const showDateOnMatches = useMemo(() => {
     if (!activeEvent?.start || !activeEvent?.end) return false;
     const start = new Date(activeEvent.start);
@@ -1215,7 +1216,7 @@ function EventScheduleContent() {
             </Tabs.List>
 
             <Tabs.Panel value="details" pt="md">
-              {isEditingEvent && isHost && user ? (
+              {shouldShowCreationSheet && user ? (
                 <EventCreationSheet
                   renderInline
                   isOpen={activeTab === 'details'}
