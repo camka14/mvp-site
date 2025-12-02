@@ -441,7 +441,7 @@ export enum Sports {
 
 export const SPORTS_LIST: string[] = Object.values(Sports);
 
-export type EventState = 'PUBLISHED' | 'UNPUBLISHED';
+export type EventState = 'PUBLISHED' | 'UNPUBLISHED' | 'DRAFT';
 
 export type EventStatus = 'draft' | 'published' | 'archived' | 'cancelled' | 'completed';
 
@@ -806,11 +806,18 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
 }
 
 export function getEventImageUrl(params: {
-  imageId: string;
+  imageId?: string | null;
   size?: number;
   width?: number;
   height?: number;
+  placeholderUrl?: string;
 }): string {
+  const fallback =
+    params.placeholderUrl ??
+    'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=200&fit=crop';
+  if (!params.imageId) {
+    return fallback;
+  }
   if (params.width || params.height) {
     return storage.getFilePreview({
       bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,

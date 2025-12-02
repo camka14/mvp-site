@@ -58,7 +58,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     useEffect(() => {
         if (isActive && event) {
             setDetailedEvent(event);
-            loadEventDetails();
+            if (event.state !== 'DRAFT') {
+                loadEventDetails();
+            }
         } else {
             setDetailedEvent(null);
             setPlayers([]);
@@ -540,12 +542,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                     )}
 
                                     {/* Free Agents Section */}
-                                    {(freeAgents.length > 0 || currentEvent.freeAgentIds.length > 0) && (
+                                    {(freeAgents.length > 0 || (currentEvent.freeAgentIds?.length ?? 0) > 0) && (
                                         <div className="mb-4">
                                             <ParticipantsPreview
                                                 title="Free Agents"
                                                 participants={freeAgents}
-                                                totalCount={currentEvent.freeAgentIds.length}
+                                                totalCount={currentEvent.freeAgentIds?.length ?? 0}
                                                 isLoading={isLoadingEvent}
                                                 onClick={() => setShowFreeAgentsDropdown(true)}
                                                 getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
@@ -574,6 +576,26 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                         {totalParticipants} / {currentEvent.maxParticipants} total participants
                                                     </Text>
                                                 </div>
+                                                {!renderInline && (currentEvent.eventType === 'LEAGUE' || currentEvent.eventType === 'TOURNAMENT') && (
+                                                    <div className="mt-4 space-y-2">
+                                                        <Button
+                                                            fullWidth
+                                                            variant="light"
+                                                            onClick={() => handleViewSchedule()}
+                                                        >
+                                                            View Schedule
+                                                        </Button>
+                                                        {currentEvent.eventType === 'TOURNAMENT' && (
+                                                            <Button
+                                                                fullWidth
+                                                                color="green"
+                                                                onClick={handleBracketClick}
+                                                            >
+                                                                View Tournament Bracket
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </>
                                         ) : (
                                             <div className="space-y-3">
@@ -769,7 +791,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                         )}
 
                                                         {/* View Schedule / Bracket Buttons */}
-                                                        {(currentEvent.eventType === 'LEAGUE' || currentEvent.eventType === 'TOURNAMENT') && (
+                                                        {!renderInline && (currentEvent.eventType === 'LEAGUE' || currentEvent.eventType === 'TOURNAMENT') && (
                                                             <Button
                                                                 fullWidth
                                                                 variant="light"
@@ -780,7 +802,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                             </Button>
                                                         )}
 
-                                                        {currentEvent.eventType === 'TOURNAMENT' &&
+                                                        {!renderInline && currentEvent.eventType === 'TOURNAMENT' &&
                                                             <button
                                                                 onClick={handleBracketClick}
                                                                 className="w-full mt-2 py-2 px-4 rounded-lg bg-green-600 text-white hover:bg-green-700"

@@ -1,10 +1,12 @@
-import { databases } from '@/app/appwrite';
+import { databases, functions } from '@/app/appwrite';
+import { ExecutionMethod } from 'appwrite';
 import { Event, Team, Field, Match, TournamentBracket, UserData } from '@/types';
 import { eventService } from './eventService';
 import { authService } from './auth';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
+const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
 
 class TournamentService {
     async getTournamentBracket(tournamentId: string): Promise<TournamentBracket> {
@@ -209,6 +211,47 @@ class TournamentService {
             };
         } catch (error) {
             console.error('Failed to update match:', error);
+            throw error;
+        }
+    }
+
+    async updateMatchScores(matchId: string, updates: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'>): Promise<Match> {
+        return this.updateMatch(matchId, updates);
+    }
+
+    async completeMatch(
+        eventId: string,
+        matchId: string,
+        payload: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'>,
+    ): Promise<void> {
+        try {
+            const nowIso = new Date().toISOString();
+            const response = await functions.createExecution({
+                functionId: EVENT_MANAGER_FUNCTION_ID,
+                xpath: `/events/${eventId}/matches/${matchId}`,
+                method: ExecutionMethod.PATCH,
+                body: JSON.stringify({
+                    matchId,
+                    event: eventId,
+                    setResults: payload.setResults,
+                    team1Points: payload.team1Points,
+                    team2Points: payload.team2Points,
+                    time: nowIso,
+                }),
+                async: false,
+            });
+
+            const responseErrors = Array.isArray(response.errors) ? response.errors : null;
+            if (responseErrors && responseErrors.length > 0) {
+                throw new Error(responseErrors.join(', '));
+            }
+
+            const body = response.responseBody ? JSON.parse(response.responseBody) : {};
+            if (body?.error) {
+                throw new Error(body.error);
+            }
+        } catch (error) {
+            console.error('Failed to finalize match via event manager:', error);
             throw error;
         }
     }

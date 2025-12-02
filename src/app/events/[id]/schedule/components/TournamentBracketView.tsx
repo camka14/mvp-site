@@ -510,6 +510,24 @@ export default function TournamentBracketView({
                     tournament={bracket.tournament}
                     canManage={canManageMatch(selectedMatch)}
                     onSubmit={handleScoreSubmit}
+                    onScoreChange={
+                        onScoreUpdate
+                            ? ({ matchId, team1Points, team2Points, setResults }) =>
+                                  onScoreUpdate(matchId, team1Points, team2Points, setResults)
+                            : undefined
+                    }
+                    onSetComplete={
+                        onScoreUpdate
+                            ? async ({ matchId, team1Points, team2Points, setResults }) =>
+                                  onScoreUpdate(matchId, team1Points, team2Points, setResults)
+                            : undefined
+                    }
+                    onMatchComplete={
+                        onScoreUpdate
+                            ? async ({ matchId, team1Points, team2Points, setResults }) =>
+                                  onScoreUpdate(matchId, team1Points, team2Points, setResults)
+                            : undefined
+                    }
                     onClose={() => {
                         setShowScoreModal(false);
                         setSelectedMatch(null);

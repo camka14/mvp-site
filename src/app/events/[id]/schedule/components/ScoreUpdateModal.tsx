@@ -1,14 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Event, getTeamAvatarUrl, Match } from '@/types';
-import { Modal, Button, Group, Paper, Text, Avatar, Badge, Title, ActionIcon } from '@mantine/core';
+import { Modal, Button, Group, Paper, Text, Avatar, Badge, ActionIcon } from '@mantine/core';
+
+type ScorePayload = {
+  matchId: string;
+  team1Points: number[];
+  team2Points: number[];
+  setResults: number[];
+};
 
 interface ScoreUpdateModalProps {
-  match: Match
+  match: Match;
   tournament: Event;
   canManage: boolean;
-  onSubmit: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
+  onSubmit?: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
+  onScoreChange?: (payload: ScorePayload) => Promise<void> | void;
+  onSetComplete?: (payload: ScorePayload) => Promise<void>;
+  onMatchComplete?: (payload: ScorePayload & { eventId: string }) => Promise<void>;
   onClose: () => void;
   isOpen: boolean;
 }
@@ -18,6 +28,9 @@ export default function ScoreUpdateModal({
   tournament,
   canManage,
   onSubmit,
+  onScoreChange,
+  onSetComplete,
+  onMatchComplete,
   onClose,
   isOpen,
 }: ScoreUpdateModalProps) {
@@ -26,19 +39,72 @@ export default function ScoreUpdateModal({
   const [setResults, setSetResults] = useState<number[]>(match.setResults || []);
   const [currentSet, setCurrentSet] = useState(0);
   const [loading, setLoading] = useState(false);
+  const matchCompletionTriggered = useRef(false);
+  const sportAllowsDraw = Boolean(tournament?.sport?.usePointsForDraw);
+
+  const isPlayoffMatch =
+    tournament.eventType === 'TOURNAMENT' ||
+    Boolean(
+      match.losersBracket ||
+      match.previousLeftId ||
+      match.previousRightId ||
+      match.winnerNextMatchId ||
+      match.loserNextMatchId,
+    );
+
+  const targetPointsConfig = isPlayoffMatch
+    ? match.losersBracket
+      ? tournament.loserBracketPointsToVictory
+      : tournament.winnerBracketPointsToVictory
+    : tournament.pointsToVictory;
+
+  const derivedSetCount = useMemo(() => {
+    const targetLen = Array.isArray(targetPointsConfig) ? targetPointsConfig.length : 0;
+    const bracketConfigured = match.losersBracket ? tournament.loserSetCount : tournament.winnerSetCount;
+    const leagueConfigured =
+      typeof tournament.setsPerMatch === 'number' ? tournament.setsPerMatch : tournament.leagueConfig?.setsPerMatch;
+    const knownLengths = Math.max(setResults.length || 0, team1Points.length || 0, team2Points.length || 0);
+    const base = Math.max(targetLen, bracketConfigured || 0, leagueConfigured || 0, knownLengths, 1);
+    const minSets = sportAllowsDraw ? 1 : 3;
+    return Math.max(base, minSets);
+  }, [match.losersBracket, sportAllowsDraw, targetPointsConfig, tournament.leagueConfig?.setsPerMatch, tournament.loserSetCount, tournament.setsPerMatch, tournament.winnerSetCount, setResults.length, team1Points.length, team2Points.length]);
+
+  const totalSets = derivedSetCount;
+
+  const getSetTarget = (index: number): number | null => {
+    if (!Array.isArray(targetPointsConfig) || targetPointsConfig.length === 0) return null;
+    const value = targetPointsConfig[index];
+    if (Number.isFinite(value)) return Number(value);
+    const fallback = targetPointsConfig[targetPointsConfig.length - 1];
+    return Number.isFinite(fallback) ? Number(fallback) : null;
+  };
 
   // Initialize arrays and determine current set
   useEffect(() => {
-    const maxSets = match.losersBracket ? tournament.loserSetCount || 1 : tournament.winnerSetCount || 1;
-    if (team1Points.length === 0) setTeam1Points(new Array(maxSets).fill(0));
-    if (team2Points.length === 0) setTeam2Points(new Array(maxSets).fill(0));
-    if (setResults.length === 0) setSetResults(new Array(maxSets).fill(0));
+    matchCompletionTriggered.current = false;
+    const length = derivedSetCount;
+    if (team1Points.length === 0) setTeam1Points(new Array(length).fill(0));
+    if (team2Points.length === 0) setTeam2Points(new Array(length).fill(0));
+    if (setResults.length === 0) setSetResults(new Array(length).fill(0));
 
-    const baseline = setResults.length > 0 ? setResults : new Array(maxSets).fill(0);
+    const baseline = setResults.length > 0 ? setResults : new Array(length).fill(0);
     const idx = baseline.findIndex((r: number) => r === 0);
     setCurrentSet(idx >= 0 ? idx : 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [match.$id, tournament.$id]);
+  }, [match.$id, tournament.$id, derivedSetCount]);
+
+  useEffect(() => {
+    const length = derivedSetCount;
+    if (team1Points.length < length) {
+      setTeam1Points((prev) => [...prev, ...new Array(length - prev.length).fill(0)]);
+    }
+    if (team2Points.length < length) {
+      setTeam2Points((prev) => [...prev, ...new Array(length - prev.length).fill(0)]);
+    }
+    if (setResults.length < length) {
+      setSetResults((prev) => [...prev, ...new Array(length - prev.length).fill(0)]);
+    }
+  }, [derivedSetCount, setResults.length, team1Points.length, team2Points.length]);
 
   const getTeamName = (teamData: any) => {
     if (teamData?.name) return teamData.name;
@@ -48,37 +114,153 @@ export default function ScoreUpdateModal({
     return 'TBD';
   };
 
-  const updateScore = (team: 1 | 2, increment: boolean) => {
-    if (!canManage) return;
-    if (team === 1) {
-      const next = [...team1Points];
-      next[currentSet] = Math.max(0, (next[currentSet] || 0) + (increment ? 1 : -1));
-      setTeam1Points(next);
-    } else {
-      const next = [...team2Points];
-      next[currentSet] = Math.max(0, (next[currentSet] || 0) + (increment ? 1 : -1));
-      setTeam2Points(next);
+  const emitScoreChange = (nextTeam1: number[], nextTeam2: number[], nextResults: number[]) => {
+    if (typeof onScoreChange === 'function') {
+      Promise.resolve(
+        onScoreChange({
+          matchId: match.$id,
+          team1Points: nextTeam1,
+          team2Points: nextTeam2,
+          setResults: nextResults,
+        }),
+      ).catch((err) => {
+        console.warn('Non-blocking score update failed:', err);
+      });
     }
   };
 
-  const confirmSet = () => {
+  const updateScore = (team: 1 | 2, increment: boolean) => {
+    if (!canManage) return;
+    const target = getSetTarget(currentSet);
+    const current = team === 1 ? (team1Points[currentSet] || 0) : (team2Points[currentSet] || 0);
+    const other = team === 1 ? (team2Points[currentSet] || 0) : (team1Points[currentSet] || 0);
+    const canIncrementWithLimit =
+      (target ? current < target && other < target : true) ||
+      Math.abs(current - other) <= 1;
+
+    if (team === 1) {
+      const next = [...team1Points];
+      const proposed = (next[currentSet] || 0) + (increment ? 1 : -1);
+      if (increment && target && !canIncrementWithLimit && proposed > target) {
+        return;
+      }
+      const nextValue =
+        increment && target && Math.abs(current - other) > 1
+          ? Math.min(target, proposed)
+          : proposed;
+      next[currentSet] = Math.max(0, nextValue);
+      setTeam1Points(next);
+      emitScoreChange(next, team2Points, setResults);
+    } else {
+      const next = [...team2Points];
+      const proposed = (next[currentSet] || 0) + (increment ? 1 : -1);
+      if (increment && target && !canIncrementWithLimit && proposed > target) {
+        return;
+      }
+      const nextValue =
+        increment && target && Math.abs(current - other) > 1
+          ? Math.min(target, proposed)
+          : proposed;
+      next[currentSet] = Math.max(0, nextValue);
+      setTeam2Points(next);
+      emitScoreChange(team1Points, next, setResults);
+    }
+  };
+
+  const isWinConditionMet = (results?: number[]) => {
+    const target = getSetTarget(currentSet);
+    if (!target) return false;
     const t1 = team1Points[currentSet] || 0;
     const t2 = team2Points[currentSet] || 0;
-    if (t1 === t2) {
+    const leader = Math.max(t1, t2);
+    const diff = Math.abs(t1 - t2);
+    const winner = leader === t1 ? 1 : 2;
+    const projectedResults = results ?? setResults;
+    const withCurrent = [...projectedResults];
+    if (withCurrent[currentSet] === 0) {
+      withCurrent[currentSet] = winner;
+    }
+    return leader >= target && diff >= 2;
+  };
+
+  const isMatchComplete = (results?: number[]) => {
+    const source = results ?? setResults;
+    if (!sportAllowsDraw && totalSets <= 1) {
+      return isWinConditionMet(source);
+    }
+    const team1Wins = source.filter((r) => r === 1).length;
+    const team2Wins = source.filter((r) => r === 2).length;
+    const setsNeeded = Math.ceil((totalSets || 1) / 2);
+    return team1Wins >= setsNeeded || team2Wins >= setsNeeded;
+  };
+
+  const confirmSet = async () => {
+    const t1 = team1Points[currentSet] || 0;
+    const t2 = team2Points[currentSet] || 0;
+    const target = getSetTarget(currentSet);
+    const diff = Math.abs(t1 - t2);
+    const leader = Math.max(t1, t2);
+    const winConditionMet = Boolean(target && leader >= target && diff >= 2);
+
+    if (!winConditionMet) {
       // eslint-disable-next-line no-alert
-      alert('Set cannot end in a tie');
+      alert('A team must reach the target points and win by 2 to confirm the set.');
       return;
     }
-    const next = [...setResults];
-    next[currentSet] = t1 > t2 ? 1 : 2;
-    setSetResults(next);
-    if (currentSet + 1 < next.length) setCurrentSet(currentSet + 1);
+    const nextResults = [...setResults];
+    nextResults[currentSet] = t1 > t2 ? 1 : 2;
+
+    const payload: ScorePayload = {
+      matchId: match.$id,
+      team1Points,
+      team2Points,
+      setResults: nextResults,
+    };
+
+    try {
+      if (onSetComplete) {
+        await onSetComplete(payload);
+      }
+    } catch (err) {
+      console.error('Failed to persist set result:', err);
+      // eslint-disable-next-line no-alert
+      alert('Failed to save set result. Please retry.');
+      return;
+    }
+
+    setSetResults(nextResults);
+    if (currentSet + 1 < totalSets) {
+      setCurrentSet(currentSet + 1);
+    }
+
+    if (onMatchComplete && !matchCompletionTriggered.current && isMatchComplete(nextResults)) {
+      try {
+        await onMatchComplete({ ...payload, eventId: tournament.$id });
+        matchCompletionTriggered.current = true;
+      } catch (err) {
+        console.error('Failed to finalize match:', err);
+        // eslint-disable-next-line no-alert
+        alert('Failed to finalize match. Please retry.');
+      }
+    }
   };
 
   const handleSubmit = async () => {
     setLoading(true);
+    const submitFn = onSubmit ?? (async () => {});
     try {
-      await onSubmit(match.$id, team1Points, team2Points, setResults);
+      await submitFn(match.$id, team1Points, team2Points, setResults);
+
+      if (onMatchComplete && !matchCompletionTriggered.current && isMatchComplete()) {
+        await onMatchComplete({
+          matchId: match.$id,
+          team1Points,
+          team2Points,
+          setResults,
+          eventId: tournament.$id,
+        });
+        matchCompletionTriggered.current = true;
+      }
     } catch (e) {
       console.error('Failed to update score:', e);
       // eslint-disable-next-line no-alert
@@ -88,25 +270,24 @@ export default function ScoreUpdateModal({
     }
   };
 
-  const isMatchComplete = () => {
-    const team1Wins = setResults.filter((r) => r === 1).length;
-    const team2Wins = setResults.filter((r) => r === 2).length;
-    const totalSets = match.losersBracket ? (tournament.loserSetCount || 1) : (tournament.winnerSetCount || 1);
-    const setsNeeded = Math.ceil((totalSets || 1) / 2);
-    return team1Wins >= setsNeeded || team2Wins >= setsNeeded;
-  };
-
   const canIncrementScore = () => {
     if (!canManage) return false;
     if (isMatchComplete()) return false;
     return setResults[currentSet] === 0;
   };
 
+  const canConfirmCurrentSet =
+    canManage &&
+    !sportAllowsDraw &&
+    totalSets > 1 &&
+    setResults[currentSet] === 0 &&
+    isWinConditionMet();
+
   return (
-    <Modal opened={isOpen} onClose={onClose} title={<Title order={4}>Update Match Score</Title>} centered>
+    <Modal opened={isOpen} onClose={onClose} title={<Text fw={600}>Update Match Score</Text>} centered>
       <div className="mb-4">
         <Text c="dimmed" size="sm">
-          Match {match.matchId} • Best of {setResults.length}
+          Match {match.matchId} • Best of {totalSets}
         </Text>
         {match.losersBracket && (
           <Badge mt={6} color="orange">Loser Bracket</Badge>
@@ -182,13 +363,15 @@ export default function ScoreUpdateModal({
       <Group justify="space-between">
         <Button variant="default" onClick={onClose}>Close</Button>
         <Group>
-          {canManage && setResults[currentSet] === 0 && (
-            <Button onClick={confirmSet} disabled={(team1Points[currentSet] || 0) === (team2Points[currentSet] || 0)}>
+          {canConfirmCurrentSet && (
+            <Button onClick={confirmSet}>
               Confirm Set {currentSet + 1}
             </Button>
           )}
           {canManage && (
-            <Button onClick={handleSubmit} loading={loading}>Save Match</Button>
+            <Button onClick={handleSubmit} loading={loading} disabled={!sportAllowsDraw && !isMatchComplete()}>
+              Save Match
+            </Button>
           )}
         </Group>
       </Group>

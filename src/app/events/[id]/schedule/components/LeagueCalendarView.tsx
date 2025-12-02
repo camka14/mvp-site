@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Paper, RangeSlider, Text } from '@mantine/core';
+import { Button, Paper, RangeSlider, Text } from '@mantine/core';
 import {
   Calendar as BigCalendar,
   dateFnsLocalizer,
@@ -11,7 +11,7 @@ import {
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
-import type { Match } from '@/types';
+import type { Match, UserData } from '@/types';
 import MatchCard from './MatchCard';
 
 interface LeagueCalendarViewProps {
@@ -21,6 +21,7 @@ interface LeagueCalendarViewProps {
   onMatchClick?: (match: Match) => void;
   canManage?: boolean;
   matchCardPaddingY?: string;
+  currentUser?: UserData | null;
 }
 
 const parseDateInput = (value?: string | Date | null): Date | null => {
@@ -115,9 +116,78 @@ export function LeagueCalendarView({
   onMatchClick,
   canManage = false,
   matchCardPaddingY = 'my-2',
+  currentUser,
 }: LeagueCalendarViewProps) {
+  const userTeamIds = useMemo(() => new Set(currentUser?.teamIds ?? []), [currentUser?.teamIds]);
+  const teamHasUser = useCallback(
+    (team: Match['team1'], fallbackId?: string | null) => {
+      if (!currentUser?.$id) return false;
+      const teamId =
+        (team && typeof team === 'object' && '$id' in team && typeof (team as any).$id === 'string'
+          ? (team as any).$id
+          : undefined) ?? (typeof fallbackId === 'string' ? fallbackId : undefined);
+
+      if (teamId && userTeamIds.has(teamId)) {
+        return true;
+      }
+
+      const players = (team as any)?.players;
+      if (Array.isArray(players) && players.some((player) => player?.$id === currentUser.$id)) {
+        return true;
+      }
+
+      const playerIds = (team as any)?.playerIds;
+      if (Array.isArray(playerIds) && playerIds.includes(currentUser.$id)) {
+        return true;
+      }
+
+      const captainId = (team as any)?.captainId ?? (team as any)?.captain?.$id;
+      if (typeof captainId === 'string' && captainId === currentUser.$id) {
+        return true;
+      }
+
+      return false;
+    },
+    [currentUser?.$id, userTeamIds],
+  );
+
+  const matchInvolvesCurrentUser = useCallback(
+    (match: Match) => {
+      if (!currentUser?.$id) return false;
+
+      if (match.refereeId === currentUser.$id || match.referee?.$id === currentUser.$id) {
+        return true;
+      }
+
+      return teamHasUser(match.team1, match.team1Id) || teamHasUser(match.team2, match.team2Id);
+    },
+    [currentUser?.$id, teamHasUser],
+  );
+
+  const [showMyMatchesOnly, setShowMyMatchesOnly] = useState(false);
+
+  const matchesToDisplay = useMemo(
+    () =>
+      showMyMatchesOnly && currentUser
+        ? matches.filter((match) => matchInvolvesCurrentUser(match))
+        : matches,
+    [currentUser, matchInvolvesCurrentUser, matches, showMyMatchesOnly],
+  );
+
+  const userInvolvedMatchIds = useMemo(
+    () =>
+      currentUser
+        ? new Set(
+            matches
+              .filter((match) => matchInvolvesCurrentUser(match))
+              .map((match) => match.$id),
+          )
+        : new Set<string>(),
+    [currentUser, matchInvolvesCurrentUser, matches],
+  );
+
   const calendarEvents = useMemo(() => {
-    return matches
+    return matchesToDisplay
       .map((match) => {
         const start = coerceDateTime(match.start);
         if (!start) return null;
@@ -135,7 +205,7 @@ export function LeagueCalendarView({
       })
       .filter((event): event is CalendarEvent => Boolean(event))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [matches]);
+  }, [matchesToDisplay]);
 
   const initialDate = useMemo(() => {
     if (calendarEvents.length > 0) {
@@ -206,22 +276,28 @@ export function LeagueCalendarView({
     }
   };
 
-  const eventPropGetter = useCallback(() => ({
-    style: {
-      backgroundColor: 'transparent',
-      border: 'none',
-      padding: 0,
-      cursor: onMatchClick ? 'pointer' : 'default',
-      color: 'var(--mantine-color-text, #1f1f1f)',
+  const eventPropGetter = useCallback(
+    (event: CalendarEvent) => {
+      const isUsersMatch = userInvolvedMatchIds.has(event.resource.$id);
+      return {
+        style: {
+          backgroundColor: isUsersMatch ? 'var(--mantine-color-green-0, #ecfdf3)' : 'transparent',
+          border: isUsersMatch ? '2px solid #bbf7d0' : 'none',
+          padding: 0,
+          cursor: onMatchClick ? 'pointer' : 'default',
+          color: 'var(--mantine-color-text, #1f1f1f)',
+        },
+        className: 'p-0',
+      };
     },
-    className: 'p-0',
-  }), [onMatchClick]);
+    [onMatchClick, userInvolvedMatchIds],
+  );
 
   const MonthEventComponent = useCallback(({ event }: EventProps<CalendarEvent>) => {
     const match = event.resource;
     const field = match?.field && typeof match.field === 'object' ? match.field : null;
-    const fieldLabel = field?.name
-      || (field && 'fieldNumber' in field ? `Field ${(field as any).fieldNumber}` : null);
+    const fieldLabel =
+      field?.name || (field && 'fieldNumber' in field ? `Field ${(field as any).fieldNumber}` : null);
 
     return (
       <div className="leading-tight text-xs">
@@ -237,13 +313,15 @@ export function LeagueCalendarView({
         match={event.resource}
         canManage={canManage}
         onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-        className={`h-full ${matchCardPaddingY}`}
+        className={`h-full ${matchCardPaddingY} ${
+          userInvolvedMatchIds.has(event.resource.$id) ? 'border-green-200 hover:border-green-300' : ''
+        }`}
         layout="horizontal"
         hideTimeBadge
         showRefereeInHeader
       />
     ),
-    [canManage, onMatchClick, matchCardPaddingY],
+    [canManage, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
   );
 
   const AgendaEventComponent = useCallback(
@@ -252,13 +330,15 @@ export function LeagueCalendarView({
         match={event.resource}
         canManage={canManage}
         onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-        className={`max-w-full ${matchCardPaddingY}`}
+        className={`max-w-full ${matchCardPaddingY} ${
+          userInvolvedMatchIds.has(event.resource.$id) ? 'border-green-200 hover:border-green-300' : ''
+        }`}
         layout="horizontal"
         hideTimeBadge
         showRefereeInHeader
       />
     ),
-    [canManage, onMatchClick, matchCardPaddingY],
+    [canManage, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
   );
 
   const components = useMemo(
@@ -323,6 +403,18 @@ export function LeagueCalendarView({
         style={{ width: '100%', minHeight: MIN_CALENDAR_HEIGHT + (showRange ? 120 : 0) }}
         data-testid="league-calendar"
       >
+        {currentUser && (
+          <div className="flex justify-end mb-4">
+            <Button
+              size="sm"
+              variant={showMyMatchesOnly ? 'filled' : 'light'}
+              color="green"
+              onClick={() => setShowMyMatchesOnly((prev) => !prev)}
+            >
+              {showMyMatchesOnly ? 'Showing My Matches' : 'Show Only My Matches'}
+            </Button>
+          </div>
+        )}
         {showRange && (
           <div className="mb-6">
             <Text size="sm" fw={600} mb={8}>

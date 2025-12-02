@@ -10,13 +10,16 @@ import { useApp } from '@/app/providers';
 import { deepEqual } from '@/app/utils';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
-import type { Event, EventState, Field, Match, TimeSlot, Team, TournamentBracket, Organization } from '@/types';
+import { tournamentService } from '@/lib/tournamentService';
+import { organizationService } from '@/lib/organizationService';
+import type { Event, EventState, Match, Team, TournamentBracket, Organization } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
 import EventCreationSheet from './components/EventCreationSheet';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
+import ScoreUpdateModal from './components/ScoreUpdateModal';
 
 const cloneValue = <T,>(value: T): T => {
   if (value === null || typeof value !== 'object') {
@@ -63,146 +66,6 @@ const cloneValue = <T,>(value: T): T => {
   return cloneRecursive(value);
 };
 
-const EVENT_CACHE_PREFIX = 'event-cache:';
-const EVENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-
-type CachedEventEntry = {
-  timestamp: number;
-  event: Event;
-};
-
-const toId = (value: unknown): string | undefined => {
-  if (!value) return undefined;
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object' && '$id' in (value as any) && typeof (value as any).$id === 'string') {
-    return (value as any).$id;
-  }
-  if (typeof value === 'object' && 'matchId' in (value as any)) {
-    const matchIdValue = (value as any).matchId;
-    if (typeof matchIdValue === 'string') return matchIdValue;
-    if (typeof matchIdValue === 'number') return String(matchIdValue);
-  }
-  return undefined;
-};
-
-const sanitizeMatchForCache = (match: Match): Match => {
-  const {
-    field,
-    team1,
-    team2,
-    division,
-    referee,
-    teamReferee,
-    previousLeftMatch,
-    previousRightMatch,
-    winnerNextMatch,
-    loserNextMatch,
-    ...rest
-  } = match;
-
-  return {
-    ...rest,
-    fieldId: rest.fieldId ?? toId(field),
-    team1Id: rest.team1Id ?? toId(team1),
-    team2Id: rest.team2Id ?? toId(team2),
-    refereeId: rest.refereeId ?? toId(referee),
-    teamRefereeId: rest.teamRefereeId ?? toId(teamReferee),
-    previousLeftId: rest.previousLeftId ?? toId(previousLeftMatch),
-    previousRightId: rest.previousRightId ?? toId(previousRightMatch),
-    winnerNextMatchId: rest.winnerNextMatchId ?? toId(winnerNextMatch),
-    loserNextMatchId: rest.loserNextMatchId ?? toId(loserNextMatch),
-  };
-};
-
-const sanitizeFieldForCache = (field: Field): Field => {
-  const { matches, events, organization, rentalSlots, divisions, ...rest } = field;
-  return {
-    ...rest,
-    divisions: Array.isArray(divisions)
-      ? divisions
-          .map((division) => (typeof division === 'string' ? division : toId(division) ?? division))
-          .filter(Boolean) as string[]
-      : undefined,
-  };
-};
-
-const sanitizeTeamForCache = (team: Team): Team => {
-  const { matches, players, pendingPlayers, captain, ...rest } = team;
-  return {
-    ...rest,
-    players,
-    pendingPlayers,
-    captain,
-  };
-};
-
-const sanitizeTimeSlotsForCache = (slots?: TimeSlot[]) =>
-  Array.isArray(slots)
-    ? slots.map((slot) => {
-        const { event, ...rest } = slot;
-        return rest;
-      })
-    : undefined;
-
-const sanitizeEventForCache = (event: Event): Event => {
-  const clone = cloneValue(event) as Event;
-
-  if (Array.isArray(clone.matches)) {
-    clone.matches = clone.matches.map(sanitizeMatchForCache);
-  }
-
-  if (Array.isArray(clone.fields)) {
-    clone.fields = clone.fields.map(sanitizeFieldForCache);
-  }
-
-  if (Array.isArray(clone.teams)) {
-    clone.teams = clone.teams.map(sanitizeTeamForCache);
-  }
-
-  clone.timeSlots = sanitizeTimeSlotsForCache(clone.timeSlots);
-
-  return clone;
-};
-
-const rehydrateCachedEvent = (cached: Event): Event => {
-  const clone = cloneValue(cached) as Event;
-  const fieldMap = new Map<string, Field>();
-  if (Array.isArray(clone.fields)) {
-    clone.fields.forEach((field) => {
-      if (field?.$id) {
-        fieldMap.set(field.$id, field);
-      }
-    });
-  }
-
-  const teamMap = new Map<string, Team>();
-  if (Array.isArray(clone.teams)) {
-    clone.teams.forEach((team) => {
-      if (team?.$id) {
-        teamMap.set(team.$id, team);
-      }
-    });
-  }
-
-  if (Array.isArray(clone.matches)) {
-    clone.matches = clone.matches.map((match) => {
-      const hydrated = { ...match };
-      if (!hydrated.field && hydrated.fieldId && fieldMap.has(hydrated.fieldId)) {
-        hydrated.field = fieldMap.get(hydrated.fieldId);
-      }
-      if (!hydrated.team1 && hydrated.team1Id && teamMap.has(hydrated.team1Id)) {
-        hydrated.team1 = teamMap.get(hydrated.team1Id);
-      }
-      if (!hydrated.team2 && hydrated.team2Id && teamMap.has(hydrated.team2Id)) {
-        hydrated.team2 = teamMap.get(hydrated.team2Id);
-      }
-      return hydrated;
-    });
-  }
-
-  return clone;
-};
-
 type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
 
 type StandingsRow = {
@@ -220,65 +83,6 @@ type StandingsRow = {
 
 type RankedStandingsRow = StandingsRow & { rank: number };
 
-const getEventCacheKey = (eventId: string): string => `${EVENT_CACHE_PREFIX}${eventId}`;
-
-const readEventFromCache = (eventId: string): Event | null => {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(getEventCacheKey(eventId));
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw) as CachedEventEntry;
-    if (!parsed || typeof parsed.timestamp !== 'number' || !parsed.event) {
-      window.localStorage.removeItem(getEventCacheKey(eventId));
-      return null;
-    }
-
-    if (Date.now() - parsed.timestamp > EVENT_CACHE_TTL_MS) {
-      window.localStorage.removeItem(getEventCacheKey(eventId));
-      return null;
-    }
-
-    return rehydrateCachedEvent(parsed.event as Event);
-  } catch (error) {
-    console.warn('Failed to read event cache:', error);
-    return null;
-  }
-};
-
-const writeEventToCache = (event: Event) => {
-  if (typeof window === 'undefined' || !event?.$id) {
-    return;
-  }
-
-  try {
-    const payload: CachedEventEntry = {
-      timestamp: Date.now(),
-      event: sanitizeEventForCache(event),
-    };
-    window.localStorage.setItem(getEventCacheKey(event.$id), JSON.stringify(payload));
-  } catch (error) {
-    console.warn(`Failed to cache event ${event.$id}:`, error);
-  }
-};
-
-const clearEventCache = (eventId: string) => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  try {
-    window.localStorage.removeItem(getEventCacheKey(eventId));
-  } catch (error) {
-    console.warn(`Failed to clear cache for event ${eventId}:`, error);
-  }
-};
-
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
@@ -290,6 +94,7 @@ function EventScheduleContent() {
   const isPreview = searchParams?.get('preview') === '1';
   const isEditParam = searchParams?.get('mode') === 'edit';
   const isCreateMode = searchParams?.get('create') === '1';
+  const organizationIdParam = searchParams?.get('orgId') || undefined;
 
   const [event, setEvent] = useState<Event | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -308,10 +113,13 @@ function EventScheduleContent() {
     direction: 'desc',
   });
   const [matchBeingEdited, setMatchBeingEdited] = useState<Match | null>(null);
+  const [scoreUpdateMatch, setScoreUpdateMatch] = useState<Match | null>(null);
+  const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
+  const [organizationForCreate, setOrganizationForCreate] = useState<Organization | null>(null);
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
-  const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED';
+  const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
   const isEditingEvent = isPreview || isEditParam || isUnpublished;
   const activeMatches = usingChangeCopies ? changesMatches : matches;
   const isTournament = activeEvent?.eventType === 'TOURNAMENT';
@@ -326,10 +134,119 @@ function EventScheduleContent() {
     return end.getTime() - start.getTime() > 24 * 60 * 60 * 1000;
   }, [activeEvent?.start, activeEvent?.end]);
 
+  const teamsById = useMemo(() => {
+    const map = new Map<string, Team>();
+    if (Array.isArray(activeEvent?.teams)) {
+      (activeEvent.teams as Team[]).forEach((team) => {
+        if (team?.$id) {
+          map.set(team.$id, team);
+        }
+      });
+    }
+    return map;
+  }, [activeEvent?.teams]);
+
+  const resolveTeam = useCallback(
+    (value: Match['team1'] | string | null | undefined): Team | null => {
+      if (!value) return null;
+      if (typeof value === 'string') {
+        return teamsById.get(value) ?? null;
+      }
+      if (typeof value === 'object') {
+        return (value as Team) ?? null;
+      }
+      return null;
+    },
+    [teamsById],
+  );
+
+  const userOnTeam = useCallback(
+    (team: Team | null | undefined) => {
+      if (!team || !user?.$id) return false;
+      const memberIds = new Set<string>();
+      if (Array.isArray(team.playerIds)) {
+        team.playerIds.forEach((id) => {
+          if (typeof id === 'string') {
+            memberIds.add(id);
+          }
+        });
+      }
+      if (Array.isArray(team.players)) {
+        team.players.forEach((player) => {
+          if (player?.$id) {
+            memberIds.add(player.$id);
+          }
+        });
+      }
+      if (team.captainId) {
+        memberIds.add(team.captainId);
+      }
+      if (team.captain && typeof team.captain === 'object' && '$id' in team.captain && (team.captain as any).$id) {
+        memberIds.add((team.captain as any).$id as string);
+      }
+      return memberIds.has(user.$id);
+    },
+    [user?.$id],
+  );
+
+  const findUserTeam = useCallback(
+    (match?: Match | null) => {
+      if (!user?.$id) return null;
+      const candidates: (Match['team1'] | string | null | undefined)[] = [];
+      if (match) {
+        candidates.push(match.team1 ?? match.team1Id);
+        candidates.push(match.team2 ?? match.team2Id);
+        candidates.push(match.teamReferee ?? match.teamRefereeId);
+      }
+      for (const candidate of candidates) {
+        const team = resolveTeam(candidate);
+        if (team && userOnTeam(team)) {
+          return team;
+        }
+      }
+      for (const team of teamsById.values()) {
+        if (userOnTeam(team)) {
+          return team;
+        }
+      }
+      return null;
+    },
+    [resolveTeam, teamsById, user?.$id, userOnTeam],
+  );
+
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
   }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const loadOrgForCreate = async () => {
+      if (!organizationIdParam || !isCreateMode) return;
+      try {
+        const org = await organizationService.getOrganizationById(organizationIdParam, true);
+        if (org) {
+          setOrganizationForCreate(org as Organization);
+          setChangesEvent((prev) => {
+            const base = prev ?? ({ $id: eventId, state: 'DRAFT' } as Event);
+            return {
+              ...base,
+              organization: org,
+              organizationId: org.$id,
+              hostId: base.hostId ?? org.ownerId ?? base.hostId,
+              fields: Array.isArray(org.fields) ? org.fields : base.fields,
+              refereeIds: Array.isArray(org.refIds) ? org.refIds : base.refereeIds,
+              referees: Array.isArray(org.referees) ? org.referees : base.referees,
+              location: base.location ?? org.location,
+              coordinates: base.coordinates ?? org.coordinates,
+            } as Event;
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to load organization for create:', error);
+      }
+    };
+    loadOrgForCreate();
+  }, [eventId, isCreateMode, organizationIdParam]);
 
   const hydrateEvent = useCallback((loadedEvent: Event) => {
     const eventClone = cloneValue(loadedEvent) as Event;
@@ -356,26 +273,21 @@ function EventScheduleContent() {
     });
   }, []);
 
-  const hasChangeDiffers = useMemo(() => {
-    if (!event || !changesEvent) {
-      return false;
-    }
-
-    if (!deepEqual(event, changesEvent)) {
-      return true;
-    }
-
-    if (!matches.length && !changesMatches.length) {
-      return false;
-    }
-
-    return !deepEqual(matches, changesMatches);
-  }, [event, changesEvent, matches, changesMatches]);
-
+  // Mark dirty whenever draft changes
   useEffect(() => {
-    setHasUnsavedChanges((prev) => (prev === hasChangeDiffers ? prev : hasChangeDiffers));
-  }, [hasChangeDiffers]);
+    if (!event || !changesEvent) return;
+    setHasUnsavedChanges(true);
+  }, [changesEvent, changesMatches]);
   const publishButtonLabel = (() => {
+    if (isCreateMode) {
+      const createLabel = (() => {
+        const type = changesEvent?.eventType || activeEvent?.eventType;
+        if (type === 'TOURNAMENT') return 'Tournament';
+        if (type === 'LEAGUE') return 'League';
+        return 'Event';
+      })();
+      return `Create ${createLabel}`;
+    }
     if (!activeEvent || isPreview || isUnpublished) return `Publish ${entityLabel}`;
     if (!isEditingEvent) return `Edit ${entityLabel}`;
     return `Save ${entityLabel} Changes`;
@@ -387,7 +299,7 @@ function EventScheduleContent() {
   })();
 
   // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
-  // Hydrate event + match data from preview cache or Appwrite and sync local component state.
+  // Hydrate event + match data from Appwrite and sync local component state.
   const loadSchedule = useCallback(async () => {
     if (!eventId) return;
     if (isCreateMode) {
@@ -402,41 +314,23 @@ function EventScheduleContent() {
 
     setLoading(true);
     setError(null);
-
-    let cachedEvent: Event | null = null;
-
-    if (typeof window !== 'undefined') {
-      cachedEvent = readEventFromCache(eventId);
-      if (cachedEvent) {
-        hydrateEvent(cachedEvent);
-        if (!hasUnsavedChangesRef.current) {
-          setHasUnsavedChanges(false);
-        }
-      }
-    }
+    setInfoMessage(null);
 
     try {
       const fetchedEvent = (await eventService.getEventWithRelations(eventId)) ?? null;
 
       if (!fetchedEvent) {
-        if (!cachedEvent) {
-          setError('League not found.');
-        }
+        setError('League not found.');
         return;
       }
 
       hydrateEvent(fetchedEvent);
-      writeEventToCache(fetchedEvent);
       if (!hasUnsavedChangesRef.current) {
         setHasUnsavedChanges(false);
       }
     } catch (err) {
       console.error('Failed to load league schedule:', err);
-      if (!cachedEvent) {
-        setError('Failed to load league schedule. Please try again.');
-      } else {
-        setInfoMessage('Showing cached schedule data. Some information may be outdated.');
-      }
+      setError('Failed to load league schedule. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -795,7 +689,37 @@ function EventScheduleContent() {
 
   // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
-    if (!activeEvent || publishing) return;
+    if (publishing) return;
+
+    // Create mode: invoke createEvent with current draft and redirect to the new event.
+    if (isCreateMode) {
+      if (!changesEvent) {
+        setError('No event draft available to create.');
+        return;
+      }
+      setPublishing(true);
+      setError(null);
+      setInfoMessage(null);
+      try {
+        const created = await eventService.createEvent(changesEvent);
+        hydrateEvent(created);
+        setChangesEvent(created);
+        setHasUnsavedChanges(false);
+        const targetId = created.$id || eventId;
+        if (targetId) {
+          router.replace(`/events/${targetId}/schedule`);
+        }
+        setInfoMessage(`${entityLabel} created.`);
+      } catch (err) {
+        console.error('Failed to create event:', err);
+        setError('Failed to create event.');
+      } finally {
+        setPublishing(false);
+      }
+      return;
+    }
+
+    if (!activeEvent) return;
 
     if (!isPreview && !isEditingEvent && !isUnpublished) {
       if (!pathname) return;
@@ -844,7 +768,6 @@ function EventScheduleContent() {
         }
 
         hydrateEvent(updatedEvent);
-        writeEventToCache(updatedEvent);
         setHasUnsavedChanges(false);
 
         if (pathname) {
@@ -876,7 +799,6 @@ function EventScheduleContent() {
       setError(null);
       try {
         await eventService.deleteUnpublishedEvent(event);
-        clearEventCache(event.$id);
         router.push('/events');
       } catch (err) {
         console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
@@ -912,7 +834,6 @@ function EventScheduleContent() {
       await leagueService.deleteMatchesByEvent(event.$id);
       await leagueService.deleteWeeklySchedulesForEvent(event.$id);
       await eventService.deleteEvent(event);
-      clearEventCache(event.$id);
       router.push('/events');
     } catch (err) {
       console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
@@ -971,7 +892,166 @@ function EventScheduleContent() {
     setMatchBeingEdited(null);
   }, [matches]);
 
-  const canClearChanges = Boolean(event && changesEvent && hasChangeDiffers);
+  const applyMatchUpdate = useCallback((updated: Match) => {
+    const cloned = cloneValue(updated) as Match;
+    const replaceInList = (list?: Match[]) => {
+      if (!Array.isArray(list)) return list;
+      let found = false;
+      const next = list.map((item) => {
+        if (item.$id === cloned.$id) {
+          found = true;
+          return cloneValue(cloned) as Match;
+        }
+        return item;
+      });
+      if (!found) {
+        next.push(cloneValue(cloned) as Match);
+      }
+      return next;
+    };
+
+    setMatches((prev) => replaceInList(prev) as Match[]);
+    setChangesMatches((prev) => replaceInList(prev) as Match[]);
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return { ...prev, matches: replaceInList(prev.matches as Match[] | undefined) as Match[] };
+    });
+    setChangesEvent((prev) => {
+      if (!prev) return prev;
+      return { ...prev, matches: replaceInList(prev.matches as Match[] | undefined) as Match[] };
+    });
+  }, []);
+
+  const canUserManageScore = useCallback(
+    (match: Match) => {
+      if (!user?.$id) return false;
+      if (match.refereeId === user.$id || match.referee?.$id === user.$id) {
+        return true;
+      }
+      const teamRef = resolveTeam(match.teamReferee ?? match.teamRefereeId);
+      return userOnTeam(teamRef);
+    },
+    [resolveTeam, user?.$id, userOnTeam],
+  );
+
+  const handleScoreChange = useCallback(
+    async ({ matchId, team1Points, team2Points, setResults }: { matchId: string; team1Points: number[]; team2Points: number[]; setResults: number[] }) => {
+      try {
+        await tournamentService.updateMatchScores(matchId, { team1Points, team2Points, setResults });
+      } catch (err) {
+        console.warn('Non-blocking score sync failed:', err);
+      }
+    },
+    [],
+  );
+
+  const handleSetComplete = useCallback(
+    async ({ matchId, team1Points, team2Points, setResults }: { matchId: string; team1Points: number[]; team2Points: number[]; setResults: number[] }) => {
+      const updated = await tournamentService.updateMatch(matchId, { team1Points, team2Points, setResults });
+      applyMatchUpdate(updated as Match);
+    },
+    [applyMatchUpdate],
+  );
+
+  const handleMatchComplete = useCallback(
+    async ({
+      matchId,
+      team1Points,
+      team2Points,
+      setResults,
+      eventId,
+    }: {
+      matchId: string;
+      team1Points: number[];
+      team2Points: number[];
+      setResults: number[];
+      eventId?: string;
+    }) => {
+      const targetEventId = eventId ?? activeEvent?.$id;
+      if (!targetEventId || activeEvent?.eventType === 'EVENT') {
+        return;
+      }
+      await tournamentService.completeMatch(targetEventId, matchId, { team1Points, team2Points, setResults });
+    },
+    [activeEvent?.$id, activeEvent?.eventType],
+  );
+
+  const handleScoreSubmit = useCallback(
+    async (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => {
+      try {
+        const updated = await tournamentService.updateMatch(matchId, { team1Points, team2Points, setResults });
+        applyMatchUpdate(updated as Match);
+        setScoreUpdateMatch(null);
+        setIsScoreModalOpen(false);
+      } catch (err) {
+        console.error('Failed to update score:', err);
+        setError('Failed to update score. Please try again.');
+      }
+    },
+    [applyMatchUpdate],
+  );
+
+  const handleMakeUserTeamReferee = useCallback(
+    async (match: Match) => {
+      const userTeam = findUserTeam(match);
+      if (!userTeam) {
+        window.alert('You need to be on a team in this event to referee this match.');
+        return null;
+      }
+
+      const confirm = window.confirm('No referee is assigned. Make your team the referee for this match?');
+      if (!confirm) return null;
+
+      try {
+        const updated = await tournamentService.updateMatch(match.$id, { teamRefereeId: userTeam.$id });
+        const withTeam = {
+          ...(updated as Match),
+          teamReferee: (updated as Match).teamReferee ?? userTeam,
+        };
+        applyMatchUpdate(withTeam as Match);
+        return withTeam as Match;
+      } catch (err) {
+        console.error('Failed to assign team referee:', err);
+        setError('Failed to assign a referee to this match. Please try again.');
+        return null;
+      }
+    },
+    [applyMatchUpdate, findUserTeam],
+  );
+
+  const handleMatchClick = useCallback(
+    async (match: Match) => {
+      if (canEditMatches) {
+        handleMatchEditRequest(match);
+        return;
+      }
+
+      if (!user) {
+        return;
+      }
+
+      const isUserReferee = match.refereeId === user.$id || match.referee?.$id === user.$id;
+      const teamRef = resolveTeam(match.teamReferee ?? match.teamRefereeId);
+      const userIsTeamRef = userOnTeam(teamRef);
+
+      if (isUserReferee || userIsTeamRef) {
+        setScoreUpdateMatch(match);
+        setIsScoreModalOpen(true);
+        return;
+      }
+
+      if (!match.referee && !match.refereeId && teamRef) {
+        const updated = await handleMakeUserTeamReferee(match);
+        if (updated) {
+          setScoreUpdateMatch(updated);
+          setIsScoreModalOpen(true);
+        }
+      }
+    },
+    [canEditMatches, handleMakeUserTeamReferee, handleMatchEditRequest, resolveTeam, user, userOnTeam],
+  );
+
+  const canClearChanges = Boolean(event && changesEvent && hasUnsavedChanges);
 
   const handleStandingsSortChange = useCallback((field: StandingsSortField) => {
     setStandingsSort((prev) => {
@@ -1081,7 +1161,7 @@ function EventScheduleContent() {
   const activeOrganization: Organization | null =
     activeEvent && typeof activeEvent.organization === 'object'
       ? (activeEvent.organization as Organization)
-      : null;
+      : organizationForCreate;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1165,8 +1245,9 @@ function EventScheduleContent() {
                   matches={activeMatches}
                   eventStart={activeEvent.start}
                   eventEnd={activeEvent.end}
-                  onMatchClick={canEditMatches ? handleMatchEditRequest : undefined}
+                  onMatchClick={handleMatchClick}
                   canManage={canEditMatches}
+                  currentUser={user}
                 />
               )}
             </Tabs.Panel>
@@ -1280,6 +1361,22 @@ function EventScheduleContent() {
           </Tabs>
         </Stack>
       </Container>
+      {scoreUpdateMatch && activeEvent && (
+        <ScoreUpdateModal
+          match={scoreUpdateMatch}
+          tournament={activeEvent}
+          canManage={canUserManageScore(scoreUpdateMatch)}
+          onScoreChange={handleScoreChange}
+          onSetComplete={handleSetComplete}
+          onMatchComplete={handleMatchComplete}
+          onSubmit={handleScoreSubmit}
+          onClose={() => {
+            setIsScoreModalOpen(false);
+            setScoreUpdateMatch(null);
+          }}
+          isOpen={isScoreModalOpen}
+        />
+      )}
       <MatchEditModal
         opened={isMatchEditorOpen}
         match={matchBeingEdited}

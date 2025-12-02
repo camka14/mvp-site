@@ -291,7 +291,12 @@ function DiscoverPageContent() {
       return;
     }
     const newId = ID.unique();
-    router.push(`/events/${newId}/schedule?create=1`);
+    const params = new URLSearchParams({
+      create: '1',
+      mode: 'edit',
+      tab: 'details',
+    });
+    router.push(`/events/${newId}/schedule?${params.toString()}`);
   }, [router, user]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);

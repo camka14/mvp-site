@@ -149,8 +149,14 @@ function OrganizationDetailContent() {
 
   const handleCreateEvent = useCallback(() => {
     const newId = ID.unique();
-    router.push(`/events/${newId}/schedule?create=1`);
-  }, [router]);
+    const params = new URLSearchParams({
+      create: '1',
+      mode: 'edit',
+      tab: 'details',
+      orgId: id ?? '',
+    });
+    router.push(`/events/${newId}/schedule?${params.toString()}`);
+  }, [id, router]);
 
   const handleConnectStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;

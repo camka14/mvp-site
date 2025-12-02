@@ -21,7 +21,15 @@ export default function ParticipantsDropdown({
     emptyMessage
 }: ParticipantsDropdownProps) {
     return (
-        <Modal opened={isOpen} onClose={onClose} title={title} size="md" centered>
+        <Modal
+            opened={isOpen}
+            onClose={onClose}
+            title={title}
+            size="md"
+            centered
+            zIndex={2000}
+            overlayProps={{ zIndex: 1999 }}
+        >
             {isLoading ? (
                 <div className="flex items-center justify-center py-8">
                     <Loader size="sm" />

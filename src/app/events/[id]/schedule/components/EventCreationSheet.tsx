@@ -1809,7 +1809,7 @@ const EventCreationSheet: React.FC<EventCreationSheetProps> = ({
                                     <TextInput
                                         label="Event Name"
                                         withAsterisk
-                                        value={eventData.name}
+                                        value={eventData.name ?? ''}
                                         disabled={isImmutableField('name')}
                                         onChange={(e) => {
                                             if (isImmutableField('name')) return;

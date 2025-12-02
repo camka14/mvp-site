@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { getTeamAvatarUrl, getUserAvatarUrl, Match } from '@/types';
 
 interface MatchCardProps {
@@ -13,7 +14,7 @@ interface MatchCardProps {
     showRefereeInHeader?: boolean;
 }
 
-export default function MatchCard({
+function MatchCard({
     match,
     onClick,
     canManage = false,
@@ -23,6 +24,13 @@ export default function MatchCard({
     hideTimeBadge = false,
     showRefereeInHeader = false,
 }: MatchCardProps) {
+    const toTitleCase = (value: string) =>
+        value
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+
     const getTeamName = (teamData: any) => {
         if (teamData?.name) return teamData.name;
         if (teamData?.players?.length > 0) {
@@ -34,8 +42,8 @@ export default function MatchCard({
     const getUserName = (userData: any) => {
         if (!userData) return 'Referee';
         const name = [userData.firstName, userData.lastName].filter(Boolean).join(' ').trim();
-        if (name) return name;
-        if (userData.userName) return userData.userName;
+        if (name) return toTitleCase(name);
+        if (userData.userName) return toTitleCase(userData.userName);
         return 'Referee';
     };
 
@@ -260,3 +268,5 @@ export default function MatchCard({
         </div>
     );
 }
+
+export default memo(MatchCard);
