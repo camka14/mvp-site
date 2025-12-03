@@ -954,6 +954,7 @@ function EventScheduleContent() {
         if (pathname) {
           const params = new URLSearchParams(searchParams?.toString() ?? '');
           params.delete('mode');
+          params.delete('preview');
           const query = params.toString();
           router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
         }

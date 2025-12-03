@@ -553,7 +553,6 @@ const EventForm: React.FC<EventFormProps> = ({
     isOpen,
     onClose,
     onSubmit: onSubmitProp,
-    onDraftChange,
     currentUser,
     event: incomingEvent,
     organization,
@@ -1775,9 +1774,9 @@ const EventForm: React.FC<EventFormProps> = ({
         fieldCount,
     ]);
 
-    const handleLeaguePreview = useCallback(
+    const scheduleEvent = useCallback(
         async (values: EventFormValues) => {
-            if (values.eventType !== 'LEAGUE' || isEditMode) {
+            if (values.eventType !== 'LEAGUE') {
                 return;
             }
             if (submitting) {
@@ -1944,7 +1943,7 @@ const EventForm: React.FC<EventFormProps> = ({
                     divisions: values.divisions,
                     teamSizeLimit: values.teamSizeLimit,
                     hostId: currentUser?.$id,
-                    state: 'UNPUBLISHED' as EventState,
+                    state: isEditMode ? values.state : 'UNPUBLISHED' as EventState,
                     gamesPerOpponent: values.leagueData.gamesPerOpponent,
                     includePlayoffs: values.leagueData.includePlayoffs,
                     playoffTeamCount: values.leagueData.includePlayoffs
@@ -2034,8 +2033,8 @@ const EventForm: React.FC<EventFormProps> = ({
         if (!isFormValid) return;
 
         const isDraftCreation = isCreateMode || values.state === 'DRAFT';
-        if (isDraftCreation && values.eventType === 'LEAGUE') {
-            await handleLeaguePreview(values);
+        if (values.eventType !== 'EVENT') {
+            await scheduleEvent(values);
             return;
         }
 
@@ -2051,12 +2050,7 @@ const EventForm: React.FC<EventFormProps> = ({
                     state: 'UNPUBLISHED',
                 };
                 let created: Event | null = null;
-                if (draftToSave.eventType === 'EVENT') {
-                    created = await eventService.createEvent(draftToSave);
-                }
-                else {
-                    created = await eventService.scheduleEvent(draftToSave);
-                }
+                created = await eventService.createEvent(draftToSave);
                 if (created?.$id) {
                     router.replace(`/events/${created.$id}/schedule`);
                 }
@@ -2090,13 +2084,11 @@ const EventForm: React.FC<EventFormProps> = ({
             <div className="p-2 space-y-6">
                 <div className="p-6">
                     <div className="mb-6">
-                        {showCreateButtons && (
-                            <Group justify="flex-end">
-                                <Button type="submit" loading={submitting} disabled={!isFormValid || submitting}>
-                                    Create Event
-                                </Button>
-                            </Group>
-                        )}
+                        <Group justify="flex-end">
+                            <Button type="submit" loading={submitting} disabled={!isFormValid || submitting}>
+                                {showCreateButtons ? "Create Event" : "Save Changes"}
+                            </Button>
+                        </Group>
                         <div className="block text-sm font-medium mb-2">Event Image</div>
                         <ImageUploader
                             currentImageUrl={selectedImageUrl}
@@ -2688,13 +2680,11 @@ const EventForm: React.FC<EventFormProps> = ({
                                 sport={eventData.sportConfig ?? undefined}
                             />
                         )}
-                        {showCreateButtons && (
-                            <Group justify="flex-end">
-                                <Button type="submit" loading={submitting} disabled={!isFormValid || submitting}>
-                                    {eventData.eventType === 'LEAGUE' && !isEditMode ? 'Preview Schedule' : 'Create Event'}
-                                </Button>
-                            </Group>
-                        )}
+                        <Group justify="flex-end">
+                            <Button type="submit" loading={submitting} disabled={!isFormValid || submitting}>
+                                {showCreateButtons ? "Create Event" : "Save Changes"}
+                            </Button>
+                        </Group>
                     </form>
                 </div>
 

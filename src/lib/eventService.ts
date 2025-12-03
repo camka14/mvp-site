@@ -26,6 +26,7 @@ import { userService } from '@/lib/userService';
 import { buildPayload } from './utils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
 import { ExecutionMethod } from 'appwrite';
+import { LeagueScheduleResponse } from './leagueService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
