@@ -230,6 +230,7 @@ export interface UserData {
   friendRequestSentIds: string[];
   followingIds: string[];
   userName: string;
+  email?: string;
   teamInvites: string[];
   eventInvites: string[];
   hasStripeAccount?: boolean;

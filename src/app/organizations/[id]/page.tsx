@@ -42,6 +42,7 @@ const formatHourLabel = (hour: number) => {
 };
 
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function OrganizationDetailContent() {
   const params = useParams();
@@ -76,7 +77,13 @@ function OrganizationDetailContent() {
   const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
   const [connectingStripe, setConnectingStripe] = useState(false);
   const [managingStripe, setManagingStripe] = useState(false);
+  const [stripeEmail, setStripeEmail] = useState('');
+  const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
   const isOwner = Boolean(user && org && user.$id === org.ownerId);
+  const stripeEmailValid = useMemo(
+    () => Boolean(stripeEmail && EMAIL_REGEX.test(stripeEmail.trim())),
+    [stripeEmail],
+  );
 
   const localizer = useMemo(() => dateFnsLocalizer({
     format,
@@ -147,6 +154,15 @@ function OrganizationDetailContent() {
     }
   };
 
+  useEffect(() => {
+    if (!org || !user) return;
+    if (stripeEmail) return;
+    const fallbackEmail = (org as any)?.email || user.email || '';
+    if (fallbackEmail) {
+      setStripeEmail(fallbackEmail);
+    }
+  }, [org, user, stripeEmail]);
+
   const handleCreateEvent = useCallback(() => {
     const newId = ID.unique();
     const params = new URLSearchParams({
@@ -160,11 +176,18 @@ function OrganizationDetailContent() {
 
   const handleConnectStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;
+    const trimmedEmail = stripeEmail.trim();
+    const isValidEmail = EMAIL_REGEX.test(trimmedEmail);
+    if (!isValidEmail) {
+      setStripeEmailError('Enter a valid email to start Stripe onboarding.');
+      return;
+    }
     if (typeof window === 'undefined') {
       notifications.show({ color: 'red', message: 'Stripe onboarding is only available in the browser.' });
       return;
     }
     try {
+      setStripeEmailError(null);
       setConnectingStripe(true);
       const origin = window.location.origin;
       const basePath = `/organizations/${org.$id}`;
@@ -172,6 +195,7 @@ function OrganizationDetailContent() {
       const returnUrl = `${origin}${basePath}?stripe=return`;
       const result = await paymentService.connectStripeAccount({
         organization: org,
+        organizationEmail: trimmedEmail,
         refreshUrl,
         returnUrl,
       });
@@ -190,7 +214,7 @@ function OrganizationDetailContent() {
     } finally {
       setConnectingStripe(false);
     }
-  }, [org, isOwner]);
+  }, [org, isOwner, stripeEmail]);
 
   const handleManageStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;
@@ -579,9 +603,28 @@ function OrganizationDetailContent() {
                     </Text>
                     {isOwner ? (
                       <Stack gap="xs">
+                        {!organizationHasStripeAccount && (
+                          <TextInput
+                            label="Stripe payout email"
+                            type="email"
+                            placeholder="billing@example.com"
+                            value={stripeEmail}
+                            error={stripeEmailError ?? undefined}
+                            onChange={(e) => {
+                              const next = e.currentTarget.value;
+                              setStripeEmail(next);
+                              if (stripeEmailError && EMAIL_REGEX.test(next.trim())) {
+                                setStripeEmailError(null);
+                              }
+                            }}
+                            disabled={connectingStripe}
+                            required
+                          />
+                        )}
                         <Button
                           size="sm"
                           loading={organizationHasStripeAccount ? managingStripe : connectingStripe}
+                          disabled={!organizationHasStripeAccount && !stripeEmailValid}
                           onClick={organizationHasStripeAccount ? handleManageStripeAccount : handleConnectStripeAccount}
                         >
                           {organizationHasStripeAccount ? 'Manage Stripe Account' : 'Connect Stripe Account'}

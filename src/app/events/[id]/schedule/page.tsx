@@ -486,6 +486,8 @@ function EventScheduleContent() {
     return `Save ${entityLabel} Changes`;
   })();
   const cancelButtonLabel = (() => {
+    if (isCreateMode) return 'Discard';
+    if (isUnpublished) return `Delete ${entityLabel}`;
     if (isPreview) return `Cancel ${entityLabel} Preview`;
     if (isEditingEvent) return `Discard ${entityLabel} Changes`;
     return `Cancel ${entityLabel}`;
@@ -1397,7 +1399,7 @@ function EventScheduleContent() {
                 >
                   {cancelButtonLabel}
                 </Button>
-                {!isCreateMode && (
+                {isEditingEvent && (
                   <Button
                     variant="default"
                     onClick={handleClearChanges}

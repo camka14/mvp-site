@@ -229,13 +229,20 @@ export default function CreateOrganizationModal({
 
   const modalTitle = isEditing ? 'Edit Organization' : 'Create Organization';
   const submitLabel = submitting ? (isEditing ? 'Saving…' : 'Creating…') : isEditing ? 'Save Changes' : 'Create Organization';
+
+  const handleFieldChange = (field: keyof typeof form) =>
+    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const value = event.currentTarget?.value ?? '';
+      setForm((prev) => ({ ...prev, [field]: value }));
+    };
+
   return (
     <Modal opened={isOpen} onClose={onClose} title={modalTitle} size="md" centered>
       <form onSubmit={handleSubmit} className="space-y-4">
         <TextInput
           label="Name"
           value={form.name}
-          onChange={(e) => setForm((p) => ({ ...p, name: e.currentTarget.value }))}
+          onChange={handleFieldChange('name')}
           placeholder="Organization name"
           required
           maxLength={80}
@@ -243,7 +250,7 @@ export default function CreateOrganizationModal({
         <Textarea
           label="Description"
           value={form.description}
-          onChange={(e) => setForm((p) => ({ ...p, description: e.currentTarget.value }))}
+          onChange={handleFieldChange('description')}
           placeholder="Tell people what your organization does"
           autosize minRows={3}
           maxLength={500}
@@ -251,7 +258,7 @@ export default function CreateOrganizationModal({
         <TextInput
           label="Website"
           value={form.website}
-          onChange={(e) => setForm((p) => ({ ...p, website: e.currentTarget.value }))}
+          onChange={handleFieldChange('website')}
           placeholder="https://example.com"
           type="url"
         />

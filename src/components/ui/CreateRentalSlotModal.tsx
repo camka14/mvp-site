@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Group, Modal, NumberInput, Stack, Switch, Text } from '@mantine/core';
-import { DatePickerInput, DateTimePicker, TimeInput } from '@mantine/dates';
+import { DatePickerInput, TimeInput } from '@mantine/dates';
 import type { Field, TimeSlot } from '@/types';
 import { fieldService, type ManageRentalSlotResult } from '@/lib/fieldService';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
@@ -61,11 +61,10 @@ const coerceDateValue = (value: unknown): Date | null => {
   }
 
   if (value instanceof Date) {
-    return value;
+    return Number.isNaN(value.getTime()) ? null : value;
   }
 
-  const parsed = new Date(value as string);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseLocalDateTime(value as string | Date | null);
 };
 
 const minutesToTimeValue = (minutes: number): string => {
@@ -315,7 +314,7 @@ export default function CreateRentalSlotModal({
             </Text>
           </div>
 
-          <DateTimePicker
+          <DatePickerInput
             label="Start date"
             placeholder="Pick a date"
             value={startDate}
@@ -328,15 +327,10 @@ export default function CreateRentalSlotModal({
             }}
             required
             disabled={!field}
-            timePickerProps={!repeating ? {
-              withDropdown: true,
-              format: '12h',
-
-            } : undefined}
             popoverProps={{ withinPortal: true }}
           />
 
-          <DateTimePicker
+          <DatePickerInput
             label={repeating ? 'End date (optional)' : 'End date'}
             placeholder="Pick an end date"
             value={endDate}
@@ -344,11 +338,6 @@ export default function CreateRentalSlotModal({
             clearable={repeating}
             clearButtonProps={{ 'aria-label': 'Clear end date' }}
             disabled={!field}
-            timePickerProps={!repeating ? {
-              withDropdown: true,
-              format: '12h',
-
-            } : undefined}
             required={!repeating}
             popoverProps={{ withinPortal: true }}
             minDate={startDate ?? undefined}

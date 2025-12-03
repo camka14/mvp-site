@@ -1,6 +1,7 @@
 import { account, databases, ID } from '@/app/appwrite';
 import type { UserData } from '@/types';
 import { OAuthProvider } from 'appwrite';
+import { Query } from 'appwrite';
 
 interface UserAccount {
   $id: string;
@@ -82,8 +83,25 @@ export const authService = {
         await this.logout(); // Logout existing session
       }
 
+      const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+      const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
+
+      // Try to find an existing UserData row by email
+      let existingProfile: any | null = null;
+      try {
+        const matches = await databases.listRows({
+          databaseId: DATABASE_ID,
+          tableId: USERS_TABLE_ID,
+          queries: [Query.equal('email', email), Query.limit(1)]
+        });
+        existingProfile = matches.rows?.[0] ?? null;
+      } catch (lookupErr) {
+        console.warn('User profile lookup by email failed:', lookupErr);
+      }
+
+      const userIdForAccount = existingProfile?.$id || ID.unique();
       const userAccount: UserAccount = await account.create({
-        userId: ID.unique(),
+        userId: userIdForAccount,
         email,
         password,
         name: `${firstName} ${lastName}`.trim()
@@ -95,9 +113,6 @@ export const authService = {
 
         // Ensure a corresponding user profile exists in the Users table
         try {
-          const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-          const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
-
           // Check if there's already a row (id matches auth account id)
           let userRow: any | null = null;
           try {
@@ -110,27 +125,28 @@ export const authService = {
             userRow = null;
           }
 
-          if (!userRow) {
-            await databases.createRow({
-              databaseId: DATABASE_ID,
-              tableId: USERS_TABLE_ID,
-              rowId: loggedIn.$id,
-              data: {
-                firstName: firstName || '',
-                lastName: lastName || '',
-                userName,
-                teamIds: [],
-                friendIds: [],
-                friendRequestIds: [],
-                friendRequestSentIds: [],
-                followingIds: [],
-                teamInvites: [],
-                eventInvites: [],
-                uploadedImages: [],
-                profileImageId: ''
-              }
-            });
-          }
+          const baseData = {
+            firstName: firstName || existingProfile?.firstName || '',
+            lastName: lastName || existingProfile?.lastName || '',
+            userName: existingProfile?.userName || userName,
+            email,
+            teamIds: existingProfile?.teamIds ?? [],
+            friendIds: existingProfile?.friendIds ?? [],
+            friendRequestIds: existingProfile?.friendRequestIds ?? [],
+            friendRequestSentIds: existingProfile?.friendRequestSentIds ?? [],
+            followingIds: existingProfile?.followingIds ?? [],
+            teamInvites: existingProfile?.teamInvites ?? [],
+            eventInvites: existingProfile?.eventInvites ?? [],
+            uploadedImages: existingProfile?.uploadedImages ?? [],
+            profileImageId: existingProfile?.profileImageId || ''
+          };
+
+          await databases.upsertRow({
+            databaseId: DATABASE_ID,
+            tableId: USERS_TABLE_ID,
+            rowId: loggedIn.$id,
+            data: baseData
+          });
         } catch (profileErr) {
           // Don't block login on profile creation issues; surface for debugging
           console.warn('Failed to ensure user profile row:', profileErr);
@@ -156,14 +172,14 @@ export const authService = {
 
   async resendVerification(): Promise<void> {
     // Re-send verification email to the current authenticated user
-    await account.createVerification({
+    await account.createEmailVerification({
       url: `${window.location.origin}/verify`
     });
   },
 
   async confirmVerification(userId: string, secret: string): Promise<void> {
     // Confirm verification using parameters from the email link
-    await account.updateVerification({ userId, secret });
+    await account.updateEmailVerification({ userId, secret });
   },
 
   async login(email: string, password: string): Promise<UserAccount> {

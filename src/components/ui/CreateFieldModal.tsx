@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Button, Group, TextInput, NumberInput, Select } from '@mantine/core';
 import type { Field, FieldSurfaceType, Organization } from '@/types';
 import { fieldService } from '@/lib/fieldService';
+import LocationSelector from '@/components/location/LocationSelector';
 
 interface CreateFieldModalProps {
   isOpen: boolean;
@@ -126,30 +127,23 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
           />
         </div>
 
-        <TextInput
-          label="Location (optional)"
-          placeholder="123 Main St, City"
+        <LocationSelector
           value={form.location}
-          onChange={(e) => {
-            const value = e.currentTarget.value;
-            setForm(prev => ({ ...prev, location: value }));
+          coordinates={{
+            lat: form.lat ? Number(form.lat) : 0,
+            lng: form.long ? Number(form.long) : 0,
           }}
+          label="Location (optional)"
+          onChange={(location, lat, lng) => {
+            setForm(prev => ({
+              ...prev,
+              location,
+              lat,
+              long: lng,
+            }));
+          }}
+          isValid
         />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <NumberInput
-            label="Latitude (optional)"
-            value={form.lat as number | string}
-            onChange={(val) => setForm(prev => ({ ...prev, lat: (val as number) ?? '' }))}
-            step={0.000001}
-          />
-          <NumberInput
-            label="Longitude (optional)"
-            value={form.long as number | string}
-            onChange={(val) => setForm(prev => ({ ...prev, long: (val as number) ?? '' }))}
-            step={0.000001}
-          />
-        </div>
 
         <Group justify="space-between" pt="sm">
           <Button variant="default" onClick={onClose} disabled={submitting}>Cancel</Button>
