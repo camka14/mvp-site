@@ -251,6 +251,43 @@ class EventService {
             throw new Error('Failed to delete fields for unpublished event');
         }
     }
+    
+      async scheduleEvent(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
+        const payload: Record<string, any> = {
+          eventDocument,
+        };
+    
+        if (typeof options.participantCount === 'number') {
+          payload.participantCount = options.participantCount;
+        }
+    
+        const execution = await functions.createExecution({
+          functionId: EVENT_MANAGER_FUNCTION_ID,
+          xpath: '/events/schedule',
+          method: ExecutionMethod.POST,
+          body: JSON.stringify(payload),
+          async: false,
+        });
+    
+        const parsed = JSON.parse(execution.responseBody || '{}');
+        if (parsed.error) {
+          throw new Error(
+            typeof parsed.error === 'string' && parsed.error.length > 0
+              ? parsed.error
+              : 'Failed to preview league schedule'
+          );
+        }
+    
+        let event: Event | undefined;
+        if (parsed.event) {
+          event = await eventService.mapRowFromDatabase(parsed.event, true);
+        }
+    
+        return {
+          preview: typeof parsed.preview === 'boolean' ? parsed.preview : true,
+          event,
+        };
+      }
 
     async createEvent(newEvent: Partial<Event>): Promise<Event> {
         try {

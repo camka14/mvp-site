@@ -72,7 +72,7 @@ export interface LeagueSlotForm {
   key: string;
   $id?: string;
   scheduledFieldId?: string;
-  dayOfWeek?: TimeSlot['dayOfWeek'];
+  dayOfWeek?: number;
   startTimeMinutes?: number;
   endTimeMinutes?: number;
   repeating?: boolean;

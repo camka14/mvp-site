@@ -7,17 +7,19 @@ import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
+import { useLocation } from '@/app/hooks/useLocation';
 import { deepEqual } from '@/app/utils';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
-import type { Event, EventState, Match, Team, TournamentBracket, Organization } from '@/types';
+import { formatLocalDateTime } from '@/lib/dateUtils';
+import type { Event, EventState, Match, Team, TournamentBracket, Organization, Sport } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
-import EventCreationSheet from './components/EventCreationSheet';
+import EventForm from './components/EventForm';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 
@@ -66,6 +68,16 @@ const cloneValue = <T,>(value: T): T => {
   return cloneRecursive(value);
 };
 
+const formatLatLngLabel = (lat?: number, lng?: number): string => {
+  if (typeof lat !== 'number' || typeof lng !== 'number') {
+    return '';
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return '';
+  }
+  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+};
+
 type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
 
 type StandingsRow = {
@@ -82,6 +94,11 @@ type StandingsRow = {
 };
 
 type RankedStandingsRow = StandingsRow & { rank: number };
+
+type LocationDefaults = {
+  location?: string;
+  coordinates?: [number, number];
+};
 
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
@@ -116,6 +133,79 @@ function EventScheduleContent() {
   const [scoreUpdateMatch, setScoreUpdateMatch] = useState<Match | null>(null);
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
   const [organizationForCreate, setOrganizationForCreate] = useState<Organization | null>(null);
+  const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
+
+  const userLocationLabel = useMemo(() => {
+    if (userLocationInfo) {
+      const parts = [userLocationInfo.city, userLocationInfo.state]
+        .filter((part): part is string => Boolean(part && part.trim().length > 0));
+      if (parts.length) {
+        return parts.join(', ');
+      }
+      if (userLocationInfo.zipCode && userLocationInfo.zipCode.trim().length > 0) {
+        return userLocationInfo.zipCode;
+      }
+      if (userLocationInfo.country && userLocationInfo.country.trim().length > 0) {
+        return userLocationInfo.country;
+      }
+      if (typeof userLocationInfo.lat === 'number' && typeof userLocationInfo.lng === 'number') {
+        return formatLatLngLabel(userLocationInfo.lat, userLocationInfo.lng);
+      }
+    }
+    if (userLocation) {
+      return formatLatLngLabel(userLocation.lat, userLocation.lng);
+    }
+    return '';
+  }, [userLocationInfo, userLocation]);
+
+  const userCoordinates = useMemo<[number, number] | null>(() => {
+    if (!userLocation) {
+      return null;
+    }
+    if (
+      typeof userLocation.lat !== 'number' ||
+      typeof userLocation.lng !== 'number' ||
+      !Number.isFinite(userLocation.lat) ||
+      !Number.isFinite(userLocation.lng)
+    ) {
+      return null;
+    }
+    return [userLocation.lng, userLocation.lat];
+  }, [userLocation]);
+
+  const buildLocationDefaults = useCallback(
+    (organizationInput?: Organization | null): LocationDefaults | undefined => {
+      const orgLabel = organizationInput?.location?.trim() ?? '';
+      const orgCoordinates =
+        Array.isArray(organizationInput?.coordinates) &&
+        typeof organizationInput.coordinates[0] === 'number' &&
+        typeof organizationInput.coordinates[1] === 'number'
+          ? (organizationInput.coordinates as [number, number])
+          : undefined;
+
+      if (organizationInput && (orgLabel || orgCoordinates)) {
+        return {
+          location: orgLabel || userLocationLabel,
+          coordinates: orgCoordinates ?? userCoordinates ?? undefined,
+        };
+      }
+
+      if (userLocationLabel || userCoordinates) {
+        return {
+          location: userLocationLabel,
+          coordinates: userCoordinates ?? undefined,
+        };
+      }
+
+      return undefined;
+    },
+    [userCoordinates, userLocationLabel],
+  );
+
+  const createLocationDefaults = useMemo(
+    () => buildLocationDefaults(organizationForCreate),
+    [buildLocationDefaults, organizationForCreate],
+  );
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
@@ -127,6 +217,56 @@ function EventScheduleContent() {
   const entityLabel = isTournament ? 'Tournament' : 'League';
   const canEditMatches = Boolean(isHost && isEditingEvent);
   const shouldShowCreationSheet = Boolean(isCreateMode || (isEditingEvent && isHost && user));
+  const createFormId = 'create-event-form';
+  const defaultSport: Sport = {
+    $id: '',
+    name: '',
+    usePointsForWin: false,
+    usePointsForDraw: false,
+    usePointsForLoss: false,
+    usePointsForForfeitWin: false,
+    usePointsForForfeitLoss: false,
+    usePointsPerSetWin: false,
+    usePointsPerSetLoss: false,
+    usePointsPerGameWin: false,
+    usePointsPerGameLoss: false,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
+    useMaxGoalBonusPoints: false,
+    useMinGoalBonusThreshold: false,
+    usePointsForShutout: false,
+    usePointsForCleanSheet: false,
+    useApplyShutoutOnlyIfWin: false,
+    usePointsPerGoalDifference: false,
+    useMaxGoalDifferencePoints: false,
+    usePointsPenaltyPerGoalDifference: false,
+    usePointsForParticipation: false,
+    usePointsForNoShow: false,
+    usePointsForWinStreakBonus: false,
+    useWinStreakThreshold: false,
+    usePointsForOvertimeWin: false,
+    usePointsForOvertimeLoss: false,
+    useOvertimeEnabled: false,
+    usePointsPerRedCard: false,
+    usePointsPerYellowCard: false,
+    usePointsPerPenalty: false,
+    useMaxPenaltyDeductions: false,
+    useMaxPointsPerMatch: false,
+    useMinPointsPerMatch: false,
+    useGoalDifferenceTiebreaker: false,
+    useHeadToHeadTiebreaker: false,
+    useTotalGoalsTiebreaker: false,
+    useEnableBonusForComebackWin: false,
+    useBonusPointsForComebackWin: false,
+    useEnableBonusForHighScoringMatch: false,
+    useHighScoringThreshold: false,
+    useBonusPointsForHighScoringMatch: false,
+    useEnablePenaltyUnsporting: false,
+    usePenaltyPointsUnsporting: false,
+    usePointPrecision: false,
+    $createdAt: '',
+    $updatedAt: '',
+  };
   const showDateOnMatches = useMemo(() => {
     if (!activeEvent?.start || !activeEvent?.end) return false;
     const start = new Date(activeEvent.start);
@@ -221,6 +361,51 @@ function EventScheduleContent() {
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
+    if (!isCreateMode || !user) return;
+    setChangesEvent((prev) => {
+      if (prev) return prev;
+      const start = formatLocalDateTime(new Date());
+      const end = formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+      const locationDefaults = createLocationDefaults;
+      return {
+        $id: eventId || 'temp-id',
+        name: '',
+        description: '',
+        location: locationDefaults?.location ?? '',
+        coordinates: locationDefaults?.coordinates ?? [0, 0],
+        start,
+        end,
+        eventType: 'EVENT',
+        sportId: '',
+        sport: defaultSport,
+        fieldType: 'INDOOR',
+        price: 0,
+        maxParticipants: 10,
+        teamSizeLimit: 2,
+        teamSignup: false,
+        singleDivision: false,
+        divisions: [],
+        cancellationRefundHours: 24,
+        registrationCutoffHours: 2,
+        hostId: user.$id,
+        state: 'DRAFT' as EventState,
+        $createdAt: '',
+        $updatedAt: '',
+        attendees: 0,
+        imageId: '',
+        seedColor: 0,
+        waitListIds: [],
+        freeAgentIds: [],
+        players: [],
+        teams: [],
+        referees: [],
+        refereeIds: [],
+        leagueScoringConfig: createLeagueScoringConfig(),
+      } as Event;
+    });
+  }, [createLocationDefaults, eventId, isCreateMode, user]);
+
+  useEffect(() => {
     const loadOrgForCreate = async () => {
       if (!organizationIdParam || !isCreateMode) return;
       try {
@@ -229,6 +414,13 @@ function EventScheduleContent() {
           setOrganizationForCreate(org as Organization);
           setChangesEvent((prev) => {
             const base = prev ?? ({ $id: eventId, state: 'DRAFT' } as Event);
+            const orgLocation = (org.location ?? '').trim();
+            const orgCoordinates =
+              Array.isArray(org.coordinates) &&
+              typeof org.coordinates[0] === 'number' &&
+              typeof org.coordinates[1] === 'number'
+                ? (org.coordinates as [number, number])
+                : undefined;
             return {
               ...base,
               organization: org,
@@ -237,8 +429,8 @@ function EventScheduleContent() {
               fields: Array.isArray(org.fields) ? org.fields : base.fields,
               refereeIds: Array.isArray(org.refIds) ? org.refIds : base.refereeIds,
               referees: Array.isArray(org.referees) ? org.referees : base.referees,
-              location: base.location ?? org.location,
-              coordinates: base.coordinates ?? org.coordinates,
+              location: orgLocation || base.location || '',
+              coordinates: orgCoordinates ?? base.coordinates ?? [0, 0],
             } as Event;
           });
         }
@@ -304,10 +496,6 @@ function EventScheduleContent() {
   const loadSchedule = useCallback(async () => {
     if (!eventId) return;
     if (isCreateMode) {
-      setEvent(null);
-      setMatches([]);
-      setChangesEvent(null);
-      setChangesMatches([]);
       setLoading(false);
       setError(null);
       return;
@@ -680,14 +868,6 @@ function EventScheduleContent() {
     [activeEvent, eventId],
   );
 
-  // Seed a draft event when entering create mode
-  useEffect(() => {
-    if (isCreateMode && !changesEvent) {
-      setChangesEvent({ $id: eventId, state: 'DRAFT' } as any);
-      setHasUnsavedChanges(true);
-    }
-  }, [changesEvent, eventId, isCreateMode]);
-
   // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
     if (publishing) return;
@@ -790,6 +970,21 @@ function EventScheduleContent() {
   };
 
   const handleCancel = async () => {
+    if (isCreateMode) {
+      if (cancelling) return;
+      setCancelling(true);
+      try {
+        if (typeof window !== 'undefined' && window.history.length > 1) {
+          router.back();
+        } else {
+          router.push('/events');
+        }
+      } finally {
+        setCancelling(false);
+      }
+      return;
+    }
+
     if (!event || cancelling) return;
 
     const isUnpublished = (event.state ?? 'PUBLISHED') === 'UNPUBLISHED';
@@ -1054,6 +1249,18 @@ function EventScheduleContent() {
 
   const canClearChanges = Boolean(event && changesEvent && hasUnsavedChanges);
 
+  const activeOrganization: Organization | null = useMemo(() => {
+    if (activeEvent && typeof activeEvent.organization === 'object') {
+      return activeEvent.organization as Organization;
+    }
+    return organizationForCreate;
+  }, [activeEvent, organizationForCreate]);
+
+  const activeLocationDefaults = useMemo(
+    () => buildLocationDefaults(activeOrganization),
+    [activeOrganization, buildLocationDefaults],
+  );
+
   const handleStandingsSortChange = useCallback((field: StandingsSortField) => {
     setStandingsSort((prev) => {
       if (prev.field === field) {
@@ -1107,15 +1314,16 @@ function EventScheduleContent() {
         <Container size="lg" py="xl">
           <Stack gap="md">
             <Title order={2}>Create Event</Title>
-            {user ? (
-              <EventCreationSheet
-                renderInline
+            {user && changesEvent ? (
+              <EventForm
                 isOpen
                 onClose={() => router.push('/events')}
                 currentUser={user}
-                organization={null}
-                event={changesEvent ?? undefined}
-                onDraftChange={handleEventDraftChange}
+                organization={organizationForCreate}
+                defaultLocation={createLocationDefaults}
+                event={changesEvent}
+                formId={createFormId}
+                isCreateMode
               />
             ) : (
               <Loading text="Loading user..." />
@@ -1159,10 +1367,6 @@ function EventScheduleContent() {
   }
 
   const leagueConfig = activeEvent.leagueConfig;
-  const activeOrganization: Organization | null =
-    activeEvent && typeof activeEvent.organization === 'object'
-      ? (activeEvent.organization as Organization)
-      : organizationForCreate;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1174,14 +1378,16 @@ function EventScheduleContent() {
 
             {isHost && (
               <Group gap="sm">
-                <Button
-                  color="green"
-                  onClick={handlePublish}
-                  loading={publishing}
-                  disabled={publishing}
-                >
-                  {publishButtonLabel}
-                </Button>
+                {!isCreateMode && (
+                  <Button
+                    color="green"
+                    onClick={handlePublish}
+                    loading={publishing}
+                    disabled={publishing}
+                  >
+                    {publishButtonLabel}
+                  </Button>
+                )}
                 <Button
                   color="red"
                   variant="light"
@@ -1190,13 +1396,15 @@ function EventScheduleContent() {
                 >
                   {cancelButtonLabel}
                 </Button>
-                <Button
-                  variant="default"
-                  onClick={handleClearChanges}
-                  disabled={!canClearChanges}
-                >
-                  Clear Changes
-                </Button>
+                {!isCreateMode && (
+                  <Button
+                    variant="default"
+                    onClick={handleClearChanges}
+                    disabled={!canClearChanges}
+                  >
+                    Clear Changes
+                  </Button>
+                )}
               </Group>
             )}
           </Group>
@@ -1217,13 +1425,13 @@ function EventScheduleContent() {
 
             <Tabs.Panel value="details" pt="md">
               {shouldShowCreationSheet && user ? (
-                <EventCreationSheet
-                  renderInline
+                <EventForm
                   isOpen={activeTab === 'details'}
                   onClose={handleDetailsClose}
                   currentUser={user}
                   event={activeEvent ?? undefined}
                   organization={activeOrganization}
+                  defaultLocation={activeLocationDefaults}
                   onDraftChange={handleEventDraftChange}
                 />
               ) : (
