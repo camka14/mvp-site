@@ -21,6 +21,8 @@ interface EventDetailSheetProps {
 }
 
 const SHEET_POPOVER_Z_INDEX = 1800;
+const SHEET_CONTENT_MAX_WIDTH = 'var(--mantine-container-size-lg, 1200px)';
+const SHEET_CONTENT_WIDTH = `min(${SHEET_CONTENT_MAX_WIDTH}, calc(100vw - 2rem))`; // Match main grid width on large screens
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 
@@ -266,7 +268,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
     };
 
-    if (!isActive || !currentEvent) return null;
+    if (!currentEvent) return null;
+    // Inline render (schedule page) should only mount when active tab is selected
+    if (renderInline && !isActive) return null;
 
     const { date, time } = getEventDateTime(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
@@ -829,6 +833,21 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         </div>
     );
 
+    const nonInlineContent = (
+        <div
+            style={{
+                height: '100%',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                paddingRight: '1.5rem',
+                marginRight: '-1.5rem', // push scrollbar to sheet edge while keeping inner padding
+                scrollbarGutter: 'stable',
+            }}
+        >
+            {content}
+        </div>
+    );
+
     return (
         <>
             {renderInline ? (
@@ -840,24 +859,37 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     position="bottom"
                     size="100%"
                     withCloseButton={false}
+                    keepMounted
                     zIndex={1200}
-                    transitionProps={{ transition: 'slide-up', duration: 250 }}
                     styles={{
                         content: {
-                            padding: '1.5rem',
-                            paddingBottom: '2rem',
+                            padding: 0,
                             borderTopLeftRadius: '1rem',
                             borderTopRightRadius: '1rem',
                             height: 'calc(100vh - 80px)',
-                            overflow: 'auto',
+                            overflow: 'hidden', // keep rounded corners clipped
+                            maxWidth: SHEET_CONTENT_WIDTH,
+                            width: '100%',
+                            margin: '0 auto',
+                            boxSizing: 'border-box',
                         },
                         inner: {
                             alignItems: 'flex-end',
+                            justifyContent: 'center',
+                        },
+                        body: {
+                            maxWidth: SHEET_CONTENT_WIDTH,
+                            width: '100%',
+                            margin: '0 auto',
+                            padding: '1.5rem',
+                            paddingBottom: '2rem',
+                            boxSizing: 'border-box',
+                            height: '100%',
                         },
                     }}
                     overlayProps={{ opacity: 0.45, blur: 3 }}
                 >
-                    {content}
+                    {nonInlineContent}
                 </Drawer>
             )}
 
