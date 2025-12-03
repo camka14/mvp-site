@@ -240,7 +240,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
         try {
             while (Date.now() < deadline) {
-                const latest = await eventService.getEvent(currentEvent.$id);
+                const latest = await eventService.getEventWithRelations(currentEvent.$id);
                 if (latest) {
                     // Check registration status depending on signup type using relations
                     const registered = latest.teamSignup
@@ -972,7 +972,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 event={currentEvent}
                 paymentData={paymentData} // Pass the already-created payment intent
                 onPaymentSuccess={async () => {
-                    setShowPaymentModal(false);
                     setPaymentData(null);
                     await confirmRegistrationAfterPayment();
                 }}
