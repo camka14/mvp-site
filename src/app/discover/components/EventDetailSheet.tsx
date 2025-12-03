@@ -516,22 +516,20 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Participants</h3>
 
                                     {/* Players Section */}
-                                    {players.length > 0 && (
-                                        <div className="mb-4">
-                                            <ParticipantsPreview
-                                                title="Players"
-                                                participants={players}
-                                                totalCount={players.length}
-                                                isLoading={isLoadingEvent}
-                                                onClick={() => setShowPlayersDropdown(true)}
-                                                getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
-                                                emptyMessage="No players registered yet"
-                                            />
-                                        </div>
-                                    )}
+                                    <div className="mb-4">
+                                        <ParticipantsPreview
+                                            title="Players"
+                                            participants={players}
+                                            totalCount={players.length}
+                                            isLoading={isLoadingEvent}
+                                            onClick={() => setShowPlayersDropdown(true)}
+                                            getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
+                                            emptyMessage="No players registered yet"
+                                        />
+                                    </div>
 
                                     {/* Teams Section */}
-                                    {teams.length > 0 && (
+                                    {event.teamSignup && (
                                         <div className="mb-4">
                                             <ParticipantsPreview
                                                 title="Teams"
@@ -546,19 +544,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                     )}
 
                                     {/* Free Agents Section */}
-                                    {(freeAgents.length > 0 || (currentEvent.freeAgentIds?.length ?? 0) > 0) && (
-                                        <div className="mb-4">
-                                            <ParticipantsPreview
-                                                title="Free Agents"
-                                                participants={freeAgents}
-                                                totalCount={currentEvent.freeAgentIds?.length ?? 0}
-                                                isLoading={isLoadingEvent}
-                                                onClick={() => setShowFreeAgentsDropdown(true)}
-                                                getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
-                                                emptyMessage="No free agents yet"
-                                            />
-                                        </div>
-                                    )}
+                                    <div className="mb-4">
+                                        <ParticipantsPreview
+                                            title="Free Agents"
+                                            participants={freeAgents}
+                                            totalCount={currentEvent.freeAgentIds?.length ?? 0}
+                                            isLoading={isLoadingEvent}
+                                            onClick={() => setShowFreeAgentsDropdown(true)}
+                                            getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
+                                            emptyMessage="No free agents yet"
+                                        />
+                                    </div>
 
                                     {/* Join Options (includes total participants) */}
                                     <Paper withBorder p="md" radius="md">

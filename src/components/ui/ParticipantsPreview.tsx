@@ -1,5 +1,5 @@
 import React from 'react';
-import { Paper, Group, Text, Avatar, Loader } from '@mantine/core';
+import { Paper, Group, Text, Avatar, Loader, Transition } from '@mantine/core';
 
 interface ParticipantsPreviewProps {
     title: string;
@@ -43,17 +43,21 @@ export default function ParticipantsPreview({
                     <Text size="sm" c="dimmed">Loading…</Text>
                 </Group>
             ) : (
-                <Group>
-                    <Group gap={-8} mr="sm">
-                        {participants.slice(0, 3).map((p: any, index: number) => (
-                            <Avatar key={p.$id} src={getAvatarUrl(p)} radius="xl" size={32} style={{ zIndex: 3 - index }} />
-                        ))}
-                        {totalCount > 3 && (
-                            <Avatar radius="xl" size={32} color="gray">+{totalCount - 3}</Avatar>
-                        )}
-                    </Group>
-                    <Text size="sm" c="blue">View all →</Text>
-                </Group>
+                <Transition mounted={!isLoading} transition="slide-right" duration={180} timingFunction="ease-out">
+                    {(styles) => (
+                        <Group style={styles}>
+                            <Group gap={-8} mr="sm">
+                                {participants.slice(0, 3).map((p: any, index: number) => (
+                                    <Avatar key={p.$id} src={getAvatarUrl(p)} radius="xl" size={32} style={{ zIndex: 3 - index }} />
+                                ))}
+                                {totalCount > 3 && (
+                                    <Avatar radius="xl" size={32} color="gray">+{totalCount - 3}</Avatar>
+                                )}
+                            </Group>
+                            <Text size="sm" c="blue">View all →</Text>
+                        </Group>
+                    )}
+                </Transition>
             )}
         </Paper>
     );
