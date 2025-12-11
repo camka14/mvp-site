@@ -565,6 +565,61 @@ export default function ProfilePage() {
                             <RefundRequestsList userId={user.$id} />
                             <RefundRequestsList userId={user.$id} hostId={user.$id} />
 
+                            <Paper withBorder radius="md" p="md">
+                                <Group justify="space-between" mb="sm">
+                                    <Title order={4}>Bills</Title>
+                                    <Button variant="light" size="xs" onClick={loadBills} loading={loadingBills}>
+                                        Refresh
+                                    </Button>
+                                </Group>
+                                {billError && (
+                                    <Alert color="red" mb="sm">
+                                        {billError}
+                                    </Alert>
+                                )}
+                                {loadingBills ? (
+                                    <Text c="dimmed">Loading bills...</Text>
+                                ) : bills.length === 0 ? (
+                                    <Text c="dimmed">No bills available.</Text>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {bills.map((bill) => {
+                                            const remaining = Math.max(bill.totalAmountCents - bill.paidAmountCents, 0);
+                                            const nextAmount =
+                                                bill.nextPaymentAmountCents !== null && bill.nextPaymentAmountCents !== undefined
+                                                    ? bill.nextPaymentAmountCents
+                                                    : remaining;
+                                            const nextDue = bill.nextPaymentDue
+                                                ? new Date(bill.nextPaymentDue).toLocaleDateString()
+                                                : 'TBD';
+                                            return (
+                                                <Paper key={bill.$id} withBorder radius="md" p="sm">
+                                                    <Group justify="space-between" align="center">
+                                                        <div>
+                                                            <Text fw={600}>Bill {bill.$id.slice(0, 6)}</Text>
+                                                            <Text size="sm" c="dimmed">
+                                                                Status: {bill.status} - Next due: {nextDue}
+                                                            </Text>
+                                                            <Text size="sm" c="dimmed">
+                                                                Owner: {bill.ownerLabel ?? (bill.ownerType === 'TEAM' ? 'Team' : 'You')}
+                                                            </Text>
+                                                        </div>
+                                                        <div className="text-right space-y-1">
+                                                            <Text size="sm">Total: {formatPrice(bill.totalAmountCents)}</Text>
+                                                            <Text size="sm">Paid: {formatPrice(bill.paidAmountCents)}</Text>
+                                                            <Text size="sm">Next: {formatPrice(nextAmount)}</Text>
+                                                            <Button size="xs" onClick={() => handlePayBill(bill)} disabled={nextAmount <= 0}>
+                                                                Pay next installment
+                                                            </Button>
+                                                        </div>
+                                                    </Group>
+                                                </Paper>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </Paper>
+
                             {/* Email Section */}
                             <Paper withBorder radius="md" p="md">
                                 <Group justify="space-between" mb="sm">
