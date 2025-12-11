@@ -155,8 +155,8 @@ class BillService {
 
         const payments: BillPayment[] = Array.isArray(row.payments)
             ? row.payments
-                  .filter((p) => p && typeof p === 'object')
-                  .map((p) => this.mapRowToBillPayment(p))
+                  .filter((p: any) => p && typeof p === 'object')
+                  .map((p: any) => this.mapRowToBillPayment(p))
             : [];
 
         return {
