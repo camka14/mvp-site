@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useApp } from '@/app/providers';
 import { userService } from '@/lib/userService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { Bill, PaymentIntent, getUserAvatarUrl, formatPrice } from '@/types';
+import { Bill, PaymentIntent, Team, getUserAvatarUrl, formatPrice, formatBillAmount } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
 import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid } from '@mantine/core';
@@ -47,10 +47,12 @@ export default function ProfilePage() {
     type OwnedBill = Bill & { ownerLabel?: string };
 
     const [bills, setBills] = useState<OwnedBill[]>([]);
+    const [userTeams, setUserTeams] = useState<Record<string, Team>>({});
     const [loadingBills, setLoadingBills] = useState(false);
     const [billError, setBillError] = useState<string | null>(null);
     const [billPaymentData, setBillPaymentData] = useState<PaymentIntent | null>(null);
     const [payingBill, setPayingBill] = useState<OwnedBill | null>(null);
+    const [splittingBillId, setSplittingBillId] = useState<string | null>(null);
 
     const userHasStripeAccount = Boolean(user?.hasStripeAccount || user?.stripeAccountId);
 
@@ -216,19 +218,20 @@ export default function ProfilePage() {
         setLoadingBills(true);
         setBillError(null);
         try {
-            const [userBills, userTeams] = await Promise.all([
+            const [userBills, fetchedTeams] = await Promise.all([
                 billService.listBills('USER', user.$id),
                 teamService.getTeamsByUserId(user.$id),
             ]);
 
-            const captainTeams = userTeams.filter((team) => team.captainId === user.$id);
+            const captainTeams = fetchedTeams.filter((team) => team.captainId === user.$id);
+            const teamsMap = Object.fromEntries(fetchedTeams.map((team) => [team.$id, team]));
             const teamBillsNested = await Promise.all(
                 captainTeams.map(async (team) => {
                     try {
                         const billsForTeam = await billService.listBills('TEAM', team.$id);
                         return billsForTeam.map((bill) => ({
                             ...bill,
-                            ownerLabel: `Team: ${team.name}`,
+                            ownerLabel: team.name,
                         }));
                     } catch (err) {
                         console.error(`Failed to load bills for team ${team.$id}`, err);
@@ -238,11 +241,12 @@ export default function ProfilePage() {
             );
 
             const ownedBills: OwnedBill[] = [
-                ...userBills.map((bill) => ({ ...bill, ownerLabel: 'You' })),
+                ...userBills.map((bill) => ({ ...bill, ownerLabel: user.fullName })),
                 ...teamBillsNested.flat(),
             ];
 
             setBills(ownedBills);
+            setUserTeams(teamsMap);
         } catch (err) {
             setBillError(err instanceof Error ? err.message : 'Failed to load bills');
         } finally {
@@ -269,6 +273,33 @@ export default function ProfilePage() {
             }
         },
         [user],
+    );
+
+    const handleSplitBill = useCallback(
+        async (bill: OwnedBill) => {
+            if (bill.ownerType !== 'TEAM' || !bill.allowSplit) return;
+            const team = userTeams[bill.ownerId];
+            if (!team) {
+                notifications.show({ color: 'red', message: 'Unable to load team details for this bill.' });
+                return;
+            }
+            if (!team.playerIds || team.playerIds.length === 0) {
+                notifications.show({ color: 'red', message: 'Team has no players to split this bill.' });
+                return;
+            }
+            try {
+                setSplittingBillId(bill.$id);
+                await billService.splitBill(bill.$id, team.playerIds);
+                notifications.show({ color: 'green', message: 'Bill split across the team.' });
+                await loadBills();
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to split bill';
+                notifications.show({ color: 'red', message });
+            } finally {
+                setSplittingBillId(null);
+            }
+        },
+        [userTeams, loadBills],
     );
 
     const closeBillPaymentModal = useCallback(() => {
@@ -463,7 +494,11 @@ export default function ProfilePage() {
                                 ) : bills.length === 0 ? (
                                     <Text c="dimmed">No bills available.</Text>
                                 ) : (
-                                    <div className="space-y-3">
+                                    <SimpleGrid
+                                        cols={3}
+                                        spacing="md"
+                                        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}
+                                    >
                                         {bills.map((bill) => {
                                             const remaining = Math.max(bill.totalAmountCents - bill.paidAmountCents, 0);
                                             const nextAmount =
@@ -473,31 +508,57 @@ export default function ProfilePage() {
                                             const nextDue = bill.nextPaymentDue
                                                 ? new Date(bill.nextPaymentDue).toLocaleDateString()
                                                 : 'TBD';
+                                            const ownerName =
+                                                bill.ownerLabel ??
+                                                (bill.ownerType === 'TEAM'
+                                                    ? userTeams[bill.ownerId]?.name ?? 'Team'
+                                                    : user.fullName);
                                             return (
-                                                <Paper key={bill.$id} withBorder radius="md" p="sm">
-                                                    <Group justify="space-between" align="center">
+                                                <Paper
+                                                    key={bill.$id}
+                                                    withBorder
+                                                    radius="md"
+                                                    p="md"
+                                                    shadow="xs"
+                                                    style={{ maxWidth: 380, width: '100%' }}
+                                                >
+                                                    <div className="space-y-2">
                                                         <div>
-                                                            <Text fw={600}>Bill {bill.$id.slice(0, 6)}</Text>
-                                                            <Text size="sm" c="dimmed">
-                                                                Status: {bill.status} - Next due: {nextDue}
+                                                            <Text fw={700} size="lg">
+                                                                {ownerName}
                                                             </Text>
                                                             <Text size="sm" c="dimmed">
-                                                                Owner: {bill.ownerLabel ?? (bill.ownerType === 'TEAM' ? 'Team' : 'You')}
+                                                                Bill #{bill.$id.slice(0, 6)} • {bill.status}
+                                                            </Text>
+                                                            <Text size="sm" c="dimmed">
+                                                                Next due: {nextDue}
                                                             </Text>
                                                         </div>
-                                                        <div className="text-right space-y-1">
-                                                            <Text size="sm">Total: {formatPrice(bill.totalAmountCents)}</Text>
-                                                            <Text size="sm">Paid: {formatPrice(bill.paidAmountCents)}</Text>
-                                                            <Text size="sm">Next: {formatPrice(nextAmount)}</Text>
+                                                        <div className="space-y-1">
+                                                            <Text size="sm" fw={500}>Total: {formatBillAmount(bill.totalAmountCents)}</Text>
+                                                            <Text size="sm" fw={500}>Paid: {formatBillAmount(bill.paidAmountCents)}</Text>
+                                                            <Text size="sm" fw={500}>Next: {formatBillAmount(nextAmount)}</Text>
+                                                        </div>
+                                                        <Group gap="xs" justify="flex-end">
+                                                            {bill.ownerType === 'TEAM' && bill.allowSplit && (
+                                                                <Button
+                                                                    size="xs"
+                                                                    variant="default"
+                                                                    loading={splittingBillId === bill.$id}
+                                                                    onClick={() => handleSplitBill(bill)}
+                                                                >
+                                                                    Split across team
+                                                                </Button>
+                                                            )}
                                                             <Button size="xs" onClick={() => handlePayBill(bill)} disabled={nextAmount <= 0}>
                                                                 Pay next installment
                                                             </Button>
-                                                        </div>
-                                                    </Group>
+                                                        </Group>
+                                                    </div>
                                                 </Paper>
                                             );
                                         })}
-                                    </div>
+                                    </SimpleGrid>
                                 )}
                             </Paper>
 

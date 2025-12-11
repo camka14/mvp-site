@@ -969,3 +969,7 @@ export function formatPrice(price?: number) {
   if (!price) return 'Free';
   return `$${(price / 100).toFixed(2)}`;
 }
+
+export function formatBillAmount(amountCents: number) {
+  return `$${(amountCents / 100).toFixed(2)}`;
+}
