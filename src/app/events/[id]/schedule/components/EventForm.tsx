@@ -30,6 +30,7 @@ interface EventFormProps {
     onClose?: () => void;
     onSubmit?: (draftEvent: Partial<Event>) => void;
     onDraftChange?: (draftEvent: Partial<Event>) => void;
+    onPreviewEvent?: (preview: Event) => void;
     currentUser: UserData;
     event: Event;
     organization: Organization | null;
@@ -37,6 +38,7 @@ interface EventFormProps {
     formId?: string;
     defaultLocation?: DefaultLocation;
     isCreateMode?: boolean;
+    isPreviewMode?: boolean;
 }
 
 type EventType = Event['eventType'];
@@ -164,6 +166,24 @@ const normalizeNumber = (value: unknown, fallback?: number): number | undefined 
     return fallback;
 };
 
+// Helpers to move between UI dollars and API cents for installment amounts.
+const normalizeInstallmentDollars = (amounts: unknown): number[] => {
+    if (!Array.isArray(amounts)) return [];
+    return amounts.map((amount) => {
+        const parsed = typeof amount === 'number' ? amount : Number(amount);
+        return Number.isFinite(parsed) ? parsed / 100 : 0;
+    });
+};
+
+const normalizeInstallmentCents = (amounts: unknown): number[] => {
+    if (!Array.isArray(amounts)) return [];
+    return amounts.map((amount) => {
+        const parsed = typeof amount === 'number' ? amount : Number(amount);
+        const safe = Number.isFinite(parsed) ? parsed : 0;
+        return Math.round(Math.max(0, safe) * 100);
+    });
+};
+
 const formatLatLngLabel = (lat?: number, lng?: number): string => {
     if (typeof lat !== 'number' || typeof lng !== 'number') {
         return '';
@@ -222,6 +242,11 @@ type EventFormState = {
     sportConfig: Sport | null;
     fieldType: FieldSurfaceType;
     price: number;
+    allowPaymentPlans: boolean;
+    installmentCount?: number;
+    installmentDueDates: string[];
+    installmentAmounts: number[];
+    allowTeamSplitDefault: boolean;
     maxParticipants: number;
     teamSizeLimit: number;
     teamSignup: boolean;
@@ -349,7 +374,17 @@ const mapEventToFormState = (event: Event): EventFormState => ({
         ? { ...(event.sport as Sport) }
         : null,
     fieldType: event.fieldType ?? 'INDOOR',
-    price: Number.isFinite(event.price) ? event.price : 0,
+    // Stored in cents in the backend; convert to dollars for the form UI.
+    price: Number.isFinite(event.price) ? (event.price as number) / 100 : 0,
+    allowPaymentPlans: Boolean(event.allowPaymentPlans),
+    // Stored in cents in the backend; convert to dollars for the form UI.
+    installmentAmounts: normalizeInstallmentDollars(event.installmentAmounts),
+    installmentCount: (() => {
+        const amounts = Array.isArray(event.installmentAmounts) ? event.installmentAmounts as number[] : [];
+        return Number.isFinite(event.installmentCount) ? (event.installmentCount as number) : (amounts.length || 0);
+    })(),
+    installmentDueDates: Array.isArray(event.installmentDueDates) ? event.installmentDueDates as string[] : [],
+    allowTeamSplitDefault: Boolean(event.allowTeamSplitDefault),
     maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
     teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : 2,
     teamSignup: Boolean(event.teamSignup),
@@ -446,6 +481,11 @@ const eventFormSchema = z
         sportConfig: z.any().nullable(),
         fieldType: fieldTypeSchema,
         price: z.number().min(0, 'Price must be at least 0'),
+        allowPaymentPlans: z.boolean().default(false),
+        installmentCount: z.number().int().min(0).default(0),
+        installmentDueDates: z.array(z.string()).default([]),
+        installmentAmounts: z.array(z.number().min(0)).default([]),
+        allowTeamSplitDefault: z.boolean().default(false),
         maxParticipants: z.number().min(2, 'Enter at least 2'),
         teamSizeLimit: z.number().min(1, 'Enter at least 1'),
         teamSignup: z.boolean(),
@@ -486,7 +526,7 @@ const eventFormSchema = z
     .superRefine((values, ctx) => {
         if (!coordinatesAreSet(values.coordinates)) {
             ctx.addIssue({
-                code: z.ZodIssueCode.custom,
+                code: "custom",
                 message: 'Location and coordinates are required',
                 path: ['location'],
             });
@@ -494,16 +534,50 @@ const eventFormSchema = z
 
         if (values.eventType !== 'LEAGUE' && values.divisions.length === 0) {
             ctx.addIssue({
-                code: z.ZodIssueCode.custom,
+                code: "custom",
                 message: 'Select at least one division',
                 path: ['divisions'],
             });
         }
 
+        if (values.allowPaymentPlans) {
+            const amounts = values.installmentAmounts || [];
+            const dueDates = values.installmentDueDates || [];
+            if (values.installmentCount && amounts.length !== values.installmentCount) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: 'Installment count must match number of installments',
+                    path: ['installmentCount'],
+                });
+            }
+            if (!amounts.length) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: 'Add at least one installment amount',
+                    path: ['installmentAmounts'],
+                });
+            }
+            if (dueDates.length && dueDates.length !== amounts.length) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: 'Each installment needs a due date',
+                    path: ['installmentDueDates'],
+                });
+            }
+            const total = amounts.reduce((sum, amt) => sum + (Number.isFinite(amt) ? Number(amt) : 0), 0);
+            if (values.price > 0 && Math.round(total * 100) !== Math.round(values.price * 100)) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: 'Installment amounts must add up to the event price',
+                    path: ['installmentAmounts'],
+                });
+            }
+        }
+
         if (values.eventType === 'LEAGUE') {
             if (!values.leagueSlots.length) {
                 ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
+                    code: "custom",
                     message: 'Add at least one timeslot',
                     path: ['leagueSlots'],
                 });
@@ -511,28 +585,28 @@ const eventFormSchema = z
             values.leagueSlots.forEach((slot, index) => {
                 if (!slot.scheduledFieldId) {
                     ctx.addIssue({
-                        code: z.ZodIssueCode.custom,
+                        code: "custom",
                         message: 'Select a field',
                         path: ['leagueSlots', index, 'scheduledFieldId'],
                     });
                 }
                 if (typeof slot.dayOfWeek !== 'number') {
                     ctx.addIssue({
-                        code: z.ZodIssueCode.custom,
+                        code: "custom",
                         message: 'Select a day',
                         path: ['leagueSlots', index, 'dayOfWeek'],
                     });
                 }
                 if (!Number.isFinite(slot.startTimeMinutes)) {
                     ctx.addIssue({
-                        code: z.ZodIssueCode.custom,
+                        code: "custom",
                         message: 'Select a start time',
                         path: ['leagueSlots', index, 'startTimeMinutes'],
                     });
                 }
                 if (!Number.isFinite(slot.endTimeMinutes)) {
                     ctx.addIssue({
-                        code: z.ZodIssueCode.custom,
+                        code: "custom",
                         message: 'Select an end time',
                         path: ['leagueSlots', index, 'endTimeMinutes'],
                     });
@@ -540,7 +614,7 @@ const eventFormSchema = z
                 const error = computeSlotError(values.leagueSlots, index, values.eventType);
                 if (error) {
                     ctx.addIssue({
-                        code: z.ZodIssueCode.custom,
+                        code: "custom",
                         message: error,
                         path: ['leagueSlots', index, 'error'],
                     });
@@ -553,6 +627,8 @@ const EventForm: React.FC<EventFormProps> = ({
     isOpen,
     onClose,
     onSubmit: onSubmitProp,
+    onPreviewEvent,
+    onDraftChange,
     currentUser,
     event: incomingEvent,
     organization,
@@ -560,6 +636,7 @@ const EventForm: React.FC<EventFormProps> = ({
     formId,
     defaultLocation,
     isCreateMode = false,
+    isPreviewMode = false,
 }) => {
     const router = useRouter();
     const open = isOpen ?? true;
@@ -672,7 +749,8 @@ const EventForm: React.FC<EventFormProps> = ({
             next.leagueScoringConfig = createLeagueScoringConfig(defaults.leagueScoringConfig as Partial<LeagueScoringConfig>);
         }
         if (defaults.fieldType !== undefined) next.fieldType = defaults.fieldType ?? 'INDOOR';
-        if (typeof defaults.price === 'number') next.price = defaults.price;
+        // Immutable defaults store price in cents; normalize to dollars for UI.
+        if (typeof defaults.price === 'number') next.price = defaults.price / 100;
         if (typeof defaults.maxParticipants === 'number') next.maxParticipants = defaults.maxParticipants;
         if (typeof defaults.teamSizeLimit === 'number') next.teamSizeLimit = defaults.teamSizeLimit;
         if (typeof defaults.teamSignup === 'boolean') next.teamSignup = defaults.teamSignup;
@@ -745,6 +823,15 @@ const EventForm: React.FC<EventFormProps> = ({
             }
             return initial;
         })();
+
+        base.allowPaymentPlans = Boolean(base.allowPaymentPlans);
+        base.installmentAmounts = Array.isArray(base.installmentAmounts) ? base.installmentAmounts : [];
+        base.installmentDueDates = Array.isArray(base.installmentDueDates) ? base.installmentDueDates : [];
+        const normalizedInstallmentCount = Number.isFinite(base.installmentCount)
+            ? Number(base.installmentCount)
+            : base.installmentAmounts.length;
+        base.installmentCount = normalizedInstallmentCount || 0;
+        base.allowTeamSplitDefault = Boolean(base.allowTeamSplitDefault);
 
         const defaultFieldCount = (() => {
             if (activeEditingEvent?.fields?.length) {
@@ -993,6 +1080,68 @@ const EventForm: React.FC<EventFormProps> = ({
             setValue('joinAsParticipant', value, { shouldDirty: true, shouldValidate: true });
         },
         [setValue],
+    );
+
+    const syncInstallmentCount = useCallback(
+        (count: number) => {
+            const safeCount = Math.max(1, Math.floor(Number(count) || 0));
+            const amounts = [...(getValues('installmentAmounts') || [])];
+            const dueDates = [...(getValues('installmentDueDates') || [])];
+            const price = getValues('price') || 0;
+            const startDate = getValues('start');
+            while (amounts.length < safeCount) {
+                amounts.push(price);
+                dueDates.push(startDate);
+            }
+            while (amounts.length > safeCount) {
+                amounts.pop();
+                dueDates.pop();
+            }
+            setValue('installmentCount', safeCount, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueDates', dueDates, { shouldDirty: true, shouldValidate: true });
+        },
+        [getValues, setValue],
+    );
+
+    const setInstallmentAmount = useCallback(
+        (index: number, value: number) => {
+            const amounts = [...(getValues('installmentAmounts') || [])];
+            if (index >= amounts.length) return;
+            amounts[index] = Number.isFinite(value) ? Number(value) : 0;
+            setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
+        },
+        [getValues, setValue],
+    );
+
+    const setInstallmentDueDate = useCallback(
+        (index: number, value: Date | string | null) => {
+            const dueDates = [...(getValues('installmentDueDates') || [])];
+            if (index >= dueDates.length) return;
+            if (value instanceof Date) {
+                dueDates[index] = value.toISOString();
+            } else if (typeof value === 'string') {
+                dueDates[index] = value;
+            } else {
+                dueDates[index] = '';
+            }
+            setValue('installmentDueDates', dueDates, { shouldDirty: true, shouldValidate: true });
+        },
+        [getValues, setValue],
+    );
+
+    const removeInstallment = useCallback(
+        (index: number) => {
+            const amounts = [...(getValues('installmentAmounts') || [])];
+            const dueDates = [...(getValues('installmentDueDates') || [])];
+            if (amounts.length <= 1) return;
+            amounts.splice(index, 1);
+            dueDates.splice(index, 1);
+            setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueDates', dueDates, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentCount', amounts.length, { shouldDirty: true, shouldValidate: true });
+        },
+        [getValues, setValue],
     );
 
     useEffect(() => {
@@ -1655,6 +1804,10 @@ const EventForm: React.FC<EventFormProps> = ({
                 .filter((id): id is string => id.length > 0);
         };
 
+        const installmentAmountsCents = source.allowPaymentPlans
+            ? normalizeInstallmentCents(source.installmentAmounts)
+            : [];
+
         const draft: Partial<Event> = {
             $id: activeEditingEvent?.$id,
             hostId: source.hostId || currentUser?.$id,
@@ -1667,7 +1820,15 @@ const EventForm: React.FC<EventFormProps> = ({
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
             fieldType: source.fieldType,
-            price: source.price,
+            // Backend stores price in cents; convert dollars from the form to cents before saving.
+            price: Math.round(Math.max(0, source.price || 0) * 100),
+            allowPaymentPlans: source.allowPaymentPlans,
+            installmentCount: source.allowPaymentPlans
+                ? source.installmentCount || installmentAmountsCents.length || 0
+                : undefined,
+            installmentAmounts: source.allowPaymentPlans ? installmentAmountsCents : [],
+            installmentDueDates: source.allowPaymentPlans ? source.installmentDueDates : [],
+            allowTeamSplitDefault: source.allowTeamSplitDefault,
             maxParticipants: source.maxParticipants,
             teamSizeLimit: source.teamSizeLimit,
             teamSignup: source.teamSignup,
@@ -1776,7 +1937,7 @@ const EventForm: React.FC<EventFormProps> = ({
 
     const scheduleEvent = useCallback(
         async (values: EventFormValues) => {
-            if (values.eventType !== 'LEAGUE') {
+            if (values.eventType === 'EVENT') {
                 return;
             }
             if (submitting) {
@@ -1922,6 +2083,28 @@ const EventForm: React.FC<EventFormProps> = ({
                 const playerIds =
                     values.players?.map((player) => player.$id).filter((id): id is string => Boolean(id)) ?? [];
 
+                const priceCents = Math.round(Math.max(0, values.price || 0) * 100);
+                const installmentAmountsCents = values.allowPaymentPlans
+                    ? normalizeInstallmentCents(values.installmentAmounts)
+                    : [];
+                const installments = values.allowPaymentPlans
+                    ? {
+                        allowPaymentPlans: true,
+                        installmentCount: Number.isFinite(values.installmentCount)
+                            ? Number(values.installmentCount)
+                            : (installmentAmountsCents.length || 0),
+                        installmentAmounts: installmentAmountsCents,
+                        installmentDueDates: values.installmentDueDates || [],
+                        allowTeamSplitDefault: Boolean(values.allowTeamSplitDefault),
+                    }
+                    : {
+                        allowPaymentPlans: false,
+                        installmentCount: 0,
+                        installmentAmounts: [],
+                        installmentDueDates: [],
+                        allowTeamSplitDefault: Boolean(values.allowTeamSplitDefault),
+                    };
+
                 const eventDocument: Record<string, any> = {
                     $id: values.$id || ID.unique(),
                     name: values.name,
@@ -1933,7 +2116,9 @@ const EventForm: React.FC<EventFormProps> = ({
                     eventType: 'LEAGUE',
                     sportId: sportSelection.$id,
                     fieldType: values.fieldType,
-                    price: values.price,
+                    // Store price in cents for the backend.
+                    price: priceCents,
+                    ...installments,
                     maxParticipants: values.maxParticipants,
                     teamSignup: values.teamSignup,
                     waitListIds: values.waitList,
@@ -2005,10 +2190,19 @@ const EventForm: React.FC<EventFormProps> = ({
                     throw new Error('Failed to generate preview schedule.');
                 }
 
+                // Keep the form hydrated with the latest previewed event so edits reflect immediately.
+                setHydratedEditingEvent(previewEvent);
+                if (onPreviewEvent) {
+                    onPreviewEvent(previewEvent);
+                }
+
                 if (onClose) {
                     onClose();
                 }
-                router.push(`/events/${previewEvent.$id}/schedule?preview=1`);
+                const targetPreviewUrl = `/events/${previewEvent.$id}/schedule?preview=1`;
+                if (!isPreviewMode) {
+                    router.push(targetPreviewUrl);
+                }
             } catch (error) {
                 setLeagueErrorMessage(
                     error instanceof Error ? error.message : 'Failed to generate preview schedule.',
@@ -2022,7 +2216,9 @@ const EventForm: React.FC<EventFormProps> = ({
             hasImmutableFields,
             immutableFields,
             isEditMode,
+            isPreviewMode,
             onClose,
+            onPreviewEvent,
             organization?.$id,
             router,
             submitting,
@@ -2394,6 +2590,103 @@ const EventForm: React.FC<EventFormProps> = ({
                                         />
                                     )}
                                 />
+                            </div>
+
+                            <div className="mt-6 space-y-3">
+                                <Group justify="space-between" align="center">
+                                    <div>
+                                        <Title order={6}>Payment plan</Title>
+                                        <Text size="sm" c="dimmed">
+                                            Let participants pay over time. Installment totals must match the event price.
+                                        </Text>
+                                    </div>
+                                    <Switch
+                                        checked={eventData.allowPaymentPlans}
+                                        onChange={(e) => {
+                                            const next = e.currentTarget.checked;
+                                            setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
+                                            if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
+                                                syncInstallmentCount((eventData.installmentCount || 1));
+                                            }
+                                        }}
+                                        disabled={!hasStripeAccount}
+                                        label="Enable payment plans"
+                                    />
+                                </Group>
+
+                                {eventData.allowPaymentPlans && (
+                                    <div className="space-y-3">
+                                        <Group align="flex-start" gap="md">
+                                            <NumberInput
+                                                label="Installments"
+                                                min={1}
+                                                value={eventData.installmentCount || eventData.installmentAmounts.length || 1}
+                                                onChange={(val) => syncInstallmentCount(Number(val) || 1)}
+                                                style={{ maxWidth: 180 }}
+                                            />
+                                            {eventData.teamSignup && (
+                                                <Switch
+                                                    checked={eventData.allowTeamSplitDefault}
+                                                    onChange={(e) =>
+                                                        setValue('allowTeamSplitDefault', e.currentTarget.checked, {
+                                                            shouldDirty: true,
+                                                            shouldValidate: true,
+                                                        })
+                                                    }
+                                                    label="Allow team bill splitting by default"
+                                                />
+                                            )}
+                                        </Group>
+
+                                        <Stack gap="sm">
+                                            {(eventData.installmentAmounts || []).map((amount, idx) => {
+                                                const dueDateValue = parseLocalDateTime(
+                                                    eventData.installmentDueDates?.[idx] || eventData.start,
+                                                );
+                                                return (
+                                                    <Group key={idx} align="flex-end" gap="sm">
+                                                        <DateTimePicker
+                                                            label={`Installment ${idx + 1} due`}
+                                                            value={dueDateValue}
+                                                            onChange={(val) => setInstallmentDueDate(idx, val)}
+                                                            style={{ flex: 1 }}
+                                                        />
+                                                        <NumberInput
+                                                            label="Amount"
+                                                            min={0}
+                                                            step={0.01}
+                                                            value={amount}
+                                                            onChange={(val) => setInstallmentAmount(idx, Number(val) || 0)}
+                                                            decimalScale={2}
+                                                            fixedDecimalScale
+                                                            style={{ maxWidth: 180 }}
+                                                        />
+                                                        {eventData.installmentAmounts.length > 1 && (
+                                                            <ActionIcon
+                                                                variant="light"
+                                                                color="red"
+                                                                aria-label="Remove installment"
+                                                                onClick={() => removeInstallment(idx)}
+                                                            >
+                                                                ×
+                                                            </ActionIcon>
+                                                        )}
+                                                    </Group>
+                                                );
+                                            })}
+                                            <Group justify="space-between" align="center">
+                                                <Button variant="light" onClick={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}>
+                                                    Add installment
+                                                </Button>
+                                                <Text size="sm" c={Math.round(((eventData.installmentAmounts || []).reduce((s, a) => s + (Number(a) || 0), 0) - eventData.price) * 100) === 0 ? 'dimmed' : 'red'}>
+                                                    Installment total: $
+                                                    {((eventData.installmentAmounts || []).reduce((s, a) => s + (Number(a) || 0), 0)).toFixed(2)} / $
+                                                    {(eventData.price || 0).toFixed(2)}
+                                                </Text>
+                                            </Group>
+                                        </Stack>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Policy Settings */}

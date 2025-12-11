@@ -8,6 +8,7 @@ import type {
   UserData,
 } from '@/types';
 import { ExecutionMethod } from 'appwrite';
+import { buildPayload } from './utils';
 
 type PaymentOrganizationContext = Partial<Organization>;
 
@@ -38,9 +39,13 @@ class PaymentService {
     organizationEmail?: string,
   ): Promise<PaymentIntent> {
     try {
+      if (!event) {
+        throw new Error('Event is required to create a payment intent.');
+      }
+      const payloadEvent = buildPayload(event);
       const payload = {
         user,
-        event: event,
+        event: payloadEvent,
         team,
         timeSlot,
         organization,
@@ -83,10 +88,11 @@ class PaymentService {
       if (!event?.$id) {
         throw new Error('Event is required to join.');
       }
+      const payloadEvent = buildPayload(event)
 
       const payload = {
         user,
-        event,
+        event: payloadEvent,
         team,
         timeSlot,
         organization,
@@ -122,10 +128,11 @@ class PaymentService {
       if (!event?.$id) {
         throw new Error('Event is required to leave.');
       }
+      const payloadEvent = buildPayload(event)
 
       const payload = {
         user,
-        event,
+        event: payloadEvent,
         team,
         timeSlot,
         organization,
