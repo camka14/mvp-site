@@ -1,16 +1,20 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useApp } from '@/app/providers';
 import { userService } from '@/lib/userService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getUserAvatarUrl } from '@/types';
+import { Bill, PaymentIntent, getUserAvatarUrl, formatPrice } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
 import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { paymentService } from '@/lib/paymentService';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
+import { billService } from '@/lib/billService';
+import { teamService } from '@/lib/teamService';
+import PaymentModal from '@/components/ui/PaymentModal';
+import { ManageTeams } from '@/app/teams/page';
 
 export default function ProfilePage() {
     const { user, loading, setUser } = useApp();
@@ -40,6 +44,13 @@ export default function ProfilePage() {
     });
     const [connectingStripe, setConnectingStripe] = useState(false);
     const [managingStripe, setManagingStripe] = useState(false);
+    type OwnedBill = Bill & { ownerLabel?: string };
+
+    const [bills, setBills] = useState<OwnedBill[]>([]);
+    const [loadingBills, setLoadingBills] = useState(false);
+    const [billError, setBillError] = useState<string | null>(null);
+    const [billPaymentData, setBillPaymentData] = useState<PaymentIntent | null>(null);
+    const [payingBill, setPayingBill] = useState<OwnedBill | null>(null);
 
     const userHasStripeAccount = Boolean(user?.hasStripeAccount || user?.stripeAccountId);
 
@@ -200,6 +211,71 @@ export default function ProfilePage() {
         }
     }, [user]);
 
+    const loadBills = useCallback(async () => {
+        if (!user) return;
+        setLoadingBills(true);
+        setBillError(null);
+        try {
+            const [userBills, userTeams] = await Promise.all([
+                billService.listBills('USER', user.$id),
+                teamService.getTeamsByUserId(user.$id),
+            ]);
+
+            const captainTeams = userTeams.filter((team) => team.captainId === user.$id);
+            const teamBillsNested = await Promise.all(
+                captainTeams.map(async (team) => {
+                    try {
+                        const billsForTeam = await billService.listBills('TEAM', team.$id);
+                        return billsForTeam.map((bill) => ({
+                            ...bill,
+                            ownerLabel: `Team: ${team.name}`,
+                        }));
+                    } catch (err) {
+                        console.error(`Failed to load bills for team ${team.$id}`, err);
+                        return [];
+                    }
+                })
+            );
+
+            const ownedBills: OwnedBill[] = [
+                ...userBills.map((bill) => ({ ...bill, ownerLabel: 'You' })),
+                ...teamBillsNested.flat(),
+            ];
+
+            setBills(ownedBills);
+        } catch (err) {
+            setBillError(err instanceof Error ? err.message : 'Failed to load bills');
+        } finally {
+            setLoadingBills(false);
+        }
+    }, [user]);
+
+    useEffect(() => {
+        if (user) {
+            loadBills();
+        }
+    }, [user, loadBills]);
+
+    const handlePayBill = useCallback(
+        async (bill: Bill) => {
+            if (!user) return;
+            try {
+                setBillError(null);
+                const paymentIntent = await billService.payBill(bill, user);
+                setBillPaymentData(paymentIntent);
+                setPayingBill(bill);
+            } catch (err) {
+                setBillError(err instanceof Error ? err.message : 'Failed to start payment');
+            }
+        },
+        [user],
+    );
+
+    const closeBillPaymentModal = useCallback(() => {
+        setBillPaymentData(null);
+        setPayingBill(null);
+    }, []);
+
     if (loading) {
         return <Loading />;
     }
@@ -339,6 +415,14 @@ export default function ProfilePage() {
                         </div>
                     </Paper>
 
+                    <div className="mt-8">
+                        <Paper withBorder radius="lg" p="md" shadow="sm">
+                            <Suspense fallback={<Loading text="Loading teams..." />}>
+                                <ManageTeams showNavigation={false} withContainer={false} />
+                            </Suspense>
+                        </Paper>
+                    </div>
+
                     {/* Account Settings */}
                     {!isEditing && (
                         <div className="mt-8 space-y-6">
@@ -361,6 +445,61 @@ export default function ProfilePage() {
                             </Paper>
 
                             <RefundRequestsList userId={user.$id} hostId={user.$id} />
+
+                            <Paper withBorder radius="md" p="md">
+                                <Group justify="space-between" mb="sm">
+                                    <Title order={4}>Bills</Title>
+                                    <Button variant="light" size="xs" onClick={loadBills} loading={loadingBills}>
+                                        Refresh
+                                    </Button>
+                                </Group>
+                                {billError && (
+                                    <Alert color="red" mb="sm">
+                                        {billError}
+                                    </Alert>
+                                )}
+                                {loadingBills ? (
+                                    <Text c="dimmed">Loading bills...</Text>
+                                ) : bills.length === 0 ? (
+                                    <Text c="dimmed">No bills available.</Text>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {bills.map((bill) => {
+                                            const remaining = Math.max(bill.totalAmountCents - bill.paidAmountCents, 0);
+                                            const nextAmount =
+                                                bill.nextPaymentAmountCents !== null && bill.nextPaymentAmountCents !== undefined
+                                                    ? bill.nextPaymentAmountCents
+                                                    : remaining;
+                                            const nextDue = bill.nextPaymentDue
+                                                ? new Date(bill.nextPaymentDue).toLocaleDateString()
+                                                : 'TBD';
+                                            return (
+                                                <Paper key={bill.$id} withBorder radius="md" p="sm">
+                                                    <Group justify="space-between" align="center">
+                                                        <div>
+                                                            <Text fw={600}>Bill {bill.$id.slice(0, 6)}</Text>
+                                                            <Text size="sm" c="dimmed">
+                                                                Status: {bill.status} - Next due: {nextDue}
+                                                            </Text>
+                                                            <Text size="sm" c="dimmed">
+                                                                Owner: {bill.ownerLabel ?? (bill.ownerType === 'TEAM' ? 'Team' : 'You')}
+                                                            </Text>
+                                                        </div>
+                                                        <div className="text-right space-y-1">
+                                                            <Text size="sm">Total: {formatPrice(bill.totalAmountCents)}</Text>
+                                                            <Text size="sm">Paid: {formatPrice(bill.paidAmountCents)}</Text>
+                                                            <Text size="sm">Next: {formatPrice(nextAmount)}</Text>
+                                                            <Button size="xs" onClick={() => handlePayBill(bill)} disabled={nextAmount <= 0}>
+                                                                Pay next installment
+                                                            </Button>
+                                                        </div>
+                                                    </Group>
+                                                </Paper>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </Paper>
 
                             {/* Email Section */}
                             <Paper withBorder radius="md" p="md">
@@ -405,6 +544,23 @@ export default function ProfilePage() {
                         </div>
                     )}
                 </Container>
+                <PaymentModal
+                    isOpen={!!billPaymentData && !!payingBill}
+                    onClose={closeBillPaymentModal}
+                    event={{
+                        name: payingBill ? 'Bill payment' : 'Bill',
+                        location: '',
+                        eventType: 'EVENT',
+                        price:
+                            payingBill?.nextPaymentAmountCents ??
+                            Math.max((payingBill?.totalAmountCents || 0) - (payingBill?.paidAmountCents || 0), 0),
+                    }}
+                    paymentData={billPaymentData}
+                    onPaymentSuccess={async () => {
+                        await loadBills();
+                        closeBillPaymentModal();
+                    }}
+                />
             </div>
         </>
     );

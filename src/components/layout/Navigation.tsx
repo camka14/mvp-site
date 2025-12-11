@@ -10,7 +10,6 @@ import { NavItem } from '@/types';
 const baseNav: NavItem[] = [
   { label: 'Discover', href: '/discover' },
   { label: 'Organizations', href: '/organizations' },
-  { label: 'My Teams', href: '/teams' },
   { label: 'Profile', href: '/profile' },
 ];
 

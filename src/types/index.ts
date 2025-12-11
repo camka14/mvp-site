@@ -351,6 +351,11 @@ export interface Event {
   leagueScoringConfigId?: string | null;
   organizationId?: string | null;
   organization?: Organization | string;
+  allowPaymentPlans?: boolean;
+  installmentCount?: number;
+  installmentDueDates?: string[];
+  installmentAmounts?: number[];
+  allowTeamSplitDefault?: boolean;
 
   // Relationship fields - can be IDs or expanded objects
   divisions: Division[] | string[];
@@ -911,6 +916,8 @@ export interface PaymentIntent {
   publishableKey: string;
   feeBreakdown: FeeBreakdown;
   error?: string;
+  billId?: string | null;
+  billPaymentId?: string | null;
 }
 
 export interface FeeBreakdown {
@@ -926,6 +933,36 @@ export interface PaymentResult {
   success: boolean;
   error?: string;
   paymentIntentId?: string;
+}
+
+export interface BillPayment {
+  $id: string;
+  billId: string;
+  sequence: number;
+  dueDate: string;
+  amountCents: number;
+  status: 'PENDING' | 'PAID' | 'VOID';
+  paidAt?: string;
+  paymentIntentId?: string;
+  payerUserId?: string;
+}
+
+export interface Bill {
+  $id: string;
+  ownerType: 'USER' | 'TEAM';
+  ownerId: string;
+  organizationId?: string | null;
+  eventId?: string | null;
+  totalAmountCents: number;
+  paidAmountCents: number;
+  nextPaymentDue?: string | null;
+  nextPaymentAmountCents?: number | null;
+  parentBillId?: string | null;
+  allowSplit?: boolean;
+  status: 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+  paymentPlanEnabled?: boolean;
+  createdBy?: string | null;
+  payments?: BillPayment[];
 }
 
 export function formatPrice(price?: number) {

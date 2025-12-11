@@ -870,6 +870,12 @@ function EventScheduleContent() {
     [activeEvent, eventId],
   );
 
+  const handlePreviewEventUpdate = useCallback((preview: Event) => {
+    setEvent(preview);
+    setChangesEvent(preview);
+    setHasUnsavedChanges(false);
+  }, []);
+
   // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
     if (publishing) return;
@@ -1327,6 +1333,7 @@ function EventScheduleContent() {
                 event={changesEvent}
                 formId={createFormId}
                 isCreateMode
+                onPreviewEvent={handlePreviewEventUpdate}
               />
             ) : (
               <Loading text="Loading user..." />
@@ -1436,6 +1443,8 @@ function EventScheduleContent() {
                   organization={activeOrganization}
                   defaultLocation={activeLocationDefaults}
                   onDraftChange={handleEventDraftChange}
+                  onPreviewEvent={handlePreviewEventUpdate}
+                  isPreviewMode={isPreview}
                 />
               ) : (
                 <EventDetailSheet
