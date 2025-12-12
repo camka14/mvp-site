@@ -18,6 +18,7 @@ import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
+import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -50,7 +51,7 @@ function OrganizationDetailContent() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees' | 'refunds'>('overview');
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
@@ -557,6 +558,7 @@ function OrganizationDetailContent() {
                 { label: 'Events', value: 'events' },
                 { label: 'Teams', value: 'teams' },
                 { label: 'Referees', value: 'referees' },
+                { label: 'Refunds', value: 'refunds' },
                 { label: 'Fields', value: 'fields' },
               ]}
               mb="lg"
@@ -793,6 +795,10 @@ function OrganizationDetailContent() {
                   )}
                 </Stack>
               </Paper>
+            )}
+
+            {activeTab === 'refunds' && org && (
+              <RefundRequestsList organizationId={org.$id} />
             )}
 
             {activeTab === 'fields' && (

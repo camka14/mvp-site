@@ -10,6 +10,7 @@ import Navigation from '@/components/layout/Navigation';
 import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { paymentService } from '@/lib/paymentService';
+import RefundRequestsList from '@/components/ui/RefundRequestsList';
 
 export default function ProfilePage() {
     const { user, loading, setUser } = useApp();
@@ -358,6 +359,8 @@ export default function ProfilePage() {
                                     {userHasStripeAccount ? 'Manage Stripe Account' : 'Connect Stripe Account'}
                                 </Button>
                             </Paper>
+
+                            <RefundRequestsList userId={user.$id} />
 
                             {/* Email Section */}
                             <Paper withBorder radius="md" p="md">
