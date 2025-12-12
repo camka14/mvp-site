@@ -1,7 +1,7 @@
 import { databases, account, storage, functions } from '@/app/appwrite';
 import { UserData, getUserFullName, getUserAvatarUrl } from '@/types';
 import { Query, ID, ExecutionMethod } from 'appwrite';
-import { map } from 'zod';
+import { lookupSensitiveUserByEmail } from './sensitiveUserDataService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
@@ -81,7 +81,6 @@ class UserService {
                         Query.search('firstName', query),
                         Query.search('lastName', query),
                         Query.search('userName', query),
-                        Query.search('email', query),
                     ]),
                     Query.limit(5)
                 ]
@@ -215,16 +214,15 @@ class UserService {
         inviterId: string,
         invites: { firstName?: string; lastName?: string; email: string }[],
     ): Promise<{ sent: any[]; failed: any[] }> {
-        const userResponse = await databases.listRows({
-            databaseId: DATABASE_ID,
-            tableId: USERS_TABLE_ID,
-            queries: [
-                Query.equal('email', invites.map(invite => invite.email)),
-                Query.limit(5)
-            ]
-        });
-        if (userResponse.total > 0) {
-            throw new Error(`Found users with email: ${userResponse.rows.map(row => this.mapRowToUser(row).email).join(', ')}`);
+        const takenEmails: string[] = [];
+        for (const invite of invites) {
+            const lookup = await lookupSensitiveUserByEmail(invite.email);
+            if (lookup.exists) {
+                takenEmails.push(invite.email);
+            }
+        }
+        if (takenEmails.length) {
+            throw new Error(`Found users with email: ${takenEmails.join(', ')}`);
         }
 
         const response = await functions.createExecution({
@@ -247,18 +245,19 @@ class UserService {
 
     // Map Appwrite row to UserData using spread operator
     private mapRowToUser(row: any): UserData {
+        const { email: _email, ...rest } = row;
         return {
-            ...row, // Spread all fields from Appwrite row
+            ...rest, // Spread all fields from Appwrite row
             // Only define computed properties
             fullName: getUserFullName({
-                firstName: row.firstName || '',
-                lastName: row.lastName || ''
+                firstName: rest.firstName || '',
+                lastName: rest.lastName || ''
             } as UserData),
             avatarUrl: getUserAvatarUrl({
-                firstName: row.firstName || '',
-                lastName: row.lastName || '',
-                userName: row.userName || '',
-                profileImageId: row.profileImageId
+                firstName: rest.firstName || '',
+                lastName: rest.lastName || '',
+                userName: rest.userName || '',
+                profileImageId: rest.profileImageId
             } as UserData)
         };
     }

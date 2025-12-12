@@ -490,25 +490,40 @@ class EventService {
         const startFilter = this.normalizeDateInput(start);
         const endFilter = this.normalizeDateInput(end);
 
-        const queries: string[] = [
-            Query.contains('fieldIds', [fieldId]),
-        ];
+        const baseQueries: string[] = [];
 
         if (startFilter) {
-            queries.push(Query.greaterThanEqual('end', startFilter));
+            baseQueries.push(Query.greaterThanEqual('end', startFilter));
         }
 
         if (endFilter) {
-            queries.push(Query.lessThanEqual('start', endFilter));
+            baseQueries.push(Query.lessThanEqual('start', endFilter));
         }
 
-        const response = await databases.listRows({
-            databaseId: DATABASE_ID,
-            tableId: EVENTS_TABLE_ID,
-            queries,
-        });
 
-        const rows = response.rows ?? [];
+        const seen = new Set<string>();
+        const rows: any[] = [];
+
+        const queryVariants: string[][] = [
+            [Query.contains('fieldIds', [fieldId]), ...baseQueries],
+            [Query.equal('fieldId', fieldId), ...baseQueries],
+        ];
+
+        for (const queries of queryVariants) {
+            const response = await databases.listRows({
+                databaseId: DATABASE_ID,
+                tableId: EVENTS_TABLE_ID,
+                queries,
+            });
+
+            for (const row of response.rows ?? []) {
+                const id = String(row.$id ?? row.id ?? '');
+                if (seen.has(id)) continue;
+                seen.add(id);
+                rows.push(row);
+            }
+        }
+
         const events: Event[] = [];
         for (const row of rows) {
             await this.ensureSportRelationship(row);

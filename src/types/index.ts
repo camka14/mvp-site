@@ -230,7 +230,6 @@ export interface UserData {
   friendRequestSentIds: string[];
   followingIds: string[];
   userName: string;
-  email?: string;
   teamInvites: string[];
   eventInvites: string[];
   hasStripeAccount?: boolean;
@@ -243,6 +242,14 @@ export interface UserData {
   // Computed properties
   fullName: string;
   avatarUrl: string;
+}
+
+export interface SensitiveUserData {
+  $id: string;
+  userId: string;
+  email: string;
+  $createdAt?: string;
+  $updatedAt?: string;
 }
 
 // Updated Field interface

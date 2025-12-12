@@ -14,7 +14,7 @@ import { leagueService } from '@/lib/leagueService';
 import { tournamentService } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
 import { formatLocalDateTime } from '@/lib/dateUtils';
-import type { Event, EventState, Match, Team, TournamentBracket, Organization, Sport } from '@/types';
+import type { Event, EventState, Field, FieldSurfaceType, Match, Team, TournamentBracket, Organization, Sport } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
@@ -78,6 +78,7 @@ const formatLatLngLabel = (lat?: number, lng?: number): string => {
   return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 };
 
+
 type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
 
 type StandingsRow = {
@@ -112,6 +113,15 @@ function EventScheduleContent() {
   const isEditParam = searchParams?.get('mode') === 'edit';
   const isCreateMode = searchParams?.get('create') === '1';
   const organizationIdParam = searchParams?.get('orgId') || undefined;
+  const rentalStartParam = searchParams?.get('rentalStart') || undefined;
+  const rentalEndParam = searchParams?.get('rentalEnd') || undefined;
+  const rentalFieldIdParam = searchParams?.get('rentalFieldId') || undefined;
+  const rentalFieldNameParam = searchParams?.get('rentalFieldName') || undefined;
+  const rentalFieldNumberParam = searchParams?.get('rentalFieldNumber') || undefined;
+  const rentalFieldTypeParam = searchParams?.get('rentalFieldType') || undefined;
+  const rentalLocationParam = searchParams?.get('rentalLocation') || undefined;
+  const rentalLatParam = searchParams?.get('rentalLat') || undefined;
+  const rentalLngParam = searchParams?.get('rentalLng') || undefined;
 
   const [event, setEvent] = useState<Event | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -123,7 +133,7 @@ function EventScheduleContent() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('schedule');
+  const [activeTab, setActiveTab] = useState<string>('details');
   const [isMatchEditorOpen, setIsMatchEditorOpen] = useState(false);
   const [standingsSort, setStandingsSort] = useState<{ field: StandingsSortField; direction: 'asc' | 'desc' }>({
     field: 'points',
@@ -134,6 +144,14 @@ function EventScheduleContent() {
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
   const [organizationForCreate, setOrganizationForCreate] = useState<Organization | null>(null);
   const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
+  const rentalCoordinates = useMemo<[number, number] | undefined>(() => {
+    const lat = rentalLatParam ? Number(rentalLatParam) : undefined;
+    const lng = rentalLngParam ? Number(rentalLngParam) : undefined;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return [lng as number, lat as number];
+    }
+    return undefined;
+  }, [rentalLatParam, rentalLngParam]);
 
   const userLocationLabel = useMemo(() => {
     if (userLocationInfo) {
@@ -178,8 +196,8 @@ function EventScheduleContent() {
       const orgLabel = organizationInput?.location?.trim() ?? '';
       const orgCoordinates =
         Array.isArray(organizationInput?.coordinates) &&
-        typeof organizationInput.coordinates[0] === 'number' &&
-        typeof organizationInput.coordinates[1] === 'number'
+          typeof organizationInput.coordinates[0] === 'number' &&
+          typeof organizationInput.coordinates[1] === 'number'
           ? (organizationInput.coordinates as [number, number])
           : undefined;
 
@@ -207,14 +225,93 @@ function EventScheduleContent() {
     [buildLocationDefaults, organizationForCreate],
   );
 
+  const rentalImmutableDefaults = useMemo<Partial<Event> | undefined>(() => {
+    if (!isCreateMode || !rentalStartParam || !rentalEndParam) {
+      return undefined;
+    }
+
+    const normalizedStart = formatLocalDateTime(rentalStartParam);
+    const normalizedEnd = formatLocalDateTime(rentalEndParam);
+    if (!normalizedStart || !normalizedEnd) {
+      return undefined;
+    }
+
+    const rentalFieldFromOrg = rentalFieldIdParam
+      ? (organizationForCreate?.fields || []).find((field) => field?.$id === rentalFieldIdParam)
+      : undefined;
+
+    const fallbackFieldNumber = (() => {
+      if (typeof rentalFieldFromOrg?.fieldNumber === 'number') {
+        return rentalFieldFromOrg.fieldNumber;
+      }
+      const parsed = rentalFieldNumberParam ? Number(rentalFieldNumberParam) : NaN;
+      return Number.isFinite(parsed) ? parsed : 1;
+    })();
+
+    const rentalField: Field | undefined = (() => {
+      if (rentalFieldFromOrg) {
+        return rentalFieldFromOrg as Field;
+      }
+      if (!rentalFieldIdParam) {
+        return undefined;
+      }
+      const fieldType = (rentalFieldTypeParam?.toUpperCase?.() || 'INDOOR') as FieldSurfaceType;
+      return {
+        $id: rentalFieldIdParam,
+        name: rentalFieldNameParam?.trim() || `Field ${fallbackFieldNumber}`,
+        fieldNumber: fallbackFieldNumber,
+        location: rentalLocationParam ?? '',
+        lat: rentalCoordinates?.[1] ?? 0,
+        long: rentalCoordinates?.[0] ?? 0,
+        type: fieldType,
+      };
+    })();
+
+    const resolvedField = rentalFieldFromOrg ?? rentalField;
+    const derivedLocation = rentalLocationParam ?? resolvedField?.location ?? organizationForCreate?.location ?? '';
+    const derivedCoordinates =
+      rentalCoordinates ??
+      (resolvedField ? [resolvedField.long, resolvedField.lat] as [number, number] : undefined) ??
+      (organizationForCreate?.coordinates as [number, number] | undefined);
+
+    const defaults: Partial<Event> = {
+      start: normalizedStart,
+      end: normalizedEnd,
+      location: derivedLocation,
+    };
+
+    if (derivedCoordinates) {
+      defaults.coordinates = derivedCoordinates;
+    }
+    if (resolvedField) {
+      defaults.fields = [resolvedField];
+      defaults.fieldType = resolvedField.type;
+    }
+
+    return defaults;
+  }, [
+    isCreateMode,
+    organizationForCreate,
+    rentalCoordinates,
+    rentalEndParam,
+    rentalFieldIdParam,
+    rentalFieldNameParam,
+    rentalFieldNumberParam,
+    rentalFieldTypeParam,
+    rentalLocationParam,
+    rentalStartParam,
+  ]);
+
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
   const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
   const isEditingEvent = isPreview || isEditParam || isUnpublished;
   const activeMatches = usingChangeCopies ? changesMatches : matches;
-  const isTournament = activeEvent?.eventType === 'TOURNAMENT';
+  const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
+  const isTournament = eventTypeForView === 'TOURNAMENT';
+  const isLeague = eventTypeForView === 'LEAGUE';
   const isHost = activeEvent?.hostId === user?.$id;
-  const entityLabel = isTournament ? 'Tournament' : 'League';
+  const entityLabel = isTournament ? 'Tournament' : isLeague ? 'League' : 'Event';
   const canEditMatches = Boolean(isHost && isEditingEvent);
   const shouldShowCreationSheet = Boolean(isCreateMode || (isEditingEvent && isHost && user));
   const createFormId = 'create-event-form';
@@ -364,15 +461,17 @@ function EventScheduleContent() {
     if (!isCreateMode || !user) return;
     setChangesEvent((prev) => {
       if (prev) return prev;
-      const start = formatLocalDateTime(new Date());
-      const end = formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+      const start = rentalImmutableDefaults?.start ?? formatLocalDateTime(new Date());
+      const end = rentalImmutableDefaults?.end ?? formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
       const locationDefaults = createLocationDefaults;
+      const rentalLocation = (rentalImmutableDefaults?.location ?? '').trim();
+      const rentalCoordinates = rentalImmutableDefaults?.coordinates;
       return {
         $id: eventId || 'temp-id',
         name: '',
         description: '',
-        location: locationDefaults?.location ?? '',
-        coordinates: locationDefaults?.coordinates ?? [0, 0],
+        location: rentalLocation || locationDefaults?.location || '',
+        coordinates: rentalCoordinates ?? locationDefaults?.coordinates ?? [0, 0],
         start,
         end,
         eventType: 'EVENT',
@@ -403,7 +502,7 @@ function EventScheduleContent() {
         leagueScoringConfig: createLeagueScoringConfig(),
       } as Event;
     });
-  }, [createLocationDefaults, eventId, isCreateMode, user]);
+  }, [createLocationDefaults, eventId, isCreateMode, rentalImmutableDefaults, user]);
 
   useEffect(() => {
     const loadOrgForCreate = async () => {
@@ -417,8 +516,8 @@ function EventScheduleContent() {
             const orgLocation = (org.location ?? '').trim();
             const orgCoordinates =
               Array.isArray(org.coordinates) &&
-              typeof org.coordinates[0] === 'number' &&
-              typeof org.coordinates[1] === 'number'
+                typeof org.coordinates[0] === 'number' &&
+                typeof org.coordinates[1] === 'number'
                 ? (org.coordinates as [number, number])
                 : undefined;
             return {
@@ -545,9 +644,9 @@ function EventScheduleContent() {
       activeMatches.filter((match) =>
         Boolean(
           match.previousLeftId ||
-            match.previousRightId ||
-            match.winnerNextMatchId ||
-            match.loserNextMatchId,
+          match.previousRightId ||
+          match.winnerNextMatchId ||
+          match.loserNextMatchId,
         ),
       ),
     [activeMatches],
@@ -810,44 +909,55 @@ function EventScheduleContent() {
     };
   }, [activeEvent, bracketMatchesMap, isPreview, user?.$id]);
 
+  const showScheduleTab = isLeague;
+  const showStandingsTab = isLeague;
+  const defaultTab = showScheduleTab ? 'schedule' : 'details';
   const shouldShowBracketTab = !!bracketData || isPreview;
 
   // Ensure the bracket tab is only active when playoff data exists or preview mode demands it.
   useEffect(() => {
     if (!shouldShowBracketTab && activeTab === 'bracket') {
-      setActiveTab('schedule');
+      setActiveTab(defaultTab);
     }
-  }, [shouldShowBracketTab, activeTab]);
+  }, [shouldShowBracketTab, activeTab, defaultTab]);
 
   useEffect(() => {
     const request = searchParams?.get('tab');
-    if (!request) {
-      setActiveTab('schedule');
-      return;
+    const allowed = new Set<string>(['details']);
+    if (showScheduleTab) {
+      allowed.add('schedule');
+      allowed.add('standings');
+    }
+    if (shouldShowBracketTab) {
+      allowed.add('bracket');
     }
 
-    if (request === 'bracket' && !shouldShowBracketTab) {
-      setActiveTab('schedule');
-      return;
-    }
-
-    if (request === 'schedule' || request === 'bracket' || request === 'standings' || request === 'details') {
-      setActiveTab(request);
-    }
-  }, [searchParams, shouldShowBracketTab]);
+    const desired = request && allowed.has(request) ? request : defaultTab;
+    setActiveTab(desired);
+  }, [searchParams, shouldShowBracketTab, showScheduleTab, defaultTab]);
 
   const handleTabChange = (value: string | null) => {
     if (!value) return;
-    if (value === 'bracket' && !shouldShowBracketTab) {
-      setActiveTab('schedule');
+    const allowed = new Set<string>(['details']);
+    if (showScheduleTab) {
+      allowed.add('schedule');
+      allowed.add('standings');
+    }
+    if (shouldShowBracketTab) {
+      allowed.add('bracket');
+    }
+
+    if (!allowed.has(value)) {
+      setActiveTab(defaultTab);
       return;
     }
+
     setActiveTab(value);
 
     if (!pathname) return;
 
     const params = new URLSearchParams(searchParams?.toString() ?? '');
-    if (value === 'schedule') {
+    if (value === defaultTab) {
       params.delete('tab');
     } else {
       params.set('tab', value);
@@ -858,8 +968,8 @@ function EventScheduleContent() {
   };
 
   const handleDetailsClose = useCallback(() => {
-    setActiveTab('schedule');
-  }, []);
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   const handleEventDraftChange = useCallback(
     (draft: Partial<Event>) => {
@@ -882,29 +992,6 @@ function EventScheduleContent() {
 
     // Create mode: invoke createEvent with current draft and redirect to the new event.
     if (isCreateMode) {
-      if (!changesEvent) {
-        setError('No event draft available to create.');
-        return;
-      }
-      setPublishing(true);
-      setError(null);
-      setInfoMessage(null);
-      try {
-        const created = await eventService.createEvent(changesEvent);
-        hydrateEvent(created);
-        setChangesEvent(created);
-        setHasUnsavedChanges(false);
-        const targetId = created.$id || eventId;
-        if (targetId) {
-          router.replace(`/events/${targetId}/schedule`);
-        }
-        setInfoMessage(`${entityLabel} created.`);
-      } catch (err) {
-        console.error('Failed to create event:', err);
-        setError('Failed to create event.');
-      } finally {
-        setPublishing(false);
-      }
       return;
     }
 
@@ -967,6 +1054,7 @@ function EventScheduleContent() {
           router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
         }
 
+        await loadSchedule();
         setInfoMessage(isUnpublished ? `${entityLabel} published.` : `${entityLabel} changes saved.`);
       } catch (err) {
         console.error(`Failed to save ${entityLabel.toLowerCase()} changes:`, err);
@@ -1330,6 +1418,7 @@ function EventScheduleContent() {
                 currentUser={user}
                 organization={organizationForCreate}
                 defaultLocation={createLocationDefaults}
+                immutableDefaults={rentalImmutableDefaults}
                 event={changesEvent}
                 formId={createFormId}
                 isCreateMode
@@ -1428,9 +1517,9 @@ function EventScheduleContent() {
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tabs.List>
               <Tabs.Tab value="details">Details</Tabs.Tab>
-              <Tabs.Tab value="schedule">Schedule</Tabs.Tab>
+              {showScheduleTab && <Tabs.Tab value="schedule">Schedule</Tabs.Tab>}
               {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
-              <Tabs.Tab value="standings">Standings</Tabs.Tab>
+              {showScheduleTab && <Tabs.Tab value="standings">Standings</Tabs.Tab>}
             </Tabs.List>
 
             <Tabs.Panel value="details" pt="md">
@@ -1442,6 +1531,7 @@ function EventScheduleContent() {
                   event={activeEvent ?? undefined}
                   organization={activeOrganization}
                   defaultLocation={activeLocationDefaults}
+                  immutableDefaults={isCreateMode ? rentalImmutableDefaults : undefined}
                   onDraftChange={handleEventDraftChange}
                   onPreviewEvent={handlePreviewEventUpdate}
                   isPreviewMode={isPreview}
@@ -1456,22 +1546,24 @@ function EventScheduleContent() {
               )}
             </Tabs.Panel>
 
-            <Tabs.Panel value="schedule" pt="md">
-              {activeMatches.length === 0 ? (
-                <Paper withBorder radius="md" p="xl" ta="center">
-                  <Text>No matches generated yet.</Text>
-                </Paper>
-              ) : (
-                <LeagueCalendarView
-                  matches={activeMatches}
-                  eventStart={activeEvent.start}
-                  eventEnd={activeEvent.end}
-                  onMatchClick={handleMatchClick}
-                  canManage={canEditMatches}
-                  currentUser={user}
-                />
-              )}
-            </Tabs.Panel>
+            {showScheduleTab && (
+              <Tabs.Panel value="schedule" pt="md">
+                {activeMatches.length === 0 ? (
+                  <Paper withBorder radius="md" p="xl" ta="center">
+                    <Text>No matches generated yet.</Text>
+                  </Paper>
+                ) : (
+                  <LeagueCalendarView
+                    matches={activeMatches}
+                    eventStart={activeEvent.start}
+                    eventEnd={activeEvent.end}
+                    onMatchClick={handleMatchClick}
+                    canManage={canEditMatches}
+                    currentUser={user}
+                  />
+                )}
+              </Tabs.Panel>
+            )}
 
             {shouldShowBracketTab && (
               <Tabs.Panel value="bracket" pt="md">
@@ -1492,93 +1584,95 @@ function EventScheduleContent() {
               </Tabs.Panel>
             )}
 
-            <Tabs.Panel value="standings" pt="md">
-              {standings.length === 0 ? (
-                <Paper withBorder radius="md" p="xl" ta="center">
-                  <Text>No teams available yet.</Text>
-                </Paper>
-              ) : (
-                <Paper withBorder radius="md" p={0}>
-                  {!hasRecordedMatches && (
-                    <div className="px-4 pt-4">
-                      <Text size="sm" c="dimmed">
-                        Standings will update automatically as match results are recorded.
-                      </Text>
-                    </div>
-                  )}
-                  <div className="overflow-x-auto">
-                    <Table striped highlightOnHover>
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th className="w-12 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            #
-                          </Table.Th>
-                          <Table.Th className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            <UnstyledButton
-                              className="flex items-center gap-1 text-sm font-semibold text-gray-700"
-                              onClick={() => handleStandingsSortChange('team')}
-                            >
-                              Team
-                              {renderSortIndicator('team')}
-                            </UnstyledButton>
-                          </Table.Th>
-                          <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            <UnstyledButton
-                              className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                              onClick={() => handleStandingsSortChange('wins')}
-                            >
-                              W
-                              {renderSortIndicator('wins')}
-                            </UnstyledButton>
-                          </Table.Th>
-                          <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            <UnstyledButton
-                              className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                              onClick={() => handleStandingsSortChange('losses')}
-                            >
-                              L
-                              {renderSortIndicator('losses')}
-                            </UnstyledButton>
-                          </Table.Th>
-                          <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            <UnstyledButton
-                              className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                              onClick={() => handleStandingsSortChange('draws')}
-                            >
-                              D
-                              {renderSortIndicator('draws')}
-                            </UnstyledButton>
-                          </Table.Th>
-                          <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            <UnstyledButton
-                              className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                              onClick={() => handleStandingsSortChange('points')}
-                            >
-                              P
-                              {renderSortIndicator('points')}
-                            </UnstyledButton>
-                          </Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {standings.map((row) => (
-                          <Table.Tr key={row.teamId}>
-                            <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
-                            <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
-                            <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
-                            <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
-                            <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
-                            <Table.Td className="text-right text-sm font-semibold text-gray-900">
-                              {formatPoints(row.points)}
-                            </Table.Td>
+            {showScheduleTab && (
+              <Tabs.Panel value="standings" pt="md">
+                {standings.length === 0 ? (
+                  <Paper withBorder radius="md" p="xl" ta="center">
+                    <Text>No teams available yet.</Text>
+                  </Paper>
+                ) : (
+                  <Paper withBorder radius="md" p={0}>
+                    {!hasRecordedMatches && (
+                      <div className="px-4 pt-4">
+                        <Text size="sm" c="dimmed">
+                          Standings will update automatically as match results are recorded.
+                        </Text>
+                      </div>
+                    )}
+                    <div className="overflow-x-auto">
+                      <Table striped highlightOnHover>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th className="w-12 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              #
+                            </Table.Th>
+                            <Table.Th className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <UnstyledButton
+                                className="flex items-center gap-1 text-sm font-semibold text-gray-700"
+                                onClick={() => handleStandingsSortChange('team')}
+                              >
+                                Team
+                                {renderSortIndicator('team')}
+                              </UnstyledButton>
+                            </Table.Th>
+                            <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <UnstyledButton
+                                className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                onClick={() => handleStandingsSortChange('wins')}
+                              >
+                                W
+                                {renderSortIndicator('wins')}
+                              </UnstyledButton>
+                            </Table.Th>
+                            <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <UnstyledButton
+                                className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                onClick={() => handleStandingsSortChange('losses')}
+                              >
+                                L
+                                {renderSortIndicator('losses')}
+                              </UnstyledButton>
+                            </Table.Th>
+                            <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <UnstyledButton
+                                className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                onClick={() => handleStandingsSortChange('draws')}
+                              >
+                                D
+                                {renderSortIndicator('draws')}
+                              </UnstyledButton>
+                            </Table.Th>
+                            <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <UnstyledButton
+                                className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                onClick={() => handleStandingsSortChange('points')}
+                              >
+                                P
+                                {renderSortIndicator('points')}
+                              </UnstyledButton>
+                            </Table.Th>
                           </Table.Tr>
-                        ))}
-                      </Table.Tbody>
-                    </Table>
-                  </div>
-                </Paper>
-              )}
-            </Tabs.Panel>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {standings.map((row) => (
+                            <Table.Tr key={row.teamId}>
+                              <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
+                              <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
+                              <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
+                              <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
+                              <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
+                              <Table.Td className="text-right text-sm font-semibold text-gray-900">
+                                {formatPoints(row.points)}
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </div>
+                  </Paper>
+                )}
+              </Tabs.Panel>
+            )}
           </Tabs>
         </Stack>
       </Container>

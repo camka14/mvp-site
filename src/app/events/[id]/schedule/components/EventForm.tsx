@@ -228,6 +228,18 @@ const sanitizeFieldForForm = (field: Field): Field => {
 const sanitizeFieldsForForm = (fields?: Field[] | null): Field[] =>
     Array.isArray(fields) ? fields.map(sanitizeFieldForForm) : [];
 
+const getFieldOrganizationId = (field?: Field | null): string | undefined => {
+    if (!field) return undefined;
+    const org = (field as any).organization;
+    if (org && typeof org === 'object' && '$id' in org) {
+        return (org as Organization).$id;
+    }
+    if (typeof (field as any).organizationId === 'string') {
+        return (field as any).organizationId;
+    }
+    return undefined;
+};
+
 type EventFormState = {
     $id: string;
     name: string;
@@ -686,7 +698,7 @@ const EventForm: React.FC<EventFormProps> = ({
 
     const hasImmutableFields = immutableFields.length > 0;
 
-    const immutableTimeSlots = useMemo(() => {
+    const immutableTimeSlotsFromDefaults = useMemo(() => {
         if (!Array.isArray(immutableDefaultsMemo.timeSlots)) {
             return [] as TimeSlot[];
         }
@@ -705,6 +717,14 @@ const EventForm: React.FC<EventFormProps> = ({
             })
             .filter((slot): slot is TimeSlot => Boolean(slot));
     }, [immutableDefaultsMemo.timeSlots, immutableFields]);
+
+    const [rentalLockedTimeSlots, setRentalLockedTimeSlots] = useState<TimeSlot[]>([]);
+    const immutableTimeSlots = useMemo(() => {
+        if (rentalLockedTimeSlots.length) {
+            return rentalLockedTimeSlots;
+        }
+        return immutableTimeSlotsFromDefaults;
+    }, [immutableTimeSlotsFromDefaults, rentalLockedTimeSlots]);
 
     const hasImmutableTimeSlots = immutableTimeSlots.length > 0;
 
@@ -1612,6 +1632,44 @@ const EventForm: React.FC<EventFormProps> = ({
         }));
     }, [fields]);
 
+    const eventOrganizationId = useMemo(() => {
+        return organization?.$id
+            || (activeEditingEvent?.organization as Organization | undefined)?.$id
+            || activeEditingEvent?.organizationId
+            || '';
+    }, [activeEditingEvent?.organization, activeEditingEvent?.organizationId, organization?.$id]);
+
+    const hasExternalRentalField = useMemo(() => {
+        if (!eventOrganizationId) {
+            return false;
+        }
+        const sourceFields = fields.length ? fields : (activeEditingEvent?.fields ?? []);
+        return sourceFields.some((field) => {
+            const orgId = getFieldOrganizationId(field);
+            return orgId && orgId !== eventOrganizationId;
+        });
+    }, [activeEditingEvent?.fields, eventOrganizationId, fields]);
+
+    useEffect(() => {
+        if (!hasExternalRentalField) {
+            setRentalLockedTimeSlots([]);
+            return;
+        }
+        const fallbackFieldId = immutableFields[0]?.$id || (activeEditingEvent?.fields?.[0] as Field | undefined)?.$id;
+        const lockedSlots = (activeEditingEvent?.timeSlots ?? [])
+            .map((slot) => {
+                if (!slot) return null;
+                const { event: _ignored, ...rest } = slot as any;
+                const normalized: TimeSlot = {
+                    ...rest,
+                    scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                };
+                return normalized;
+            })
+            .filter((slot): slot is TimeSlot => Boolean(slot));
+        setRentalLockedTimeSlots(lockedSlots);
+    }, [activeEditingEvent?.fields, activeEditingEvent?.timeSlots, hasExternalRentalField, immutableFields]);
+
     const fieldsReferencedInSlots = useMemo(() => {
         if (!leagueSlots.length) {
             return hasImmutableFields ? immutableFields : ([] as Field[]);
@@ -1651,6 +1709,18 @@ const EventForm: React.FC<EventFormProps> = ({
     const selectedImageUrl = useMemo(
         () => (selectedImageId ? getEventImageUrl({ imageId: selectedImageId, width: 800 }) : ''),
         [selectedImageId],
+    );
+
+    const eventTypeOptions = useMemo(
+        () =>
+            hasExternalRentalField
+                ? [{ value: 'EVENT', label: 'Pickup Game' }]
+                : [
+                    { value: 'EVENT', label: 'Pickup Game' },
+                    { value: 'TOURNAMENT', label: 'Tournament' },
+                    { value: 'LEAGUE', label: 'League' },
+                ],
+        [hasExternalRentalField],
     );
 
     useEffect(() => {
@@ -1693,6 +1763,15 @@ const EventForm: React.FC<EventFormProps> = ({
                 .catch(() => { /* ignore */ });
         }
     }, [isEditMode, eventData.location, eventData.coordinates]);
+
+    useEffect(() => {
+        if (!hasExternalRentalField) {
+            return;
+        }
+        if (eventData.eventType !== 'EVENT') {
+            setValue('eventType', 'EVENT', { shouldDirty: true, shouldValidate: true });
+        }
+    }, [eventData.eventType, hasExternalRentalField, setValue]);
 
     const hasSlotConflicts = eventData.eventType === 'LEAGUE' && leagueSlots.some(slot => Boolean(slot.error));
     const hasIncompleteSlot = eventData.eventType === 'LEAGUE' && leagueSlots.some(slot =>
@@ -2378,14 +2457,10 @@ const EventForm: React.FC<EventFormProps> = ({
                                     render={({ field }) => (
                                         <MantineSelect
                                             label="Event Type"
-                                            data={[
-                                                { value: 'EVENT', label: 'Pickup Game' },
-                                                { value: 'TOURNAMENT', label: 'Tournament' },
-                                                { value: 'LEAGUE', label: 'League' },
-                                            ]}
+                                            data={eventTypeOptions}
                                             value={field.value}
                                             comboboxProps={sharedComboboxProps}
-                                            disabled={isImmutableField('eventType')}
+                                            disabled={isImmutableField('eventType') || hasExternalRentalField}
                                             onChange={(value) => {
                                                 if (isImmutableField('eventType')) return;
                                                 if (!value) return;
@@ -2797,7 +2872,7 @@ const EventForm: React.FC<EventFormProps> = ({
                                                 label="Start Date & Time"
                                                 valueFormat="DD MMM YYYY hh:mm A"
                                                 value={parseLocalDateTime(field.value)}
-                                                disabled={isImmutableField('start')}
+                                                disabled={isImmutableField('start') || hasExternalRentalField}
                                                 onChange={(val) => {
                                                     if (isImmutableField('start')) return;
                                                     const parsed = parseLocalDateTime(val as Date | string | null);
@@ -2825,7 +2900,7 @@ const EventForm: React.FC<EventFormProps> = ({
                                                     label="End Date & Time"
                                                     valueFormat="DD MMM YYYY hh:mm A"
                                                     value={parseLocalDateTime(field.value)}
-                                                    disabled={isImmutableField('end')}
+                                                    disabled={isImmutableField('end') || hasExternalRentalField}
                                                     onChange={(val) => {
                                                         if (isImmutableField('end')) return;
                                                         const parsed = parseLocalDateTime(val as Date | string | null);

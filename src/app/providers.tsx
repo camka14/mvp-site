@@ -5,6 +5,7 @@ import { authService } from '@/lib/auth';
 import { userService } from '@/lib/userService';
 import { account, ID } from '@/app/appwrite';
 import { UserData } from '@/types';
+import { upsertSensitiveUser } from '@/lib/sensitiveUserDataService';
 
 interface UserAccount {
   $id: string;
@@ -118,6 +119,7 @@ export function Providers({ children }: ProvidersProps) {
               uploadedImages: [],
               profileImageId: ''
             } as any);
+            await upsertSensitiveUser(currentAuthUser.email, currentAuthUser.$id);
           } catch (e) {
             console.warn('Failed to create missing user profile row:', e);
           }
