@@ -469,6 +469,11 @@ class EventService {
             doTeamsRef: typeof row.doTeamsRef === 'boolean' ? row.doTeamsRef : undefined,
             refType: row.refType,
             pointsToVictory: row.pointsToVictory,
+            allowPaymentPlans: !!row.allowPaymentPlans,
+            installmentCount: row.installmentCount,
+            installmentDueDates: row.installmentDueDates,
+            installmentAmounts: row.installmentAmounts,
+            allowTeamSplitDefault: row.allowTeamSplitDefault,
 
             // Computed properties
             organization,

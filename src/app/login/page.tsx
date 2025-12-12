@@ -41,7 +41,8 @@ export default function LoginPage() {
     setError('');
 
     try {
-      let authUser: { $id: string } | null = null;
+      let authUser: Awaited<ReturnType<typeof authService.login>> | null = null;
+      let existingUserData: Awaited<ReturnType<typeof authService.findExistingUserDataByEmail>> = null;
       if (isLogin) {
         authUser = await authService.login(formData.email, formData.password);
       } else {
@@ -49,29 +50,28 @@ export default function LoginPage() {
         if (!formData.firstName || !formData.lastName || !formData.userName) {
           throw new Error('Please provide first name, last name, and username');
         }
+        existingUserData = await authService.findExistingUserDataByEmail(formData.email);
         authUser = await authService.createAccount(
           formData.email,
           formData.password,
           formData.firstName,
           formData.lastName,
-          formData.userName
+          formData.userName,
+          existingUserData
         );
       }
 
-      const extendedUser = await userService.getUserById(authUser.$id);
+      if (!authUser) {
+        throw new Error('Authentication failed');
+      }
+
+      const extendedUser = await userService.getUserById(existingUserData?.$id || authUser.$id);
 
       if (!extendedUser) {
         throw new Error('Failed to retrieve user profile data');
       }
 
       setUser(extendedUser);
-      if (authUser) {
-        setAuthUser({
-          $id: authUser.$id,
-          email: formData.email,
-          name: `${formData.firstName} ${formData.lastName}`.trim() || undefined,
-        });
-      }
       setAuthUser(authUser as any);
       // After signup, direct users to the verification page
       if (!isLogin) {

@@ -9,6 +9,8 @@ interface UserAccount {
   name?: string;
 }
 
+type UserProfileRow = Partial<UserData> & { $id: string };
+
 export const authService = {
   // LocalStorage keys
   AUTH_USER_KEY: 'auth-user',
@@ -75,7 +77,32 @@ export const authService = {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(this.GUEST_KEY) === '1';
   },
-  async createAccount(email: string, password: string, firstName: string, lastName: string, userName: string): Promise<UserAccount> {
+  /**
+   * Look up an existing user profile by email so we can re-use its ID.
+   */
+  async findExistingUserDataByEmail(email: string): Promise<UserProfileRow | null> {
+    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+    const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
+    try {
+      const matches = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: USERS_TABLE_ID,
+        queries: [Query.equal('email', email), Query.limit(1)]
+      });
+      return (matches.rows?.[0] as UserProfileRow) ?? null;
+    } catch (lookupErr) {
+      console.warn('User profile lookup by email failed:', lookupErr);
+      return null;
+    }
+  },
+  async createAccount(
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    userName: string,
+    existingProfile?: UserProfileRow | null
+  ): Promise<UserAccount> {
     try {
       // First check if user is already logged in
       const existingUser = await this.getCurrentUser();
@@ -87,19 +114,8 @@ export const authService = {
       const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
 
       // Try to find an existing UserData row by email
-      let existingProfile: any | null = null;
-      try {
-        const matches = await databases.listRows({
-          databaseId: DATABASE_ID,
-          tableId: USERS_TABLE_ID,
-          queries: [Query.equal('email', email), Query.limit(1)]
-        });
-        existingProfile = matches.rows?.[0] ?? null;
-      } catch (lookupErr) {
-        console.warn('User profile lookup by email failed:', lookupErr);
-      }
-
-      const userIdForAccount = existingProfile?.$id || ID.unique();
+      const profileByEmail = existingProfile ?? (await this.findExistingUserDataByEmail(email));
+      const userIdForAccount = profileByEmail?.$id || ID.unique();
       const userAccount: UserAccount = await account.create({
         userId: userIdForAccount,
         email,
@@ -119,32 +135,33 @@ export const authService = {
             userRow = await databases.getRow({
               databaseId: DATABASE_ID,
               tableId: USERS_TABLE_ID,
-              rowId: loggedIn.$id
+              rowId: userIdForAccount
             });
           } catch {
             userRow = null;
           }
 
+          const resolvedProfile = profileByEmail || userRow;
           const baseData = {
-            firstName: firstName || existingProfile?.firstName || '',
-            lastName: lastName || existingProfile?.lastName || '',
-            userName: existingProfile?.userName || userName,
+            firstName: firstName || resolvedProfile?.firstName || '',
+            lastName: lastName || resolvedProfile?.lastName || '',
+            userName: resolvedProfile?.userName || userName,
             email,
-            teamIds: existingProfile?.teamIds ?? [],
-            friendIds: existingProfile?.friendIds ?? [],
-            friendRequestIds: existingProfile?.friendRequestIds ?? [],
-            friendRequestSentIds: existingProfile?.friendRequestSentIds ?? [],
-            followingIds: existingProfile?.followingIds ?? [],
-            teamInvites: existingProfile?.teamInvites ?? [],
-            eventInvites: existingProfile?.eventInvites ?? [],
-            uploadedImages: existingProfile?.uploadedImages ?? [],
-            profileImageId: existingProfile?.profileImageId || ''
+            teamIds: resolvedProfile?.teamIds ?? [],
+            friendIds: resolvedProfile?.friendIds ?? [],
+            friendRequestIds: resolvedProfile?.friendRequestIds ?? [],
+            friendRequestSentIds: resolvedProfile?.friendRequestSentIds ?? [],
+            followingIds: resolvedProfile?.followingIds ?? [],
+            teamInvites: resolvedProfile?.teamInvites ?? [],
+            eventInvites: resolvedProfile?.eventInvites ?? [],
+            uploadedImages: resolvedProfile?.uploadedImages ?? [],
+            profileImageId: resolvedProfile?.profileImageId || ''
           };
 
           await databases.upsertRow({
             databaseId: DATABASE_ID,
             tableId: USERS_TABLE_ID,
-            rowId: loggedIn.$id,
+            rowId: userIdForAccount,
             data: baseData
           });
         } catch (profileErr) {

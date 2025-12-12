@@ -12,20 +12,25 @@ Live: https://mvp.razumly.com — Open Graph preview at `/opengraph-image`.
 - Mantine-driven UI, responsive layouts, and Next.js App Router
 
 ## Tech Stack
-- Next.js 14 (App Router) + TypeScript
+- Next.js 16 (App Router) + TypeScript
 - Mantine UI + Emotion
 - Appwrite: Account, TablesDB, Storage, Functions (object-argument SDK)
 - Jest + Testing Library for UI/service tests
 
 ## Getting Started
-1) Install dependencies
+1) Use Node 20.9+ (Next.js 16 requires it)
+```bash
+nvm install 20.9.0
+nvm use
+```
+2) Install dependencies
 ```bash
 npm install
 ```
-2) Environment
+3) Environment
 - Copy `.env.example` to `.env.local`
 - Set `NEXT_PUBLIC_APPWRITE_ENDPOINT`, `NEXT_PUBLIC_APPWRITE_PROJECT_ID`, `NEXT_PUBLIC_APPWRITE_DATABASE_ID`, and table/bucket/function IDs used in the app.
-3) Run locally
+4) Run locally
 ```bash
 npm run dev
 # open http://localhost:3000

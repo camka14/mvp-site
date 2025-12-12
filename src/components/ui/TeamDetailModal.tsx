@@ -1,5 +1,9 @@
 // components/ui/TeamDetailModal.tsx
 import React, { useState, useEffect } from 'react';
+import { useForm, useFieldArray } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea } from '@mantine/core';
 import { Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import { useApp } from '@/app/providers';
@@ -16,6 +20,19 @@ interface TeamDetailModalProps {
     eventContext?: Event;
     eventFreeAgents?: UserData[];
 }
+
+const inviteeSchema = z.object({
+    firstName: z.string().trim().optional().default(''),
+    lastName: z.string().trim().optional().default(''),
+    email: z.string().trim().email('Please enter a valid email'),
+});
+
+const inviteFormSchema = z.object({
+    invites: z.array(inviteeSchema).min(1, 'Add at least one invite'),
+});
+
+type InviteFormValues = z.infer<typeof inviteFormSchema>;
+type InviteFormInput = z.input<typeof inviteFormSchema>;
 
 export default function TeamDetailModal({
     currentTeam,
@@ -40,6 +57,20 @@ export default function TeamDetailModal({
     const [editingName, setEditingName] = useState(false);
     const [newName, setNewName] = useState(currentTeam.name || '');
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
+    const {
+        control: inviteControl,
+        register: inviteRegister,
+        handleSubmit: handleInviteSubmit,
+        reset: resetInviteForm,
+        formState: { errors: inviteErrors, isSubmitting: inviteSubmitting },
+    } = useForm<InviteFormInput, any, InviteFormValues>({
+        defaultValues: { invites: [{ firstName: '', lastName: '', email: '' }] },
+        resolver: zodResolver(inviteFormSchema),
+    });
+    const { fields: inviteFields, append: appendInvite, remove: removeInvite } = useFieldArray({
+        control: inviteControl,
+        name: 'invites',
+    });
 
     const [cancellingInviteIds, setCancellingInviteIds] = useState<Set<string>>(new Set());
 
@@ -194,6 +225,21 @@ export default function TeamDetailModal({
         }
     };
 
+    const handleInviteByEmail = async (values: InviteFormValues) => {
+        if (!user) {
+            notifications.show({ color: 'red', message: 'You must be logged in to send invites.' });
+            return;
+        }
+        try {
+            await userService.inviteUsersByEmail(currentTeam.$id, user.$id, values.invites);
+            notifications.show({ color: 'green', message: 'Invites sent via email.' });
+            resetInviteForm({ invites: [{ firstName: '', lastName: '', email: '' }] });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to send invites';
+            notifications.show({ color: 'red', message });
+        }
+    };
+
     const handleRemovePlayer = async (playerId: string) => {
         try {
             const success = await teamService.removePlayerFromTeam(currentTeam.$id, playerId);
@@ -328,7 +374,7 @@ export default function TeamDetailModal({
                         <Title order={5} mb="sm">Team Members ({teamPlayers.length})</Title>
                         {teamPlayers.length > 0 ? (
                             <ScrollArea.Autosize mah={240} type="auto">
-                                <div className="space-y-8">
+                                <div className="space-y-3">
                                     {teamPlayers.map(player => (
                                         <Paper key={player.$id} withBorder radius="md" p="sm">
                                             <Group justify="space-between">
@@ -441,7 +487,12 @@ export default function TeamDetailModal({
                             {showAddPlayers && (
                                 <Paper withBorder radius="md" p="md">
                                     <Title order={6} mb="sm">Add players to {currentTeam.name}</Title>
-                                    <TextInput placeholder="Type at least 2 characters to search for players" value={searchQuery} onChange={(e) => setSearchQuery(e.currentTarget.value)} mb="sm" />
+                                    <TextInput
+                                        placeholder="Search by name or email (min 2 characters)"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                                        mb="sm"
+                                    />
                                     {searching && (
                                         <Group justify="center" py="sm">
                                             <Text c="dimmed" size="sm">Searching...</Text>
@@ -494,6 +545,72 @@ export default function TeamDetailModal({
                                             </div>
                                         </ScrollArea.Autosize>
                                     )}
+                                    <form onSubmit={handleInviteSubmit(handleInviteByEmail)}>
+                                        <Paper withBorder radius="md" p="md" mt="md">
+                                            <Title order={6} mb="xs">Invite new users via email</Title>
+                                            <div className="space-y-3">
+                                                {inviteFields.map((field, index) => {
+                                                    const inviteError = inviteErrors.invites?.[index];
+                                                    return (
+                                                        <Paper key={field.id} withBorder radius="md" p="sm">
+                                                            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
+                                                                <TextInput
+                                                                    label="First name"
+                                                                    placeholder="First name"
+                                                                    {...inviteRegister(`invites.${index}.firstName`)}
+                                                                />
+                                                                <TextInput
+                                                                    label="Last name"
+                                                                    placeholder="Last name"
+                                                                    {...inviteRegister(`invites.${index}.lastName`)}
+                                                                />
+                                                                <TextInput
+                                                                    label="Email"
+                                                                    placeholder="name@example.com"
+                                                                    withAsterisk
+                                                                    error={inviteError?.email?.message}
+                                                                    {...inviteRegister(`invites.${index}.email`)}
+                                                                />
+                                                            </SimpleGrid>
+                                                            <Group justify="space-between" mt="xs">
+                                                                <div>
+                                                                    {inviteError?.root?.message && (
+                                                                        <Text size="xs" c="red">{inviteError.root.message}</Text>
+                                                                    )}
+                                                                </div>
+                                                                {inviteFields.length > 1 && (
+                                                                    <Button
+                                                                        variant="subtle"
+                                                                        color="red"
+                                                                        size="xs"
+                                                                        type="button"
+                                                                        onClick={() => removeInvite(index)}
+                                                                    >
+                                                                        Remove
+                                                                    </Button>
+                                                                )}
+                                                            </Group>
+                                                        </Paper>
+                                                    );
+                                                })}
+                                            </div>
+                                            <Group justify="space-between" align="center" mt="md">
+                                                <Button
+                                                    type="button"
+                                                    variant="default"
+                                                    size="lg"
+                                                    radius="md"
+                                                    style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
+                                                    onClick={() => appendInvite({ firstName: '', lastName: '', email: '' })}
+                                                >
+                                                    +
+                                                </Button>
+                                                <Button type="submit" loading={inviteSubmitting}>
+                                                    Send email invites
+                                                </Button>
+                                            </Group>
+                                        </Paper>
+                                    </form>
                                 </Paper>
                             )}
                         </div>

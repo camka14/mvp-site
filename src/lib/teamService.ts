@@ -1,10 +1,11 @@
-import { databases } from '@/app/appwrite';
+import { databases, functions } from '@/app/appwrite';
 import { Team, UserData, getTeamWinRate, getTeamAvatarUrl } from '@/types';
 import { userService } from './userService';
-import { ID, Query } from 'appwrite';
+import { ExecutionMethod, ID, Query } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const TEAMS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID!;
+const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 

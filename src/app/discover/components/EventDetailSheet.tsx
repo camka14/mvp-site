@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import { Event, UserData, Team, getEventDateTime, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl, formatPrice } from '@/types';
@@ -6,6 +6,7 @@ import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
+import { billService } from '@/lib/billService';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -41,6 +42,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
+    const [joinNotice, setJoinNotice] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
     const [confirmingPurchase, setConfirmingPurchase] = useState(false);
 
@@ -70,6 +72,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setIsLoadingEvent(false);
             setIsLoadingTeams(false);
             setJoinError(null); // Reset error when modal closes
+            setJoinNotice(null);
         }
     }, [isActive, event]);
 
@@ -182,14 +185,60 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
     };
 
+    const createBillForOwner = useCallback(async (ownerType: 'USER' | 'TEAM', ownerId: string) => {
+        if (!currentEvent) {
+            throw new Error('Event is not loaded.');
+        }
+
+        const priceCents = Math.round(Number(currentEvent.price) || 0);
+        if (priceCents <= 0) {
+            throw new Error('This event does not have a price set for a payment plan.');
+        }
+
+        const installmentAmounts = Array.isArray(currentEvent.installmentAmounts)
+            ? currentEvent.installmentAmounts.map((amt) => Math.round(Number(amt) || 0))
+            : [];
+        const installmentDueDates = Array.isArray(currentEvent.installmentDueDates)
+            ? currentEvent.installmentDueDates as string[]
+            : [];
+
+        return billService.createBill({
+            ownerType,
+            ownerId,
+            totalAmountCents: priceCents,
+            eventId: currentEvent.$id,
+            organizationId: currentEvent.organizationId ?? null,
+            installmentAmounts,
+            installmentDueDates,
+            allowSplit: ownerType === 'TEAM' ? Boolean(currentEvent.allowTeamSplitDefault) : false,
+            paymentPlanEnabled: true,
+            event: {
+                $id: currentEvent.$id,
+                start: currentEvent.start,
+                price: priceCents,
+                installmentAmounts,
+                installmentDueDates,
+            },
+            user,
+        });
+    }, [currentEvent, user]);
+
     // Update the join event handlers
     const handleJoinEvent = async () => {
         if (!user || !currentEvent) return;
 
         setJoining(true);
         setJoinError(null);
+        setJoinNotice(null);
 
         try {
+            if (currentEvent.allowPaymentPlans) {
+                await createBillForOwner('USER', user.$id);
+                setJoinNotice('Payment plan started. A bill was created for you—pay installments from your Profile.');
+                await loadEventDetails();
+                return;
+            }
+
             if (isFreeForUser) {
                 await paymentService.joinEvent(user, currentEvent);
                 await loadEventDetails(); // Refresh event data
@@ -211,8 +260,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!user || !currentEvent || !selectedTeamId) return;
         setJoining(true);
         setJoinError(null);
+        setJoinNotice(null);
         try {
             const team = userTeams.find((t) => t.$id === selectedTeamId) || null;
+            if (currentEvent.allowPaymentPlans) {
+                const targetTeam = team || { $id: selectedTeamId } as Team;
+                await createBillForOwner('TEAM', targetTeam.$id);
+                setJoinNotice('Payment plan started for your team. A bill was created—you can manage payments from your Profile.');
+                await loadEventDetails();
+                return;
+            }
+
             if (isFreeForUser) {
                 await paymentService.joinEvent(undefined, currentEvent, team ?? undefined);
                 await loadEventDetails();
@@ -559,6 +617,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                     {/* Join Options (includes total participants) */}
                                     <Paper withBorder p="md" radius="md">
                                         {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
+                                        {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
 
                                         {!user ? (
                                             <div style={{ textAlign: 'center' }}>

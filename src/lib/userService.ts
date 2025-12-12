@@ -1,6 +1,7 @@
-import { databases, account, storage } from '@/app/appwrite';
+import { databases, account, storage, functions } from '@/app/appwrite';
 import { UserData, getUserFullName, getUserAvatarUrl } from '@/types';
-import { Query, ID } from 'appwrite';
+import { Query, ID, ExecutionMethod } from 'appwrite';
+import { map } from 'zod';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
@@ -77,11 +78,12 @@ class UserService {
                 tableId: USERS_TABLE_ID,
                 queries: [
                     Query.or([
-                        Query.contains('firstName', query),
-                        Query.contains('lastName', query),
-                        Query.contains('userName', query)
+                        Query.search('firstName', query),
+                        Query.search('lastName', query),
+                        Query.search('userName', query),
+                        Query.search('email', query),
                     ]),
-                    Query.limit(20)
+                    Query.limit(5)
                 ]
             });
             return response.rows.map(row => this.mapRowToUser(row));
@@ -206,6 +208,41 @@ class UserService {
             console.error('Failed to remove team invitation:', error);
             return false;
         }
+    }
+
+    async inviteUsersByEmail(
+        teamId: string,
+        inviterId: string,
+        invites: { firstName?: string; lastName?: string; email: string }[],
+    ): Promise<{ sent: any[]; failed: any[] }> {
+        const userResponse = await databases.listRows({
+            databaseId: DATABASE_ID,
+            tableId: USERS_TABLE_ID,
+            queries: [
+                Query.equal('email', invites.map(invite => invite.email)),
+                Query.limit(5)
+            ]
+        });
+        if (userResponse.total > 0) {
+            throw new Error(`Found users with email: ${userResponse.rows.map(row => this.mapRowToUser(row).email).join(', ')}`);
+        }
+
+        const response = await functions.createExecution({
+            functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+            xpath: '/teams/invite-email',
+            method: ExecutionMethod.POST,
+            body: JSON.stringify({ teamId, inviterId, invites }),
+            async: false,
+        });
+
+        const parsed = response.responseBody ? JSON.parse(response.responseBody) : {};
+        if (parsed.error) {
+            throw new Error(parsed.error);
+        }
+        return {
+            sent: parsed.sent ?? [],
+            failed: parsed.failed ?? [],
+        };
     }
 
     // Map Appwrite row to UserData using spread operator
