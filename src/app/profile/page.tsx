@@ -14,6 +14,7 @@ import { billService } from '@/lib/billService';
 import { teamService } from '@/lib/teamService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import { ManageTeams } from '@/app/teams/page';
+import RefundRequestsList from '@/components/ui/RefundRequestsList';
 
 export default function ProfilePage() {
     const { user, loading, setUser } = useApp();
@@ -558,6 +559,7 @@ export default function ProfilePage() {
                                     </SimpleGrid>
                                 )}
                             </Paper>
+                            <RefundRequestsList userId={user.$id} />
 
                             {/* Email Section */}
                             <Paper withBorder radius="md" p="md">
