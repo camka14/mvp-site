@@ -1258,18 +1258,19 @@ const EventForm: React.FC<EventFormProps> = ({
                 if (selected && (!prev.sportConfig || prev.sportConfig.$id !== selected.$id)) {
                     return { ...prev, sportConfig: selected };
                 }
+                if (!selected && prev.sportConfig) {
+                    return { ...prev, sportConfig: null };
+                }
                 return prev;
             }
-            if (!isEditMode && sports.length > 0) {
-                const fallback = sports[0];
-                if (prev.sportId === fallback.$id && prev.sportConfig?.$id === fallback.$id) {
-                    return prev;
-                }
-                return { ...prev, sportId: fallback.$id, sportConfig: fallback };
+
+            if (prev.sportConfig) {
+                return { ...prev, sportConfig: null };
             }
+
             return prev;
         });
-    }, [sportsLoading, sports, sportsById, isEditMode]);
+    }, [sportsLoading, sportsById]);
 
     useEffect(() => {
         const requiresSets = Boolean(eventData.sportConfig?.usePointsPerSetWin);
