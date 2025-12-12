@@ -27,7 +27,7 @@ import { format, getDay, parse, startOfDay, endOfDay, startOfMonth, endOfMonth, 
 import type { Event, Field, Organization, TimeSlot } from '@/types';
 import { formatPrice } from '@/types';
 import { buildFieldCalendarEvents, type FieldCalendarEntry } from '@/app/organizations/[id]/fieldCalendar';
-import { parseLocalDateTime } from '@/lib/dateUtils';
+import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { notifications } from '@mantine/notifications';
 import { useApp } from '@/app/providers';
 import { organizationService } from '@/lib/organizationService';
@@ -422,10 +422,40 @@ const RentalSelectionModal: React.FC<RentalSelectionModalProps> = ({ opened, onC
       notifications.show({ color: 'red', message: 'Select a valid field and time before creating an event.' });
       return;
     }
+    const [startHour, endHour] = selection.range;
+    const selectionStart = minutesToDate(selection.date, startHour * 60);
+    const selectionEnd = minutesToDate(selection.date, endHour * 60);
     const newId = ID.unique();
-    router.push(`/events/${newId}/schedule?create=1`);
+    const params = new URLSearchParams();
+    params.set('create', '1');
+    params.set('rentalStart', formatLocalDateTime(selectionStart));
+    params.set('rentalEnd', formatLocalDateTime(selectionEnd));
+    params.set('rentalFieldId', selectedField.$id);
+    params.set(
+      'rentalFieldName',
+      selectedField.name?.trim() || (selectedField.fieldNumber ? `Field ${selectedField.fieldNumber}` : 'Field'),
+    );
+    if (selectedField.fieldNumber !== undefined) {
+      params.set('rentalFieldNumber', String(selectedField.fieldNumber));
+    }
+    if (selectedField.type) {
+      params.set('rentalFieldType', selectedField.type);
+    }
+    if (selectedField.location) {
+      params.set('rentalLocation', selectedField.location);
+    }
+    if (typeof selectedField.lat === 'number' && Number.isFinite(selectedField.lat)) {
+      params.set('rentalLat', String(selectedField.lat));
+    }
+    if (typeof selectedField.long === 'number' && Number.isFinite(selectedField.long)) {
+      params.set('rentalLng', String(selectedField.long));
+    }
+    if (organization?.$id) {
+      params.set('orgId', organization.$id);
+    }
+    router.push(`/events/${newId}/schedule?${params.toString()}`);
     onClose();
-  }, [isSelectionValid, onClose, router, selectedField, user]);
+  }, [isSelectionValid, onClose, organization?.$id, router, selectedField, selection.date, selection.range, user]);
 
   return (
     <>

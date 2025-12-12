@@ -47,7 +47,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
-  const { user, loading: authLoading, isAuthenticated } = useApp();
+  const { user, authUser, loading: authLoading, isAuthenticated } = useApp();
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees'>('overview');
@@ -157,11 +157,11 @@ function OrganizationDetailContent() {
   useEffect(() => {
     if (!org || !user) return;
     if (stripeEmail) return;
-    const fallbackEmail = (org as any)?.email || user.email || '';
+    const fallbackEmail = (org as any)?.email || authUser?.email || '';
     if (fallbackEmail) {
       setStripeEmail(fallbackEmail);
     }
-  }, [org, user, stripeEmail]);
+  }, [org, user, authUser, stripeEmail]);
 
   const handleCreateEvent = useCallback(() => {
     const newId = ID.unique();

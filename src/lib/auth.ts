@@ -1,7 +1,7 @@
 import { account, databases, ID } from '@/app/appwrite';
 import type { UserData } from '@/types';
 import { OAuthProvider } from 'appwrite';
-import { Query } from 'appwrite';
+import { lookupSensitiveUserByEmail, upsertSensitiveUser } from './sensitiveUserDataService';
 
 interface UserAccount {
   $id: string;
@@ -9,7 +9,7 @@ interface UserAccount {
   name?: string;
 }
 
-type UserProfileRow = Partial<UserData> & { $id: string };
+type ExistingUserLookup = { userId: string; sensitiveUserId?: string };
 
 export const authService = {
   // LocalStorage keys
@@ -80,20 +80,12 @@ export const authService = {
   /**
    * Look up an existing user profile by email so we can re-use its ID.
    */
-  async findExistingUserDataByEmail(email: string): Promise<UserProfileRow | null> {
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-    const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
-    try {
-      const matches = await databases.listRows({
-        databaseId: DATABASE_ID,
-        tableId: USERS_TABLE_ID,
-        queries: [Query.equal('email', email), Query.limit(1)]
-      });
-      return (matches.rows?.[0] as UserProfileRow) ?? null;
-    } catch (lookupErr) {
-      console.warn('User profile lookup by email failed:', lookupErr);
-      return null;
+  async findExistingUserDataByEmail(email: string): Promise<ExistingUserLookup | null> {
+    const lookup = await lookupSensitiveUserByEmail(email);
+    if (lookup.exists && lookup.userId) {
+      return { userId: lookup.userId, sensitiveUserId: lookup.sensitiveUserId };
     }
+    return null;
   },
   async createAccount(
     email: string,
@@ -101,7 +93,7 @@ export const authService = {
     firstName: string,
     lastName: string,
     userName: string,
-    existingProfile?: UserProfileRow | null
+    existingUserId?: string | null
   ): Promise<UserAccount> {
     try {
       // First check if user is already logged in
@@ -114,8 +106,8 @@ export const authService = {
       const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
 
       // Try to find an existing UserData row by email
-      const profileByEmail = existingProfile ?? (await this.findExistingUserDataByEmail(email));
-      const userIdForAccount = profileByEmail?.$id || ID.unique();
+      const existingByEmail = existingUserId ? null : await this.findExistingUserDataByEmail(email);
+      const userIdForAccount = existingUserId || existingByEmail?.userId || ID.unique();
       const userAccount: UserAccount = await account.create({
         userId: userIdForAccount,
         email,
@@ -141,12 +133,11 @@ export const authService = {
             userRow = null;
           }
 
-          const resolvedProfile = profileByEmail || userRow;
+          const resolvedProfile = userRow;
           const baseData = {
             firstName: firstName || resolvedProfile?.firstName || '',
             lastName: lastName || resolvedProfile?.lastName || '',
             userName: resolvedProfile?.userName || userName,
-            email,
             teamIds: resolvedProfile?.teamIds ?? [],
             friendIds: resolvedProfile?.friendIds ?? [],
             friendRequestIds: resolvedProfile?.friendRequestIds ?? [],
@@ -164,6 +155,8 @@ export const authService = {
             rowId: userIdForAccount,
             data: baseData
           });
+
+          await upsertSensitiveUser(email, userIdForAccount);
         } catch (profileErr) {
           // Don't block login on profile creation issues; surface for debugging
           console.warn('Failed to ensure user profile row:', profileErr);

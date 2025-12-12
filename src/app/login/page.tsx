@@ -42,7 +42,7 @@ export default function LoginPage() {
 
     try {
       let authUser: Awaited<ReturnType<typeof authService.login>> | null = null;
-      let existingUserData: Awaited<ReturnType<typeof authService.findExistingUserDataByEmail>> = null;
+      let existingUserLookup: Awaited<ReturnType<typeof authService.findExistingUserDataByEmail>> = null;
       if (isLogin) {
         authUser = await authService.login(formData.email, formData.password);
       } else {
@@ -50,14 +50,14 @@ export default function LoginPage() {
         if (!formData.firstName || !formData.lastName || !formData.userName) {
           throw new Error('Please provide first name, last name, and username');
         }
-        existingUserData = await authService.findExistingUserDataByEmail(formData.email);
+        existingUserLookup = await authService.findExistingUserDataByEmail(formData.email);
         authUser = await authService.createAccount(
           formData.email,
           formData.password,
           formData.firstName,
           formData.lastName,
           formData.userName,
-          existingUserData
+          existingUserLookup?.userId
         );
       }
 
@@ -65,7 +65,7 @@ export default function LoginPage() {
         throw new Error('Authentication failed');
       }
 
-      const extendedUser = await userService.getUserById(existingUserData?.$id || authUser.$id);
+      const extendedUser = await userService.getUserById(existingUserLookup?.userId || authUser.$id);
 
       if (!extendedUser) {
         throw new Error('Failed to retrieve user profile data');

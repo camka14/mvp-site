@@ -268,7 +268,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 await createBillForOwner('TEAM', targetTeam.$id);
                 setJoinNotice('Payment plan started for your team. A bill was created—you can manage payments from your Profile.');
                 await loadEventDetails();
-                return;
             }
 
             if (isFreeForUser) {
@@ -353,6 +352,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const mapEmbedSrc = mapQuery
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
+    const canShowScheduleButton = isEventHost && !renderInline;
+    const scheduleButtonLabel = isEventHost ? 'Manage Event' : 'View Schedule';
 
     const content = (
         <div className="space-y-6">
@@ -380,17 +381,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     </ActionIcon>
                 </div>
             )}
-            <Group justify="space-between" align="center">
-                <div>
-                    <Text fw={700} size="lg">
-                        {currentEvent.name}
-                    </Text>
-                    <Text size="sm" c="dimmed">
-                        {currentEvent.location}
-                    </Text>
-                </div>
-            </Group>
-
+            
             <div className="rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm">
                 {/* Optional hero banner */}
                 <div className="relative">
@@ -549,342 +540,354 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             )}
 
                             {/* Event Stats */}
-                                    <Paper withBorder p="md" radius="md">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Event Stats</h3>
-                                        <div className="space-y-2 text-sm">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Max Participants:</span>
-                                                <span className="font-medium">{currentEvent.maxParticipants}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Team Size Limit:</span>
-                                                <span className="font-medium">{currentEvent.teamSizeLimit}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Registration Cutoff:</span>
-                                                <span className="font-medium">{currentEvent.registrationCutoffHours}h before</span>
-                                            </div>
-                                        </div>
-                                    </Paper>
+                            <Paper withBorder p="md" radius="md">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Event Stats</h3>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Max Participants:</span>
+                                        <span className="font-medium">{currentEvent.maxParticipants}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Team Size Limit:</span>
+                                        <span className="font-medium">{currentEvent.teamSizeLimit}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Registration Cutoff:</span>
+                                        <span className="font-medium">{currentEvent.registrationCutoffHours}h before</span>
+                                    </div>
                                 </div>
+                            </Paper>
+                        </div>
 
-                                {/* Sidebar */}
-                                <div className="space-y-6">
-                                    {/* Participants */}
-                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Participants</h3>
+                        {/* Sidebar */}
+                        <div className="space-y-6">
+                            {/* Participants */}
+                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Participants</h3>
 
-                                    {/* Players Section */}
-                                    <div className="mb-4">
-                                        <ParticipantsPreview
-                                            title="Players"
-                                            participants={players}
-                                            totalCount={players.length}
-                                            isLoading={isLoadingEvent}
-                                            onClick={() => setShowPlayersDropdown(true)}
-                                            getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
-                                            emptyMessage="No players registered yet"
-                                        />
+                            {/* Players Section */}
+                            <div className="mb-4">
+                                <ParticipantsPreview
+                                    title="Players"
+                                    participants={players}
+                                    totalCount={players.length}
+                                    isLoading={isLoadingEvent}
+                                    onClick={() => setShowPlayersDropdown(true)}
+                                    getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
+                                    emptyMessage="No players registered yet"
+                                />
+                            </div>
+
+                            {/* Teams Section */}
+                            {event.teamSignup && (
+                                <div className="mb-4">
+                                    <ParticipantsPreview
+                                        title="Teams"
+                                        participants={teams}
+                                        totalCount={teams.length}
+                                        isLoading={isLoadingEvent}
+                                        onClick={() => setShowTeamsDropdown(true)}
+                                        getAvatarUrl={(participant) => getTeamAvatarUrl(participant as Team, 32)}
+                                        emptyMessage="No teams registered yet"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Free Agents Section */}
+                            <div className="mb-4">
+                                <ParticipantsPreview
+                                    title="Free Agents"
+                                    participants={freeAgents}
+                                    totalCount={currentEvent.freeAgentIds?.length ?? 0}
+                                    isLoading={isLoadingEvent}
+                                    onClick={() => setShowFreeAgentsDropdown(true)}
+                                    getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
+                                    emptyMessage="No free agents yet"
+                                />
+                            </div>
+
+                            {/* Join Options (includes total participants) */}
+                            <Paper withBorder p="md" radius="md">
+                                {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
+                                {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
+
+                                {!user ? (
+                                    <div style={{ textAlign: 'center' }}>
+                                        <Button fullWidth color="blue" onClick={() => { window.location.href = '/login'; }}>
+                                            Sign in to join
+                                        </Button>
                                     </div>
-
-                                    {/* Teams Section */}
-                                    {event.teamSignup && (
-                                        <div className="mb-4">
-                                            <ParticipantsPreview
-                                                title="Teams"
-                                                participants={teams}
-                                                totalCount={teams.length}
-                                                isLoading={isLoadingEvent}
-                                                onClick={() => setShowTeamsDropdown(true)}
-                                                getAvatarUrl={(participant) => getTeamAvatarUrl(participant as Team, 32)}
-                                                emptyMessage="No teams registered yet"
-                                            />
+                                ) : isUserRegistered ? (
+                                    <>
+                                        <Text size="sm" c="green" fw={500} ta="center">
+                                            ✓ You're registered for this event
+                                        </Text>
+                                        <div style={{ textAlign: 'center', marginTop: 8 }}>
+                                            <Text size="sm" c="dimmed">
+                                                {totalParticipants} / {currentEvent.maxParticipants} total participants
+                                            </Text>
                                         </div>
-                                    )}
-
-                                    {/* Free Agents Section */}
-                                    <div className="mb-4">
-                                        <ParticipantsPreview
-                                            title="Free Agents"
-                                            participants={freeAgents}
-                                            totalCount={currentEvent.freeAgentIds?.length ?? 0}
-                                            isLoading={isLoadingEvent}
-                                            onClick={() => setShowFreeAgentsDropdown(true)}
-                                            getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
-                                            emptyMessage="No free agents yet"
-                                        />
-                                    </div>
-
-                                    {/* Join Options (includes total participants) */}
-                                    <Paper withBorder p="md" radius="md">
-                                        {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
-                                        {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
-
-                                        {!user ? (
-                                            <div style={{ textAlign: 'center' }}>
-                                                <Button fullWidth color="blue" onClick={() => { window.location.href = '/login'; }}>
-                                                    Sign in to join
+                                        {canShowScheduleButton && (
+                                            <div className="mt-4 space-y-2">
+                                                <Button
+                                                    fullWidth
+                                                    variant="light"
+                                                    onClick={() => handleViewSchedule()}
+                                                >
+                                                    {scheduleButtonLabel}
                                                 </Button>
-                                            </div>
-                                        ) : isUserRegistered ? (
-                                            <>
-                                                <Text size="sm" c="green" fw={500} ta="center">
-                                                    ✓ You're registered for this event
-                                                </Text>
-                                                <div style={{ textAlign: 'center', marginTop: 8 }}>
-                                                    <Text size="sm" c="dimmed">
-                                                        {totalParticipants} / {currentEvent.maxParticipants} total participants
-                                                    </Text>
-                                                </div>
-                                                {!renderInline && (currentEvent.eventType === 'LEAGUE' || currentEvent.eventType === 'TOURNAMENT') && (
-                                                    <div className="mt-4 space-y-2">
-                                                        <Button
-                                                            fullWidth
-                                                            variant="light"
-                                                            onClick={() => handleViewSchedule()}
-                                                        >
-                                                            View Schedule
-                                                        </Button>
-                                                        {currentEvent.eventType === 'TOURNAMENT' && (
-                                                            <Button
-                                                                fullWidth
-                                                                color="green"
-                                                                onClick={handleBracketClick}
-                                                            >
-                                                                View Tournament Bracket
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                {!isTeamSignup ? (
-                                                    <div>
-                                                        {totalParticipants >= currentEvent.maxParticipants ? (
-                                                            <Button fullWidth color="orange"
-                                                                onClick={async () => {
-                                                                    if (!user) return;
-                                                                    setJoining(true);
-                                                                    setJoinError(null);
-                                                                    try {
-                                                                        await eventService.addToWaitlist(currentEvent.$id, user.$id);
-                                                                        await loadEventDetails();
-                                                                    } catch (e) {
-                                                                        setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');
-                                                                    } finally {
-                                                                        setJoining(false);
-                                                                    }
-                                                                }}
-                                                                disabled={joining}
-                                                            >
-                                                                {joining ? 'Adding…' : 'Join Waitlist'}
-                                                            </Button>
-                                                        ) : (
-                                                            <Button fullWidth color="blue"
-                                                                onClick={handleJoinEvent}
-                                                                disabled={joining || confirmingPurchase}
-                                                            >
-                                                                {confirmingPurchase
-                                                                    ? 'Confirming purchase…'
-                                                                    : joining
-                                                                        ? 'Joining…'
-                                                                        : currentEvent.price > 0
-                                                                            ? `Join Event - ${formatPrice(currentEvent.price)}`
-                                                                            : 'Join Event'}
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-6">
-                                                        <Button fullWidth onClick={() => setShowTeamJoinOptions(prev => !prev)}>
-                                                            {showTeamJoinOptions ? 'Hide Team Options' : 'Join as Team'}
-                                                        </Button>
-
-                                                        {showTeamJoinOptions && (
-                                                            <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                                {isLoadingTeams ? (
-                                                                    <div className="text-sm text-gray-600">Loading your teams...</div>
-                                                                ) : userTeams.length > 0 ? (
-                                                                    <div className="space-y-4">
-                                                                        <div>
-                                                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                                                Select your team
-                                                                            </label>
-                                                                            <MantineSelect
-                                                                                placeholder="Choose a team"
-                                                                                data={userTeams.map(t => ({
-                                                                                    value: t.$id,
-                                                                                    label: `${t.name || 'Team'} (${typeof t.division === 'string' ? t.division : (t.division as any)?.name || 'Division'})`
-                                                                                }))}
-                                                                                value={selectedTeamId}
-                                                                                onChange={(value) => setSelectedTeamId(value || '')}
-                                                                                searchable
-                                                                                comboboxProps={sharedComboboxProps}
-                                                                            />
-                                                                        </div>
-
-                                                                        {/* Manage Teams Button Section - Matching Hide/Show button height */}
-                                                                        <div className="flex justify-center">
-                                                                            <Button variant="default"
-                                                                                onClick={() => {
-                                                                                    router.push(`/teams?event=${currentEvent.$id}`);
-                                                                                    onClose();
-                                                                                }}
-                                                                            >
-                                                                                Manage Teams
-                                                                            </Button>
-                                                                        </div>
-
-                                                                        {/* Join/Waitlist Button Section - Matching Hide/Show button height */}
-                                                                        <div className="flex justify-center pt-2">
-                                                                            {totalParticipants >= currentEvent.maxParticipants ? (
-                                                                                <Button
-                                                                                    onClick={async () => {
-                                                                                        if (!selectedTeamId) return;
-                                                                                        setJoining(true);
-                                                                                        setJoinError(null);
-                                                                                        try {
-                                                                                            await eventService.addToWaitlist(currentEvent.$id, selectedTeamId);
-                                                                                            await loadEventDetails();
-                                                                                        } catch (e: any) {
-                                                                                            setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');
-                                                                                        } finally {
-                                                                                            setJoining(false);
-                                                                                        }
-                                                                                    }}
-                                                                                    disabled={joining || !selectedTeamId}
-                                                                                    color="orange"
-                                                                                >
-                                                                                    {joining ? 'Adding...' : 'Join Waitlist'}
-                                                                                </Button>
-                                                                            ) : (
-                                                                                <Button
-                                                                                    onClick={handleJoinAsTeam}
-                                                                                    disabled={joining || !selectedTeamId || confirmingPurchase}
-                                                                                    color="green"
-                                                                                >
-                                                                                    {confirmingPurchase
-                                                                                        ? 'Confirming purchase...'
-                                                                                        : joining
-                                                                                            ? 'Joining...'
-                                                                                            : (!isFreeForUser && currentEvent.price > 0)
-                                                                                                ? `Join for ${formatPrice(currentEvent.price)}`
-                                                                                                : 'Join Event'}
-                                                                                </Button>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="text-center space-y-3">
-                                                                        <p className="text-sm text-gray-600">
-                                                                            You have no teams for {currentEvent.sport?.name}.
-                                                                        </p>
-                                                                        <Button variant="default"
-                                                                            onClick={() => {
-                                                                                router.push(`/teams?event=${currentEvent.$id}`);
-                                                                                onClose();
-                                                                            }}
-                                                                        >
-                                                                            Create Team
-                                                                        </Button>
-                                                                        {/* Total participants below actions */}
-                                                                        <div style={{ textAlign: 'center' }}>
-                                                                            <Text size="sm" c="dimmed">
-                                                                                {totalParticipants} / {currentEvent.maxParticipants} total participants
-                                                                            </Text>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </Paper>
-
-                                                        )}
-
-
-
-                                                        {isUserFreeAgent ? (
-                                                            <div className="space-y-2">
-                                                                <div className="w-full py-2 px-4 rounded-lg bg-purple-50 text-purple-700 text-center font-medium">
-                                                                    You are listed as a free agent
-                                                                </div>
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        if (!user) return;
-                                                                        setJoining(true);
-                                                                        setJoinError(null);
-                                                                        try {
-                                                                            await eventService.removeFreeAgent(currentEvent.$id, user.$id);
-                                                                            await loadEventDetails();
-                                                                        } catch (e) {
-                                                                            setJoinError(e instanceof Error ? e.message : 'Failed to leave free agents');
-                                                                        } finally {
-                                                                            setJoining(false);
-                                                                        }
-                                                                    }}
-                                                                    disabled={joining}
-                                                                    className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${joining ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
-                                                                >
-                                                                    {joining ? 'Updating…' : 'Leave Free Agent List'}
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <button
-                                                                onClick={async () => {
-                                                                    if (!user) return;
-                                                                    setJoining(true);
-                                                                    setJoinError(null);
-                                                                    try {
-                                                                        // Free Agent listing is free; no payment
-                                                                        await eventService.addFreeAgent(currentEvent.$id, user.$id);
-                                                                        await loadEventDetails();
-                                                                    } catch (e) {
-                                                                        setJoinError(e instanceof Error ? e.message : 'Failed to join as free agent');
-                                                                    } finally {
-                                                                        setJoining(false);
-                                                                    }
-                                                                }}
-                                                                disabled={joining}
-                                                                className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${joining ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
-                                                            >
-                                                                {joining ? 'Adding…' : 'Join as Free Agent (Free)'}
-                                                            </button>
-                                                        )}
-
-                                                        {/* View Schedule / Bracket Buttons */}
-                                                        {!renderInline && (currentEvent.eventType === 'LEAGUE' || currentEvent.eventType === 'TOURNAMENT') && (
-                                                            <Button
-                                                                fullWidth
-                                                                variant="light"
-                                                                mt="sm"
-                                                                onClick={() => handleViewSchedule()}
-                                                            >
-                                                                View Schedule
-                                                            </Button>
-                                                        )}
-
-                                                        {!renderInline && currentEvent.eventType === 'TOURNAMENT' &&
-                                                            <button
-                                                                onClick={handleBracketClick}
-                                                                className="w-full mt-2 py-2 px-4 rounded-lg bg-green-600 text-white hover:bg-green-700"
-                                                            >
-                                                                View Tournament Bracket
-                                                            </button>
-                                                        }
-                                                    </div>
+                                                {currentEvent.eventType === 'TOURNAMENT' && (
+                                                    <Button
+                                                        fullWidth
+                                                        color="green"
+                                                        onClick={handleBracketClick}
+                                                    >
+                                                        View Tournament Bracket
+                                                    </Button>
                                                 )}
                                             </div>
                                         )}
-                                    </Paper>
+                                    </>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {!isTeamSignup ? (
+                                            <div>
+                                                {totalParticipants >= currentEvent.maxParticipants ? (
+                                                    <Button fullWidth color="orange"
+                                                        onClick={async () => {
+                                                            if (!user) return;
+                                                            setJoining(true);
+                                                            setJoinError(null);
+                                                            try {
+                                                                await eventService.addToWaitlist(currentEvent.$id, user.$id);
+                                                                await loadEventDetails();
+                                                            } catch (e) {
+                                                                setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');
+                                                            } finally {
+                                                                setJoining(false);
+                                                            }
+                                                        }}
+                                                        disabled={joining}
+                                                    >
+                                                        {joining ? 'Adding…' : 'Join Waitlist'}
+                                                    </Button>
+                                                ) : (
+                                                    <Button fullWidth color="blue"
+                                                        onClick={handleJoinEvent}
+                                                        disabled={joining || confirmingPurchase}
+                                                    >
+                                                        {confirmingPurchase
+                                                            ? 'Confirming purchase…'
+                                                            : joining
+                                                                ? 'Joining…'
+                                                                : currentEvent.price > 0
+                                                                    ? `Join Event - ${formatPrice(currentEvent.price)}`
+                                                                    : 'Join Event'}
+                                                    </Button>
+                                                )}
 
-                                    {/* Refund Options */}
-                                    <RefundSection
-                                        event={currentEvent}
-                                        userRegistered={!!isUserRegistered}
-                                        onRefundSuccess={loadEventDetails}
-                                    />
-                                </div>
-                            </div>
+                                                {/* View Schedule / Bracket Buttons */}
+                                                {canShowScheduleButton && (
+                                                    <Button
+                                                        fullWidth
+                                                        variant="light"
+                                                        mt="sm"
+                                                        onClick={() => handleViewSchedule()}
+                                                    >
+                                                        {scheduleButtonLabel}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-6">
+                                                <Button fullWidth onClick={() => setShowTeamJoinOptions(prev => !prev)}>
+                                                    {showTeamJoinOptions ? 'Hide Team Options' : 'Join as Team'}
+                                                </Button>
+
+                                                {showTeamJoinOptions && (
+                                                    <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                        {isLoadingTeams ? (
+                                                            <div className="text-sm text-gray-600">Loading your teams...</div>
+                                                        ) : userTeams.length > 0 ? (
+                                                            <div className="space-y-4">
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                                        Select your team
+                                                                    </label>
+                                                                    <MantineSelect
+                                                                        placeholder="Choose a team"
+                                                                        data={userTeams.map(t => ({
+                                                                            value: t.$id,
+                                                                            label: `${t.name || 'Team'} (${typeof t.division === 'string' ? t.division : (t.division as any)?.name || 'Division'})`
+                                                                        }))}
+                                                                        value={selectedTeamId}
+                                                                        onChange={(value) => setSelectedTeamId(value || '')}
+                                                                        searchable
+                                                                        comboboxProps={sharedComboboxProps}
+                                                                    />
+                                                                </div>
+
+                                                                {/* Manage Teams Button Section - Matching Hide/Show button height */}
+                                                                <div className="flex justify-center">
+                                                                    <Button variant="default"
+                                                                        onClick={() => {
+                                                                            router.push(`/teams?event=${currentEvent.$id}`);
+                                                                            onClose();
+                                                                        }}
+                                                                    >
+                                                                        Manage Teams
+                                                                    </Button>
+                                                                </div>
+
+                                                                {/* Join/Waitlist Button Section - Matching Hide/Show button height */}
+                                                                <div className="flex justify-center pt-2">
+                                                                    {totalParticipants >= currentEvent.maxParticipants ? (
+                                                                        <Button
+                                                                            onClick={async () => {
+                                                                                if (!selectedTeamId) return;
+                                                                                setJoining(true);
+                                                                                setJoinError(null);
+                                                                                try {
+                                                                                    await eventService.addToWaitlist(currentEvent.$id, selectedTeamId);
+                                                                                    await loadEventDetails();
+                                                                                } catch (e: any) {
+                                                                                    setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');
+                                                                                } finally {
+                                                                                    setJoining(false);
+                                                                                }
+                                                                            }}
+                                                                            disabled={joining || !selectedTeamId}
+                                                                            color="orange"
+                                                                        >
+                                                                            {joining ? 'Adding...' : 'Join Waitlist'}
+                                                                        </Button>
+                                                                    ) : (
+                                                                        <Button
+                                                                            onClick={handleJoinAsTeam}
+                                                                            disabled={joining || !selectedTeamId || confirmingPurchase}
+                                                                            color="green"
+                                                                        >
+                                                                            {confirmingPurchase
+                                                                                ? 'Confirming purchase...'
+                                                                                : joining
+                                                                                    ? 'Joining...'
+                                                                                    : (!isFreeForUser && currentEvent.price > 0)
+                                                                                        ? `Join for ${formatPrice(currentEvent.price)}`
+                                                                                        : 'Join Event'}
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-center space-y-3">
+                                                                <p className="text-sm text-gray-600">
+                                                                    You have no teams for {currentEvent.sport?.name}.
+                                                                </p>
+                                                                <Button variant="default"
+                                                                    onClick={() => {
+                                                                        router.push(`/teams?event=${currentEvent.$id}`);
+                                                                        onClose();
+                                                                    }}
+                                                                >
+                                                                    Create Team
+                                                                </Button>
+                                                                {/* Total participants below actions */}
+                                                                <div style={{ textAlign: 'center' }}>
+                                                                    <Text size="sm" c="dimmed">
+                                                                        {totalParticipants} / {currentEvent.maxParticipants} total participants
+                                                                    </Text>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </Paper>
+
+                                                )}
+
+
+
+                                                {isUserFreeAgent ? (
+                                                    <div className="space-y-2">
+                                                        <div className="w-full py-2 px-4 rounded-lg bg-purple-50 text-purple-700 text-center font-medium">
+                                                            You are listed as a free agent
+                                                        </div>
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (!user) return;
+                                                                setJoining(true);
+                                                                setJoinError(null);
+                                                                try {
+                                                                    await eventService.removeFreeAgent(currentEvent.$id, user.$id);
+                                                                    await loadEventDetails();
+                                                                } catch (e) {
+                                                                    setJoinError(e instanceof Error ? e.message : 'Failed to leave free agents');
+                                                                } finally {
+                                                                    setJoining(false);
+                                                                }
+                                                            }}
+                                                            disabled={joining}
+                                                            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${joining ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                                                        >
+                                                            {joining ? 'Updating…' : 'Leave Free Agent List'}
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (!user) return;
+                                                            setJoining(true);
+                                                            setJoinError(null);
+                                                            try {
+                                                                // Free Agent listing is free; no payment
+                                                                await eventService.addFreeAgent(currentEvent.$id, user.$id);
+                                                                await loadEventDetails();
+                                                            } catch (e) {
+                                                                setJoinError(e instanceof Error ? e.message : 'Failed to join as free agent');
+                                                            } finally {
+                                                                setJoining(false);
+                                                            }
+                                                        }}
+                                                        disabled={joining}
+                                                        className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${joining ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                                                    >
+                                                        {joining ? 'Adding…' : 'Join as Free Agent (Free)'}
+                                                    </button>
+                                                )}
+
+                                                {/* View Schedule / Bracket Buttons */}
+                                                {canShowScheduleButton && (
+                                                    <Button
+                                                        fullWidth
+                                                        variant="light"
+                                                        mt="sm"
+                                                        onClick={() => handleViewSchedule()}
+                                                    >
+                                                        {scheduleButtonLabel}
+                                                    </Button>
+                                                )}
+
+                                                {!renderInline && currentEvent.eventType === 'TOURNAMENT' &&
+                                                    <button
+                                                        onClick={handleBracketClick}
+                                                        className="w-full mt-2 py-2 px-4 rounded-lg bg-green-600 text-white hover:bg-green-700"
+                                                    >
+                                                        View Tournament Bracket
+                                                    </button>
+                                                }
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </Paper>
+
+                            {/* Refund Options */}
+                            <RefundSection
+                                event={currentEvent}
+                                userRegistered={!!isUserRegistered}
+                                onRefundSuccess={loadEventDetails}
+                            />
                         </div>
                     </div>
+                </div>
+            </div>
         </div>
     );
 
