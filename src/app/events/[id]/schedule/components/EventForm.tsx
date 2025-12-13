@@ -8,7 +8,7 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, PaymentIntent } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -22,6 +22,7 @@ import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from 
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { ID } from '@/app/appwrite';
 import UserCard from '@/components/ui/UserCard';
+import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -39,7 +40,17 @@ interface EventFormProps {
     defaultLocation?: DefaultLocation;
     isCreateMode?: boolean;
     isPreviewMode?: boolean;
+    rentalPurchase?: RentalPurchaseContext;
 }
+
+type RentalPurchaseContext = {
+    start: string;
+    end: string;
+    fieldId?: string;
+    organization?: Organization | null;
+    organizationEmail?: string | null;
+    priceCents?: number;
+};
 
 type EventType = Event['eventType'];
 
@@ -649,6 +660,7 @@ const EventForm: React.FC<EventFormProps> = ({
     defaultLocation,
     isCreateMode = false,
     isPreviewMode = false,
+    rentalPurchase,
 }) => {
     const router = useRouter();
     const open = isOpen ?? true;
@@ -676,6 +688,8 @@ const EventForm: React.FC<EventFormProps> = ({
     const [hasStripeAccount, setHasStripeAccount] = useState(
         Boolean(organization?.hasStripeAccount || currentUser?.hasStripeAccount),
     );
+    const [rentalPaymentData, setRentalPaymentData] = useState<PaymentIntent | null>(null);
+    const [showRentalPayment, setShowRentalPayment] = useState(false);
 
     const [hydratedEditingEvent, setHydratedEditingEvent] = useState<Event | null>(null);
     const activeEditingEvent = hydratedEditingEvent ?? incomingEvent ?? null;
@@ -1101,6 +1115,36 @@ const EventForm: React.FC<EventFormProps> = ({
         },
         [setValue],
     );
+
+    const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
+        if (!rentalPurchase) {
+            return null;
+        }
+        const startDate = parseLocalDateTime(rentalPurchase.start);
+        const endDate = parseLocalDateTime(rentalPurchase.end);
+        if (!startDate || !endDate) {
+            return null;
+        }
+        const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+        const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+        const scheduledFieldId =
+            rentalPurchase.fieldId
+            || immutableFields[0]?.$id
+            || fields?.[0]?.$id;
+        const dayOfWeek = ((startDate.getDay() + 7) % 7) as TimeSlot['dayOfWeek'];
+        const price = Number.isFinite(rentalPurchase.priceCents) ? Number(rentalPurchase.priceCents) : undefined;
+        return {
+            $id: ID.unique(),
+            dayOfWeek,
+            startTimeMinutes: startMinutes,
+            endTimeMinutes: endMinutes,
+            startDate: formatLocalDateTime(startDate),
+            endDate: formatLocalDateTime(endDate),
+            repeating: false,
+            scheduledFieldId,
+            price,
+        };
+    }, [fields, immutableFields, rentalPurchase]);
 
     const syncInstallmentCount = useCallback(
         (count: number) => {
@@ -2321,6 +2365,22 @@ const EventForm: React.FC<EventFormProps> = ({
             setSubmitting(true);
             setSubmitError(null);
             try {
+                // Create payment intent for rental purchase before creating the event.
+                if (rentalPurchaseTimeSlot && currentUser) {
+                    const paymentIntent = await paymentService.createPaymentIntent(
+                        currentUser,
+                        draft as Event,
+                        undefined,
+                        rentalPurchaseTimeSlot,
+                        rentalPurchase?.organization ?? organization ?? undefined,
+                        rentalPurchase?.organizationEmail ?? undefined,
+                    );
+                    setRentalPaymentData(paymentIntent);
+                    setShowRentalPayment(true);
+                    setSubmitting(false);
+                    return;
+                }
+
                 const draftToSave: Event = {
                     ...(draft as Event),
                     state: 'UNPUBLISHED',
@@ -2355,6 +2415,49 @@ const EventForm: React.FC<EventFormProps> = ({
     const allowImageEdit = !isImmutableField('imageId');
     const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates');
 
+    const handleRentalPaymentSuccess = useCallback(async () => {
+        try {
+            const draftToSave = buildDraftEvent();
+            if (!draftToSave) {
+                setSubmitError('Missing required information to create event after payment.');
+                return;
+            }
+            const created = await eventService.createEvent({
+                ...(draftToSave as Event),
+                state: 'UNPUBLISHED',
+            });
+            if (created?.$id) {
+                router.replace(`/events/${created.$id}/schedule`);
+            } else {
+                setSubmitError('Payment succeeded but event creation failed. Please try again.');
+            }
+        } catch (error) {
+            console.error('Failed to finalize event after payment:', error);
+            setSubmitError('Payment succeeded but event creation failed. Please try again.');
+        } finally {
+            setSubmitting(false);
+            setShowRentalPayment(false);
+            setRentalPaymentData(null);
+        }
+    }, [buildDraftEvent, router]);
+
+    const rentalPaymentEventSummary: PaymentEventSummary = useMemo(
+        () => ({
+            name: eventData.name || 'Rental Event',
+            location: eventData.location || '',
+            eventType: eventData.eventType,
+            price: rentalPurchase?.priceCents ?? 0,
+            imageId: eventData.imageId,
+        }),
+        [eventData.imageId, eventData.location, eventData.name, eventData.eventType, rentalPurchase?.priceCents],
+    );
+
+    const handleRentalPaymentClose = () => {
+        setShowRentalPayment(false);
+        setRentalPaymentData(null);
+        setSubmitting(false);
+    };
+
     const sheetContent = (
         <div className="space-y-6">
             <div className="p-2 space-y-6">
@@ -2377,11 +2480,11 @@ const EventForm: React.FC<EventFormProps> = ({
                         {errors.imageId && (
                             <p className="text-red-600 text-sm mt-1">{errors.imageId.message as string}</p>
                         )}
-                    </div>
+            </div>
 
                     <form id={formId} onSubmit={onSubmit} className="space-y-8">
-                        {submitError && (
-                            <Alert color="red" radius="md">
+                {submitError && (
+                    <Alert color="red" radius="md">
                                 {submitError}
                             </Alert>
                         )}
@@ -3079,9 +3182,18 @@ const EventForm: React.FC<EventFormProps> = ({
     }
 
     return (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 pb-8">
-            {sheetContent}
-        </div>
+        <>
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 pb-8">
+                {sheetContent}
+            </div>
+            <PaymentModal
+                isOpen={showRentalPayment && Boolean(rentalPaymentData)}
+                onClose={handleRentalPaymentClose}
+                event={rentalPaymentEventSummary}
+                paymentData={rentalPaymentData}
+                onPaymentSuccess={handleRentalPaymentSuccess}
+            />
+        </>
     );
 };
 

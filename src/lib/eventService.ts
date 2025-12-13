@@ -506,7 +506,6 @@ class EventService {
 
         const queryVariants: string[][] = [
             [Query.contains('fieldIds', [fieldId]), ...baseQueries],
-            [Query.equal('fieldId', fieldId), ...baseQueries],
         ];
 
         for (const queries of queryVariants) {
