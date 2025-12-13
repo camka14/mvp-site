@@ -26,7 +26,6 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
-import RentalSelectionModal from '@/app/discover/components/RentalSelectionModal';
 import EventDetailSheet from './components/EventDetailSheet';
 import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
@@ -100,7 +99,6 @@ function DiscoverPageContent() {
   const [rentalsError, setRentalsError] = useState<string | null>(null);
   const [selectedFieldTypes, setSelectedFieldTypes] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
-  const [rentalModalData, setRentalModalData] = useState<{ organization: Organization; listings: RentalListing[] } | null>(null);
 
   /**
    * Helpers
@@ -299,6 +297,13 @@ function DiscoverPageContent() {
     router.push(`/events/${newId}/schedule?${params.toString()}`);
   }, [router, user]);
 
+  const handleSelectRentalOrganization = useCallback(
+    (organization: Organization) => {
+      router.push(`/discover/rentals/${organization.$id}`);
+    },
+    [router],
+  );
+
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!sentinelRef.current) return;
@@ -491,7 +496,7 @@ function DiscoverPageContent() {
               setSelectedFieldTypes={setSelectedFieldTypes}
               timeRange={timeRange}
               setTimeRange={setTimeRange}
-              onSelectOrganization={(org, listings) => setRentalModalData({ organization: org, listings })}
+              onSelectOrganization={(org) => handleSelectRentalOrganization(org)}
             />
           </Tabs.Panel>
         </Tabs>
@@ -506,13 +511,6 @@ function DiscoverPageContent() {
           }}
         />
       )}
-
-      <RentalSelectionModal
-        opened={Boolean(rentalModalData)}
-        onClose={() => setRentalModalData(null)}
-        organization={rentalModalData?.organization ?? null}
-        listings={rentalModalData?.listings ?? []}
-      />
     </>
   );
 }

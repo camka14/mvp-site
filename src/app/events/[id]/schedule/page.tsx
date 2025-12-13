@@ -122,6 +122,7 @@ function EventScheduleContent() {
   const rentalLocationParam = searchParams?.get('rentalLocation') || undefined;
   const rentalLatParam = searchParams?.get('rentalLat') || undefined;
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
+  const rentalPriceParam = searchParams?.get('rentalPriceCents') || undefined;
 
   const [event, setEvent] = useState<Event | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -301,6 +302,26 @@ function EventScheduleContent() {
     rentalLocationParam,
     rentalStartParam,
   ]);
+
+  const rentalPurchaseContext = useMemo(() => {
+    if (!isCreateMode || !rentalStartParam || !rentalEndParam) {
+      return undefined;
+    }
+    const normalizedStart = formatLocalDateTime(rentalStartParam);
+    const normalizedEnd = formatLocalDateTime(rentalEndParam);
+    if (!normalizedStart || !normalizedEnd) {
+      return undefined;
+    }
+    const priceCents = rentalPriceParam ? Number(rentalPriceParam) : undefined;
+    const normalizedPrice = Number.isFinite(priceCents) ? Number(priceCents) : undefined;
+    return {
+      start: normalizedStart,
+      end: normalizedEnd,
+      fieldId: rentalFieldIdParam ?? undefined,
+      organization: organizationForCreate,
+      priceCents: normalizedPrice,
+    };
+  }, [isCreateMode, organizationForCreate, rentalEndParam, rentalFieldIdParam, rentalPriceParam, rentalStartParam]);
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
@@ -1419,6 +1440,7 @@ function EventScheduleContent() {
                 organization={organizationForCreate}
                 defaultLocation={createLocationDefaults}
                 immutableDefaults={rentalImmutableDefaults}
+                rentalPurchase={rentalPurchaseContext}
                 event={changesEvent}
                 formId={createFormId}
                 isCreateMode
@@ -1532,6 +1554,7 @@ function EventScheduleContent() {
                   organization={activeOrganization}
                   defaultLocation={activeLocationDefaults}
                   immutableDefaults={isCreateMode ? rentalImmutableDefaults : undefined}
+                  rentalPurchase={isCreateMode ? rentalPurchaseContext : undefined}
                   onDraftChange={handleEventDraftChange}
                   onPreviewEvent={handlePreviewEventUpdate}
                   isPreviewMode={isPreview}
