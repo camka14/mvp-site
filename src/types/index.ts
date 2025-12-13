@@ -428,6 +428,18 @@ export interface Organization {
   referees?: UserData[];
 }
 
+export interface RefundRequest {
+  $id: string;
+  eventId: string;
+  userId: string;
+  hostId?: string;
+  organizationId?: string;
+  reason: string;
+  status?: 'WAITING' | 'APPROVED' | 'REJECTED';
+  $createdAt?: string;
+  $updatedAt?: string;
+}
+
 export enum Sports {
   Volleyball = 'Volleyball',
   Soccer = 'Soccer',
