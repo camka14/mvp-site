@@ -87,6 +87,12 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
     }
   };
 
+  const canTakeAction = (refund: RefundRequest) => {
+    if (organizationId) return true;
+    if (hostId && refund.hostId && refund.hostId === hostId) return true;
+    return false;
+  };
+
   return (
     <Paper withBorder radius="md" p="md">
       <Group justify="space-between" mb="sm">
@@ -183,28 +189,34 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
                   </Badge>
                 </Table.Td>
                 <Table.Td>
-                  <Group gap="xs">
-                    <Button
-                      size="xs"
-                      color="green"
-                      variant="light"
-                      disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
-                      loading={processingId === refund.$id}
-                      onClick={() => handleStatusChange(refund.$id, 'APPROVED')}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      size="xs"
-                      color="red"
-                      variant="light"
-                      disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
-                      loading={processingId === refund.$id}
-                      onClick={() => handleStatusChange(refund.$id, 'REJECTED')}
-                    >
-                      Deny
-                    </Button>
-                  </Group>
+                  {canTakeAction(refund) ? (
+                    <Group gap="xs">
+                      <Button
+                        size="xs"
+                        color="green"
+                        variant="light"
+                        disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
+                        loading={processingId === refund.$id}
+                        onClick={() => handleStatusChange(refund.$id, 'APPROVED')}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="xs"
+                        color="red"
+                        variant="light"
+                        disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
+                        loading={processingId === refund.$id}
+                        onClick={() => handleStatusChange(refund.$id, 'REJECTED')}
+                      >
+                        Deny
+                      </Button>
+                    </Group>
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      —
+                    </Text>
+                  )}
                 </Table.Td>
               </Table.Tr>
             ))}

@@ -360,7 +360,7 @@ export default function ProfilePage() {
                                 </Button>
                             </Paper>
 
-                            <RefundRequestsList userId={user.$id} />
+                            <RefundRequestsList userId={user.$id} hostId={user.$id} />
 
                             {/* Email Section */}
                             <Paper withBorder radius="md" p="md">
