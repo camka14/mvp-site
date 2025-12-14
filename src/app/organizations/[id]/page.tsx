@@ -74,7 +74,11 @@ function OrganizationDetailContent() {
   const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
   const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
   const [refereeError, setRefereeError] = useState<string | null>(null);
-  const [invitingReferee, setInvitingReferee] = useState(false);
+  const [refereeInvites, setRefereeInvites] = useState<{ firstName: string; lastName: string; email: string }[]>([
+    { firstName: '', lastName: '', email: '' },
+  ]);
+  const [refereeInviteError, setRefereeInviteError] = useState<string | null>(null);
+  const [invitingReferees, setInvitingReferees] = useState(false);
   const canCreateRentalSlots = Boolean(org?.location && org.location.trim().length > 0);
   const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
   const [connectingStripe, setConnectingStripe] = useState(false);
@@ -134,6 +138,23 @@ function OrganizationDetailContent() {
 
   const currentReferees = useMemo(() => org?.referees ?? [], [org?.referees]);
 
+  const loadOrg = useCallback(async (orgId: string, options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setLoading(true);
+    }
+    try {
+      const data = await organizationService.getOrganizationById(orgId, true);
+      if (data) setOrg(data);
+    } catch (e) {
+      console.error('Failed to load organization', e);
+    } finally {
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!authLoading) {
       if (!isAuthenticated || !user) {
@@ -142,19 +163,7 @@ function OrganizationDetailContent() {
       }
       if (id) loadOrg(id);
     }
-  }, [authLoading, isAuthenticated, user, router, id]);
-
-  const loadOrg = async (orgId: string) => {
-    setLoading(true);
-    try {
-      const data = await organizationService.getOrganizationById(orgId, true);
-      if (data) setOrg(data);
-    } catch (e) {
-      console.error('Failed to load organization', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [authLoading, isAuthenticated, user, router, id, loadOrg]);
 
   useEffect(() => {
     if (!org || !user) return;
@@ -300,60 +309,45 @@ function OrganizationDetailContent() {
     [org, isOwner],
   );
 
-  const handleInviteReferee = useCallback(async () => {
+  const handleInviteRefereeEmails = useCallback(async () => {
     if (!org || !isOwner || !user) return;
-    const email = refereeSearch.trim();
-    if (!EMAIL_REGEX.test(email)) {
-      setRefereeError('Enter a valid email to invite a referee.');
-      return;
-    }
-    try {
-      setInvitingReferee(true);
-      setRefereeError(null);
-      const result = await userService.inviteUsersByEmail(user.$id, [
-        { email, type: 'referee', organizationId: org.$id },
-      ]);
-      if (result.failed && result.failed.length) {
-        setRefereeError('Failed to send referee invite.');
-      } else {
-        notifications.show({ color: 'green', message: 'Referee invite sent.' });
-        const invitedUserId = [...(result.sent || []), ...(result.not_sent || [])].find(
-          (entry: any) => entry.userId
-        )?.userId;
-        if (invitedUserId) {
-          const invitedUser = await userService.getUserById(invitedUserId);
-          const refUser = invitedUser || ({
-            $id: invitedUserId,
-            firstName: email,
-            lastName: '',
-            userName: email,
-            teamIds: [],
-            friendIds: [],
-            friendRequestIds: [],
-            friendRequestSentIds: [],
-            followingIds: [],
-            uploadedImages: [],
-            fullName: email,
-            avatarUrl: '',
-          } as UserData);
-          setOrg((prev) => {
-            if (!prev) return prev;
-            const nextRefIds = Array.from(new Set([...(prev.refIds ?? []), invitedUserId]));
-            const nextRefs = (prev.referees ?? []).some((ref) => ref.$id === invitedUserId)
-              ? prev.referees
-              : [...(prev.referees ?? []), refUser];
-            return { ...prev, refIds: nextRefIds, referees: nextRefs };
-          });
-        }
-        setRefereeSearch('');
-        setRefereeResults([]);
+
+    const sanitized = refereeInvites.map((invite) => ({
+      firstName: invite.firstName.trim(),
+      lastName: invite.lastName.trim(),
+      email: invite.email.trim(),
+    }));
+
+    for (const invite of sanitized) {
+      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
+        setRefereeInviteError('Enter first, last, and valid email for all invites.');
+        return;
       }
-    } catch (error) {
-      setRefereeError(error instanceof Error ? error.message : 'Failed to send referee invite.');
-    } finally {
-      setInvitingReferee(false);
     }
-  }, [org, isOwner, user, refereeSearch]);
+
+    setRefereeInviteError(null);
+    setInvitingReferees(true);
+    try {
+      await userService.inviteUsersByEmail(
+        user.$id,
+        sanitized.map((invite) => ({
+          ...invite,
+          type: 'referee' as const,
+          organizationId: org.$id,
+        })),
+      );
+      await loadOrg(org.$id, { silent: true });
+      notifications.show({
+        color: 'green',
+        message: 'Referee invites sent. New referees will be added automatically.',
+      });
+      setRefereeInvites([{ firstName: '', lastName: '', email: '' }]);
+    } catch (error) {
+      setRefereeInviteError(error instanceof Error ? error.message : 'Failed to invite referees.');
+    } finally {
+      setInvitingReferees(false);
+    }
+  }, [org, isOwner, user, refereeInvites]);
 
   const handleRemoveReferee = useCallback(
     async (refereeId: string) => {
@@ -846,19 +840,93 @@ function OrganizationDetailContent() {
                         </Stack>
                       ) : (
                         <Stack gap="xs">
-                          <Text size="sm" c="dimmed">No referees found.</Text>
-                          {EMAIL_REGEX.test(refereeSearch.trim()) && (
-                            <Button
-                              size="xs"
-                              variant="light"
-                              loading={invitingReferee}
-                              onClick={handleInviteReferee}
-                            >
-                              Invite {refereeSearch.trim()} as referee
-                            </Button>
-                          )}
+                          <Text size="sm" c="dimmed">No referees found. Invite by email below.</Text>
                         </Stack>
                       )}
+                      <div className="mt-6">
+                        <Title order={6} mb="xs">Invite referees by email</Title>
+                        <Text size="sm" c="dimmed" mb="xs">
+                          Add referees to this organization and send them an email invite.
+                        </Text>
+                        <div className="space-y-3">
+                          {refereeInvites.map((invite, index) => (
+                            <Paper key={index} withBorder radius="md" p="sm">
+                              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                                <TextInput
+                                  label="First name"
+                                  placeholder="First name"
+                                  value={invite.firstName}
+                                  onChange={(e) => {
+                                    const next = [...refereeInvites];
+                                    next[index] = { ...invite, firstName: e.currentTarget.value };
+                                    setRefereeInvites(next);
+                                  }}
+                                />
+                                <TextInput
+                                  label="Last name"
+                                  placeholder="Last name"
+                                  value={invite.lastName}
+                                  onChange={(e) => {
+                                    const next = [...refereeInvites];
+                                    next[index] = { ...invite, lastName: e.currentTarget.value };
+                                    setRefereeInvites(next);
+                                  }}
+                                />
+                                <TextInput
+                                  label="Email"
+                                  placeholder="name@example.com"
+                                  value={invite.email}
+                                  onChange={(e) => {
+                                    const next = [...refereeInvites];
+                                    next[index] = { ...invite, email: e.currentTarget.value };
+                                    setRefereeInvites(next);
+                                  }}
+                                />
+                              </SimpleGrid>
+                              {refereeInvites.length > 1 && (
+                                <Group justify="flex-end" mt="xs">
+                                  <Button
+                                    variant="subtle"
+                                    color="red"
+                                    size="xs"
+                                    onClick={() => {
+                                      setRefereeInvites((prev) => prev.filter((_, i) => i !== index));
+                                    }}
+                                  >
+                                    Remove
+                                  </Button>
+                                </Group>
+                              )}
+                            </Paper>
+                          ))}
+                          <Group justify="space-between" align="center">
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="lg"
+                              radius="md"
+                              style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
+                              onClick={() =>
+                                setRefereeInvites((prev) => [...prev, { firstName: '', lastName: '', email: '' }])
+                              }
+                            >
+                              +
+                            </Button>
+                            <Button
+                              onClick={handleInviteRefereeEmails}
+                              loading={invitingReferees}
+                              disabled={invitingReferees}
+                            >
+                              Add Referees
+                            </Button>
+                          </Group>
+                          {refereeInviteError && (
+                            <Text size="xs" c="red">
+                              {refereeInviteError}
+                            </Text>
+                          )}
+                        </div>
+                      </div>
                     </Paper>
                   )}
                 </Stack>
