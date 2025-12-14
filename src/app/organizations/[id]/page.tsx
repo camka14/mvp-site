@@ -74,6 +74,7 @@ function OrganizationDetailContent() {
   const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
   const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
   const [refereeError, setRefereeError] = useState<string | null>(null);
+  const [invitingReferee, setInvitingReferee] = useState(false);
   const canCreateRentalSlots = Boolean(org?.location && org.location.trim().length > 0);
   const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
   const [connectingStripe, setConnectingStripe] = useState(false);
@@ -298,6 +299,61 @@ function OrganizationDetailContent() {
     },
     [org, isOwner],
   );
+
+  const handleInviteReferee = useCallback(async () => {
+    if (!org || !isOwner || !user) return;
+    const email = refereeSearch.trim();
+    if (!EMAIL_REGEX.test(email)) {
+      setRefereeError('Enter a valid email to invite a referee.');
+      return;
+    }
+    try {
+      setInvitingReferee(true);
+      setRefereeError(null);
+      const result = await userService.inviteUsersByEmail(user.$id, [
+        { email, type: 'referee', organizationId: org.$id },
+      ]);
+      if (result.failed && result.failed.length) {
+        setRefereeError('Failed to send referee invite.');
+      } else {
+        notifications.show({ color: 'green', message: 'Referee invite sent.' });
+        const invitedUserId = [...(result.sent || []), ...(result.not_sent || [])].find(
+          (entry: any) => entry.userId
+        )?.userId;
+        if (invitedUserId) {
+          const invitedUser = await userService.getUserById(invitedUserId);
+          const refUser = invitedUser || ({
+            $id: invitedUserId,
+            firstName: email,
+            lastName: '',
+            userName: email,
+            teamIds: [],
+            friendIds: [],
+            friendRequestIds: [],
+            friendRequestSentIds: [],
+            followingIds: [],
+            uploadedImages: [],
+            fullName: email,
+            avatarUrl: '',
+          } as UserData);
+          setOrg((prev) => {
+            if (!prev) return prev;
+            const nextRefIds = Array.from(new Set([...(prev.refIds ?? []), invitedUserId]));
+            const nextRefs = (prev.referees ?? []).some((ref) => ref.$id === invitedUserId)
+              ? prev.referees
+              : [...(prev.referees ?? []), refUser];
+            return { ...prev, refIds: nextRefIds, referees: nextRefs };
+          });
+        }
+        setRefereeSearch('');
+        setRefereeResults([]);
+      }
+    } catch (error) {
+      setRefereeError(error instanceof Error ? error.message : 'Failed to send referee invite.');
+    } finally {
+      setInvitingReferee(false);
+    }
+  }, [org, isOwner, user, refereeSearch]);
 
   const handleRemoveReferee = useCallback(
     async (refereeId: string) => {
@@ -789,7 +845,19 @@ function OrganizationDetailContent() {
                           ))}
                         </Stack>
                       ) : (
-                        <Text size="sm" c="dimmed">No referees found.</Text>
+                        <Stack gap="xs">
+                          <Text size="sm" c="dimmed">No referees found.</Text>
+                          {EMAIL_REGEX.test(refereeSearch.trim()) && (
+                            <Button
+                              size="xs"
+                              variant="light"
+                              loading={invitingReferee}
+                              onClick={handleInviteReferee}
+                            >
+                              Invite {refereeSearch.trim()} as referee
+                            </Button>
+                          )}
+                        </Stack>
                       )}
                     </Paper>
                   )}

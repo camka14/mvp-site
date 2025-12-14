@@ -12,8 +12,12 @@ export function buildPayload<T>(data: Record<string, any>, omitKeys: string[] = 
     typeof value === 'number' && Number.isFinite(value);
 
   const sanitizeValue = (value: unknown): unknown => {
-    if (value === undefined || value === null) {
+    if (value === undefined) {
       return undefined;
+    }
+
+    if (value === null) {
+      return null;
     }
 
     if (typeof value === 'string' || typeof value === 'boolean') {
@@ -32,7 +36,7 @@ export function buildPayload<T>(data: Record<string, any>, omitKeys: string[] = 
       const sanitizedItems = value
         .map((item) => sanitizeValue(item))
         .filter((item) => item !== undefined);
-      return sanitizedItems.length ? sanitizedItems : undefined;
+      return sanitizedItems;
     }
 
     return undefined;

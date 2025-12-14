@@ -114,8 +114,6 @@ export function Providers({ children }: ProvidersProps) {
               friendRequestIds: [],
               friendRequestSentIds: [],
               followingIds: [],
-              teamInvites: [],
-              eventInvites: [],
               uploadedImages: [],
               profileImageId: ''
             } as any);

@@ -436,10 +436,6 @@ export default function ProfilePage() {
                                             <p className="text-2xl font-bold text-green-600">{user.friendIds.length}</p>
                                             <p className="text-gray-600">Friends</p>
                                         </div>
-                                        <div className="text-center p-4 bg-gray-50 rounded-lg">
-                                            <p className="text-2xl font-bold text-purple-600">{user.eventInvites.length}</p>
-                                            <p className="text-gray-600">Event Invites</p>
-                                        </div>
                                     </div>
                                 </div>
                             </div>

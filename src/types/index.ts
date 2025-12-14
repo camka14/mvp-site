@@ -230,8 +230,6 @@ export interface UserData {
   friendRequestSentIds: string[];
   followingIds: string[];
   userName: string;
-  teamInvites: string[];
-  eventInvites: string[];
   hasStripeAccount?: boolean;
   uploadedImages: string[];
   profileImageId?: string;
@@ -242,6 +240,25 @@ export interface UserData {
   // Computed properties
   fullName: string;
   avatarUrl: string;
+}
+
+export type InviteType = 'referee' | 'player';
+export type InviteStatus = 'pending' | 'sent' | 'accepted' | 'rejected';
+
+export interface Invite {
+  $id: string;
+  type: InviteType;
+  email?: string;
+  status?: InviteStatus;
+  userId?: string | null;
+  eventId?: string | null;
+  organizationId?: string | null;
+  teamId?: string | null;
+  createdBy?: string | null;
+  firstName?: string;
+  lastName?: string;
+  $createdAt?: string;
+  $updatedAt?: string;
 }
 
 export interface SensitiveUserData {

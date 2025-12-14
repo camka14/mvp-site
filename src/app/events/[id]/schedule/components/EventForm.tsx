@@ -13,7 +13,7 @@ import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
@@ -62,6 +62,7 @@ type DefaultLocation = {
 const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Compares two numeric start/end pairs to detect overlapping minutes within the same day.
 const slotsOverlap = (startA: number, endA: number, startB: number, endB: number): boolean =>
@@ -1240,6 +1241,11 @@ const EventForm: React.FC<EventFormProps> = ({
     const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
     const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
     const [refereeError, setRefereeError] = useState<string | null>(null);
+    const [refereeInvites, setRefereeInvites] = useState<{ firstName: string; lastName: string; email: string }[]>([
+        { firstName: '', lastName: '', email: '' },
+    ]);
+    const [refereeInviteError, setRefereeInviteError] = useState<string | null>(null);
+    const [invitingReferees, setInvitingReferees] = useState(false);
 
     const [fieldsLoading, setFieldsLoading] = useState(false);
     const shouldProvisionFields = !organization && !hasImmutableFields;
@@ -1290,6 +1296,80 @@ const EventForm: React.FC<EventFormProps> = ({
             referees: (prev.referees || []).filter((ref) => ref.$id !== refereeId),
         }));
     }, []);
+
+    const handleInviteRefereeEmail = useCallback(async () => {
+        if (!currentUser) {
+            setRefereeInviteError('You must be signed in to invite referees.');
+            return;
+        }
+
+        const sanitized = refereeInvites.map((invite) => ({
+            firstName: invite.firstName.trim(),
+            lastName: invite.lastName.trim(),
+            email: invite.email.trim(),
+        }));
+
+        for (const invite of sanitized) {
+            if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
+                setRefereeInviteError('Enter first, last, and valid email for all invites.');
+                return;
+            }
+        }
+
+        setRefereeInviteError(null);
+        setInvitingReferees(true);
+        try {
+            const eventId = eventData.$id;
+            const result = await userService.inviteUsersByEmail(
+                currentUser.$id,
+                sanitized.map((invite) => ({
+                    ...invite,
+                    type: 'referee' as const,
+                    eventId,
+                })),
+            );
+            if (result.failed && result.failed.length) {
+                setRefereeInviteError('Failed to send one or more referee invites.');
+            }
+
+            const sentEntries = result.sent || [];
+            const notSentEntries = result.not_sent || [];
+            const successEntries = [...sentEntries, ...notSentEntries];
+            const invitedUserIds = successEntries
+                .map((entry: any) => entry.userId)
+                .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
+
+            if (invitedUserIds.length) {
+                let invitedUsers: UserData[] = [];
+                try {
+                    invitedUsers = await userService.getUsersByIds(invitedUserIds);
+                } catch (error) {
+                    console.warn('Failed to fetch invited referees:', error);
+                }
+
+                let nextRefereeIds: string[] = [];
+                setEventData((prev) => {
+                    const existingRefs = prev.referees || [];
+                    const nextRefs = [...existingRefs];
+                    const nextIds = new Set(prev.refereeIds || []);
+                    invitedUserIds.forEach((id) => nextIds.add(id));
+                    invitedUsers.forEach((refUser) => {
+                        if (!nextRefs.some((ref) => ref.$id === refUser.$id)) {
+                            nextRefs.push(refUser);
+                        }
+                    });
+                    nextRefereeIds = Array.from(nextIds);
+                    return { ...prev, referees: nextRefs, refereeIds: nextRefereeIds };
+                });
+            }
+
+            setRefereeInvites([{ firstName: '', lastName: '', email: '' }]);
+        } catch (error) {
+            setRefereeInviteError(error instanceof Error ? error.message : 'Failed to invite referees.');
+        } finally {
+            setInvitingReferees(false);
+        }
+    }, [currentUser, eventData.$id, refereeInvites, setEventData]);
 
     // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
     const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
@@ -2353,13 +2433,15 @@ const EventForm: React.FC<EventFormProps> = ({
         if (!isFormValid) return;
 
         const isDraftCreation = isCreateMode || values.state === 'DRAFT';
+
+        const draft = buildDraftEvent(values);
+        if (!draft) return;
+        setSubmitError(null);
+
         if (values.eventType !== 'EVENT') {
             await scheduleEvent(values);
             return;
         }
-
-        const draft = buildDraftEvent(values);
-        if (!draft) return;
 
         if (isDraftCreation) {
             setSubmitting(true);
@@ -2674,8 +2756,95 @@ const EventForm: React.FC<EventFormProps> = ({
                                             ))}
                                         </Stack>
                                     ) : (
-                                        <Text size="sm" c="dimmed">No referees found.</Text>
+                                        <Stack gap="xs">
+                                            <Text size="sm" c="dimmed">No referees found. Invite by email below.</Text>
+                                        </Stack>
                                     )}
+                                </div>
+
+                                <div>
+                                    <Title order={6} mb="xs">Invite referees by email</Title>
+                                    <Text size="sm" c="dimmed" mb="xs">
+                                        Add referees to this event and send them an email invite.
+                                    </Text>
+                                    <div className="space-y-3">
+                                        {refereeInvites.map((invite, index) => (
+                                            <Paper key={index} withBorder radius="md" p="sm">
+                                                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                                                    <TextInput
+                                                        label="First name"
+                                                        placeholder="First name"
+                                                        value={invite.firstName}
+                                                        onChange={(e) => {
+                                                            const next = [...refereeInvites];
+                                                            next[index] = { ...invite, firstName: e.currentTarget.value };
+                                                            setRefereeInvites(next);
+                                                        }}
+                                                    />
+                                                    <TextInput
+                                                        label="Last name"
+                                                        placeholder="Last name"
+                                                        value={invite.lastName}
+                                                        onChange={(e) => {
+                                                            const next = [...refereeInvites];
+                                                            next[index] = { ...invite, lastName: e.currentTarget.value };
+                                                            setRefereeInvites(next);
+                                                        }}
+                                                    />
+                                                    <TextInput
+                                                        label="Email"
+                                                        placeholder="name@example.com"
+                                                        value={invite.email}
+                                                        onChange={(e) => {
+                                                            const next = [...refereeInvites];
+                                                            next[index] = { ...invite, email: e.currentTarget.value };
+                                                            setRefereeInvites(next);
+                                                        }}
+                                                    />
+                                                </SimpleGrid>
+                                                {refereeInvites.length > 1 && (
+                                                    <Group justify="flex-end" mt="xs">
+                                                        <Button
+                                                            variant="subtle"
+                                                            color="red"
+                                                            size="xs"
+                                                            onClick={() => {
+                                                                setRefereeInvites((prev) => prev.filter((_, i) => i !== index));
+                                                            }}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </Group>
+                                                )}
+                                            </Paper>
+                                        ))}
+                                        <Group justify="space-between" align="center">
+                                            <Button
+                                                type="button"
+                                                variant="default"
+                                                size="lg"
+                                                radius="md"
+                                                style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
+                                                onClick={() =>
+                                                    setRefereeInvites((prev) => [...prev, { firstName: '', lastName: '', email: '' }])
+                                                }
+                                            >
+                                                +
+                                            </Button>
+                                            <Button
+                                                onClick={handleInviteRefereeEmail}
+                                                loading={invitingReferees}
+                                                disabled={invitingReferees}
+                                            >
+                                                Add Referees
+                                            </Button>
+                                        </Group>
+                                        {refereeInviteError && (
+                                            <Text size="xs" c="red">
+                                                {refereeInviteError}
+                                            </Text>
+                                        )}
+                                    </div>
                                 </div>
                             </Stack>
                         </Paper>
