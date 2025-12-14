@@ -26,13 +26,19 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
     // Calculate refund eligibility
     const now = new Date();
     const eventStart = new Date(event.start);
-    const refundDeadline = new Date(eventStart.getTime() - (event.cancellationRefundHours * 60 * 60 * 1000));
+    const refundBufferHours = Number(event.cancellationRefundHours ?? 0);
+    const refundDeadline = new Date(eventStart.getTime() - (refundBufferHours * 60 * 60 * 1000));
 
-    const isBeforeRefundDeadline = now < refundDeadline;
-    const isBeforeEventStart = now < eventStart;
-    const canAutoRefund = isBeforeRefundDeadline && event.cancellationRefundHours > 0;
+    const eventHasStarted = now >= eventStart;
+    const isBeforeRefundDeadline = refundBufferHours > 0 && now < refundDeadline;
+    const canAutoRefund = !eventHasStarted && isBeforeRefundDeadline;
 
     const handleRefund = async () => {
+        if (eventHasStarted) {
+            setError('Event has already started. Refunds are no longer available.');
+            return;
+        }
+
         if (!canAutoRefund && !refundReason.trim()) {
             setError('Please provide a reason for the refund request');
             return;
@@ -62,6 +68,11 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
     };
 
     const handleRequestRefund = () => {
+        if (eventHasStarted) {
+            setError('Event has already started. Refunds are no longer available.');
+            return;
+        }
+
         if (canAutoRefund) {
             handleRefund();
         } else {
@@ -115,6 +126,12 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
                         Leave Event
                     </Button>
                 </div>
+            ) : eventHasStarted ? (
+                <div className="space-y-2">
+                    <Text size="sm" c="dimmed">
+                        Event has already started. Refunds are no longer available.
+                    </Text>
+                </div>
             ) : canAutoRefund ? (
                 <div className="space-y-2">
                     <Text size="sm" c="dimmed">You can get a full refund until {refundDeadline.toLocaleString()}</Text>
@@ -125,13 +142,11 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
             ) : (
                 <div className="space-y-3">
                     <Text size="sm" c="dimmed">
-                        {!isBeforeEventStart
-                            ? 'Event has already started. You can request a refund from the host.'
-                            : 'Automatic refund period has expired. You can request a refund from the host.'}
+                        Automatic refund period has expired. You can request a refund from the host.
                     </Text>
 
                     {!showReasonInput ? (
-                        <Button fullWidth color="orange" onClick={handleRequestRefund}>Request Refund</Button>
+                        <Button fullWidth color="orange" onClick={handleRequestRefund}>Leave and Request Refund</Button>
                     ) : (
                         <div className="space-y-3">
                             <Textarea

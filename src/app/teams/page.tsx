@@ -140,13 +140,13 @@ function TeamsPageContent() {
       const detailedTeams = await teamService.getTeamsByIds(userTeams.map(t => t.$id), true);
       setTeams(detailedTeams);
 
-      if (user.teamInvites && user.teamInvites.length > 0) {
-        const invitationPromises = user.teamInvites.map(teamId =>
-          teamService.getTeamById(teamId, true)
-        );
-        const invitations = await Promise.all(invitationPromises);
-        setTeamInvitations(invitations.filter(team => team !== undefined) as Team[]);
-      }
+      const invites = await userService.listInvites({ userId: user.$id, type: 'player' });
+      const invitationPromises = invites
+        .map(invite => invite.teamId)
+        .filter((teamId): teamId is string => typeof teamId === 'string' && !!teamId)
+        .map(teamId => teamService.getTeamById(teamId, true));
+      const invitations = await Promise.all(invitationPromises);
+      setTeamInvitations(invitations.filter(team => team !== undefined) as Team[]);
     } catch (error) {
       console.error('Failed to load teams data:', error);
     } finally {

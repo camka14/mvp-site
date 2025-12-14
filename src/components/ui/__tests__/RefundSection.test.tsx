@@ -89,15 +89,15 @@ describe('RefundSection', () => {
     paymentServiceMock.requestRefund.mockResolvedValue({ success: true });
     const onRefundSuccess = jest.fn();
 
-    renderWithMantine(
-      <RefundSection event={event} userRegistered onRefundSuccess={onRefundSuccess} />,
-    );
+  renderWithMantine(
+    <RefundSection event={event} userRegistered onRefundSuccess={onRefundSuccess} />,
+  );
 
-    fireEvent.click(screen.getByRole('button', { name: /Request Refund/i }));
+  fireEvent.click(screen.getByRole('button', { name: /Leave and Request Refund/i }));
 
-    const reasonInput = screen.getByLabelText(/Reason for refund/i);
-    fireEvent.change(reasonInput, { target: { value: 'Can no longer attend' } });
-    fireEvent.click(screen.getByRole('button', { name: /Send Request/i }));
+  const reasonInput = screen.getByLabelText(/Reason for refund/i);
+  fireEvent.change(reasonInput, { target: { value: 'Can no longer attend' } });
+  fireEvent.click(screen.getByRole('button', { name: /Send Request/i }));
 
     await waitFor(() =>
       expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith(
@@ -107,5 +107,26 @@ describe('RefundSection', () => {
       ),
     );
     await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
+  });
+
+  it('blocks refund requests once the event has started', () => {
+    const user = { $id: 'user_1' };
+    useAppMock.mockReturnValue({ user });
+    const start = formatLocalDateTime(new Date(Date.now() - 60 * 60 * 1000));
+    const event = buildEvent({
+      $id: 'event_started',
+      hostId: 'host_2',
+      price: 20,
+      cancellationRefundHours: 24,
+      start,
+    });
+
+    renderWithMantine(
+      <RefundSection event={event} userRegistered onRefundSuccess={jest.fn()} />,
+    );
+
+    expect(screen.getByText(/Refunds are no longer available/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Get Refund/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Leave and Request Refund/i })).toBeNull();
   });
 });

@@ -1,10 +1,10 @@
 import { databases, account, storage, functions } from '@/app/appwrite';
-import { UserData, getUserFullName, getUserAvatarUrl } from '@/types';
+import { UserData, Invite, getUserFullName, getUserAvatarUrl } from '@/types';
 import { Query, ID, ExecutionMethod } from 'appwrite';
-import { lookupSensitiveUserByEmail } from './sensitiveUserDataService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
+const INVITES_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_INVITES_TABLE_ID || 'invites';
 
 interface UpdateProfileData {
     firstName?: string;
@@ -183,53 +183,30 @@ class UserService {
         }
     }
 
-    async addTeamInvitation(userId: string, teamId: string): Promise<boolean> {
-        try {
-            const user = await this.getUserById(userId);
-            if (!user) return false;
-            const updatedInvites = [...user.teamInvites, teamId];
-            await this.updateUser(userId, { teamInvites: updatedInvites });
-            return true;
-        } catch (error) {
-            console.error('Failed to add team invitation:', error);
-            return false;
-        }
-    }
-
-    async removeTeamInvitation(userId: string, teamId: string): Promise<boolean> {
-        try {
-            const user = await this.getUserById(userId);
-            if (!user) return false;
-            const updatedInvites = user.teamInvites.filter(id => id !== teamId);
-            await this.updateUser(userId, { teamInvites: updatedInvites });
-            return true;
-        } catch (error) {
-            console.error('Failed to remove team invitation:', error);
-            return false;
-        }
-    }
-
     async inviteUsersByEmail(
-        teamId: string,
         inviterId: string,
-        invites: { firstName?: string; lastName?: string; email: string }[],
-    ): Promise<{ sent: any[]; failed: any[] }> {
-        const takenEmails: string[] = [];
-        for (const invite of invites) {
-            const lookup = await lookupSensitiveUserByEmail(invite.email);
-            if (lookup.exists) {
-                takenEmails.push(invite.email);
-            }
-        }
-        if (takenEmails.length) {
-            throw new Error(`Found users with email: ${takenEmails.join(', ')}`);
-        }
+        invites: {
+            email: string;
+            firstName?: string;
+            lastName?: string;
+            type?: 'player' | 'referee';
+            eventId?: string;
+            organizationId?: string;
+            teamId?: string;
+            userId?: string;
+        }[],
+        createIfMissing: boolean = true,
+    ): Promise<{ sent: any[]; failed: any[]; not_sent: any[] }> {
+        const normalizedInvites = invites.map((invite) => ({
+            type: invite.type ?? 'player',
+            ...invite,
+        }));
 
         const response = await functions.createExecution({
             functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-            xpath: '/teams/invite-email',
+            xpath: '/users/invite-email',
             method: ExecutionMethod.POST,
-            body: JSON.stringify({ teamId, inviterId, invites }),
+            body: JSON.stringify({ inviterId, invites: normalizedInvites, createIfMissing }),
             async: false,
         });
 
@@ -240,14 +217,93 @@ class UserService {
         return {
             sent: parsed.sent ?? [],
             failed: parsed.failed ?? [],
+            not_sent: parsed.not_sent ?? [],
         };
+    }
+
+    async listInvites(filters: {
+        userId?: string;
+        type?: Invite['type'];
+        teamId?: string;
+        eventId?: string;
+        organizationId?: string;
+        email?: string;
+    } = {}): Promise<Invite[]> {
+        try {
+            const queries = [];
+            if (filters.userId) queries.push(Query.equal('userId', filters.userId));
+            if (filters.type) queries.push(Query.equal('type', filters.type));
+            if (filters.teamId) queries.push(Query.equal('teamId', filters.teamId));
+            if (filters.eventId) queries.push(Query.equal('eventId', filters.eventId));
+            if (filters.organizationId) queries.push(Query.equal('organizationId', filters.organizationId));
+            if (filters.email) queries.push(Query.equal('email', filters.email.toLowerCase()));
+            queries.push(Query.limit(100));
+
+            const response = await databases.listRows({
+                databaseId: DATABASE_ID,
+                tableId: INVITES_TABLE_ID,
+                queries,
+            });
+
+            return response.rows.map((row) => this.mapRowToInvite(row));
+        } catch (error) {
+            console.error('Failed to list invites:', error);
+            return [];
+        }
+    }
+
+    async addTeamInvitation(userId: string, teamId: string): Promise<boolean> {
+        try {
+            const rowId = `${teamId}-${userId}`;
+            await databases.upsertRow({
+                databaseId: DATABASE_ID,
+                tableId: INVITES_TABLE_ID,
+                rowId,
+                data: {
+                    userId,
+                    teamId,
+                    type: 'player',
+                    status: 'sent',
+                },
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to add team invitation:', error);
+            return false;
+        }
+    }
+
+    async removeTeamInvitation(userId: string, teamId: string): Promise<boolean> {
+        try {
+            const invites = await this.listInvites({ userId, teamId, type: 'player' });
+            await Promise.all(
+                invites.map((invite) =>
+                    databases.deleteRow({
+                        databaseId: DATABASE_ID,
+                        tableId: INVITES_TABLE_ID,
+                        rowId: invite.$id,
+                    }),
+                ),
+            );
+            return true;
+        } catch (error) {
+            console.error('Failed to remove team invitation:', error);
+            return false;
+        }
     }
 
     // Map Appwrite row to UserData using spread operator
     private mapRowToUser(row: any): UserData {
         const { email: _email, ...rest } = row;
+        const coerceList = (value: any) => (Array.isArray(value) ? value : []);
         return {
             ...rest, // Spread all fields from Appwrite row
+            teamIds: coerceList(rest.teamIds),
+            friendIds: coerceList(rest.friendIds),
+            friendRequestIds: coerceList(rest.friendRequestIds),
+            friendRequestSentIds: coerceList(rest.friendRequestSentIds),
+            followingIds: coerceList(rest.followingIds),
+            uploadedImages: coerceList(rest.uploadedImages),
             // Only define computed properties
             fullName: getUserFullName({
                 firstName: rest.firstName || '',
@@ -260,6 +316,12 @@ class UserService {
                 profileImageId: rest.profileImageId
             } as UserData)
         };
+    }
+
+    private mapRowToInvite(row: any): Invite {
+        return {
+            ...row,
+        } as Invite;
     }
 }
 

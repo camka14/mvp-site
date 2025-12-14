@@ -20,8 +20,6 @@ export const buildUser = (overrides: Partial<UserData> = {}): UserData => {
     friendRequestSentIds: [],
     followingIds: [],
     userName: `test.user${userCounter}`,
-    teamInvites: [],
-    eventInvites: [],
     uploadedImages: [],
     fullName: `Test User${userCounter}`,
     avatarUrl: `https://example.com/avatar/${id}.png`,

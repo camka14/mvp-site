@@ -231,7 +231,12 @@ export default function TeamDetailModal({
             return;
         }
         try {
-            await userService.inviteUsersByEmail(currentTeam.$id, user.$id, values.invites);
+            const invites = values.invites.map((invite) => ({
+                ...invite,
+                type: 'player' as const,
+                teamId: currentTeam.$id,
+            }));
+            await userService.inviteUsersByEmail(user.$id, invites);
             notifications.show({ color: 'green', message: 'Invites sent via email.' });
             resetInviteForm({ invites: [{ firstName: '', lastName: '', email: '' }] });
         } catch (err) {

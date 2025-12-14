@@ -44,8 +44,6 @@ const buildUser = (id: string, overrides: Partial<UserData> = {}): UserData => (
   friendRequestSentIds: overrides.friendRequestSentIds ?? [],
   followingIds: overrides.followingIds ?? [],
   userName: overrides.userName ?? id,
-  teamInvites: overrides.teamInvites ?? [],
-  eventInvites: overrides.eventInvites ?? [],
   hasStripeAccount: overrides.hasStripeAccount,
   uploadedImages: overrides.uploadedImages ?? [],
   profileImageId: overrides.profileImageId,

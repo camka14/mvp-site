@@ -143,8 +143,6 @@ export const authService = {
             friendRequestIds: resolvedProfile?.friendRequestIds ?? [],
             friendRequestSentIds: resolvedProfile?.friendRequestSentIds ?? [],
             followingIds: resolvedProfile?.followingIds ?? [],
-            teamInvites: resolvedProfile?.teamInvites ?? [],
-            eventInvites: resolvedProfile?.eventInvites ?? [],
             uploadedImages: resolvedProfile?.uploadedImages ?? [],
             profileImageId: resolvedProfile?.profileImageId || ''
           };
