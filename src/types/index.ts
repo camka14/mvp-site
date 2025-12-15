@@ -447,6 +447,7 @@ export interface Organization {
   hasStripeAccount?: boolean;
   fieldIds?: string[];
   refIds?: string[];
+  productIds?: string[];
   $createdAt?: string;
   $updatedAt?: string;
 
@@ -455,6 +456,32 @@ export interface Organization {
   teams?: Team[];
   fields?: Field[];
   referees?: UserData[];
+  products?: Product[];
+}
+
+export type ProductPeriod = 'week' | 'month' | 'year';
+
+export interface Product {
+  $id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  priceCents: number;
+  period: ProductPeriod;
+  createdBy?: string;
+  isActive?: boolean;
+  createdAt?: string;
+}
+
+export interface Subscription {
+  $id: string;
+  productId: string;
+  userId: string;
+  organizationId?: string;
+  startDate: string;
+  priceCents: number;
+  period: ProductPeriod;
+  status?: 'ACTIVE' | 'CANCELLED';
 }
 
 export interface RefundRequest {
@@ -942,6 +969,8 @@ export interface PaymentIntent {
   error?: string;
   billId?: string | null;
   billPaymentId?: string | null;
+  productId?: string | null;
+  productPeriod?: string | null;
 }
 
 export interface FeeBreakdown {
@@ -951,6 +980,7 @@ export interface FeeBreakdown {
   totalCharge: number;
   hostReceives: number;
   feePercentage: number;
+  purchaseType?: string;
 }
 
 export interface PaymentResult {

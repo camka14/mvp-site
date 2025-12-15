@@ -31,7 +31,7 @@ import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
-import { Event, Field, Organization, TimeSlot, formatPrice } from '@/types';
+import { Event, Field, Organization, TimeSlot } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
@@ -44,6 +44,12 @@ type RentalListing = {
   slot: TimeSlot;
   nextOccurrence: Date;
   distanceKm?: number;
+};
+
+type OrganizationResult = {
+  organization: Organization;
+  distanceKm?: number;
+  relevance: number;
 };
 
 const EVENTS_LIMIT = 18;
@@ -64,7 +70,7 @@ function DiscoverPageContent() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
   const { location, requestLocation } = useLocation();
 
-  const [activeTab, setActiveTab] = useState<'events' | 'rentals'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'rentals' | 'organizations'>('events');
 
   /**
    * Events tab state
@@ -101,6 +107,14 @@ function DiscoverPageContent() {
   const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
 
   /**
+   * Organizations tab state
+   */
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
+  const [organizationsLoading, setOrganizationsLoading] = useState(false);
+  const [organizationsError, setOrganizationsError] = useState<string | null>(null);
+
+  /**
    * Helpers
    */
   const kmBetween = useCallback((a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
@@ -116,6 +130,25 @@ function DiscoverPageContent() {
       Math.sqrt(sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon),
     );
     return R * c;
+  }, []);
+
+  const getOrgCoordinates = useCallback((org: Organization) => {
+    if (Array.isArray(org.coordinates) && org.coordinates.length >= 2) {
+      const [lng, lat] = org.coordinates;
+      const latNum = typeof lat === 'number' ? lat : Number(lat);
+      const lngNum = typeof lng === 'number' ? lng : Number(lng);
+      if (Number.isFinite(latNum) && Number.isFinite(lngNum)) {
+        return { lat: latNum, lng: lngNum };
+      }
+    }
+    const latRaw = (org as any).lat ?? (org as any).latitude;
+    const lngRaw = (org as any).long ?? (org as any).longitude ?? (org as any).lng;
+    const lat = typeof latRaw === 'number' ? latRaw : Number(latRaw);
+    const lng = typeof lngRaw === 'number' ? lngRaw : Number(lngRaw);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { lat, lng };
+    }
+    return null;
   }, []);
 
   /**
@@ -257,6 +290,25 @@ function DiscoverPageContent() {
   }, [rentalsLoaded, rentalsLoading]);
 
   /**
+   * Organizations fetching
+   */
+  const loadOrganizations = useCallback(async () => {
+    if (organizationsLoaded || organizationsLoading) return;
+    setOrganizationsLoading(true);
+    setOrganizationsError(null);
+    try {
+      const orgs = await organizationService.listOrganizationsWithFields();
+      setOrganizations(orgs);
+      setOrganizationsLoaded(true);
+    } catch (error) {
+      console.error('Failed to load organizations:', error);
+      setOrganizationsError('Failed to load organizations. Please try again.');
+    } finally {
+      setOrganizationsLoading(false);
+    }
+  }, [organizationsLoaded, organizationsLoading]);
+
+  /**
    * Effects
    */
   useEffect(() => {
@@ -281,7 +333,10 @@ function DiscoverPageContent() {
     if (activeTab === 'rentals') {
       loadRentals();
     }
-  }, [activeTab, loadRentals]);
+    if (activeTab === 'organizations') {
+      loadOrganizations();
+    }
+  }, [activeTab, loadOrganizations, loadRentals]);
 
   const handleCreateEventNavigation = useCallback(() => {
     if (!user) {
@@ -299,7 +354,14 @@ function DiscoverPageContent() {
 
   const handleSelectRentalOrganization = useCallback(
     (organization: Organization) => {
-      router.push(`/discover/rentals/${organization.$id}`);
+      router.push(`/organizations/${organization.$id}?tab=fields`);
+    },
+    [router],
+  );
+
+  const handleSelectOrganization = useCallback(
+    (organization: Organization) => {
+      router.push(`/organizations/${organization.$id}`);
     },
     [router],
   );
@@ -423,6 +485,54 @@ function DiscoverPageContent() {
   }, [defaultTimeRange]);
 
   /**
+   * Organizations derived data
+   */
+  const organizationResults = useMemo<OrganizationResult[]>(() => {
+    const q = (searchTerm || '').trim().toLowerCase();
+    const results: OrganizationResult[] = [];
+
+    organizations.forEach((org) => {
+      const coords = getOrgCoordinates(org);
+      const hasCoords = Boolean(coords);
+      const text = `${org.name} ${org.description ?? ''} ${org.location ?? ''} ${org.website ?? ''}`.toLowerCase();
+      const matchesQuery = q ? text.includes(q) : true;
+
+      if (!q && !hasCoords) {
+        return;
+      }
+      if (q && !matchesQuery) {
+        return;
+      }
+
+      let distanceKm: number | undefined;
+      if (coords && location) {
+        try {
+          distanceKm = kmBetween(location, coords);
+        } catch {
+          distanceKm = undefined;
+        }
+      }
+      const relevance = q && matchesQuery ? Math.max(0, text.indexOf(q)) : Number.MAX_SAFE_INTEGER;
+
+      results.push({ organization: org, distanceKm, relevance });
+    });
+
+    results.sort((a, b) => {
+      const aDist = a.distanceKm;
+      const bDist = b.distanceKm;
+      if (typeof aDist === 'number' && typeof bDist === 'number') {
+        return aDist - bDist;
+      }
+      if (typeof aDist === 'number') return -1;
+      if (typeof bDist === 'number') return 1;
+      if (a.relevance !== b.relevance) return a.relevance - b.relevance;
+      return a.organization.name.localeCompare(b.organization.name);
+    });
+
+    return results;
+  }, [organizations, searchTerm, location, kmBetween, getOrgCoordinates]);
+
+  /**
    * Auth guard
    */
   if (authLoading) {
@@ -449,9 +559,10 @@ function DiscoverPageContent() {
           </Text>
         </div>
 
-        <Tabs value={activeTab} onChange={(value) => setActiveTab(value as 'events' | 'rentals')}>
+        <Tabs value={activeTab} onChange={(value) => setActiveTab(value as 'events' | 'rentals' | 'organizations')}>
           <Tabs.List mb="lg">
             <Tabs.Tab value="events">Events</Tabs.Tab>
+            <Tabs.Tab value="organizations">Organizations</Tabs.Tab>
             <Tabs.Tab value="rentals">Rentals</Tabs.Tab>
           </Tabs.List>
 
@@ -483,6 +594,18 @@ function DiscoverPageContent() {
                 setShowEventSheet(true);
               }}
               onCreateEvent={handleCreateEventNavigation}
+            />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="organizations">
+            <OrganizationsTabContent
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              location={location}
+              results={organizationResults}
+              loading={organizationsLoading}
+              error={organizationsError}
+              onSelectOrganization={handleSelectOrganization}
             />
           </Tabs.Panel>
 
@@ -753,6 +876,85 @@ function EventsTabContent(props: {
         </>
       )}
     </>
+  );
+}
+
+function OrganizationsTabContent(props: {
+  searchTerm: string;
+  setSearchTerm: (value: string) => void;
+  location: { lat: number; lng: number } | null;
+  results: OrganizationResult[];
+  loading: boolean;
+  error: string | null;
+  onSelectOrganization: (organization: Organization) => void;
+}) {
+  const { searchTerm, setSearchTerm, location, results, loading, error, onSelectOrganization } = props;
+  const hasResults = results.length > 0;
+
+  return (
+    <div className="space-y-6 mb-8">
+      <Group justify="space-between" align="center" gap="md" wrap="wrap">
+        <Group align="center" gap="sm" wrap="wrap" style={{ flex: 1, minWidth: 320 }}>
+          <Text fw={600} size="sm">
+            Search organizations
+          </Text>
+          <TextInput
+            aria-label="Search organizations"
+            placeholder="Search by name or description"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.currentTarget.value)}
+            style={{ flex: 1, minWidth: 220 }}
+          />
+          <div style={{ minWidth: 170, flexShrink: 0 }}>
+            <LocationSearch />
+          </div>
+        </Group>
+        <Text size="sm" c="dimmed">
+          Showing nearby organizations{location ? ' by distance.' : '. Enable location for better results.'}
+        </Text>
+      </Group>
+
+      {error && (
+        <Alert color="red" radius="md">
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <Loading text="Loading organizations..." />
+      ) : !hasResults ? (
+        <Paper withBorder p="xl" radius="md">
+          <Text fw={600} mb={4}>
+            No organizations found
+          </Text>
+          <Text size="sm" c="dimmed">
+            {searchTerm
+              ? 'Try a different search or remove filters.'
+              : 'Enable location or search to find organizations near you.'}
+          </Text>
+          <Text size="xs" c="dimmed" mt="xs">
+            Organizations without a location are hidden until you search for them.
+          </Text>
+        </Paper>
+      ) : (
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
+          {results.map(({ organization, distanceKm }) => (
+            <OrganizationCard
+              key={organization.$id}
+              organization={organization}
+              onClick={() => onSelectOrganization(organization)}
+              actions={
+                typeof distanceKm === 'number' ? (
+                  <Text size="xs" c="dimmed">
+                    {distanceKm.toFixed(1)} km away
+                  </Text>
+                ) : undefined
+              }
+            />
+          ))}
+        </SimpleGrid>
+      )}
+    </div>
   );
 }
 

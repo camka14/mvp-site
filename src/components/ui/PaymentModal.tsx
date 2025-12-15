@@ -84,10 +84,10 @@ export default function PaymentModal({
     };
 
     const modalTitle = view === 'confirm'
-        ? 'Confirm Registration'
+        ? 'Confirm Payment'
         : view === 'payment'
             ? 'Payment'
-            : 'Registration Complete';
+            : 'Payment Complete';
 
     return (
         <Modal
@@ -128,7 +128,7 @@ export default function PaymentModal({
                             <h5 className="font-medium mb-3 text-gray-900">Price Breakdown</h5>
                             <div className="space-y-2 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-600">Event Price:</span>
+                                    <span className="text-gray-600">Price:</span>
                                     <span className="font-medium">{formatPrice(paymentData.feeBreakdown.eventPrice)}</span>
                                 </div>
                                 <div className="flex justify-between">
@@ -196,9 +196,9 @@ export default function PaymentModal({
                             <path d="M20 6 9 17l-5-5" />
                         </svg>
                     </div>
-                    <h4 className="font-semibold text-lg">You're in!</h4>
+                    <h4 className="font-semibold text-lg">Payment successful</h4>
                     <p className="text-sm text-gray-600">
-                        Payment succeeded and your spot is reserved. We’re refreshing the event details now.
+                        Payment succeeded. We’re refreshing the details now.
                     </p>
                     {reloadingEvent ? (
                         <div className="flex items-center justify-center gap-2 text-sm text-gray-700">

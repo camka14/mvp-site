@@ -1,32 +1,32 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Tabs, Pagination, RangeSlider, Stack, TextInput } from '@mantine/core';
+import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { Field, Organization, TimeSlot, UserData } from '@/types';
+import type { Organization, Product, UserData, PaymentIntent } from '@/types';
+import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { storage } from '@/app/appwrite';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
-import CreateFieldModal from '@/components/ui/CreateFieldModal';
-import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import { Calendar as BigCalendar, dateFnsLocalizer, View, SlotGroupPropGetter } from 'react-big-calendar';
-import { format, parse, startOfWeek, endOfWeek, startOfDay, endOfDay, startOfMonth, endOfMonth, getDay, formatISO } from 'date-fns';
-import { fieldService } from '@/lib/fieldService';
-import { buildFieldCalendarEvents } from './fieldCalendar';
+import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
+import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { ID } from '@/app/appwrite';
+import { productService } from '@/lib/productService';
+import PaymentModal from '@/components/ui/PaymentModal';
+import FieldsTabContent from './FieldsTabContent';
 
 export default function OrganizationDetailPage() {
   return (
@@ -36,40 +36,22 @@ export default function OrganizationDetailPage() {
   );
 }
 
-const formatHourLabel = (hour: number) => {
-  const date = new Date();
-  date.setHours(hour, 0, 0, 0);
-  return format(date, 'h a');
-};
-
-const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, authUser, loading: authLoading, isAuthenticated } = useApp();
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees' | 'refunds'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees' | 'refunds' | 'store'>('overview');
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
-  const [showFieldModal, setShowFieldModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
-  const [editingField, setEditingField] = useState<Field | null>(null);
-  const [showRentalSlotModal, setShowRentalSlotModal] = useState(false);
-  const [editingRentalSlot, setEditingRentalSlot] = useState<TimeSlot | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [showEventDetailSheet, setShowEventDetailSheet] = useState(false);
   const [calendarView, setCalendarView] = useState<View>('month');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
-  const [fieldViewMode, setFieldViewMode] = useState<'list' | 'schedule'>('list');
-  const [fieldCalendarView, setFieldCalendarView] = useState<View>('week');
-  const [fieldCalendarDate, setFieldCalendarDate] = useState<Date>(new Date());
-  const [fieldScheduleLoading, setFieldScheduleLoading] = useState(false);
-  const [fieldScheduleFields, setFieldScheduleFields] = useState<Field[]>([]);
-  const [fieldScheduleRange, setFieldScheduleRange] = useState<{ start: Date; end: Date } | null>(null);
-  const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
-  const [fieldScheduleSelectedFieldId, setFieldScheduleSelectedFieldId] = useState<string | null>(null);
   const [refereeSearch, setRefereeSearch] = useState('');
   const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
   const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
@@ -79,13 +61,29 @@ function OrganizationDetailContent() {
   ]);
   const [refereeInviteError, setRefereeInviteError] = useState<string | null>(null);
   const [invitingReferees, setInvitingReferees] = useState(false);
-  const canCreateRentalSlots = Boolean(org?.location && org.location.trim().length > 0);
   const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
   const [connectingStripe, setConnectingStripe] = useState(false);
   const [managingStripe, setManagingStripe] = useState(false);
   const [stripeEmail, setStripeEmail] = useState('');
   const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
   const isOwner = Boolean(user && org && user.$id === org.ownerId);
+  const availableTabs = useMemo(
+    () => {
+      const base: { label: string; value: typeof activeTab }[] = [
+        { label: 'Overview', value: 'overview' },
+        { label: 'Events', value: 'events' },
+        { label: 'Teams', value: 'teams' },
+      ];
+      if (isOwner) {
+        base.push({ label: 'Referees', value: 'referees' });
+        base.push({ label: 'Refunds', value: 'refunds' });
+      }
+      base.push({ label: 'Fields', value: 'fields' });
+      base.push({ label: 'Store', value: 'store' });
+      return base;
+    },
+    [isOwner],
+  );
   const stripeEmailValid = useMemo(
     () => Boolean(stripeEmail && EMAIL_REGEX.test(stripeEmail.trim())),
     [stripeEmail],
@@ -113,30 +111,30 @@ function OrganizationDetailContent() {
     );
   };
 
-  const computeFieldRange = useMemo(() => {
-    return (view: View, date: Date) => {
-      switch (view) {
-        case 'day':
-          return { start: startOfDay(date), end: endOfDay(date) };
-        case 'month':
-          return { start: startOfMonth(date), end: endOfMonth(date) };
-        case 'agenda':
-        case 'week':
-        default:
-          return {
-            start: startOfWeek(date, { weekStartsOn: 0 }),
-            end: endOfWeek(date, { weekStartsOn: 0 }),
-          };
-      }
-    };
-  }, []);
-
   const currentRefereeIds = useMemo(
     () => (Array.isArray(org?.refIds) ? org.refIds.filter((id): id is string => typeof id === 'string') : []),
     [org?.refIds],
   );
 
   const currentReferees = useMemo(() => org?.referees ?? [], [org?.referees]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productName, setProductName] = useState('');
+  const [productDescription, setProductDescription] = useState('');
+  const [productPeriod, setProductPeriod] = useState<'month' | 'week' | 'year'>('month');
+  const [productPrice, setProductPrice] = useState<number | ''>(10);
+  const [creatingProduct, setCreatingProduct] = useState(false);
+  const [purchaseProduct, setPurchaseProduct] = useState<Product | null>(null);
+  const [purchasePaymentData, setPurchasePaymentData] = useState<PaymentIntent | null>(null);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editProductName, setEditProductName] = useState('');
+  const [editProductDescription, setEditProductDescription] = useState('');
+  const [editProductPeriod, setEditProductPeriod] = useState<'month' | 'week' | 'year'>('month');
+  const [editProductPrice, setEditProductPrice] = useState<number | ''>(0);
+  const [updatingProduct, setUpdatingProduct] = useState(false);
+  const [deletingProduct, setDeletingProduct] = useState(false);
 
   const loadOrg = useCallback(async (orgId: string, options?: { silent?: boolean }) => {
     const silent = Boolean(options?.silent);
@@ -173,6 +171,25 @@ function OrganizationDetailContent() {
       setStripeEmail(fallbackEmail);
     }
   }, [org, user, authUser, stripeEmail]);
+
+  useEffect(() => {
+    if (org?.products) {
+      setProducts(org.products);
+    }
+  }, [org?.products]);
+
+  useEffect(() => {
+    if (!availableTabs.some((tab) => tab.value === activeTab) && availableTabs.length > 0) {
+      setActiveTab(availableTabs[0].value);
+    }
+  }, [activeTab, availableTabs]);
+
+  useEffect(() => {
+    const tabParam = searchParams?.get('tab');
+    if (tabParam && availableTabs.some((tab) => tab.value === tabParam)) {
+      setActiveTab(tabParam as typeof activeTab);
+    }
+  }, [availableTabs, searchParams]);
 
   const handleCreateEvent = useCallback(() => {
     const newId = ID.unique();
@@ -260,6 +277,173 @@ function OrganizationDetailContent() {
       setManagingStripe(false);
     }
   }, [org, isOwner]);
+
+  const refreshOrganizationProducts = useCallback(
+    async (orgId: string) => {
+      await loadOrg(orgId, { silent: true });
+      const latest = await organizationService.getOrganizationById(orgId, true);
+      if (latest) {
+        setOrg(latest);
+        setProducts(latest.products ?? []);
+      }
+    },
+    [loadOrg],
+  );
+
+  const handleCreateProduct = useCallback(async () => {
+    if (!org || !user || !isOwner) return;
+    const priceNumber = typeof productPrice === 'number' ? productPrice : Number(productPrice);
+    const priceCents = Math.round((Number.isFinite(priceNumber) ? priceNumber : 0) * 100);
+    if (!productName.trim()) {
+      notifications.show({ color: 'red', message: 'Product name is required.' });
+      return;
+    }
+    if (!priceCents || priceCents <= 0) {
+      notifications.show({ color: 'red', message: 'Enter a valid price greater than zero.' });
+      return;
+    }
+    try {
+      setCreatingProduct(true);
+      const created = await productService.createProduct({
+        user,
+        organizationId: org.$id,
+        name: productName.trim(),
+        description: productDescription.trim() || undefined,
+        priceCents,
+        period: productPeriod,
+      });
+      notifications.show({ color: 'green', message: `Created product "${created.name}".` });
+      setProductName('');
+      setProductDescription('');
+      setProductPrice(10);
+      setProductPeriod('month');
+      await refreshOrganizationProducts(org.$id);
+    } catch (error) {
+      console.error('Failed to create product', error);
+      notifications.show({ color: 'red', message: 'Failed to create product. Try again.' });
+    } finally {
+      setCreatingProduct(false);
+    }
+  }, [isOwner, org, productDescription, productName, productPeriod, productPrice, refreshOrganizationProducts, user]);
+
+  const openProductModal = useCallback((product: Product) => {
+    setSelectedProduct(product);
+    setEditProductName(product.name);
+    setEditProductDescription(product.description ?? '');
+    const normalizedPeriod = (product.period === 'month' ? 'month' : product.period) as 'month' | 'week' | 'year';
+    setEditProductPeriod(normalizedPeriod ?? 'month');
+    const priceDollars = (typeof product.priceCents === 'number' ? product.priceCents : Number(product.priceCents) || 0) / 100;
+    setEditProductPrice(Number.isFinite(priceDollars) ? priceDollars : 0);
+    setProductModalOpen(true);
+  }, []);
+
+  const closeProductModal = useCallback(() => {
+    setProductModalOpen(false);
+    setSelectedProduct(null);
+    setEditProductName('');
+    setEditProductDescription('');
+    setEditProductPeriod('month');
+    setEditProductPrice(0);
+  }, []);
+
+  const handleUpdateProduct = useCallback(async () => {
+    if (!org || !selectedProduct || !isOwner) return;
+    const priceNumber = typeof editProductPrice === 'number' ? editProductPrice : Number(editProductPrice);
+    const priceCents = Math.round((Number.isFinite(priceNumber) ? priceNumber : 0) * 100);
+    if (!editProductName.trim()) {
+      notifications.show({ color: 'red', message: 'Product name is required.' });
+      return;
+    }
+    if (!priceCents || priceCents <= 0) {
+      notifications.show({ color: 'red', message: 'Enter a valid price greater than zero.' });
+      return;
+    }
+    try {
+      setUpdatingProduct(true);
+      await productService.updateProduct(selectedProduct.$id, {
+        name: editProductName.trim(),
+        description: editProductDescription.trim() || undefined,
+        priceCents,
+        period: editProductPeriod,
+      });
+      notifications.show({ color: 'green', message: 'Product updated.' });
+      await refreshOrganizationProducts(org.$id);
+      closeProductModal();
+    } catch (error) {
+      console.error('Failed to update product', error);
+      notifications.show({ color: 'red', message: 'Failed to update product. Try again.' });
+    } finally {
+      setUpdatingProduct(false);
+    }
+  }, [closeProductModal, editProductDescription, editProductName, editProductPeriod, editProductPrice, isOwner, org, refreshOrganizationProducts, selectedProduct]);
+
+  const handleDeleteProduct = useCallback(async () => {
+    if (!org || !selectedProduct || !isOwner) return;
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Delete product "${selectedProduct.name}"? This cannot be undone.`);
+      if (!confirmed) {
+        return;
+      }
+    }
+    try {
+      setDeletingProduct(true);
+      await productService.deleteProduct(selectedProduct.$id);
+      notifications.show({ color: 'green', message: 'Product deleted.' });
+      await refreshOrganizationProducts(org.$id);
+      closeProductModal();
+    } catch (error) {
+      console.error('Failed to delete product', error);
+      notifications.show({ color: 'red', message: 'Failed to delete product. Try again.' });
+    } finally {
+      setDeletingProduct(false);
+    }
+  }, [closeProductModal, isOwner, org, refreshOrganizationProducts, selectedProduct]);
+
+  const handlePurchaseProduct = useCallback(
+    async (product: Product) => {
+      if (!org || !user) {
+        notifications.show({ color: 'red', message: 'You must be signed in to purchase.' });
+        return;
+      }
+      try {
+        setPurchaseProduct(product);
+        setPurchasePaymentData(null);
+        const intent = await paymentService.createProductPaymentIntent(user, product, org);
+        setPurchasePaymentData(intent);
+        setShowPurchaseModal(true);
+      } catch (error) {
+        console.error('Failed to start purchase', error);
+        notifications.show({ color: 'red', message: 'Unable to start checkout. Please try again.' });
+      }
+    },
+    [org, user],
+  );
+
+  const handleProductPaymentSuccess = useCallback(async () => {
+    if (!purchaseProduct || !user) return;
+    try {
+      setSubscribing(true);
+      await productService.createSubscription({
+        productId: purchaseProduct.$id,
+        user,
+        organizationId: org?.$id,
+        priceCents: purchaseProduct.priceCents,
+        startDate: new Date().toISOString(),
+      });
+      notifications.show({ color: 'green', message: `Subscription started for ${purchaseProduct.name}.` });
+      if (org?.$id) {
+        await refreshOrganizationProducts(org.$id);
+      }
+    } catch (error) {
+      console.error('Failed to record subscription', error);
+      notifications.show({ color: 'red', message: 'Payment succeeded but subscription failed. Contact support.' });
+    } finally {
+      setSubscribing(false);
+      setShowPurchaseModal(false);
+      setPurchasePaymentData(null);
+      setPurchaseProduct(null);
+    }
+  }, [org?.$id, purchaseProduct, refreshOrganizationProducts, user]);
 
   const handleSearchReferees = useCallback(
     async (query: string) => {
@@ -368,202 +552,6 @@ function OrganizationDetailContent() {
     [org, isOwner],
   );
 
-  const loadFieldSchedule = useCallback(async (view: View, date: Date) => {
-    if (!id) return;
-    const { start, end } = computeFieldRange(view, date);
-    const startLocal = formatISO(start, { representation: 'complete' });
-    const endLocal = formatISO(end, { representation: 'complete' });
-    setFieldScheduleLoading(true);
-    setFieldScheduleRange({ start: new Date(start.getTime()), end: new Date((end ?? start).getTime()) });
-    try {
-
-      if (org?.fields) {
-        const fields = await Promise.all(org?.fields.map((field) => fieldService.getFieldEventsMatches(field, { start: startLocal, end: endLocal })));
-
-        setFieldScheduleFields(fields);
-      }
-    } catch (error) {
-      console.error('Failed to load field schedule:', error);
-      setFieldScheduleFields([]);
-    } finally {
-      setFieldScheduleLoading(false);
-    }
-  }, [computeFieldRange, id, org]);
-
-  const handleRentalSlotSaved = useCallback((newField: Field) => {
-    setFieldScheduleFields((prev) => prev.map((field) => {
-      if (field.$id !== newField.$id) {
-        return field;
-      }
-
-      return newField;
-    }));
-
-    setOrg((prev) => {
-      if (!prev || !prev.fields) {
-        return prev;
-      }
-
-      const nextFields = prev.fields.map((field) => {
-        if (field.$id !== newField.$id) {
-          return field;
-        }
-
-        return newField;
-      });
-
-      return { ...prev, fields: nextFields };
-    });
-    setShowRentalSlotModal(false);
-    setEditingRentalSlot(null);
-  }, [setFieldScheduleFields, setOrg, setShowRentalSlotModal, setEditingRentalSlot]);
-
-  const handleFieldSaved = useCallback((savedField: Field) => {
-    setOrg((prev) => {
-      if (!prev) {
-        return prev;
-      }
-
-      const existing = Array.isArray(prev.fields) ? [...prev.fields] : [];
-      const index = existing.findIndex((field) => field.$id === savedField.$id);
-      if (index >= 0) {
-        existing[index] = savedField;
-      } else {
-        existing.push(savedField);
-      }
-
-      return { ...prev, fields: existing };
-    });
-
-    setFieldScheduleFields((prev) => {
-      const list = [...prev];
-      const index = list.findIndex((field) => field.$id === savedField.$id);
-      if (index >= 0) {
-        list[index] = savedField;
-        return list;
-      }
-
-      list.push(savedField);
-      return list;
-    });
-
-    setShowFieldModal(false);
-    setEditingField(null);
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'fields' && fieldViewMode === 'schedule') {
-      loadFieldSchedule(fieldCalendarView, fieldCalendarDate);
-    }
-  }, [activeTab, fieldViewMode, fieldCalendarView, fieldCalendarDate, loadFieldSchedule]);
-
-  useEffect(() => {
-    if (activeTab !== 'fields' || fieldViewMode !== 'schedule') {
-      setShowRentalSlotModal(false);
-      setEditingRentalSlot(null);
-    }
-  }, [activeTab, fieldViewMode]);
-
-  useEffect(() => {
-    if (activeTab !== 'fields') {
-      setShowFieldModal(false);
-      setEditingField(null);
-    }
-  }, [activeTab]);
-
-  const sortedFieldScheduleFields = useMemo(() => {
-    return [...fieldScheduleFields].sort((a, b) => {
-      const aNumber = typeof a.fieldNumber === 'number' ? a.fieldNumber : Number.MAX_SAFE_INTEGER;
-      const bNumber = typeof b.fieldNumber === 'number' ? b.fieldNumber : Number.MAX_SAFE_INTEGER;
-      if (aNumber !== bNumber) {
-        return aNumber - bNumber;
-      }
-      const aName = a.name || '';
-      const bName = b.name || '';
-      return aName.localeCompare(bName);
-    });
-  }, [fieldScheduleFields]);
-
-  useEffect(() => {
-    if (sortedFieldScheduleFields.length === 0) {
-      if (fieldScheduleSelectedFieldId !== null) {
-        setFieldScheduleSelectedFieldId(null);
-      }
-      return;
-    }
-
-    if (!fieldScheduleSelectedFieldId || !sortedFieldScheduleFields.some((field) => field.$id === fieldScheduleSelectedFieldId)) {
-      setFieldScheduleSelectedFieldId(sortedFieldScheduleFields[0].$id);
-    }
-  }, [sortedFieldScheduleFields, fieldScheduleSelectedFieldId]);
-
-  const fieldScheduleEvents = useMemo(() => buildFieldCalendarEvents(fieldScheduleFields, fieldScheduleRange), [fieldScheduleFields, fieldScheduleRange]);
-  const defaultTimeRange = useMemo<[number, number]>(() => {
-    if (!fieldScheduleEvents.length) {
-      return [8, 22];
-    }
-
-    let earliest = 24;
-    let latest = 0;
-    fieldScheduleEvents.forEach((event) => {
-      const startHour = event.start.getHours() + event.start.getMinutes() / 60;
-      const endHour = event.end.getHours() + event.end.getMinutes() / 60;
-      earliest = Math.min(earliest, startHour);
-      latest = Math.max(latest, endHour);
-    });
-
-    const floor = Math.max(0, Math.floor(earliest));
-    const ceil = Math.min(24, Math.ceil(latest));
-    if (floor === ceil) {
-      const adjusted = Math.min(24, floor + 1);
-      return [Math.max(0, adjusted - 1), adjusted];
-    }
-    return [floor, ceil];
-  }, [fieldScheduleEvents]);
-
-  useEffect(() => {
-    setTimeRange(defaultTimeRange);
-  }, [defaultTimeRange]);
-
-  const showTimeRangeSlider = fieldCalendarView === 'week' || fieldCalendarView === 'day';
-  const visibleHourSpan = useMemo(() => Math.max(1, timeRange[1] - timeRange[0]), [timeRange]);
-
-  const slotGroupPropGetter = useCallback<SlotGroupPropGetter>(() => {
-    const baseHeight = MIN_FIELD_CALENDAR_HEIGHT / visibleHourSpan;
-    return {
-      style: {
-        height: `${baseHeight}px`,
-        minHeight: `${baseHeight}px`,
-        flex: '0 0 auto',
-      },
-    };
-  }, [visibleHourSpan]);
-
-  const minTime = useMemo(() => new Date(1970, 0, 1, timeRange[0], 0, 0), [timeRange]);
-  const maxTime = useMemo(() => {
-    const hour = Math.min(24, Math.max(timeRange[1], timeRange[0] + 1));
-    if (hour >= 24) {
-      return new Date(1970, 0, 1, 23, 59, 59, 999);
-    }
-    return new Date(1970, 0, 1, hour, 0, 0);
-  }, [timeRange]);
-  const selectedField = useMemo(
-    () => sortedFieldScheduleFields.find((field) => field.$id === fieldScheduleSelectedFieldId) ?? null,
-    [sortedFieldScheduleFields, fieldScheduleSelectedFieldId]
-  );
-  const activeField = selectedField ?? (sortedFieldScheduleFields.length ? sortedFieldScheduleFields[0] : null);
-  const activeFieldIndex = useMemo(() => {
-    if (!activeField) return -1;
-    return sortedFieldScheduleFields.findIndex((field) => field.$id === activeField.$id);
-  }, [sortedFieldScheduleFields, activeField]);
-  const filteredFieldScheduleEvents = useMemo(() => {
-    if (!activeField) {
-      return [];
-    }
-    return fieldScheduleEvents.filter((entry) => entry.resourceId === activeField.$id);
-  }, [fieldScheduleEvents, activeField]);
-  const shouldUseTabsForFields = sortedFieldScheduleFields.length > 0 && sortedFieldScheduleFields.length <= 5;
-
   if (authLoading) return <Loading fullScreen text="Loading organization..." />;
   if (!isAuthenticated || !user) return null;
 
@@ -603,14 +591,7 @@ function OrganizationDetailContent() {
             <SegmentedControl
               value={activeTab}
               onChange={(v: any) => setActiveTab(v)}
-              data={[
-                { label: 'Overview', value: 'overview' },
-                { label: 'Events', value: 'events' },
-                { label: 'Teams', value: 'teams' },
-                { label: 'Referees', value: 'referees' },
-                { label: 'Refunds', value: 'refunds' },
-                { label: 'Fields', value: 'fields' },
-              ]}
+              data={availableTabs}
               mb="lg"
             />
 
@@ -646,14 +627,14 @@ function OrganizationDetailContent() {
                   </Paper>
                 </div>
                 <div>
-                  <Paper withBorder p="md" radius="md" mb="md">
-                    <Title order={5} mb="sm">Payments</Title>
-                    <Text size="sm" c="dimmed" mb="sm">
-                      {organizationHasStripeAccount
-                        ? 'Stripe is connected. Manage your payout details when needed.'
-                        : 'Connect a Stripe account to accept payments for rentals.'}
-                    </Text>
-                    {isOwner ? (
+                  {isOwner && (
+                    <Paper withBorder p="md" radius="md" mb="md">
+                      <Title order={5} mb="sm">Payments</Title>
+                      <Text size="sm" c="dimmed" mb="sm">
+                        {organizationHasStripeAccount
+                          ? 'Stripe is connected. Manage your payout details when needed.'
+                          : 'Connect a Stripe account to accept payments for rentals.'}
+                      </Text>
                       <Stack gap="xs">
                         {!organizationHasStripeAccount && (
                           <TextInput
@@ -687,12 +668,8 @@ function OrganizationDetailContent() {
                           </Text>
                         )}
                       </Stack>
-                    ) : (
-                      <Text size="sm" c="dimmed">
-                        Contact the organization owner to connect a Stripe account.
-                      </Text>
-                    )}
-                  </Paper>
+                    </Paper>
+                  )}
                   <Paper withBorder p="md" radius="md">
                     <Title order={5} mb="md">Teams</Title>
                     {org.teams && org.teams.length > 0 ? (
@@ -705,18 +682,20 @@ function OrganizationDetailContent() {
                       <Text size="sm" c="dimmed">No teams yet.</Text>
                     )}
                   </Paper>
-                  <Paper withBorder p="md" radius="md" mt="md">
-                    <Title order={5} mb="md">Referees</Title>
-                    {currentReferees.length > 0 ? (
-                      <div className="space-y-3">
-                        {currentReferees.slice(0, 4).map((ref) => (
-                          <UserCard key={ref.$id} user={ref} className="!p-0 !shadow-none" />
-                        ))}
-                      </div>
-                    ) : (
-                      <Text size="sm" c="dimmed">No referees yet.</Text>
-                    )}
-                  </Paper>
+                  {isOwner && (
+                    <Paper withBorder p="md" radius="md" mt="md">
+                      <Title order={5} mb="md">Referees</Title>
+                      {currentReferees.length > 0 ? (
+                        <div className="space-y-3">
+                          {currentReferees.slice(0, 4).map((ref) => (
+                            <UserCard key={ref.$id} user={ref} className="!p-0 !shadow-none" />
+                          ))}
+                        </div>
+                      ) : (
+                        <Text size="sm" c="dimmed">No referees yet.</Text>
+                      )}
+                    </Paper>
+                  )}
                 </div>
               </SimpleGrid>
             )}
@@ -725,7 +704,7 @@ function OrganizationDetailContent() {
               <Paper withBorder p="md" radius="md">
                 <Group justify="space-between" mb="sm">
                   <Title order={5}>Events Calendar</Title>
-                  <Button onClick={handleCreateEvent}>+ Create Event</Button>
+                  {isOwner && <Button onClick={handleCreateEvent}>+ Create Event</Button>}
                 </Group>
                 <div className="h-[800px]">
                   <BigCalendar
@@ -758,7 +737,7 @@ function OrganizationDetailContent() {
               <Paper withBorder p="md" radius="md">
                 <Group justify="space-between" mb="md">
                   <Title order={5}>Teams</Title>
-                  <Button onClick={() => setShowCreateTeamModal(true)}>Create Team</Button>
+                  {isOwner && <Button onClick={() => setShowCreateTeamModal(true)}>Create Team</Button>}
                 </Group>
                 {org.teams && org.teams.length > 0 ? (
                   <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
@@ -772,7 +751,7 @@ function OrganizationDetailContent() {
               </Paper>
             )}
 
-            {activeTab === 'referees' && (
+            {isOwner && activeTab === 'referees' && (
               <Paper withBorder p="md" radius="md">
                 <Group justify="space-between" mb="md">
                   <Title order={5}>Referees</Title>
@@ -933,194 +912,125 @@ function OrganizationDetailContent() {
               </Paper>
             )}
 
-            {activeTab === 'refunds' && org && (
+            {isOwner && activeTab === 'refunds' && org && (
               <RefundRequestsList organizationId={org.$id} />
             )}
 
-            {activeTab === 'fields' && (
+            {activeTab === 'store' && org && (
               <Paper withBorder p="md" radius="md">
-                <Group justify="space-between" mb="md">
-                  <Title order={5}>Fields</Title>
-                  <Group gap="xs">
-                    <SegmentedControl
-                      size="sm"
-                      value={fieldViewMode}
-                      onChange={(value: string) => setFieldViewMode(value as 'list' | 'schedule')}
-                      data={[
-                        { label: 'List', value: 'list' },
-                        { label: 'Schedule', value: 'schedule' },
-                      ]}
-                    />
-                    <Button
-                      onClick={() => {
-                        setEditingField(null);
-                        setShowFieldModal(true);
-                      }}
-                    >
-                      Create Field
-                    </Button>
-                  </Group>
+                <Group justify="space-between" align="center" mb="md">
+                  <Title order={5}>Store</Title>
+                  {!organizationHasStripeAccount && (
+                    <Text size="sm" c="red">
+                      Connect Stripe to accept payments for products.
+                    </Text>
+                  )}
                 </Group>
-                {fieldViewMode === 'list' ? (
-                  org.fields && org.fields.length > 0 ? (
-                    <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
-                      {org.fields.map((f) => (
-                        <Paper
-                          key={f.$id}
-                          withBorder
-                          p="md"
-                          radius="md"
-                          className="cursor-pointer"
-                          onClick={() => {
-                            setEditingField(f);
-                            setShowFieldModal(true);
-                          }}
-                        >
-                          <Text fw={500}>{f.name || `Field ${f.fieldNumber}`}</Text>
-                          <Text size="sm" c="dimmed">{f.type || '—'}</Text>
-                          {f.location && <Text size="xs" c="dimmed" mt={4}>{f.location}</Text>}
-                        </Paper>
-                      ))}
+
+                {isOwner && (
+                  <Paper withBorder radius="md" p="md" mb="lg">
+                    <Title order={6} mb="xs">Add membership product</Title>
+                    <Text size="sm" c="dimmed" mb="md">
+                      Create a recurring membership product that users can purchase.
+                    </Text>
+                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                      <TextInput
+                        label="Name"
+                        placeholder="Membership"
+                        value={productName}
+                        onChange={(e) => setProductName(e.currentTarget.value)}
+                        required
+                      />
+                      <NumberInput
+                        label="Price (USD)"
+                        min={0}
+                        decimalScale={2}
+                        hideControls
+                        value={productPrice}
+                        onChange={(value) => setProductPrice(value === '' ? '' : Number(value))}
+                        leftSection="$"
+                      />
+                      <Select
+                        label="Billing period"
+                        data={[
+                          { label: 'Month', value: 'month' },
+                          { label: 'Week', value: 'week' },
+                          { label: 'Year', value: 'year' },
+                        ]}
+                        value={productPeriod}
+                        onChange={(value) => setProductPeriod((value as any) ?? 'monthly')}
+                      />
+                      <TextInput
+                        label="Description"
+                        placeholder="Optional description"
+                        value={productDescription}
+                        onChange={(e) => setProductDescription(e.currentTarget.value)}
+                      />
                     </SimpleGrid>
-                  ) : (
-                    <Text size="sm" c="dimmed">No fields yet.</Text>
-                  )
+                    <Group justify="flex-end" mt="md">
+                      <Button onClick={handleCreateProduct} loading={creatingProduct} disabled={!organizationHasStripeAccount}>
+                        Add Product
+                      </Button>
+                    </Group>
+                  </Paper>
+                )}
+
+                <Title order={6} mb="sm">Products</Title>
+                {products.length === 0 ? (
+                  <Text size="sm" c="dimmed">No products yet.</Text>
                 ) : (
-                  fieldScheduleLoading ? (
-                    <div className="py-16">
-                      <Loading fullScreen={false} text="Loading field schedule..." />
-                    </div>
-                  ) : sortedFieldScheduleFields.length === 0 ? (
-                    <Text size="sm" c="dimmed">No field schedules available for this timeframe.</Text>
-                  ) : (
-                    <>
-                      {shouldUseTabsForFields ? (
-                        <Tabs
-                          value={activeField?.$id ?? ''}
-                          onChange={(value) => setFieldScheduleSelectedFieldId(value || null)}
-                          keepMounted={false}
-                        >
-                          <Tabs.List mb="md">
-                            {sortedFieldScheduleFields.map((field) => (
-                              <Tabs.Tab key={field.$id} value={field.$id}>
-                                {field.name || `Field ${field.fieldNumber ?? ''}`}
-                              </Tabs.Tab>
-                            ))}
-                          </Tabs.List>
-                        </Tabs>
-                      ) : (
-                        <Group justify="space-between" align="center" mb="md">
-                          <Text fw={500}>Select field</Text>
-                          <Pagination.Root
-                            total={sortedFieldScheduleFields.length}
-                            value={activeFieldIndex >= 0 ? activeFieldIndex + 1 : 1}
-                            onChange={(page) => {
-                              const nextField = sortedFieldScheduleFields[page - 1];
-                              setFieldScheduleSelectedFieldId(nextField ? nextField.$id : null);
-                            }}
-                            siblings={sortedFieldScheduleFields.length}
-                            boundaries={0}
-                            getItemProps={(page) => {
-                              const field = sortedFieldScheduleFields[page - 1];
-                              const label = field?.fieldNumber !== undefined ? field.fieldNumber : page;
-                              return {
-                                children: label,
-                                'aria-label': field ? (field.name || `Field ${label}`) : `Field ${label}`,
-                              };
-                            }}
-                          >
-                            <Group gap="xs" align="center">
-                              <Pagination.Previous />
-                              <Pagination.Items />
-                              <Pagination.Next />
-                            </Group>
-                          </Pagination.Root>
-                        </Group>
-                      )}
-
-                      {activeField && (
-                        <Group justify="space-between" align="center" mb="sm">
-                          <Text size="sm" c="dimmed">
-                            Viewing schedule for {activeField.name || (activeField.fieldNumber ? `Field ${activeField.fieldNumber}` : 'Selected field')}
-                          </Text>
-                          <Button
-                            size="xs"
-                            variant="light"
-                            disabled={!canCreateRentalSlots}
-                            onClick={() => {
-                              if (!canCreateRentalSlots) {
-                                notifications.show({
-                                  color: 'yellow',
-                                  message: 'Add a location to your organization before creating rental slots.',
-                                });
-                                return;
-                              }
-                              setEditingRentalSlot(null);
-                              setShowRentalSlotModal(true);
-                            }}
-                          >
-                            Add rental slot
-                          </Button>
-                        </Group>
-                      )}
-
-                      <div className="w-full">
-                        {showTimeRangeSlider && (
-                          <div className="mb-8">
-                            <Text size="sm" fw={600} mb={8}>
-                              Visible hours: {formatHourLabel(timeRange[0])} – {formatHourLabel(timeRange[1])}
-                            </Text>
-                            <RangeSlider
-                              min={0}
-                              max={24}
-                              step={1}
-                              minRange={1}
-                              value={timeRange}
-                              onChange={(value) => setTimeRange(value as [number, number])}
-                              marks={[
-                                { value: 0, label: '12 AM' },
-                                { value: 6, label: '6 AM' },
-                                { value: 12, label: '12 PM' },
-                                { value: 18, label: '6 PM' },
-                                { value: 24, label: '12 AM' },
-                              ]}
-                              label={(value) => formatHourLabel(value)}
-                              size="sm"
-                            />
+                  <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
+                    {products.map((product) => (
+                      <Paper
+                        key={product.$id}
+                        withBorder
+                        radius="md"
+                        p="md"
+                        onClick={() => {
+                          if (isOwner) {
+                            openProductModal(product);
+                          }
+                        }}
+                        style={{ cursor: isOwner ? 'pointer' : 'default' }}
+                      >
+                        <Group justify="space-between" align="flex-start" mb="xs">
+                          <div>
+                            <Text fw={600}>{product.name}</Text>
+                            {product.description && <Text size="sm" c="dimmed">{product.description}</Text>}
                           </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <Text size="sm" c="dimmed" tt="capitalize">{product.period}</Text>
+                            {isOwner && (
+                              <Text size="xs" c="dimmed">Click card to edit</Text>
+                            )}
+                          </div>
+                        </Group>
+                        <Text fw={700} mb="xs">{formatPrice(product.priceCents)}</Text>
+                        {product.isActive === false && (
+                          <Text size="xs" c="red" mb="xs">Inactive</Text>
                         )}
-                        <BigCalendar
-                          localizer={localizer}
-                          events={filteredFieldScheduleEvents}
-                          startAccessor="start"
-                          endAccessor="end"
-                          view={fieldCalendarView}
-                          date={fieldCalendarDate}
-                          onView={(v) => setFieldCalendarView(v)}
-                          onNavigate={(date) => setFieldCalendarDate(new Date(date))}
-                          views={["month", "week", "day", "agenda"]}
-                          components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
-                          popup
-                          selectable={false}
-                          onSelectEvent={(evt: any) => {
-                            if (evt.metaType === 'event' && evt.resource) {
-                              setSelectedEvent(evt.resource);
-                              setShowEventDetailSheet(true);
-                            } else if (evt.metaType === 'rental' && evt.resource) {
-                              setEditingRentalSlot(evt.resource as TimeSlot);
-                              setShowRentalSlotModal(true);
+                        <Button
+                          fullWidth
+                          variant={isOwner ? 'outline' : 'filled'}
+                          disabled={product.isActive === false || (!organizationHasStripeAccount && !isOwner)}
+                          onClick={(event) => {
+                            if (isOwner) {
+                              event.stopPropagation();
                             }
+                            handlePurchaseProduct(product);
                           }}
-                          min={minTime}
-                          max={maxTime}
-                          slotGroupPropGetter={slotGroupPropGetter}
-                          style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
-                        />
-                      </div>
-                    </>
-                  )
+                        >
+                          {isOwner ? 'Preview Checkout' : 'Purchase'}
+                        </Button>
+                      </Paper>
+                    ))}
+                  </SimpleGrid>
                 )}
               </Paper>
+            )}
+
+            {activeTab === 'fields' && org && (
+              <FieldsTabContent organization={org} organizationId={id ?? ''} currentUser={user ?? null} />
             )}
           </>
         )}
@@ -1138,27 +1048,6 @@ function OrganizationDetailContent() {
         currentUser={user}
         onTeamCreated={async () => { setShowCreateTeamModal(false); if (id) await loadOrg(id); }}
       />
-      <CreateFieldModal
-        isOpen={showFieldModal}
-        onClose={() => {
-          setShowFieldModal(false);
-          setEditingField(null);
-        }}
-        organization={org}
-        field={editingField}
-        onFieldSaved={handleFieldSaved}
-      />
-      <CreateRentalSlotModal
-        opened={showRentalSlotModal}
-        onClose={() => {
-          setShowRentalSlotModal(false);
-          setEditingRentalSlot(null);
-        }}
-        field={activeField}
-        slot={editingRentalSlot}
-        onSaved={handleRentalSlotSaved}
-        organizationHasStripeAccount={organizationHasStripeAccount}
-      />
       <CreateOrganizationModal
         isOpen={showEditOrganizationModal}
         onClose={() => setShowEditOrganizationModal(false)}
@@ -1170,6 +1059,83 @@ function OrganizationDetailContent() {
             await loadOrg(id);
           }
         }}
+      />
+      <Modal
+        opened={productModalOpen && Boolean(selectedProduct)}
+        onClose={closeProductModal}
+        title="Edit product"
+        centered
+      >
+        {selectedProduct && (
+          <Stack gap="sm">
+            <TextInput
+              label="Name"
+              value={editProductName}
+              onChange={(e) => setEditProductName(e.currentTarget.value)}
+              required
+            />
+            <NumberInput
+              label="Price (USD)"
+              min={0}
+              decimalScale={2}
+              hideControls
+              value={editProductPrice}
+              onChange={(value) => setEditProductPrice(value === '' ? '' : Number(value))}
+              leftSection="$"
+            />
+            <Select
+              label="Billing period"
+              data={[
+                { label: 'Month', value: 'month' },
+                { label: 'Week', value: 'week' },
+                { label: 'Year', value: 'year' },
+              ]}
+              value={editProductPeriod}
+              onChange={(value) => setEditProductPeriod((value as any) ?? 'month')}
+            />
+            <Textarea
+              label="Description"
+              placeholder="Optional description"
+              value={editProductDescription}
+              onChange={(e) => setEditProductDescription(e.currentTarget.value)}
+              minRows={2}
+            />
+            <Group justify="space-between" mt="md">
+              <Button
+                variant="light"
+                color="red"
+                onClick={handleDeleteProduct}
+                loading={deletingProduct}
+              >
+                Delete product
+              </Button>
+              <Group gap="xs">
+                <Button variant="default" onClick={closeProductModal}>
+                  Cancel
+                </Button>
+                <Button onClick={handleUpdateProduct} loading={updatingProduct}>
+                  Save changes
+                </Button>
+              </Group>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+      <PaymentModal
+        isOpen={showPurchaseModal && Boolean(purchaseProduct && purchasePaymentData)}
+        onClose={() => {
+          setShowPurchaseModal(false);
+          setPurchasePaymentData(null);
+          setPurchaseProduct(null);
+        }}
+        event={{
+          name: purchaseProduct?.name ?? 'Product',
+          location: org?.name ?? '',
+          eventType: 'EVENT',
+          price: purchaseProduct?.priceCents ?? 0,
+        } as any}
+        paymentData={purchasePaymentData}
+        onPaymentSuccess={handleProductPaymentSuccess}
       />
     </>
   );

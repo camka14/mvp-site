@@ -5,6 +5,7 @@ import { useApp } from '@/app/providers';
 import { userService } from '@/lib/userService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Bill, PaymentIntent, Team, getUserAvatarUrl, formatPrice, formatBillAmount } from '@/types';
+import type { Subscription } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
 import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid } from '@mantine/core';
@@ -15,6 +16,7 @@ import { teamService } from '@/lib/teamService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import { ManageTeams } from '@/app/teams/page';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
+import { productService } from '@/lib/productService';
 
 export default function ProfilePage() {
     const { user, loading, setUser } = useApp();
@@ -53,6 +55,10 @@ export default function ProfilePage() {
     const [billPaymentData, setBillPaymentData] = useState<PaymentIntent | null>(null);
     const [payingBill, setPayingBill] = useState<OwnedBill | null>(null);
     const [splittingBillId, setSplittingBillId] = useState<string | null>(null);
+    const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+    const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+    const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+    const [cancellingSubId, setCancellingSubId] = useState<string | null>(null);
 
     const userHasStripeAccount = Boolean(user?.hasStripeAccount || user?.stripeAccountId);
 
@@ -257,6 +263,7 @@ export default function ProfilePage() {
     useEffect(() => {
         if (user) {
             loadBills();
+            loadSubscriptions();
         }
     }, [user, loadBills]);
 
@@ -306,6 +313,42 @@ export default function ProfilePage() {
         setBillPaymentData(null);
         setPayingBill(null);
     }, []);
+
+    const loadSubscriptions = useCallback(async () => {
+        if (!user) return;
+        setLoadingSubscriptions(true);
+        setSubscriptionError(null);
+        try {
+            const subs = await userService.listUserSubscriptions(user.$id);
+            setSubscriptions(subs);
+        } catch (err) {
+            setSubscriptionError(err instanceof Error ? err.message : 'Failed to load memberships');
+        } finally {
+            setLoadingSubscriptions(false);
+        }
+    }, [user]);
+
+    const handleCancelSubscription = useCallback(
+        async (subscriptionId: string) => {
+            if (!subscriptionId) return;
+            try {
+                setCancellingSubId(subscriptionId);
+                const cancelled = await productService.cancelSubscription(subscriptionId);
+                if (cancelled) {
+                    notifications.show({ color: 'green', message: 'Membership cancelled.' });
+                    await loadSubscriptions();
+                } else {
+                    notifications.show({ color: 'red', message: 'Unable to cancel membership. Try again.' });
+                }
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to cancel membership';
+                notifications.show({ color: 'red', message });
+            } finally {
+                setCancellingSubId(null);
+            }
+        },
+        [loadSubscriptions],
+    );
 
     if (loading) {
         return <Loading />;

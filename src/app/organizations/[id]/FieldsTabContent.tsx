@@ -1,48 +1,36 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
-  Select,
-  Group,
-  Button,
-  Text,
-  Paper,
-  Loader,
-  Container,
-  Title,
   Alert,
+  Button,
+  Group,
+  Loader,
+  Paper,
+  Select,
+  Stack,
+  Text,
+  Title,
 } from '@mantine/core';
 import {
   Calendar as BigCalendar,
   dateFnsLocalizer,
-  View,
   SlotGroupPropGetter,
+  View,
 } from 'react-big-calendar';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
-import { format, getDay, parse, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addHours } from 'date-fns';
-
-import Navigation from '@/components/layout/Navigation';
+import { addHours, endOfDay, endOfMonth, endOfWeek, format, getDay, parse, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
 import Loading from '@/components/ui/Loading';
-import type { Field, Organization, TimeSlot } from '@/types';
+import type { Field, Organization, TimeSlot, UserData } from '@/types';
 import { formatPrice } from '@/types';
-import { buildFieldCalendarEvents, type FieldCalendarEntry } from '@/app/organizations/[id]/fieldCalendar';
+import { buildFieldCalendarEvents, type FieldCalendarEntry } from './fieldCalendar';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { notifications } from '@mantine/notifications';
-import { useApp } from '@/app/providers';
 import { organizationService } from '@/lib/organizationService';
 import { ID } from '@/app/appwrite';
 import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
-
-type RentalListing = {
-  organization: Organization;
-  field: Field;
-  slot: TimeSlot;
-  nextOccurrence: Date;
-  distanceKm?: number;
-};
 
 type SelectionState = {
   fieldId: string;
@@ -65,7 +53,7 @@ type CalendarEventData = FieldCalendarEntry | SelectionCalendarEntry;
 
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const MIN_SELECTION_MS = 60 * 60 * 1000;
-const SELECTION_COLOR = '#FED7AA'; // matches Tailwind border-orange-200
+const SELECTION_COLOR = '#FED7AA';
 const SELECTION_BORDER_COLOR = '#FDBA74';
 
 const minutesToDate = (base: Date, minutes: number): Date => {
@@ -122,13 +110,16 @@ const slotMatchesSelection = (slot: TimeSlot, field: Field, selection: Selection
   return selectedStart >= slotStart && selectedEnd <= slotEnd;
 };
 
-export default function RentalSelectionPage() {
-  const { user } = useApp();
+type FieldsTabContentProps = {
+  organization: Organization;
+  organizationId: string;
+  currentUser: UserData | null;
+};
+
+export default function FieldsTabContent({ organization, organizationId, currentUser }: FieldsTabContentProps) {
   const router = useRouter();
-  const params = useParams<{ organizationId?: string }>();
-  const organizationId = params?.organizationId ?? '';
-  const [organization, setOrganization] = useState<Organization | null>(null);
-  const [orgLoading, setOrgLoading] = useState(true);
+  const [org, setOrg] = useState<Organization | null>(organization ?? null);
+  const [orgLoading, setOrgLoading] = useState(!organization);
   const [orgError, setOrgError] = useState<string | null>(null);
 
   const localizer = useMemo(() => dateFnsLocalizer({
@@ -148,31 +139,35 @@ export default function RentalSelectionPage() {
   const [hostSelection, setHostSelection] = useState<string>('self');
 
   useEffect(() => {
-    let cancelled = false;
-    setOrgLoading(true);
-    setOrgError(null);
+    setOrg(organization ?? null);
+  }, [organization?.$id, organization]);
+
+  useEffect(() => {
+    if (organization) return;
     if (!organizationId) {
       setOrgError('No organization selected.');
-      setOrganization(null);
+      setOrg(null);
       setOrgLoading(false);
       return;
     }
-
+    let cancelled = false;
     (async () => {
       try {
-        const org = await organizationService.getOrganizationById(organizationId);
+        setOrgLoading(true);
+        setOrgError(null);
+        const result = await organizationService.getOrganizationById(organizationId);
         if (cancelled) return;
-        if (!org) {
+        if (!result) {
           setOrgError('Organization not found.');
-          setOrganization(null);
+          setOrg(null);
         } else {
-          setOrganization(org);
+          setOrg(result);
         }
       } catch (error) {
         console.error('Failed to load organization:', error);
         if (!cancelled) {
           setOrgError('Failed to load organization. Please try again.');
-          setOrganization(null);
+          setOrg(null);
         }
       } finally {
         if (!cancelled) {
@@ -183,28 +178,28 @@ export default function RentalSelectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [organizationId]);
+  }, [organization, organizationId]);
 
-  const fields = useMemo<Field[]>(() => organization?.fields ?? [], [organization]);
+  const fields = useMemo<Field[]>(() => org?.fields ?? [], [org?.fields]);
   const fieldOptions = useMemo(() => fields.map((field) => ({
     value: field.$id,
     label: field.name || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Field'),
   })), [fields]);
 
-  const rentalListings = useMemo<RentalListing[]>(() => {
-    if (!organization) return [];
+  const rentalListings = useMemo(() => {
+    if (!org) return [];
     const referenceDate = new Date();
-    const listings: RentalListing[] = [];
-    (organization.fields || []).forEach((field) => {
+    const listings: { field: Field; slot: TimeSlot; nextOccurrence: Date }[] = [];
+    (org.fields || []).forEach((field) => {
       (field.rentalSlots || []).forEach((slot) => {
         const nextOccurrence = getNextRentalOccurrence(slot, referenceDate);
         if (!nextOccurrence) return;
-        listings.push({ organization, field, slot, nextOccurrence });
+        listings.push({ field, slot, nextOccurrence });
       });
     });
     listings.sort((a, b) => a.nextOccurrence.getTime() - b.nextOccurrence.getTime());
     return listings;
-  }, [organization]);
+  }, [org]);
 
   useEffect(() => {
     if (!rentalListings.length) return;
@@ -260,7 +255,7 @@ export default function RentalSelectionPage() {
     if (range?.start) {
       setCalendarDate(range.start);
     }
-  }, [setCalendarDate]);
+  }, []);
 
   const calendarEvents = useMemo<CalendarEventData[]>(() => {
     if (!selectedField || !selection) {
@@ -348,14 +343,14 @@ export default function RentalSelectionPage() {
   }, [selectedField, selection]);
 
   const isSelectionValid = Boolean(selection && matchingRentalSlot && existingConflicts.length === 0);
-  const summaryColor = !selectedField || !selection || !user ? 'dimmed' : (isSelectionValid ? 'teal' : 'red');
+  const summaryColor = !selectedField || !selection || !currentUser ? 'dimmed' : (isSelectionValid ? 'teal' : 'red');
 
   const summaryText = useMemo(() => {
     if (!selectedField || !selection) {
       return 'Select a field to continue.';
     }
-    if (!user) {
-      return 'Sign in to create a rental event.';
+    if (!currentUser) {
+      return 'Sign in to create an event.';
     }
     if (existingConflicts.length) {
       return 'Selected time overlaps an existing event or match.';
@@ -367,7 +362,7 @@ export default function RentalSelectionPage() {
     const endLabel = selection.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const priceLabel = typeof matchingRentalSlot.price === 'number' ? formatPrice(matchingRentalSlot.price) : 'N/A';
     return `Selection: ${startLabel} – ${endLabel} · Price ${priceLabel} per hour`;
-  }, [matchingRentalSlot, existingConflicts, selectedField, selection, user]);
+  }, [matchingRentalSlot, existingConflicts, selectedField, selection, currentUser]);
 
   const applySelectionWindow = useCallback(
     (start: Date, end: Date) => {
@@ -417,7 +412,7 @@ export default function RentalSelectionPage() {
   );
 
   useEffect(() => {
-    if (!user) {
+    if (!currentUser) {
       setHostOrganizations([]);
       setHostSelection('self');
       return;
@@ -427,7 +422,7 @@ export default function RentalSelectionPage() {
     (async () => {
       try {
         setHostOptionsLoading(true);
-        const orgs = await organizationService.getOrganizationsByOwner(user.$id);
+        const orgs = await organizationService.getOrganizationsByOwner(currentUser.$id);
         if (cancelled) return;
         setHostOrganizations(orgs);
         setHostSelection((prev) => {
@@ -452,7 +447,7 @@ export default function RentalSelectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [currentUser]);
 
   const hostSelectOptions = useMemo(() => {
     const base = [{ value: 'self', label: 'Host as Myself' }];
@@ -469,7 +464,7 @@ export default function RentalSelectionPage() {
   }, [hostOrganizations]);
 
   const handleCreateEventClick = useCallback(() => {
-    if (!user) {
+    if (!currentUser) {
       notifications.show({ color: 'yellow', message: 'Sign in to create an event.' });
       return;
     }
@@ -508,11 +503,14 @@ export default function RentalSelectionPage() {
     if (typeof rentalPriceCents === 'number' && Number.isFinite(rentalPriceCents)) {
       params.set('rentalPriceCents', String(Math.round(rentalPriceCents)));
     }
-    if (organization?.$id) {
-      params.set('orgId', organization.$id);
+    if (org?.$id) {
+      params.set('orgId', org.$id);
+    }
+    if (hostSelection && hostSelection !== 'self') {
+      params.set('hostOrgId', hostSelection);
     }
     router.push(`/events/${newId}/schedule?${params.toString()}`);
-  }, [isSelectionValid, matchingRentalSlot?.price, organization?.$id, router, selectedField, selection, user]);
+  }, [currentUser, isSelectionValid, matchingRentalSlot?.price, org?.$id, router, selectedField, selection, hostSelection]);
 
   const CalendarEvent: any = ({ event }: any) => {
     const title = event.resource?.name || event.title;
@@ -524,127 +522,126 @@ export default function RentalSelectionPage() {
   };
 
   if (orgLoading) {
-    return <Loading fullScreen text="Loading rental selection..." />;
+    return <Loading fullScreen={false} text="Loading fields..." />;
   }
 
   return (
-    <>
-      <Navigation />
-      <Container size="lg" py="xl">
-        <Group justify="space-between" align="flex-start" mb="lg">
-          <div>
-            <Title order={2} mb={4}>
-              Rental Selection
-            </Title>
-            <Text c="dimmed">
-              {organization ? `Choose a field at ${organization.name} and drag the calendar to set your rental time.` : 'Select a rental slot.'}
-            </Text>
-          </div>
-          <Group gap="xs">
-            <Button variant="subtle" onClick={() => router.push('/discover')}>Back to Discover</Button>
-          </Group>
-        </Group>
+    <Paper withBorder p="md" radius="md">
+      <div className="mb-4">
+        <Title order={5} mb={4}>
+          Field availability
+        </Title>
+        <Text c="dimmed">
+          Choose a field and drag the calendar to set your rental time.
+        </Text>
+      </div>
 
-        {orgError && (
-          <Alert color="red" mb="md">
-            {orgError}
-          </Alert>
-        )}
+      {orgError && (
+        <Alert color="red" mb="md">
+          {orgError}
+        </Alert>
+      )}
 
-        {!organization ? (
-          <Paper withBorder radius="md" p="lg">
-            <Text c="dimmed">No organization data available.</Text>
-          </Paper>
-        ) : (
-          <div className="space-y-4">
+      {!org || !(org.fields && org.fields.length) ? (
+        <Paper withBorder radius="md" p="lg">
+          <Text c="dimmed">No fields available.</Text>
+        </Paper>
+      ) : (
+        <Stack gap="md">
+          <Select
+            label="Field"
+            data={fieldOptions}
+            value={selection?.fieldId || null}
+            onChange={(value) => {
+              const nextValue = value ?? '';
+              setSelection((prev) => {
+                if (!nextValue) return null;
+                if (!prev) {
+                  const start = new Date();
+                  const end = new Date(start.getTime() + MIN_SELECTION_MS);
+                  return { fieldId: nextValue, start, end };
+                }
+                return { ...prev, fieldId: nextValue };
+              });
+            }}
+            placeholder="Select a field"
+            clearable
+          />
+
+          {currentUser && (
             <Select
-              label="Field"
-              data={fieldOptions}
-              value={selection?.fieldId || null}
-              onChange={(value) => {
-                const nextValue = value ?? '';
-                setSelection((prev) => {
-                  if (!prev) return null;
-                  return { ...prev, fieldId: nextValue };
-                });
-              }}
-              placeholder="Select a field"
-              clearable
+              label="Host Event As"
+              data={hostSelectOptions}
+              value={hostSelection}
+              onChange={(value) => setHostSelection(value ?? 'self')}
+              rightSection={hostOptionsLoading ? <Loader size="xs" /> : undefined}
+              rightSectionWidth={hostOptionsLoading ? 36 : undefined}
+              disabled={hostOptionsLoading && hostSelectOptions.length === 1}
             />
+          )}
 
-            {user && (
-              <Select
-                label="Host Event As"
-                data={hostSelectOptions}
-                value={hostSelection}
-                onChange={(value) => setHostSelection(value ?? 'self')}
-                rightSection={hostOptionsLoading ? <Loader size="xs" /> : undefined}
-                rightSectionWidth={hostOptionsLoading ? 36 : undefined}
-                disabled={hostOptionsLoading && hostSelectOptions.length === 1}
+          <Text size="sm" c="dimmed">
+            Scroll the calendar to the hours you want, click a time slot to move the rental, or drag the bottom edge of the highlighted block to adjust the end time.
+          </Text>
+
+          {selectedField && selection ? (
+            <Paper withBorder radius="md" style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}>
+              <DnDCalendar
+                localizer={localizer}
+                events={calendarEvents}
+                view={calendarView}
+                date={calendarDate}
+                onView={(view: any) => setCalendarView(view)}
+                onNavigate={(date: any) => setCalendarDate(date)}
+                onRangeChange={handleCalendarRangeChange}
+                views={['week', 'day']}
+                popup
+                selectable
+                resizable
+                startAccessor="start"
+                endAccessor="end"
+                style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
+                slotGroupPropGetter={slotGroupPropGetter}
+                min={minTime}
+                max={maxTime}
+                scrollToTime={scrollToTime}
+                eventPropGetter={eventPropGetter}
+                draggableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}
+                resizableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}
+                onEventDrop={handleEventDrop}
+                onEventResize={handleEventResize}
+                onSelectSlot={handleSlotSelect}
+                components={{ event: CalendarEvent }}
               />
-            )}
+            </Paper>
+          ) : (
+            <Paper
+              withBorder
+              radius="md"
+              style={{
+                minHeight: MIN_FIELD_CALENDAR_HEIGHT,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text c="dimmed">Select a field to view availability.</Text>
+            </Paper>
+          )}
+          <Text size="sm" c={summaryColor}>
+            {summaryText}
+          </Text>
 
-            <Text size="sm" c="dimmed">
-              Scroll the calendar to the hours you want, click a time slot to move the rental, or drag the bottom edge of the highlighted block to adjust the end time.
-            </Text>
-
-            {selectedField && selection ? (
-              <Paper withBorder radius="md" style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}>
-                <DnDCalendar
-                  localizer={localizer}
-                  events={calendarEvents}
-                  view={calendarView}
-                  date={calendarDate}
-                  onView={(view: any) => setCalendarView(view)}
-                  onNavigate={(date: any) => setCalendarDate(date)}
-                  onRangeChange={handleCalendarRangeChange}
-                  views={['week', 'day']}
-                  popup
-                  selectable
-                  resizable
-                  startAccessor="start"
-                  endAccessor="end"
-                  style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
-                  slotGroupPropGetter={slotGroupPropGetter}
-                  min={minTime}
-                  max={maxTime}
-                  scrollToTime={scrollToTime}
-                  eventPropGetter={eventPropGetter}
-                  draggableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}
-                  resizableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}
-                  onEventDrop={handleEventDrop}
-                  onEventResize={handleEventResize}
-                  onSelectSlot={handleSlotSelect}
-                  components={{ event: CalendarEvent }}
-                />
-              </Paper>
-            ) : (
-              <Paper
-                withBorder
-                radius="md"
-                style={{
-                  minHeight: MIN_FIELD_CALENDAR_HEIGHT,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text c="dimmed">Select a field to view availability.</Text>
-              </Paper>
-            )}
-            <Text size="sm" c={summaryColor}>
-              {summaryText}
-            </Text>
-
-            <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={() => router.push('/discover')}>Cancel</Button>
-              <Button disabled={!isSelectionValid || !user} onClick={handleCreateEventClick}>
-                Create Event
-              </Button>
-            </Group>
-          </div>
-        )}
-      </Container>
-    </>
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={() => router.push('/discover')}>
+              Back to Discover
+            </Button>
+            <Button disabled={!isSelectionValid || !currentUser} onClick={handleCreateEventClick}>
+              Create Event
+            </Button>
+          </Group>
+        </Stack>
+      )}
+    </Paper>
   );
 }
