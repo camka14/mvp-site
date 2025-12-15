@@ -1,5 +1,5 @@
 import { databases, account, storage, functions } from '@/app/appwrite';
-import { UserData, Invite, getUserFullName, getUserAvatarUrl } from '@/types';
+import { UserData, Invite, getUserFullName, getUserAvatarUrl, Subscription } from '@/types';
 import { Query, ID, ExecutionMethod } from 'appwrite';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
@@ -140,6 +140,34 @@ class UserService {
             await account.updatePassword({password: newPassword, oldPassword: currentPassword});
         } catch (error) {
             console.error('Failed to update password:', error);
+            throw error;
+        }
+    }
+
+    async listUserSubscriptions(userId: string): Promise<Subscription[]> {
+        try {
+            const response = await functions.createExecution({
+                functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+                xpath: `/users/${userId}/subscriptions`,
+                method: ExecutionMethod.GET,
+                async: false,
+            });
+            const result = JSON.parse(response.responseBody || "{}") as {
+                subscriptions?: any[];
+            };
+            const subs = Array.isArray(result.subscriptions) ? result.subscriptions : [];
+            return subs.map((row) => ({
+                $id: row?.$id ?? row?.id,
+                productId: row?.productId ?? '',
+                userId: row?.userId ?? '',
+                organizationId: row?.organizationId ?? undefined,
+                startDate: row?.startDate ?? row?.$createdAt ?? new Date().toISOString(),
+                priceCents: row?.priceCents ?? row?.price ?? 0,
+                period: (row?.period ?? 'month') as Subscription['period'],
+                status: row?.status ?? 'ACTIVE',
+            }));
+        } catch (error) {
+            console.error('Failed to list user subscriptions:', error);
             throw error;
         }
     }

@@ -2,11 +2,12 @@
 
 import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
-import type { Event, Field, Organization, UserData } from '@/types';
+import type { Event, Field, Organization, Product, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
 import { buildPayload } from './utils';
 import { userService } from './userService';
+import { productService } from './productService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID!;
@@ -43,6 +44,9 @@ class OrganizationService {
     const refIds = Array.isArray(row.refIds)
       ? row.refIds.map((value: unknown) => String(value))
       : undefined;
+    const productIds = Array.isArray(row.productIds)
+      ? row.productIds.map((value: unknown) => String(value))
+      : undefined;
 
     const organization: Organization = {
       $id: row.$id,
@@ -56,12 +60,14 @@ class OrganizationService {
       hasStripeAccount: Boolean(row.hasStripeAccount),
       fieldIds,
       refIds,
+      productIds,
       $createdAt: row.$createdAt,
       $updatedAt: row.$updatedAt,
       events: [],
       teams: [],
       fields: [],
       referees: [],
+      products: [],
     };
 
     return organization;
@@ -163,15 +169,24 @@ class OrganizationService {
         : [];
       const refereesPromise = refereeIds.length ? userService.getUsersByIds(refereeIds) : Promise.resolve<UserData[]>([]);
 
-      const [fields, events, referees] = await Promise.all([
+      const productIds = Array.isArray(organization.productIds)
+        ? organization.productIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : [];
+      const productsPromise: Promise<Product[]> = productIds.length
+        ? productService.listProducts(organization.$id)
+        : Promise.resolve<Product[]>([]);
+
+      const [fields, events, referees, products] = await Promise.all([
         fieldsPromise,
         this.fetchEventsByOrganization(organization.$id),
         refereesPromise,
+        productsPromise,
       ]);
 
       organization.fields = fields;
       organization.events = events;
       organization.referees = referees;
+      organization.products = products;
       organization.teams = organization.teams ?? [];
 
       return organization;

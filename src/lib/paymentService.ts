@@ -3,6 +3,7 @@ import type {
   Event,
   Organization,
   PaymentIntent,
+  Product,
   Team,
   TimeSlot,
   UserData,
@@ -74,6 +75,39 @@ class PaymentService {
     } catch (error) {
       console.error('Failed to create payment intent:', error);
       throw new Error(error instanceof Error ? error.message : 'Failed to create payment intent');
+    }
+  }
+
+  async createProductPaymentIntent(
+    user: UserData,
+    product: Product,
+    organization?: PaymentOrganizationContext,
+  ): Promise<PaymentIntent> {
+    try {
+      const payload = {
+        user,
+        productId: product.$id,
+        organization,
+      };
+
+      const response = await functions.createExecution({
+        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
+        xpath: '/billing/purchase-intent',
+        method: ExecutionMethod.POST,
+        body: JSON.stringify(payload),
+        async: false,
+      });
+
+      const result = parseExecutionResponse<PaymentIntent & { error?: string }>(response.responseBody);
+
+      if (result && 'error' in result && result.error) {
+        throw new Error(result.error);
+      }
+
+      return result as PaymentIntent;
+    } catch (error) {
+      console.error('Failed to create product payment intent:', error);
+      throw new Error(error instanceof Error ? error.message : 'Failed to start product purchase');
     }
   }
 

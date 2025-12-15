@@ -52,7 +52,7 @@ export default function PaymentForm({
             <div>
                 <h4 className="font-medium text-gray-900 mb-2">Payment Details</h4>
                 <p className="text-sm text-gray-600 mb-4">
-                    Registering for <strong>{eventName}</strong>
+                    Paying for <strong>{eventName}</strong>
                 </p>
             </div>
 
