@@ -2,12 +2,13 @@
 
 import { databases } from '@/app/appwrite';
 import { ID, Query } from 'appwrite';
-import type { Event, Field, Organization, Product, UserData } from '@/types';
+import type { Event, Field, Organization, Product, Team, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
 import { buildPayload } from './utils';
 import { userService } from './userService';
 import { productService } from './productService';
+import { teamService } from './teamService';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID!;
@@ -47,6 +48,9 @@ class OrganizationService {
     const productIds = Array.isArray(row.productIds)
       ? row.productIds.map((value: unknown) => String(value))
       : undefined;
+    const teamIds = Array.isArray(row.teamIds)
+      ? row.teamIds.map((value: unknown) => String(value))
+      : undefined;
 
     const organization: Organization = {
       $id: row.$id,
@@ -61,6 +65,7 @@ class OrganizationService {
       fieldIds,
       refIds,
       productIds,
+      teamIds,
       $createdAt: row.$createdAt,
       $updatedAt: row.$updatedAt,
       events: [],
@@ -82,6 +87,9 @@ class OrganizationService {
     if (data.refIds !== undefined) {
       payload.refIds = Array.isArray(data.refIds) ? data.refIds : [];
     }
+    if (data.teamIds !== undefined) {
+      payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
+    }
 
     const response = await databases.createRow({
       databaseId: DATABASE_ID,
@@ -96,6 +104,9 @@ class OrganizationService {
     const payload = buildPayload(data);
     if (data.refIds !== undefined) {
       payload.refIds = Array.isArray(data.refIds) ? data.refIds : [];
+    }
+    if (data.teamIds !== undefined) {
+      payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
     }
     const response = await databases.updateRow({
       databaseId: DATABASE_ID,
@@ -190,22 +201,29 @@ class OrganizationService {
       const productIds = Array.isArray(organization.productIds)
         ? organization.productIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
         : [];
+      const teamIds = Array.isArray(organization.teamIds)
+        ? organization.teamIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : [];
       const productsPromise: Promise<Product[]> = productIds.length
         ? productService.listProducts(organization.$id)
         : Promise.resolve<Product[]>([]);
+      const teamsPromise: Promise<Team[]> = teamIds.length
+        ? teamService.getTeamsByIds(teamIds, true)
+        : Promise.resolve<Team[]>([]);
 
-      const [fields, events, referees, products] = await Promise.all([
+      const [fields, events, referees, products, teams] = await Promise.all([
         fieldsPromise,
         this.fetchEventsByOrganization(organization.$id),
         refereesPromise,
         productsPromise,
+        teamsPromise,
       ]);
 
       organization.fields = fields;
       organization.events = events;
       organization.referees = referees;
       organization.products = products;
-      organization.teams = organization.teams ?? [];
+      organization.teams = teams;
 
       return organization;
     }

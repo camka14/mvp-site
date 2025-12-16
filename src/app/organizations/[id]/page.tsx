@@ -1046,7 +1046,29 @@ function OrganizationDetailContent() {
         isOpen={showCreateTeamModal}
         onClose={() => setShowCreateTeamModal(false)}
         currentUser={user}
-        onTeamCreated={async () => { setShowCreateTeamModal(false); if (id) await loadOrg(id); }}
+        onTeamCreated={async (team) => {
+          setShowCreateTeamModal(false);
+          if (!team) {
+            if (id) await loadOrg(id);
+            return;
+          }
+
+          const nextTeamIds = Array.from(new Set([...(org?.teamIds ?? []), team.$id]));
+
+          setOrg((prev) => {
+            if (!prev) return prev;
+            return { ...prev, teamIds: nextTeamIds, teams: [...(prev.teams ?? []), team] };
+          });
+
+          if (id) {
+            try {
+              await organizationService.updateOrganization(id, { teamIds: nextTeamIds });
+            } catch (e) {
+              console.error('Failed to attach team to organization', e);
+            }
+            await loadOrg(id);
+          }
+        }}
       />
       <CreateOrganizationModal
         isOpen={showEditOrganizationModal}
