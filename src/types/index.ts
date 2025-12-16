@@ -448,6 +448,7 @@ export interface Organization {
   fieldIds?: string[];
   refIds?: string[];
   productIds?: string[];
+  teamIds?: string[];
   $createdAt?: string;
   $updatedAt?: string;
 
