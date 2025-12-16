@@ -71,6 +71,7 @@ class ProductService {
     const priceCents = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw) || 0;
     const periodRaw: string =
       typeof row?.period === 'string' ? row.period.toLowerCase() : (row?.period as string) || 'monthly';
+    const statusRaw = typeof row?.status === 'string' ? row.status.toUpperCase() : 'ACTIVE';
 
     return {
       $id: row?.$id ?? row?.id,
@@ -80,7 +81,7 @@ class ProductService {
       startDate: row?.startDate ?? row?.$createdAt ?? new Date().toISOString(),
       priceCents,
       period: (periodRaw as ProductPeriod) || 'monthly',
-      status: row?.status ?? 'ACTIVE',
+      status: statusRaw as Subscription['status'],
     };
   }
 
@@ -95,6 +96,24 @@ class ProductService {
       return rows.map((row: any) => this.mapProduct(row));
     } catch (error) {
       console.error('Failed to list products:', error);
+      return [];
+    }
+  }
+
+  async getProductsByIds(productIds: string[]): Promise<Product[]> {
+    const ids = productIds.filter((id): id is string => typeof id === 'string' && Boolean(id));
+    if (!ids.length) return [];
+
+    try {
+      const response = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: PRODUCTS_TABLE_ID,
+        queries: [Query.contains('$id', ids), Query.limit(ids.length)],
+      });
+      const rows = Array.isArray(response.rows) ? response.rows : [];
+      return rows.map((row: any) => this.mapProduct(row));
+    } catch (error) {
+      console.error('Failed to fetch products by ids:', error);
       return [];
     }
   }
@@ -214,6 +233,25 @@ class ProductService {
       return Boolean((result as any).cancelled);
     } catch (error) {
       console.error('Failed to cancel subscription:', error);
+      throw error;
+    }
+  }
+
+  async restartSubscription(subscriptionId: string): Promise<boolean> {
+    try {
+      const response = await functions.createExecution({
+        functionId: FUNCTION_ID,
+        xpath: `/products/${subscriptionId}/subscriptions`,
+        method: ExecutionMethod.PATCH,
+        async: false,
+      });
+      const result = parseExecutionResponse<{ restarted?: boolean; error?: string }>(response.responseBody);
+      if (result && (result as any).error) {
+        throw new Error((result as any).error as string);
+      }
+      return Boolean((result as any).restarted);
+    } catch (error) {
+      console.error('Failed to restart subscription:', error);
       throw error;
     }
   }

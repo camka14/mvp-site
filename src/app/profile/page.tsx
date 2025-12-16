@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useApp } from '@/app/providers';
 import { userService } from '@/lib/userService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { Bill, PaymentIntent, Team, getUserAvatarUrl, formatPrice, formatBillAmount } from '@/types';
+import { Bill, PaymentIntent, Team, getUserAvatarUrl, formatPrice, formatBillAmount, Product, Organization } from '@/types';
 import type { Subscription } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
@@ -17,6 +17,7 @@ import PaymentModal from '@/components/ui/PaymentModal';
 import { ManageTeams } from '@/app/teams/page';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { productService } from '@/lib/productService';
+import { organizationService } from '@/lib/organizationService';
 
 export default function ProfilePage() {
     const { user, loading, setUser } = useApp();
@@ -56,9 +57,12 @@ export default function ProfilePage() {
     const [payingBill, setPayingBill] = useState<OwnedBill | null>(null);
     const [splittingBillId, setSplittingBillId] = useState<string | null>(null);
     const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+    const [productsById, setProductsById] = useState<Record<string, Product>>({});
+    const [organizationsById, setOrganizationsById] = useState<Record<string, Organization>>({});
     const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
     const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
     const [cancellingSubId, setCancellingSubId] = useState<string | null>(null);
+    const [restartingSubId, setRestartingSubId] = useState<string | null>(null);
 
     const userHasStripeAccount = Boolean(user?.hasStripeAccount || user?.stripeAccountId);
 
@@ -260,13 +264,6 @@ export default function ProfilePage() {
         }
     }, [user]);
 
-    useEffect(() => {
-        if (user) {
-            loadBills();
-            loadSubscriptions();
-        }
-    }, [user, loadBills]);
-
     const handlePayBill = useCallback(
         async (bill: Bill) => {
             if (!user) return;
@@ -321,6 +318,34 @@ export default function ProfilePage() {
         try {
             const subs = await userService.listUserSubscriptions(user.$id);
             setSubscriptions(subs);
+
+            const productIds = Array.from(new Set(subs.map((sub) => sub.productId).filter(Boolean)));
+            const organizationIds = Array.from(
+                new Set(
+                    subs
+                        .map((sub) => sub.organizationId)
+                        .filter((orgId): orgId is string => typeof orgId === 'string' && Boolean(orgId)),
+                ),
+            );
+
+            const [products, organizations] = await Promise.all([
+                productIds.length ? productService.getProductsByIds(productIds) : Promise.resolve([]),
+                organizationIds.length ? organizationService.getOrganizationsByIds(organizationIds) : Promise.resolve([]),
+            ]);
+
+            if (products.length) {
+                setProductsById((prev) => ({
+                    ...prev,
+                    ...Object.fromEntries(products.map((product) => [product.$id, product])),
+                }));
+            }
+
+            if (organizations.length) {
+                setOrganizationsById((prev) => ({
+                    ...prev,
+                    ...Object.fromEntries(organizations.map((organization) => [organization.$id, organization])),
+                }));
+            }
         } catch (err) {
             setSubscriptionError(err instanceof Error ? err.message : 'Failed to load memberships');
         } finally {
@@ -349,6 +374,35 @@ export default function ProfilePage() {
         },
         [loadSubscriptions],
     );
+
+    const handleRestartSubscription = useCallback(
+        async (subscriptionId: string) => {
+            if (!subscriptionId) return;
+            try {
+                setRestartingSubId(subscriptionId);
+                const restarted = await productService.restartSubscription(subscriptionId);
+                if (restarted) {
+                    notifications.show({ color: 'green', message: 'Membership restarted.' });
+                    await loadSubscriptions();
+                } else {
+                    notifications.show({ color: 'red', message: 'Unable to restart membership. Try again.' });
+                }
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to restart membership';
+                notifications.show({ color: 'red', message });
+            } finally {
+                setRestartingSubId(null);
+            }
+        },
+        [loadSubscriptions],
+    );
+
+    useEffect(() => {
+        if (user) {
+            loadBills();
+            loadSubscriptions();
+        }
+    }, [user, loadBills, loadSubscriptions]);
 
     if (loading) {
         return <Loading />;
@@ -598,8 +652,93 @@ export default function ProfilePage() {
                                     </SimpleGrid>
                                 )}
                             </Paper>
+
+                            <Paper withBorder radius="md" p="md">
+                                <Group justify="space-between" mb="sm">
+                                    <Title order={4}>Memberships</Title>
+                                    <Button variant="light" size="xs" onClick={loadSubscriptions} loading={loadingSubscriptions}>
+                                        Refresh
+                                    </Button>
+                                </Group>
+                                {subscriptionError && (
+                                    <Alert color="red" mb="sm">
+                                        {subscriptionError}
+                                    </Alert>
+                                )}
+                                {loadingSubscriptions ? (
+                                    <Loading fullScreen={false} text="Loading memberships..." />
+                                ) : subscriptions.length === 0 ? (
+                                    <Text c="dimmed">No active memberships.</Text>
+                                ) : (
+                                    <SimpleGrid
+                                        cols={3}
+                                        spacing="md"
+                                        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}
+                                    >
+                                        {subscriptions.map((sub) => {
+                                            const status = sub.status || 'ACTIVE';
+                                            const isCancelled = status === 'CANCELLED';
+                                            const statusColor = isCancelled ? 'red' : 'green';
+                                            const product = productsById[sub.productId];
+                                            const organization = sub.organizationId
+                                                ? organizationsById[sub.organizationId]
+                                                : undefined;
+                                            const membershipTitle = product?.name ?? sub.productId ?? 'Membership';
+                                            const organizationLabel = organization?.name
+                                                ? organization.name
+                                                : sub.organizationId
+                                                    ? `Organization ${sub.organizationId}`
+                                                    : 'Organization';
+                                            return (
+                                                <Paper key={sub.$id} withBorder radius="md" p="md" shadow="xs">
+                                                    <div className="space-y-2">
+                                                        <Text fw={700} size="md">
+                                                            {membershipTitle}
+                                                        </Text>
+                                                        <Text size="sm" c="dimmed">
+                                                            {organizationLabel}
+                                                        </Text>
+                                                        <Text size="sm">
+                                                            {formatPrice(sub.priceCents)} / {sub.period}
+                                                        </Text>
+                                                        <Text size="sm" c={statusColor}>
+                                                            Status: {status}
+                                                        </Text>
+                                                        <Text size="xs" c="dimmed">
+                                                            Started {new Date(sub.startDate).toLocaleDateString()}
+                                                        </Text>
+                                                        {isCancelled ? (
+                                                            <Button
+                                                                variant="light"
+                                                                color="green"
+                                                                size="xs"
+                                                                fullWidth
+                                                                loading={restartingSubId === sub.$id}
+                                                                onClick={() => handleRestartSubscription(sub.$id)}
+                                                            >
+                                                                Restart membership
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                variant="light"
+                                                                color="red"
+                                                                size="xs"
+                                                                fullWidth
+                                                                loading={cancellingSubId === sub.$id}
+                                                                onClick={() => handleCancelSubscription(sub.$id)}
+                                                            >
+                                                                Cancel membership
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </Paper>
+                                            );
+                                        })}
+                                    </SimpleGrid>
+                                )}
+                            </Paper>
                             <RefundRequestsList userId={user.$id} />
-                            <RefundRequestsList userId={user.$id} hostId={user.$id} />
+                            <RefundRequestsList hostId={user.$id} />
 
                             <Paper withBorder radius="md" p="md">
                                 <Group justify="space-between" mb="sm">
