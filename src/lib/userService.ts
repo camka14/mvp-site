@@ -5,6 +5,7 @@ import { Query, ID, ExecutionMethod } from 'appwrite';
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
 const INVITES_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_INVITES_TABLE_ID || 'invites';
+const SUBSCRIPTIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_SUBSCRIPTIONS_TABLE_ID || 'subscriptions';
 
 interface UpdateProfileData {
     firstName?: string;
@@ -14,6 +15,24 @@ interface UpdateProfileData {
 }
 
 class UserService {
+    private mapSubscription(row: any): Subscription {
+        const priceRaw = row?.priceCents ?? row?.price ?? 0;
+        const priceCents = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw) || 0;
+        const periodRaw: string =
+            typeof row?.period === 'string' ? row.period.toLowerCase() : (row?.period as string) || 'month';
+
+        return {
+            $id: row?.$id ?? row?.id,
+            productId: row?.productId ?? '',
+            userId: row?.userId ?? '',
+            organizationId: row?.organizationId ?? undefined,
+            startDate: row?.startDate ?? row?.$createdAt ?? new Date().toISOString(),
+            priceCents,
+            period: (periodRaw as Subscription['period']) || 'month',
+            status: row?.status ?? 'ACTIVE',
+        };
+    }
+
     async createUser(id: string, data: Partial<UserData>): Promise<UserData> {
         try {
             const response = await databases.createRow({
@@ -146,26 +165,13 @@ class UserService {
 
     async listUserSubscriptions(userId: string): Promise<Subscription[]> {
         try {
-            const response = await functions.createExecution({
-                functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-                xpath: `/users/${userId}/subscriptions`,
-                method: ExecutionMethod.GET,
-                async: false,
+            const response = await databases.listRows({
+                databaseId: DATABASE_ID,
+                tableId: SUBSCRIPTIONS_TABLE_ID,
+                queries: [Query.equal('userId', userId), Query.limit(100)],
             });
-            const result = JSON.parse(response.responseBody || "{}") as {
-                subscriptions?: any[];
-            };
-            const subs = Array.isArray(result.subscriptions) ? result.subscriptions : [];
-            return subs.map((row) => ({
-                $id: row?.$id ?? row?.id,
-                productId: row?.productId ?? '',
-                userId: row?.userId ?? '',
-                organizationId: row?.organizationId ?? undefined,
-                startDate: row?.startDate ?? row?.$createdAt ?? new Date().toISOString(),
-                priceCents: row?.priceCents ?? row?.price ?? 0,
-                period: (row?.period ?? 'month') as Subscription['period'],
-                status: row?.status ?? 'ACTIVE',
-            }));
+            const rows = Array.isArray(response.rows) ? response.rows : [];
+            return rows.map((row: any) => this.mapSubscription(row));
         } catch (error) {
             console.error('Failed to list user subscriptions:', error);
             throw error;

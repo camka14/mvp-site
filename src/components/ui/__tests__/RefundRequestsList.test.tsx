@@ -9,14 +9,37 @@ jest.mock('@/lib/refundRequestService', () => ({
     updateRefundStatus: jest.fn(),
   },
 }));
+jest.mock('@/lib/eventService', () => ({
+  eventService: {
+    getEventById: jest.fn(),
+  },
+}));
+jest.mock('@/lib/userService', () => ({
+  userService: {
+    getUsersByIds: jest.fn(),
+  },
+}));
+jest.mock('@/lib/organizationService', () => ({
+  organizationService: {
+    getOrganizationsByIds: jest.fn(),
+  },
+}));
 
 const { refundRequestService } = jest.requireMock('@/lib/refundRequestService') as {
   refundRequestService: { listRefundRequests: jest.Mock; updateRefundStatus: jest.Mock };
+};
+const { eventService } = jest.requireMock('@/lib/eventService') as { eventService: { getEventById: jest.Mock } };
+const { userService } = jest.requireMock('@/lib/userService') as { userService: { getUsersByIds: jest.Mock } };
+const { organizationService } = jest.requireMock('@/lib/organizationService') as {
+  organizationService: { getOrganizationsByIds: jest.Mock };
 };
 
 describe('RefundRequestsList', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    eventService.getEventById.mockResolvedValue(undefined);
+    userService.getUsersByIds.mockResolvedValue([]);
+    organizationService.getOrganizationsByIds.mockResolvedValue([]);
   });
 
   it('loads and renders refund requests', async () => {
@@ -32,13 +55,22 @@ describe('RefundRequestsList', () => {
       },
     ]);
 
+    eventService.getEventById.mockImplementation(async (id: string) => ({ $id: id, name: `Event ${id}` }));
+    userService.getUsersByIds.mockResolvedValue([
+      { $id: 'user_1', firstName: 'Test', lastName: 'User' } as any,
+      { $id: 'host_1', firstName: 'Host', lastName: 'One' } as any,
+    ]);
+    organizationService.getOrganizationsByIds.mockResolvedValue([{ $id: 'org_1', name: 'Org One' } as any]);
+
     renderWithMantine(<RefundRequestsList userId="user_1" />);
 
     await waitFor(() => expect(refundRequestService.listRefundRequests).toHaveBeenCalled());
 
     expect(await screen.findByText('Your Refund Requests')).toBeInTheDocument();
+    expect(await screen.findByText('Event event_123')).toBeInTheDocument();
     expect(screen.getByText('Need to cancel')).toBeInTheDocument();
-    expect(screen.getByText('event_123')).toBeInTheDocument();
+    expect(screen.getByText('Test User')).toBeInTheDocument();
+    expect(screen.getByText('Org One')).toBeInTheDocument();
     expect(screen.getByText('WAITING')).toBeInTheDocument();
   });
 
@@ -77,6 +109,12 @@ describe('RefundRequestsList', () => {
       $createdAt: '2024-01-01T00:00:00.000Z',
     });
 
+    eventService.getEventById.mockImplementation(async (id: string) => ({ $id: id, name: `Event ${id}` }));
+    userService.getUsersByIds.mockResolvedValue([
+      { $id: 'user_1', firstName: 'Test', lastName: 'User' } as any,
+      { $id: 'host_1', firstName: 'Host', lastName: 'One' } as any,
+    ]);
+
     renderWithMantine(<RefundRequestsList hostId="host_1" />);
 
     await waitFor(() => expect(refundRequestService.listRefundRequests).toHaveBeenCalled());
@@ -114,6 +152,13 @@ describe('RefundRequestsList', () => {
         status: 'WAITING',
         $createdAt: '2024-01-02T00:00:00.000Z',
       },
+    ]);
+
+    eventService.getEventById.mockImplementation(async (id: string) => ({ $id: id, name: `Event ${id}` }));
+    userService.getUsersByIds.mockResolvedValue([
+      { $id: 'user_1', firstName: 'Test', lastName: 'User' } as any,
+      { $id: 'user_3', firstName: 'Guest', lastName: 'User' } as any,
+      { $id: 'host_2', firstName: 'Other', lastName: 'Host' } as any,
     ]);
 
     renderWithMantine(<RefundRequestsList userId="user_1" hostId="user_1" />);

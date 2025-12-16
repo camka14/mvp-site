@@ -115,6 +115,24 @@ class OrganizationService {
     return (response.rows as AnyRow[]).map((row) => this.mapRowToOrganization(row));
   }
 
+  async getOrganizationsByIds(ids: string[]): Promise<Organization[]> {
+    const organizationIds = ids.filter((id): id is string => typeof id === 'string' && Boolean(id));
+    if (!organizationIds.length) return [];
+
+    try {
+      const response = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: ORGANIZATIONS_TABLE_ID,
+        queries: [Query.contains('$id', organizationIds), Query.limit(organizationIds.length)],
+      });
+      const rows = Array.isArray(response.rows) ? (response.rows as AnyRow[]) : [];
+      return rows.map((row) => this.mapRowToOrganization(row));
+    } catch (error) {
+      console.error('Failed to fetch organizations by ids:', error);
+      return [];
+    }
+  }
+
   async getOrganizationById(id: string, includeRelations: boolean = true): Promise<Organization | undefined> {
     try {
       if (!includeRelations) {
