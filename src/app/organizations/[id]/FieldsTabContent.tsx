@@ -31,6 +31,7 @@ import { notifications } from '@mantine/notifications';
 import { organizationService } from '@/lib/organizationService';
 import { ID } from '@/app/appwrite';
 import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
+import { fieldService } from '@/lib/fieldService';
 
 type SelectionState = {
   fieldId: string;
@@ -137,6 +138,7 @@ export default function FieldsTabContent({ organization, organizationId, current
   const [hostOrganizations, setHostOrganizations] = useState<Organization[]>([]);
   const [hostOptionsLoading, setHostOptionsLoading] = useState(false);
   const [hostSelection, setHostSelection] = useState<string>('self');
+  const [fieldEventsLoading, setFieldEventsLoading] = useState(false);
 
   useEffect(() => {
     setOrg(organization ?? null);
@@ -321,6 +323,15 @@ export default function FieldsTabContent({ organization, organizationId, current
           },
         };
       }
+      if (event.metaType === 'rental') {
+        return {
+          style: {
+            backgroundColor: '#15803d',
+            border: '1px solid #166534',
+            color: '#ECFDF3',
+          },
+        };
+      }
       return {};
     },
     [],
@@ -335,6 +346,55 @@ export default function FieldsTabContent({ organization, organizationId, current
       return event.resourceId === selectedField.$id && compareRanges(selectionStart, selectionEnd, event.start, event.end);
     });
   }, [calendarEvents, selection, selectedField]);
+
+  useEffect(() => {
+    if (!selectedField || !calendarRange) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setFieldEventsLoading(true);
+        const hydrated = await fieldService.getFieldEventsMatches(selectedField, {
+          start: calendarRange.start.toISOString(),
+          end: calendarRange.end ? calendarRange.end.toISOString() : undefined,
+        });
+        if (cancelled) return;
+
+        setOrg((prev) => {
+          if (!prev || !prev.fields) return prev;
+
+          const existing = prev.fields.find((field) => field.$id === hydrated.$id);
+          if (!existing) return prev;
+
+          const eventsUnchanged =
+            (existing.events?.length ?? 0) === (hydrated.events?.length ?? 0) &&
+            (existing.events || []).every((event, idx) => event?.$id === hydrated.events?.[idx]?.$id);
+          const matchesUnchanged =
+            (existing.matches?.length ?? 0) === (hydrated.matches?.length ?? 0) &&
+            (existing.matches || []).every((match, idx) => match?.$id === hydrated.matches?.[idx]?.$id);
+
+          if (eventsUnchanged && matchesUnchanged) return prev;
+
+          const nextFields = prev.fields.map((field) =>
+            field.$id === hydrated.$id
+              ? { ...field, events: hydrated.events, matches: hydrated.matches }
+              : field,
+          );
+          return { ...prev, fields: nextFields };
+        });
+      } catch (error) {
+        console.error('Failed to load events/matches for field', error);
+      } finally {
+        if (!cancelled) {
+          setFieldEventsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedField?.$id, calendarRange?.start, calendarRange?.end]);
 
   const matchingRentalSlot = useMemo(() => {
     if (!selectedField || !selection) return null;
@@ -583,6 +643,12 @@ export default function FieldsTabContent({ organization, organizationId, current
           <Text size="sm" c="dimmed">
             Scroll the calendar to the hours you want, click a time slot to move the rental, or drag the bottom edge of the highlighted block to adjust the end time.
           </Text>
+          {fieldEventsLoading && (
+            <Group gap="xs">
+              <Loader size="xs" />
+              <Text size="xs" c="dimmed">Loading events and matches for this field…</Text>
+            </Group>
+          )}
 
           {selectedField && selection ? (
             <Paper withBorder radius="md" style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}>
