@@ -2479,12 +2479,6 @@ const EventForm: React.FC<EventFormProps> = ({
         const draft = buildDraftEvent(values);
         if (!draft) return;
         setSubmitError(null);
-
-        if (values.eventType !== 'EVENT') {
-            await scheduleEvent(values);
-            return;
-        }
-
         if (isDraftCreation) {
             setSubmitting(true);
             setSubmitError(null);
@@ -2514,6 +2508,11 @@ const EventForm: React.FC<EventFormProps> = ({
                         setSubmitting(false);
                         return;
                     }
+                }
+
+                if (values.eventType !== 'EVENT') {
+                    await scheduleEvent(values);
+                    return;
                 }
 
                 await scheduleRegularEvent(draftToSave);
@@ -2608,11 +2607,11 @@ const EventForm: React.FC<EventFormProps> = ({
                         {errors.imageId && (
                             <p className="text-red-600 text-sm mt-1">{errors.imageId.message as string}</p>
                         )}
-            </div>
+                    </div>
 
                     <form id={formId} onSubmit={onSubmit} className="space-y-8">
-                {submitError && (
-                    <Alert color="red" radius="md">
+                        {submitError && (
+                            <Alert color="red" radius="md">
                                 {submitError}
                             </Alert>
                         )}
