@@ -667,6 +667,7 @@ const EventForm: React.FC<EventFormProps> = ({
     const open = isOpen ?? true;
     const modalRef = useRef<HTMLDivElement>(null);
     const refsPrefilledRef = useRef<boolean>(false);
+    const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => ({
         key: slot?.$id ?? ID.unique(),
@@ -2066,6 +2067,9 @@ const EventForm: React.FC<EventFormProps> = ({
                     draft.fieldIds = fieldIds;
                 }
             }
+            if ((!draft.fieldIds || draft.fieldIds.length === 0) && rentalPurchase?.fieldId) {
+                draft.fieldIds = [rentalPurchase.fieldId];
+            }
         } else {
             const localFields = hasImmutableFields ? immutableFields : fields;
             if (localFields.length) {
@@ -2429,6 +2433,44 @@ const EventForm: React.FC<EventFormProps> = ({
         ],
     );
 
+    const scheduleRegularEvent = useCallback(
+        async (draftEvent: Partial<Event>) => {
+            setSubmitting(true);
+            setSubmitError(null);
+            pendingRegularEventRef.current = draftEvent;
+
+            try {
+                const eventDocument: Partial<Event> = {
+                    ...draftEvent,
+                    state: (draftEvent.state as EventState) ?? 'UNPUBLISHED',
+                };
+
+                const scheduled = await eventService.scheduleEvent(eventDocument);
+                const scheduledEvent = (scheduled as any)?.event as Event | undefined;
+
+                if (!scheduledEvent?.$id) {
+                    throw new Error('Failed to schedule event.');
+                }
+
+                pendingRegularEventRef.current = null;
+                setShowRentalPayment(false);
+                setRentalPaymentData(null);
+
+                if (onClose) {
+                    onClose();
+                }
+
+                router.replace(`/events/${scheduledEvent.$id}/schedule`);
+            } catch (error) {
+                console.error('Failed to schedule event:', error);
+                setSubmitError(error instanceof Error ? error.message : 'Failed to schedule event. Please try again.');
+            } finally {
+                setSubmitting(false);
+            }
+        },
+        [onClose, router],
+    );
+
     const onSubmit = handleRHFSubmit(async (values: EventFormValues) => {
         if (!isFormValid) return;
 
@@ -2447,35 +2489,37 @@ const EventForm: React.FC<EventFormProps> = ({
             setSubmitting(true);
             setSubmitError(null);
             try {
-                // Create payment intent for rental purchase before creating the event.
-                if (rentalPurchaseTimeSlot && currentUser) {
-                    const paymentIntent = await paymentService.createPaymentIntent(
-                        currentUser,
-                        draft as Event,
-                        undefined,
-                        rentalPurchaseTimeSlot,
-                        rentalPurchase?.organization ?? organization ?? undefined,
-                        rentalPurchase?.organizationEmail ?? undefined,
-                    );
-                    setRentalPaymentData(paymentIntent);
-                    setShowRentalPayment(true);
-                    setSubmitting(false);
-                    return;
-                }
-
                 const draftToSave: Event = {
                     ...(draft as Event),
                     state: 'UNPUBLISHED',
                 };
-                let created: Event | null = null;
-                created = await eventService.createEvent(draftToSave);
-                if (created?.$id) {
-                    router.replace(`/events/${created.$id}/schedule`);
+                pendingRegularEventRef.current = draftToSave;
+
+                // Create payment intent for rental purchase only when the slot has a price.
+                if (rentalPurchaseTimeSlot && currentUser) {
+                    const rentalPriceCents = typeof rentalPurchaseTimeSlot.price === 'number' ? rentalPurchaseTimeSlot.price : undefined;
+                    const requiresPayment = typeof rentalPriceCents === 'number' && rentalPriceCents > 0;
+
+                    if (requiresPayment) {
+                        const paymentIntent = await paymentService.createPaymentIntent(
+                            currentUser,
+                            draft as Event,
+                            undefined,
+                            rentalPurchaseTimeSlot,
+                            rentalPurchase?.organization ?? organization ?? undefined,
+                            rentalPurchase?.organizationEmail ?? undefined,
+                        );
+                        setRentalPaymentData(paymentIntent);
+                        setShowRentalPayment(true);
+                        setSubmitting(false);
+                        return;
+                    }
                 }
+
+                await scheduleRegularEvent(draftToSave);
             } catch (error) {
-                console.error('Failed to create event:', error);
-                setSubmitError('Failed to create event. Please try again.');
-            } finally {
+                console.error('Failed to schedule event:', error);
+                setSubmitError('Failed to schedule event. Please try again.');
                 setSubmitting(false);
             }
             return;
@@ -2499,29 +2543,30 @@ const EventForm: React.FC<EventFormProps> = ({
 
     const handleRentalPaymentSuccess = useCallback(async () => {
         try {
-            const draftToSave = buildDraftEvent();
-            if (!draftToSave) {
-                setSubmitError('Missing required information to create event after payment.');
+            const pendingDraft = pendingRegularEventRef.current ?? buildDraftEvent();
+            if (!pendingDraft) {
+                setSubmitError('Missing required information to schedule event after payment.');
+                setSubmitting(false);
+                setShowRentalPayment(false);
+                setRentalPaymentData(null);
                 return;
             }
-            const created = await eventService.createEvent({
-                ...(draftToSave as Event),
+
+            const draftToSchedule: Partial<Event> = {
+                ...(pendingDraft as Event),
                 state: 'UNPUBLISHED',
-            });
-            if (created?.$id) {
-                router.replace(`/events/${created.$id}/schedule`);
-            } else {
-                setSubmitError('Payment succeeded but event creation failed. Please try again.');
-            }
+            };
+            pendingRegularEventRef.current = draftToSchedule;
+
+            await scheduleRegularEvent(draftToSchedule);
         } catch (error) {
             console.error('Failed to finalize event after payment:', error);
-            setSubmitError('Payment succeeded but event creation failed. Please try again.');
-        } finally {
+            setSubmitError('Payment succeeded but scheduling failed. Please try again.');
             setSubmitting(false);
             setShowRentalPayment(false);
             setRentalPaymentData(null);
         }
-    }, [buildDraftEvent, router]);
+    }, [buildDraftEvent, scheduleRegularEvent]);
 
     const rentalPaymentEventSummary: PaymentEventSummary = useMemo(
         () => ({
@@ -2538,6 +2583,7 @@ const EventForm: React.FC<EventFormProps> = ({
         setShowRentalPayment(false);
         setRentalPaymentData(null);
         setSubmitting(false);
+        pendingRegularEventRef.current = null;
     };
 
     const sheetContent = (

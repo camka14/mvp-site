@@ -560,7 +560,7 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (typeof selectedField.long === 'number' && Number.isFinite(selectedField.long)) {
       params.set('rentalLng', String(selectedField.long));
     }
-    if (typeof rentalPriceCents === 'number' && Number.isFinite(rentalPriceCents)) {
+    if (typeof rentalPriceCents === 'number' && Number.isFinite(rentalPriceCents) && rentalPriceCents > 0) {
       params.set('rentalPriceCents', String(Math.round(rentalPriceCents)));
     }
     if (org?.$id) {
