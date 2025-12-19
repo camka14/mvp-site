@@ -4,13 +4,13 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea } from '@mantine/core';
+import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { Organization, Product, UserData, PaymentIntent } from '@/types';
+import type { Organization, Product, UserData, PaymentIntent, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { storage } from '@/app/appwrite';
@@ -25,6 +25,7 @@ import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calen
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { ID } from '@/app/appwrite';
 import { productService } from '@/lib/productService';
+import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
 
@@ -45,7 +46,7 @@ function OrganizationDetailContent() {
   const { user, authUser, loading: authLoading, isAuthenticated } = useApp();
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees' | 'refunds' | 'store'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees' | 'refunds' | 'store' | 'templates'>('overview');
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
@@ -75,6 +76,7 @@ function OrganizationDetailContent() {
         { label: 'Teams', value: 'teams' },
       ];
       if (isOwner) {
+        base.push({ label: 'Templates', value: 'templates' });
         base.push({ label: 'Referees', value: 'referees' });
         base.push({ label: 'Refunds', value: 'refunds' });
       }
@@ -135,6 +137,15 @@ function OrganizationDetailContent() {
   const [editProductPrice, setEditProductPrice] = useState<number | ''>(0);
   const [updatingProduct, setUpdatingProduct] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState(false);
+  const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateTitle, setTemplateTitle] = useState('');
+  const [templateDescription, setTemplateDescription] = useState('');
+  const [templateSignOnce, setTemplateSignOnce] = useState(true);
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [templateEmbedUrl, setTemplateEmbedUrl] = useState<string | null>(null);
 
   const loadOrg = useCallback(async (orgId: string, options?: { silent?: boolean }) => {
     const silent = Boolean(options?.silent);
@@ -152,6 +163,31 @@ function OrganizationDetailContent() {
       }
     }
   }, []);
+
+  const loadTemplates = useCallback(async (orgId: string, options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setTemplatesLoading(true);
+    }
+    try {
+      if (!user?.$id) {
+        return;
+      }
+      const templates = await boldsignService.listTemplates(orgId, user.$id);
+      setTemplateDocuments(templates);
+      if (!silent) {
+        setTemplatesError(null);
+      }
+    } catch (error) {
+      console.error('Failed to load templates', error);
+      setTemplateDocuments([]);
+      setTemplatesError(error instanceof Error ? error.message : 'Failed to load templates.');
+    } finally {
+      if (!silent) {
+        setTemplatesLoading(false);
+      }
+    }
+  }, [user?.$id]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -179,6 +215,14 @@ function OrganizationDetailContent() {
   }, [org?.products]);
 
   useEffect(() => {
+    if (!org || !isOwner || !user) {
+      setTemplateDocuments([]);
+      return;
+    }
+    loadTemplates(org.$id);
+  }, [org, isOwner, user, loadTemplates]);
+
+  useEffect(() => {
     if (!availableTabs.some((tab) => tab.value === activeTab) && availableTabs.length > 0) {
       setActiveTab(availableTabs[0].value);
     }
@@ -201,6 +245,38 @@ function OrganizationDetailContent() {
     });
     router.push(`/events/${newId}/schedule?${params.toString()}`);
   }, [id, router]);
+
+  const handleCreateTemplate = useCallback(async () => {
+    if (!org || !user) return;
+    const trimmedTitle = templateTitle.trim();
+    if (!trimmedTitle) {
+      setTemplatesError('Template title is required.');
+      return;
+    }
+    try {
+      setCreatingTemplate(true);
+      setTemplatesError(null);
+      const result = await boldsignService.createTemplate({
+        organizationId: org.$id,
+        userId: user.$id,
+        title: trimmedTitle,
+        description: templateDescription.trim() || undefined,
+        signOnce: templateSignOnce,
+      });
+      setTemplateEmbedUrl(result.createUrl);
+      setTemplateModalOpen(false);
+      setTemplateTitle('');
+      setTemplateDescription('');
+      setTemplateSignOnce(true);
+      await loadTemplates(org.$id, { silent: true });
+    } catch (error) {
+      setTemplatesError(
+        error instanceof Error ? error.message : 'Failed to create template.',
+      );
+    } finally {
+      setCreatingTemplate(false);
+    }
+  }, [org, user, templateTitle, templateDescription, templateSignOnce, loadTemplates]);
 
   const handleConnectStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;
@@ -751,6 +827,71 @@ function OrganizationDetailContent() {
               </Paper>
             )}
 
+            {isOwner && activeTab === 'templates' && (
+              <Paper withBorder p="md" radius="md">
+                <Group justify="space-between" mb="md">
+                  <Title order={5}>Templates</Title>
+                  <Group>
+                    <Button
+                      variant="default"
+                      onClick={() => org && loadTemplates(org.$id)}
+                      loading={templatesLoading}
+                    >
+                      Refresh
+                    </Button>
+                    <Button onClick={() => setTemplateModalOpen(true)}>
+                      Create Template
+                    </Button>
+                  </Group>
+                </Group>
+                <Text size="sm" c="dimmed" mb="md">
+                  Create reusable documents for participants to sign during event registration.
+                </Text>
+                {templatesError && (
+                  <Text size="sm" c="red" mb="md">
+                    {templatesError}
+                  </Text>
+                )}
+
+                {templateEmbedUrl && (
+                  <Paper withBorder p="md" radius="md" mb="md">
+                    <Text size="sm" c="dimmed" mb="xs">
+                      Embedded Template Builder
+                    </Text>
+                    <div style={{ height: 620 }}>
+                      <iframe
+                        src={templateEmbedUrl}
+                        title="BoldSign Template Builder"
+                        style={{ width: '100%', height: '100%', border: 'none' }}
+                      />
+                    </div>
+                  </Paper>
+                )}
+
+                {templatesLoading ? (
+                  <Text size="sm" c="dimmed">Loading templates...</Text>
+                ) : templateDocuments.length > 0 ? (
+                  <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+                    {templateDocuments.map((template) => (
+                      <Paper key={template.$id} withBorder p="sm" radius="md">
+                        <Text fw={600}>{template.title || 'Untitled Template'}</Text>
+                        <Text size="sm" c="dimmed">
+                          {template.signOnce ? 'Sign once per participant' : 'Sign for every event'}
+                        </Text>
+                        {template.status && (
+                          <Text size="xs" c="dimmed">
+                            Status: {template.status}
+                          </Text>
+                        )}
+                      </Paper>
+                    ))}
+                  </SimpleGrid>
+                ) : (
+                  <Text size="sm" c="dimmed">No templates yet.</Text>
+                )}
+              </Paper>
+            )}
+
             {isOwner && activeTab === 'referees' && (
               <Paper withBorder p="md" radius="md">
                 <Group justify="space-between" mb="md">
@@ -1082,6 +1223,44 @@ function OrganizationDetailContent() {
           }
         }}
       />
+      <Modal
+        opened={templateModalOpen}
+        onClose={() => setTemplateModalOpen(false)}
+        title="Create template"
+        centered
+      >
+        <Stack gap="sm">
+          <TextInput
+            label="Template title"
+            value={templateTitle}
+            onChange={(e) => setTemplateTitle(e.currentTarget.value)}
+            required
+          />
+          <Textarea
+            label="Description"
+            value={templateDescription}
+            onChange={(e) => setTemplateDescription(e.currentTarget.value)}
+            minRows={3}
+          />
+          <Switch
+            label="Sign once per participant"
+            checked={templateSignOnce}
+            onChange={(e) => setTemplateSignOnce(e.currentTarget.checked)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setTemplateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateTemplate}
+              loading={creatingTemplate}
+              disabled={!templateTitle.trim()}
+            >
+              Create
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Modal
         opened={productModalOpen && Boolean(selectedProduct)}
         onClose={closeProductModal}

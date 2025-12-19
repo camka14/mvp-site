@@ -8,7 +8,7 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, PaymentIntent } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, PaymentIntent, TemplateDocument } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -18,6 +18,7 @@ import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
+import { boldsignService } from '@/lib/boldsignService';
 import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { ID } from '@/app/appwrite';
@@ -279,6 +280,7 @@ type EventFormState = {
     cancellationRefundHours: number;
     registrationCutoffHours: number;
     organizationId?: string;
+    requiredTemplateIds: string[];
     hostId?: string;
     imageId: string;
     seedColor: number;
@@ -424,6 +426,9 @@ const mapEventToFormState = (event: Event): EventFormState => ({
         ? event.registrationCutoffHours
         : 2,
     hostId: event.hostId || undefined,
+    requiredTemplateIds: Array.isArray(event.requiredTemplateIds)
+        ? event.requiredTemplateIds
+        : [],
     imageId: event.imageId ?? '',
     seedColor: event.seedColor || 0,
     waitList: event.waitListIds || [],
@@ -518,6 +523,7 @@ const eventFormSchema = z
         cancellationRefundHours: z.number().min(0),
         registrationCutoffHours: z.number().min(0),
         organizationId: z.string().optional(),
+        requiredTemplateIds: z.array(z.string()).default([]),
         hostId: z.string().optional(),
         imageId: z.string().trim().min(1, 'Event image is required'),
         seedColor: z.number(),
@@ -692,6 +698,9 @@ const EventForm: React.FC<EventFormProps> = ({
     );
     const [rentalPaymentData, setRentalPaymentData] = useState<PaymentIntent | null>(null);
     const [showRentalPayment, setShowRentalPayment] = useState(false);
+    const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
+    const [templatesLoading, setTemplatesLoading] = useState(false);
+    const [templatesError, setTemplatesError] = useState<string | null>(null);
 
     const [hydratedEditingEvent, setHydratedEditingEvent] = useState<Event | null>(null);
     const activeEditingEvent = hydratedEditingEvent ?? incomingEvent ?? null;
@@ -802,6 +811,9 @@ const EventForm: React.FC<EventFormProps> = ({
         if (typeof defaults.registrationCutoffHours === 'number') {
             next.registrationCutoffHours = defaults.registrationCutoffHours;
         }
+        if (Array.isArray(defaults.requiredTemplateIds)) {
+            next.requiredTemplateIds = [...defaults.requiredTemplateIds];
+        }
         if (defaults.imageId !== undefined) next.imageId = defaults.imageId ?? '';
         if (typeof defaults.seedColor === 'number') next.seedColor = defaults.seedColor;
         if (Array.isArray(defaults.waitListIds)) next.waitList = [...defaults.waitListIds];
@@ -863,6 +875,9 @@ const EventForm: React.FC<EventFormProps> = ({
         base.allowPaymentPlans = Boolean(base.allowPaymentPlans);
         base.installmentAmounts = Array.isArray(base.installmentAmounts) ? base.installmentAmounts : [];
         base.installmentDueDates = Array.isArray(base.installmentDueDates) ? base.installmentDueDates : [];
+        base.requiredTemplateIds = Array.isArray(base.requiredTemplateIds)
+            ? base.requiredTemplateIds
+            : [];
         const normalizedInstallmentCount = Number.isFinite(base.installmentCount)
             ? Number(base.installmentCount)
             : base.installmentAmounts.length;
@@ -1041,6 +1056,54 @@ const EventForm: React.FC<EventFormProps> = ({
     const fieldCount = formValues.fieldCount;
     const joinAsParticipant = formValues.joinAsParticipant;
     const showCreateButtons = isCreateMode || eventData.state === 'DRAFT';
+    const organizationId = organization?.$id ?? eventData.organizationId;
+
+    const templateOptions = useMemo(
+        () => templateDocuments.map((template) => ({
+            value: (template.templateId ?? template.$id) as string,
+            label: template.title || 'Untitled Template',
+        })),
+        [templateDocuments],
+    );
+
+    useEffect(() => {
+        if (!organizationId || !currentUser?.$id) {
+            setTemplateDocuments([]);
+            return;
+        }
+
+        let cancelled = false;
+        const loadTemplates = async () => {
+            try {
+                setTemplatesLoading(true);
+                setTemplatesError(null);
+                const templates = await boldsignService.listTemplates(
+                    organizationId,
+                    currentUser.$id,
+                );
+                if (!cancelled) {
+                    setTemplateDocuments(templates);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setTemplateDocuments([]);
+                    setTemplatesError(
+                        error instanceof Error ? error.message : 'Failed to load templates.',
+                    );
+                }
+            } finally {
+                if (!cancelled) {
+                    setTemplatesLoading(false);
+                }
+            }
+        };
+
+        loadTemplates();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [organizationId, currentUser?.$id]);
 
     const setEventData = useCallback(
         (updater: React.SetStateAction<EventFormValues>) => {
@@ -2041,6 +2104,7 @@ const EventForm: React.FC<EventFormProps> = ({
             divisions: source.divisions,
             cancellationRefundHours: source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
+            requiredTemplateIds: source.requiredTemplateIds,
             imageId: finalImageId,
             seedColor: source.seedColor,
             waitListIds: source.waitList,
@@ -3271,6 +3335,37 @@ const EventForm: React.FC<EventFormProps> = ({
                                     />
                                 )}
                             />
+
+                            <Controller
+                                name="requiredTemplateIds"
+                                control={control}
+                                render={({ field }) => (
+                                    <MantineMultiSelect
+                                        label="Required Documents"
+                                        placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+                                        data={templateOptions}
+                                        value={field.value ?? []}
+                                        disabled={!organizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
+                                        comboboxProps={sharedComboboxProps}
+                                        onChange={(vals) => {
+                                            if (isImmutableField('requiredTemplateIds')) return;
+                                            field.onChange(vals);
+                                        }}
+                                        clearable
+                                        searchable
+                                    />
+                                )}
+                            />
+                            {templatesError && (
+                                <Text size="sm" c="red">
+                                    {templatesError}
+                                </Text>
+                            )}
+                            {!templatesLoading && organizationId && templateOptions.length === 0 && (
+                                <Text size="sm" c="dimmed">
+                                    No templates yet. Create one in your organization Templates tab.
+                                </Text>
+                            )}
 
                             {/* Team Settings */}
                             {eventData.eventType === 'EVENT' ? (

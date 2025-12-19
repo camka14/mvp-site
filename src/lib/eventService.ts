@@ -449,6 +449,9 @@ class EventService {
             sportId: row.sportId,
             leagueScoringConfigId: row.leagueScoringConfigId,
             organizationId: row.organizationId,
+            requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
+                ? row.requiredTemplateIds.map((id: unknown) => String(id))
+                : [],
             divisions: row.divisions,
             timeSlots: row.timeSlots,
             referees: Array.isArray(row.referees) ? (row.referees as UserData[]) : undefined,

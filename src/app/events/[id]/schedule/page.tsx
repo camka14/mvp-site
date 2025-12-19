@@ -509,6 +509,7 @@ function EventScheduleContent() {
         registrationCutoffHours: 2,
         hostId: user.$id,
         state: 'DRAFT' as EventState,
+        requiredTemplateIds: [],
         $createdAt: '',
         $updatedAt: '',
         attendees: 0,

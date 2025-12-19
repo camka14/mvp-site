@@ -375,6 +375,7 @@ export interface Event {
   leagueScoringConfigId?: string | null;
   organizationId?: string | null;
   organization?: Organization | string;
+  requiredTemplateIds?: string[];
   allowPaymentPlans?: boolean;
   installmentCount?: number;
   installmentDueDates?: string[];
@@ -458,6 +459,18 @@ export interface Organization {
   fields?: Field[];
   referees?: UserData[];
   products?: Product[];
+}
+
+export interface TemplateDocument {
+  $id: string;
+  templateId?: string;
+  organizationId: string;
+  title: string;
+  description?: string;
+  signOnce: boolean;
+  status?: string;
+  createdAt?: string;
+  roleIndex?: number;
 }
 
 export type ProductPeriod = 'week' | 'month' | 'year';

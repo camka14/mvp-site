@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group } from '@mantine/core';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import { Event, UserData, Team, getEventDateTime, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl, formatPrice } from '@/types';
 import { eventService } from '@/lib/eventService';
@@ -7,6 +7,7 @@ import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
 import { billService } from '@/lib/billService';
+import { boldsignService, BoldSignLink } from '@/lib/boldsignService';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -24,11 +25,17 @@ interface EventDetailSheetProps {
 const SHEET_POPOVER_Z_INDEX = 1800;
 const SHEET_CONTENT_MAX_WIDTH = 'var(--mantine-container-size-lg, 1200px)';
 const SHEET_CONTENT_WIDTH = `min(${SHEET_CONTENT_MAX_WIDTH}, calc(100vw - 2rem))`; // Match main grid width on large screens
+const SIGN_MODAL_Z_INDEX = SHEET_POPOVER_Z_INDEX + 200;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 
+type JoinIntent = {
+    mode: 'user' | 'team';
+    team?: Team | null;
+};
+
 export default function EventDetailSheet({ event, isOpen, onClose, renderInline = false }: EventDetailSheetProps) {
-    const { user } = useApp();
+    const { user, authUser } = useApp();
     const router = useRouter();
     const [detailedEvent, setDetailedEvent] = useState<Event | null>(null);
     const [players, setPlayers] = useState<UserData[]>([]);
@@ -45,6 +52,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
     const [confirmingPurchase, setConfirmingPurchase] = useState(false);
+    const [showSignModal, setShowSignModal] = useState(false);
+    const [signLinks, setSignLinks] = useState<BoldSignLink[]>([]);
+    const [currentSignIndex, setCurrentSignIndex] = useState(0);
+    const [pendingJoin, setPendingJoin] = useState<JoinIntent | null>(null);
+    const signingInProgressRef = useRef(false);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -73,6 +85,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setIsLoadingTeams(false);
             setJoinError(null); // Reset error when modal closes
             setJoinNotice(null);
+            setShowSignModal(false);
+            setSignLinks([]);
+            setCurrentSignIndex(0);
+            setPendingJoin(null);
+            signingInProgressRef.current = false;
         }
     }, [isActive, event]);
 
@@ -223,6 +240,167 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         });
     }, [currentEvent, user]);
 
+    const beginSigningFlow = useCallback(async (intent: JoinIntent) => {
+        if (!currentEvent || !user) {
+            return false;
+        }
+        const requiredTemplateIds = Array.isArray(currentEvent.requiredTemplateIds)
+            ? currentEvent.requiredTemplateIds
+            : [];
+        if (!requiredTemplateIds.length) {
+            return false;
+        }
+        if (!authUser?.email) {
+            throw new Error('Sign-in email is required to sign documents.');
+        }
+
+        const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const links = await boldsignService.createSignLinks({
+            eventId: currentEvent.$id,
+            user,
+            userEmail: authUser.email,
+            redirectUrl,
+        });
+        if (!links.length) {
+            return false;
+        }
+        setSignLinks(links);
+        setCurrentSignIndex(0);
+        setPendingJoin(intent);
+        setShowSignModal(true);
+        return true;
+    }, [authUser?.email, currentEvent, user]);
+
+    const finalizeJoin = useCallback(async (intent: JoinIntent) => {
+        if (!user || !currentEvent) return;
+
+        const resolvedTeam = (() => {
+            if (intent.mode !== 'team') {
+                return undefined;
+            }
+            if (intent.team) {
+                return intent.team;
+            }
+            if (selectedTeamId) {
+                return userTeams.find((team) => team.$id === selectedTeamId) ?? ({ $id: selectedTeamId } as Team);
+            }
+            return undefined;
+        })();
+
+        if (currentEvent.allowPaymentPlans) {
+            if (intent.mode === 'team') {
+                if (!resolvedTeam?.$id) {
+                    throw new Error('Team is required to start a payment plan.');
+                }
+                await createBillForOwner('TEAM', resolvedTeam.$id);
+                setJoinNotice('Payment plan started for your team. A bill was created—you can manage payments from your Profile.');
+            } else {
+                await createBillForOwner('USER', user.$id);
+                setJoinNotice('Payment plan started. A bill was created for you—pay installments from your Profile.');
+            }
+            await loadEventDetails();
+            return;
+        }
+
+        if (isFreeForUser) {
+            await paymentService.joinEvent(user, currentEvent, resolvedTeam);
+            await loadEventDetails();
+        } else {
+            const paymentIntent = await paymentService.createPaymentIntent(user, currentEvent, resolvedTeam);
+            setPaymentData(paymentIntent);
+            setShowPaymentModal(true);
+        }
+    }, [createBillForOwner, currentEvent, isFreeForUser, loadEventDetails, selectedTeamId, user, userTeams]);
+
+    const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
+        if (!user || !currentEvent) {
+            return;
+        }
+        const currentLink = signLinks[currentSignIndex];
+        if (!currentLink) {
+            return;
+        }
+        if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
+            return;
+        }
+        if (signingInProgressRef.current) {
+            return;
+        }
+        signingInProgressRef.current = true;
+
+        let finalize = false;
+        try {
+            await boldsignService.markSigned({
+                documentId: currentLink.documentId,
+                templateId: currentLink.templateId,
+                eventId: currentEvent.$id,
+                user,
+                userEmail: authUser?.email,
+            });
+
+            const nextIndex = currentSignIndex + 1;
+            if (nextIndex < signLinks.length) {
+                setCurrentSignIndex(nextIndex);
+            } else {
+                finalize = true;
+                setShowSignModal(false);
+                setSignLinks([]);
+                setCurrentSignIndex(0);
+                const intent = pendingJoin;
+                setPendingJoin(null);
+                if (intent) {
+                    await finalizeJoin(intent);
+                }
+            }
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to record signature.');
+            setShowSignModal(false);
+            setSignLinks([]);
+            setCurrentSignIndex(0);
+            setPendingJoin(null);
+            finalize = true;
+        } finally {
+            signingInProgressRef.current = false;
+            if (finalize) {
+                setJoining(false);
+            }
+        }
+    }, [authUser?.email, currentEvent, currentSignIndex, finalizeJoin, pendingJoin, signLinks, user]);
+
+    useEffect(() => {
+        if (!showSignModal) {
+            return;
+        }
+
+        const handleMessage = (event: MessageEvent) => {
+            if (typeof event.origin === 'string' && !event.origin.includes('boldsign')) {
+                return;
+            }
+            const payload = event.data;
+            let eventName = '';
+            if (typeof payload === 'string') {
+                eventName = payload;
+            } else if (payload && typeof payload === 'object') {
+                eventName = payload.event || payload.eventName || payload.type || payload.name || '';
+            }
+            const eventLabel = eventName.toString();
+            if (!eventLabel || (!eventLabel.includes('onDocumentSigned') && !eventLabel.includes('documentSigned'))) {
+                return;
+            }
+
+            const documentId =
+                (payload && typeof payload === 'object' && (payload.documentId || payload.documentID)) || undefined;
+            handleSignedDocument(
+                typeof documentId === 'string' ? documentId : undefined
+            );
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => {
+            window.removeEventListener('message', handleMessage);
+        };
+    }, [handleSignedDocument, showSignModal]);
+
     // Update the join event handlers
     const handleJoinEvent = async () => {
         if (!user || !currentEvent) return;
@@ -231,27 +409,19 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setJoinError(null);
         setJoinNotice(null);
 
+        let signingStarted = false;
         try {
-            if (currentEvent.allowPaymentPlans) {
-                await createBillForOwner('USER', user.$id);
-                setJoinNotice('Payment plan started. A bill was created for you—pay installments from your Profile.');
-                await loadEventDetails();
+            signingStarted = await beginSigningFlow({ mode: 'user' });
+            if (signingStarted) {
                 return;
             }
-
-            if (isFreeForUser) {
-                await paymentService.joinEvent(user, currentEvent);
-                await loadEventDetails(); // Refresh event data
-            } else {
-                const paymentIntent = await paymentService.createPaymentIntent(user, currentEvent);
-
-                setPaymentData(paymentIntent); // Store payment data
-                setShowPaymentModal(true);     // Show payment modal
-            }
+            await finalizeJoin({ mode: 'user' });
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to join event');
         } finally {
-            setJoining(false);
+            if (!signingStarted) {
+                setJoining(false);
+            }
         }
     };
 
@@ -261,29 +431,32 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setJoining(true);
         setJoinError(null);
         setJoinNotice(null);
-        try {
-            const team = userTeams.find((t) => t.$id === selectedTeamId) || null;
-            if (currentEvent.allowPaymentPlans) {
-                const targetTeam = team || { $id: selectedTeamId } as Team;
-                await createBillForOwner('TEAM', targetTeam.$id);
-                setJoinNotice('Payment plan started for your team. A bill was created—you can manage payments from your Profile.');
-                await loadEventDetails();
-            }
 
-            if (isFreeForUser) {
-                await paymentService.joinEvent(undefined, currentEvent, team ?? undefined);
-                await loadEventDetails();
-            } else {
-                const paymentIntent = await paymentService.createPaymentIntent(user, currentEvent, team ?? undefined);
-                setPaymentData(paymentIntent);
-                setShowPaymentModal(true);
+        const team = userTeams.find((t) => t.$id === selectedTeamId) || ({ $id: selectedTeamId } as Team);
+        let signingStarted = false;
+        try {
+            signingStarted = await beginSigningFlow({ mode: 'team', team });
+            if (signingStarted) {
+                return;
             }
+            await finalizeJoin({ mode: 'team', team });
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to join as team');
         } finally {
-            setJoining(false);
+            if (!signingStarted) {
+                setJoining(false);
+            }
         }
     };
+
+    const cancelSigning = useCallback(() => {
+        setShowSignModal(false);
+        setSignLinks([]);
+        setCurrentSignIndex(0);
+        setPendingJoin(null);
+        setJoining(false);
+        setJoinError('Signature process canceled.');
+    }, []);
 
     // After successful payment, poll for up to 30s until the registration is reflected
     const confirmRegistrationAfterPayment = async () => {
@@ -1024,6 +1197,33 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 )}
                 emptyMessage="No free agents have listed for this event yet."
             />
+
+            <Modal
+                opened={showSignModal}
+                onClose={cancelSigning}
+                centered
+                size="xl"
+                title="Sign required documents"
+                zIndex={SIGN_MODAL_Z_INDEX}
+            >
+                {signLinks.length > 0 ? (
+                    <div>
+                        <Text size="sm" c="dimmed" mb="xs">
+                            Document {currentSignIndex + 1} of {signLinks.length}
+                            {signLinks[currentSignIndex]?.title ? ` • ${signLinks[currentSignIndex]?.title}` : ''}
+                        </Text>
+                        <div style={{ height: 600 }}>
+                            <iframe
+                                src={signLinks[currentSignIndex]?.url}
+                                title="BoldSign Signing"
+                                style={{ width: '100%', height: '100%', border: 'none' }}
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <Text size="sm" c="dimmed">Preparing documents...</Text>
+                )}
+            </Modal>
 
             <PaymentModal
                 isOpen={showPaymentModal}
