@@ -11,7 +11,6 @@ import Navigation from '@/components/layout/Navigation';
 import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { paymentService } from '@/lib/paymentService';
-import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { billService } from '@/lib/billService';
 import { teamService } from '@/lib/teamService';
 import PaymentModal from '@/components/ui/PaymentModal';
