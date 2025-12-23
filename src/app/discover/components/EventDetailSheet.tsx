@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import { Event, UserData, Team, getEventDateTime, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl, formatPrice } from '@/types';
@@ -8,6 +8,7 @@ import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
 import { billService } from '@/lib/billService';
 import { boldsignService, BoldSignLink } from '@/lib/boldsignService';
+import { signedDocumentService } from '@/lib/signedDocumentService';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -56,7 +57,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [signLinks, setSignLinks] = useState<BoldSignLink[]>([]);
     const [currentSignIndex, setCurrentSignIndex] = useState(0);
     const [pendingJoin, setPendingJoin] = useState<JoinIntent | null>(null);
-    const signingInProgressRef = useRef(false);
+    const [pendingSignedDocumentId, setPendingSignedDocumentId] = useState<string | null>(null);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -89,7 +90,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setSignLinks([]);
             setCurrentSignIndex(0);
             setPendingJoin(null);
-            signingInProgressRef.current = false;
+            setPendingSignedDocumentId(null);
         }
     }, [isActive, event]);
 
@@ -267,6 +268,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setSignLinks(links);
         setCurrentSignIndex(0);
         setPendingJoin(intent);
+        setPendingSignedDocumentId(null);
         setShowSignModal(true);
         return true;
     }, [authUser?.email, currentEvent, user]);
@@ -312,10 +314,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
     }, [createBillForOwner, currentEvent, isFreeForUser, loadEventDetails, selectedTeamId, user, userTeams]);
 
-    const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
-        if (!user || !currentEvent) {
-            return;
-        }
+    const handleSignedDocument = useCallback((messageDocumentId?: string) => {
         const currentLink = signLinks[currentSignIndex];
         if (!currentLink) {
             return;
@@ -323,49 +322,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
             return;
         }
-        if (signingInProgressRef.current) {
+        if (pendingSignedDocumentId) {
             return;
         }
-        signingInProgressRef.current = true;
 
-        let finalize = false;
-        try {
-            await boldsignService.markSigned({
-                documentId: currentLink.documentId,
-                templateId: currentLink.templateId,
-                eventId: currentEvent.$id,
-                user,
-                userEmail: authUser?.email,
-            });
-
-            const nextIndex = currentSignIndex + 1;
-            if (nextIndex < signLinks.length) {
-                setCurrentSignIndex(nextIndex);
-            } else {
-                finalize = true;
-                setShowSignModal(false);
-                setSignLinks([]);
-                setCurrentSignIndex(0);
-                const intent = pendingJoin;
-                setPendingJoin(null);
-                if (intent) {
-                    await finalizeJoin(intent);
-                }
-            }
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to record signature.');
-            setShowSignModal(false);
-            setSignLinks([]);
-            setCurrentSignIndex(0);
-            setPendingJoin(null);
-            finalize = true;
-        } finally {
-            signingInProgressRef.current = false;
-            if (finalize) {
-                setJoining(false);
-            }
-        }
-    }, [authUser?.email, currentEvent, currentSignIndex, finalizeJoin, pendingJoin, signLinks, user]);
+        setJoinNotice('Confirming signature...');
+        setShowSignModal(false);
+        setPendingSignedDocumentId(currentLink.documentId);
+    }, [currentSignIndex, pendingSignedDocumentId, signLinks]);
 
     useEffect(() => {
         if (!showSignModal) {
@@ -400,6 +364,61 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             window.removeEventListener('message', handleMessage);
         };
     }, [handleSignedDocument, showSignModal]);
+
+    useEffect(() => {
+        if (!pendingSignedDocumentId || !currentEvent || !user) {
+            return;
+        }
+
+        let cancelled = false;
+        const poll = async () => {
+            try {
+                const signed = await signedDocumentService.isDocumentSigned(pendingSignedDocumentId);
+                if (!signed || cancelled) {
+                    return;
+                }
+
+                const nextIndex = currentSignIndex + 1;
+                if (nextIndex < signLinks.length) {
+                    setCurrentSignIndex(nextIndex);
+                    setPendingSignedDocumentId(null);
+                    setShowSignModal(true);
+                    setJoinNotice(null);
+                    return;
+                }
+
+                setPendingSignedDocumentId(null);
+                setSignLinks([]);
+                setCurrentSignIndex(0);
+                setShowSignModal(false);
+                setJoinNotice(null);
+                const intent = pendingJoin;
+                setPendingJoin(null);
+                if (intent) {
+                    await finalizeJoin(intent);
+                }
+                setJoining(false);
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+                setJoinError('Failed to confirm signature.');
+                setPendingSignedDocumentId(null);
+                setShowSignModal(false);
+                setSignLinks([]);
+                setCurrentSignIndex(0);
+                setPendingJoin(null);
+                setJoining(false);
+            }
+        };
+
+        const interval = window.setInterval(poll, 1000);
+        poll();
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [currentEvent, currentSignIndex, finalizeJoin, pendingJoin, pendingSignedDocumentId, signLinks, user]);
 
     // Update the join event handlers
     const handleJoinEvent = async () => {
@@ -454,6 +473,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setSignLinks([]);
         setCurrentSignIndex(0);
         setPendingJoin(null);
+        setPendingSignedDocumentId(null);
         setJoining(false);
         setJoinError('Signature process canceled.');
     }, []);
