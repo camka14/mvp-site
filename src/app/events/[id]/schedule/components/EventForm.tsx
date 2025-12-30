@@ -1059,10 +1059,13 @@ const EventForm: React.FC<EventFormProps> = ({
     const organizationId = organization?.$id ?? eventData.organizationId;
 
     const templateOptions = useMemo(
-        () => templateDocuments.map((template) => ({
-            value: (template.templateId ?? template.$id) as string,
-            label: template.title || 'Untitled Template',
-        })),
+        () => templateDocuments.map((template) => {
+            const templateType = template.type ?? 'PDF';
+            return {
+                value: template.$id,
+                label: `${template.title || 'Untitled Template'} (${templateType})`,
+            };
+        }),
         [templateDocuments],
     );
 

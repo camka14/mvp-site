@@ -1,15 +1,17 @@
 import { functions } from '@/app/appwrite';
 import { ExecutionMethod } from 'appwrite';
-import type { TemplateDocument, UserData } from '@/types';
+import type { TemplateDocument, TemplateDocumentType, UserData } from '@/types';
 
 const FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
 
-export type BoldSignLink = {
+export type SignStep = {
   templateId: string;
-  documentId: string;
-  url: string;
+  type: TemplateDocumentType;
+  documentId?: string;
+  url?: string;
   title?: string;
   signOnce?: boolean;
+  content?: string;
 };
 
 type TemplateListResponse = {
@@ -24,7 +26,7 @@ type CreateTemplateResponse = {
 };
 
 type SignLinksResponse = {
-  signLinks?: BoldSignLink[];
+  signLinks?: SignStep[];
   error?: string;
 };
 
@@ -60,7 +62,13 @@ class BoldSignService {
     if (result?.error) {
       throw new Error(result.error);
     }
-    return Array.isArray(result?.templates) ? result.templates : [];
+    if (!Array.isArray(result?.templates)) {
+      return [];
+    }
+    return result.templates.map((template) => ({
+      ...template,
+      type: (template.type ?? 'PDF') as TemplateDocumentType,
+    }));
   }
 
   async createTemplate(params: {
@@ -69,7 +77,9 @@ class BoldSignService {
     title: string;
     description?: string;
     signOnce: boolean;
-  }): Promise<{ createUrl: string; template: TemplateDocument }> {
+    type: TemplateDocumentType;
+    content?: string;
+  }): Promise<{ createUrl?: string; template: TemplateDocument }> {
     const response = await functions.createExecution({
       functionId: FUNCTION_ID,
       xpath: `/organizations/${params.organizationId}/templates`,
@@ -80,6 +90,8 @@ class BoldSignService {
           title: params.title,
           description: params.description,
           signOnce: params.signOnce,
+          type: params.type,
+          content: params.content,
         },
       }),
       async: false,
@@ -91,7 +103,7 @@ class BoldSignService {
     if (result?.error) {
       throw new Error(result.error);
     }
-    if (!result?.createUrl || !result?.template) {
+    if (!result?.template) {
       throw new Error('Template creation response is missing data.');
     }
     return { createUrl: result.createUrl, template: result.template };
@@ -102,7 +114,7 @@ class BoldSignService {
     user: UserData;
     userEmail: string;
     redirectUrl?: string;
-  }): Promise<BoldSignLink[]> {
+  }): Promise<SignStep[]> {
     const response = await functions.createExecution({
       functionId: FUNCTION_ID,
       xpath: `/events/${params.eventId}/sign`,
@@ -122,7 +134,13 @@ class BoldSignService {
     if (result?.error) {
       throw new Error(result.error);
     }
-    return Array.isArray(result?.signLinks) ? result.signLinks : [];
+    if (!Array.isArray(result?.signLinks)) {
+      return [];
+    }
+    return result.signLinks.map((link) => ({
+      ...link,
+      type: (link.type ?? 'PDF') as TemplateDocumentType,
+    }));
   }
 
   async markSigned(params: {

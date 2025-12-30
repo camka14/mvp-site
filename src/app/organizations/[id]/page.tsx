@@ -13,7 +13,7 @@ import { useApp } from '@/app/providers';
 import type { Organization, Product, UserData, PaymentIntent, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
-import { storage } from '@/app/appwrite';
+import { databases, ID, storage } from '@/app/appwrite';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
@@ -23,7 +23,7 @@ import { userService } from '@/lib/userService';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
-import { ID } from '@/app/appwrite';
+import { Query } from 'appwrite';
 import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
@@ -37,7 +37,36 @@ export default function OrganizationDetailPage() {
   );
 }
 
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+const TEMPLATE_DOCUMENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEMPLATE_DOCUMENTS_TABLE_ID || 'templateDocuments';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
+  if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
+    return 'TEXT';
+  }
+  return 'PDF';
+};
+
+const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
+  const roleIndexRaw = row?.roleIndex;
+  const roleIndex = typeof roleIndexRaw === 'number' ? roleIndexRaw : Number(roleIndexRaw);
+  const signOnceRaw = row?.signOnce;
+
+  return {
+    $id: String(row?.$id ?? ''),
+    templateId: row?.templateId ?? undefined,
+    organizationId: row?.organizationId ?? '',
+    title: row?.title ?? 'Untitled Template',
+    description: row?.description ?? undefined,
+    signOnce: typeof signOnceRaw === 'boolean' ? signOnceRaw : signOnceRaw == null ? true : Boolean(signOnceRaw),
+    status: row?.status ?? undefined,
+    roleIndex: Number.isFinite(roleIndex) ? roleIndex : undefined,
+    type: normalizeTemplateType(row?.type),
+    content: row?.content ?? undefined,
+    $createdAt: row?.$createdAt ?? undefined,
+  };
+};
 
 function OrganizationDetailContent() {
   const params = useParams();
@@ -143,6 +172,8 @@ function OrganizationDetailContent() {
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
+  const [templateType, setTemplateType] = useState<'PDF' | 'TEXT'>('PDF');
+  const [templateContent, setTemplateContent] = useState('');
   const [templateSignOnce, setTemplateSignOnce] = useState(true);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [templateEmbedUrl, setTemplateEmbedUrl] = useState<string | null>(null);
@@ -173,8 +204,13 @@ function OrganizationDetailContent() {
       if (!user?.$id) {
         return;
       }
-      const templates = await boldsignService.listTemplates(orgId, user.$id);
-      setTemplateDocuments(templates);
+      const response = await databases.listRows({
+        databaseId: DATABASE_ID,
+        tableId: TEMPLATE_DOCUMENTS_TABLE_ID,
+        queries: [Query.equal('organizationId', orgId), Query.orderDesc('$createdAt'), Query.limit(200)],
+      });
+      const rows = Array.isArray(response.rows) ? response.rows : [];
+      setTemplateDocuments(rows.map((row) => mapTemplateRow(row)));
       if (!silent) {
         setTemplatesError(null);
       }
@@ -253,6 +289,11 @@ function OrganizationDetailContent() {
       setTemplatesError('Template title is required.');
       return;
     }
+    const trimmedContent = templateContent.trim();
+    if (templateType === 'TEXT' && !trimmedContent) {
+      setTemplatesError('Template text is required.');
+      return;
+    }
     try {
       setCreatingTemplate(true);
       setTemplatesError(null);
@@ -262,11 +303,15 @@ function OrganizationDetailContent() {
         title: trimmedTitle,
         description: templateDescription.trim() || undefined,
         signOnce: templateSignOnce,
+        type: templateType,
+        content: templateType === 'TEXT' ? trimmedContent : undefined,
       });
-      setTemplateEmbedUrl(result.createUrl);
+      setTemplateEmbedUrl(result.createUrl ?? null);
       setTemplateModalOpen(false);
       setTemplateTitle('');
       setTemplateDescription('');
+      setTemplateType('PDF');
+      setTemplateContent('');
       setTemplateSignOnce(true);
       await loadTemplates(org.$id, { silent: true });
     } catch (error) {
@@ -276,7 +321,7 @@ function OrganizationDetailContent() {
     } finally {
       setCreatingTemplate(false);
     }
-  }, [org, user, templateTitle, templateDescription, templateSignOnce, loadTemplates]);
+  }, [org, user, templateTitle, templateDescription, templateSignOnce, templateType, templateContent, loadTemplates]);
 
   const handleConnectStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;
@@ -878,6 +923,9 @@ function OrganizationDetailContent() {
                         <Text size="sm" c="dimmed">
                           {template.signOnce ? 'Sign once per participant' : 'Sign for every event'}
                         </Text>
+                        <Text size="xs" c="dimmed">
+                          Type: {template.type ?? 'PDF'}
+                        </Text>
                         {template.status && (
                           <Text size="xs" c="dimmed">
                             Status: {template.status}
@@ -1236,12 +1284,29 @@ function OrganizationDetailContent() {
             onChange={(e) => setTemplateTitle(e.currentTarget.value)}
             required
           />
+          <SegmentedControl
+            value={templateType}
+            onChange={(value) => setTemplateType(value as 'PDF' | 'TEXT')}
+            data={[
+              { label: 'PDF (BoldSign)', value: 'PDF' },
+              { label: 'Text waiver', value: 'TEXT' },
+            ]}
+          />
           <Textarea
             label="Description"
             value={templateDescription}
             onChange={(e) => setTemplateDescription(e.currentTarget.value)}
             minRows={3}
           />
+          {templateType === 'TEXT' && (
+            <Textarea
+              label="Waiver text"
+              value={templateContent}
+              onChange={(e) => setTemplateContent(e.currentTarget.value)}
+              minRows={6}
+              required
+            />
+          )}
           <Switch
             label="Sign once per participant"
             checked={templateSignOnce}

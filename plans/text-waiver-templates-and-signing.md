@@ -9,14 +9,15 @@ Summary / Goals: Allow organization owners to create text-only waiver templates 
 ## Progress
 
 - [x] (2025-12-23 00:05Z) Drafted ExecPlan.
-- [ ] Appwrite schema updates for templateDocuments and signedDocuments applied and documented.
-- [ ] mvp-site template creation, selection, and signing flow updated for TEXT and password confirmation.
-- [ ] mvp-build-bracket template and document endpoints updated for TEXT handling and IP capture.
-- [ ] Tests and manual validation executed.
+- [x] (2025-12-23 01:05Z) Appwrite schema updates for templateDocuments and signedDocuments applied and documented.
+- [x] (2025-12-23 01:15Z) mvp-site template creation, selection, and signing flow updated for TEXT and password confirmation.
+- [x] (2025-12-23 01:25Z) mvp-build-bracket template and document endpoints updated for TEXT handling and IP capture.
+- [ ] (2025-12-23 01:40Z) Tests and manual validation executed (completed: mvp-site jest for boldsignService; mvp-build-bracket mypy; remaining: pytest failures in existing suites).
 
 ## Surprises & Discoveries
 
-None yet.
+- Observation: `pytest` in `mvp-build-bracket` reports multiple failures across billing, event manager, generate league, and products suites unrelated to signing changes.
+  Evidence: `pytest` summary shows 19 failed, 85 passed, 1 skipped.
 
 ## Decision Log
 
@@ -25,6 +26,9 @@ None yet.
   Date/Author: 2025-12-23 / Codex
 - Decision: Treat `templateDocuments.type` as the source of truth, default missing values to `PDF`, and allow `templateId` to be omitted for `TEXT` templates while using `$id` for requiredTemplateIds references.
   Rationale: Preserves current BoldSign behavior, keeps requiredTemplateIds compatible with existing code, and avoids inventing new identifiers for TEXT waivers.
+  Date/Author: 2025-12-23 / Codex
+- Decision: Use the server-side signature-recording route for both PDF and TEXT completion events to capture IP addresses consistently.
+  Rationale: Centralizes IP derivation and ensures signedDocuments records receive `ipAddress` regardless of template type.
   Date/Author: 2025-12-23 / Codex
 
 ## Outcomes & Retrospective
@@ -109,3 +113,5 @@ The signing flow should consume a unified list of sign steps returned by the App
 The password confirmation route should accept `{ email, password }` (and optionally `eventId` for logging) and return a success/error response after creating and deleting a temporary Appwrite session. The signature-recording route should accept `{ templateId, documentId, eventId, type }`, derive `ipAddress` from request headers (accounting for proxy/CDN headers), and forward the write to the Appwrite function `/documents/signed` with `ipAddress` included. The Appwrite function and documents service must accept `ipAddress` in the payload and persist it to `signedDocuments` without breaking existing PDF webhook updates.
 
 BoldSign integration remains in `mvp-build-bracket/src/integrations/boldsign.py` and `src/entrypoints/documents.py` for PDF templates only; TEXT templates must never call BoldSign APIs.
+
+Note (2025-12-23): Updated progress to reflect completed schema/UI/backend steps, documented pytest failures, and logged the IP-capture decision to keep the plan current during implementation.

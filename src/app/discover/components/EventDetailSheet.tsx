@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal } from '@mantine/core';
+import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import { Event, UserData, Team, getEventDateTime, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl, formatPrice } from '@/types';
 import { eventService } from '@/lib/eventService';
@@ -7,7 +7,8 @@ import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
 import { billService } from '@/lib/billService';
-import { boldsignService, BoldSignLink } from '@/lib/boldsignService';
+import { ID } from '@/app/appwrite';
+import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
@@ -54,10 +55,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
     const [confirmingPurchase, setConfirmingPurchase] = useState(false);
     const [showSignModal, setShowSignModal] = useState(false);
-    const [signLinks, setSignLinks] = useState<BoldSignLink[]>([]);
+    const [signLinks, setSignLinks] = useState<SignStep[]>([]);
     const [currentSignIndex, setCurrentSignIndex] = useState(0);
     const [pendingJoin, setPendingJoin] = useState<JoinIntent | null>(null);
     const [pendingSignedDocumentId, setPendingSignedDocumentId] = useState<string | null>(null);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [password, setPassword] = useState('');
+    const [passwordError, setPasswordError] = useState<string | null>(null);
+    const [confirmingPassword, setConfirmingPassword] = useState(false);
+    const [recordingSignature, setRecordingSignature] = useState(false);
+    const [textAccepted, setTextAccepted] = useState(false);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -91,6 +98,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setCurrentSignIndex(0);
             setPendingJoin(null);
             setPendingSignedDocumentId(null);
+            setShowPasswordModal(false);
+            setPassword('');
+            setPasswordError(null);
+            setConfirmingPassword(false);
+            setRecordingSignature(false);
+            setTextAccepted(false);
         }
     }, [isActive, event]);
 
@@ -254,22 +267,13 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!authUser?.email) {
             throw new Error('Sign-in email is required to sign documents.');
         }
-
-        const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
-        const links = await boldsignService.createSignLinks({
-            eventId: currentEvent.$id,
-            user,
-            userEmail: authUser.email,
-            redirectUrl,
-        });
-        if (!links.length) {
-            return false;
-        }
-        setSignLinks(links);
-        setCurrentSignIndex(0);
         setPendingJoin(intent);
+        setSignLinks([]);
+        setCurrentSignIndex(0);
+        setPassword('');
+        setPasswordError(null);
         setPendingSignedDocumentId(null);
-        setShowSignModal(true);
+        setShowPasswordModal(true);
         return true;
     }, [authUser?.email, currentEvent, user]);
 
@@ -314,22 +318,175 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
     }, [createBillForOwner, currentEvent, isFreeForUser, loadEventDetails, selectedTeamId, user, userTeams]);
 
-    const handleSignedDocument = useCallback((messageDocumentId?: string) => {
+    const cancelPasswordConfirmation = useCallback(() => {
+        setShowPasswordModal(false);
+        setPassword('');
+        setPasswordError(null);
+        setPendingJoin(null);
+        setJoining(false);
+        setJoinError('Password confirmation canceled.');
+    }, []);
+
+    const confirmPasswordAndStartSigning = useCallback(async () => {
+        if (!pendingJoin || !currentEvent || !user || !authUser?.email) {
+            return;
+        }
+        if (!password.trim()) {
+            setPasswordError('Password is required.');
+            return;
+        }
+
+        setConfirmingPassword(true);
+        setPasswordError(null);
+        try {
+            const response = await fetch('/api/documents/confirm-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: authUser.email,
+                    password: password,
+                    eventId: currentEvent.$id,
+                }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result?.error) {
+                throw new Error(result?.error || 'Password confirmation failed.');
+            }
+
+            const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+            const links = await boldsignService.createSignLinks({
+                eventId: currentEvent.$id,
+                user,
+                userEmail: authUser.email,
+                redirectUrl,
+            });
+
+            if (!links.length) {
+                setShowPasswordModal(false);
+                setPassword('');
+                const intent = pendingJoin;
+                setPendingJoin(null);
+                await finalizeJoin(intent);
+                setJoining(false);
+                return;
+            }
+
+            setSignLinks(links);
+            setCurrentSignIndex(0);
+            setPendingSignedDocumentId(null);
+            setShowPasswordModal(false);
+            setPassword('');
+            setShowSignModal(true);
+        } catch (error) {
+            setPasswordError(error instanceof Error ? error.message : 'Failed to confirm password.');
+        } finally {
+            setConfirmingPassword(false);
+        }
+    }, [authUser?.email, currentEvent, finalizeJoin, password, pendingJoin, user]);
+
+    const recordSignature = useCallback(async (payload: {
+        templateId: string;
+        documentId: string;
+        type: SignStep['type'];
+    }) => {
+        if (!user || !currentEvent) {
+            throw new Error('User and event are required to sign documents.');
+        }
+        const response = await fetch('/api/documents/record-signature', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                templateId: payload.templateId,
+                documentId: payload.documentId,
+                eventId: currentEvent.$id,
+                type: payload.type,
+                userId: user.$id,
+                user,
+            }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.error) {
+            throw new Error(result?.error || 'Failed to record signature.');
+        }
+    }, [currentEvent, user]);
+
+    const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
         const currentLink = signLinks[currentSignIndex];
-        if (!currentLink) {
+        if (!currentLink || currentLink.type === 'TEXT') {
             return;
         }
         if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
             return;
         }
-        if (pendingSignedDocumentId) {
+        if (pendingSignedDocumentId || recordingSignature) {
+            return;
+        }
+        if (!currentLink.documentId) {
+            setJoinError('Missing document identifier for signature.');
             return;
         }
 
+        setRecordingSignature(true);
         setJoinNotice('Confirming signature...');
-        setShowSignModal(false);
-        setPendingSignedDocumentId(currentLink.documentId);
-    }, [currentSignIndex, pendingSignedDocumentId, signLinks]);
+        try {
+            await recordSignature({
+                templateId: currentLink.templateId,
+                documentId: currentLink.documentId,
+                type: currentLink.type,
+            });
+            setShowSignModal(false);
+            setPendingSignedDocumentId(currentLink.documentId);
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to record signature.');
+            setShowSignModal(false);
+            setSignLinks([]);
+            setCurrentSignIndex(0);
+            setPendingJoin(null);
+            setJoining(false);
+        } finally {
+            setRecordingSignature(false);
+        }
+    }, [currentSignIndex, pendingSignedDocumentId, recordSignature, recordingSignature, signLinks]);
+
+    const handleTextAcceptance = useCallback(async () => {
+        const currentLink = signLinks[currentSignIndex];
+        if (!currentLink || currentLink.type !== 'TEXT') {
+            return;
+        }
+        if (!textAccepted || pendingSignedDocumentId || recordingSignature) {
+            return;
+        }
+
+        const documentId = ID.unique();
+        setRecordingSignature(true);
+        setJoinNotice('Confirming signature...');
+        try {
+            await recordSignature({
+                templateId: currentLink.templateId,
+                documentId,
+                type: currentLink.type,
+            });
+            setShowSignModal(false);
+            setPendingSignedDocumentId(documentId);
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to record signature.');
+            setShowSignModal(false);
+            setSignLinks([]);
+            setCurrentSignIndex(0);
+            setPendingJoin(null);
+            setJoining(false);
+        } finally {
+            setRecordingSignature(false);
+        }
+    }, [currentSignIndex, pendingSignedDocumentId, recordSignature, recordingSignature, signLinks, textAccepted]);
+
+    useEffect(() => {
+        setTextAccepted(false);
+    }, [currentSignIndex, signLinks]);
 
     useEffect(() => {
         if (!showSignModal) {
@@ -354,7 +511,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
             const documentId =
                 (payload && typeof payload === 'object' && (payload.documentId || payload.documentID)) || undefined;
-            handleSignedDocument(
+            void handleSignedDocument(
                 typeof documentId === 'string' ? documentId : undefined
             );
         };
@@ -474,6 +631,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setCurrentSignIndex(0);
         setPendingJoin(null);
         setPendingSignedDocumentId(null);
+        setShowPasswordModal(false);
+        setPassword('');
+        setPasswordError(null);
+        setConfirmingPassword(false);
+        setRecordingSignature(false);
+        setTextAccepted(false);
         setJoining(false);
         setJoinError('Signature process canceled.');
     }, []);
@@ -1219,6 +1382,46 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             />
 
             <Modal
+                opened={showPasswordModal}
+                onClose={cancelPasswordConfirmation}
+                centered
+                title="Confirm your password"
+                zIndex={SIGN_MODAL_Z_INDEX}
+            >
+                <form
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        void confirmPasswordAndStartSigning();
+                    }}
+                >
+                    <Stack gap="sm">
+                        <Text size="sm" c="dimmed">
+                            Please confirm your password before signing required documents.
+                        </Text>
+                        <PasswordInput
+                            label="Password"
+                            value={password}
+                            onChange={(event) => setPassword(event.currentTarget.value)}
+                            error={passwordError ?? undefined}
+                            required
+                        />
+                        <Group justify="flex-end">
+                            <Button variant="default" onClick={cancelPasswordConfirmation}>
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                loading={confirmingPassword}
+                                disabled={!password.trim()}
+                            >
+                                Continue
+                            </Button>
+                        </Group>
+                    </Stack>
+                </form>
+            </Modal>
+
+            <Modal
                 opened={showSignModal}
                 onClose={cancelSigning}
                 centered
@@ -1232,13 +1435,37 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             Document {currentSignIndex + 1} of {signLinks.length}
                             {signLinks[currentSignIndex]?.title ? ` • ${signLinks[currentSignIndex]?.title}` : ''}
                         </Text>
-                        <div style={{ height: 600 }}>
-                            <iframe
-                                src={signLinks[currentSignIndex]?.url}
-                                title="BoldSign Signing"
-                                style={{ width: '100%', height: '100%', border: 'none' }}
-                            />
-                        </div>
+                        {signLinks[currentSignIndex]?.type === 'TEXT' ? (
+                            <Stack gap="sm">
+                                <Paper withBorder p="md" style={{ maxHeight: 420, overflowY: 'auto' }}>
+                                    <Text style={{ whiteSpace: 'pre-wrap' }}>
+                                        {signLinks[currentSignIndex]?.content || 'No waiver text provided.'}
+                                    </Text>
+                                </Paper>
+                                <Checkbox
+                                    label="I agree to the waiver above."
+                                    checked={textAccepted}
+                                    onChange={(event) => setTextAccepted(event.currentTarget.checked)}
+                                />
+                                <Group justify="flex-end">
+                                    <Button
+                                        onClick={() => void handleTextAcceptance()}
+                                        loading={recordingSignature}
+                                        disabled={!textAccepted || recordingSignature}
+                                    >
+                                        Accept and continue
+                                    </Button>
+                                </Group>
+                            </Stack>
+                        ) : (
+                            <div style={{ height: 600 }}>
+                                <iframe
+                                    src={signLinks[currentSignIndex]?.url}
+                                    title="BoldSign Signing"
+                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                />
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <Text size="sm" c="dimmed">Preparing documents...</Text>

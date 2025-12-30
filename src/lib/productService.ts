@@ -62,7 +62,7 @@ class ProductService {
       period: (periodRaw as ProductPeriod) || 'monthly',
       createdBy: row?.createdBy ?? row?.ownerId,
       isActive: row?.isActive ?? true,
-      createdAt: row?.createdAt ?? row?.$createdAt,
+      $createdAt: row?.$createdAt,
     };
   }
 

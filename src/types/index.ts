@@ -461,6 +461,8 @@ export interface Organization {
   products?: Product[];
 }
 
+export type TemplateDocumentType = 'PDF' | 'TEXT';
+
 export interface TemplateDocument {
   $id: string;
   templateId?: string;
@@ -469,8 +471,10 @@ export interface TemplateDocument {
   description?: string;
   signOnce: boolean;
   status?: string;
-  createdAt?: string;
   roleIndex?: number;
+  type?: TemplateDocumentType;
+  content?: string;
+  $createdAt?: string;
 }
 
 export type ProductPeriod = 'week' | 'month' | 'year';
@@ -484,7 +488,7 @@ export interface Product {
   period: ProductPeriod;
   createdBy?: string;
   isActive?: boolean;
-  createdAt?: string;
+  $createdAt?: string;
 }
 
 export interface Subscription {
