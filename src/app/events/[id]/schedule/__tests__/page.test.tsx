@@ -3,9 +3,11 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import LeagueSchedulePage from '../page';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
+import { organizationService } from '@/lib/organizationService';
 import { formatLocalDateTime } from '@/lib/dateUtils';
 import type { Field, Match } from '@/types';
 import { buildTeam } from '../../../../../../test/factories';
+import { forwardRef, useImperativeHandle } from 'react';
 
 const useSearchParamsMock = jest.fn();
 const mockRouter = {
@@ -46,6 +48,25 @@ jest.mock('@/lib/leagueService', () => ({
     deleteMatchesByEvent: jest.fn(),
     deleteWeeklySchedulesForEvent: jest.fn(),
   },
+}));
+
+jest.mock('@/lib/organizationService', () => ({
+  organizationService: {
+    getOrganizationById: jest.fn(),
+  },
+}));
+
+let capturedEventFormProps: any = null;
+jest.mock('../components/EventForm', () => ({
+  __esModule: true,
+  default: forwardRef((props: any, ref) => {
+    capturedEventFormProps = props;
+    useImperativeHandle(ref, () => ({
+      getDraft: () => props.event ?? {},
+      validate: async () => true,
+    }));
+    return <div data-testid="event-form" />;
+  }),
 }));
 
 jest.mock('../components/LeagueCalendarView', () => {
@@ -110,6 +131,7 @@ describe('League schedule page', () => {
     mockRouter.push.mockReset();
     mockRouter.replace.mockReset();
     mockRouter.back.mockReset();
+    capturedEventFormProps = null;
     useAppMock.mockReturnValue({
       user: { $id: 'host_1' },
       isAuthenticated: true,
@@ -217,7 +239,7 @@ describe('League schedule page', () => {
       expect(screen.getByText(/Summer League/)).toBeInTheDocument();
     });
 
-    const cancelButton = await screen.findByRole('button', { name: /cancel league preview/i });
+    const cancelButton = await screen.findByRole('button', { name: /delete league/i });
     fireEvent.click(cancelButton);
 
     await waitFor(() => {
@@ -234,6 +256,14 @@ describe('League schedule page', () => {
   });
 
   it('publishes an unpublished league by updating state and related data', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'preview') return '1';
+        if (key === 'mode') return null;
+        return null;
+      },
+    });
+
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
       $id: 'event_unpublished',
       name: 'Draft League',
@@ -321,5 +351,36 @@ describe('League schedule page', () => {
     expect(payload.fields?.[0]?.rentalSlotIds).toBeUndefined();
     expect(payload).not.toHaveProperty('attendees');
     expect(eventService.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not pass a host organization when creating a rental as self', async () => {
+    const start = formatLocalDateTime(new Date());
+    const end = formatLocalDateTime(new Date(Date.now() + 60 * 60 * 1000));
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'rentalStart') return start;
+        if (key === 'rentalEnd') return end;
+        if (key === 'rentalFieldId') return 'field_1';
+        if (key === 'rentalOrgId') return 'org_rental';
+        if (key === 'mode') return 'edit';
+        return null;
+      },
+    });
+
+    (organizationService.getOrganizationById as jest.Mock).mockResolvedValue({
+      $id: 'org_rental',
+      name: 'Rental Org',
+      fields: [],
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('event-form')).toBeInTheDocument();
+    });
+
+    expect(capturedEventFormProps?.organization).toBeNull();
   });
 });

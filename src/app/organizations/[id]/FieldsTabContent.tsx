@@ -564,7 +564,7 @@ export default function FieldsTabContent({ organization, organizationId, current
       params.set('rentalPriceCents', String(Math.round(rentalPriceCents)));
     }
     if (org?.$id) {
-      params.set('orgId', org.$id);
+      params.set('rentalOrgId', org.$id);
     }
     if (hostSelection && hostSelection !== 'self') {
       params.set('hostOrgId', hostSelection);

@@ -115,7 +115,9 @@ function EventScheduleContent() {
   const isPreview = searchParams?.get('preview') === '1';
   const isEditParam = searchParams?.get('mode') === 'edit';
   const isCreateMode = searchParams?.get('create') === '1';
-  const organizationIdParam = searchParams?.get('orgId') || undefined;
+  const orgIdParam = searchParams?.get('orgId') || undefined;
+  const hostOrgIdParam = searchParams?.get('hostOrgId') || undefined;
+  const rentalOrgIdParam = searchParams?.get('rentalOrgId') || undefined;
   const rentalStartParam = searchParams?.get('rentalStart') || undefined;
   const rentalEndParam = searchParams?.get('rentalEnd') || undefined;
   const rentalFieldIdParam = searchParams?.get('rentalFieldId') || undefined;
@@ -126,6 +128,9 @@ function EventScheduleContent() {
   const rentalLatParam = searchParams?.get('rentalLat') || undefined;
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
   const rentalPriceParam = searchParams?.get('rentalPriceCents') || undefined;
+  const isRentalFlow = Boolean(rentalStartParam && rentalEndParam);
+  const resolvedHostOrgId = hostOrgIdParam ?? (!isRentalFlow ? orgIdParam : undefined);
+  const resolvedRentalOrgId = rentalOrgIdParam ?? (isRentalFlow ? orgIdParam : undefined);
 
   const [event, setEvent] = useState<Event | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -148,6 +153,7 @@ function EventScheduleContent() {
   const [scoreUpdateMatch, setScoreUpdateMatch] = useState<Match | null>(null);
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
   const [organizationForCreate, setOrganizationForCreate] = useState<Organization | null>(null);
+  const [rentalOrganization, setRentalOrganization] = useState<Organization | null>(null);
   const [formSeedEvent, setFormSeedEvent] = useState<Event | null>(null);
   const [rentalPaymentData, setRentalPaymentData] = useState<PaymentIntent | null>(null);
   const [showRentalPayment, setShowRentalPayment] = useState(false);
@@ -246,7 +252,7 @@ function EventScheduleContent() {
     }
 
     const rentalFieldFromOrg = rentalFieldIdParam
-      ? (organizationForCreate?.fields || []).find((field) => field?.$id === rentalFieldIdParam)
+      ? (rentalOrganization?.fields || []).find((field) => field?.$id === rentalFieldIdParam)
       : undefined;
 
     const fallbackFieldNumber = (() => {
@@ -277,11 +283,11 @@ function EventScheduleContent() {
     })();
 
     const resolvedField = rentalFieldFromOrg ?? rentalField;
-    const derivedLocation = rentalLocationParam ?? resolvedField?.location ?? organizationForCreate?.location ?? '';
+    const derivedLocation = rentalLocationParam ?? resolvedField?.location ?? rentalOrganization?.location ?? '';
     const derivedCoordinates =
       rentalCoordinates ??
       (resolvedField ? [resolvedField.long, resolvedField.lat] as [number, number] : undefined) ??
-      (organizationForCreate?.coordinates as [number, number] | undefined);
+      (rentalOrganization?.coordinates as [number, number] | undefined);
 
     const defaults: Partial<Event> = {
       start: normalizedStart,
@@ -300,7 +306,7 @@ function EventScheduleContent() {
     return defaults;
   }, [
     isCreateMode,
-    organizationForCreate,
+    rentalOrganization,
     rentalCoordinates,
     rentalEndParam,
     rentalFieldIdParam,
@@ -326,10 +332,9 @@ function EventScheduleContent() {
       start: normalizedStart,
       end: normalizedEnd,
       fieldId: rentalFieldIdParam ?? undefined,
-      organization: organizationForCreate,
       priceCents: normalizedPrice,
     };
-  }, [isCreateMode, organizationForCreate, rentalEndParam, rentalFieldIdParam, rentalPriceParam, rentalStartParam]);
+  }, [isCreateMode, rentalEndParam, rentalFieldIdParam, rentalPriceParam, rentalStartParam]);
 
   const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
     if (!rentalPurchaseContext) {
@@ -587,40 +592,80 @@ function EventScheduleContent() {
   }, [changesEvent, hasUnsavedChanges, isCreateMode]);
 
   useEffect(() => {
-    const loadOrgForCreate = async () => {
-      if (!organizationIdParam || !isCreateMode) return;
+    if (!isCreateMode) {
+      setOrganizationForCreate(null);
+      setRentalOrganization(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadOrganizationsForCreate = async () => {
+      const hostOrgId = resolvedHostOrgId;
+      const rentalOrgId = resolvedRentalOrgId;
+
+      if (!hostOrgId && !rentalOrgId) {
+        setOrganizationForCreate(null);
+        setRentalOrganization(null);
+        return;
+      }
+
       try {
-        const org = await organizationService.getOrganizationById(organizationIdParam, true);
-        if (org) {
-          setOrganizationForCreate(org as Organization);
+        const hostPromise = hostOrgId
+          ? organizationService.getOrganizationById(hostOrgId, true)
+          : Promise.resolve(null);
+        const rentalPromise =
+          rentalOrgId && rentalOrgId !== hostOrgId
+            ? organizationService.getOrganizationById(rentalOrgId, true)
+            : Promise.resolve(null);
+        const [hostOrg, rentalOrg] = await Promise.all([hostPromise, rentalPromise]);
+
+        if (cancelled) return;
+
+        const resolvedHostOrg = hostOrg ? (hostOrg as Organization) : null;
+        const resolvedRentalOrg = rentalOrgId === hostOrgId
+          ? resolvedHostOrg
+          : rentalOrg
+            ? (rentalOrg as Organization)
+            : null;
+
+        setOrganizationForCreate(resolvedHostOrg);
+        setRentalOrganization(resolvedRentalOrg);
+
+        if (resolvedHostOrg) {
           setChangesEvent((prev) => {
             const base = prev ?? ({ $id: eventId, state: 'DRAFT' } as Event);
-            const orgLocation = (org.location ?? '').trim();
+            const orgLocation = (resolvedHostOrg.location ?? '').trim();
             const orgCoordinates =
-              Array.isArray(org.coordinates) &&
-                typeof org.coordinates[0] === 'number' &&
-                typeof org.coordinates[1] === 'number'
-                ? (org.coordinates as [number, number])
+              Array.isArray(resolvedHostOrg.coordinates) &&
+                typeof resolvedHostOrg.coordinates[0] === 'number' &&
+                typeof resolvedHostOrg.coordinates[1] === 'number'
+                ? (resolvedHostOrg.coordinates as [number, number])
                 : undefined;
             return {
               ...base,
-              organization: org,
-              organizationId: org.$id,
-              hostId: base.hostId ?? org.ownerId ?? base.hostId,
-              fields: Array.isArray(org.fields) ? org.fields : base.fields,
-              refereeIds: Array.isArray(org.refIds) ? org.refIds : base.refereeIds,
-              referees: Array.isArray(org.referees) ? org.referees : base.referees,
+              organization: resolvedHostOrg,
+              organizationId: resolvedHostOrg.$id,
+              hostId: base.hostId ?? resolvedHostOrg.ownerId ?? base.hostId,
+              fields: Array.isArray(resolvedHostOrg.fields) ? resolvedHostOrg.fields : base.fields,
+              refereeIds: Array.isArray(resolvedHostOrg.refIds) ? resolvedHostOrg.refIds : base.refereeIds,
+              referees: Array.isArray(resolvedHostOrg.referees) ? resolvedHostOrg.referees : base.referees,
               location: orgLocation || base.location || '',
               coordinates: orgCoordinates ?? base.coordinates ?? [0, 0],
             } as Event;
           });
         }
       } catch (error) {
-        console.warn('Failed to load organization for create:', error);
+        console.warn('Failed to load organizations for create:', error);
       }
     };
-    loadOrgForCreate();
-  }, [eventId, isCreateMode, organizationIdParam]);
+
+    loadOrganizationsForCreate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, isCreateMode, resolvedHostOrgId, resolvedRentalOrgId]);
 
   const hydrateEvent = useCallback((loadedEvent: Event) => {
     const eventClone = cloneValue(loadedEvent) as Event;
@@ -1171,6 +1216,20 @@ function EventScheduleContent() {
     [buildSchedulePayload, eventId, handlePreviewEventUpdate, pathname, router, searchParams],
   );
 
+  const closeRentalPaymentModal = useCallback(() => {
+    setShowRentalPayment(false);
+    setRentalPaymentData(null);
+    pendingRegularEventRef.current = null;
+  }, []);
+
+  const handleRentalPaymentSuccess = useCallback(async () => {
+    const pendingDraft = pendingRegularEventRef.current;
+    if (pendingDraft) {
+      await scheduleRegularEvent(pendingDraft);
+    }
+    closeRentalPaymentModal();
+  }, [closeRentalPaymentModal, scheduleRegularEvent]);
+
   // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
     if (publishing) return;
@@ -1214,7 +1273,7 @@ function EventScheduleContent() {
               normalizedDraft as Event,
               undefined,
               rentalPurchaseTimeSlot,
-              rentalPurchaseContext?.organization ?? organizationForCreate ?? undefined,
+              rentalOrganization ?? undefined,
             );
             setRentalPaymentData(paymentIntent);
             setShowRentalPayment(true);
@@ -1697,6 +1756,13 @@ function EventScheduleContent() {
             )}
           </Stack>
         </Container>
+        <PaymentModal
+          isOpen={showRentalPayment && Boolean(rentalPaymentData)}
+          onClose={closeRentalPaymentModal}
+          event={rentalPaymentEventSummary}
+          paymentData={rentalPaymentData}
+          onPaymentSuccess={handleRentalPaymentSuccess}
+        />
       </>
     );
   }
@@ -1966,6 +2032,13 @@ function EventScheduleContent() {
         doTeamsRef={Boolean(activeEvent.doTeamsRef)}
         onClose={handleMatchEditClose}
         onSave={handleMatchEditSave}
+      />
+      <PaymentModal
+        isOpen={showRentalPayment && Boolean(rentalPaymentData)}
+        onClose={closeRentalPaymentModal}
+        event={rentalPaymentEventSummary}
+        paymentData={rentalPaymentData}
+        onPaymentSuccess={handleRentalPaymentSuccess}
       />
     </div>
   );
