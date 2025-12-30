@@ -809,6 +809,11 @@ export function toEventPayload(event: Event): EventPayload {
     payload.eventType = normalizedEventType as EventType;
   }
 
+  if (payload.eventType && payload.eventType !== 'LEAGUE') {
+    delete payload.leagueScoringConfig;
+    delete payload.leagueScoringConfigId;
+  }
+
   const normalizedFieldType = normalizeEnumValue(payload.fieldType);
   if (normalizedFieldType) {
     payload.fieldType = normalizedFieldType as FieldSurfaceType;

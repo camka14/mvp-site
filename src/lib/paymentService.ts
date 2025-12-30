@@ -37,7 +37,6 @@ class PaymentService {
     team?: Team,
     timeSlot?: TimeSlot,
     organization?: PaymentOrganizationContext,
-    organizationEmail?: string,
   ): Promise<PaymentIntent> {
     try {
       if (!event) {
@@ -50,7 +49,6 @@ class PaymentService {
         team,
         timeSlot,
         organization,
-        organizationEmail,
       };
 
       const response = await functions.createExecution({

@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from 'react';
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,7 +7,7 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, PaymentIntent, TemplateDocument } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -23,16 +22,12 @@ import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from 
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { ID } from '@/app/appwrite';
 import UserCard from '@/components/ui/UserCard';
-import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
 interface EventFormProps {
     isOpen?: boolean;
     onClose?: () => void;
-    onSubmit?: (draftEvent: Partial<Event>) => void;
-    onDraftChange?: (draftEvent: Partial<Event>) => void;
-    onPreviewEvent?: (preview: Event) => void;
     currentUser: UserData;
     event: Event;
     organization: Organization | null;
@@ -40,9 +35,13 @@ interface EventFormProps {
     formId?: string;
     defaultLocation?: DefaultLocation;
     isCreateMode?: boolean;
-    isPreviewMode?: boolean;
     rentalPurchase?: RentalPurchaseContext;
 }
+
+export type EventFormHandle = {
+    getDraft: () => Partial<Event>;
+    validate: () => Promise<boolean>;
+};
 
 type RentalPurchaseContext = {
     start: string;
@@ -653,12 +652,8 @@ const eventFormSchema = z
         }
     });
 
-const EventForm: React.FC<EventFormProps> = ({
+const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     isOpen,
-    onClose,
-    onSubmit: onSubmitProp,
-    onPreviewEvent,
-    onDraftChange,
     currentUser,
     event: incomingEvent,
     organization,
@@ -666,14 +661,11 @@ const EventForm: React.FC<EventFormProps> = ({
     formId,
     defaultLocation,
     isCreateMode = false,
-    isPreviewMode = false,
     rentalPurchase,
-}) => {
-    const router = useRouter();
+}, ref) => {
     const open = isOpen ?? true;
-    const modalRef = useRef<HTMLDivElement>(null);
     const refsPrefilledRef = useRef<boolean>(false);
-    const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
+    const lastResetEventIdRef = useRef<string | null>(null);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => ({
         key: slot?.$id ?? ID.unique(),
@@ -689,15 +681,10 @@ const EventForm: React.FC<EventFormProps> = ({
     }), []);
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [submitError, setSubmitError] = useState<string | null>(null);
-    const [leagueErrorMessage, setLeagueErrorMessage] = useState<string | null>(null);
     // Cached Stripe onboarding state pulled from the current user so paid inputs can be enabled/disabled.
     const [hasStripeAccount, setHasStripeAccount] = useState(
         Boolean(organization?.hasStripeAccount || currentUser?.hasStripeAccount),
     );
-    const [rentalPaymentData, setRentalPaymentData] = useState<PaymentIntent | null>(null);
-    const [showRentalPayment, setShowRentalPayment] = useState(false);
     const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -825,7 +812,11 @@ const EventForm: React.FC<EventFormProps> = ({
     }, [immutableDefaultsMemo, sportsById]);
 
     useEffect(() => {
-        if (!open || !incomingEvent) {
+        if (!open || !incomingEvent || isCreateMode) {
+            setHydratedEditingEvent(null);
+            return;
+        }
+        if (!incomingEvent.$createdAt) {
             setHydratedEditingEvent(null);
             return;
         }
@@ -855,7 +846,7 @@ const EventForm: React.FC<EventFormProps> = ({
         return () => {
             cancelled = true;
         };
-    }, [incomingEvent, open]);
+    }, [incomingEvent, open, isCreateMode]);
 
     const buildDefaultFormValues = useCallback((): EventFormValues => {
         const defaultLocationLabel = (defaultLocation?.location ?? '').trim();
@@ -1034,17 +1025,26 @@ const EventForm: React.FC<EventFormProps> = ({
         getValues,
         reset,
         clearErrors,
-        handleSubmit: handleRHFSubmit,
-        formState: { errors, isValid },
+        trigger,
+        formState: { errors },
     } = useForm<EventFormValues>({
         resolver: zodResolver(eventFormSchema) as Resolver<EventFormValues>,
-        mode: 'onChange',
+        mode: 'onBlur',
+        reValidateMode: 'onBlur',
         defaultValues: buildDefaultFormValues(),
     });
 
     useEffect(() => {
+        if (!open) {
+            return;
+        }
+        const nextEventId = activeEditingEvent?.$id ?? null;
+        if (lastResetEventIdRef.current === nextEventId) {
+            return;
+        }
+        lastResetEventIdRef.current = nextEventId;
         reset(buildDefaultFormValues());
-    }, [buildDefaultFormValues, reset, open]);
+    }, [activeEditingEvent?.$id, buildDefaultFormValues, reset, open]);
 
     const formValues = watch();
     const eventData = formValues;
@@ -1055,7 +1055,6 @@ const EventForm: React.FC<EventFormProps> = ({
     const fields = formValues.fields;
     const fieldCount = formValues.fieldCount;
     const joinAsParticipant = formValues.joinAsParticipant;
-    const showCreateButtons = isCreateMode || eventData.state === 'DRAFT';
     const organizationId = organization?.$id ?? eventData.organizationId;
 
     const templateOptions = useMemo(
@@ -1183,36 +1182,6 @@ const EventForm: React.FC<EventFormProps> = ({
         },
         [setValue],
     );
-
-    const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
-        if (!rentalPurchase) {
-            return null;
-        }
-        const startDate = parseLocalDateTime(rentalPurchase.start);
-        const endDate = parseLocalDateTime(rentalPurchase.end);
-        if (!startDate || !endDate) {
-            return null;
-        }
-        const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-        const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-        const scheduledFieldId =
-            rentalPurchase.fieldId
-            || immutableFields[0]?.$id
-            || fields?.[0]?.$id;
-        const dayOfWeek = ((startDate.getDay() + 7) % 7) as TimeSlot['dayOfWeek'];
-        const price = Number.isFinite(rentalPurchase.priceCents) ? Number(rentalPurchase.priceCents) : undefined;
-        return {
-            $id: ID.unique(),
-            dayOfWeek,
-            startTimeMinutes: startMinutes,
-            endTimeMinutes: endMinutes,
-            startDate: formatLocalDateTime(startDate),
-            endDate: formatLocalDateTime(endDate),
-            repeating: false,
-            scheduledFieldId,
-            price,
-        };
-    }, [fields, immutableFields, rentalPurchase]);
 
     const syncInstallmentCount = useCallback(
         (count: number) => {
@@ -1811,8 +1780,6 @@ const EventForm: React.FC<EventFormProps> = ({
     }, [eventData.eventType, updateLeagueSlots]);
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
-    const modalTitle = isEditMode ? 'Edit Event' : 'Create New Event';
-
     const leagueFieldOptions = useMemo(() => {
         if (!fields.length) {
             return [] as { value: string; label: string }[];
@@ -1964,49 +1931,7 @@ const EventForm: React.FC<EventFormProps> = ({
         }
     }, [eventData.eventType, hasExternalRentalField, setValue]);
 
-    const hasSlotConflicts = eventData.eventType === 'LEAGUE' && leagueSlots.some(slot => Boolean(slot.error));
-    const hasIncompleteSlot = eventData.eventType === 'LEAGUE' && leagueSlots.some(slot =>
-        !slot.scheduledFieldId ||
-        typeof slot.dayOfWeek !== 'number' ||
-        typeof slot.startTimeMinutes !== 'number' ||
-        typeof slot.endTimeMinutes !== 'number'
-    );
-
-    const requiresSets = Boolean(eventData.sportConfig?.usePointsPerSetWin);
-    const matchDurationValid = !requiresSets
-        ? (normalizeNumber(leagueData.matchDurationMinutes) ?? 0) > 0
-        : true;
-    const setTimingValid = !requiresSets
-        ? true
-        : ((normalizeNumber(leagueData.setsPerMatch) ?? 0) > 0 && (normalizeNumber(leagueData.setDurationMinutes) ?? 0) > 0);
-    const pointsValid = !requiresSets
-        ? true
-        : ((leagueData.pointsToVictory?.length ?? 0) === (leagueData.setsPerMatch ?? 0) &&
-            (leagueData.pointsToVictory ?? []).every((value) => Number(value) > 0));
-
-    const leagueFormValid = eventData.eventType !== 'LEAGUE'
-        ? true
-        : (
-            leagueData.gamesPerOpponent >= 1 &&
-            matchDurationValid &&
-            (!leagueData.includePlayoffs || (leagueData.playoffTeamCount && leagueData.playoffTeamCount > 1)) &&
-            setTimingValid &&
-            pointsValid &&
-            !hasSlotConflicts &&
-            !hasIncompleteSlot &&
-            (!shouldManageLocalFields || fields.length === Math.max(1, fieldCount)) &&
-            (!shouldManageLocalFields || fields.every(field => field.name?.trim().length > 0))
-        );
-
-    const leagueError = leagueErrorMessage ?? (errors.leagueSlots ? 'Please resolve league timeslot issues before submitting.' : null);
-
-    const isFormValid = isValid && leagueFormValid;
-
-    useEffect(() => {
-        if (eventData.eventType !== 'LEAGUE') {
-            setLeagueErrorMessage(null);
-        }
-    }, [eventData.eventType]);
+    const leagueError = errors.leagueSlots ? 'Please resolve league timeslot issues before submitting.' : null;
 
     useEffect(() => {
         if (isEditMode || !organization) {
@@ -2051,15 +1976,12 @@ const EventForm: React.FC<EventFormProps> = ({
         }
     };
 
-    // Persists the event (or triggers preview for new leagues) when the modal form is submitted.
-    const buildDraftEvent = useCallback((formValues?: EventFormValues): Partial<Event> | null => {
+    // Builds the event payload used for draft updates.
+    const buildDraftEvent = useCallback((formValues?: EventFormValues): Partial<Event> => {
         const source = formValues ?? eventData;
         const finalImageId = source.imageId;
         const sportSelection = source.sportConfig;
-        if (!finalImageId || !sportSelection || (sportSelection && !sportSelection.$id)) {
-            return null;
-        }
-        const sportId = (sportSelection.$id && String(sportSelection.$id)) || (source.sportId?.trim() || '');
+        const sportId = (sportSelection?.$id && String(sportSelection.$id)) || (source.sportId?.trim() || '');
         const baseCoordinates: [number, number] = source.coordinates;
         const toIdList = <T extends { $id?: string | undefined }>(items: T[] | undefined): string[] => {
             if (!Array.isArray(items)) {
@@ -2187,8 +2109,110 @@ const EventForm: React.FC<EventFormProps> = ({
             draft.userIds = userIds;
         }
 
-        if (source.leagueScoringConfig?.$id) {
-            draft.leagueScoringConfigId = source.leagueScoringConfig.$id;
+        if (source.eventType === 'LEAGUE') {
+            if (source.leagueScoringConfig?.$id) {
+                draft.leagueScoringConfigId = source.leagueScoringConfig.$id;
+            }
+            if (source.leagueScoringConfig) {
+                draft.leagueScoringConfig = source.leagueScoringConfig;
+            }
+        } else {
+            draft.leagueScoringConfigId = undefined;
+            draft.leagueScoringConfig = undefined;
+        }
+
+        if (source.eventType === 'LEAGUE') {
+            const restTime = normalizeNumber(source.leagueData.restTimeMinutes);
+            const requiresSets = Boolean(source.sportConfig?.usePointsPerSetWin);
+            const setsPerMatchValue = source.leagueData.setsPerMatch ?? 1;
+            const normalizedPoints = requiresSets
+                ? (() => {
+                    const base = Array.isArray(source.leagueData.pointsToVictory)
+                        ? source.leagueData.pointsToVictory.slice(0, setsPerMatchValue)
+                        : [];
+                    while (base.length < setsPerMatchValue) base.push(21);
+                    return base;
+                })()
+                : undefined;
+
+            draft.gamesPerOpponent = source.leagueData.gamesPerOpponent;
+            draft.includePlayoffs = source.leagueData.includePlayoffs;
+            draft.playoffTeamCount = source.leagueData.includePlayoffs
+                ? source.leagueData.playoffTeamCount ?? undefined
+                : undefined;
+
+            if (requiresSets) {
+                draft.usesSets = true;
+                draft.setDurationMinutes = normalizeNumber(source.leagueData.setDurationMinutes) ?? 20;
+                draft.setsPerMatch = setsPerMatchValue;
+                draft.pointsToVictory = normalizedPoints;
+                if (restTime !== undefined) {
+                    draft.restTimeMinutes = restTime;
+                }
+            } else {
+                draft.usesSets = false;
+                draft.matchDurationMinutes = normalizeNumber(source.leagueData.matchDurationMinutes, 60) ?? 60;
+                if (restTime !== undefined) {
+                    draft.restTimeMinutes = restTime;
+                }
+            }
+
+            if (source.leagueData.includePlayoffs && source.playoffData) {
+                draft.doubleElimination = source.playoffData.doubleElimination;
+                draft.winnerSetCount = source.playoffData.winnerSetCount;
+                draft.loserSetCount = source.playoffData.loserSetCount;
+                draft.winnerBracketPointsToVictory = source.playoffData.winnerBracketPointsToVictory;
+                draft.loserBracketPointsToVictory = source.playoffData.loserBracketPointsToVictory;
+            }
+
+            const slotDocuments = source.leagueSlots
+                .filter((slot) =>
+                    slot.scheduledFieldId &&
+                    typeof slot.dayOfWeek === 'number' &&
+                    typeof slot.startTimeMinutes === 'number' &&
+                    typeof slot.endTimeMinutes === 'number',
+                )
+                .map((slot) => {
+                    const slotId = slot.$id || slot.key;
+                    const serialized: TimeSlot = {
+                        $id: slotId,
+                        dayOfWeek: slot.dayOfWeek as TimeSlot['dayOfWeek'],
+                        startTimeMinutes: Number(slot.startTimeMinutes),
+                        endTimeMinutes: Number(slot.endTimeMinutes),
+                        repeating: slot.repeating !== false,
+                        scheduledFieldId: slot.scheduledFieldId as string,
+                    };
+
+                    if (source.start) {
+                        serialized.startDate = source.start;
+                    }
+                    if (source.end) {
+                        serialized.endDate = source.end;
+                    }
+
+                    return serialized;
+                });
+
+            if (slotDocuments.length) {
+                draft.timeSlots = slotDocuments;
+                const slotIds = slotDocuments
+                    .map((slot) => (typeof slot.$id === 'string' ? slot.$id : null))
+                    .filter((id): id is string => Boolean(id));
+                if (slotIds.length) {
+                    draft.timeSlotIds = slotIds;
+                }
+            }
+        }
+
+        if (source.eventType === 'TOURNAMENT') {
+            draft.doubleElimination = source.tournamentData.doubleElimination;
+            draft.winnerSetCount = source.tournamentData.winnerSetCount;
+            draft.loserSetCount = source.tournamentData.loserSetCount;
+            draft.winnerBracketPointsToVictory = source.tournamentData.winnerBracketPointsToVictory;
+            draft.loserBracketPointsToVictory = source.tournamentData.loserBracketPointsToVictory;
+            draft.prize = source.tournamentData.prize;
+            draft.fieldCount = source.tournamentData.fieldCount;
+            draft.restTimeMinutes = normalizeNumber(source.tournamentData.restTimeMinutes, 0) ?? 0;
         }
 
         return draft;
@@ -2210,392 +2234,24 @@ const EventForm: React.FC<EventFormProps> = ({
         fieldCount,
     ]);
 
-    const scheduleEvent = useCallback(
-        async (values: EventFormValues) => {
-            if (values.eventType === 'EVENT') {
-                return;
-            }
-            if (submitting) {
-                return;
-            }
-
-            const startDate = parseLocalDateTime(values.start);
-            if (!startDate) {
-                setLeagueErrorMessage('Provide a valid start date for the league.');
-                return;
-            }
-
-            const endDate = values.end ? parseLocalDateTime(values.end) : null;
-            if (values.end && !endDate) {
-                setLeagueErrorMessage('Provide a valid end date for the league or leave it blank.');
-                return;
-            }
-
-            if (endDate && startDate > endDate) {
-                setLeagueErrorMessage('League end date must be after the start date.');
-                return;
-            }
-
-            const invalidTimes = values.leagueSlots.some(
-                (slot) =>
-                    typeof slot.startTimeMinutes === 'number' &&
-                    typeof slot.endTimeMinutes === 'number' &&
-                    slot.endTimeMinutes <= slot.startTimeMinutes,
-            );
-
-            if (invalidTimes) {
-                setLeagueErrorMessage('Each timeslot must end after it starts.');
-                return;
-            }
-
-            const sportSelection = values.sportConfig;
-            if (!sportSelection) {
-                setLeagueErrorMessage('Select a sport before previewing the schedule.');
-                return;
-            }
-
-            const finalImageId = values.imageId;
-            if (!finalImageId) {
-                setLeagueErrorMessage('Add an event image before previewing the schedule.');
-                return;
-            }
-
-            const validSlots = values.leagueSlots.filter(
-                (slot) =>
-                    slot.scheduledFieldId &&
-                    typeof slot.dayOfWeek === 'number' &&
-                    typeof slot.startTimeMinutes === 'number' &&
-                    typeof slot.endTimeMinutes === 'number',
-            );
-
-            if (validSlots.length === 0) {
-                setLeagueErrorMessage('Add at least one complete weekly timeslot to continue.');
-                return;
-            }
-
-            setSubmitting(true);
-            setLeagueErrorMessage(null);
-            setSubmitError(null);
-
-            try {
-                const restTime = normalizeNumber(values.leagueData.restTimeMinutes);
-                const previewRequiresSets = Boolean(sportSelection.usePointsPerSetWin);
-                const setsPerMatchValue = values.leagueData.setsPerMatch ?? 1;
-                const normalizedPoints = previewRequiresSets
-                    ? (() => {
-                        const base = Array.isArray(values.leagueData.pointsToVictory)
-                            ? values.leagueData.pointsToVictory.slice(0, setsPerMatchValue)
-                            : [];
-                        while (base.length < setsPerMatchValue) base.push(21);
-                        return base;
-                    })()
-                    : undefined;
-
-                const timingFields = previewRequiresSets
-                    ? {
-                        usesSets: true,
-                        setDurationMinutes: normalizeNumber(values.leagueData.setDurationMinutes) ?? 20,
-                        setsPerMatch: setsPerMatchValue,
-                        pointsToVictory: normalizedPoints,
-                        ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
-                    }
-                    : {
-                        usesSets: false,
-                        matchDurationMinutes: normalizeNumber(values.leagueData.matchDurationMinutes, 60) ?? 60,
-                        ...(restTime !== undefined ? { restTimeMinutes: restTime } : {}),
-                    };
-
-                const availableFields = hasImmutableFields ? immutableFields : sanitizeFieldsForForm(values.fields);
-                const fieldMap = new Map<string, Field>();
-                availableFields.forEach((field) => {
-                    if (field?.$id) {
-                        fieldMap.set(field.$id, field);
-                    }
-                });
-
-                const referencedFields: Field[] = [];
-                validSlots.forEach((slot) => {
-                    const fieldId = slot.scheduledFieldId;
-                    if (!fieldId || !fieldMap.has(fieldId)) return;
-                    if (!referencedFields.some((field) => field.$id === fieldId)) {
-                        const field = fieldMap.get(fieldId);
-                        if (field) {
-                            referencedFields.push(field);
-                        }
-                    }
-                });
-
-                const fieldsForDocument = referencedFields.length ? referencedFields : availableFields;
-                const sanitizedFields = sanitizeFieldsForForm(fieldsForDocument);
-
-                const slotDocuments: Record<string, unknown>[] = validSlots
-                    .map((slot) => {
-                        if (!slot.scheduledFieldId) {
-                            return null;
-                        }
-
-                        const serialized: Record<string, unknown> = {
-                            $id: slot.$id || ID.unique(),
-                            dayOfWeek: slot.dayOfWeek as TimeSlot['dayOfWeek'],
-                            startTimeMinutes: Number(slot.startTimeMinutes),
-                            endTimeMinutes: Number(slot.endTimeMinutes),
-                            repeating: slot.repeating !== false,
-                            scheduledFieldId: slot.scheduledFieldId,
-                        };
-
-                        if (values.start) {
-                            serialized.startDate = values.start;
-                        }
-                        if (values.end) {
-                            serialized.endDate = values.end;
-                        }
-
-                        return serialized;
-                    })
-                    .filter((slot): slot is Record<string, unknown> => slot !== null);
-
-                const organizationId = organization?.$id;
-                const playerIds =
-                    values.players?.map((player) => player.$id).filter((id): id is string => Boolean(id)) ?? [];
-
-                const priceCents = Math.round(Math.max(0, values.price || 0) * 100);
-                const installmentAmountsCents = values.allowPaymentPlans
-                    ? normalizeInstallmentCents(values.installmentAmounts)
-                    : [];
-                const installments = values.allowPaymentPlans
-                    ? {
-                        allowPaymentPlans: true,
-                        installmentCount: Number.isFinite(values.installmentCount)
-                            ? Number(values.installmentCount)
-                            : (installmentAmountsCents.length || 0),
-                        installmentAmounts: installmentAmountsCents,
-                        installmentDueDates: values.installmentDueDates || [],
-                        allowTeamSplitDefault: Boolean(values.allowTeamSplitDefault),
-                    }
-                    : {
-                        allowPaymentPlans: false,
-                        installmentCount: 0,
-                        installmentAmounts: [],
-                        installmentDueDates: [],
-                        allowTeamSplitDefault: Boolean(values.allowTeamSplitDefault),
-                    };
-
-                const eventDocument: Record<string, any> = {
-                    $id: values.$id || ID.unique(),
-                    name: values.name,
-                    description: values.description,
-                    start: values.start,
-                    end: values.end,
-                    location: values.location,
-                    coordinates: values.coordinates,
-                    eventType: 'LEAGUE',
-                    sportId: sportSelection.$id,
-                    fieldType: values.fieldType,
-                    // Store price in cents for the backend.
-                    price: priceCents,
-                    ...installments,
-                    maxParticipants: values.maxParticipants,
-                    teamSignup: values.teamSignup,
-                    waitListIds: values.waitList,
-                    freeAgentIds: values.freeAgents,
-                    imageId: finalImageId,
-                    singleDivision: values.singleDivision,
-                    divisions: values.divisions,
-                    teamSizeLimit: values.teamSizeLimit,
-                    hostId: currentUser?.$id,
-                    state: isEditMode ? values.state : 'UNPUBLISHED' as EventState,
-                    gamesPerOpponent: values.leagueData.gamesPerOpponent,
-                    includePlayoffs: values.leagueData.includePlayoffs,
-                    playoffTeamCount: values.leagueData.includePlayoffs
-                        ? values.leagueData.playoffTeamCount ?? undefined
-                        : undefined,
-                    seedColor: values.seedColor,
-                    cancellationRefundHours: values.cancellationRefundHours,
-                    registrationCutoffHours: values.registrationCutoffHours,
-                    matches: [],
-                    teams: values.teams,
-                    referees: values.referees,
-                    refereeIds: values.refereeIds,
-                    players: values.joinAsParticipant && currentUser ? [currentUser] : values.players,
-                    userIds:
-                        values.joinAsParticipant && currentUser?.$id
-                            ? [currentUser.$id]
-                            : playerIds.length
-                                ? playerIds
-                                : undefined,
-                    fields: sanitizedFields,
-                    timeSlots: slotDocuments,
-                    organizationId,
-                    leagueScoringConfig: values.leagueScoringConfig,
-                    doTeamsRef: values.doTeamsRef,
-                    ...timingFields,
-                };
-
-                if (sanitizedFields.length) {
-                    const fieldIds = sanitizedFields
-                        .map((field) => field.$id)
-                        .filter((id): id is string => Boolean(id));
-                    if (fieldIds.length) {
-                        eventDocument.fieldIds = fieldIds;
-                    }
-                }
-
-                const slotIds = slotDocuments
-                    .map((slot) => (typeof slot.$id === 'string' ? slot.$id : null))
-                    .filter((id): id is string => Boolean(id));
-                if (slotIds.length) {
-                    eventDocument.timeSlotIds = slotIds;
-                }
-
-                if (values.leagueScoringConfig?.$id) {
-                    eventDocument.leagueScoringConfigId = values.leagueScoringConfig.$id;
-                }
-
-                if (values.leagueData.includePlayoffs && values.playoffData) {
-                    eventDocument.doubleElimination = values.playoffData.doubleElimination;
-                    eventDocument.winnerSetCount = values.playoffData.winnerSetCount;
-                    eventDocument.loserSetCount = values.playoffData.loserSetCount;
-                    eventDocument.winnerBracketPointsToVictory = values.playoffData.winnerBracketPointsToVictory;
-                    eventDocument.loserBracketPointsToVictory = values.playoffData.loserBracketPointsToVictory;
-                }
-
-                const preview = await eventService.scheduleEvent(eventDocument);
-                const previewEvent = (preview as any)?.event as Event | undefined;
-                if (!previewEvent || !previewEvent.$id) {
-                    throw new Error('Failed to generate preview schedule.');
-                }
-
-                // Keep the form hydrated with the latest previewed event so edits reflect immediately.
-                setHydratedEditingEvent(previewEvent);
-                if (onPreviewEvent) {
-                    onPreviewEvent(previewEvent);
-                }
-
-                if (onClose) {
-                    onClose();
-                }
-                const targetPreviewUrl = `/events/${previewEvent.$id}/schedule?preview=1`;
-                if (!isPreviewMode) {
-                    router.push(targetPreviewUrl);
-                }
-            } catch (error) {
-                setLeagueErrorMessage(
-                    error instanceof Error ? error.message : 'Failed to generate preview schedule.',
-                );
-            } finally {
-                setSubmitting(false);
-            }
-        },
-        [
-            currentUser,
-            hasImmutableFields,
-            immutableFields,
-            isEditMode,
-            isPreviewMode,
-            onClose,
-            onPreviewEvent,
-            organization?.$id,
-            router,
-            submitting,
-        ],
+    const getDraftSnapshot = useCallback(
+        () => buildDraftEvent(getValues()),
+        [buildDraftEvent, getValues],
     );
 
-    const scheduleRegularEvent = useCallback(
-        async (draftEvent: Partial<Event>) => {
-            setSubmitting(true);
-            setSubmitError(null);
-            pendingRegularEventRef.current = draftEvent;
-
-            try {
-                const eventDocument: Partial<Event> = {
-                    ...draftEvent,
-                    state: (draftEvent.state as EventState) ?? 'UNPUBLISHED',
-                };
-
-                const scheduled = await eventService.scheduleEvent(eventDocument);
-                const scheduledEvent = (scheduled as any)?.event as Event | undefined;
-
-                if (!scheduledEvent?.$id) {
-                    throw new Error('Failed to schedule event.');
-                }
-
-                pendingRegularEventRef.current = null;
-                setShowRentalPayment(false);
-                setRentalPaymentData(null);
-
-                if (onClose) {
-                    onClose();
-                }
-
-                router.replace(`/events/${scheduledEvent.$id}/schedule`);
-            } catch (error) {
-                console.error('Failed to schedule event:', error);
-                setSubmitError(error instanceof Error ? error.message : 'Failed to schedule event. Please try again.');
-            } finally {
-                setSubmitting(false);
-            }
-        },
-        [onClose, router],
+    const validateDraft = useCallback(
+        () => trigger(),
+        [trigger],
     );
 
-    const onSubmit = handleRHFSubmit(async (values: EventFormValues) => {
-        if (!isFormValid) return;
-
-        const isDraftCreation = isCreateMode || values.state === 'DRAFT';
-
-        const draft = buildDraftEvent(values);
-        if (!draft) return;
-        setSubmitError(null);
-
-        if (values.eventType !== 'EVENT') {
-            await scheduleEvent(values);
-            return;
-        }
-
-        if (isDraftCreation) {
-            setSubmitting(true);
-            setSubmitError(null);
-            try {
-                const draftToSave: Event = {
-                    ...(draft as Event),
-                    state: 'UNPUBLISHED',
-                };
-                pendingRegularEventRef.current = draftToSave;
-
-                // Create payment intent for rental purchase only when the slot has a price.
-                if (rentalPurchaseTimeSlot && currentUser) {
-                    const rentalPriceCents = typeof rentalPurchaseTimeSlot.price === 'number' ? rentalPurchaseTimeSlot.price : undefined;
-                    const requiresPayment = typeof rentalPriceCents === 'number' && rentalPriceCents > 0;
-
-                    if (requiresPayment) {
-                        const paymentIntent = await paymentService.createPaymentIntent(
-                            currentUser,
-                            draft as Event,
-                            undefined,
-                            rentalPurchaseTimeSlot,
-                            rentalPurchase?.organization ?? organization ?? undefined,
-                            rentalPurchase?.organizationEmail ?? undefined,
-                        );
-                        setRentalPaymentData(paymentIntent);
-                        setShowRentalPayment(true);
-                        setSubmitting(false);
-                        return;
-                    }
-                }
-
-                await scheduleRegularEvent(draftToSave);
-            } catch (error) {
-                console.error('Failed to schedule event:', error);
-                setSubmitError('Failed to schedule event. Please try again.');
-                setSubmitting(false);
-            }
-            return;
-        }
-
-        if (onSubmitProp) {
-            onSubmitProp(draft);
-        }
-    });
+    useImperativeHandle(
+        ref,
+        () => ({
+            getDraft: getDraftSnapshot,
+            validate: validateDraft,
+        }),
+        [getDraftSnapshot, validateDraft],
+    );
 
     // Syncs the selected event image with component state after uploads or picker changes.
     const handleImageChange = (fileId: string, _url: string) => {
@@ -2608,61 +2264,11 @@ const EventForm: React.FC<EventFormProps> = ({
     const allowImageEdit = !isImmutableField('imageId');
     const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates');
 
-    const handleRentalPaymentSuccess = useCallback(async () => {
-        try {
-            const pendingDraft = pendingRegularEventRef.current ?? buildDraftEvent();
-            if (!pendingDraft) {
-                setSubmitError('Missing required information to schedule event after payment.');
-                setSubmitting(false);
-                setShowRentalPayment(false);
-                setRentalPaymentData(null);
-                return;
-            }
-
-            const draftToSchedule: Partial<Event> = {
-                ...(pendingDraft as Event),
-                state: 'UNPUBLISHED',
-            };
-            pendingRegularEventRef.current = draftToSchedule;
-
-            await scheduleRegularEvent(draftToSchedule);
-        } catch (error) {
-            console.error('Failed to finalize event after payment:', error);
-            setSubmitError('Payment succeeded but scheduling failed. Please try again.');
-            setSubmitting(false);
-            setShowRentalPayment(false);
-            setRentalPaymentData(null);
-        }
-    }, [buildDraftEvent, scheduleRegularEvent]);
-
-    const rentalPaymentEventSummary: PaymentEventSummary = useMemo(
-        () => ({
-            name: eventData.name || 'Rental Event',
-            location: eventData.location || '',
-            eventType: eventData.eventType,
-            price: rentalPurchase?.priceCents ?? 0,
-            imageId: eventData.imageId,
-        }),
-        [eventData.imageId, eventData.location, eventData.name, eventData.eventType, rentalPurchase?.priceCents],
-    );
-
-    const handleRentalPaymentClose = () => {
-        setShowRentalPayment(false);
-        setRentalPaymentData(null);
-        setSubmitting(false);
-        pendingRegularEventRef.current = null;
-    };
-
     const sheetContent = (
         <div className="space-y-6">
             <div className="p-2 space-y-6">
                 <div className="p-6">
                     <div className="mb-6">
-                        <Group justify="flex-end">
-                            <Button type="submit" loading={submitting} disabled={!isFormValid || submitting}>
-                                {showCreateButtons ? "Create Event" : "Save Changes"}
-                            </Button>
-                        </Group>
                         <div className="block text-sm font-medium mb-2">Event Image</div>
                         <ImageUploader
                             currentImageUrl={selectedImageUrl}
@@ -2677,12 +2283,7 @@ const EventForm: React.FC<EventFormProps> = ({
                         )}
             </div>
 
-                    <form id={formId} onSubmit={onSubmit} className="space-y-8">
-                {submitError && (
-                    <Alert color="red" radius="md">
-                                {submitError}
-                            </Alert>
-                        )}
+                    <form id={formId} className="space-y-8">
                         {/* Basic Information */}
                         <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
                             <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
@@ -3465,11 +3066,6 @@ const EventForm: React.FC<EventFormProps> = ({
                                 sport={eventData.sportConfig ?? undefined}
                             />
                         )}
-                        <Group justify="flex-end">
-                            <Button type="submit" loading={submitting} disabled={!isFormValid || submitting}>
-                                {showCreateButtons ? "Create Event" : "Save Changes"}
-                            </Button>
-                        </Group>
                     </form>
                 </div>
 
@@ -3482,9 +3078,6 @@ const EventForm: React.FC<EventFormProps> = ({
                             </Alert>
                         )}
                     </div>
-                    <Group gap="sm">
-                        <Button variant="default" onClick={onClose}>Close</Button>
-                    </Group>
                 </div>
             </div>
         </div>
@@ -3495,19 +3088,12 @@ const EventForm: React.FC<EventFormProps> = ({
     }
 
     return (
-        <>
-            <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 pb-8">
-                {sheetContent}
-            </div>
-            <PaymentModal
-                isOpen={showRentalPayment && Boolean(rentalPaymentData)}
-                onClose={handleRentalPaymentClose}
-                event={rentalPaymentEventSummary}
-                paymentData={rentalPaymentData}
-                onPaymentSuccess={handleRentalPaymentSuccess}
-            />
-        </>
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 pb-8">
+            {sheetContent}
+        </div>
     );
-};
+});
+
+EventForm.displayName = 'EventForm';
 
 export default EventForm;

@@ -8,20 +8,23 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
-import { deepEqual } from '@/app/utils';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
-import { formatLocalDateTime } from '@/lib/dateUtils';
-import type { Event, EventState, Field, FieldSurfaceType, Match, Team, TournamentBracket, Organization, Sport } from '@/types';
+import { paymentService } from '@/lib/paymentService';
+import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { ID } from '@/app/appwrite';
+import { toEventPayload } from '@/types';
+import type { Event, EventState, Field, FieldSurfaceType, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
-import EventForm from './components/EventForm';
+import EventForm, { EventFormHandle } from './components/EventForm';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
+import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 
 const cloneValue = <T,>(value: T): T => {
   if (value === null || typeof value !== 'object') {
@@ -132,6 +135,7 @@ function EventScheduleContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
@@ -144,6 +148,10 @@ function EventScheduleContent() {
   const [scoreUpdateMatch, setScoreUpdateMatch] = useState<Match | null>(null);
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
   const [organizationForCreate, setOrganizationForCreate] = useState<Organization | null>(null);
+  const [formSeedEvent, setFormSeedEvent] = useState<Event | null>(null);
+  const [rentalPaymentData, setRentalPaymentData] = useState<PaymentIntent | null>(null);
+  const [showRentalPayment, setShowRentalPayment] = useState(false);
+  const eventFormRef = useRef<EventFormHandle>(null);
   const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
   const rentalCoordinates = useMemo<[number, number] | undefined>(() => {
     const lat = rentalLatParam ? Number(rentalLatParam) : undefined;
@@ -323,6 +331,45 @@ function EventScheduleContent() {
     };
   }, [isCreateMode, organizationForCreate, rentalEndParam, rentalFieldIdParam, rentalPriceParam, rentalStartParam]);
 
+  const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
+    if (!rentalPurchaseContext) {
+      return null;
+    }
+    const startDate = parseLocalDateTime(rentalPurchaseContext.start);
+    const endDate = parseLocalDateTime(rentalPurchaseContext.end);
+    if (!startDate || !endDate) {
+      return null;
+    }
+
+    const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+    const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+    const draftFields = Array.isArray(changesEvent?.fields)
+      ? changesEvent?.fields
+      : rentalImmutableDefaults?.fields;
+    const fallbackFieldId = Array.isArray(draftFields) && draftFields.length > 0
+      ? (draftFields[0] as Field).$id
+      : undefined;
+    const scheduledFieldId = rentalPurchaseContext.fieldId ?? fallbackFieldId;
+    if (!scheduledFieldId) {
+      return null;
+    }
+
+    const dayOfWeek = ((startDate.getDay() + 7) % 7) as TimeSlot['dayOfWeek'];
+    const price = Number.isFinite(rentalPurchaseContext.priceCents) ? Number(rentalPurchaseContext.priceCents) : undefined;
+
+    return {
+      $id: ID.unique(),
+      dayOfWeek,
+      startTimeMinutes: startMinutes,
+      endTimeMinutes: endMinutes,
+      startDate: formatLocalDateTime(startDate),
+      endDate: formatLocalDateTime(endDate),
+      repeating: false,
+      scheduledFieldId,
+      price,
+    };
+  }, [changesEvent?.fields, rentalImmutableDefaults?.fields, rentalPurchaseContext]);
+
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
   const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
@@ -474,6 +521,7 @@ function EventScheduleContent() {
   );
 
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+  const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
   }, [hasUnsavedChanges]);
@@ -521,10 +569,22 @@ function EventScheduleContent() {
         teams: [],
         referees: [],
         refereeIds: [],
-        leagueScoringConfig: createLeagueScoringConfig(),
       } as Event;
     });
   }, [createLocationDefaults, eventId, isCreateMode, rentalImmutableDefaults, user]);
+
+  useEffect(() => {
+    if (!isCreateMode) {
+      setFormSeedEvent(null);
+      return;
+    }
+    if (!changesEvent) {
+      return;
+    }
+    if (!hasUnsavedChanges) {
+      setFormSeedEvent(changesEvent);
+    }
+  }, [changesEvent, hasUnsavedChanges, isCreateMode]);
 
   useEffect(() => {
     const loadOrgForCreate = async () => {
@@ -587,20 +647,9 @@ function EventScheduleContent() {
     });
   }, []);
 
-  // Mark dirty whenever draft changes
-  useEffect(() => {
-    if (!event || !changesEvent) return;
-    setHasUnsavedChanges(true);
-  }, [changesEvent, changesMatches]);
   const publishButtonLabel = (() => {
     if (isCreateMode) {
-      const createLabel = (() => {
-        const type = changesEvent?.eventType || activeEvent?.eventType;
-        if (type === 'TOURNAMENT') return 'Tournament';
-        if (type === 'LEAGUE') return 'League';
-        return 'Event';
-      })();
-      return `Create ${createLabel}`;
+      return 'Create Event';
     }
     if (!activeEvent || isPreview || isUnpublished) return `Publish ${entityLabel}`;
     if (!isEditingEvent) return `Edit ${entityLabel}`;
@@ -613,6 +662,17 @@ function EventScheduleContent() {
     if (isEditingEvent) return `Discard ${entityLabel} Changes`;
     return `Cancel ${entityLabel}`;
   })();
+
+  const rentalPaymentEventSummary: PaymentEventSummary = useMemo(() => {
+    const source = changesEvent ?? activeEvent ?? event;
+    return {
+      name: source?.name || 'Rental Event',
+      location: source?.location || '',
+      eventType: source?.eventType ?? 'EVENT',
+      price: rentalPurchaseContext?.priceCents ?? 0,
+      imageId: source?.imageId,
+    };
+  }, [activeEvent, changesEvent, event, rentalPurchaseContext?.priceCents]);
 
   // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
   // Hydrate event + match data from Appwrite and sync local component state.
@@ -993,27 +1053,181 @@ function EventScheduleContent() {
     setActiveTab(defaultTab);
   }, [defaultTab]);
 
-  const handleEventDraftChange = useCallback(
-    (draft: Partial<Event>) => {
-      const withId = draft.$id ? draft : { ...draft, $id: draft.$id ?? eventId };
-      setChangesEvent((prev) => ({ ...(prev ?? (activeEvent ?? {} as Event)), ...(withId as Event) }));
-      setHasUnsavedChanges(true);
-    },
-    [activeEvent, eventId],
-  );
+  const getDraftFromForm = useCallback(async (): Promise<Partial<Event> | null> => {
+    const formApi = eventFormRef.current;
+    if (!formApi) {
+      setSubmitError('Form is not ready to submit.');
+      return null;
+    }
+
+    const isValid = await formApi.validate();
+    if (!isValid) {
+      setSubmitError('Please fix the highlighted fields before submitting.');
+      return null;
+    }
+
+    return formApi.getDraft();
+  }, [setSubmitError]);
 
   const handlePreviewEventUpdate = useCallback((preview: Event) => {
-    setEvent(preview);
-    setChangesEvent(preview);
+    const previewClone = cloneValue(preview) as Event;
+    const nextMatches = Array.isArray(previewClone.matches)
+      ? (cloneValue(previewClone.matches) as Match[])
+      : [];
+    hasUnsavedChangesRef.current = false;
+    setEvent(previewClone);
+    setMatches(nextMatches);
+    setChangesEvent(previewClone);
+    setChangesMatches(nextMatches);
     setHasUnsavedChanges(false);
   }, []);
+
+  const buildSchedulePayload = useCallback(
+    (draft: Partial<Event>): Record<string, unknown> => {
+      const resolvedId = typeof draft.$id === 'string' && draft.$id.length > 0
+        ? draft.$id
+        : eventId ?? ID.unique();
+      const normalizedDraft = { ...draft, $id: resolvedId } as Event;
+      return toEventPayload(normalizedDraft) as Record<string, unknown>;
+    },
+    [eventId],
+  );
+
+  const schedulePreview = useCallback(
+    async (draft: Partial<Event>) => {
+      if (!draft) {
+        return;
+      }
+
+      setPublishing(true);
+      setError(null);
+      setInfoMessage(null);
+
+      try {
+        const payload = buildSchedulePayload(draft);
+        const result = await eventService.scheduleEvent(payload);
+        if (!result?.event) {
+          throw new Error('Failed to generate schedule preview.');
+        }
+
+        handlePreviewEventUpdate(result.event);
+
+        if (pathname) {
+          const params = new URLSearchParams(searchParams?.toString() ?? '');
+          params.delete('create');
+          params.delete('mode');
+          params.set('preview', '1');
+          const query = params.toString();
+          router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+        }
+      } catch (err) {
+        console.error('Failed to generate schedule preview:', err);
+        setError('Failed to generate schedule preview.');
+      } finally {
+        setPublishing(false);
+      }
+    },
+    [buildSchedulePayload, handlePreviewEventUpdate, pathname, router, searchParams],
+  );
+
+  const scheduleRegularEvent = useCallback(
+    async (draft: Partial<Event>) => {
+      if (!draft) {
+        return;
+      }
+
+      setPublishing(true);
+      setError(null);
+      setInfoMessage(null);
+
+      try {
+        const payload = buildSchedulePayload(draft);
+        const result = await eventService.scheduleEvent(payload);
+        if (!result?.event) {
+          throw new Error('Failed to create event.');
+        }
+
+        handlePreviewEventUpdate(result.event);
+
+        const nextId = result.event.$id ?? eventId;
+        if (nextId && pathname) {
+          const params = new URLSearchParams(searchParams?.toString() ?? '');
+          params.delete('create');
+          params.delete('mode');
+          params.delete('preview');
+          const query = params.toString();
+          router.replace(
+            `/events/${nextId}/schedule${query ? `?${query}` : ''}`,
+            { scroll: false },
+          );
+        }
+      } catch (err) {
+        console.error('Failed to create event:', err);
+        setError('Failed to create event.');
+      } finally {
+        setPublishing(false);
+      }
+    },
+    [buildSchedulePayload, eventId, handlePreviewEventUpdate, pathname, router, searchParams],
+  );
 
   // Publish the league by persisting the latest event state back through the event service.
   const handlePublish = async () => {
     if (publishing) return;
+    setSubmitError(null);
 
     // Create mode: invoke createEvent with current draft and redirect to the new event.
     if (isCreateMode) {
+      const draft = await getDraftFromForm();
+      if (!draft) {
+        return;
+      }
+
+      const normalizedDraft = draft.$id ? draft : { ...draft, $id: draft.$id ?? eventId };
+      setChangesEvent((prev) => {
+        const base = prev ?? ({} as Event);
+        return { ...base, ...(normalizedDraft as Event) };
+      });
+
+      if (normalizedDraft.eventType !== 'EVENT') {
+        await schedulePreview(normalizedDraft);
+        return;
+      }
+
+      const draftToSave: Partial<Event> = {
+        ...normalizedDraft,
+        state: 'UNPUBLISHED',
+      };
+      pendingRegularEventRef.current = draftToSave;
+
+      if (rentalPurchaseTimeSlot && user) {
+        const rentalPriceCents = typeof rentalPurchaseTimeSlot.price === 'number'
+          ? rentalPurchaseTimeSlot.price
+          : undefined;
+        const requiresPayment = typeof rentalPriceCents === 'number' && rentalPriceCents > 0;
+
+        if (requiresPayment) {
+          setPublishing(true);
+          try {
+            const paymentIntent = await paymentService.createPaymentIntent(
+              user,
+              normalizedDraft as Event,
+              undefined,
+              rentalPurchaseTimeSlot,
+              rentalPurchaseContext?.organization ?? organizationForCreate ?? undefined,
+            );
+            setRentalPaymentData(paymentIntent);
+            setShowRentalPayment(true);
+          } catch (error) {
+            setSubmitError(error instanceof Error ? error.message : 'Failed to start rental payment.');
+          } finally {
+            setPublishing(false);
+          }
+          return;
+        }
+      }
+
+      await scheduleRegularEvent(draftToSave);
       return;
     }
 
@@ -1034,12 +1248,24 @@ function EventScheduleContent() {
         return;
       }
 
+      const draft = await getDraftFromForm();
+      if (!draft) {
+        return;
+      }
+
+      const mergedDraft = { ...activeEvent, ...(draft as Event) } as Event;
+
+      if (mergedDraft.eventType !== 'EVENT' && !isPreview) {
+        await schedulePreview(mergedDraft);
+        return;
+      }
+
       setPublishing(true);
       setError(null);
       setInfoMessage(null);
 
       try {
-        const nextEvent = (changesEvent ? cloneValue(changesEvent) : cloneValue(activeEvent)) as Event;
+        const nextEvent = cloneValue(mergedDraft) as Event;
         const nextMatches = cloneValue(activeMatches) as Match[];
         nextEvent.matches = nextMatches;
         if (Array.isArray(nextEvent.fields)) {
@@ -1134,7 +1360,7 @@ function EventScheduleContent() {
 
     if (isEditingEvent) {
       if (!pathname) return;
-      setInfoMessage(`${entityLabel} edit cancelled. Unsaved changes are preserved.`);
+      setInfoMessage(`${entityLabel} edit cancelled.`);
       const params = new URLSearchParams(searchParams?.toString() ?? '');
       params.delete('mode');
       const query = params.toString();
@@ -1432,9 +1658,29 @@ function EventScheduleContent() {
         <Navigation />
         <Container size="lg" py="xl">
           <Stack gap="md">
-            <Title order={2}>Create Event</Title>
+            <Group justify="space-between" align="center">
+              <Title order={2}>Create Event</Title>
+              <Group gap="sm">
+                <Button
+                  color="green"
+                  onClick={handlePublish}
+                  loading={publishing}
+                  disabled={publishing}
+                >
+                  {publishButtonLabel}
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={handleCancel}
+                  loading={cancelling}
+                >
+                  {cancelButtonLabel}
+                </Button>
+              </Group>
+            </Group>
             {user && changesEvent ? (
               <EventForm
+                ref={eventFormRef}
                 isOpen
                 onClose={() => router.push('/events')}
                 currentUser={user}
@@ -1445,7 +1691,6 @@ function EventScheduleContent() {
                 event={changesEvent}
                 formId={createFormId}
                 isCreateMode
-                onPreviewEvent={handlePreviewEventUpdate}
               />
             ) : (
               <Loading text="Loading user..." />
@@ -1500,16 +1745,14 @@ function EventScheduleContent() {
 
             {isHost && (
               <Group gap="sm">
-                {!isCreateMode && (
-                  <Button
-                    color="green"
-                    onClick={handlePublish}
-                    loading={publishing}
-                    disabled={publishing}
-                  >
-                    {publishButtonLabel}
-                  </Button>
-                )}
+                <Button
+                  color="green"
+                  onClick={handlePublish}
+                  loading={publishing}
+                  disabled={publishing}
+                >
+                  {publishButtonLabel}
+                </Button>
                 <Button
                   color="red"
                   variant="light"
@@ -1547,18 +1790,16 @@ function EventScheduleContent() {
 
             <Tabs.Panel value="details" pt="md">
               {shouldShowCreationSheet && user ? (
-                <EventForm
-                  isOpen={activeTab === 'details'}
-                  onClose={handleDetailsClose}
-                  currentUser={user}
-                  event={activeEvent ?? undefined}
-                  organization={activeOrganization}
+              <EventForm
+                ref={eventFormRef}
+                isOpen={activeTab === 'details'}
+                onClose={handleDetailsClose}
+                currentUser={user}
+                event={activeEvent ?? undefined}
+                organization={activeOrganization}
                   defaultLocation={activeLocationDefaults}
                   immutableDefaults={isCreateMode ? rentalImmutableDefaults : undefined}
                   rentalPurchase={isCreateMode ? rentalPurchaseContext : undefined}
-                  onDraftChange={handleEventDraftChange}
-                  onPreviewEvent={handlePreviewEventUpdate}
-                  isPreviewMode={isPreview}
                 />
               ) : (
                 <EventDetailSheet
