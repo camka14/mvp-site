@@ -1856,13 +1856,13 @@ function EventScheduleContent() {
 
             <Tabs.Panel value="details" pt="md">
               {shouldShowCreationSheet && user ? (
-              <EventForm
-                ref={eventFormRef}
-                isOpen={activeTab === 'details'}
-                onClose={handleDetailsClose}
-                currentUser={user}
-                event={activeEvent ?? undefined}
-                organization={activeOrganization}
+                <EventForm
+                  ref={eventFormRef}
+                  isOpen={activeTab === 'details'}
+                  onClose={handleDetailsClose}
+                  currentUser={user}
+                  event={activeEvent ?? undefined}
+                  organization={activeOrganization}
                   defaultLocation={activeLocationDefaults}
                   immutableDefaults={isCreateMode ? rentalImmutableDefaults : undefined}
                   rentalPurchase={isCreateMode ? rentalPurchaseContext : undefined}

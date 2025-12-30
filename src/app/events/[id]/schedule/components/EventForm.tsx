@@ -17,11 +17,11 @@ import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
-import { boldsignService } from '@/lib/boldsignService';
 import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
-import { ID } from '@/app/appwrite';
+import { ID, databases } from '@/app/appwrite';
 import UserCard from '@/components/ui/UserCard';
+import { Query } from 'appwrite';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -63,6 +63,35 @@ const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+const TEMPLATE_DOCUMENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEMPLATE_DOCUMENTS_TABLE_ID || 'templateDocuments';
+
+const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
+    if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
+        return 'TEXT';
+    }
+    return 'PDF';
+};
+
+const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
+    const roleIndexRaw = row?.roleIndex;
+    const roleIndex = typeof roleIndexRaw === 'number' ? roleIndexRaw : Number(roleIndexRaw);
+    const signOnceRaw = row?.signOnce;
+
+    return {
+        $id: String(row?.$id ?? ''),
+        templateId: row?.templateId ?? undefined,
+        organizationId: row?.organizationId ?? '',
+        title: row?.title ?? 'Untitled Template',
+        description: row?.description ?? undefined,
+        signOnce: typeof signOnceRaw === 'boolean' ? signOnceRaw : signOnceRaw == null ? true : Boolean(signOnceRaw),
+        status: row?.status ?? undefined,
+        roleIndex: Number.isFinite(roleIndex) ? roleIndex : undefined,
+        type: normalizeTemplateType(row?.type),
+        content: row?.content ?? undefined,
+        $createdAt: row?.$createdAt ?? undefined,
+    };
+};
 
 // Compares two numeric start/end pairs to detect overlapping minutes within the same day.
 const slotsOverlap = (startA: number, endA: number, startB: number, endB: number): boolean =>
@@ -1069,8 +1098,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
 
     useEffect(() => {
-        if (!organizationId || !currentUser?.$id) {
+        if (!organizationId) {
             setTemplateDocuments([]);
+            setTemplatesError(null);
             return;
         }
 
@@ -1079,12 +1109,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             try {
                 setTemplatesLoading(true);
                 setTemplatesError(null);
-                const templates = await boldsignService.listTemplates(
-                    organizationId,
-                    currentUser.$id,
-                );
+                const response = await databases.listRows({
+                    databaseId: DATABASE_ID,
+                    tableId: TEMPLATE_DOCUMENTS_TABLE_ID,
+                    queries: [
+                        Query.equal('organizationId', organizationId),
+                        Query.orderDesc('$createdAt'),
+                        Query.limit(200),
+                    ],
+                });
+                const rows = Array.isArray(response.rows) ? response.rows : [];
                 if (!cancelled) {
-                    setTemplateDocuments(templates);
+                    setTemplateDocuments(rows.map((row) => mapTemplateRow(row)));
                 }
             } catch (error) {
                 if (!cancelled) {
@@ -1105,7 +1141,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return () => {
             cancelled = true;
         };
-    }, [organizationId, currentUser?.$id]);
+    }, [organizationId]);
 
     const setEventData = useCallback(
         (updater: React.SetStateAction<EventFormValues>) => {
@@ -2262,7 +2298,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     };
 
     const allowImageEdit = !isImmutableField('imageId');
-    const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates');
+    const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates') || hasExternalRentalField;
 
     const sheetContent = (
         <div className="space-y-6">

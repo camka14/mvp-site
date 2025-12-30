@@ -14,11 +14,6 @@ export type SignStep = {
   content?: string;
 };
 
-type TemplateListResponse = {
-  templates?: TemplateDocument[];
-  error?: string;
-};
-
 type CreateTemplateResponse = {
   createUrl?: string;
   template?: TemplateDocument;
@@ -44,33 +39,6 @@ const parseExecutionResponse = <T = unknown>(
 };
 
 class BoldSignService {
-  async listTemplates(
-    organizationId: string,
-    userId?: string,
-  ): Promise<TemplateDocument[]> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: `/organizations/${organizationId}/templates`,
-      method: ExecutionMethod.GET,
-      body: JSON.stringify({ userId }),
-      async: false,
-    });
-
-    const result = parseExecutionResponse<TemplateListResponse>(
-      response.responseBody,
-    );
-    if (result?.error) {
-      throw new Error(result.error);
-    }
-    if (!Array.isArray(result?.templates)) {
-      return [];
-    }
-    return result.templates.map((template) => ({
-      ...template,
-      type: (template.type ?? 'PDF') as TemplateDocumentType,
-    }));
-  }
-
   async createTemplate(params: {
     organizationId: string;
     userId: string;

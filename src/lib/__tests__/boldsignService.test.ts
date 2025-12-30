@@ -15,26 +15,6 @@ describe('boldsignService', () => {
     jest.clearAllMocks();
   });
 
-  it('defaults template type to PDF when missing', async () => {
-    appwriteModuleMock.functions.createExecution.mockResolvedValue({
-      responseBody: JSON.stringify({
-        templates: [
-          {
-            $id: 'tmpl_1',
-            organizationId: 'org_1',
-            title: 'Waiver',
-            signOnce: true,
-          },
-        ],
-      }),
-    });
-
-    const templates = await boldsignService.listTemplates('org_1', 'user_1');
-
-    expect(templates).toHaveLength(1);
-    expect(templates[0].type).toBe('PDF');
-  });
-
   it('includes type and content when creating TEXT templates', async () => {
     appwriteModuleMock.functions.createExecution.mockResolvedValue({
       responseBody: JSON.stringify({
