@@ -32,6 +32,10 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
   const [organizationsById, setOrganizationsById] = useState<Record<string, string>>({});
 
   const hasFilter = useMemo(() => Boolean(organizationId || userId || hostId), [organizationId, userId, hostId]);
+  const isRequesterView = useMemo(
+    () => Boolean(userId && !hostId && !organizationId),
+    [userId, hostId, organizationId],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -119,6 +123,22 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
     return 'Your Refund Requests';
   }, [organizationId, hostId]);
 
+  const visibleRefunds = useMemo(() => {
+    if (!refunds.length) return refunds;
+    if (hostId) {
+      return refunds.filter(
+        (refund) => refund.hostId === hostId && refund.userId !== hostId,
+      );
+    }
+    if (organizationId) {
+      return refunds.filter((refund) => refund.organizationId === organizationId);
+    }
+    if (userId) {
+      return refunds.filter((refund) => refund.userId === userId);
+    }
+    return refunds;
+  }, [refunds, hostId, organizationId, userId]);
+
   const handleStatusChange = async (refundId: string, status: 'APPROVED' | 'REJECTED') => {
     setProcessingId(refundId);
     setActionError(null);
@@ -174,13 +194,13 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
         </Alert>
       )}
 
-      {!loading && !error && refunds.length === 0 && (
+      {!loading && !error && visibleRefunds.length === 0 && (
         <Text size="sm" c="dimmed">
           No refund requests found.
         </Text>
       )}
 
-      {!loading && !error && refunds.length > 0 && (
+      {!loading && !error && visibleRefunds.length > 0 && (
         <Table highlightOnHover withTableBorder withColumnBorders>
           <Table.Thead>
             <Table.Tr>
@@ -191,11 +211,11 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
               <Table.Th>Organization</Table.Th>
               <Table.Th>Requested At</Table.Th>
               <Table.Th>Status</Table.Th>
-              <Table.Th>Actions</Table.Th>
+              {!isRequesterView && <Table.Th>Actions</Table.Th>}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {refunds.map((refund) => {
+            {visibleRefunds.map((refund) => {
               const eventName = eventsById[refund.eventId] ?? refund.eventId ?? 'Unknown event';
               const requesterName = usersById[refund.userId] ?? refund.userId ?? 'Unknown user';
               const hostName = refund.hostId
@@ -252,36 +272,38 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
                       {refund.status ?? 'WAITING'}
                     </Badge>
                   </Table.Td>
-                  <Table.Td>
-                    {canTakeAction(refund) ? (
-                      <Group gap="xs">
-                        <Button
-                          size="xs"
-                          color="green"
-                          variant="light"
-                          disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
-                          loading={processingId === refund.$id}
-                          onClick={() => handleStatusChange(refund.$id, 'APPROVED')}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="xs"
-                          color="red"
-                          variant="light"
-                          disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
-                          loading={processingId === refund.$id}
-                          onClick={() => handleStatusChange(refund.$id, 'REJECTED')}
-                        >
-                          Deny
-                        </Button>
-                      </Group>
-                    ) : (
-                      <Text size="sm" c="dimmed">
-                        —
-                      </Text>
-                    )}
-                  </Table.Td>
+                  {!isRequesterView && (
+                    <Table.Td>
+                      {canTakeAction(refund) ? (
+                        <Group gap="xs">
+                          <Button
+                            size="xs"
+                            color="green"
+                            variant="light"
+                            disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
+                            loading={processingId === refund.$id}
+                            onClick={() => handleStatusChange(refund.$id, 'APPROVED')}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="xs"
+                            color="red"
+                            variant="light"
+                            disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
+                            loading={processingId === refund.$id}
+                            onClick={() => handleStatusChange(refund.$id, 'REJECTED')}
+                          >
+                            Deny
+                          </Button>
+                        </Group>
+                      ) : (
+                        <Text size="sm" c="dimmed">
+                          —
+                        </Text>
+                      )}
+                    </Table.Td>
+                  )}
                 </Table.Tr>
               );
             })}

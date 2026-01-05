@@ -13,15 +13,18 @@ interface FormData {
   firstName: string;
   lastName: string;
   userName: string;
+  dateOfBirth: string;
 }
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState<FormData>({ email: '', password: '', firstName: '', lastName: '', userName: '' });
+  const [formData, setFormData] = useState<FormData>({ email: '', password: '', firstName: '', lastName: '', userName: '', dateOfBirth: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { user, setUser, setAuthUser, loading: authLoading } = useApp();
   const router = useRouter();
+  const today = new Date();
+  const maxDob = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -47,8 +50,8 @@ export default function LoginPage() {
         authUser = await authService.login(formData.email, formData.password);
       } else {
         // Basic validation for signup fields
-        if (!formData.firstName || !formData.lastName || !formData.userName) {
-          throw new Error('Please provide first name, last name, and username');
+        if (!formData.firstName || !formData.lastName || !formData.userName || !formData.dateOfBirth) {
+          throw new Error('Please provide first name, last name, username, and date of birth');
         }
         existingUserLookup = await authService.findExistingUserDataByEmail(formData.email);
         authUser = await authService.createAccount(
@@ -57,6 +60,7 @@ export default function LoginPage() {
           formData.firstName,
           formData.lastName,
           formData.userName,
+          formData.dateOfBirth,
           existingUserLookup?.userId
         );
       }
@@ -175,6 +179,19 @@ export default function LoginPage() {
                   required
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder="Choose a username"
+                />
+              </div>
+              <div>
+                <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+                <input
+                  type="date"
+                  id="dateOfBirth"
+                  name="dateOfBirth"
+                  value={formData.dateOfBirth}
+                  onChange={handleInputChange}
+                  required
+                  max={maxDob}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 />
               </div>
             </>

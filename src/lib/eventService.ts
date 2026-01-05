@@ -19,7 +19,7 @@ import {
     getTeamWinRate,
     toEventPayload,
 } from '@/types';
-import { ID, Query } from 'appwrite';
+import { Query } from 'appwrite';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 import { sportsService } from '@/lib/sportsService';
 import { userService } from '@/lib/userService';
@@ -297,23 +297,37 @@ class EventService {
             if (Object.prototype.hasOwnProperty.call(normalizedEvent, 'refereeIds')) {
                 payload.refereeIds = normalizedEvent.refereeIds ?? [];
             }
-            const response = await databases.createRow({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                rowId: ID.unique(),
-                data: payload
+            const response = await functions.createExecution({
+                functionId: EVENT_MANAGER_FUNCTION_ID,
+                xpath: '/events',
+                method: ExecutionMethod.POST,
+                body: JSON.stringify({ event: payload }),
+                async: false,
             });
 
-            const eventId = response.$id ?? response.id;
+            if (response.errors) {
+                throw Error('Failed to create event: ' + response.errors);
+            }
+
+            const body = JSON.parse(response.responseBody || '{}');
+            if (body.error) {
+                throw Error('Failed to create event: ' + body.error);
+            }
+
+            const createdEvent = body.event ?? body;
+            if (createdEvent?.$id) {
+                return await this.mapRowFromDatabase(createdEvent, true);
+            }
+
+            const eventId = body.eventId ?? body.id;
             if (eventId) {
-                const hydrated = await this.getEvent(eventId);
+                const hydrated = await this.getEvent(String(eventId));
                 if (hydrated) {
                     return hydrated;
                 }
             }
 
-            await this.ensureSportRelationship(response);
-            return this.mapRowToEvent(response);
+            throw new Error('Failed to hydrate created event');
         } catch (error) {
             console.error('Failed to create event:', error);
             throw error;
@@ -410,6 +424,16 @@ class EventService {
         const normalizedEventType =
             normalizeEnumValue(row.eventType) ??
             (typeof row.eventType === 'string' ? row.eventType.toUpperCase() : undefined);
+        const normalizeAge = (value: unknown): number | undefined => {
+            if (typeof value === 'number' && Number.isFinite(value)) {
+                return value;
+            }
+            if (typeof value === 'string' && value.trim().length > 0) {
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : undefined;
+            }
+            return undefined;
+        };
 
         return {
             $id: row.$id,
@@ -421,6 +445,8 @@ class EventService {
             coordinates: row.coordinates,
             fieldType: (normalizedFieldType ?? 'UNKNOWN') as FieldSurfaceType,
             price: row.price,
+            minAge: normalizeAge(row.minAge),
+            maxAge: normalizeAge(row.maxAge),
             rating: row.rating,
             imageId: row.imageId,
             hostId: row.hostId,

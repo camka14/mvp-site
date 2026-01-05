@@ -224,6 +224,10 @@ export interface UserData {
   $id: string;
   firstName: string;
   lastName: string;
+  dateOfBirth?: string;
+  dobVerified?: boolean;
+  dobVerifiedAt?: string;
+  ageVerificationProvider?: string;
   teamIds: string[];
   friendIds: string[];
   friendRequestIds: string[];
@@ -345,6 +349,8 @@ export interface Event {
   coordinates: [number, number];
   fieldType: FieldSurfaceType;
   price: number;
+  minAge?: number;
+  maxAge?: number;
   rating?: number;
   imageId: string;
   hostId: string;

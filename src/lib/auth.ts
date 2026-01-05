@@ -11,6 +11,19 @@ interface UserAccount {
 
 type ExistingUserLookup = { userId: string; sensitiveUserId?: string };
 
+const normalizeDateOfBirth = (value?: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [year, month, day] = trimmed.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day)).toISOString();
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+};
+
 export const authService = {
   // LocalStorage keys
   AUTH_USER_KEY: 'auth-user',
@@ -93,9 +106,15 @@ export const authService = {
     firstName: string,
     lastName: string,
     userName: string,
+    dateOfBirth: string,
     existingUserId?: string | null
   ): Promise<UserAccount> {
     try {
+      const normalizedDob = normalizeDateOfBirth(dateOfBirth);
+      if (!normalizedDob) {
+        throw new Error('Please provide a valid date of birth');
+      }
+
       // First check if user is already logged in
       const existingUser = await this.getCurrentUser();
       if (existingUser) {
@@ -138,6 +157,7 @@ export const authService = {
             firstName: firstName || resolvedProfile?.firstName || '',
             lastName: lastName || resolvedProfile?.lastName || '',
             userName: resolvedProfile?.userName || userName,
+            dateOfBirth: normalizedDob,
             teamIds: resolvedProfile?.teamIds ?? [],
             friendIds: resolvedProfile?.friendIds ?? [],
             friendRequestIds: resolvedProfile?.friendRequestIds ?? [],

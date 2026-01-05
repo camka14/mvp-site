@@ -3,12 +3,13 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useApp } from '@/app/providers';
 import { userService } from '@/lib/userService';
+import { familyService, FamilyChild } from '@/lib/familyService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Bill, PaymentIntent, Team, getUserAvatarUrl, formatPrice, formatBillAmount, Product, Organization } from '@/types';
 import type { Subscription } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
-import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid } from '@mantine/core';
+import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid, Select } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { paymentService } from '@/lib/paymentService';
 import { billService } from '@/lib/billService';
@@ -18,6 +19,36 @@ import { ManageTeams } from '@/app/teams/page';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { productService } from '@/lib/productService';
 import { organizationService } from '@/lib/organizationService';
+
+const toDateInputValue = (value?: string | null): string => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().split('T')[0];
+};
+
+const toIsoDateValue = (value?: string | null): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        const [year, month, day] = trimmed.split('-').map(Number);
+        return new Date(Date.UTC(year, month - 1, day)).toISOString();
+    }
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toISOString();
+};
+
+const formatDobLabel = (value?: string | null): string => {
+    const datePart = toDateInputValue(value);
+    if (!datePart) return 'Not provided';
+    const date = new Date(`${datePart}T00:00:00Z`);
+    return new Intl.DateTimeFormat(undefined, { timeZone: 'UTC', year: 'numeric', month: 'long', day: '2-digit' }).format(date);
+};
 
 export default function ProfilePage() {
     const { user, loading, setUser } = useApp();
@@ -30,7 +61,28 @@ export default function ProfilePage() {
         firstName: '',
         lastName: '',
         userName: '',
+        dateOfBirth: '',
         profileImageId: ''
+    });
+
+    const [children, setChildren] = useState<FamilyChild[]>([]);
+    const [childrenLoading, setChildrenLoading] = useState(false);
+    const [childrenError, setChildrenError] = useState<string | null>(null);
+    const [creatingChild, setCreatingChild] = useState(false);
+    const [linkingChild, setLinkingChild] = useState(false);
+    const [childFormError, setChildFormError] = useState<string | null>(null);
+    const [linkFormError, setLinkFormError] = useState<string | null>(null);
+    const [childForm, setChildForm] = useState({
+        firstName: '',
+        lastName: '',
+        email: '',
+        dateOfBirth: '',
+        relationship: 'parent',
+    });
+    const [linkForm, setLinkForm] = useState({
+        childEmail: '',
+        childUserId: '',
+        relationship: 'parent',
     });
 
     // Account sections
@@ -65,6 +117,8 @@ export default function ProfilePage() {
     const [restartingSubId, setRestartingSubId] = useState<string | null>(null);
 
     const userHasStripeAccount = Boolean(user?.hasStripeAccount || user?.stripeAccountId);
+    const today = new Date();
+    const maxDob = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     // Initialize form data when user changes
     useEffect(() => {
@@ -73,6 +127,7 @@ export default function ProfilePage() {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 userName: user.userName,
+                dateOfBirth: toDateInputValue(user.dateOfBirth),
                 profileImageId: user.profileImageId || ''
             });
         }
@@ -86,6 +141,7 @@ export default function ProfilePage() {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     userName: user.userName,
+                    dateOfBirth: toDateInputValue(user.dateOfBirth),
                     profileImageId: user.profileImageId || ''
                 });
             }
@@ -101,10 +157,16 @@ export default function ProfilePage() {
         setError(null);
 
         try {
+            const normalizedDob = toIsoDateValue(profileData.dateOfBirth);
+            if (!normalizedDob) {
+                setError('Please provide a valid date of birth');
+                return;
+            }
             const updatedUser = await userService.updateProfile(user.$id, {
                 firstName: profileData.firstName,
                 lastName: profileData.lastName,
                 userName: profileData.userName,
+                dateOfBirth: normalizedDob,
                 profileImageId: profileData.profileImageId
             });
 
@@ -114,6 +176,85 @@ export default function ProfilePage() {
             setError(error.message || 'Failed to update profile');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const loadChildren = useCallback(async () => {
+        setChildrenLoading(true);
+        setChildrenError(null);
+        try {
+            const result = await familyService.listChildren();
+            setChildren(result);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to load children.';
+            setChildrenError(message);
+            setChildren([]);
+        } finally {
+            setChildrenLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (user) {
+            loadChildren();
+        }
+    }, [user, loadChildren]);
+
+    const handleCreateChild = async () => {
+        if (!childForm.firstName.trim() || !childForm.lastName.trim() || !childForm.dateOfBirth.trim()) {
+            setChildFormError('First name, last name, and date of birth are required.');
+            return;
+        }
+        setCreatingChild(true);
+        setChildFormError(null);
+        try {
+            await familyService.createChildAccount({
+                firstName: childForm.firstName.trim(),
+                lastName: childForm.lastName.trim(),
+                email: childForm.email.trim() || undefined,
+                dateOfBirth: childForm.dateOfBirth.trim(),
+                relationship: childForm.relationship,
+            });
+            setChildForm({
+                firstName: '',
+                lastName: '',
+                email: '',
+                dateOfBirth: '',
+                relationship: 'parent',
+            });
+            await loadChildren();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to create child.';
+            setChildFormError(message);
+        } finally {
+            setCreatingChild(false);
+        }
+    };
+
+    const handleLinkChild = async () => {
+        if (!linkForm.childEmail.trim() && !linkForm.childUserId.trim()) {
+            setLinkFormError('Provide a child email or user ID.');
+            return;
+        }
+        setLinkingChild(true);
+        setLinkFormError(null);
+        try {
+            await familyService.linkChildToParent({
+                childEmail: linkForm.childEmail.trim() || undefined,
+                childUserId: linkForm.childUserId.trim() || undefined,
+                relationship: linkForm.relationship,
+            });
+            setLinkForm({
+                childEmail: '',
+                childUserId: '',
+                relationship: 'parent',
+            });
+            await loadChildren();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to link child.';
+            setLinkFormError(message);
+        } finally {
+            setLinkingChild(false);
         }
     };
 
@@ -502,6 +643,25 @@ export default function ProfilePage() {
                                         )}
                                     </div>
 
+                                    {/* Date of Birth */}
+                                    <div>
+                                        <Text size="sm" fw={500} mb={4}>Date of Birth</Text>
+                                        {isEditing ? (
+                                            <TextInput
+                                                type="date"
+                                                value={profileData.dateOfBirth}
+                                                onChange={(event) => {
+                                                    const value = event.currentTarget.value;
+                                                    setProfileData(prev => ({ ...prev, dateOfBirth: value }));
+                                                }}
+                                                required
+                                                max={maxDob}
+                                            />
+                                        ) : (
+                                            <p className="text-gray-900 py-2">{formatDobLabel(user.dateOfBirth)}</p>
+                                        )}
+                                    </div>
+
                                     {/* Username */}
                                     <div>
                                         <Text size="sm" fw={500} mb={4}>Username</Text>
@@ -547,6 +707,139 @@ export default function ProfilePage() {
                         </Paper>
                     </div>
 
+                    <div className="mt-8">
+                        <Paper withBorder radius="lg" p="md" shadow="sm">
+                            <Group justify="space-between" mb="sm">
+                                <Title order={4}>Children</Title>
+                                <Button variant="light" size="xs" onClick={loadChildren} loading={childrenLoading}>
+                                    Refresh
+                                </Button>
+                            </Group>
+                            {childrenError && (
+                                <Alert color="red" mb="sm">
+                                    {childrenError}
+                                </Alert>
+                            )}
+                            {childrenLoading ? (
+                                <Text c="dimmed">Loading children...</Text>
+                            ) : children.length === 0 ? (
+                                <Text c="dimmed">No children linked yet.</Text>
+                            ) : (
+                                <SimpleGrid
+                                    cols={3}
+                                    spacing="md"
+                                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}
+                                >
+                                    {children.map((child) => {
+                                        const name = `${child.firstName || ''} ${child.lastName || ''}`.trim();
+                                        const hasEmail = typeof child.hasEmail === 'boolean'
+                                            ? child.hasEmail
+                                            : Boolean(child.email);
+                                        return (
+                                            <Paper key={child.userId} withBorder radius="md" p="md" shadow="xs">
+                                                <Text fw={600}>{name || 'Child'}</Text>
+                                                <Text size="sm" c="dimmed">
+                                                    Age: {typeof child.age === 'number' ? child.age : 'Unknown'}
+                                                </Text>
+                                                <Text size="sm" c="dimmed">
+                                                    Status: {child.linkStatus ?? 'Unknown'}
+                                                </Text>
+                                                {!hasEmail && (
+                                                    <Alert color="yellow" variant="light" mt="sm">
+                                                        Missing email. Consent links cannot be sent until an email is added.
+                                                    </Alert>
+                                                )}
+                                            </Paper>
+                                        );
+                                    })}
+                                </SimpleGrid>
+                            )}
+
+                            <SimpleGrid
+                                cols={2}
+                                spacing="lg"
+                                mt="lg"
+                                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}
+                            >
+                                <div className="space-y-3">
+                                    <Title order={5}>Add a child</Title>
+                                    {childFormError && (
+                                        <Alert color="red" variant="light">
+                                            {childFormError}
+                                        </Alert>
+                                    )}
+                                    <TextInput
+                                        label="First name"
+                                        value={childForm.firstName}
+                                        onChange={(event) => setChildForm(prev => ({ ...prev, firstName: event.currentTarget.value }))}
+                                    />
+                                    <TextInput
+                                        label="Last name"
+                                        value={childForm.lastName}
+                                        onChange={(event) => setChildForm(prev => ({ ...prev, lastName: event.currentTarget.value }))}
+                                    />
+                                    <TextInput
+                                        label="Email (optional)"
+                                        value={childForm.email}
+                                        onChange={(event) => setChildForm(prev => ({ ...prev, email: event.currentTarget.value }))}
+                                    />
+                                    <TextInput
+                                        label="Date of birth"
+                                        type="date"
+                                        value={childForm.dateOfBirth}
+                                        max={maxDob}
+                                        onChange={(event) => setChildForm(prev => ({ ...prev, dateOfBirth: event.currentTarget.value }))}
+                                    />
+                                    <Select
+                                        label="Relationship"
+                                        data={[
+                                            { value: 'parent', label: 'Parent' },
+                                            { value: 'guardian', label: 'Guardian' },
+                                        ]}
+                                        value={childForm.relationship}
+                                        onChange={(value) => setChildForm(prev => ({ ...prev, relationship: value || 'parent' }))}
+                                    />
+                                    <Button onClick={handleCreateChild} loading={creatingChild}>
+                                        Add child
+                                    </Button>
+                                </div>
+                                <div className="space-y-3">
+                                    <Title order={5}>Link an existing child</Title>
+                                    {linkFormError && (
+                                        <Alert color="red" variant="light">
+                                            {linkFormError}
+                                        </Alert>
+                                    )}
+                                    <TextInput
+                                        label="Child email"
+                                        value={linkForm.childEmail}
+                                        onChange={(event) => setLinkForm(prev => ({ ...prev, childEmail: event.currentTarget.value }))}
+                                    />
+                                    <TextInput
+                                        label="Child user ID"
+                                        value={linkForm.childUserId}
+                                        onChange={(event) => setLinkForm(prev => ({ ...prev, childUserId: event.currentTarget.value }))}
+                                    />
+                                    <Select
+                                        label="Relationship"
+                                        data={[
+                                            { value: 'parent', label: 'Parent' },
+                                            { value: 'guardian', label: 'Guardian' },
+                                        ]}
+                                        value={linkForm.relationship}
+                                        onChange={(value) => setLinkForm(prev => ({ ...prev, relationship: value || 'parent' }))}
+                                    />
+                                    <Button onClick={handleLinkChild} loading={linkingChild} variant="light">
+                                        Link child
+                                    </Button>
+                                    <Text size="xs" c="dimmed">
+                                        Provide either the child email or user ID to link an existing account.
+                                    </Text>
+                                </div>
+                            </SimpleGrid>
+                        </Paper>
+                    </div>
+
                     {/* Account Settings */}
                     {!isEditing && (
                         <div className="mt-8 space-y-6">
@@ -560,15 +853,13 @@ export default function ProfilePage() {
                                         ? 'Manage your Stripe account to update payout details.'
                                         : 'Connect a Stripe account to accept payments for your events and rentals.'}
                                 </Text>
-                                <Button
-                                    loading={userHasStripeAccount ? managingStripe : connectingStripe}
-                                    onClick={userHasStripeAccount ? handleManageStripeAccount : handleConnectStripeAccount}
-                                >
-                                    {userHasStripeAccount ? 'Manage Stripe Account' : 'Connect Stripe Account'}
-                                </Button>
-                            </Paper>
-
-                            <RefundRequestsList userId={user.$id} hostId={user.$id} />
+                            <Button
+                                loading={userHasStripeAccount ? managingStripe : connectingStripe}
+                                onClick={userHasStripeAccount ? handleManageStripeAccount : handleConnectStripeAccount}
+                            >
+                                {userHasStripeAccount ? 'Manage Stripe Account' : 'Connect Stripe Account'}
+                            </Button>
+                        </Paper>
 
                             <Paper withBorder radius="md" p="md">
                                 <Group justify="space-between" mb="sm">
@@ -739,63 +1030,10 @@ export default function ProfilePage() {
                                     </SimpleGrid>
                                 )}
                             </Paper>
-                            <RefundRequestsList userId={user.$id} />
-                            <RefundRequestsList hostId={user.$id} />
-
-                            <Paper withBorder radius="md" p="md">
-                                <Group justify="space-between" mb="sm">
-                                    <Title order={4}>Bills</Title>
-                                    <Button variant="light" size="xs" onClick={loadBills} loading={loadingBills}>
-                                        Refresh
-                                    </Button>
-                                </Group>
-                                {billError && (
-                                    <Alert color="red" mb="sm">
-                                        {billError}
-                                    </Alert>
-                                )}
-                                {loadingBills ? (
-                                    <Text c="dimmed">Loading bills...</Text>
-                                ) : bills.length === 0 ? (
-                                    <Text c="dimmed">No bills available.</Text>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {bills.map((bill) => {
-                                            const remaining = Math.max(bill.totalAmountCents - bill.paidAmountCents, 0);
-                                            const nextAmount =
-                                                bill.nextPaymentAmountCents !== null && bill.nextPaymentAmountCents !== undefined
-                                                    ? bill.nextPaymentAmountCents
-                                                    : remaining;
-                                            const nextDue = bill.nextPaymentDue
-                                                ? new Date(bill.nextPaymentDue).toLocaleDateString()
-                                                : 'TBD';
-                                            return (
-                                                <Paper key={bill.$id} withBorder radius="md" p="sm">
-                                                    <Group justify="space-between" align="center">
-                                                        <div>
-                                                            <Text fw={600}>Bill {bill.$id.slice(0, 6)}</Text>
-                                                            <Text size="sm" c="dimmed">
-                                                                Status: {bill.status} - Next due: {nextDue}
-                                                            </Text>
-                                                            <Text size="sm" c="dimmed">
-                                                                Owner: {bill.ownerLabel ?? (bill.ownerType === 'TEAM' ? 'Team' : 'You')}
-                                                            </Text>
-                                                        </div>
-                                                        <div className="text-right space-y-1">
-                                                            <Text size="sm">Total: {formatPrice(bill.totalAmountCents)}</Text>
-                                                            <Text size="sm">Paid: {formatPrice(bill.paidAmountCents)}</Text>
-                                                            <Text size="sm">Next: {formatPrice(nextAmount)}</Text>
-                                                            <Button size="xs" onClick={() => handlePayBill(bill)} disabled={nextAmount <= 0}>
-                                                                Pay next installment
-                                                            </Button>
-                                                        </div>
-                                                    </Group>
-                                                </Paper>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </Paper>
+                            <div className="space-y-6">
+                                <RefundRequestsList userId={user.$id} />
+                                <RefundRequestsList hostId={user.$id} />
+                            </div>
 
                             {/* Email Section */}
                             <Paper withBorder radius="md" p="md">

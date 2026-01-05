@@ -27,6 +27,7 @@ const USERS_TABLE_ID = 'users-table';
 const WEEKLY_TABLE_ID = 'weekly';
 const LEAGUE_SCORING_TABLE_ID = 'league-config';
 const ORGANIZATIONS_TABLE_ID = 'org-table';
+const SERVER_FUNCTION_ID = 'event-manager-fn';
 
 const setEnv = () => {
   process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
@@ -38,6 +39,7 @@ const setEnv = () => {
   process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID = WEEKLY_TABLE_ID;
   process.env.NEXT_PUBLIC_APPWRITE_LEAGUE_SCORING_CONFIG_TABLE_ID = LEAGUE_SCORING_TABLE_ID;
   process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID = ORGANIZATIONS_TABLE_ID;
+  process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID = SERVER_FUNCTION_ID;
 };
 
 describe('eventService', () => {
@@ -123,15 +125,18 @@ describe('eventService', () => {
 
   describe('createEvent', () => {
     it('sends coordinates when provided', async () => {
-      appwriteModuleMock.ID.unique.mockReturnValueOnce('evt_new');
-      appwriteModuleMock.databases.createRow.mockResolvedValueOnce({
-        $id: 'evt_new',
-        name: 'New Event',
-        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
-        teamSignup: true,
-        teamIds: [],
-        playerIds: [],
-        divisions: [],
+      appwriteModuleMock.functions.createExecution.mockResolvedValueOnce({
+        responseBody: JSON.stringify({
+          event: {
+            $id: 'evt_new',
+            name: 'New Event',
+            sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
+            teamSignup: true,
+            teamIds: [],
+            playerIds: [],
+            divisions: [],
+          },
+        }),
       });
 
       await eventService.createEvent({
@@ -139,13 +144,18 @@ describe('eventService', () => {
         coordinates: [-105, 40],
       });
 
-      const [eventCallArgs] = appwriteModuleMock.databases.createRow.mock.calls;
-      const eventCall = eventCallArgs[0];
-      expect(eventCall).toMatchObject({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-      });
-      expect(eventCall.data).toEqual(expect.objectContaining({
+      expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionId: SERVER_FUNCTION_ID,
+          xpath: '/events',
+          method: ExecutionMethod.POST,
+          async: false,
+        }),
+      );
+
+      const executionCall = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
+      const payload = JSON.parse(executionCall.body as string);
+      expect(payload.event).toEqual(expect.objectContaining({
         name: 'New Event',
         coordinates: [-105, 40],
       }));

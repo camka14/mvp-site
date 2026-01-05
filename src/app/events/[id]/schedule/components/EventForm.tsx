@@ -295,6 +295,8 @@ type EventFormState = {
     sportConfig: Sport | null;
     fieldType: FieldSurfaceType;
     price: number;
+    minAge?: number;
+    maxAge?: number;
     allowPaymentPlans: boolean;
     installmentCount?: number;
     installmentDueDates: string[];
@@ -430,6 +432,8 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     fieldType: event.fieldType ?? 'INDOOR',
     // Stored in cents in the backend; convert to dollars for the form UI.
     price: Number.isFinite(event.price) ? (event.price as number) / 100 : 0,
+    minAge: Number.isFinite(event.minAge) ? event.minAge : undefined,
+    maxAge: Number.isFinite(event.maxAge) ? event.maxAge : undefined,
     allowPaymentPlans: Boolean(event.allowPaymentPlans),
     // Stored in cents in the backend; convert to dollars for the form UI.
     installmentAmounts: normalizeInstallmentDollars(event.installmentAmounts),
@@ -538,6 +542,8 @@ const eventFormSchema = z
         sportConfig: z.any().nullable(),
         fieldType: fieldTypeSchema,
         price: z.number().min(0, 'Price must be at least 0'),
+        minAge: z.number().int().min(0).optional(),
+        maxAge: z.number().int().min(0).optional(),
         allowPaymentPlans: z.boolean().default(false),
         installmentCount: z.number().int().min(0).default(0),
         installmentDueDates: z.array(z.string()).default([]),
@@ -628,6 +634,16 @@ const eventFormSchema = z
                     code: "custom",
                     message: 'Installment amounts must add up to the event price',
                     path: ['installmentAmounts'],
+                });
+            }
+        }
+
+        if (typeof values.minAge === 'number' && typeof values.maxAge === 'number') {
+            if (values.minAge > values.maxAge) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: 'Minimum age must be less than or equal to maximum age',
+                    path: ['minAge'],
                 });
             }
         }
@@ -812,6 +828,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (defaults.fieldType !== undefined) next.fieldType = defaults.fieldType ?? 'INDOOR';
         // Immutable defaults store price in cents; normalize to dollars for UI.
         if (typeof defaults.price === 'number') next.price = defaults.price / 100;
+        if (typeof defaults.minAge === 'number') next.minAge = defaults.minAge;
+        if (typeof defaults.maxAge === 'number') next.maxAge = defaults.maxAge;
         if (typeof defaults.maxParticipants === 'number') next.maxParticipants = defaults.maxParticipants;
         if (typeof defaults.teamSizeLimit === 'number') next.teamSizeLimit = defaults.teamSizeLimit;
         if (typeof defaults.teamSignup === 'boolean') next.teamSignup = defaults.teamSignup;
@@ -2036,6 +2054,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const installmentAmountsCents = source.allowPaymentPlans
             ? normalizeInstallmentCents(source.installmentAmounts)
             : [];
+        const minAge = normalizeNumber(source.minAge);
+        const maxAge = normalizeNumber(source.maxAge);
 
         const draft: Partial<Event> = {
             $id: activeEditingEvent?.$id,
@@ -2051,6 +2071,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             fieldType: source.fieldType,
             // Backend stores price in cents; convert dollars from the form to cents before saving.
             price: Math.round(Math.max(0, source.price || 0) * 100),
+            minAge,
+            maxAge,
             allowPaymentPlans: source.allowPaymentPlans,
             installmentCount: source.allowPaymentPlans
                 ? source.installmentCount || installmentAmountsCents.length || 0
@@ -2688,6 +2710,48 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         />
                                     )}
                                 />
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Controller
+                                    name="minAge"
+                                    control={control}
+                                    render={({ field, fieldState }) => (
+                                        <NumberInput
+                                            label="Minimum Age"
+                                            min={0}
+                                            value={field.value ?? ''}
+                                            disabled={isImmutableField('minAge')}
+                                            onChange={(val) => {
+                                                if (isImmutableField('minAge')) return;
+                                                const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
+                                                field.onChange(next);
+                                            }}
+                                            error={fieldState.error?.message as string | undefined}
+                                        />
+                                    )}
+                                />
+                                <Controller
+                                    name="maxAge"
+                                    control={control}
+                                    render={({ field, fieldState }) => (
+                                        <NumberInput
+                                            label="Maximum Age"
+                                            min={0}
+                                            value={field.value ?? ''}
+                                            disabled={isImmutableField('maxAge')}
+                                            onChange={(val) => {
+                                                if (isImmutableField('maxAge')) return;
+                                                const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
+                                                field.onChange(next);
+                                            }}
+                                            error={fieldState.error?.message as string | undefined}
+                                        />
+                                    )}
+                                />
+                                <Text size="xs" c="dimmed" className="md:col-span-2">
+                                    Leave age limits blank if anyone can register.
+                                </Text>
                             </div>
 
                             <div className="mt-6 space-y-3">

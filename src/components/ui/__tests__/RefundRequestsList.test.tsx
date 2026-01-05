@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import RefundRequestsList from '../RefundRequestsList';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
@@ -130,49 +130,79 @@ describe('RefundRequestsList', () => {
     expect(await screen.findByText('APPROVED')).toBeInTheDocument();
   });
 
-  it('hides actions for self-requested refunds but shows them when acting as host', async () => {
+  it('hides the actions column for requester view', async () => {
     refundRequestService.listRefundRequests.mockResolvedValue([
       {
         $id: 'refund_1',
         eventId: 'event_123',
         userId: 'user_1',
         reason: 'Need to cancel',
-        hostId: 'host_2',
+        hostId: 'host_1',
         organizationId: 'org_1',
         status: 'WAITING',
         $createdAt: '2024-01-01T00:00:00.000Z',
-      },
-      {
-        $id: 'refund_2',
-        eventId: 'event_456',
-        userId: 'user_3',
-        reason: 'Guest refund',
-        hostId: 'user_1',
-        organizationId: 'org_2',
-        status: 'WAITING',
-        $createdAt: '2024-01-02T00:00:00.000Z',
       },
     ]);
 
     eventService.getEventById.mockImplementation(async (id: string) => ({ $id: id, name: `Event ${id}` }));
     userService.getUsersByIds.mockResolvedValue([
       { $id: 'user_1', firstName: 'Test', lastName: 'User' } as any,
-      { $id: 'user_3', firstName: 'Guest', lastName: 'User' } as any,
-      { $id: 'host_2', firstName: 'Other', lastName: 'Host' } as any,
+      { $id: 'host_1', firstName: 'Host', lastName: 'One' } as any,
     ]);
 
-    renderWithMantine(<RefundRequestsList userId="user_1" hostId="user_1" />);
+    renderWithMantine(<RefundRequestsList userId="user_1" />);
 
     await waitFor(() => expect(refundRequestService.listRefundRequests).toHaveBeenCalled());
 
-    const ownRowText = await screen.findByText('Need to cancel');
-    const ownRow = ownRowText.closest('tr');
-    expect(ownRow).not.toBeNull();
-    expect(within(ownRow as HTMLElement).queryByRole('button', { name: /approve/i })).toBeNull();
+    await screen.findByText('Need to cancel');
+    expect(screen.queryByText('Actions')).toBeNull();
+    expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
+  });
 
-    const hostRowText = await screen.findByText('Guest refund');
-    const hostRow = hostRowText.closest('tr');
-    expect(hostRow).not.toBeNull();
-    expect(within(hostRow as HTMLElement).getByRole('button', { name: /approve/i })).toBeInTheDocument();
+  it('filters hosted refunds to the current host', async () => {
+    refundRequestService.listRefundRequests.mockResolvedValue([
+      {
+        $id: 'refund_1',
+        eventId: 'event_123',
+        userId: 'host_1',
+        reason: 'Self refund',
+        hostId: 'host_1',
+        status: 'WAITING',
+        $createdAt: '2024-01-01T00:00:00.000Z',
+      },
+      {
+        $id: 'refund_2',
+        eventId: 'event_456',
+        userId: 'user_2',
+        reason: 'Guest refund',
+        hostId: 'host_1',
+        status: 'WAITING',
+        $createdAt: '2024-01-02T00:00:00.000Z',
+      },
+      {
+        $id: 'refund_3',
+        eventId: 'event_789',
+        userId: 'user_3',
+        reason: 'Other host refund',
+        hostId: 'host_2',
+        status: 'WAITING',
+        $createdAt: '2024-01-03T00:00:00.000Z',
+      },
+    ]);
+
+    eventService.getEventById.mockImplementation(async (id: string) => ({ $id: id, name: `Event ${id}` }));
+    userService.getUsersByIds.mockResolvedValue([
+      { $id: 'host_1', firstName: 'Host', lastName: 'One' } as any,
+      { $id: 'user_2', firstName: 'Guest', lastName: 'User' } as any,
+      { $id: 'user_3', firstName: 'Other', lastName: 'User' } as any,
+    ]);
+
+    renderWithMantine(<RefundRequestsList hostId="host_1" />);
+
+    await waitFor(() => expect(refundRequestService.listRefundRequests).toHaveBeenCalled());
+
+    expect(screen.queryByText('Event event_123')).toBeNull();
+    expect(await screen.findByText('Event event_456')).toBeInTheDocument();
+    expect(screen.queryByText('Event event_789')).toBeNull();
   });
 });

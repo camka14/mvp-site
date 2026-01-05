@@ -10,6 +10,8 @@ import { billService } from '@/lib/billService';
 import { ID } from '@/app/appwrite';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
+import { familyService, FamilyChild } from '@/lib/familyService';
+import { registrationService, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -34,6 +36,35 @@ const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX }
 type JoinIntent = {
     mode: 'user' | 'team';
     team?: Team | null;
+};
+
+const parseDateValue = (value?: string | null): Date | null => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const calculateAgeOnDate = (dob: Date, onDate: Date): number => {
+    const yearDiff = onDate.getUTCFullYear() - dob.getUTCFullYear();
+    const monthDiff = onDate.getUTCMonth() - dob.getUTCMonth();
+    const dayDiff = onDate.getUTCDate() - dob.getUTCDate();
+    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+        return yearDiff - 1;
+    }
+    return yearDiff;
+};
+
+const formatAgeRange = (minAge?: number, maxAge?: number): string => {
+    if (typeof minAge === 'number' && typeof maxAge === 'number') {
+        return `${minAge}-${maxAge}`;
+    }
+    if (typeof minAge === 'number') {
+        return `${minAge}+`;
+    }
+    if (typeof maxAge === 'number') {
+        return `Up to ${maxAge}`;
+    }
+    return 'All ages';
 };
 
 export default function EventDetailSheet({ event, isOpen, onClose, renderInline = false }: EventDetailSheetProps) {
@@ -65,6 +96,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [confirmingPassword, setConfirmingPassword] = useState(false);
     const [recordingSignature, setRecordingSignature] = useState(false);
     const [textAccepted, setTextAccepted] = useState(false);
+    const [children, setChildren] = useState<FamilyChild[]>([]);
+    const [childrenLoading, setChildrenLoading] = useState(false);
+    const [childrenError, setChildrenError] = useState<string | null>(null);
+    const [selectedChildId, setSelectedChildId] = useState('');
+    const [registeringChild, setRegisteringChild] = useState(false);
+    const [childRegistration, setChildRegistration] = useState<EventRegistration | null>(null);
+    const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
+    const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -72,6 +111,33 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [selectedTeamId, setSelectedTeamId] = useState('');
 
     const currentEvent = detailedEvent || event;
+    const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
+    const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
+    const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
+    const eventStartDate = parseDateValue(currentEvent?.start ?? null);
+    const userDob = parseDateValue(user?.dateOfBirth ?? null);
+    const userAge = userDob ? calculateAgeOnDate(userDob, eventStartDate ?? new Date()) : undefined;
+    const isDobVerified = user?.dobVerified === true;
+    const isAdult = isDobVerified && typeof userAge === 'number' && userAge >= 18;
+    const ageWithinLimits = !hasAgeLimits
+        || (isDobVerified && typeof userAge === 'number'
+            && (typeof eventMinAge !== 'number' || userAge >= eventMinAge)
+            && (typeof eventMaxAge !== 'number' || userAge <= eventMaxAge));
+    const selfRegistrationBlockedReason = (() => {
+        if (!user) return null;
+        if (!isDobVerified || typeof userAge !== 'number') {
+            return 'Verify your date of birth to register for events.';
+        }
+        if (userAge < 18) {
+            return 'Only adults can register themselves. A parent must register you.';
+        }
+        if (!ageWithinLimits) {
+            return `This event is limited to ages ${formatAgeRange(eventMinAge, eventMaxAge)}.`;
+        }
+        return null;
+    })();
+    const canSelfRegister = !selfRegistrationBlockedReason;
+    const canRegisterChild = isAdult;
 
     const isEventHost = !!user && currentEvent && user.$id === currentEvent.hostId;
     const isFreeEvent = currentEvent && currentEvent.price === 0;
@@ -104,6 +170,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setConfirmingPassword(false);
             setRecordingSignature(false);
             setTextAccepted(false);
+            setChildren([]);
+            setChildrenLoading(false);
+            setChildrenError(null);
+            setSelectedChildId('');
+            setRegisteringChild(false);
+            setChildRegistration(null);
+            setChildConsent(null);
+            setChildRegistrationChildId(null);
         }
     }, [isActive, event]);
 
@@ -159,6 +233,43 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setIsLoadingTeams(false);
         };
     }, [isActive, event, user]);
+
+    useEffect(() => {
+        if (!isActive || !user) {
+            setChildren([]);
+            setChildrenLoading(false);
+            setChildrenError(null);
+            return;
+        }
+
+        let cancelled = false;
+        setChildrenLoading(true);
+        setChildrenError(null);
+
+        const loadChildren = async () => {
+            try {
+                const result = await familyService.listChildren();
+                if (!cancelled) {
+                    setChildren(result);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setChildren([]);
+                    setChildrenError(error instanceof Error ? error.message : 'Failed to load children.');
+                }
+            } finally {
+                if (!cancelled) {
+                    setChildrenLoading(false);
+                }
+            }
+        };
+
+        loadChildren();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isActive, user]);
 
     const loadEventDetails = async (eventId?: string) => {
         const targetId = eventId ?? event?.$id;
@@ -293,6 +404,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return undefined;
         })();
 
+        const shouldRegisterSelf = intent.mode === 'user' && !currentEvent.teamSignup;
+        let registrationResult: EventRegistration | null = null;
+
+        if (shouldRegisterSelf) {
+            const result = await registrationService.registerSelfForEvent(currentEvent.$id);
+            registrationResult = result.registration ?? null;
+            if (registrationResult?.status && registrationResult.status !== 'active') {
+                setJoinNotice(`Registration status: ${registrationResult.status}`);
+            }
+        }
+
         if (currentEvent.allowPaymentPlans) {
             if (intent.mode === 'team') {
                 if (!resolvedTeam?.$id) {
@@ -309,7 +431,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
 
         if (isFreeForUser) {
-            await paymentService.joinEvent(user, currentEvent, resolvedTeam);
+            if (!shouldRegisterSelf) {
+                await paymentService.joinEvent(user, currentEvent, resolvedTeam);
+            }
             await loadEventDetails();
         } else {
             const paymentIntent = await paymentService.createPaymentIntent(user, currentEvent, resolvedTeam);
@@ -577,9 +701,42 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         };
     }, [currentEvent, currentSignIndex, finalizeJoin, pendingJoin, pendingSignedDocumentId, signLinks, user]);
 
+    const handleRegisterChild = async () => {
+        if (!user || !currentEvent) return;
+        if (!selectedChildId) {
+            setJoinError('Select a child to register.');
+            return;
+        }
+        if (selectedChild && !selectedChildHasEmail) {
+            setJoinError('Child email is required before consent can be sent.');
+            return;
+        }
+
+        setRegisteringChild(true);
+        setJoinError(null);
+        setJoinNotice(null);
+
+        try {
+            const result = await registrationService.registerChildForEvent(currentEvent.$id, selectedChildId);
+            setChildRegistration(result.registration ?? null);
+            setChildConsent(result.consent ?? null);
+            setChildRegistrationChildId(selectedChildId);
+            setJoinNotice('Child registration started. Consent is required to complete registration.');
+            await loadEventDetails();
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to register child.');
+        } finally {
+            setRegisteringChild(false);
+        }
+    };
+
     // Update the join event handlers
     const handleJoinEvent = async () => {
         if (!user || !currentEvent) return;
+        if (selfRegistrationBlockedReason) {
+            setJoinError(selfRegistrationBlockedReason);
+            return;
+        }
 
         setJoining(true);
         setJoinError(null);
@@ -694,6 +851,38 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         (isTeamSignup && teams.some(t => (t.playerIds || []).includes(user.$id)))
     );
     const isUserFreeAgent = !!user && (currentEvent.freeAgentIds || []).includes(user.$id);
+    const isChildEligible = (child: FamilyChild): boolean => {
+        if (!hasAgeLimits) {
+            return true;
+        }
+        if (typeof child.age !== 'number') {
+            return false;
+        }
+        if (typeof eventMinAge === 'number' && child.age < eventMinAge) {
+            return false;
+        }
+        if (typeof eventMaxAge === 'number' && child.age > eventMaxAge) {
+            return false;
+        }
+        return true;
+    };
+    const activeChildren = children.filter((child) => (child.linkStatus ?? 'active') === 'active');
+    const childOptions = activeChildren.map((child) => {
+        const name = `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Child';
+        const ageLabel = typeof child.age === 'number' ? `${child.age}y` : 'age unknown';
+        const eligible = isChildEligible(child);
+        return {
+            value: child.userId,
+            label: `${name} (${ageLabel})${eligible ? '' : ' - not eligible'}`,
+            disabled: !eligible,
+        };
+    });
+    const selectedChild = activeChildren.find((child) => child.userId === selectedChildId);
+    const selectedChildEligible = selectedChild ? isChildEligible(selectedChild) : false;
+    const selectedChildHasEmail = selectedChild
+        ? (typeof selectedChild.hasEmail === 'boolean' ? selectedChild.hasEmail : Boolean(selectedChild.email))
+        : true;
+    const showChildRegistrationStatus = Boolean(selectedChildId && childRegistrationChildId === selectedChildId);
     const hasCoordinates = Array.isArray(currentEvent.coordinates) && currentEvent.coordinates.length >= 2;
     const mapLat = hasCoordinates ? Number(currentEvent.coordinates[1]) : undefined;
     const mapLng = hasCoordinates ? Number(currentEvent.coordinates[0]) : undefined;
@@ -710,6 +899,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         : null;
     const canShowScheduleButton = isEventHost && !renderInline;
     const scheduleButtonLabel = isEventHost ? 'Manage Event' : 'View Schedule';
+    const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase;
+    const selfWaitlistDisabled = Boolean(selfRegistrationBlockedReason) || joining;
+    const childJoinDisabled = !canRegisterChild || !selectedChildId || !selectedChildEligible || !selectedChildHasEmail || registeringChild;
 
     const content = (
         <div className="space-y-6">
@@ -795,6 +987,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                             <span className="text-sm text-gray-600">Field Type</span>
                                             <p className="font-medium">{currentEvent.fieldType}</p>
                                         </div>
+                                        {(typeof eventMinAge === 'number' || typeof eventMaxAge === 'number') && (
+                                            <div>
+                                                <span className="text-sm text-gray-600">Age Range</span>
+                                                <p className="font-medium">{formatAgeRange(eventMinAge, eventMaxAge)}</p>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {currentEvent.divisions && currentEvent.divisions.length > 0 && (
@@ -1006,9 +1204,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                 ) : (
                                     <div className="space-y-3">
                                         {!isTeamSignup ? (
-                                            <div>
+                                            <div className="space-y-3">
+                                                {selfRegistrationBlockedReason && (
+                                                    <Alert color="yellow" variant="light">
+                                                        {selfRegistrationBlockedReason}
+                                                    </Alert>
+                                                )}
+
                                                 {totalParticipants >= currentEvent.maxParticipants ? (
-                                                    <Button fullWidth color="orange"
+                                                    <Button
+                                                        fullWidth
+                                                        color="orange"
                                                         onClick={async () => {
                                                             if (!user) return;
                                                             setJoining(true);
@@ -1022,14 +1228,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 setJoining(false);
                                                             }
                                                         }}
-                                                        disabled={joining}
+                                                        disabled={selfWaitlistDisabled}
                                                     >
                                                         {joining ? 'Adding…' : 'Join Waitlist'}
                                                     </Button>
                                                 ) : (
-                                                    <Button fullWidth color="blue"
+                                                    <Button
+                                                        fullWidth
+                                                        color="blue"
                                                         onClick={handleJoinEvent}
-                                                        disabled={joining || confirmingPurchase}
+                                                        disabled={selfJoinDisabled}
                                                     >
                                                         {confirmingPurchase
                                                             ? 'Confirming purchase…'
@@ -1041,7 +1249,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     </Button>
                                                 )}
 
-                                                {/* View Schedule / Bracket Buttons */}
                                                 {canShowScheduleButton && (
                                                     <Button
                                                         fullWidth
@@ -1051,6 +1258,88 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     >
                                                         {scheduleButtonLabel}
                                                     </Button>
+                                                )}
+
+                                                {canRegisterChild && (
+                                                    <Paper withBorder p="sm" radius="md" className="space-y-3">
+                                                        <Text size="sm" fw={600}>Register a child</Text>
+                                                        {childrenError && (
+                                                            <Alert color="red" variant="light">
+                                                                {childrenError}
+                                                            </Alert>
+                                                        )}
+                                                        {childrenLoading ? (
+                                                            <Text size="sm" c="dimmed">Loading children...</Text>
+                                                        ) : (
+                                                            <MantineSelect
+                                                                placeholder="Select a child"
+                                                                data={childOptions}
+                                                                value={selectedChildId}
+                                                                onChange={(value) => setSelectedChildId(value || '')}
+                                                                comboboxProps={sharedComboboxProps}
+                                                            />
+                                                        )}
+                                                        {!childrenLoading && childOptions.length === 0 && (
+                                                            <Text size="xs" c="dimmed">
+                                                                No active children linked yet. Add one from your profile.
+                                                            </Text>
+                                                        )}
+                                                        {selectedChild && !selectedChildHasEmail && (
+                                                            <Alert color="yellow" variant="light">
+                                                                The selected child needs an email before consent can be sent.
+                                                            </Alert>
+                                                        )}
+                                                        <Button
+                                                            fullWidth
+                                                            variant="light"
+                                                            onClick={handleRegisterChild}
+                                                            disabled={childJoinDisabled}
+                                                        >
+                                                            {registeringChild ? 'Registering…' : 'Register child'}
+                                                        </Button>
+                                                        {hasAgeLimits && (
+                                                            <Text size="xs" c="dimmed">
+                                                                Eligible ages: {formatAgeRange(eventMinAge, eventMaxAge)}.
+                                                            </Text>
+                                                        )}
+                                                        {showChildRegistrationStatus && childRegistration?.status && (
+                                                            <Text size="xs" c="dimmed">
+                                                                Registration status: {childRegistration.status}
+                                                            </Text>
+                                                        )}
+                                                        {showChildRegistrationStatus && childConsent?.status && (
+                                                            <Text size="xs" c="dimmed">
+                                                                Consent status: {childConsent.status}
+                                                            </Text>
+                                                        )}
+                                                        {showChildRegistrationStatus && (childConsent?.parentSignLink || childConsent?.childSignLink) && (
+                                                            <Group gap="xs">
+                                                                {childConsent.parentSignLink && (
+                                                                    <Button
+                                                                        component="a"
+                                                                        href={childConsent.parentSignLink}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        size="xs"
+                                                                    >
+                                                                        Parent Sign
+                                                                    </Button>
+                                                                )}
+                                                                {childConsent.childSignLink && (
+                                                                    <Button
+                                                                        component="a"
+                                                                        href={childConsent.childSignLink}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        size="xs"
+                                                                        variant="light"
+                                                                    >
+                                                                        Child Sign
+                                                                    </Button>
+                                                                )}
+                                                            </Group>
+                                                        )}
+                                                    </Paper>
                                                 )}
                                             </div>
                                         ) : (

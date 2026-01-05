@@ -11,6 +11,7 @@ interface UpdateProfileData {
     firstName?: string;
     lastName?: string;
     userName?: string;
+    dateOfBirth?: string;
     profileImageId?: string;
 }
 
