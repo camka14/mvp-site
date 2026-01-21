@@ -286,7 +286,12 @@ export default function MatchEditModal({
   };
 
   const handleStartDateChange = (value: Date | string | null) => {
-    setStartValue(parseLocalDateTime(value));
+    const nextStart = parseLocalDateTime(value);
+    if (nextStart && startValue && endValue) {
+      const deltaMs = endValue.getTime() - startValue.getTime();
+      setEndValue(new Date(nextStart.getTime() + deltaMs));
+    }
+    setStartValue(nextStart);
   };
 
   const handleEndDateChange = (value: Date | string | null) => {

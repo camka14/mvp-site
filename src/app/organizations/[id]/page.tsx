@@ -51,6 +51,18 @@ const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
 const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
   const roleIndexRaw = row?.roleIndex;
   const roleIndex = typeof roleIndexRaw === 'number' ? roleIndexRaw : Number(roleIndexRaw);
+  const roleIndexesRaw = Array.isArray(row?.roleIndexes) ? row.roleIndexes : undefined;
+  const roleIndexes = roleIndexesRaw
+    ? roleIndexesRaw
+        .map((entry: unknown) => Number(entry))
+        .filter((value: number) => Number.isFinite(value))
+    : undefined;
+  const signerRolesRaw = Array.isArray(row?.signerRoles) ? row.signerRoles : undefined;
+  const signerRoles = signerRolesRaw
+    ? signerRolesRaw
+        .filter((entry: unknown): entry is string => typeof entry === 'string' && Boolean(entry.trim()))
+        .map((entry: string) => entry.trim())
+    : undefined;
   const signOnceRaw = row?.signOnce;
 
   return {
@@ -62,6 +74,8 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
     signOnce: typeof signOnceRaw === 'boolean' ? signOnceRaw : signOnceRaw == null ? true : Boolean(signOnceRaw),
     status: row?.status ?? undefined,
     roleIndex: Number.isFinite(roleIndex) ? roleIndex : undefined,
+    roleIndexes: roleIndexes && roleIndexes.length ? roleIndexes : undefined,
+    signerRoles: signerRoles && signerRoles.length ? signerRoles : undefined,
     type: normalizeTemplateType(row?.type),
     content: row?.content ?? undefined,
     $createdAt: row?.$createdAt ?? undefined,

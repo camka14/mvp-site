@@ -478,6 +478,8 @@ export interface TemplateDocument {
   signOnce: boolean;
   status?: string;
   roleIndex?: number;
+  roleIndexes?: number[];
+  signerRoles?: string[];
   type?: TemplateDocumentType;
   content?: string;
   $createdAt?: string;
