@@ -2,7 +2,6 @@
 
 import React from 'react';
 import type { Organization } from '@/types';
-import { storage } from '@/app/appwrite';
 
 interface OrganizationCardProps {
   organization: Organization;
@@ -12,10 +11,10 @@ interface OrganizationCardProps {
 
 function getOrgLogoUrl(org: Organization, size: number = 56): string {
   if (org.logoId) {
-    return storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: org.logoId, width: size, height: size });
+    return `/api/files/${org.logoId}`;
   }
   const initials = (org.name || 'Org').split(' ').map(w => w.charAt(0)).join('').slice(0, 2).toUpperCase();
-  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(initials)}&width=${size}&height=${size}`;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=${size}`;
 }
 
 export default function OrganizationCard({ organization, onClick, actions }: OrganizationCardProps) {
@@ -65,4 +64,3 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
     </div>
   );
 }
-

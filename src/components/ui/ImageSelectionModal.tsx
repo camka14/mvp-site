@@ -1,7 +1,4 @@
 import React, { useState, useRef } from 'react';
-import { storage } from '@/app/appwrite';
-import { ID } from 'appwrite';
-import { UserData } from '@/types';
 import { userService } from '@/lib/userService';
 import { useApp } from '@/app/providers';
 import { Modal, Button, SimpleGrid, Image, Alert, Group, Stack, FileButton, Loader, Text, Box } from '@mantine/core';
@@ -27,12 +24,7 @@ export function ImageSelectionModal({
     // ✅ Create image data with both ID and URL
     const uploadedImages = (user?.uploadedImages || []).map(imgId => ({
         id: imgId,
-        url: storage.getFilePreview({
-            bucketId,
-            fileId: imgId,
-            width: 400,
-            height: 400
-        }).toString()
+        url: `/api/files/${imgId}`
     })) || [];
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,10 +46,18 @@ export function ImageSelectionModal({
         setError(null);
 
         try {
-            const fileId = ID.unique();
-
-            // Upload to Appwrite Storage
-            await storage.createFile({ bucketId, fileId, file });
+            const form = new FormData();
+            form.append('file', file);
+            const res = await fetch('/api/files/upload', {
+                method: 'POST',
+                body: form,
+                credentials: 'include'
+            });
+            if (!res.ok) {
+                throw new Error('Upload failed');
+            }
+            const payload = await res.json();
+            const fileId = payload?.file?.id as string;
 
             await userService.updateUser(user!.$id, {
                 uploadedImages: [...(user?.uploadedImages || []), fileId]
@@ -66,12 +66,7 @@ export function ImageSelectionModal({
             try { await refreshUser(); } catch {}
 
             // Get preview URL
-            const url = storage.getFilePreview({
-                bucketId,
-                fileId,
-                width: 400,
-                height: 400
-            }).toString();
+            const url = `/api/files/${fileId}`;
 
             onSelect(fileId, url);
             onClose();

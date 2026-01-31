@@ -1,5 +1,5 @@
 import { paymentService } from '@/lib/paymentService';
-import type { Event, UserData } from '@/types';
+import type { Event, Product, UserData } from '@/types';
 import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
 import { buildEvent } from '../../../test/factories';
 import { ExecutionMethod } from 'appwrite';
@@ -54,6 +54,37 @@ describe('paymentService', () => {
       const mockEvent = buildEvent({ $id: 'event_1' });
 
       await expect(paymentService.createPaymentIntent(mockUser, mockEvent)).rejects.toThrow('failure');
+    });
+  });
+
+  describe('createProductPaymentIntent', () => {
+    it('calls billing function with product payload', async () => {
+      appwriteModuleMock.functions.createExecution.mockResolvedValue({
+        responseBody: JSON.stringify({ paymentIntent: 'pi_1', publishableKey: 'pk_test', feeBreakdown: {} }),
+      });
+
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockProduct = {
+        $id: 'prod_1',
+        organizationId: 'org_1',
+        name: 'Membership',
+        priceCents: 2500,
+        period: 'month',
+      } as Product;
+
+      await paymentService.createProductPaymentIntent(mockUser, mockProduct, { $id: 'org_1' });
+
+      expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledTimes(1);
+      const executionArgs = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
+      expect(executionArgs.functionId).toBe(SERVER_FUNCTION_ID);
+      expect(executionArgs.async).toBe(false);
+
+      const parsedBody = JSON.parse(executionArgs.body);
+      expect(executionArgs.xpath).toBe('/billing/purchase-intent');
+      expect(executionArgs.method).toBe(ExecutionMethod.POST);
+      expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
+      expect(parsedBody.productId).toBe(mockProduct.$id);
+      expect(parsedBody.organization).toEqual(expect.objectContaining({ $id: 'org_1' }));
     });
   });
 

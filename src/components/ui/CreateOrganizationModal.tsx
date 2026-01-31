@@ -5,7 +5,6 @@ import { Modal, Button, Group, TextInput, Textarea, Alert } from '@mantine/core'
 import type { Organization, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { ImageUploader } from './ImageUploader';
-import { storage } from '@/app/appwrite';
 import { notifications } from '@mantine/notifications';
 import LocationSelector from '@/components/location/LocationSelector';
 import { useLocation } from '@/app/hooks/useLocation';
@@ -102,13 +101,7 @@ export default function CreateOrganizationModal({
 
       if (organization.logoId) {
         try {
-          const preview = storage.getFilePreview({
-            bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID as string,
-            fileId: organization.logoId,
-            width: 200,
-            height: 200,
-          });
-          setLogoUrl(preview);
+          setLogoUrl(`/api/files/${organization.logoId}`);
         } catch (previewError) {
           console.warn('Unable to load organization logo preview:', previewError);
           setLogoUrl('');

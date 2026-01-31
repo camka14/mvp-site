@@ -1,7 +1,4 @@
-import { account, databases, ID } from '@/app/appwrite';
 import type { UserData } from '@/types';
-import { OAuthProvider } from 'appwrite';
-import { lookupSensitiveUserByEmail, upsertSensitiveUser } from './sensitiveUserDataService';
 
 interface UserAccount {
   $id: string;
@@ -11,26 +8,31 @@ interface UserAccount {
 
 type ExistingUserLookup = { userId: string; sensitiveUserId?: string };
 
-const normalizeDateOfBirth = (value?: string | null): string | null => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    const [year, month, day] = trimmed.split('-').map(Number);
-    return new Date(Date.UTC(year, month - 1, day)).toISOString();
+type AuthPayload = {
+  user: { id: string; email: string; name?: string | null } | null;
+  session?: { userId: string; isAdmin: boolean } | null;
+  token?: string | null;
+  profile?: UserData | null;
+};
+
+const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const res = await fetch(path, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    ...init,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error || 'Request failed');
   }
-  const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString();
+  return res.json() as Promise<T>;
 };
 
 export const authService = {
-  // LocalStorage keys
   AUTH_USER_KEY: 'auth-user',
   APP_USER_KEY: 'app-user',
   GUEST_KEY: 'guest-session',
 
-  // Helpers: storage accessors
   getStoredAuthUser(): UserAccount | null {
     if (typeof window === 'undefined') return null;
     try {
@@ -76,6 +78,7 @@ export const authService = {
       // ignore storage errors
     }
   },
+
   setGuest(flag: boolean) {
     if (typeof window === 'undefined') return;
     try {
@@ -84,22 +87,29 @@ export const authService = {
       } else {
         window.localStorage.removeItem(this.GUEST_KEY);
       }
-    } catch { }
+    } catch {}
   },
+
   isGuest(): boolean {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(this.GUEST_KEY) === '1';
   },
-  /**
-   * Look up an existing user profile by email so we can re-use its ID.
-   */
-  async findExistingUserDataByEmail(email: string): Promise<ExistingUserLookup | null> {
-    const lookup = await lookupSensitiveUserByEmail(email);
-    if (lookup.exists && lookup.userId) {
-      return { userId: lookup.userId, sensitiveUserId: lookup.sensitiveUserId };
-    }
+
+  async findExistingUserDataByEmail(_email: string): Promise<ExistingUserLookup | null> {
     return null;
   },
+
+  async fetchSession(): Promise<{ user: UserAccount | null; profile: UserData | null; session: AuthPayload['session'] | null; token: string | null }> {
+    const data = await apiFetch<AuthPayload>('/api/auth/me');
+    if (!data?.user || !data.session) {
+      return { user: null, profile: null, session: null, token: null };
+    }
+    const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
+    this.setCurrentAuthUser(mapped);
+    if (data.profile) this.setCurrentUserData(data.profile as UserData);
+    return { user: mapped, profile: (data.profile as UserData) ?? null, session: data.session ?? null, token: data.token ?? null };
+  },
+
   async createAccount(
     email: string,
     password: string,
@@ -107,194 +117,80 @@ export const authService = {
     lastName: string,
     userName: string,
     dateOfBirth: string,
-    existingUserId?: string | null
   ): Promise<UserAccount> {
-    try {
-      const normalizedDob = normalizeDateOfBirth(dateOfBirth);
-      if (!normalizedDob) {
-        throw new Error('Please provide a valid date of birth');
-      }
-
-      // First check if user is already logged in
-      const existingUser = await this.getCurrentUser();
-      if (existingUser) {
-        await this.logout(); // Logout existing session
-      }
-
-      const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-      const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
-
-      // Try to find an existing UserData row by email
-      const existingByEmail = existingUserId ? null : await this.findExistingUserDataByEmail(email);
-      const userIdForAccount = existingUserId || existingByEmail?.userId || ID.unique();
-      const userAccount: UserAccount = await account.create({
-        userId: userIdForAccount,
-        email,
-        password,
-        name: `${firstName} ${lastName}`.trim()
-      });
-
-      // Auto login after registration (required to send verification email via Account API)
-      if (userAccount) {
-        const loggedIn = await this.login(email, password);
-
-        // Ensure a corresponding user profile exists in the Users table
-        try {
-          // Check if there's already a row (id matches auth account id)
-          let userRow: any | null = null;
-          try {
-            userRow = await databases.getRow({
-              databaseId: DATABASE_ID,
-              tableId: USERS_TABLE_ID,
-              rowId: userIdForAccount
-            });
-          } catch {
-            userRow = null;
-          }
-
-          const resolvedProfile = userRow;
-          const baseData = {
-            firstName: firstName || resolvedProfile?.firstName || '',
-            lastName: lastName || resolvedProfile?.lastName || '',
-            userName: resolvedProfile?.userName || userName,
-            dateOfBirth: normalizedDob,
-            teamIds: resolvedProfile?.teamIds ?? [],
-            friendIds: resolvedProfile?.friendIds ?? [],
-            friendRequestIds: resolvedProfile?.friendRequestIds ?? [],
-            friendRequestSentIds: resolvedProfile?.friendRequestSentIds ?? [],
-            followingIds: resolvedProfile?.followingIds ?? [],
-            uploadedImages: resolvedProfile?.uploadedImages ?? [],
-            profileImageId: resolvedProfile?.profileImageId || ''
-          };
-
-          await databases.upsertRow({
-            databaseId: DATABASE_ID,
-            tableId: USERS_TABLE_ID,
-            rowId: userIdForAccount,
-            data: baseData
-          });
-
-          await upsertSensitiveUser(email, userIdForAccount);
-        } catch (profileErr) {
-          // Don't block login on profile creation issues; surface for debugging
-          console.warn('Failed to ensure user profile row:', profileErr);
-        }
-
-        // Send email verification link. This requires an active session for the user account.
-        try {
-          await account.createVerification({
-            url: `${window.location.origin}/verify`
-          });
-        } catch (e) {
-          console.warn('Failed to send verification email:', e);
-        }
-
-        return loggedIn;
-      }
-
-      return userAccount;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  async resendVerification(): Promise<void> {
-    // Re-send verification email to the current authenticated user
-    await account.createEmailVerification({
-      url: `${window.location.origin}/verify`
+    const data = await apiFetch<AuthPayload>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name: `${firstName} ${lastName}`.trim(), firstName, lastName, userName, dateOfBirth }),
     });
-  },
-
-  async confirmVerification(userId: string, secret: string): Promise<void> {
-    // Confirm verification using parameters from the email link
-    await account.updateEmailVerification({ userId, secret });
+    if (!data.user) throw new Error('Authentication failed');
+    const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
+    this.setCurrentAuthUser(mapped);
+    if (data.profile) this.setCurrentUserData(data.profile as UserData);
+    this.setGuest(false);
+    return mapped;
   },
 
   async login(email: string, password: string): Promise<UserAccount> {
-    try {
-      // Check if user is already logged in
-      const existingUser = await this.getCurrentUser();
-      if (existingUser) {
-        return existingUser; // Return existing user instead of creating new session
-      }
-
-      await account.createEmailPasswordSession({
-        email,
-        password
-      });
-
-      const user = await account.get();
-      // Persist to localStorage
-      this.setCurrentAuthUser(user as UserAccount);
-      this.setGuest(false);
-      return user as UserAccount;
-    } catch (error) {
-      throw error;
-    }
+    const data = await apiFetch<AuthPayload>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    if (!data.user) throw new Error('Authentication failed');
+    const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
+    this.setCurrentAuthUser(mapped);
+    if (data.profile) this.setCurrentUserData(data.profile as UserData);
+    this.setGuest(false);
+    return mapped;
   },
 
   async getCurrentUser(): Promise<UserAccount | null> {
+    const cached = this.getStoredAuthUser();
+    if (cached) return cached;
     try {
-      // Try localStorage first for faster hydration
-      const cached = this.getStoredAuthUser();
-      if (cached) return cached;
-
-      // Fallback to Appwrite
-      const user = await account.get();
-      this.setCurrentAuthUser(user as UserAccount);
-      return user as UserAccount;
-    } catch (error) {
-      // If there's an error getting the user, they're not logged in
+      const { user } = await this.fetchSession();
+      return user;
+    } catch {
       return null;
     }
   },
 
   async logout(): Promise<void> {
     try {
-      await account.deleteSession({
-        sessionId: 'current'
-      });
-    } catch (error) {
-      // If logout fails, user might already be logged out
-      console.warn('Logout error:', error);
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore
     }
-    // Always clear local cache
     this.setCurrentAuthUser(null);
     this.setCurrentUserData(null);
     this.setGuest(false);
   },
 
-  async checkSession(): Promise<boolean> {
-    try {
-      await account.get();
-      return true;
-    } catch (error) {
-      return false;
-    }
+  async updatePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await apiFetch('/api/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
+
+  async updateEmail(): Promise<void> {
+    throw new Error('Email updates are not yet supported in the self-hosted auth flow.');
+  },
+
+  async resendVerification(): Promise<void> {
+    return;
+  },
+
+  async confirmVerification(_userId: string, _secret: string): Promise<void> {
+    return;
   },
 
   async oauthLoginWithGoogle(): Promise<void> {
-    const successUrl = `${window.location.origin}/discover`;
-    const failureUrl = `${window.location.origin}/login`;
-    // Clear any guest flag before redirecting to provider
-    this.setGuest(false);
-    await account.createOAuth2Session({ provider: OAuthProvider.Google, success: successUrl, failure: failureUrl });
+    throw new Error('OAuth is not configured for the self-hosted auth flow yet.');
   },
 
   async guestLogin(): Promise<void> {
-    try {
-      // Ensure we're not carrying over any prior user state
-      this.setCurrentAuthUser(null);
-      this.setCurrentUserData(null);
-
-      // Create an anonymous (guest) session with Appwrite
-      await account.createAnonymousSession();
-
-      // Mark guest mode in localStorage for downstream checks
-      this.setGuest(true);
-    } catch (error) {
-      // Bubble up so caller can show a friendly error
-      throw error;
-    }
-  }
+    this.setCurrentAuthUser(null);
+    this.setCurrentUserData(null);
+    this.setGuest(true);
+  },
 };

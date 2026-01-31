@@ -1,12 +1,7 @@
-import { databases, functions } from '@/app/appwrite';
-import { ExecutionMethod } from 'appwrite';
 import { Event, Team, Field, Match, TournamentBracket, UserData } from '@/types';
 import { eventService } from './eventService';
 import { authService } from './auth';
-
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
-const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
+import { apiRequest } from './apiClient';
 
 class TournamentService {
     async getTournamentBracket(tournamentId: string): Promise<TournamentBracket> {
@@ -61,7 +56,7 @@ class TournamentService {
         }
     }
 
-    async updateMatch(matchId: string, updates: Partial<Match>): Promise<Match> {
+    async updateMatch(eventId: string, matchId: string, updates: Partial<Match>): Promise<Match> {
         try {
             const payload: Record<string, unknown> = {};
 
@@ -167,56 +162,24 @@ class TournamentService {
                 }
             });
 
-            const response = await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: MATCHES_TABLE_ID,
-                rowId: matchId,
-                data: payload,
+            const response = await apiRequest<{ match: Match }>(`/api/events/${eventId}/matches/${matchId}`, {
+                method: 'PATCH',
+                body: payload,
             });
 
-            const eventId: string | undefined =
-                (typeof response.eventId === 'string' && response.eventId) ||
-                (response.event && typeof response.event === 'object' && '$id' in response.event ? response.event.$id : undefined);
-
-            if (eventId) {
-                const tournament = await eventService.getEventWithRelations(eventId);
-                const hydratedMatch = tournament?.matches?.find((match) => match.$id === response.$id);
-                if (hydratedMatch) {
-                    return hydratedMatch;
-                }
+            if (!response?.match) {
+                throw new Error('Failed to update match');
             }
 
-            return {
-                $id: response.$id,
-                matchId: response.matchNumber ?? response.matchId,
-                field: undefined,
-                start: response.start,
-                end: response.end,
-                division: response.division,
-                team1Points: response.team1Points || [],
-                team2Points: response.team2Points || [],
-                losersBracket: response.losersBracket || false,
-                winnerNextMatchId: response.winnerNextMatchId,
-                loserNextMatchId: response.loserNextMatchId,
-                previousLeftId: response.previousLeftId ?? response.previousLeftMatchId,
-                previousRightId: response.previousRightId ?? response.previousRightMatchId,
-                setResults: response.setResults || [],
-                refCheckedIn: response.refCheckedIn ?? response.refereeCheckedIn,
-                refereeId: response.refereeId ?? null,
-                teamRefereeId: response.teamRefereeId ?? null,
-                team1Seed: response.team1Seed ?? undefined,
-                team2Seed: response.team2Seed ?? undefined,
-                $createdAt: response.$createdAt,
-                $updatedAt: response.$updatedAt,
-            };
+            return response.match;
         } catch (error) {
             console.error('Failed to update match:', error);
             throw error;
         }
     }
 
-    async updateMatchScores(matchId: string, updates: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'>): Promise<Match> {
-        return this.updateMatch(matchId, updates);
+    async updateMatchScores(eventId: string, matchId: string, updates: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'>): Promise<Match> {
+        return this.updateMatch(eventId, matchId, updates);
     }
 
     async completeMatch(
@@ -226,30 +189,17 @@ class TournamentService {
     ): Promise<void> {
         try {
             const nowIso = new Date().toISOString();
-            const response = await functions.createExecution({
-                functionId: EVENT_MANAGER_FUNCTION_ID,
-                xpath: `/events/${eventId}/matches/${matchId}`,
-                method: ExecutionMethod.PATCH,
-                body: JSON.stringify({
+            await apiRequest(`/api/events/${eventId}/matches/${matchId}`, {
+                method: 'PATCH',
+                body: {
                     matchId,
-                    event: eventId,
+                    finalize: true,
                     setResults: payload.setResults,
                     team1Points: payload.team1Points,
                     team2Points: payload.team2Points,
                     time: nowIso,
-                }),
-                async: false,
+                },
             });
-
-            const responseErrors = Array.isArray(response.errors) ? response.errors : null;
-            if (responseErrors && responseErrors.length > 0) {
-                throw new Error(responseErrors.join(', '));
-            }
-
-            const body = response.responseBody ? JSON.parse(response.responseBody) : {};
-            if (body?.error) {
-                throw new Error(body.error);
-            }
         } catch (error) {
             console.error('Failed to finalize match via event manager:', error);
             throw error;

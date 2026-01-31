@@ -21,6 +21,21 @@ const parseExecutionResponse = <T = unknown>(responseBody: string | null | undef
   }
 };
 
+const normalizeProductPeriod = (value: unknown): ProductPeriod => {
+  if (typeof value !== 'string') {
+    return 'month';
+  }
+
+  const normalized = value.toLowerCase();
+  if (normalized === 'monthly') return 'month';
+  if (normalized === 'weekly') return 'week';
+  if (normalized === 'yearly') return 'year';
+  if (normalized === 'week' || normalized === 'month' || normalized === 'year') {
+    return normalized as ProductPeriod;
+  }
+  return 'month';
+};
+
 type CreateProductInput = {
   user: UserData;
   organizationId: string;
@@ -50,8 +65,7 @@ class ProductService {
   private mapProduct(row: any): Product {
     const priceRaw = row?.priceCents ?? row?.price ?? 0;
     const priceCents = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw) || 0;
-    const periodRaw: string =
-      typeof row?.period === 'string' ? row.period.toLowerCase() : (row?.period as string) || 'monthly';
+    const period = normalizeProductPeriod(row?.period);
 
     return {
       $id: row?.$id ?? row?.id,
@@ -59,7 +73,7 @@ class ProductService {
       name: row?.name ?? 'Product',
       description: row?.description ?? row?.desc ?? undefined,
       priceCents,
-      period: (periodRaw as ProductPeriod) || 'monthly',
+      period,
       createdBy: row?.createdBy ?? row?.ownerId,
       isActive: row?.isActive ?? true,
       $createdAt: row?.$createdAt,
@@ -69,8 +83,7 @@ class ProductService {
   private mapSubscription(row: any): Subscription {
     const priceRaw = row?.priceCents ?? row?.price ?? 0;
     const priceCents = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw) || 0;
-    const periodRaw: string =
-      typeof row?.period === 'string' ? row.period.toLowerCase() : (row?.period as string) || 'monthly';
+    const period = normalizeProductPeriod(row?.period);
     const statusRaw = typeof row?.status === 'string' ? row.status.toUpperCase() : 'ACTIVE';
 
     return {
@@ -80,7 +93,7 @@ class ProductService {
       organizationId: row?.organizationId ?? undefined,
       startDate: row?.startDate ?? row?.$createdAt ?? new Date().toISOString(),
       priceCents,
-      period: (periodRaw as ProductPeriod) || 'monthly',
+      period,
       status: statusRaw as Subscription['status'],
     };
   }

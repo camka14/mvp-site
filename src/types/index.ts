@@ -1,7 +1,5 @@
-import { avatars, storage } from "@/app/appwrite";
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
-import { Avatars } from "appwrite";
 
 // User types
 export interface UserAccount {
@@ -859,34 +857,17 @@ export function getUserFullName(user: UserData): string {
 
 export function getUserAvatarUrl(user: UserData, size: number = 64): string {
   if (user.profileImageId) {
-    return storage.getFilePreview({
-      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
-      fileId: user.profileImageId,
-      width: size,
-      height: size
-    });
+    return `/api/files/${user.profileImageId}`;
   }
 
   const fullName = getUserFullName(user);
   const initials = fullName || user.userName || 'User';
-  if (avatars && typeof avatars.getInitials === 'function') {
-    return avatars.getInitials({
-      name: initials,
-      width: size,
-      height: size
-    });
-  }
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=${size}`;
 }
 
 export function getTeamAvatarUrl(team: Team, size: number = 64): string {
   if (team.profileImageId) {
-    return storage.getFilePreview({
-      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
-      fileId: team.profileImageId,
-      width: size,
-      height: size
-    });
+    return `/api/files/${team.profileImageId}`;
   }
 
   const teamName = team.name || 'Team';
@@ -895,13 +876,6 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
     .join('')
     .substring(0, 2)
     .toUpperCase();
-  if (avatars && typeof avatars.getInitials === 'function') {
-    return avatars.getInitials({
-      name: initials,
-      width: size,
-      height: size
-    });
-  }
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=${size}`;
 }
 
@@ -918,20 +892,7 @@ export function getEventImageUrl(params: {
   if (!params.imageId) {
     return fallback;
   }
-  if (params.width || params.height) {
-    return storage.getFilePreview({
-      bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
-      fileId: params.imageId,
-      width: params.width,
-      height: params.height
-    });
-  }
-  return storage.getFilePreview({
-    bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!,
-    fileId: params.imageId,
-    width: params.size,
-    height: params.size
-  });
+  return `/api/files/${params.imageId}`;
 }
 
 export function getTeamWinRate(team: Team): number {

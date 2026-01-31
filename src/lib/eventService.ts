@@ -27,6 +27,7 @@ import { buildPayload } from './utils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
 import { ExecutionMethod } from 'appwrite';
 import { LeagueScheduleResponse } from './leagueService';
+import { apiRequest } from './apiClient';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
@@ -254,38 +255,28 @@ class EventService {
     }
     
       async scheduleEvent(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
-        const payload: Record<string, any> = {
-          eventDocument,
-        };
-    
+        const payload: Record<string, any> = { eventDocument };
+
         if (typeof options.participantCount === 'number') {
           payload.participantCount = options.participantCount;
         }
-    
-        const execution = await functions.createExecution({
-          functionId: EVENT_MANAGER_FUNCTION_ID,
-          xpath: '/events/schedule',
-          method: ExecutionMethod.POST,
-          body: JSON.stringify(payload),
-          async: false,
+
+        const result = await apiRequest<{
+          preview?: boolean;
+          event?: Event;
+          matches?: Match[];
+        }>('/api/events/schedule', {
+          method: 'POST',
+          body: payload,
         });
-    
-        const parsed = JSON.parse(execution.responseBody || '{}');
-        if (parsed.error) {
-          throw new Error(
-            typeof parsed.error === 'string' && parsed.error.length > 0
-              ? parsed.error
-              : 'Failed to preview league schedule'
-          );
+
+        const event = result?.event;
+        if (event && Array.isArray(result.matches)) {
+          event.matches = result.matches;
         }
-    
-        let event: Event | undefined;
-        if (parsed.event) {
-          event = await eventService.mapRowFromDatabase(parsed.event, true);
-        }
-    
+
         return {
-          preview: typeof parsed.preview === 'boolean' ? parsed.preview : true,
+          preview: typeof result.preview === 'boolean' ? result.preview : false,
           event,
         };
       }

@@ -3,9 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { authService } from '@/lib/auth';
 import { userService } from '@/lib/userService';
-import { account, ID } from '@/app/appwrite';
 import { UserData } from '@/types';
-import { upsertSensitiveUser } from '@/lib/sensitiveUserDataService';
 
 interface UserAccount {
   $id: string;
@@ -40,7 +38,6 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps) {
-  // Initialize from localStorage for faster hydration
   const [user, setUserState] = useState<UserData | null>(() => {
     return typeof window !== 'undefined' ? authService.getStoredUserData() : null;
   });
@@ -56,71 +53,19 @@ export function Providers({ children }: ProvidersProps) {
 
   const checkAuth = async () => {
     try {
-      // First get the authenticated user from Appwrite Auth
-      const currentAuthUser = await authService.getCurrentUser();
+      const session = await authService.fetchSession();
+      const currentAuthUser = session.user;
       const guest = authService.isGuest();
       setAuthUser(currentAuthUser);
       setIsGuest(guest);
 
       if (guest) {
-        // In guest mode, do not fetch or create extended user data
         setUser(null);
         authService.setCurrentUserData(null);
       } else if (currentAuthUser) {
-        // Then get or create the extended user data from your custom user table
         let userData = await userService.getUserById(currentAuthUser.$id);
-        if (!userData) {
-          try {
-            let firstName = '';
-            let lastName = '';
-
-            // Try to enrich from current OAuth session (e.g., Google)
-            try {
-              const session = await account.getSession({ sessionId: 'current' });
-              const provider = (session.provider || '').toLowerCase();
-              const accessToken = (session as any).providerAccessToken as string | undefined;
-              if (provider === 'google' && accessToken) {
-                const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                  headers: { Authorization: `Bearer ${accessToken}` }
-                });
-                if (resp.ok) {
-                  const info = await resp.json();
-                  firstName = (info.given_name || '').toString();
-                  lastName = (info.family_name || '').toString();
-                }
-              }
-            } catch {}
-
-            // Fallback to name or email if OAuth enrichment unavailable
-            if (!firstName && !lastName) {
-              const fullName = (currentAuthUser.name || '').trim();
-              if (fullName) {
-                const parts = fullName.split(/\s+/);
-                firstName = parts[0] || '';
-                lastName = parts.slice(1).join(' ');
-              }
-            }
-            if (!firstName) firstName = (currentAuthUser.email.split('@')[0] || 'user');
-            if (!lastName) lastName = '';
-
-            const userName = `${firstName.replace(/\s+/g, '').toLowerCase()}${ID.unique()}`;
-
-            userData = await userService.createUser(currentAuthUser.$id, {
-              firstName,
-              lastName,
-              userName,
-              teamIds: [],
-              friendIds: [],
-              friendRequestIds: [],
-              friendRequestSentIds: [],
-              followingIds: [],
-              uploadedImages: [],
-              profileImageId: ''
-            } as any);
-            await upsertSensitiveUser(currentAuthUser.email, currentAuthUser.$id);
-          } catch (e) {
-            console.warn('Failed to create missing user profile row:', e);
-          }
+        if (!userData && session.profile) {
+          userData = session.profile;
         }
         if (userData) {
           setUser(userData);
@@ -143,7 +88,6 @@ export function Providers({ children }: ProvidersProps) {
     }
   };
 
-  // Ensure setUser persists to localStorage for consumers
   const setUser = (value: UserData | null) => {
     setUserState(value);
     authService.setCurrentUserData(value);

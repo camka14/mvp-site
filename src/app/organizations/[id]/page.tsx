@@ -13,7 +13,7 @@ import { useApp } from '@/app/providers';
 import type { Organization, Product, UserData, PaymentIntent, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
-import { databases, ID, storage } from '@/app/appwrite';
+import { databases, ID } from '@/app/appwrite';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
@@ -691,9 +691,9 @@ function OrganizationDetailContent() {
   if (!isAuthenticated || !user) return null;
 
   const logoUrl = org?.logoId
-    ? storage.getFilePreview({ bucketId: process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!, fileId: org.logoId!, width: 64, height: 64 })
+    ? `/api/files/${org.logoId}`
     : org?.name
-      ? `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/avatars/initials?name=${encodeURIComponent(org.name)}&width=64&height=64`
+      ? `https://ui-avatars.com/api/?name=${encodeURIComponent(org.name)}&size=64`
       : '';
 
   return (
@@ -1161,7 +1161,7 @@ function OrganizationDetailContent() {
                           { label: 'Year', value: 'year' },
                         ]}
                         value={productPeriod}
-                        onChange={(value) => setProductPeriod((value as any) ?? 'monthly')}
+                        onChange={(value) => setProductPeriod((value as any) ?? 'month')}
                       />
                       <TextInput
                         label="Description"

@@ -45,7 +45,6 @@ export default function LoginPage() {
 
     try {
       let authUser: Awaited<ReturnType<typeof authService.login>> | null = null;
-      let existingUserLookup: Awaited<ReturnType<typeof authService.findExistingUserDataByEmail>> = null;
       if (isLogin) {
         authUser = await authService.login(formData.email, formData.password);
       } else {
@@ -53,15 +52,13 @@ export default function LoginPage() {
         if (!formData.firstName || !formData.lastName || !formData.userName || !formData.dateOfBirth) {
           throw new Error('Please provide first name, last name, username, and date of birth');
         }
-        existingUserLookup = await authService.findExistingUserDataByEmail(formData.email);
         authUser = await authService.createAccount(
           formData.email,
           formData.password,
           formData.firstName,
           formData.lastName,
           formData.userName,
-          formData.dateOfBirth,
-          existingUserLookup?.userId
+          formData.dateOfBirth
         );
       }
 
@@ -69,7 +66,7 @@ export default function LoginPage() {
         throw new Error('Authentication failed');
       }
 
-      const extendedUser = await userService.getUserById(existingUserLookup?.userId || authUser.$id);
+      const extendedUser = await userService.getUserById(authUser.$id);
 
       if (!extendedUser) {
         throw new Error('Failed to retrieve user profile data');
@@ -77,11 +74,6 @@ export default function LoginPage() {
 
       setUser(extendedUser);
       setAuthUser(authUser as any);
-      // After signup, direct users to the verification page
-      if (!isLogin) {
-        router.push('/verify');
-        return;
-      }
       router.push('/discover');
 
     } catch (error: any) {

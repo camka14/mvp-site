@@ -13,6 +13,7 @@ import { leagueService } from '@/lib/leagueService';
 import { tournamentService } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
 import { paymentService } from '@/lib/paymentService';
+import { apiRequest } from '@/lib/apiClient';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { ID } from '@/app/appwrite';
 import { toEventPayload } from '@/types';
@@ -734,7 +735,8 @@ function EventScheduleContent() {
     setInfoMessage(null);
 
     try {
-      const fetchedEvent = (await eventService.getEventWithRelations(eventId)) ?? null;
+      const response = await apiRequest<{ event: Event }>(`/api/events/${eventId}`);
+      const fetchedEvent = response?.event ?? null;
 
       if (!fetchedEvent) {
         setError('League not found.');
@@ -1536,21 +1538,25 @@ function EventScheduleContent() {
 
   const handleScoreChange = useCallback(
     async ({ matchId, team1Points, team2Points, setResults }: { matchId: string; team1Points: number[]; team2Points: number[]; setResults: number[] }) => {
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) return;
       try {
-        await tournamentService.updateMatchScores(matchId, { team1Points, team2Points, setResults });
+        await tournamentService.updateMatchScores(targetEventId, matchId, { team1Points, team2Points, setResults });
       } catch (err) {
         console.warn('Non-blocking score sync failed:', err);
       }
     },
-    [],
+    [activeEvent?.$id, eventId],
   );
 
   const handleSetComplete = useCallback(
     async ({ matchId, team1Points, team2Points, setResults }: { matchId: string; team1Points: number[]; team2Points: number[]; setResults: number[] }) => {
-      const updated = await tournamentService.updateMatch(matchId, { team1Points, team2Points, setResults });
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) return;
+      const updated = await tournamentService.updateMatch(targetEventId, matchId, { team1Points, team2Points, setResults });
       applyMatchUpdate(updated as Match);
     },
-    [applyMatchUpdate],
+    [applyMatchUpdate, activeEvent?.$id, eventId],
   );
 
   const handleMatchComplete = useCallback(
@@ -1578,8 +1584,10 @@ function EventScheduleContent() {
 
   const handleScoreSubmit = useCallback(
     async (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => {
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) return;
       try {
-        const updated = await tournamentService.updateMatch(matchId, { team1Points, team2Points, setResults });
+        const updated = await tournamentService.updateMatch(targetEventId, matchId, { team1Points, team2Points, setResults });
         applyMatchUpdate(updated as Match);
         setScoreUpdateMatch(null);
         setIsScoreModalOpen(false);
@@ -1588,7 +1596,7 @@ function EventScheduleContent() {
         setError('Failed to update score. Please try again.');
       }
     },
-    [applyMatchUpdate],
+    [applyMatchUpdate, activeEvent?.$id, eventId],
   );
 
   const handleMakeUserTeamReferee = useCallback(
@@ -1602,8 +1610,11 @@ function EventScheduleContent() {
       const confirm = window.confirm('No referee is assigned. Make your team the referee for this match?');
       if (!confirm) return null;
 
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) return null;
+
       try {
-        const updated = await tournamentService.updateMatch(match.$id, { teamRefereeId: userTeam.$id });
+        const updated = await tournamentService.updateMatch(targetEventId, match.$id, { teamRefereeId: userTeam.$id });
         const withTeam = {
           ...(updated as Match),
           teamReferee: (updated as Match).teamReferee ?? userTeam,
@@ -1616,7 +1627,7 @@ function EventScheduleContent() {
         return null;
       }
     },
-    [applyMatchUpdate, findUserTeam],
+    [applyMatchUpdate, findUserTeam, activeEvent?.$id, eventId],
   );
 
   const handleMatchClick = useCallback(
