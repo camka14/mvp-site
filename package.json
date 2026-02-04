@@ -67,8 +67,10 @@
     "tailwindcss": "^4.1.17",
     "ts-transformer-keys": "^0.4.4",
     "zod": "^4.1.13",
-    "prisma": "^5.22.0",
-    "@prisma/client": "^5.22.0",
+    "@prisma/adapter-pg": "^7.3.0",
+    "@prisma/client": "^7.3.0",
+    "prisma": "^7.3.0",
+    "pg": "^8.11.5",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
