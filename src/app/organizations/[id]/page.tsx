@@ -691,9 +691,9 @@ function OrganizationDetailContent() {
   if (!isAuthenticated || !user) return null;
 
   const logoUrl = org?.logoId
-    ? `/api/files/${org.logoId}`
+    ? `/api/files/${org.logoId}/preview?w=64&h=64&fit=cover`
     : org?.name
-      ? `https://ui-avatars.com/api/?name=${encodeURIComponent(org.name)}&size=64`
+      ? `/api/avatars/initials?name=${encodeURIComponent(org.name)}&size=64`
       : '';
 
   return (

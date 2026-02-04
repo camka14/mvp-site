@@ -101,7 +101,7 @@ export default function CreateOrganizationModal({
 
       if (organization.logoId) {
         try {
-          setLogoUrl(`/api/files/${organization.logoId}`);
+          setLogoUrl(`/api/files/${organization.logoId}/preview?w=160&h=160&fit=cover`);
         } catch (previewError) {
           console.warn('Unable to load organization logo preview:', previewError);
           setLogoUrl('');

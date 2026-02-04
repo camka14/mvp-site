@@ -90,7 +90,7 @@ class UserService {
     }
     const data = await res.json();
     const fileId = data?.file?.id as string;
-    return { fileId, imageUrl: `/api/files/${fileId}` };
+    return { fileId, imageUrl: `/api/files/${fileId}/preview?w=320&h=320&fit=cover` };
   }
 }
 

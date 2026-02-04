@@ -21,10 +21,13 @@ export function ImageSelectionModal({
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const buildPreviewUrl = (id: string, size: number): string =>
+        `/api/files/${id}/preview?w=${size}&h=${size}&fit=cover`;
+
     // ✅ Create image data with both ID and URL
     const uploadedImages = (user?.uploadedImages || []).map(imgId => ({
         id: imgId,
-        url: `/api/files/${imgId}`
+        url: buildPreviewUrl(imgId, 240)
     })) || [];
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,8 +35,8 @@ export function ImageSelectionModal({
         if (!file) return;
 
         // Validate file
-        if (file.size > 5 * 1024 * 1024) {
-            setError('File size must be less than 5MB');
+        if (file.size > 10 * 1024 * 1024) {
+            setError('File size must be less than 10MB');
             return;
         }
 
@@ -66,7 +69,7 @@ export function ImageSelectionModal({
             try { await refreshUser(); } catch {}
 
             // Get preview URL
-            const url = `/api/files/${fileId}`;
+            const url = buildPreviewUrl(fileId, 640);
 
             onSelect(fileId, url);
             onClose();
@@ -118,7 +121,7 @@ export function ImageSelectionModal({
                                 </Button>
                             )}
                         </FileButton>
-                        <Text c="dimmed" size="sm">Max 5MB, images only</Text>
+                        <Text c="dimmed" size="sm">Max 10MB, images only</Text>
                     </Group>
                 )}
 

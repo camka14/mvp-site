@@ -855,19 +855,36 @@ export function getUserFullName(user: UserData): string {
   return `${user.firstName} ${user.lastName}`.trim();
 }
 
+const buildPreviewUrl = (fileId: string, width?: number, height?: number): string => {
+  const params = new URLSearchParams();
+  if (width) params.set('w', String(width));
+  if (height) params.set('h', String(height));
+  if (width && height) params.set('fit', 'cover');
+  const query = params.toString();
+  return `/api/files/${fileId}/preview${query ? `?${query}` : ''}`;
+};
+
+const buildInitialsAvatarUrl = (name: string, size: number): string => {
+  const params = new URLSearchParams({
+    name,
+    size: String(size),
+  });
+  return `/api/avatars/initials?${params.toString()}`;
+};
+
 export function getUserAvatarUrl(user: UserData, size: number = 64): string {
   if (user.profileImageId) {
-    return `/api/files/${user.profileImageId}`;
+    return buildPreviewUrl(user.profileImageId, size, size);
   }
 
   const fullName = getUserFullName(user);
   const initials = fullName || user.userName || 'User';
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=${size}`;
+  return buildInitialsAvatarUrl(initials, size);
 }
 
 export function getTeamAvatarUrl(team: Team, size: number = 64): string {
   if (team.profileImageId) {
-    return `/api/files/${team.profileImageId}`;
+    return buildPreviewUrl(team.profileImageId, size, size);
   }
 
   const teamName = team.name || 'Team';
@@ -876,7 +893,7 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
     .join('')
     .substring(0, 2)
     .toUpperCase();
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=${size}`;
+  return buildInitialsAvatarUrl(initials, size);
 }
 
 export function getEventImageUrl(params: {
@@ -892,7 +909,9 @@ export function getEventImageUrl(params: {
   if (!params.imageId) {
     return fallback;
   }
-  return `/api/files/${params.imageId}`;
+  const resolvedWidth = params.width ?? params.size;
+  const resolvedHeight = params.height ?? params.size;
+  return buildPreviewUrl(params.imageId, resolvedWidth, resolvedHeight);
 }
 
 export function getTeamWinRate(team: Team): number {

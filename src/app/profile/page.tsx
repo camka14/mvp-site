@@ -557,6 +557,10 @@ export default function ProfilePage() {
         );
     }
 
+    const profileImagePreviewUrl = profileData.profileImageId
+        ? `/api/files/${profileData.profileImageId}/preview?w=128&h=128&fit=cover`
+        : getUserAvatarUrl(user, 128);
+
     return (
         <>
             <Navigation />
@@ -570,7 +574,7 @@ export default function ProfilePage() {
                             <div className="flex items-end -mt-16 mb-6 bg">
                                 <div className="relative">
                                     <Avatar
-                                        src={profileData.profileImageId || getUserAvatarUrl(user, 128)}
+                                        src={profileImagePreviewUrl}
                                         alt={user.fullName}
                                         size={128}
                                         radius="xl"
@@ -610,7 +614,11 @@ export default function ProfilePage() {
                                 <div className="mb-6">
                                     <Text size="sm" fw={500} mb={6}>Profile Picture</Text>
                                     <ImageUploader
-                                        currentImageUrl={profileData.profileImageId}
+                                        currentImageUrl={
+                                            profileData.profileImageId
+                                                ? `/api/files/${profileData.profileImageId}/preview?w=320&h=320&fit=cover`
+                                                : ''
+                                        }
                                         bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                                         placeholder="Upload new profile picture"
                                     />
