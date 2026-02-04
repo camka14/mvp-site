@@ -28,7 +28,16 @@ jest.mock('@/lib/apiClient', () => ({
   apiRequest: jest.fn(),
 }));
 
-jest.mock('@/components/layout/Navigation', () => () => <div data-testid="navigation" />);
+jest.mock('@/components/layout/Navigation', () => {
+  function MockNavigation() {
+    return <div data-testid="navigation" />;
+  }
+  MockNavigation.displayName = 'MockNavigation';
+  return {
+    __esModule: true,
+    default: MockNavigation,
+  };
+});
 
 jest.mock('@/lib/eventService', () => ({
   eventService: {
@@ -56,17 +65,22 @@ jest.mock('@/lib/organizationService', () => ({
 let capturedEventFormProps: any = null;
 jest.mock('../components/EventForm', () => {
   const React = require('react');
-  const { forwardRef, useImperativeHandle } = React;
+  const { forwardRef, useEffect, useImperativeHandle } = React;
+  const MockEventForm = forwardRef(function MockEventForm(props: any, ref: any) {
+    useEffect(() => {
+      capturedEventFormProps = props;
+    }, [props]);
+
+    useImperativeHandle(ref, () => ({
+      getDraft: () => props.event ?? {},
+      validate: async () => true,
+    }));
+    return <div data-testid="event-form" />;
+  });
+  MockEventForm.displayName = 'MockEventForm';
   return {
     __esModule: true,
-    default: forwardRef((props: any, ref: any) => {
-      capturedEventFormProps = props;
-      useImperativeHandle(ref, () => ({
-        getDraft: () => props.event ?? {},
-        validate: async () => true,
-      }));
-      return <div data-testid="event-form" />;
-    }),
+    default: MockEventForm,
   };
 });
 
@@ -85,7 +99,16 @@ jest.mock('../components/LeagueCalendarView', () => {
   };
 });
 
-jest.mock('../components/TournamentBracketView', () => () => <div data-testid="bracket-view" />);
+jest.mock('../components/TournamentBracketView', () => {
+  function MockTournamentBracketView() {
+    return <div data-testid="bracket-view" />;
+  }
+  MockTournamentBracketView.displayName = 'MockTournamentBracketView';
+  return {
+    __esModule: true,
+    default: MockTournamentBracketView,
+  };
+});
 
 jest.mock('@/app/hooks/useSports', () => {
   const { createSport } = require('@/types/defaults');

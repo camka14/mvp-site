@@ -1059,7 +1059,7 @@ export default function ProfilePage() {
                                         <Button onClick={handleEmailUpdate} disabled={saving || !emailData.email || !emailData.currentPassword}>Update Email</Button>
                                     </div>
                                 ) : (
-                                    <Text c="dimmed">Click "Change Email" to update your email address</Text>
+                                    <Text c="dimmed">{'Click "Change Email" to update your email address'}</Text>
                                 )}
                             </Paper>
 
@@ -1080,7 +1080,7 @@ export default function ProfilePage() {
                                         <Button onClick={handlePasswordUpdate} disabled={saving || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}>Update Password</Button>
                                     </div>
                                 ) : (
-                                    <Text c="dimmed">Click "Change Password" to update your password</Text>
+                                    <Text c="dimmed">{'Click "Change Password" to update your password'}</Text>
                                 )}
                             </Paper>
                         </div>

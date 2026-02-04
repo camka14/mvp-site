@@ -736,8 +736,9 @@ function EventScheduleContent() {
     setInfoMessage(null);
 
     try {
-      const response = await apiRequest<{ event?: Event; matches?: Match[] }>(`/api/events/${eventId}`);
-      const fetchedEvent = normalizeApiEvent(response?.event ?? null);
+      const response = await apiRequest<any>(`/api/events/${eventId}`);
+      const responseEvent = response?.event ?? response;
+      const fetchedEvent = normalizeApiEvent(responseEvent ?? null);
 
       if (!fetchedEvent) {
         setError('League not found.');
@@ -745,7 +746,7 @@ function EventScheduleContent() {
       }
 
       if (Array.isArray(response?.matches)) {
-        fetchedEvent.matches = response.matches.map((match) => normalizeApiMatch(match));
+        fetchedEvent.matches = response.matches.map((match: Match) => normalizeApiMatch(match));
       }
 
       hydrateEvent(fetchedEvent);

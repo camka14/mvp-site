@@ -5,10 +5,20 @@ import { withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
+const userLocationSchema = z
+  .object({
+    lat: z.number(),
+    lng: z.number().optional(),
+    long: z.number().optional(),
+  })
+  .refine((value) => typeof value.lng === 'number' || typeof value.long === 'number', {
+    message: 'userLocation.lng or userLocation.long is required',
+  });
+
 const filterSchema = z.object({
   query: z.string().optional(),
   maxDistance: z.number().optional(),
-  userLocation: z.object({ lat: z.number(), long: z.number() }).optional(),
+  userLocation: userLocationSchema.optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
   priceMax: z.number().optional(),
@@ -95,13 +105,17 @@ export async function POST(req: NextRequest) {
   });
 
   if (filters.userLocation && typeof filters.maxDistance === 'number') {
-    const { lat, long } = filters.userLocation;
+    const { lat, lng, long } = filters.userLocation;
+    const lon = typeof long === 'number' ? long : lng;
+    if (typeof lon !== 'number') {
+      return NextResponse.json({ error: 'Invalid input', details: { userLocation: 'Missing longitude' } }, { status: 400 });
+    }
     events = events.filter((event) => {
       const coords = event.coordinates as any;
       if (!Array.isArray(coords) || coords.length < 2) return true;
       const [lng, latitude] = coords;
       if (typeof lng !== 'number' || typeof latitude !== 'number') return true;
-      return haversineMiles(lat, long, latitude, lng) <= (filters.maxDistance as number);
+      return haversineMiles(lat, lon, latitude, lng) <= (filters.maxDistance as number);
     });
   }
 

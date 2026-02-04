@@ -11,5 +11,5 @@ export const advisoryLockId = (value: string): bigint => {
 
 export const acquireEventLock = async (client: PrismaLike, eventId: string): Promise<void> => {
   const lockId = advisoryLockId(eventId);
-  await client.$queryRaw`SELECT pg_advisory_xact_lock(${lockId})`;
+  await client.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
 };

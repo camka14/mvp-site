@@ -165,7 +165,9 @@ export function InviteUsersModal() {
                         )}
 
                         {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
-                            <Paper withBorder p="md" radius="md" ta="center"><Text c="dimmed" size="sm">No users found matching "{searchQuery}"</Text></Paper>
+                            <Paper withBorder p="md" radius="md" ta="center">
+                                <Text c="dimmed" size="sm">{`No users found matching "${searchQuery}"`}</Text>
+                            </Paper>
                         )}
                     </div>
 

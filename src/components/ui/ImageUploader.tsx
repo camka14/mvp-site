@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ImageSelectionModal } from './ImageSelectionModal';
 import { Box, Button, Group, ActionIcon, Paper, Stack, Text, Image } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -22,11 +22,8 @@ export function ImageUploader({
     readOnly = false,
 }: ImageUploaderProps) {
     const [opened, { open, close }] = useDisclosure(false);
-    const [selectedImageUrl, setSelectedImageUrl] = useState(currentImageUrl || '');
-
-    useEffect(() => {
-        setSelectedImageUrl(currentImageUrl || '');
-    }, [currentImageUrl]);
+    const [internalImageUrl, setInternalImageUrl] = useState('');
+    const selectedImageUrl = currentImageUrl ?? internalImageUrl;
 
     const handleOpen = () => {
         if (readOnly) return;
@@ -34,13 +31,13 @@ export function ImageUploader({
     };
 
     const handleImageSelect = (fileId: string, url: string) => {
-        setSelectedImageUrl(url);
+        setInternalImageUrl(url);
         onChange?.(fileId, url); // ✅ Pass both fileId and URL
     };
 
     const handleRemove = () => {
         if (readOnly) return;
-        setSelectedImageUrl('');
+        setInternalImageUrl('');
         onChange?.('', ''); // ✅ Clear both
     };
 

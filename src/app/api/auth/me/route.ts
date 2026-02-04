@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken, setAuthCookie, signSessionToken } from '@/lib/authServer';
+import { withLegacyFields } from '@/server/legacyFormat';
 
 const toPublicUser = (user: { id: string; email: string; name: string | null; createdAt: Date | null; updatedAt: Date | null }) => ({
   id: user.id,
@@ -32,7 +33,15 @@ export async function GET(req: NextRequest) {
 
   const profile = await prisma.userData.findUnique({ where: { id: user.id } });
   const refreshed = signSessionToken(decoded);
-  const res = NextResponse.json({ user: toPublicUser(user), session: decoded, token: refreshed, profile }, { status: 200 });
+  const res = NextResponse.json(
+    {
+      user: toPublicUser(user),
+      session: decoded,
+      token: refreshed,
+      profile: profile ? withLegacyFields(profile) : null,
+    },
+    { status: 200 },
+  );
   setAuthCookie(res, refreshed);
   return res;
 }

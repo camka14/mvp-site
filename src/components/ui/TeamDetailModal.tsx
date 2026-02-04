@@ -504,7 +504,9 @@ export default function TeamDetailModal({
                                         </Group>
                                     )}
                                     {!searching && searchQuery.length >= 2 && getAvailableUsers().length === 0 && (
-                                        <Text c="dimmed" ta="center" py={8}>No players found matching "{searchQuery}"</Text>
+                                        <Text c="dimmed" ta="center" py={8}>
+                                            {`No players found matching "${searchQuery}"`}
+                                        </Text>
                                     )}
                                     {!searching && (searchQuery.length < 2 && getFilteredFreeAgents().length > 0) && (
                                         <div className="mb-4">
@@ -638,7 +640,7 @@ export default function TeamDetailModal({
                     <Modal opened={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete Team" centered>
                         <Text c="dimmed" mb="sm">This action cannot be undone</Text>
                         <Text size="sm" mb="md">
-                            Are you sure you want to delete <strong>"{currentTeam.name}"</strong>? This will permanently remove the team and all its data.
+                            Are you sure you want to delete <strong>{`"${currentTeam.name}"`}</strong>? This will permanently remove the team and all its data.
                         </Text>
                         <Group grow>
                             <Button variant="default" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>

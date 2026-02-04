@@ -331,7 +331,7 @@ function TeamsPageContent() {
               </div>
               <h3 className="text-xl font-medium text-gray-900 mb-2">No invitations</h3>
               <p className="text-gray-600">
-                When teams invite you to join, they'll appear here.
+                {"When teams invite you to join, they'll appear here."}
               </p>
             </div>
           )}

@@ -78,7 +78,7 @@ function MatchCard({
 
     const clickable = typeof onClick === 'function';
 
-    const TeamRow = ({
+    const renderTeamRow = ({
         team,
         points,
         winner,
@@ -142,11 +142,11 @@ function MatchCard({
         </div>
     );
 
-    const VerticalLayout = () => (
+    const renderVerticalLayout = () => (
         <>
             <div className="space-y-2">
-                <TeamRow team={match.team1} points={match.team1Points} winner={result?.winner === 1} />
-                <TeamRow team={match.team2} points={match.team2Points} winner={result?.winner === 2} />
+                {renderTeamRow({ team: match.team1, points: match.team1Points, winner: result?.winner === 1 })}
+                {renderTeamRow({ team: match.team2, points: match.team2Points, winner: result?.winner === 2 })}
             </div>
             <div className="mt-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -163,23 +163,19 @@ function MatchCard({
         </>
     );
 
-    const HorizontalLayout = () => (
+    const renderHorizontalLayout = () => (
         <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3 items-stretch">
                 <div className="h-full">
-                    <TeamRow
-                        team={match.team1}
-                        points={match.team1Points}
-                        winner={result?.winner === 1}
-                    />
+                    {renderTeamRow({ team: match.team1, points: match.team1Points, winner: result?.winner === 1 })}
                 </div>
                 <div className="h-full">
-                    <TeamRow
-                        team={match.team2}
-                        points={match.team2Points}
-                        winner={result?.winner === 2}
-                        reverseScore
-                    />
+                    {renderTeamRow({
+                        team: match.team2,
+                        points: match.team2Points,
+                        winner: result?.winner === 2,
+                        reverseScore: true,
+                    })}
                 </div>
             </div>
             <div className="flex items-center justify-between gap-3">
@@ -233,7 +229,7 @@ function MatchCard({
                     </div>
                     {match.field && <div className="text-sm text-gray-600 shrink-0">Field {match.field.fieldNumber}</div>}
                 </div>
-                {layout === 'horizontal' ? <HorizontalLayout /> : <VerticalLayout />}
+                {layout === 'horizontal' ? renderHorizontalLayout() : renderVerticalLayout()}
             </div>
 
             {!showRefereeInHeader && (

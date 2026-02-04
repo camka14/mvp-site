@@ -137,6 +137,7 @@ export default function MatchEditModal({
   const [setResults, setSetResults] = useState<number[]>([0]);
   const [error, setError] = useState<string | null>(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!match || !opened) {
       setStartValue(null);
@@ -171,17 +172,18 @@ export default function MatchEditModal({
     setTeam2Points(aligned.team2);
     setSetResults(aligned.results);
     setError(null);
-  }, [match?.$id, opened]);
+  }, [match, opened]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  const matchTeam1Id = useMemo(() => getTeamId(match?.team1), [match?.team1]);
-  const matchTeam2Id = useMemo(() => getTeamId(match?.team2), [match?.team2]);
+  const matchTeam1Id = useMemo(() => getTeamId(match?.team1), [match]);
+  const matchTeam2Id = useMemo(() => getTeamId(match?.team2), [match]);
   const matchTeamRefereeId = useMemo(
     () => match?.teamRefereeId ?? getTeamId(match?.teamReferee) ?? getTeamId((match as any)?.referee),
-    [match?.teamRefereeId, match?.teamReferee, match?.referee],
+    [match],
   );
   const matchUserRefereeId = useMemo(
     () => match?.refereeId ?? getUserId(match?.referee),
-    [match?.refereeId, match?.referee],
+    [match],
   );
 
   const teamOptions = useMemo(() => {
@@ -207,7 +209,7 @@ export default function MatchEditModal({
     ensureOption(matchTeamRefereeId, resolveTeamName(match?.teamReferee ?? (match as any)?.referee, teams));
 
     return Array.from(optionsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [teams, matchTeam1Id, matchTeam2Id, matchTeamRefereeId, match?.team1, match?.team2, match?.teamReferee, match?.referee]);
+  }, [teams, matchTeam1Id, matchTeam2Id, matchTeamRefereeId, match]);
 
   const refereeOptions = useMemo(() => {
     const options = (referees ?? []).map((referee) => ({
@@ -225,7 +227,7 @@ export default function MatchEditModal({
     ensureOption(matchUserRefereeId, formatUserLabel(match?.referee as UserData));
 
     return options.sort((a, b) => a.label.localeCompare(b.label));
-  }, [referees, matchUserRefereeId, match?.referee]);
+  }, [referees, matchUserRefereeId, match]);
 
   const team1Options = useMemo(
     () => teamOptions.filter((option) => !team2Id || option.value === team1Id || option.value !== team2Id),
@@ -245,17 +247,11 @@ export default function MatchEditModal({
     [fields],
   );
 
-  const selectedTeam1 = useMemo(
-    () => findTeamById(team1Id, teams, match?.team1),
-    [team1Id, teams, match?.team1],
-  );
-  const selectedTeam2 = useMemo(
-    () => findTeamById(team2Id, teams, match?.team2),
-    [team2Id, teams, match?.team2],
-  );
+  const selectedTeam1 = useMemo(() => findTeamById(team1Id, teams, match?.team1), [team1Id, teams, match]);
+  const selectedTeam2 = useMemo(() => findTeamById(team2Id, teams, match?.team2), [team2Id, teams, match]);
   const selectedTeamReferee = useMemo(
     () => findTeamById(teamRefereeId, teams, match?.teamReferee ?? (match as any)?.referee),
-    [teamRefereeId, teams, match?.teamReferee, match?.referee],
+    [teamRefereeId, teams, match],
   );
   const selectedUserReferee = useMemo(() => {
     const fromList = referees.find((referee) => referee.$id === userRefereeId);
@@ -266,7 +262,7 @@ export default function MatchEditModal({
       return match.referee as UserData;
     }
     return undefined;
-  }, [referees, userRefereeId, match?.referee]);
+  }, [referees, userRefereeId, match]);
 
   const team1DisplayName = selectedTeam1 ? resolveTeamName(selectedTeam1, teams) : 'TBD';
   const team2DisplayName = selectedTeam2 ? resolveTeamName(selectedTeam2, teams) : 'TBD';

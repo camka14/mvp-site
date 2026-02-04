@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 
 const createSchema = z.object({
   id: z.string(),
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
     orderBy: { userName: 'asc' },
   });
 
-  return NextResponse.json({ users }, { status: 200 });
+  return NextResponse.json({ users: withLegacyList(users) }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
@@ -68,11 +69,11 @@ export async function POST(req: NextRequest) {
     const record = await prisma.userData.create({
       data: { id, createdAt: now, updatedAt: now, ...normalizedData, userName, dateOfBirth },
     });
-    return NextResponse.json({ user: record }, { status: 201 });
+    return NextResponse.json({ user: withLegacyFields(record) }, { status: 201 });
   }
   const record = existing
     ? await prisma.userData.update({ where: { id }, data: { ...normalizedData, updatedAt: now } })
     : null;
 
-  return NextResponse.json({ user: record }, { status: 201 });
+  return NextResponse.json({ user: record ? withLegacyFields(record) : record }, { status: 201 });
 }

@@ -89,7 +89,9 @@ export default function InvitePlayersModal({ isOpen, onClose, team, onInvitesSen
             ))}
           </div>
         ) : (
-          <Paper withBorder p="md" radius="md"><span>No players found matching "{searchQuery}"</span></Paper>
+          <Paper withBorder p="md" radius="md">
+            <span>{`No players found matching "${searchQuery}"`}</span>
+          </Paper>
         )}
       </div>
     </Modal>

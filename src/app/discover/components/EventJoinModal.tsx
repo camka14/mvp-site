@@ -62,7 +62,7 @@ const EventJoinModal: React.FC<EventJoinModalProps> = ({
             {selectedDivision && (
                 <Paper p="sm" mt="md" radius="sm" withBorder>
                     <Text size="sm">
-                        You're joining the{' '}
+                        {"You're joining the "}
                         {availableDivisions.find((d) => d.id === selectedDivision)?.name} division
                     </Text>
                 </Paper>

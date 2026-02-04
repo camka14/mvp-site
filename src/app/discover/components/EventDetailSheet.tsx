@@ -1173,7 +1173,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                 ) : isUserRegistered ? (
                                     <>
                                         <Text size="sm" c="green" fw={500} ta="center">
-                                            ✓ You're registered for this event
+                                            {"✓ You're registered for this event"}
                                         </Text>
                                         <div style={{ textAlign: 'center', marginTop: 8 }}>
                                             <Text size="sm" c="dimmed">

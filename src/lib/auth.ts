@@ -6,6 +6,16 @@ interface UserAccount {
   name?: string;
 }
 
+const normalizeUserData = (user: UserData | null): UserData | null => {
+  if (!user) return null;
+  if (user.$id) return user;
+  const raw = user as UserData & { id?: string };
+  if (raw.id) {
+    return { ...user, $id: raw.id };
+  }
+  return user;
+};
+
 type ExistingUserLookup = { userId: string; sensitiveUserId?: string };
 
 type AuthPayload = {
@@ -47,7 +57,8 @@ export const authService = {
     if (typeof window === 'undefined') return null;
     try {
       const raw = window.localStorage.getItem(this.APP_USER_KEY);
-      return raw ? (JSON.parse(raw) as UserData) : null;
+      const parsed = raw ? (JSON.parse(raw) as UserData) : null;
+      return normalizeUserData(parsed);
     } catch {
       return null;
     }
@@ -70,7 +81,7 @@ export const authService = {
     if (typeof window === 'undefined') return;
     try {
       if (user) {
-        window.localStorage.setItem(this.APP_USER_KEY, JSON.stringify(user));
+        window.localStorage.setItem(this.APP_USER_KEY, JSON.stringify(normalizeUserData(user)));
       } else {
         window.localStorage.removeItem(this.APP_USER_KEY);
       }

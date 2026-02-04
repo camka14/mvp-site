@@ -27,10 +27,10 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
 }) => {
     const [showMap, setShowMap] = useState(false);
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
-    const [selectedLocation, setSelectedLocation] = useState(coordinates);
-    const [searchQuery, setSearchQuery] = useState(value ?? '');
     const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
     const geolocationRequestedRef = useRef(false);
+    const hasCoordinates = coordinates.lat !== 0 || coordinates.lng !== 0;
+    const mapCenter = hasCoordinates ? coordinates : center;
 
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
@@ -39,20 +39,9 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     });
 
     useEffect(() => {
-        if (coordinates.lat !== 0 && coordinates.lng !== 0) {
-            setCenter(coordinates);
-            setSelectedLocation(coordinates);
-        }
-    }, [coordinates]);
-
-    useEffect(() => {
-        setSearchQuery(value ?? '');
-    }, [value]);
-
-    useEffect(() => {
         if (!isLoaded || !showMap) return;
         if (geolocationRequestedRef.current) return;
-        const hasExistingSelection = (selectedLocation.lat !== 0 || selectedLocation.lng !== 0);
+        const hasExistingSelection = coordinates.lat !== 0 || coordinates.lng !== 0;
         if (hasExistingSelection) return;
         if (!('geolocation' in navigator)) return;
 
@@ -68,14 +57,14 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
             },
             { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
         );
-    }, [isLoaded, showMap, selectedLocation]);
+    }, [isLoaded, showMap, coordinates.lat, coordinates.lng]);
 
     const onMapClick = useCallback(async (e: google.maps.MapMouseEvent) => {
         if (disabled) return;
         if (e.latLng) {
             const lat = e.latLng.lat();
             const lng = e.latLng.lng();
-            setSelectedLocation({ lat, lng });
+            setCenter({ lat, lng });
 
             // Reverse geocode to get address
             try {
@@ -89,7 +78,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                 onChange(`${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng);
             }
         }
-    }, [onChange]);
+    }, [disabled, onChange]);
 
     const searchLocation = async (address: string) => {
         if (disabled) return;
@@ -98,7 +87,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         try {
             const result = await locationService.geocodeLocation(address);
             setCenter({ lat: result.lat, lng: result.lng });
-            setSelectedLocation({ lat: result.lat, lng: result.lng });
             onChange(address, result.lat, result.lng);
         } catch (error) {
             console.error('Location search failed:', error);
@@ -116,9 +104,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         const address = place.formatted_address || place.name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 
         setCenter({ lat, lng });
-        setSelectedLocation({ lat, lng });
         onChange(address, lat, lng);
-        setSearchQuery(address);
     }, [autocomplete, onChange]);
 
     return (
@@ -155,10 +141,9 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                             onPlaceChanged={handlePlaceChanged}
                         >
                             <TextInput
-                                value={searchQuery}
+                                value={value ?? ''}
                                 onChange={(e) => {
                                     const next = e.currentTarget.value;
-                                    setSearchQuery(next);
                                     if (!disabled) {
                                         onChange(next, coordinates.lat, coordinates.lng);
                                     }
@@ -175,13 +160,13 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                     </div>
                     <GoogleMap
                         mapContainerStyle={{ width: '100%', height: '100%' }}
-                        center={center}
+                        center={mapCenter}
                         zoom={15}
                         onClick={onMapClick}
                         options={{ clickableIcons: true, disableDefaultUI: false }}
                     >
-                        {selectedLocation.lat !== 0 && selectedLocation.lng !== 0 && (
-                            <Marker position={selectedLocation} />
+                        {hasCoordinates && (
+                            <Marker position={coordinates} />
                         )}
                     </GoogleMap>
                 </Paper>
