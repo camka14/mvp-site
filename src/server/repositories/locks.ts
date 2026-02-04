@@ -1,7 +1,7 @@
 import crypto from 'crypto';
-import { PrismaClient } from '@/generated/prisma/client';
+import { Prisma, PrismaClient } from '@/generated/prisma/client';
 
-export type PrismaLike = PrismaClient | Parameters<PrismaClient['$transaction']>[0];
+export type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
 export const advisoryLockId = (value: string): bigint => {
   const hash = crypto.createHash('sha256').update(value).digest();

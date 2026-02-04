@@ -1,4 +1,4 @@
-import { PrismaClient } from '../../generated/prisma/client';
+import { Prisma, PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import {
   Division,
@@ -14,9 +14,14 @@ import {
   TIMES,
 } from '@/server/scheduler/types';
 
-type PrismaLike = PrismaClient | Parameters<PrismaClient['$transaction']>[0];
+type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
 const ensureArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : []);
+const ensureStringArray = (value: unknown): string[] => ensureArray(value as string[]);
+const ensureNumberArray = (value: unknown): number[] =>
+  ensureArray(value as Array<number | string>)
+    .map((item) => (typeof item === 'number' ? item : Number(item)))
+    .filter((item) => Number.isFinite(item));
 
 const coerceDate = (value: unknown): Date | null => {
   if (value instanceof Date) return value;
@@ -77,7 +82,7 @@ const buildTeams = (rows: any[], divisionMap: Map<string, Division>, fallbackDiv
 const buildFields = (rows: any[], divisionMap: Map<string, Division>) => {
   const fields: Record<string, PlayingField> = {};
   for (const row of rows) {
-    const divisions = ensureArray(row.divisions).map((id: string) =>
+    const divisions = ensureStringArray(row.divisions).map((id) =>
       divisionMap.get(id) ?? new Division(id, id),
     );
     fields[row.id] = new PlayingField({
@@ -195,17 +200,17 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     throw new Error('Event not found');
   }
 
-  const divisionIds = ensureArray(event.divisions);
+  const divisionIds = ensureStringArray(event.divisions);
   const divisionRows = divisionIds.length
     ? await client.divisions.findMany({ where: { id: { in: divisionIds } } })
     : [];
   const { divisions, map: divisionMap } = buildDivisions(divisionIds, divisionRows);
   const fallbackDivision = divisions[0];
 
-  const fieldIds = ensureArray(event.fieldIds);
-  const teamIds = ensureArray(event.teamIds);
-  const timeSlotIds = ensureArray(event.timeSlotIds);
-  const refereeIds = ensureArray(event.refereeIds);
+  const fieldIds = ensureStringArray(event.fieldIds);
+  const teamIds = ensureStringArray(event.teamIds);
+  const timeSlotIds = ensureStringArray(event.timeSlotIds);
+  const refereeIds = ensureStringArray(event.refereeIds);
 
   const [fieldRows, teamRows, timeSlotRows, refereeRows, matchRows, leagueConfigRow] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
@@ -222,6 +227,10 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const referees = buildReferees(refereeRows, divisions);
   attachTimeSlotsToFields(fields, timeSlots);
 
+  const coordinates = Array.isArray(event.coordinates)
+    ? event.coordinates.filter((value): value is number => typeof value === 'number')
+    : null;
+
   const baseParams = {
     id: event.id,
     start: event.start instanceof Date ? event.start : new Date(event.start),
@@ -230,20 +239,20 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     updatedAt: event.updatedAt ?? null,
     name: event.name,
     description: event.description ?? '',
-    waitListIds: ensureArray(event.waitListIds),
-    freeAgentIds: ensureArray(event.freeAgentIds),
+    waitListIds: ensureStringArray(event.waitListIds),
+    freeAgentIds: ensureStringArray(event.freeAgentIds),
     maxParticipants: event.maxParticipants ?? 0,
     teamSignup: Boolean(event.teamSignup),
     fieldType: event.fieldType ?? '',
-    coordinates: Array.isArray(event.coordinates) ? event.coordinates : event.coordinates ?? null,
+    coordinates,
     organizationId: event.organizationId ?? null,
-    requiredTemplateIds: ensureArray(event.requiredTemplateIds),
+    requiredTemplateIds: ensureStringArray(event.requiredTemplateIds),
     location: event.location ?? '',
     price: event.price ?? null,
     allowPaymentPlans: Boolean(event.allowPaymentPlans),
     installmentCount: event.installmentCount ?? 0,
     installmentDueDates: ensureArray(event.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[],
-    installmentAmounts: ensureArray(event.installmentAmounts),
+    installmentAmounts: ensureNumberArray(event.installmentAmounts),
     allowTeamSplitDefault: Boolean(event.allowTeamSplitDefault),
     sportId: event.sportId ?? '',
     teamSizeLimit: event.teamSizeLimit ?? null,
@@ -259,14 +268,14 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
     imageId: event.imageId ?? '',
-    loserBracketPointsToVictory: ensureArray(event.loserBracketPointsToVictory),
-    winnerBracketPointsToVictory: ensureArray(event.winnerBracketPointsToVictory),
+    loserBracketPointsToVictory: ensureNumberArray(event.loserBracketPointsToVictory),
+    winnerBracketPointsToVictory: ensureNumberArray(event.winnerBracketPointsToVictory),
     restTimeMinutes: event.restTimeMinutes ?? 0,
     state: event.state ?? 'UNPUBLISHED',
     leagueScoringConfig: leagueConfigRow ?? null,
     teams,
     players: [],
-    registrationIds: ensureArray(event.registrationIds),
+    registrationIds: ensureStringArray(event.registrationIds),
     divisions,
     referees,
     eventType: event.eventType ?? 'EVENT',
@@ -288,7 +297,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
         includePlayoffs: Boolean(event.includePlayoffs),
         playoffTeamCount: event.playoffTeamCount ?? 0,
         setsPerMatch: event.setsPerMatch ?? 0,
-        pointsToVictory: ensureArray(event.pointsToVictory),
+        pointsToVictory: ensureNumberArray(event.pointsToVictory),
       })
     : new Tournament(baseParams);
 
@@ -306,7 +315,7 @@ export const saveMatches = async (
   for (const match of matches) {
     const data = {
       id: match.id,
-      matchId: match.matchId ?? null,
+      matchId: match.matchId ?? 0,
       start: match.start,
       end: match.end,
       division: match.division?.id ?? null,
@@ -395,7 +404,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     start,
     end,
     description: payload.description ?? null,
-    divisions: ensureArray(payload.divisions),
+    divisions: ensureStringArray(payload.divisions),
     winnerSetCount: payload.winnerSetCount ?? null,
     loserSetCount: payload.loserSetCount ?? null,
     doubleElimination: payload.doubleElimination ?? false,
@@ -408,8 +417,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     hostId: payload.hostId ?? '',
     price: payload.price ?? 0,
     singleDivision: payload.singleDivision ?? false,
-    waitListIds: ensureArray(payload.waitListIds),
-    freeAgentIds: ensureArray(payload.freeAgentIds),
+    waitListIds: ensureStringArray(payload.waitListIds),
+    freeAgentIds: ensureStringArray(payload.freeAgentIds),
     cancellationRefundHours: payload.cancellationRefundHours ?? null,
     teamSignup: payload.teamSignup ?? true,
     prize: payload.prize ?? null,
@@ -417,9 +426,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     seedColor: payload.seedColor ?? null,
     imageId: payload.imageId ?? '',
     fieldCount: payload.fieldCount ?? null,
-    winnerBracketPointsToVictory: ensureArray(payload.winnerBracketPointsToVictory),
-    loserBracketPointsToVictory: ensureArray(payload.loserBracketPointsToVictory),
-    coordinates: payload.coordinates ?? null,
+    winnerBracketPointsToVictory: ensureNumberArray(payload.winnerBracketPointsToVictory),
+    loserBracketPointsToVictory: ensureNumberArray(payload.loserBracketPointsToVictory),
+    coordinates: Array.isArray(payload.coordinates)
+      ? payload.coordinates.filter((value: unknown): value is number => typeof value === 'number')
+      : null,
     gamesPerOpponent: payload.gamesPerOpponent ?? null,
     includePlayoffs: payload.includePlayoffs ?? false,
     playoffTeamCount: payload.playoffTeamCount ?? null,
@@ -429,26 +440,26 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     setsPerMatch: payload.setsPerMatch ?? null,
     restTimeMinutes: payload.restTimeMinutes ?? null,
     state: payload.state ?? null,
-    pointsToVictory: ensureArray(payload.pointsToVictory),
+    pointsToVictory: ensureNumberArray(payload.pointsToVictory),
     sportId: payload.sportId ?? null,
     timeSlotIds,
     fieldIds,
     teamIds,
-    userIds: ensureArray(payload.userIds),
-    registrationIds: ensureArray(payload.registrationIds),
+    userIds: ensureStringArray(payload.userIds),
+    registrationIds: ensureStringArray(payload.registrationIds),
     leagueScoringConfigId: payload.leagueScoringConfigId ?? null,
     organizationId: payload.organizationId ?? null,
     autoCancellation: payload.autoCancellation ?? null,
     eventType: payload.eventType ?? null,
     fieldType: payload.fieldType ?? null,
     doTeamsRef: payload.doTeamsRef ?? null,
-    refereeIds: ensureArray(payload.refereeIds),
+    refereeIds: ensureStringArray(payload.refereeIds),
     allowPaymentPlans: payload.allowPaymentPlans ?? null,
     installmentCount: payload.installmentCount ?? null,
     installmentDueDates: ensureArray(payload.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[],
-    installmentAmounts: ensureArray(payload.installmentAmounts),
+    installmentAmounts: ensureNumberArray(payload.installmentAmounts),
     allowTeamSplitDefault: payload.allowTeamSplitDefault ?? null,
-    requiredTemplateIds: ensureArray(payload.requiredTemplateIds),
+    requiredTemplateIds: ensureStringArray(payload.requiredTemplateIds),
     updatedAt: new Date(),
   };
 

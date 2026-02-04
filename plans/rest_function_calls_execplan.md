@@ -1,5 +1,7 @@
 # Route function calls through REST paths to event_manager
 
+> Legacy note: Appwrite Functions are no longer used. Services now call Next.js API routes under `/api/*`. Treat the Appwrite execution details below as historical context only.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Reference: follow `PLANS.md` in the repository root for mandatory ExecPlan structure and maintenance rules.

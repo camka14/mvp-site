@@ -1,7 +1,7 @@
 'use client';
 
-import { databases } from '@/app/appwrite';
-import { ID, Query } from 'appwrite';
+import { apiRequest } from '@/lib/apiClient';
+import { createId } from '@/lib/id';
 import type { Event, Field, Organization, Product, Team, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
@@ -10,9 +10,6 @@ import { userService } from './userService';
 import { productService } from './productService';
 import { teamService } from './teamService';
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID!;
-const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 type AnyRow = Record<string, any> & { $id: string };
 
 class OrganizationService {
@@ -91,11 +88,9 @@ class OrganizationService {
       payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
     }
 
-    const response = await databases.createRow({
-      databaseId: DATABASE_ID,
-      tableId: ORGANIZATIONS_TABLE_ID,
-      rowId: ID.unique(),
-      data: payload,
+    const response = await apiRequest<any>('/api/organizations', {
+      method: 'POST',
+      body: { ...payload, id: createId() },
     });
     return this.mapRowToOrganization(response as AnyRow);
   }
@@ -108,22 +103,19 @@ class OrganizationService {
     if (data.teamIds !== undefined) {
       payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
     }
-    const response = await databases.updateRow({
-      databaseId: DATABASE_ID,
-      tableId: ORGANIZATIONS_TABLE_ID,
-      rowId: id,
-      data: payload,
+    const response = await apiRequest<any>(`/api/organizations/${id}`, {
+      method: 'PATCH',
+      body: { organization: payload },
     });
     return this.mapRowToOrganization(response as AnyRow);
   }
 
   async getOrganizationsByOwner(ownerId: string): Promise<Organization[]> {
-    const response = await databases.listRows({
-      databaseId: DATABASE_ID,
-      tableId: ORGANIZATIONS_TABLE_ID,
-      queries: [Query.equal('ownerId', ownerId), Query.orderDesc('$createdAt'), Query.limit(100)],
-    });
-    return (response.rows as AnyRow[]).map((row) => this.mapRowToOrganization(row));
+    const params = new URLSearchParams();
+    params.set('ownerId', ownerId);
+    params.set('limit', '100');
+    const response = await apiRequest<{ organizations?: AnyRow[] }>(`/api/organizations?${params.toString()}`);
+    return (response.organizations ?? []).map((row) => this.mapRowToOrganization(row));
   }
 
   async getOrganizationsByIds(ids: string[]): Promise<Organization[]> {
@@ -131,12 +123,10 @@ class OrganizationService {
     if (!organizationIds.length) return [];
 
     try {
-      const response = await databases.listRows({
-        databaseId: DATABASE_ID,
-        tableId: ORGANIZATIONS_TABLE_ID,
-        queries: [Query.contains('$id', organizationIds), Query.limit(organizationIds.length)],
-      });
-      const rows = Array.isArray(response.rows) ? (response.rows as AnyRow[]) : [];
+      const params = new URLSearchParams();
+      params.set('ids', organizationIds.join(','));
+      const response = await apiRequest<{ organizations?: AnyRow[] }>(`/api/organizations?${params.toString()}`);
+      const rows = Array.isArray(response.organizations) ? (response.organizations as AnyRow[]) : [];
       return rows.map((row) => this.mapRowToOrganization(row));
     } catch (error) {
       console.error('Failed to fetch organizations by ids:', error);
@@ -146,22 +136,12 @@ class OrganizationService {
 
   async getOrganizationById(id: string, includeRelations: boolean = true): Promise<Organization | undefined> {
     try {
+      const response = await apiRequest<any>(`/api/organizations/${id}`);
+      const organization = this.mapRowToOrganization(response as AnyRow);
       if (!includeRelations) {
-        const response = await databases.getRow({
-          databaseId: DATABASE_ID,
-          tableId: ORGANIZATIONS_TABLE_ID,
-          rowId: id,
-        });
-        return this.mapRowToOrganization(response as AnyRow) as Organization;
-      } else {
-        const response = await databases.getRow({
-          databaseId: DATABASE_ID,
-          tableId: ORGANIZATIONS_TABLE_ID,
-          rowId: id,
-        });
-        const organization = this.mapRowToOrganization(response as AnyRow);
-        return this.withRelations(organization);
+        return organization;
       }
+      return this.withRelations(organization);
     } catch (e) {
       console.error('Failed to fetch organization:', e);
       return undefined;
@@ -170,15 +150,10 @@ class OrganizationService {
 
   async listOrganizationsWithFields(limit: number = 100): Promise<Organization[]> {
     try {
-      const response = await databases.listRows({
-        databaseId: DATABASE_ID,
-        tableId: ORGANIZATIONS_TABLE_ID,
-        queries: [
-          Query.limit(limit),
-        ],
-      });
-
-      const rows = Array.isArray(response.rows) ? (response.rows as AnyRow[]) : [];
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      const response = await apiRequest<{ organizations?: AnyRow[] }>(`/api/organizations?${params.toString()}`);
+      const rows = Array.isArray(response.organizations) ? (response.organizations as AnyRow[]) : [];
       const organizations = rows.map((row) => this.mapRowToOrganization(row));
       return Promise.all(organizations.map((org) => this.withRelations(org)));
     } catch (error) {
@@ -229,13 +204,11 @@ class OrganizationService {
     }
 
   private async fetchEventsByOrganization(organizationId: string): Promise<Event[]> {
-    const response = await databases.listRows({
-      databaseId: DATABASE_ID,
-      tableId: EVENTS_TABLE_ID,
-      queries: [Query.equal('organizationId', organizationId), Query.limit(200)],
-    });
-
-    const rows = Array.isArray(response.rows) ? response.rows : [];
+    const params = new URLSearchParams();
+    params.set('organizationId', organizationId);
+    params.set('limit', '200');
+    const response = await apiRequest<{ events?: any[] }>(`/api/events?${params.toString()}`);
+    const rows = Array.isArray(response.events) ? response.events : [];
     const events = await Promise.all(
       rows.map((row: any) => eventService.mapRowFromDatabase(row, false)),
     );

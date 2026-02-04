@@ -1,5 +1,7 @@
 # Organization Store Tab with Membership Products
 
+> Legacy note: Appwrite table/function references here are historical. The current implementation uses Next.js API routes + Prisma; map `/products` and subscription flows to `/api/*` endpoints.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Reference: follow `PLANS.md` in the repository root for mandatory ExecPlan structure and maintenance rules.

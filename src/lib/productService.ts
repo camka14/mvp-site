@@ -1,25 +1,8 @@
 'use client';
 
-import { databases, functions } from '@/app/appwrite';
-import { ExecutionMethod, Query } from 'appwrite';
+import { apiRequest } from '@/lib/apiClient';
 import type { Product, ProductPeriod, Subscription, UserData } from '@/types';
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const PRODUCTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_PRODUCTS_TABLE_ID || 'products';
-const SUBSCRIPTIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_SUBSCRIPTIONS_TABLE_ID || 'subscriptions';
-const FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
-
-const parseExecutionResponse = <T = unknown>(responseBody: string | null | undefined): T => {
-  if (!responseBody) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(responseBody) as T;
-  } catch (error) {
-    throw new Error('Unable to parse Appwrite function response.');
-  }
-};
 
 const normalizeProductPeriod = (value: unknown): ProductPeriod => {
   if (typeof value !== 'string') {
@@ -100,12 +83,10 @@ class ProductService {
 
   async listProducts(organizationId: string): Promise<Product[]> {
     try {
-      const response = await databases.listRows({
-        databaseId: DATABASE_ID,
-        tableId: PRODUCTS_TABLE_ID,
-        queries: [Query.equal('organizationId', organizationId)],
-      });
-      const rows = Array.isArray(response.rows) ? response.rows : [];
+      const params = new URLSearchParams();
+      params.set('organizationId', organizationId);
+      const response = await apiRequest<{ products?: any[] }>(`/api/products?${params.toString()}`);
+      const rows = Array.isArray(response.products) ? response.products : [];
       return rows.map((row: any) => this.mapProduct(row));
     } catch (error) {
       console.error('Failed to list products:', error);
@@ -118,12 +99,10 @@ class ProductService {
     if (!ids.length) return [];
 
     try {
-      const response = await databases.listRows({
-        databaseId: DATABASE_ID,
-        tableId: PRODUCTS_TABLE_ID,
-        queries: [Query.contains('$id', ids), Query.limit(ids.length)],
-      });
-      const rows = Array.isArray(response.rows) ? response.rows : [];
+      const params = new URLSearchParams();
+      params.set('ids', ids.join(','));
+      const response = await apiRequest<{ products?: any[] }>(`/api/products?${params.toString()}`);
+      const rows = Array.isArray(response.products) ? response.products : [];
       return rows.map((row: any) => this.mapProduct(row));
     } catch (error) {
       console.error('Failed to fetch products by ids:', error);
@@ -145,14 +124,10 @@ class ProductService {
     };
 
     try {
-      const response = await functions.createExecution({
-        functionId: FUNCTION_ID,
-        xpath: '/products',
-        method: ExecutionMethod.POST,
-        body: JSON.stringify(payload),
-        async: false,
+      const result = await apiRequest<Product & { error?: string }>('/api/products', {
+        method: 'POST',
+        body: payload,
       });
-      const result = parseExecutionResponse<Product & { error?: string }>(response.responseBody);
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);
       }
@@ -172,15 +147,10 @@ class ProductService {
     };
 
     try {
-      const response = await functions.createExecution({
-        functionId: FUNCTION_ID,
-        xpath: `/products/${input.productId}/subscriptions`,
-        method: ExecutionMethod.POST,
-        body: JSON.stringify(payload),
-        async: false,
+      const result = await apiRequest<Subscription & { error?: string }>(`/api/products/${input.productId}/subscriptions`, {
+        method: 'POST',
+        body: payload,
       });
-
-      const result = parseExecutionResponse<Subscription & { error?: string }>(response.responseBody);
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);
       }
@@ -194,14 +164,10 @@ class ProductService {
 
   async updateProduct(productId: string, updates: UpdateProductInput): Promise<Product> {
     try {
-      const response = await functions.createExecution({
-        functionId: FUNCTION_ID,
-        xpath: `/products/${productId}`,
-        method: ExecutionMethod.PATCH,
-        body: JSON.stringify({ product: updates }),
-        async: false,
+      const result = await apiRequest<Product & { error?: string }>(`/api/products/${productId}`, {
+        method: 'PATCH',
+        body: { product: updates },
       });
-      const result = parseExecutionResponse<Product & { error?: string }>(response.responseBody);
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);
       }
@@ -214,13 +180,9 @@ class ProductService {
 
   async deleteProduct(productId: string): Promise<boolean> {
     try {
-      const response = await functions.createExecution({
-        functionId: FUNCTION_ID,
-        xpath: `/products/${productId}`,
-        method: ExecutionMethod.DELETE,
-        async: false,
+      const result = await apiRequest<{ deleted?: boolean; error?: string }>(`/api/products/${productId}`, {
+        method: 'DELETE',
       });
-      const result = parseExecutionResponse<{ deleted?: boolean; error?: string }>(response.responseBody);
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);
       }
@@ -233,13 +195,9 @@ class ProductService {
 
   async cancelSubscription(subscriptionId: string): Promise<boolean> {
     try {
-      const response = await functions.createExecution({
-        functionId: FUNCTION_ID,
-        xpath: `/products/${subscriptionId}/subscriptions`,
-        method: ExecutionMethod.DELETE,
-        async: false,
+      const result = await apiRequest<{ cancelled?: boolean; error?: string }>(`/api/subscriptions/${subscriptionId}`, {
+        method: 'DELETE',
       });
-      const result = parseExecutionResponse<{ cancelled?: boolean; error?: string }>(response.responseBody);
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);
       }
@@ -252,13 +210,9 @@ class ProductService {
 
   async restartSubscription(subscriptionId: string): Promise<boolean> {
     try {
-      const response = await functions.createExecution({
-        functionId: FUNCTION_ID,
-        xpath: `/products/${subscriptionId}/subscriptions`,
-        method: ExecutionMethod.PATCH,
-        async: false,
+      const result = await apiRequest<{ restarted?: boolean; error?: string }>(`/api/subscriptions/${subscriptionId}`, {
+        method: 'PATCH',
       });
-      const result = parseExecutionResponse<{ restarted?: boolean; error?: string }>(response.responseBody);
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);
       }

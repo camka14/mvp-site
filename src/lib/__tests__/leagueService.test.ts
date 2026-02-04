@@ -1,48 +1,29 @@
 import { leagueService } from '@/lib/leagueService';
+import { apiRequest } from '@/lib/apiClient';
 import { eventService } from '@/lib/eventService';
 import type { Field, TimeSlot } from '@/types';
-import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
+
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(),
+}));
 
 jest.mock('@/lib/eventService', () => ({
   eventService: {
-    getEvent: jest.fn(),
     getEventWithRelations: jest.fn(),
-    createEvent: jest.fn(),
-    mapRowFromDatabase: jest.fn(),
   },
 }));
 
-jest.mock('@/app/appwrite', () => {
-  const { createAppwriteModuleMock } = require('../../../test/mocks/appwrite');
-  return createAppwriteModuleMock();
-});
-
-const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
-
-const DATABASE_ID = 'test-db';
-const WEEKLY_TABLE_ID = 'weekly';
-const MATCHES_TABLE_ID = 'matches';
-const EVENTS_TABLE_ID = 'events-table';
-const SERVER_FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID || 'mvpServer';
-const CREATE_LEAGUE_FUNCTION_ID = process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION_ID || 'create-league';
-
-const setEnv = () => {
-  process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID = WEEKLY_TABLE_ID;
-  process.env.NEXT_PUBLIC_MATCHES_TABLE_ID = MATCHES_TABLE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID = EVENTS_TABLE_ID;
-  process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID = SERVER_FUNCTION_ID;
-  process.env.NEXT_PUBLIC_CREATE_LEAGUE_FUNCTION_ID = CREATE_LEAGUE_FUNCTION_ID;
-};
+const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
+const eventServiceMock = eventService as jest.Mocked<typeof eventService>;
 
 describe('leagueService', () => {
   beforeEach(() => {
-    setEnv();
-    jest.clearAllMocks();
+    apiRequestMock.mockReset();
+    eventServiceMock.getEventWithRelations.mockReset();
   });
 
   describe('createWeeklySchedules', () => {
-    it('persists slots with relationships and minutes normalization', async () => {
+    it('creates slots and appends them to the event', async () => {
       const field: Field = {
         $id: 'field_1',
         name: 'Court A',
@@ -64,29 +45,30 @@ describe('leagueService', () => {
         repeating: true,
       };
 
-      appwriteModuleMock.databases.createRow.mockResolvedValue({
-        $id: 'slot_1',
-        scheduledFieldId: field.$id,
-        dayOfWeek: 2,
-        startTimeMinutes: 9 * 60,
-        endTimeMinutes: 10 * 60,
-        startDate: '2025-10-01T00:00:00',
-        endDate: '2025-12-01T00:00:00',
-        repeating: true,
-      });
-
-      appwriteModuleMock.databases.getRow.mockResolvedValue({
-        $id: 'event_1',
-        timeSlotIds: [],
-      });
+      apiRequestMock
+        .mockResolvedValueOnce({
+          $id: 'slot_1',
+          scheduledFieldId: field.$id,
+          dayOfWeek: 2,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          startDate: '2025-10-01T00:00:00',
+          endDate: '2025-12-01T00:00:00',
+          repeating: true,
+        })
+        .mockResolvedValueOnce({
+          timeSlotIds: [],
+        })
+        .mockResolvedValueOnce({});
 
       const result = await leagueService.createWeeklySchedules('event_1', [slot]);
 
-      expect(appwriteModuleMock.databases.createRow).toHaveBeenCalledWith(
+      expect(apiRequestMock).toHaveBeenNthCalledWith(
+        1,
+        '/api/time-slots',
         expect.objectContaining({
-          databaseId: DATABASE_ID,
-          tableId: WEEKLY_TABLE_ID,
-          data: {
+          method: 'POST',
+          body: expect.objectContaining({
             eventId: 'event_1',
             scheduledFieldId: 'field_1',
             dayOfWeek: 2,
@@ -95,16 +77,17 @@ describe('leagueService', () => {
             startDate: '2025-10-01T00:00:00',
             endDate: '2025-12-01T00:00:00',
             repeating: true,
-          },
+          }),
         }),
       );
 
-      expect(appwriteModuleMock.databases.updateRow).toHaveBeenCalledWith(
+      expect(apiRequestMock).toHaveBeenNthCalledWith(2, '/api/events/event_1');
+      expect(apiRequestMock).toHaveBeenNthCalledWith(
+        3,
+        '/api/events/event_1',
         expect.objectContaining({
-          databaseId: DATABASE_ID,
-          tableId: EVENTS_TABLE_ID,
-          rowId: 'event_1',
-          data: { timeSlotIds: ['slot_1'] },
+          method: 'PATCH',
+          body: { event: { timeSlotIds: ['slot_1'] } },
         }),
       );
 
@@ -119,7 +102,7 @@ describe('leagueService', () => {
 
   describe('listWeeklySchedulesByEvent', () => {
     it('returns slots with minute conversions and relationship hydration', async () => {
-      (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
+      eventServiceMock.getEventWithRelations.mockResolvedValue({
         timeSlots: [
           {
             $id: 'slot_1',
@@ -132,11 +115,11 @@ describe('leagueService', () => {
             repeating: false,
           },
         ],
-      });
+      } as any);
 
       const slots = await leagueService.listWeeklySchedulesByEvent('event_1');
 
-      expect(eventService.getEventWithRelations).toHaveBeenCalledWith('event_1');
+      expect(eventServiceMock.getEventWithRelations).toHaveBeenCalledWith('event_1');
       expect(slots[0]).toMatchObject({
         startTimeMinutes: 600,
         endTimeMinutes: 690,
@@ -147,5 +130,4 @@ describe('leagueService', () => {
       expect(slots[0].scheduledFieldId).toBe('field_1');
     });
   });
-
 });

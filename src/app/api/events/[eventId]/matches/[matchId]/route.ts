@@ -5,7 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import { loadEventWithRelations, saveMatches, saveTeamRecords } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { applyMatchUpdates, finalizeMatch } from '@/server/scheduler/updateMatch';
-import { serializeMatchesAppwrite } from '@/server/scheduler/serialize';
+import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { SchedulerContext } from '@/server/scheduler/types';
 
 export const dynamic = 'force-dynamic';
@@ -87,10 +87,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       return targetMatch;
     });
 
-    return NextResponse.json({ match: serializeMatchesAppwrite([result])[0] }, { status: 200 });
+    return NextResponse.json({ match: serializeMatchesLegacy([result])[0] }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Match update failed', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ eventId: string; matchId: string }> }) {
+  try {
+    const session = await requireSession(req);
+    const { eventId, matchId } = await params;
+    const event = await prisma.events.findUnique({ where: { id: eventId } });
+    if (!event) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+    if (!session.isAdmin && event.hostId !== session.userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await prisma.matches.delete({ where: { id: matchId } });
+    return NextResponse.json({ deleted: true }, { status: 200 });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    console.error('Match delete failed', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -1,8 +1,5 @@
-import { functions } from '@/app/appwrite';
-import { ExecutionMethod } from 'appwrite';
+import { apiRequest } from '@/lib/apiClient';
 import type { TemplateDocument, TemplateDocumentType, UserData } from '@/types';
-
-const FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
 
 export type SignStep = {
   templateId: string;
@@ -25,19 +22,6 @@ type SignLinksResponse = {
   error?: string;
 };
 
-const parseExecutionResponse = <T = unknown>(
-  responseBody: string | null | undefined,
-): T => {
-  if (!responseBody) {
-    return {} as T;
-  }
-  try {
-    return JSON.parse(responseBody) as T;
-  } catch (error) {
-    throw new Error('Unable to parse Appwrite function response.');
-  }
-};
-
 class BoldSignService {
   async createTemplate(params: {
     organizationId: string;
@@ -48,25 +32,21 @@ class BoldSignService {
     type: TemplateDocumentType;
     content?: string;
   }): Promise<{ createUrl?: string; template: TemplateDocument }> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: `/organizations/${params.organizationId}/templates`,
-      method: ExecutionMethod.POST,
-      body: JSON.stringify({
-        userId: params.userId,
-        template: {
-          title: params.title,
-          description: params.description,
-          signOnce: params.signOnce,
-          type: params.type,
-          content: params.content,
+    const result = await apiRequest<CreateTemplateResponse>(
+      `/api/organizations/${params.organizationId}/templates`,
+      {
+        method: 'POST',
+        body: {
+          userId: params.userId,
+          template: {
+            title: params.title,
+            description: params.description,
+            signOnce: params.signOnce,
+            type: params.type,
+            content: params.content,
+          },
         },
-      }),
-      async: false,
-    });
-
-    const result = parseExecutionResponse<CreateTemplateResponse>(
-      response.responseBody,
+      },
     );
     if (result?.error) {
       throw new Error(result.error);
@@ -83,21 +63,17 @@ class BoldSignService {
     userEmail: string;
     redirectUrl?: string;
   }): Promise<SignStep[]> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: `/events/${params.eventId}/sign`,
-      method: ExecutionMethod.POST,
-      body: JSON.stringify({
-        user: params.user,
-        userId: params.user.$id,
-        userEmail: params.userEmail,
-        redirectUrl: params.redirectUrl,
-      }),
-      async: false,
-    });
-
-    const result = parseExecutionResponse<SignLinksResponse>(
-      response.responseBody,
+    const result = await apiRequest<SignLinksResponse>(
+      `/api/events/${params.eventId}/sign`,
+      {
+        method: 'POST',
+        body: {
+          user: params.user,
+          userId: params.user.$id,
+          userEmail: params.userEmail,
+          redirectUrl: params.redirectUrl,
+        },
+      },
     );
     if (result?.error) {
       throw new Error(result.error);
@@ -118,24 +94,17 @@ class BoldSignService {
     user: UserData;
     userEmail?: string;
   }): Promise<void> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: '/documents/signed',
-      method: ExecutionMethod.POST,
-      body: JSON.stringify({
+    const result = await apiRequest<{ error?: string }>('/api/documents/signed', {
+      method: 'POST',
+      body: {
         documentId: params.documentId,
         templateId: params.templateId,
         eventId: params.eventId,
         user: params.user,
         userId: params.user.$id,
         userEmail: params.userEmail,
-      }),
-      async: false,
+      },
     });
-
-    const result = parseExecutionResponse<{ error?: string }>(
-      response.responseBody,
-    );
     if (result?.error) {
       throw new Error(result.error);
     }

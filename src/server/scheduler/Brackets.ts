@@ -454,7 +454,6 @@ export class Brackets {
       end: this.tournament.start,
       referee: null,
       teamReferee: ref ?? null,
-      winnerNextMatch: null,
       loserNextMatch: null,
       losersBracket: isLoser,
       division: this.currentDivision,

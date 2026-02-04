@@ -36,7 +36,7 @@ import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
 import { useSports } from '@/app/hooks/useSports';
-import { ID } from '@/app/appwrite';
+import { createId } from '@/lib/id';
 
 type RentalListing = {
   organization: Organization;
@@ -343,7 +343,7 @@ function DiscoverPageContent() {
       router.push('/login');
       return;
     }
-    const newId = ID.unique();
+    const newId = createId();
     const params = new URLSearchParams({
       create: '1',
       mode: 'edit',

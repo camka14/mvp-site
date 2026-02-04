@@ -5,7 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import { loadEventWithRelations, saveEventSchedule, saveMatches, upsertEventFromPayload, deleteMatchesByEvent } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
-import { serializeEventAppwrite, serializeMatchesAppwrite } from '@/server/scheduler/serialize';
+import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { SchedulerContext } from '@/server/scheduler/types';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 const scheduleSchema = z.object({
   eventId: z.string().optional(),
   event: z.string().optional(),
-  eventDocument: z.record(z.any()).optional(),
+  eventDocument: z.record(z.string(), z.any()).optional(),
   participantCount: z.number().int().positive().optional(),
 });
 
@@ -71,8 +71,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         preview: typeof result.preview === 'boolean' ? result.preview : false,
-        event: serializeEventAppwrite(result.event),
-        matches: serializeMatchesAppwrite(result.matches),
+        event: serializeEventLegacy(result.event),
+        matches: serializeMatchesLegacy(result.matches),
       },
       { status: 200 },
     );

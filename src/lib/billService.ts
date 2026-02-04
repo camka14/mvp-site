@@ -1,37 +1,15 @@
-import { databases, functions } from '@/app/appwrite';
+import { apiRequest } from '@/lib/apiClient';
 import { Bill, BillPayment, PaymentIntent, UserData } from '@/types';
-import { ExecutionMethod, Query } from 'appwrite';
-
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const BILLS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_BILLS_TABLE_ID!;
-const BILL_PAYMENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_BILL_PAYMENTS_TABLE_ID!;
-
-const parseExecutionResponse = <T = unknown>(responseBody: string | null | undefined): T => {
-    if (!responseBody) {
-        return {} as T;
-    }
-
-    try {
-        return JSON.parse(responseBody) as T;
-    } catch (error) {
-        throw new Error('Unable to parse Appwrite function response.');
-    }
-};
 
 class BillService {
     async listBills(ownerType: 'USER' | 'TEAM', ownerId: string): Promise<Bill[]> {
-        const response = await databases.listRows({
-            databaseId: DATABASE_ID,
-            tableId: BILLS_TABLE_ID,
-            queries: [
-                Query.equal('ownerType', ownerType),
-                Query.equal('ownerId', ownerId),
-                Query.limit(100),
-                Query.orderDesc('$createdAt'),
-            ],
-        });
+        const params = new URLSearchParams();
+        params.set('ownerType', ownerType);
+        params.set('ownerId', ownerId);
+        params.set('limit', '100');
+        const response = await apiRequest<{ bills?: any[] }>(`/api/billing/bills?${params.toString()}`);
 
-        const rows = response.rows || [];
+        const rows = response.bills || [];
         const billsWithPayments = await Promise.all(
             rows.map(async (row) => {
                 const payments = await this.fetchBillPayments(row.$id ?? row.id);
@@ -55,12 +33,9 @@ class BillService {
         event?: any;
         user?: any;
     }): Promise<Bill> {
-        const response = await functions.createExecution({
-            functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-            xpath: '/billing/bills',
-            method: ExecutionMethod.POST,
-            async: false,
-            body: JSON.stringify({
+        const result = await apiRequest<{ bill?: Bill; error?: string }>('/api/billing/bills', {
+            method: 'POST',
+            body: {
                 ownerType: params.ownerType,
                 ownerId: params.ownerId,
                 totalAmountCents: params.totalAmountCents,
@@ -72,10 +47,8 @@ class BillService {
                 paymentPlanEnabled: params.paymentPlanEnabled,
                 event: params.event,
                 user: params.user,
-            }),
+            },
         });
-
-        const result = parseExecutionResponse<{ bill?: Bill; error?: string }>(response.responseBody);
         if (result.error) {
             throw new Error(result.error);
         }
@@ -86,13 +59,7 @@ class BillService {
     }
 
     async getBill(billId: string): Promise<Bill | null> {
-        const response = await functions.createExecution({
-            functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-            xpath: `/billing/bills/${billId}`,
-            method: ExecutionMethod.GET,
-            async: false,
-        });
-        const result = parseExecutionResponse<{ bill?: Bill; error?: string }>(response.responseBody);
+        const result = await apiRequest<{ bill?: Bill; error?: string }>(`/api/billing/bills/${billId}`);
         if (result.error) {
             throw new Error(result.error);
         }
@@ -112,14 +79,10 @@ class BillService {
             throw new Error('Bill has no pending installments');
         }
 
-        const response = await functions.createExecution({
-            functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-            xpath: `/billing/create_billing_intent`,
-            method: ExecutionMethod.POST,
-            body: JSON.stringify({ billId: bill.$id, billPaymentId: nextPayment.$id, user }),
-            async: false,
+        const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/create_billing_intent', {
+            method: 'POST',
+            body: { billId: bill.$id, billPaymentId: nextPayment.$id, user },
         });
-        const result = parseExecutionResponse<PaymentIntent & { error?: string }>(response.responseBody);
         if (result.error) {
             throw new Error(result.error);
         }
@@ -127,14 +90,10 @@ class BillService {
     }
 
     async splitBill(billId: string, playerIds: string[]): Promise<Bill[]> {
-        const response = await functions.createExecution({
-            functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-            xpath: `/billing/bills/${billId}/split`,
-            method: ExecutionMethod.POST,
-            body: JSON.stringify({ billId, playerIds }),
-            async: false,
+        const result = await apiRequest<{ children?: Bill[]; error?: string }>(`/api/billing/bills/${billId}/split`, {
+            method: 'POST',
+            body: { billId, playerIds },
         });
-        const result = parseExecutionResponse<{ children?: Bill[]; error?: string }>(response.responseBody);
         if (result.error) {
             throw new Error(result.error);
         }
@@ -199,12 +158,8 @@ class BillService {
 
     private async fetchBillPayments(billId?: string): Promise<BillPayment[]> {
         if (!billId) return [];
-        const response = await databases.listRows({
-            databaseId: DATABASE_ID,
-            tableId: BILL_PAYMENTS_TABLE_ID,
-            queries: [Query.equal('billId', billId), Query.orderAsc('sequence'), Query.limit(100)],
-        });
-        return (response.rows || []).map((row) => this.mapRowToBillPayment(row));
+        const response = await apiRequest<{ payments?: any[] }>(`/api/billing/bills/${billId}/payments`);
+        return (response.payments || []).map((row) => this.mapRowToBillPayment(row));
     }
 }
 

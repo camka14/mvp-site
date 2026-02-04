@@ -48,7 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const contentType = file.mimeType || streamResult.contentType || 'application/octet-stream';
 
     if (!width && !height) {
-      return new NextResponse(data, {
+      return new NextResponse(new Uint8Array(data), {
         status: 200,
         headers: {
           'Content-Type': contentType,
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const output = await sharp(data).resize(resizeOptions).toBuffer();
 
-    return new NextResponse(output, {
+    return new NextResponse(new Uint8Array(output), {
       status: 200,
       headers: {
         'Content-Type': contentType,

@@ -1,5 +1,7 @@
 # Enable parent-child registration with dual-signer consent and age gating
 
+> Legacy note: This plan references Appwrite Functions. The current stack uses Next.js API routes + Prisma; treat Appwrite references as historical and map endpoints to `/api/*` routes instead.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds. This plan must be maintained in accordance with `mvp-site/PLANS.md`.
 
 ## Purpose / Big Picture

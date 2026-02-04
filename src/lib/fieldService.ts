@@ -1,16 +1,13 @@
 'use client';
 
-import { databases } from '@/app/appwrite';
-import { ID, Query } from 'appwrite';
+import { apiRequest } from '@/lib/apiClient';
+import { createId } from '@/lib/id';
 import type { Field, Organization, TimeSlot } from '@/types';
 import { eventService } from './eventService';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 import { organizationService } from './organizationService';
 import { normalizeEnumValue } from '@/lib/enumUtils';
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const FIELDS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!;
-const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
 
 export interface CreateFieldData {
   $id?: string;
@@ -33,7 +30,7 @@ export interface ManageRentalSlotResult {
 
 class FieldService {
   async createField(data: CreateFieldData): Promise<Field> {
-    const rowId = data.$id ?? ID.unique();
+    const rowId = data.$id ?? createId();
     const normalizedType = normalizeEnumValue(data.type);
 
     const payload: Record<string, unknown> = {
@@ -48,11 +45,9 @@ class FieldService {
       organizationId: data.organization?.$id
     };
 
-    const response = await databases.upsertRow({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-      rowId,
-      data: payload,
+    const response = await apiRequest<any>('/api/fields', {
+      method: 'POST',
+      body: { id: rowId, ...payload },
     });
     if (data.organization) {
       data.organization?.fieldIds?.push(rowId)
@@ -73,26 +68,18 @@ class FieldService {
     if (normalizedFilter.fieldIds?.length) {
       const chunks = this.chunkIds(normalizedFilter.fieldIds);
       for (const chunk of chunks) {
-        const response = await databases.listRows({
-          databaseId: DATABASE_ID,
-          tableId: FIELDS_TABLE_ID,
-          queries: [Query.equal('$id', chunk)],
-        });
-        rows.push(...(response.rows ?? []));
+        const params = new URLSearchParams();
+        params.set('ids', chunk.join(','));
+        const response = await apiRequest<{ fields?: any[] }>(`/api/fields?${params.toString()}`);
+        rows.push(...(response.fields ?? []));
       }
     } else {
-      const queries: string[] = [];
-
+      const params = new URLSearchParams();
       if (normalizedFilter.eventId) {
-        queries.push(Query.equal('eventId', normalizedFilter.eventId));
+        params.set('eventId', normalizedFilter.eventId);
       }
-
-      const response = await databases.listRows({
-        databaseId: DATABASE_ID,
-        tableId: FIELDS_TABLE_ID,
-        queries,
-      });
-      rows.push(...(response.rows ?? []));
+      const response = await apiRequest<{ fields?: any[] }>(`/api/fields?${params.toString()}`);
+      rows.push(...(response.fields ?? []));
     }
 
     const fields = rows.map((row: any) => this.mapRowToField(row));
@@ -251,16 +238,14 @@ class FieldService {
     }
 
     const responses = await Promise.all(
-      this.chunkIds(unique).map((batch) =>
-        databases.listRows({
-          databaseId: DATABASE_ID,
-          tableId: TIME_SLOTS_TABLE_ID,
-          queries: [Query.equal('$id', batch)],
-        }),
-      ),
+      this.chunkIds(unique).map((batch) => {
+        const params = new URLSearchParams();
+        params.set('ids', batch.join(','));
+        return apiRequest<{ timeSlots?: any[] }>(`/api/time-slots?${params.toString()}`);
+      }),
     );
 
-    return responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapRowToTimeSlot(row)));
+    return responses.flatMap((response) => (response.timeSlots ?? []).map((row: any) => this.mapRowToTimeSlot(row)));
   }
 
   private serializeTimeSlotForUpsert(
@@ -289,37 +274,27 @@ class FieldService {
     field: Field,
     slotInput: Partial<TimeSlot> & { dayOfWeek: TimeSlot['dayOfWeek'] }
   ): Promise<ManageRentalSlotResult> {
-    const slotId = ID.unique();
+    const slotId = createId();
     const slotPayload = this.serializeTimeSlotForUpsert(slotInput, {
       slotId,
       fieldId: field.$id,
     });
 
-    const slotResponse = await databases.upsertRow({
-      databaseId: DATABASE_ID,
-      tableId: TIME_SLOTS_TABLE_ID,
-      rowId: slotId,
-      data: slotPayload,
+    const slotResponse = await apiRequest<any>('/api/time-slots', {
+      method: 'POST',
+      body: { id: slotId, ...slotPayload },
     });
 
     const rentalSlotIds = Array.isArray(field.rentalSlotIds)
       ? Array.from(new Set([...field.rentalSlotIds, slotId]))
       : [slotId];
 
-    await databases.updateRow({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-      rowId: field.$id,
-      data: {
-        rentalSlotIds,
-      },
+    await apiRequest(`/api/fields/${field.$id}`, {
+      method: 'PATCH',
+      body: { field: { rentalSlotIds } },
     });
 
-    const fieldRow = await databases.getRow({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-      rowId: field.$id,
-    });
+    const fieldRow = await apiRequest<any>(`/api/fields/${field.$id}`);
 
     const updatedField = this.mapRowToField(fieldRow);
     await this.hydrateFieldRentalSlots([updatedField]);
@@ -343,18 +318,12 @@ class FieldService {
       fieldId: field.$id,
     });
 
-    await databases.updateRow({
-      databaseId: DATABASE_ID,
-      tableId: TIME_SLOTS_TABLE_ID,
-      rowId: slotId,
-      data: slotPayload,
+    await apiRequest(`/api/time-slots/${slotId}`, {
+      method: 'PATCH',
+      body: { slot: slotPayload },
     });
 
-    const fieldRow = await databases.getRow({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-      rowId: field.$id,
-    });
+    const fieldRow = await apiRequest<any>(`/api/fields/${field.$id}`);
 
     const updatedField = this.mapRowToField(fieldRow);
     await this.hydrateFieldRentalSlots([updatedField]);

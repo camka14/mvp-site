@@ -233,8 +233,7 @@ describe('auth routes', () => {
 
   describe('POST /api/auth/logout', () => {
     it('clears auth cookie', async () => {
-      const req = new NextRequest('http://localhost/api/auth/logout', { method: 'POST' });
-      const res = await LOGOUT_POST(req);
+      const res = await LOGOUT_POST();
 
       expect(res.status).toBe(200);
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');

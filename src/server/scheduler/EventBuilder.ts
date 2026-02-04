@@ -21,7 +21,7 @@ export class EventBuilder {
   context: SchedulerContext;
   schedule: Schedule<Match, any, any, Division>;
   private placeholderIds: Set<string> = new Set();
-  private participants: Record<string, Team> = {};
+  private participants: Record<string, Team | UserData> = {};
   private refereeCycle: UserData[] = [];
 
   constructor(event: League | Tournament, context: SchedulerContext) {

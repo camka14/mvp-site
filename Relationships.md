@@ -5,6 +5,7 @@ description: Manage complex data relationships with Appwrite Databases. Discover
 difficulty: advanced
 readtime: 20
 ---
+> Legacy reference: This document is preserved from Appwrite documentation for historical context. The MVP now uses Prisma + Postgres for data modeling; do not use this as current implementation guidance.
 Relationships describe how documents in different collections are associated, so that related documents can be read, updated, or deleted together. Entities in real-life often associate with each other in an organic and logical way, like a person and their dog, an album and its songs, or friends in a social network.
 
 These types of association between entities can be modeled in Appwrite using relationships.

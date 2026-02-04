@@ -1,20 +1,22 @@
 # Razumly MVP — Multi-sport Event Platform
 
-Full-stack Next.js app that lets organizers and players run pickup games, leagues, and tournaments for any sport. Built with TypeScript, Mantine UI, and Appwrite (TablesDB/Storage/Functions) for auth, data, media, and billing.
+Full-stack Next.js app that lets organizers and players run pickup games, leagues, and tournaments for any sport. Built with TypeScript, Mantine UI, Prisma + Postgres, and self-hosted Next.js APIs for auth, data, media, and billing.
 
 Live: https://mvp.razumly.com — Open Graph preview at `/opengraph-image`.
 
 ## Highlights
 - Create and manage multi-sport events (pickup, leagues, brackets) with scheduling and field/court slots
 - Team and roster management with real-time chat for coordination
-- Stripe-powered payments and receipts via Appwrite Functions
-- Image uploads via Appwrite Storage (with previews)
+- Stripe-powered payments and receipts via server-side API routes
+- Image uploads via the storage provider (local dev or DigitalOcean Spaces)
 - Mantine-driven UI, responsive layouts, and Next.js App Router
 
 ## Tech Stack
 - Next.js 16 (App Router) + TypeScript
 - Mantine UI + Emotion
-- Appwrite: Account, TablesDB, Storage, Functions (object-argument SDK)
+- Prisma + Postgres
+- Auth: self-hosted JWT/session flow
+- Storage: local filesystem in dev, DigitalOcean Spaces (S3-compatible) in prod
 - Jest + Testing Library for UI/service tests
 
 ## Getting Started
@@ -28,8 +30,15 @@ nvm use
 npm install
 ```
 3) Environment
-- Copy `.env.example` to `.env.local`
-- Set `NEXT_PUBLIC_APPWRITE_ENDPOINT`, `NEXT_PUBLIC_APPWRITE_PROJECT_ID`, `NEXT_PUBLIC_APPWRITE_DATABASE_ID`, and table/bucket/function IDs used in the app.
+- Update `.env` / `.env.local` with at minimum:
+  - `DATABASE_URL`
+  - `AUTH_SECRET`
+- Optional (recommended for full feature parity):
+  - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
+  - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+  - `STORAGE_PROVIDER` (`local` or `spaces`)
+  - `STORAGE_ROOT` (for local storage)
+  - `DO_SPACES_ENDPOINT`, `DO_SPACES_REGION`, `DO_SPACES_BUCKET`, `DO_SPACES_KEY`, `DO_SPACES_SECRET`
 4) Run locally
 ```bash
 npm run dev
@@ -47,5 +56,6 @@ npm run dev
 - `src/app` — routes (App Router) and metadata; OG image at `opengraph-image.tsx`
 - `src/components` — UI components (Mantine, chat widgets)
 - `src/context` — chat/state providers
-- `src/lib` — Appwrite client/services; Stripe calls routed through Functions
+- `src/lib` — service modules + API client wrappers
+- `src/server` — server-only helpers and repositories
 - `public` — static assets

@@ -1,5 +1,7 @@
 # Add TEXT waiver templates and password-confirmed signing
 
+> Legacy note: Appwrite function/schema references are historical. The current stack uses Next.js API routes + Prisma; map signing/template flows to `/api/*` routes.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds. This plan must be maintained in accordance with `mvp-site/PLANS.md`.
 
 ## Purpose / Big Picture

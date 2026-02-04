@@ -1,37 +1,22 @@
 import { productService } from '@/lib/productService';
+import { apiRequest } from '@/lib/apiClient';
 import type { Product, Subscription, UserData } from '@/types';
-import { ExecutionMethod } from 'appwrite';
-import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
 
-jest.mock('@/app/appwrite', () => {
-  const { createAppwriteModuleMock } = require('../../../test/mocks/appwrite');
-  return createAppwriteModuleMock();
-});
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(),
+}));
 
-const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
-
-const DATABASE_ID = 'test-db';
-const PRODUCTS_TABLE_ID = 'products-table';
-const SUBSCRIPTIONS_TABLE_ID = 'subscriptions-table';
-const SERVER_FUNCTION_ID = 'server-fn';
-
-const setEnv = () => {
-  process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_PRODUCTS_TABLE_ID = PRODUCTS_TABLE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_SUBSCRIPTIONS_TABLE_ID = SUBSCRIPTIONS_TABLE_ID;
-  process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID = SERVER_FUNCTION_ID;
-};
+const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
 
 describe('productService', () => {
   beforeEach(() => {
-    setEnv();
-    jest.clearAllMocks();
+    apiRequestMock.mockReset();
   });
 
   describe('listProducts', () => {
     it('loads products for an organization and normalizes periods', async () => {
-      appwriteModuleMock.databases.listRows.mockResolvedValue({
-        rows: [
+      apiRequestMock.mockResolvedValue({
+        products: [
           {
             $id: 'prod_1',
             organizationId: 'org_1',
@@ -44,10 +29,8 @@ describe('productService', () => {
 
       const products = await productService.listProducts('org_1');
 
-      expect(appwriteModuleMock.databases.listRows).toHaveBeenCalledWith(expect.objectContaining({
-        databaseId: DATABASE_ID,
-        tableId: PRODUCTS_TABLE_ID,
-      }));
+      expect(apiRequestMock).toHaveBeenCalledWith(expect.stringContaining('/api/products?'));
+      expect(apiRequestMock.mock.calls[0][0]).toContain('organizationId=org_1');
       expect(products).toEqual([
         expect.objectContaining({
           $id: 'prod_1',
@@ -61,7 +44,7 @@ describe('productService', () => {
   });
 
   describe('createProduct', () => {
-    it('calls the products function and returns the created product', async () => {
+    it('creates a product via the API', async () => {
       const mockUser = { $id: 'user_1', firstName: 'Test' } as UserData;
       const responseProduct: Product = {
         $id: 'prod_1',
@@ -71,9 +54,7 @@ describe('productService', () => {
         period: 'month',
       };
 
-      appwriteModuleMock.functions.createExecution.mockResolvedValue({
-        responseBody: JSON.stringify(responseProduct),
-      });
+      apiRequestMock.mockResolvedValue(responseProduct);
 
       const result = await productService.createProduct({
         user: mockUser,
@@ -83,21 +64,22 @@ describe('productService', () => {
         period: 'month',
       });
 
-      expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledTimes(1);
-      const executionArgs = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
-      expect(executionArgs.functionId).toBe(SERVER_FUNCTION_ID);
-      expect(executionArgs.xpath).toBe('/products');
-      expect(executionArgs.method).toBe(ExecutionMethod.POST);
-
-      const parsedBody = JSON.parse(executionArgs.body);
-      expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
-      expect(parsedBody.organizationId).toBe('org_1');
-      expect(parsedBody.organization).toEqual(expect.objectContaining({ $id: 'org_1' }));
-      expect(parsedBody.product).toEqual(expect.objectContaining({
-        name: 'Gold',
-        priceCents: 2500,
-        period: 'month',
-      }));
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/products',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            user: expect.objectContaining({ $id: mockUser.$id }),
+            organizationId: 'org_1',
+            organization: expect.objectContaining({ $id: 'org_1' }),
+            product: expect.objectContaining({
+              name: 'Gold',
+              priceCents: 2500,
+              period: 'month',
+            }),
+          }),
+        }),
+      );
 
       expect(result).toEqual(expect.objectContaining({
         $id: 'prod_1',
@@ -123,9 +105,7 @@ describe('productService', () => {
         status: 'ACTIVE',
       };
 
-      appwriteModuleMock.functions.createExecution.mockResolvedValue({
-        responseBody: JSON.stringify(responseSubscription),
-      });
+      apiRequestMock.mockResolvedValue(responseSubscription);
 
       const result = await productService.createSubscription({
         productId: 'prod_1',
@@ -135,15 +115,17 @@ describe('productService', () => {
         startDate: '2025-01-01T00:00:00.000Z',
       });
 
-      const executionArgs = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
-      expect(executionArgs.functionId).toBe(SERVER_FUNCTION_ID);
-      expect(executionArgs.xpath).toBe('/products/prod_1/subscriptions');
-      expect(executionArgs.method).toBe(ExecutionMethod.POST);
-
-      const parsedBody = JSON.parse(executionArgs.body);
-      expect(parsedBody.user).toEqual(expect.objectContaining({ $id: mockUser.$id }));
-      expect(parsedBody.organizationId).toBe('org_1');
-      expect(parsedBody.priceCents).toBe(2500);
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/products/prod_1/subscriptions',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            user: expect.objectContaining({ $id: mockUser.$id }),
+            organizationId: 'org_1',
+            priceCents: 2500,
+          }),
+        }),
+      );
 
       expect(result).toEqual(expect.objectContaining({
         $id: 'sub_1',

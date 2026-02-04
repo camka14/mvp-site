@@ -1,5 +1,7 @@
 # Team email invites from TeamDetailModal
 
+> Legacy note: Appwrite query references here are historical. User search now routes through `/api/users` via `userService.searchUsers`.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds. This plan must follow the rules in mvp-site/PLANS.md.
 
 ## Purpose / Big Picture

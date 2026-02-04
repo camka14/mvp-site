@@ -1,4 +1,4 @@
-import { UserData, Subscription } from '@/types';
+import { Invite, UserData, Subscription } from '@/types';
 
 const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(path, {
@@ -45,8 +45,12 @@ class UserService {
     return results.filter(Boolean) as UserData[];
   }
 
-  async searchUsers(_query: string): Promise<UserData[]> {
-    return [];
+  async searchUsers(query: string): Promise<UserData[]> {
+    if (!query || query.trim().length < 2) return [];
+    const params = new URLSearchParams();
+    params.set('query', query.trim());
+    const response = await apiFetch<{ users: UserData[] }>(`/api/users?${params.toString()}`);
+    return response.users ?? [];
   }
 
   async updateUser(id: string, updates: Partial<UserData>): Promise<UserData> {
@@ -61,7 +65,7 @@ class UserService {
     return this.updateUser(userId, data as Partial<UserData>);
   }
 
-  async updateEmail(): Promise<void> {
+  async updateEmail(_email: string, _currentPassword: string): Promise<void> {
     throw new Error('Email updates are not yet supported in the self-hosted auth flow.');
   }
 
@@ -74,6 +78,53 @@ class UserService {
 
   async listUserSubscriptions(_userId: string): Promise<Subscription[]> {
     return [];
+  }
+
+  async listInvites(filters: { userId?: string; type?: string; teamId?: string } = {}): Promise<Invite[]> {
+    const params = new URLSearchParams();
+    if (filters.userId) params.set('userId', filters.userId);
+    if (filters.type) params.set('type', filters.type);
+    if (filters.teamId) params.set('teamId', filters.teamId);
+    const response = await apiFetch<{ invites?: Invite[] }>(`/api/invites?${params.toString()}`);
+    return response.invites ?? [];
+  }
+
+  async inviteUsersByEmail(
+    inviterId: string,
+    invites: Array<{ firstName: string; lastName: string; email: string; type?: string; eventId?: string; organizationId?: string; teamId?: string }>,
+  ): Promise<{ sent?: Invite[]; not_sent?: Invite[]; failed?: Invite[] }> {
+    const payload = {
+      invites: invites.map((invite) => ({
+        ...invite,
+        createdBy: inviterId,
+        status: 'pending',
+      })),
+    };
+    const response = await apiFetch<{ invites?: Invite[] }>(`/api/invites`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const created = response.invites ?? [];
+    return { sent: created, not_sent: [], failed: [] };
+  }
+
+  async addTeamInvitation(userId: string, teamId: string): Promise<boolean> {
+    await this.inviteUsersByEmail(userId, [{
+      firstName: '',
+      lastName: '',
+      email: '',
+      type: 'player',
+      teamId,
+    }]);
+    return true;
+  }
+
+  async removeTeamInvitation(userId: string, teamId: string): Promise<boolean> {
+    await apiFetch('/api/invites', {
+      method: 'DELETE',
+      body: JSON.stringify({ userId, teamId, type: 'player' }),
+    });
+    return true;
   }
 
   async uploadProfileImage(file: File): Promise<{ fileId: string; imageUrl: string }> {

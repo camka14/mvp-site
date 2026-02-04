@@ -153,7 +153,7 @@ export const serializeEvent = (event: Tournament | League) => {
 
 export const serializeMatches = (matches: Match[]) => matches.map(serializeMatch);
 
-const serializeTeamAppwrite = (team: Team) => ({
+const serializeTeamLegacy = (team: Team) => ({
   $id: team.id,
   id: team.id,
   seed: team.seed,
@@ -165,7 +165,7 @@ const serializeTeamAppwrite = (team: Team) => ({
   playerIds: team.playerIds ?? [],
 });
 
-const serializeFieldAppwrite = (field: PlayingField) => ({
+const serializeFieldLegacy = (field: PlayingField) => ({
   $id: field.id,
   id: field.id,
   fieldNumber: field.fieldNumber,
@@ -174,7 +174,7 @@ const serializeFieldAppwrite = (field: PlayingField) => ({
   name: field.name,
 });
 
-const serializeTimeSlotAppwrite = (slot: TimeSlot) => ({
+const serializeTimeSlotLegacy = (slot: TimeSlot) => ({
   $id: slot.id,
   id: slot.id,
   dayOfWeek: slot.dayOfWeek,
@@ -187,7 +187,7 @@ const serializeTimeSlotAppwrite = (slot: TimeSlot) => ({
   scheduledFieldId: slot.field ?? null,
 });
 
-const serializeUserAppwrite = (user: UserData) => ({
+const serializeUserLegacy = (user: UserData) => ({
   $id: user.id,
   id: user.id,
   firstName: user.firstName,
@@ -195,7 +195,7 @@ const serializeUserAppwrite = (user: UserData) => ({
   userName: user.userName,
 });
 
-const serializeMatchAppwrite = (match: Match) => ({
+const serializeMatchLegacy = (match: Match) => ({
   $id: match.id,
   id: match.id,
   matchId: match.matchId ?? null,
@@ -219,26 +219,26 @@ const serializeMatchAppwrite = (match: Match) => ({
   side: match.side ?? null,
   refereeCheckedIn: match.refereeCheckedIn ?? false,
   refCheckedIn: match.refereeCheckedIn ?? false,
-  team1: match.team1 ? serializeTeamAppwrite(match.team1) : null,
-  team2: match.team2 ? serializeTeamAppwrite(match.team2) : null,
-  teamReferee: match.teamReferee ? serializeTeamAppwrite(match.teamReferee) : null,
-  referee: match.referee ? serializeUserAppwrite(match.referee) : null,
-  field: match.field ? serializeFieldAppwrite(match.field) : null,
+  team1: match.team1 ? serializeTeamLegacy(match.team1) : null,
+  team2: match.team2 ? serializeTeamLegacy(match.team2) : null,
+  teamReferee: match.teamReferee ? serializeTeamLegacy(match.teamReferee) : null,
+  referee: match.referee ? serializeUserLegacy(match.referee) : null,
+  field: match.field ? serializeFieldLegacy(match.field) : null,
 });
 
-export const serializeEventAppwrite = (event: Tournament | League) => {
+export const serializeEventLegacy = (event: Tournament | League) => {
   const base = serializeEvent(event);
   return {
     ...base,
     $id: base.id,
     id: base.id,
     divisions: event.divisions.map((division) => division.id),
-    fields: Object.values(event.fields).map(serializeFieldAppwrite),
-    teams: Object.values(event.teams).map(serializeTeamAppwrite),
-    timeSlots: event.timeSlots.map(serializeTimeSlotAppwrite),
-    referees: event.referees.map(serializeUserAppwrite),
-    matches: Object.values(event.matches).map(serializeMatchAppwrite),
+    fields: Object.values(event.fields).map(serializeFieldLegacy),
+    teams: Object.values(event.teams).map(serializeTeamLegacy),
+    timeSlots: event.timeSlots.map(serializeTimeSlotLegacy),
+    referees: event.referees.map(serializeUserLegacy),
+    matches: Object.values(event.matches).map(serializeMatchLegacy),
   };
 };
 
-export const serializeMatchesAppwrite = (matches: Match[]) => matches.map(serializeMatchAppwrite);
+export const serializeMatchesLegacy = (matches: Match[]) => matches.map(serializeMatchLegacy);

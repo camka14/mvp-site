@@ -1,7 +1,4 @@
-import { functions } from '@/app/appwrite';
-import { ExecutionMethod } from 'appwrite';
-
-const FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
+import { apiRequest } from '@/lib/apiClient';
 
 export type RegistrationStatus =
   | 'pendingConsent'
@@ -39,31 +36,12 @@ type RegistrationResponse = {
   error?: string;
 };
 
-const parseExecutionResponse = <T = unknown>(
-  responseBody: string | null | undefined,
-): T => {
-  if (!responseBody) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(responseBody) as T;
-  } catch (error) {
-    throw new Error('Unable to parse Appwrite function response.');
-  }
-};
-
 class RegistrationService {
   async registerSelfForEvent(eventId: string): Promise<RegistrationResponse> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: `/events/${eventId}/registrations/self`,
-      method: ExecutionMethod.POST,
-      body: JSON.stringify({ eventId }),
-      async: false,
+    const result = await apiRequest<RegistrationResponse>(`/api/events/${eventId}/registrations/self`, {
+      method: 'POST',
+      body: { eventId },
     });
-
-    const result = parseExecutionResponse<RegistrationResponse>(response.responseBody);
     if (result?.error) {
       throw new Error(result.error);
     }
@@ -71,15 +49,10 @@ class RegistrationService {
   }
 
   async registerChildForEvent(eventId: string, childId: string): Promise<RegistrationResponse> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: `/events/${eventId}/registrations/child`,
-      method: ExecutionMethod.POST,
-      body: JSON.stringify({ eventId, childId }),
-      async: false,
+    const result = await apiRequest<RegistrationResponse>(`/api/events/${eventId}/registrations/child`, {
+      method: 'POST',
+      body: { eventId, childId },
     });
-
-    const result = parseExecutionResponse<RegistrationResponse>(response.responseBody);
     if (result?.error) {
       throw new Error(result.error);
     }

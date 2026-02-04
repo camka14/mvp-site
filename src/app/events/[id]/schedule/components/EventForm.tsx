@@ -20,9 +20,8 @@ import { userService } from '@/lib/userService';
 import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
-import { databases } from '@/app/appwrite';
+import { apiRequest } from '@/lib/apiClient';
 import UserCard from '@/components/ui/UserCard';
-import { Query } from 'appwrite';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -64,8 +63,6 @@ const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const TEMPLATE_DOCUMENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEMPLATE_DOCUMENTS_TABLE_ID || 'templateDocuments';
 
 const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
     if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
@@ -1142,16 +1139,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             try {
                 setTemplatesLoading(true);
                 setTemplatesError(null);
-                const response = await databases.listRows({
-                    databaseId: DATABASE_ID,
-                    tableId: TEMPLATE_DOCUMENTS_TABLE_ID,
-                    queries: [
-                        Query.equal('organizationId', organizationId),
-                        Query.orderDesc('$createdAt'),
-                        Query.limit(200),
-                    ],
-                });
-                const rows = Array.isArray(response.rows) ? response.rows : [];
+                const response = await apiRequest<{ templates?: any[] }>(
+                    `/api/organizations/${organizationId}/templates`,
+                );
+                const rows = Array.isArray(response.templates) ? response.templates : [];
                 if (!cancelled) {
                     setTemplateDocuments(rows.map((row) => mapTemplateRow(row)));
                 }

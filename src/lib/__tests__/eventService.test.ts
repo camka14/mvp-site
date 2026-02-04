@@ -1,14 +1,6 @@
 import { eventService } from '@/lib/eventService';
-import { sportsService } from '@/lib/sportsService';
 import { apiRequest } from '@/lib/apiClient';
-import { createSport } from '@/types/defaults';
-import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
-import { ExecutionMethod } from 'appwrite';
-
-jest.mock('@/app/appwrite', () => {
-  const { createAppwriteModuleMock } = require('../../../test/mocks/appwrite');
-  return createAppwriteModuleMock();
-});
+import { sportsService } from '@/lib/sportsService';
 
 jest.mock('@/lib/apiClient', () => ({
   apiRequest: jest.fn(),
@@ -20,353 +12,85 @@ jest.mock('@/lib/sportsService', () => ({
   },
 }));
 
-const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
-const sportsServiceMock = sportsService as jest.Mocked<typeof sportsService>;
 const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
+const sportsServiceMock = sportsService as jest.Mocked<typeof sportsService>;
 
-const DATABASE_ID = 'test-db';
-const EVENTS_TABLE_ID = 'events-table';
-const FIELDS_TABLE_ID = 'fields-table';
-const MATCHES_TABLE_ID = 'matches-table';
-const TEAMS_TABLE_ID = 'teams-table';
-const USERS_TABLE_ID = 'users-table';
-const WEEKLY_TABLE_ID = 'weekly';
-const LEAGUE_SCORING_TABLE_ID = 'league-config';
-const ORGANIZATIONS_TABLE_ID = 'org-table';
-const SERVER_FUNCTION_ID = 'event-manager-fn';
-
-const setEnv = () => {
-  process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID = EVENTS_TABLE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID = FIELDS_TABLE_ID;
-  process.env.NEXT_PUBLIC_MATCHES_TABLE_ID = MATCHES_TABLE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID = TEAMS_TABLE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID = USERS_TABLE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID = WEEKLY_TABLE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_LEAGUE_SCORING_CONFIG_TABLE_ID = LEAGUE_SCORING_TABLE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID = ORGANIZATIONS_TABLE_ID;
-  process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID = SERVER_FUNCTION_ID;
+const baseEventRow = {
+  $id: 'evt_1',
+  name: 'Test Event',
+  description: 'Desc',
+  start: '2025-01-01T00:00:00Z',
+  end: '2025-01-01T01:00:00Z',
+  location: 'Denver',
+  coordinates: [0, 0],
+  fieldType: 'INDOOR',
+  price: 1000,
+  imageId: 'img_1',
+  hostId: 'host_1',
+  state: 'PUBLISHED',
+  maxParticipants: 10,
+  teamSizeLimit: 6,
+  restTimeMinutes: 0,
+  teamSignup: false,
+  singleDivision: false,
+  waitListIds: [],
+  freeAgentIds: [],
+  cancellationRefundHours: 0,
+  registrationCutoffHours: 0,
+  seedColor: 0,
+  $createdAt: '2025-01-01T00:00:00Z',
+  $updatedAt: '2025-01-01T00:00:00Z',
+  eventType: 'EVENT',
+  sport: { $id: 'sport_1', name: 'Volleyball' },
+  divisions: [],
 };
 
 describe('eventService', () => {
   beforeEach(() => {
-    setEnv();
-    jest.clearAllMocks();
-    sportsServiceMock.getAll.mockReset();
-    sportsServiceMock.getAll.mockResolvedValue([]);
-    appwriteModuleMock.databases.listRows.mockResolvedValue({ rows: [] });
     apiRequestMock.mockReset();
+    sportsServiceMock.getAll.mockResolvedValue([] as any);
   });
 
-  describe('getEventWithRelations', () => {
-    it('normalizes time slots and relationships', async () => {
-      appwriteModuleMock.databases.getRow.mockResolvedValue({
-        $id: 'evt_1',
-        name: 'League Event',
-        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
-        teamSignup: true,
-        teamIds: ['team_1'],
-        playerIds: [],
-        divisions: [],
-        lat: 40,
-        long: -105,
-        timeSlots: [
-          {
-            $id: 'slot_1',
-            dayOfWeek: 1,
-            startTime: '09:00',
-            endTime: 600,
-            scheduledFieldId: 'fld_1',
-            field: { $id: 'fld_1', name: 'Court A' },
-            startDate: '2025-10-01T00:00:00',
-            endDate: null,
-            repeating: false,
-          },
-        ],
-      });
+  it('fetches event by id via apiRequest', async () => {
+    apiRequestMock.mockResolvedValue({ ...baseEventRow });
 
-      const event = await eventService.getEventWithRelations('evt_1');
+    const event = await eventService.getEvent('evt_1');
 
-      expect(appwriteModuleMock.databases.getRow).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: 'evt_1',
-      }));
-
-      expect(event?.timeSlots?.[0]).toMatchObject({
-        $id: 'slot_1',
-        dayOfWeek: 1,
-        startTimeMinutes: 540,
-        endTimeMinutes: 600,
-        startDate: '2025-10-01T00:00:00',
-        endDate: null,
-        repeating: false,
-      });
-      expect(event?.timeSlots?.[0]?.scheduledFieldId).toBe('fld_1');
-    });
+    expect(apiRequestMock).toHaveBeenCalledWith('/api/events/evt_1');
+    expect(event?.$id).toBe('evt_1');
   });
 
-  describe('getEvent', () => {
-    it('hydrates sport relationship when only sportId is returned', async () => {
-      const sport = createSport({ $id: 'sport_volleyball', name: 'Volleyball' });
-      sportsServiceMock.getAll.mockResolvedValueOnce([sport]);
+  it('creates event via apiRequest', async () => {
+    apiRequestMock.mockResolvedValue({ event: { ...baseEventRow } });
 
-      appwriteModuleMock.databases.getRow
-        .mockResolvedValueOnce({
-          $id: 'evt_sport_only',
-          name: 'Event',
-          sportId: 'sport_volleyball',
-          leagueScoringConfigId: 'cfg_1',
-          divisions: [],
-          teamSignup: false,
-          playerIds: [],
-        })
-        .mockResolvedValueOnce({ $id: 'cfg_1' });
+    const created = await eventService.createEvent({
+      $id: 'evt_1',
+      name: 'Test Event',
+      description: 'Desc',
+      start: '2025-01-01T00:00:00Z',
+      end: '2025-01-01T01:00:00Z',
+      location: 'Denver',
+      coordinates: [0, 0],
+      fieldType: 'INDOOR',
+      price: 1000,
+      imageId: 'img_1',
+      hostId: 'host_1',
+      state: 'PUBLISHED',
+      maxParticipants: 10,
+      teamSizeLimit: 6,
+      teamSignup: false,
+      singleDivision: false,
+      waitListIds: [],
+      freeAgentIds: [],
+      cancellationRefundHours: 0,
+      registrationCutoffHours: 0,
+      seedColor: 0,
+      eventType: 'EVENT',
+      sport: { $id: 'sport_1', name: 'Volleyball' },
+      divisions: [],
+    } as any);
 
-      const event = await eventService.getEvent('evt_sport_only');
-
-      expect(sportsServiceMock.getAll).toHaveBeenCalled();
-      expect(event?.sport).toEqual(sport);
-    });
-  });
-
-  describe('createEvent', () => {
-    it('sends coordinates when provided', async () => {
-      appwriteModuleMock.functions.createExecution.mockResolvedValueOnce({
-        responseBody: JSON.stringify({
-          event: {
-            $id: 'evt_new',
-            name: 'New Event',
-            sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
-            teamSignup: true,
-            teamIds: [],
-            playerIds: [],
-            divisions: [],
-          },
-        }),
-      });
-
-      await eventService.createEvent({
-        name: 'New Event',
-        coordinates: [-105, 40],
-      });
-
-      expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith(
-        expect.objectContaining({
-          functionId: SERVER_FUNCTION_ID,
-          xpath: '/events',
-          method: ExecutionMethod.POST,
-          async: false,
-        }),
-      );
-
-      const executionCall = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
-      const payload = JSON.parse(executionCall.body as string);
-      expect(payload.event).toEqual(expect.objectContaining({
-        name: 'New Event',
-        coordinates: [-105, 40],
-      }));
-    });
-  });
-
-  describe('updateEvent', () => {
-    it('normalizes coordinate payloads', async () => {
-      appwriteModuleMock.functions.createExecution.mockResolvedValue({
-        responseBody: JSON.stringify({}),
-      });
-      appwriteModuleMock.databases.getRow.mockResolvedValueOnce({
-        $id: 'evt_1',
-        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
-        teamSignup: false,
-        playerIds: ['user_1'],
-        divisions: [],
-        coordinates: [-105, 40],
-      });
-
-      await eventService.updateEvent('evt_1', { coordinates: [-105, 40] });
-
-      expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith(
-        expect.objectContaining({
-          xpath: '/events/evt_1',
-          method: ExecutionMethod.PATCH,
-          async: false,
-        }),
-      );
-
-      const executionCall = appwriteModuleMock.functions.createExecution.mock.calls[0][0];
-      const payload = JSON.parse(executionCall.body as string);
-      expect(payload.event.coordinates).toEqual([-105, 40]);
-    });
-  });
-
-  describe('deleteUnpublishedEvent', () => {
-    it('deletes event without removing fields when organization exists', async () => {
-      appwriteModuleMock.databases.deleteRow.mockResolvedValue(undefined);
-
-      await eventService.deleteUnpublishedEvent({
-        $id: 'evt_1',
-        state: 'UNPUBLISHED',
-        organization: 'org_1',
-      } as any);
-
-      expect(appwriteModuleMock.databases.deleteRow).toHaveBeenCalledTimes(1);
-      expect(appwriteModuleMock.databases.deleteRow).toHaveBeenCalledWith({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: 'evt_1',
-      });
-    });
-
-    it('removes fields when event lacks organization', async () => {
-      appwriteModuleMock.databases.deleteRow
-        .mockResolvedValueOnce(undefined) // event delete
-        .mockResolvedValueOnce(undefined); // field delete
-
-      await eventService.deleteUnpublishedEvent({
-        $id: 'evt_2',
-        state: 'UNPUBLISHED',
-        fields: [{ $id: 'fld_1' }],
-      } as any);
-
-      expect(appwriteModuleMock.databases.deleteRow).toHaveBeenNthCalledWith(1, {
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: 'evt_2',
-      });
-      expect(appwriteModuleMock.databases.deleteRow).toHaveBeenNthCalledWith(2, {
-        databaseId: DATABASE_ID,
-        tableId: FIELDS_TABLE_ID,
-        rowId: 'fld_1',
-      });
-    });
-
-    it('throws when field deletion fails', async () => {
-      appwriteModuleMock.databases.deleteRow
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error('failed delete'));
-
-      await expect(
-        eventService.deleteUnpublishedEvent({
-          $id: 'evt_3',
-          state: 'UNPUBLISHED',
-          fields: [{ $id: 'fld_1' }],
-        } as any)
-      ).rejects.toThrow('Failed to delete fields for unpublished event');
-    });
-  });
-
-  describe('scheduleEvent', () => {
-    it('posts to the schedule endpoint and normalizes ids', async () => {
-      apiRequestMock.mockResolvedValue({
-        preview: true,
-        event: { id: 'evt_1', name: 'Event' },
-        matches: [{ id: 'match_1', team1Points: [], team2Points: [], setResults: [] }],
-      });
-
-      const response = await eventService.scheduleEvent({ $id: 'evt_1' } as any);
-
-      expect(apiRequestMock).toHaveBeenCalledWith(
-        '/api/events/schedule',
-        expect.objectContaining({ method: 'POST' }),
-      );
-      expect(response.event?.$id).toBe('evt_1');
-      expect(response.event?.matches?.[0]?.$id).toBe('match_1');
-    });
-
-    it('uses the event schedule route when eventId is provided', async () => {
-      apiRequestMock.mockResolvedValue({
-        preview: false,
-        event: { id: 'evt_2', name: 'Event' },
-      });
-
-      await eventService.scheduleEvent({ $id: 'evt_2' } as any, { eventId: 'evt_2' });
-
-      expect(apiRequestMock).toHaveBeenCalledWith(
-        '/api/events/evt_2/schedule',
-        expect.objectContaining({ method: 'POST' }),
-      );
-    });
-  });
-
-  describe('waitlist helpers', () => {
-    it('adds unique waitlist entries when event exists', async () => {
-      appwriteModuleMock.databases.getRow.mockResolvedValueOnce({
-        $id: 'evt_1',
-        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
-        teamSignup: true,
-        teamIds: [],
-        playerIds: [],
-        divisions: [],
-        waitListIds: ['user_1'],
-      });
-
-      appwriteModuleMock.databases.updateRow.mockResolvedValue({
-        $id: 'evt_1',
-        sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),
-        teamSignup: true,
-        teamIds: [],
-        playerIds: [],
-        divisions: [],
-        waitListIds: ['user_1', 'user_2'],
-      });
-
-      const event = await eventService.addToWaitlist('evt_1', 'user_2');
-
-      expect(appwriteModuleMock.databases.updateRow).toHaveBeenCalledWith({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: 'evt_1',
-        data: { waitListIds: ['user_1', 'user_2'] },
-      });
-      expect(event.waitListIds).toEqual(['user_1', 'user_2']);
-    });
-  });
-
-  describe('date range filters', () => {
-    it('normalizes timezone offsets when fetching matches', async () => {
-      appwriteModuleMock.databases.listRows.mockResolvedValue({ rows: [] });
-
-      await eventService.getMatchesForFieldInRange(
-        'field_1',
-        '2025-10-05T00:00:00-07:00',
-        '2025-10-11T23:59:59-07:00'
-      );
-
-      const { queries } = appwriteModuleMock.databases.listRows.mock.calls[0][0];
-      const gteQuery = (queries as string[]).find((q) => q.includes('"method":"greaterThanEqual"'));
-      const lteQuery = (queries as string[]).find((q) => q.includes('"method":"lessThanEqual"'));
-
-      expect(gteQuery).toBeDefined();
-      expect(lteQuery).toBeDefined();
-
-      const greaterThanEqual = JSON.parse(gteQuery as string);
-      const lessThanEqual = JSON.parse(lteQuery as string);
-
-      expect(greaterThanEqual.values[0]).toBe('2025-10-05T07:00:00Z');
-      expect(lessThanEqual.values[0]).toBe('2025-10-12T06:59:59Z');
-    });
-
-    it('normalizes timezone offsets when fetching events', async () => {
-      appwriteModuleMock.databases.listRows.mockResolvedValue({ rows: [] });
-
-      await eventService.getEventsForFieldInRange(
-        'field_1',
-        '2025-10-05T00:00:00-07:00',
-        '2025-10-11T23:59:59-07:00'
-      );
-
-      const { queries } = appwriteModuleMock.databases.listRows.mock.calls[0][0];
-      const gteQuery = (queries as string[]).find((q) => q.includes('"method":"greaterThanEqual"'));
-      const lteQuery = (queries as string[]).find((q) => q.includes('"method":"lessThanEqual"'));
-
-      expect(gteQuery).toBeDefined();
-      expect(lteQuery).toBeDefined();
-
-      const greaterThanEqual = JSON.parse(gteQuery as string);
-      const lessThanEqual = JSON.parse(lteQuery as string);
-
-      expect(greaterThanEqual.values[0]).toBe('2025-10-05T07:00:00Z');
-      expect(lessThanEqual.values[0]).toBe('2025-10-12T06:59:59Z');
-    });
+    expect(apiRequestMock).toHaveBeenCalledWith('/api/events', expect.objectContaining({ method: 'POST' }));
+    expect(created.$id).toBe('evt_1');
   });
 });

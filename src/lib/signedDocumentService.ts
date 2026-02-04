@@ -1,9 +1,4 @@
-import { Query } from 'appwrite';
-import { databases } from '@/app/appwrite';
-
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const SIGNED_DOCUMENTS_TABLE_ID =
-  process.env.NEXT_PUBLIC_APPWRITE_SIGNED_DOCUMENTS_TABLE_ID ?? 'signedDocuments';
+import { apiRequest } from '@/lib/apiClient';
 
 class SignedDocumentService {
   async getSignedDocument(
@@ -11,29 +6,13 @@ class SignedDocumentService {
     userId?: string,
   ): Promise<Record<string, any> | null> {
     try {
-      const response = await databases.getRow({
-        databaseId: DATABASE_ID,
-        tableId: SIGNED_DOCUMENTS_TABLE_ID,
-        rowId: documentId,
-      });
-      if (response) {
-        return response as Record<string, any>;
-      }
-    } catch (error) {
-      // Fall back to a lookup by signedDocumentId for multi-signer records.
-    }
-
-    try {
-      const queries = [Query.equal('signedDocumentId', documentId), Query.limit(1)];
+      const params = new URLSearchParams();
+      params.set('documentId', documentId);
       if (userId) {
-        queries.unshift(Query.equal('userId', userId));
+        params.set('userId', userId);
       }
-      const response = await databases.listRows({
-        databaseId: DATABASE_ID,
-        tableId: SIGNED_DOCUMENTS_TABLE_ID,
-        queries,
-      });
-      const rows = Array.isArray(response.rows) ? response.rows : [];
+      const response = await apiRequest<{ signedDocuments?: any[] }>(`/api/documents/signed?${params.toString()}`);
+      const rows = Array.isArray(response.signedDocuments) ? response.signedDocuments : [];
       return (rows[0] as Record<string, any>) ?? null;
     } catch (error) {
       return null;

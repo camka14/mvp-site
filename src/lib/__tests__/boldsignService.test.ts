@@ -1,32 +1,27 @@
 import { boldsignService } from '@/lib/boldsignService';
-import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
-import { ExecutionMethod } from 'appwrite';
+import { apiRequest } from '@/lib/apiClient';
 
-jest.mock('@/app/appwrite', () => {
-  const { createAppwriteModuleMock } = require('../../../test/mocks/appwrite');
-  return createAppwriteModuleMock();
-});
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(),
+}));
 
-const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
+const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
 
 describe('boldsignService', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID = 'server-fn';
-    jest.clearAllMocks();
+    apiRequestMock.mockReset();
   });
 
   it('includes type and content when creating TEXT templates', async () => {
-    appwriteModuleMock.functions.createExecution.mockResolvedValue({
-      responseBody: JSON.stringify({
-        template: {
-          $id: 'tmpl_text',
-          organizationId: 'org_1',
-          title: 'Text Waiver',
-          signOnce: true,
-          type: 'TEXT',
-          content: 'Sample waiver text',
-        },
-      }),
+    apiRequestMock.mockResolvedValue({
+      template: {
+        $id: 'tmpl_text',
+        organizationId: 'org_1',
+        title: 'Text Waiver',
+        signOnce: true,
+        type: 'TEXT',
+        content: 'Sample waiver text',
+      },
     });
 
     await boldsignService.createTemplate({
@@ -38,19 +33,18 @@ describe('boldsignService', () => {
       content: 'Sample waiver text',
     });
 
-    expect(appwriteModuleMock.functions.createExecution).toHaveBeenCalledWith(
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      '/api/organizations/org_1/templates',
       expect.objectContaining({
-        method: ExecutionMethod.POST,
-        xpath: '/organizations/org_1/templates',
+        method: 'POST',
+        body: expect.objectContaining({
+          userId: 'user_1',
+          template: expect.objectContaining({
+            type: 'TEXT',
+            content: 'Sample waiver text',
+          }),
+        }),
       }),
     );
-
-    const body = JSON.parse(
-      appwriteModuleMock.functions.createExecution.mock.calls[0][0].body,
-    );
-    expect(body.template).toMatchObject({
-      type: 'TEXT',
-      content: 'Sample waiver text',
-    });
   });
 });

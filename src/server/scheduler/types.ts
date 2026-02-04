@@ -30,6 +30,7 @@ export interface Group {
 
 export interface Participant {
   id: string;
+  matches?: Match[];
   getGroups(): Group[];
   setGroups(groups: Group[]): void;
   getEvents(): SchedulableEvent[];
@@ -501,6 +502,11 @@ export class Tournament {
   matchDurationMinutes: number;
   usesSets: boolean;
   setDurationMinutes: number;
+  gamesPerOpponent?: number;
+  includePlayoffs?: boolean;
+  playoffTeamCount?: number;
+  setsPerMatch?: number;
+  pointsToVictory?: number[];
   timeSlots: TimeSlot[];
 
   constructor(params: {
@@ -559,6 +565,11 @@ export class Tournament {
     matchDurationMinutes?: number;
     usesSets?: boolean;
     setDurationMinutes?: number;
+    gamesPerOpponent?: number;
+    includePlayoffs?: boolean;
+    playoffTeamCount?: number;
+    setsPerMatch?: number;
+    pointsToVictory?: number[];
     timeSlots?: TimeSlot[];
   }) {
     this.id = params.id;
@@ -616,6 +627,11 @@ export class Tournament {
     this.matchDurationMinutes = params.matchDurationMinutes ?? 0;
     this.usesSets = params.usesSets ?? false;
     this.setDurationMinutes = params.setDurationMinutes ?? 0;
+    this.gamesPerOpponent = params.gamesPerOpponent ?? undefined;
+    this.includePlayoffs = params.includePlayoffs ?? undefined;
+    this.playoffTeamCount = params.playoffTeamCount ?? undefined;
+    this.setsPerMatch = params.setsPerMatch ?? undefined;
+    this.pointsToVictory = params.pointsToVictory ?? undefined;
     this.timeSlots = params.timeSlots ?? [];
   }
 }

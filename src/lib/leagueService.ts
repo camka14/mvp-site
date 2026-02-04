@@ -1,5 +1,5 @@
-import { databases, ID } from '@/app/appwrite';
-import { ExecutionMethod, Query } from 'appwrite';
+import { apiRequest } from '@/lib/apiClient';
+import { createId } from '@/lib/id';
 import {
   TimeSlot,
   Match,
@@ -9,11 +9,6 @@ import {
 } from '@/types';
 import { eventService } from './eventService';
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
-const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
-const SERVER_FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
-const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
 
 export interface WeeklySlotConflict {
   schedule: TimeSlot;
@@ -89,11 +84,12 @@ class LeagueService {
         data.endDate = slot.endDate;
       }
 
-      const response = await databases.createRow({
-        databaseId: DATABASE_ID,
-        tableId: TIME_SLOTS_TABLE_ID,
-        rowId: ID.unique(),
-        data,
+      const response = await apiRequest<any>('/api/time-slots', {
+        method: 'POST',
+        body: {
+          id: createId(),
+          ...data,
+        },
       });
 
       return this.mapRowToTimeSlot(response as any);
@@ -109,11 +105,7 @@ class LeagueService {
 
     await Promise.all(
       schedules.map((schedule) =>
-        databases.deleteRow({
-          databaseId: DATABASE_ID,
-          tableId: TIME_SLOTS_TABLE_ID,
-          rowId: schedule.$id,
-        })
+        apiRequest(`/api/time-slots/${schedule.$id}`, { method: 'DELETE' })
       )
     );
 
@@ -126,20 +118,15 @@ class LeagueService {
   }
 
   async listTimeSlotsByField(fieldId: string, dayOfWeek?: number): Promise<TimeSlot[]> {
-    const queries = [
-      Query.equal('scheduledFieldId', fieldId),
-    ];
+    const params = new URLSearchParams();
+    params.set('fieldId', fieldId);
     if (typeof dayOfWeek === 'number') {
-      queries.push(Query.equal('dayOfWeek', dayOfWeek));
+      params.set('dayOfWeek', String(dayOfWeek));
     }
 
-    const response = await databases.listRows({
-      databaseId: DATABASE_ID,
-      tableId: TIME_SLOTS_TABLE_ID,
-      queries,
-    });
+    const response = await apiRequest<{ timeSlots?: any[] }>(`/api/time-slots?${params.toString()}`);
 
-    return response.rows.map((row: any) => this.mapRowToTimeSlot(row));
+    return (response.timeSlots ?? []).map((row: any) => this.mapRowToTimeSlot(row));
   }
 
   async listMatchesByEvent(eventId: string): Promise<Match[]> {
@@ -148,14 +135,7 @@ class LeagueService {
   }
 
   async deleteMatchesByEvent(eventId: string): Promise<void> {
-    const matches = await this.listMatchesByEvent(eventId);
-    await Promise.all(matches.map(match =>
-      databases.deleteRow({
-        databaseId: DATABASE_ID,
-        tableId: MATCHES_TABLE_ID,
-        rowId: match.$id,
-      })
-    ));
+    await apiRequest(`/api/events/${eventId}/matches`, { method: 'DELETE' });
   }
 
   private async appendTimeSlotsToEvent(eventId: string, slotIds: string[]): Promise<void> {
@@ -164,18 +144,12 @@ class LeagueService {
     }
 
     try {
-      const eventRow = await databases.getRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: eventId,
-      });
+      const eventRow = await apiRequest<any>(`/api/events/${eventId}`);
       const existing = Array.isArray(eventRow.timeSlotIds) ? eventRow.timeSlotIds : [];
       const next = Array.from(new Set([...existing, ...slotIds]));
-      await databases.updateRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: eventId,
-        data: { timeSlotIds: next },
+      await apiRequest(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        body: { event: { timeSlotIds: next } },
       });
     } catch (error) {
       console.error('Failed to append time slots to event:', error);
@@ -189,18 +163,12 @@ class LeagueService {
     }
 
     try {
-      const eventRow = await databases.getRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: eventId,
-      });
+      const eventRow = await apiRequest<any>(`/api/events/${eventId}`);
       const existing = Array.isArray(eventRow.timeSlotIds) ? eventRow.timeSlotIds : [];
       const next = existing.filter((id: string) => !slotIds.includes(id));
-      await databases.updateRow({
-        databaseId: DATABASE_ID,
-        tableId: EVENTS_TABLE_ID,
-        rowId: eventId,
-        data: { timeSlotIds: next },
+      await apiRequest(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        body: { event: { timeSlotIds: next } },
       });
     } catch (error) {
       console.error('Failed to remove time slots from event:', error);

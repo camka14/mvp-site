@@ -1,7 +1,4 @@
-import { functions } from '@/app/appwrite';
-import { ExecutionMethod } from 'appwrite';
-
-const FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
+import { apiRequest } from '@/lib/apiClient';
 
 export type FamilyLinkStatus = 'pending' | 'active' | 'revoked' | 'inactive';
 
@@ -34,30 +31,11 @@ type LinkChildResponse = {
   error?: string;
 };
 
-const parseExecutionResponse = <T = unknown>(
-  responseBody: string | null | undefined,
-): T => {
-  if (!responseBody) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(responseBody) as T;
-  } catch (error) {
-    throw new Error('Unable to parse Appwrite function response.');
-  }
-};
-
 class FamilyService {
   async listChildren(): Promise<FamilyChild[]> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: '/family/children',
-      method: ExecutionMethod.GET,
-      async: false,
+    const result = await apiRequest<FamilyChildrenResponse>('/api/family/children', {
+      method: 'GET',
     });
-
-    const result = parseExecutionResponse<FamilyChildrenResponse>(response.responseBody);
     if (result?.error) {
       throw new Error(result.error);
     }
@@ -71,15 +49,10 @@ class FamilyService {
     dateOfBirth: string;
     relationship?: string;
   }): Promise<CreateChildResponse> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: '/family/children',
-      method: ExecutionMethod.POST,
-      body: JSON.stringify(params),
-      async: false,
+    const result = await apiRequest<CreateChildResponse>('/api/family/children', {
+      method: 'POST',
+      body: params,
     });
-
-    const result = parseExecutionResponse<CreateChildResponse>(response.responseBody);
     if (result?.error) {
       throw new Error(result.error);
     }
@@ -91,15 +64,10 @@ class FamilyService {
     childEmail?: string;
     relationship?: string;
   }): Promise<LinkChildResponse> {
-    const response = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: '/family/links',
-      method: ExecutionMethod.POST,
-      body: JSON.stringify(params),
-      async: false,
+    const result = await apiRequest<LinkChildResponse>('/api/family/links', {
+      method: 'POST',
+      body: params,
     });
-
-    const result = parseExecutionResponse<LinkChildResponse>(response.responseBody);
     if (result?.error) {
       throw new Error(result.error);
     }

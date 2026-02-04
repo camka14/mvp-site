@@ -213,6 +213,7 @@ export interface TimeSlot {
   price?: number;
   event?: Event;
   eventId?: string;
+  field?: Field;
   scheduledFieldId?: string;
 }
 

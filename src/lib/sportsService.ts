@@ -1,8 +1,6 @@
-import { databases } from '@/app/appwrite';
+import { apiRequest } from '@/lib/apiClient';
 import { Sport } from '@/types';
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const SPORTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_SPORTS_TABLE_ID!;
 const CACHE_KEY = 'sports-cache-v1';
 const CACHE_DURATION_MS = 1;
 
@@ -113,16 +111,8 @@ const shouldUseCache = () => {
 };
 
 const fetchSportsFromApi = async (): Promise<Sport[]> => {
-  if (!DATABASE_ID || !SPORTS_TABLE_ID) {
-    throw new Error('Sports table environment variables are not configured.');
-  }
-  const response = await databases.listRows({
-    databaseId: DATABASE_ID,
-    tableId: SPORTS_TABLE_ID,
-    queries: [],
-  });
-
-  const sports = (response.rows || []).map(mapRowToSport);
+  const response = await apiRequest<{ sports?: any[] }>('/api/sports');
+  const sports = (response.sports || []).map(mapRowToSport);
   return sports;
 };
 

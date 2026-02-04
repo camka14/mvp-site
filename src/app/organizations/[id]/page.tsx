@@ -13,7 +13,7 @@ import { useApp } from '@/app/providers';
 import type { Organization, Product, UserData, PaymentIntent, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
-import { databases, ID } from '@/app/appwrite';
+import { createId } from '@/lib/id';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
@@ -23,7 +23,6 @@ import { userService } from '@/lib/userService';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
-import { Query } from 'appwrite';
 import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
@@ -37,8 +36,6 @@ export default function OrganizationDetailPage() {
   );
 }
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const TEMPLATE_DOCUMENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEMPLATE_DOCUMENTS_TABLE_ID || 'templateDocuments';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
@@ -218,13 +215,15 @@ function OrganizationDetailContent() {
       if (!user?.$id) {
         return;
       }
-      const response = await databases.listRows({
-        databaseId: DATABASE_ID,
-        tableId: TEMPLATE_DOCUMENTS_TABLE_ID,
-        queries: [Query.equal('organizationId', orgId), Query.orderDesc('$createdAt'), Query.limit(200)],
+      const response = await fetch(`/api/organizations/${orgId}/templates`, {
+        credentials: 'include',
       });
-      const rows = Array.isArray(response.rows) ? response.rows : [];
-      setTemplateDocuments(rows.map((row) => mapTemplateRow(row)));
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to load templates');
+      }
+      const rows = Array.isArray(payload?.templates) ? payload.templates : [];
+      setTemplateDocuments(rows.map((row: any) => mapTemplateRow(row)));
       if (!silent) {
         setTemplatesError(null);
       }
@@ -286,7 +285,7 @@ function OrganizationDetailContent() {
   }, [availableTabs, searchParams]);
 
   const handleCreateEvent = useCallback(() => {
-    const newId = ID.unique();
+    const newId = createId();
     const params = new URLSearchParams({
       create: '1',
       mode: 'edit',

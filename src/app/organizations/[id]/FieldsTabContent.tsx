@@ -29,7 +29,7 @@ import { buildFieldCalendarEvents, type FieldCalendarEntry } from './fieldCalend
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { notifications } from '@mantine/notifications';
 import { organizationService } from '@/lib/organizationService';
-import { ID } from '@/app/appwrite';
+import { createId } from '@/lib/id';
 import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
 import { fieldService } from '@/lib/fieldService';
 
@@ -535,7 +535,7 @@ export default function FieldsTabContent({ organization, organizationId, current
     const selectionStart = selection.start;
     const selectionEnd = selection.end;
     const rentalPriceCents = matchingRentalSlot?.price;
-    const newId = ID.unique();
+    const newId = createId();
     const params = new URLSearchParams();
     params.set('create', '1');
     params.set('rentalStart', formatLocalDateTime(selectionStart));

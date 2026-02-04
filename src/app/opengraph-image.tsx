@@ -65,7 +65,7 @@ export default function Image() {
 
           <div style={{ display: 'flex', gap: '16px', color: '#c4d5ff', fontSize: 20 }}>
             <span>Live product • {year}</span>
-            <span style={{ opacity: 0.6 }}>Appwrite • Next.js • Mantine</span>
+            <span style={{ opacity: 0.6 }}>Postgres • Next.js • Mantine</span>
           </div>
         </div>
 

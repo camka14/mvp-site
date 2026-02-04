@@ -1,5 +1,5 @@
-import { functions, databases } from '@/app/appwrite';
-import { ID, Query, ExecutionMethod } from 'appwrite';
+import { apiRequest } from '@/lib/apiClient';
+import { createId } from '@/lib/id';
 
 export interface ChatGroup {
     $id: string;
@@ -28,15 +28,11 @@ class ChatService {
     // Following Android pattern: query chat groups where userIds contains current user
     async getChatGroups(userId: string): Promise<ChatGroup[]> {
         try {
-            const response = await databases.listRows({
-                databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_TABLE_ID!,
-                queries: [
-                    Query.contains('userIds', userId)
-                ]
-            });
+            const params = new URLSearchParams();
+            params.set('userId', userId);
+            const response = await apiRequest<{ groups?: any[] }>(`/api/chat/groups?${params.toString()}`);
 
-            return response.rows.map((row: any) => ({
+            return (response.groups ?? []).map((row: any) => ({
                 $id: row.$id,
                 name: row.name,
                 userIds: row.userIds,
@@ -54,18 +50,12 @@ class ChatService {
 
     async getMessages(chatId: string): Promise<Message[]> {
         try {
-            const response = await databases.listRows({
-                databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_MESSAGES_TABLE_ID!,
-                queries: [
-                    Query.equal('chatId', chatId),
-                    Query.orderAsc('sentTime'),
-                    Query.limit(100)
-                ]
-            });
+            const params = new URLSearchParams();
+            params.set('limit', '100');
+            params.set('order', 'asc');
+            const response = await apiRequest<{ messages?: any[] }>(`/api/chat/groups/${chatId}/messages?${params.toString()}`);
 
-            // Properly map response instead of unsafe casting
-            return response.rows.map((row: any) => ({
+            return (response.messages ?? []).map((row: any) => ({
                 $id: row.$id,
                 userId: row.userId,
                 body: row.body,
@@ -81,17 +71,12 @@ class ChatService {
 
     async getLastMessage(chatId: string): Promise<Message | null> {
         try {
-            const response = await databases.listRows({
-                databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_MESSAGES_TABLE_ID!,
-                queries: [
-                    Query.equal('chatId', chatId),
-                    Query.orderDesc('sentTime'),
-                    Query.limit(1)
-                ]
-            });
-            if (!response.rows.length) return null;
-            const row: any = response.rows[0];
+            const params = new URLSearchParams();
+            params.set('limit', '1');
+            params.set('order', 'desc');
+            const response = await apiRequest<{ messages?: any[] }>(`/api/chat/groups/${chatId}/messages?${params.toString()}`);
+            if (!response.messages?.length) return null;
+            const row: any = response.messages[0];
             return {
                 $id: row.$id,
                 userId: row.userId,
@@ -116,26 +101,24 @@ class ChatService {
                 readByIds: [userId]
             };
 
-            const response = await databases.createRow({
-                databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_MESSAGES_TABLE_ID!,
-                rowId: ID.unique(),
-                data: messageData
+            const response = await apiRequest<any>('/api/messages', {
+                method: 'POST',
+                body: { ...messageData, id: createId() },
             });
 
-            // Send push notification
-            await functions.createExecution({
-                functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-                xpath: `/messaging/topics/${chatId}/messages`,
-                method: ExecutionMethod.POST,
-                body: JSON.stringify({
-                    title: '',
-                    body,
-                    userIds: [],
-                    senderId: userId
-                }),
-                async: true
-            });
+            try {
+                await apiRequest(`/api/messaging/topics/${chatId}/messages`, {
+                    method: 'POST',
+                    body: {
+                        title: '',
+                        body,
+                        userIds: [],
+                        senderId: userId
+                    },
+                });
+            } catch (error) {
+                console.warn('Failed to send chat notification', error);
+            }
 
             // Return properly mapped message
             return {
@@ -160,11 +143,9 @@ class ChatService {
                 hostId: userIds[0]
             };
 
-            const response = await databases.createRow({
-                databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_TABLE_ID!,
-                rowId: ID.unique(),
-                data: chatGroupData
+            const response = await apiRequest<any>('/api/chat/groups', {
+                method: 'POST',
+                body: { ...chatGroupData, id: createId() },
             });
 
             // Return properly mapped chat group
@@ -185,18 +166,12 @@ class ChatService {
     async findOrCreateDirectMessage(currentUserId: string, otherUserId: string): Promise<ChatGroup> {
         try {
             // First, try to find existing DM chat
-            const response = await databases.listRows({
-                databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-                tableId: process.env.NEXT_PUBLIC_CHAT_GROUPS_TABLE_ID!,
-                queries: [
-                    Query.contains('userIds', currentUserId),
-                    Query.contains('userIds', otherUserId),
-                    Query.limit(1)
-                ]
-            });
+            const params = new URLSearchParams();
+            params.set('userId', currentUserId);
+            const response = await apiRequest<{ groups?: any[] }>(`/api/chat/groups?${params.toString()}`);
 
-            // Check if we found a DM (2 users only)
-            const existingDM = response.rows.find((row: any) =>
+            const existingDM = (response.groups ?? []).find((row: any) =>
+                Array.isArray(row.userIds) &&
                 row.userIds.length === 2 &&
                 row.userIds.includes(currentUserId) &&
                 row.userIds.includes(otherUserId)

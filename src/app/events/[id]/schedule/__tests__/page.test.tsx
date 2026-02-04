@@ -6,7 +6,6 @@ import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
 import { organizationService } from '@/lib/organizationService';
 import { formatLocalDateTime } from '@/lib/dateUtils';
-import { forwardRef, useImperativeHandle } from 'react';
 
 const useSearchParamsMock = jest.fn();
 const mockRouter = {
@@ -28,11 +27,6 @@ jest.mock('@/app/providers', () => ({ useApp: () => useAppMock() }));
 jest.mock('@/lib/apiClient', () => ({
   apiRequest: jest.fn(),
 }));
-
-jest.mock('@/app/appwrite', () => {
-  const { createAppwriteModuleMock } = require('../../../../../../test/mocks/appwrite');
-  return createAppwriteModuleMock();
-});
 
 jest.mock('@/components/layout/Navigation', () => () => <div data-testid="navigation" />);
 
@@ -60,17 +54,21 @@ jest.mock('@/lib/organizationService', () => ({
 }));
 
 let capturedEventFormProps: any = null;
-jest.mock('../components/EventForm', () => ({
-  __esModule: true,
-  default: forwardRef((props: any, ref) => {
-    capturedEventFormProps = props;
-    useImperativeHandle(ref, () => ({
-      getDraft: () => props.event ?? {},
-      validate: async () => true,
-    }));
-    return <div data-testid="event-form" />;
-  }),
-}));
+jest.mock('../components/EventForm', () => {
+  const React = require('react');
+  const { forwardRef, useImperativeHandle } = React;
+  return {
+    __esModule: true,
+    default: forwardRef((props: any, ref: any) => {
+      capturedEventFormProps = props;
+      useImperativeHandle(ref, () => ({
+        getDraft: () => props.event ?? {},
+        validate: async () => true,
+      }));
+      return <div data-testid="event-form" />;
+    }),
+  };
+});
 
 jest.mock('../components/LeagueCalendarView', () => {
   return function MockCalendarView({ matches, onMatchClick, canManage }: any) {

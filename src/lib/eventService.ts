@@ -1,4 +1,4 @@
-import { databases, functions } from '@/app/appwrite';
+import { apiRequest } from './apiClient';
 import {
     Event,
     EventType,
@@ -19,27 +19,15 @@ import {
     getTeamWinRate,
     toEventPayload,
 } from '@/types';
-import { Query } from 'appwrite';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
 import { sportsService } from '@/lib/sportsService';
 import { userService } from '@/lib/userService';
 import { buildPayload } from './utils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
-import { ExecutionMethod } from 'appwrite';
+import { createId } from '@/lib/id';
 import { LeagueScheduleResponse } from './leagueService';
-import { apiRequest } from './apiClient';
 import { normalizeApiEvent, normalizeApiMatch, normalizeOutgoingEventDocument } from './apiMappers';
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
-const EVENT_MANAGER_FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!;
-const FIELDS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID!;
-const MATCHES_TABLE_ID = process.env.NEXT_PUBLIC_MATCHES_TABLE_ID!;
-const TEAMS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID!;
-const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
-const TIME_SLOTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID!;
-const ORGANIZATIONS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_TABLE_ID!;
-const LEAGUE_SCORING_CONFIG_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_LEAGUE_SCORING_CONFIG_TABLE_ID!;
 
 export interface LeagueGenerationOptions {
     dryRun?: boolean;
@@ -83,18 +71,13 @@ export interface EventFilters {
 class EventService {
     /**
      * Get event with all relationships expanded (matching Python backend approach)
-     * This fetches all related data in a single database call using Appwrite's relationship features
+     * This fetches all related data in a single database call using hydrated relationships
      */
     private sportsCache: Map<string, Sport> | null = null;
     private sportsCachePromise: Promise<Map<string, Sport>> | null = null;
     async getEventWithRelations(id: string): Promise<Event | undefined> {
         try {
-            const response = await databases.getRow({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                rowId: id,
-            });
-
+            const response = await apiRequest<any>(`/api/events/${id}`);
             await this.ensureSportRelationship(response);
             await this.ensureLeagueScoringConfig(response);
 
@@ -111,11 +94,7 @@ class EventService {
      */
     async getEvent(id: string): Promise<Event | undefined> {
         try {
-            const response = await databases.getRow({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                rowId: id,
-            });
+            const response = await apiRequest<any>(`/api/events/${id}`);
 
             await this.ensureSportRelationship(response);
             await this.ensureLeagueScoringConfig(response);
@@ -134,11 +113,9 @@ class EventService {
 
     async updateEventParticipants(eventId: string, updates: { playerIds: string[], teamIds: string[] }): Promise<Event> {
         try {
-            const response = await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                rowId: eventId,
-                data: updates
+            const response = await apiRequest<any>(`/api/events/${eventId}`, {
+                method: 'PATCH',
+                body: { event: updates },
             });
 
             const hydrated = await this.getEvent(eventId);
@@ -158,28 +135,18 @@ class EventService {
     async updateEvent(eventId: string, eventData: Partial<Event>): Promise<Event> {
         try {
             const payload = toEventPayload(eventData as Event)
-            const response = await functions.createExecution({
-                functionId: EVENT_MANAGER_FUNCTION_ID,
-                xpath: `/events/${eventId}`,
-                method: ExecutionMethod.PATCH,
-                body: JSON.stringify({
-                    event: payload
-                }),
-                async: false
-            })
-
-            if (response.errors) {
-                throw Error("Failed to Update: " + response.errors)
-            }
-
-            const body = JSON.parse(response.responseBody)
-            if (body.error) {
-                throw Error("Failed to Update: " + body.error)
-            }
+            const response = await apiRequest<any>(`/api/events/${eventId}`, {
+                method: 'PATCH',
+                body: { event: payload },
+            });
 
             const hydrated = await this.getEvent(eventId);
             if (hydrated) {
                 return hydrated;
+            }
+
+            if (response?.$id || response?.id) {
+                return this.mapRowToEvent(response);
             }
 
             throw new Error('Failed to hydrate updated event');
@@ -196,17 +163,10 @@ class EventService {
             if (Object.prototype.hasOwnProperty.call(normalizedEvent, 'refereeIds')) {
                 payload.refereeIds = normalizedEvent.refereeIds ?? [];
             }
-            const response = await functions.createExecution({
-                functionId: EVENT_MANAGER_FUNCTION_ID,
-                xpath: `/events/${event.$id}`,
-                method: ExecutionMethod.DELETE,
-                body: JSON.stringify({ event: payload }),
-                async: false,
-            })
-            if (response.errors && response.errors.length > 0) {
-                console.error('Event Manager function returned errors:', response.errors);
-                return false;
-            }
+            await apiRequest(`/api/events/${event.$id}`, {
+                method: 'DELETE',
+                body: { event: payload },
+            });
             return true;
         } catch (error) {
             console.error('Failed to delete event:', error);
@@ -216,10 +176,9 @@ class EventService {
 
     async deleteUnpublishedEvent(event: Event): Promise<void> {
         try {
-            await databases.deleteRow({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                rowId: event.$id,
+            await apiRequest(`/api/events/${event.$id}`, {
+                method: 'DELETE',
+                body: { event },
             });
         } catch (error) {
             console.error('Failed to delete unpublished event:', error);
@@ -240,11 +199,7 @@ class EventService {
 
         const deletionResults = await Promise.allSettled(
             fieldsToRemove.map(async (field) => {
-                await databases.deleteRow({
-                    databaseId: DATABASE_ID,
-                    tableId: FIELDS_TABLE_ID,
-                    rowId: field.$id
-                });
+                await apiRequest(`/api/fields/${field.$id}`, { method: 'DELETE' });
             })
         );
 
@@ -298,29 +253,17 @@ class EventService {
             if (Object.prototype.hasOwnProperty.call(normalizedEvent, 'refereeIds')) {
                 payload.refereeIds = normalizedEvent.refereeIds ?? [];
             }
-            const response = await functions.createExecution({
-                functionId: EVENT_MANAGER_FUNCTION_ID,
-                xpath: '/events',
-                method: ExecutionMethod.POST,
-                body: JSON.stringify({ event: payload }),
-                async: false,
+            const response = await apiRequest<any>('/api/events', {
+                method: 'POST',
+                body: { event: payload, id: payload.$id ?? payload.id ?? createId() },
             });
 
-            if (response.errors) {
-                throw Error('Failed to create event: ' + response.errors);
-            }
-
-            const body = JSON.parse(response.responseBody || '{}');
-            if (body.error) {
-                throw Error('Failed to create event: ' + body.error);
-            }
-
-            const createdEvent = body.event ?? body;
-            if (createdEvent?.$id) {
+            const createdEvent = response?.event ?? response;
+            if (createdEvent?.$id || createdEvent?.id) {
                 return await this.mapRowFromDatabase(createdEvent, true);
             }
 
-            const eventId = body.eventId ?? body.id;
+            const eventId = response?.eventId ?? response?.id;
             if (eventId) {
                 const hydrated = await this.getEvent(String(eventId));
                 if (hydrated) {
@@ -517,41 +460,14 @@ class EventService {
     }
 
     async getEventsForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Event[]> {
-        const startFilter = this.normalizeDateInput(start);
-        const endFilter = this.normalizeDateInput(end);
+        const startFilter = this.normalizeDateInput(start) ?? undefined;
+        const endFilter = this.normalizeDateInput(end) ?? undefined;
+        const params = new URLSearchParams();
+        if (startFilter) params.set('start', startFilter);
+        if (endFilter) params.set('end', endFilter);
 
-        const baseQueries: string[] = [];
-
-        if (startFilter) {
-            baseQueries.push(Query.greaterThanEqual('end', startFilter));
-        }
-
-        if (endFilter) {
-            baseQueries.push(Query.lessThanEqual('start', endFilter));
-        }
-
-
-        const seen = new Set<string>();
-        const rows: any[] = [];
-
-        const queryVariants: string[][] = [
-            [Query.contains('fieldIds', [fieldId]), ...baseQueries],
-        ];
-
-        for (const queries of queryVariants) {
-            const response = await databases.listRows({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                queries,
-            });
-
-            for (const row of response.rows ?? []) {
-                const id = String(row.$id ?? row.id ?? '');
-                if (seen.has(id)) continue;
-                seen.add(id);
-                rows.push(row);
-            }
-        }
+        const response = await apiRequest<{ events?: any[] }>(`/api/events/field/${fieldId}?${params.toString()}`);
+        const rows = Array.isArray(response?.events) ? response.events : [];
 
         const events: Event[] = [];
         for (const row of rows) {
@@ -564,38 +480,14 @@ class EventService {
     }
 
     async getMatchesForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Match[]> {
-        const startFilter = this.normalizeDateInput(start);
-        const endFilter = this.normalizeDateInput(end);
+        const startFilter = this.normalizeDateInput(start) ?? undefined;
+        const endFilter = this.normalizeDateInput(end) ?? undefined;
+        const params = new URLSearchParams();
+        if (startFilter) params.set('start', startFilter);
+        if (endFilter) params.set('end', endFilter);
 
-        const limit = 100;
-        let offset = 0;
-        const rows: any[] = [];
-
-        while (true) {
-            const queries: string[] = [Query.equal('fieldId', fieldId), Query.orderAsc('start'), Query.limit(limit)];
-            if (startFilter) {
-                queries.push(Query.greaterThanEqual('end', startFilter));
-            }
-            if (endFilter) {
-                queries.push(Query.lessThanEqual('start', endFilter));
-            }
-            if (offset > 0) {
-                queries.push(Query.offset(offset));
-            }
-
-            const response = await databases.listRows({
-                databaseId: DATABASE_ID,
-                tableId: MATCHES_TABLE_ID,
-                queries,
-            });
-
-            const batch = response.rows ?? [];
-            rows.push(...batch);
-            if (batch.length < limit) {
-                break;
-            }
-            offset += limit;
-        }
+        const response = await apiRequest<{ matches?: any[] }>(`/api/fields/${fieldId}/matches?${params.toString()}`);
+        const rows = Array.isArray(response?.matches) ? response.matches : [];
 
         if (!rows.length) {
             return [];
@@ -742,16 +634,14 @@ class EventService {
         }
 
         const responses = await Promise.all(
-            this.chunkIds(unique).map((batch) =>
-                databases.listRows({
-                    databaseId: DATABASE_ID,
-                    tableId: TEAMS_TABLE_ID,
-                    queries: [Query.equal('$id', batch)],
-                }),
-            ),
+            this.chunkIds(unique).map((batch) => {
+                const params = new URLSearchParams();
+                params.set('ids', batch.join(','));
+                return apiRequest<{ teams?: any[] }>(`/api/teams?${params.toString()}`);
+            }),
         );
 
-        return responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapTeamRow(row)));
+        return responses.flatMap((response) => (response?.teams ?? []).map((row: any) => this.mapTeamRow(row)));
     }
 
     private mapTeamRow(row: any): Team {
@@ -838,16 +728,14 @@ class EventService {
         }
 
         const responses = await Promise.all(
-            this.chunkIds(unique).map((batch) =>
-                databases.listRows({
-                    databaseId: DATABASE_ID,
-                    tableId: FIELDS_TABLE_ID,
-                    queries: [Query.equal('$id', batch)],
-                }),
-            ),
+            this.chunkIds(unique).map((batch) => {
+                const params = new URLSearchParams();
+                params.set('ids', batch.join(','));
+                return apiRequest<{ fields?: any[] }>(`/api/fields?${params.toString()}`);
+            }),
         );
 
-        const fields = responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapFieldRow(row)));
+        const fields = responses.flatMap((response) => (response?.fields ?? []).map((row: any) => this.mapFieldRow(row)));
         await this.hydrateFieldRentalSlots(fields);
         return fields;
     }
@@ -918,16 +806,14 @@ class EventService {
         }
 
         const responses = await Promise.all(
-            this.chunkIds(unique).map((batch) =>
-                databases.listRows({
-                    databaseId: DATABASE_ID,
-                    tableId: TIME_SLOTS_TABLE_ID,
-                    queries: [Query.equal('$id', batch)],
-                }),
-            ),
+            this.chunkIds(unique).map((batch) => {
+                const params = new URLSearchParams();
+                params.set('ids', batch.join(','));
+                return apiRequest<{ timeSlots?: any[] }>(`/api/time-slots?${params.toString()}`);
+            }),
         );
 
-        return responses.flatMap((response) => (response.rows ?? []).map((row: any) => this.mapRowToTimeSlot(row)));
+        return responses.flatMap((response) => (response?.timeSlots ?? []).map((row: any) => this.mapRowToTimeSlot(row)));
     }
 
     private async resolveMatches(
@@ -977,29 +863,8 @@ class EventService {
     }
 
     private async fetchMatchesByEventId(eventId: string): Promise<any[]> {
-        const results: any[] = [];
-        let offset = 0;
-        const limit = 100;
-
-        while (true) {
-            const queries: string[] = [Query.equal('eventId', eventId), Query.limit(limit)];
-            if (offset > 0) {
-                queries.push(Query.offset(offset));
-            }
-            const response = await databases.listRows({
-                databaseId: DATABASE_ID,
-                tableId: MATCHES_TABLE_ID,
-                queries,
-            });
-            const rows = response.rows ?? [];
-            results.push(...rows);
-            if (rows.length < limit) {
-                break;
-            }
-            offset += limit;
-        }
-
-        return results;
+        const response = await apiRequest<{ matches?: any[] }>(`/api/events/${eventId}/matches`);
+        return Array.isArray(response?.matches) ? response.matches : [];
     }
 
     private async fetchEventsByIds(ids: string[]): Promise<Event[]> {
@@ -1009,17 +874,15 @@ class EventService {
         }
 
         const responses = await Promise.all(
-            this.chunkIds(unique).map((batch) =>
-                databases.listRows({
-                    databaseId: DATABASE_ID,
-                    tableId: EVENTS_TABLE_ID,
-                    queries: [Query.equal('$id', batch)],
-                }),
-            ),
+            this.chunkIds(unique).map((batch) => {
+                const params = new URLSearchParams();
+                params.set('ids', batch.join(','));
+                return apiRequest<{ events?: any[] }>(`/api/events?${params.toString()}`);
+            }),
         );
 
         const events: Event[] = [];
-        for (const row of responses.flatMap((response) => response.rows ?? [])) {
+        for (const row of responses.flatMap((response) => response?.events ?? [])) {
             await this.ensureSportRelationship(row);
             await this.ensureLeagueScoringConfig(row);
             events.push(this.mapRowToEvent(row));
@@ -1050,11 +913,7 @@ class EventService {
         }
 
         try {
-            const row = await databases.getRow({
-                databaseId: DATABASE_ID,
-                tableId: ORGANIZATIONS_TABLE_ID,
-                rowId: id,
-            });
+            const row = await apiRequest<any>(`/api/organizations/${id}`);
             return this.mapOrganizationRow(row);
         } catch (error) {
             console.error('Failed to fetch organization:', error);
@@ -1100,11 +959,7 @@ class EventService {
         }
 
         try {
-            const config = await databases.getRow({
-                databaseId: DATABASE_ID,
-                tableId: LEAGUE_SCORING_CONFIG_TABLE_ID,
-                rowId: configId,
-            });
+            const config = await apiRequest<any>(`/api/league-scoring-configs/${configId}`);
             row.leagueScoringConfig = config;
         } catch (error) {
             console.error('Failed to fetch league scoring config:', error);
@@ -1445,11 +1300,9 @@ class EventService {
         const existing = await this.getEvent(eventId);
         if (!existing) throw new Error('Event not found');
         const updated = Array.from(new Set([...(existing.waitListIds || []), participantId]));
-        const response = await databases.updateRow({
-            databaseId: DATABASE_ID,
-            tableId: EVENTS_TABLE_ID,
-            rowId: eventId,
-            data: { waitListIds: updated }
+        const response = await apiRequest<any>(`/api/events/${eventId}`, {
+            method: 'PATCH',
+            body: { event: { waitListIds: updated } },
         });
         await this.ensureSportRelationship(response);
         await this.ensureLeagueScoringConfig(response);
@@ -1460,11 +1313,9 @@ class EventService {
         const existing = await this.getEvent(eventId);
         if (!existing) throw new Error('Event not found');
         const updated = Array.from(new Set([...(existing.freeAgentIds || []), userId]));
-        const response = await databases.updateRow({
-            databaseId: DATABASE_ID,
-            tableId: EVENTS_TABLE_ID,
-            rowId: eventId,
-            data: { freeAgentIds: updated }
+        const response = await apiRequest<any>(`/api/events/${eventId}`, {
+            method: 'PATCH',
+            body: { event: { freeAgentIds: updated } },
         });
         await this.ensureSportRelationship(response);
         await this.ensureLeagueScoringConfig(response);
@@ -1475,11 +1326,9 @@ class EventService {
         const existing = await this.getEvent(eventId);
         if (!existing) throw new Error('Event not found');
         const updated = (existing.freeAgentIds || []).filter(id => id !== userId);
-        const response = await databases.updateRow({
-            databaseId: DATABASE_ID,
-            tableId: EVENTS_TABLE_ID,
-            rowId: eventId,
-            data: { freeAgentIds: updated }
+        const response = await apiRequest<any>(`/api/events/${eventId}`, {
+            method: 'PATCH',
+            body: { event: { freeAgentIds: updated } },
         });
         await this.ensureSportRelationship(response);
         await this.ensureLeagueScoringConfig(response);
@@ -1489,57 +1338,12 @@ class EventService {
     // Pagination methods remain largely the same but updated to use new types
     async getEventsPaginated(filters: EventFilters, limit: number = 18, offset: number = 0): Promise<Event[]> {
         try {
-            const queries: string[] = [];
-
-            queries.push(Query.orderAsc('start'));
-            queries.push(Query.limit(limit));
-            if (offset > 0) queries.push(Query.offset(offset));
-
-            const normalizedEventTypes = filters.eventTypes
-                ?.map((type) => normalizeEnumValue(type))
-                .filter((type): type is string => Boolean(type));
-            if (normalizedEventTypes && normalizedEventTypes.length > 0 && normalizedEventTypes.length < 3) {
-                queries.push(Query.equal('eventType', normalizedEventTypes));
-            }
-
-            if (filters.divisions && filters.divisions.length > 0) {
-                queries.push(Query.contains('divisions', filters.divisions));
-            }
-
-            const normalizedFieldType = normalizeEnumValue(filters.fieldType);
-            if (normalizedFieldType) {
-                queries.push(Query.equal('fieldType', normalizedFieldType));
-            }
-
-            if (filters.dateFrom) {
-                queries.push(Query.greaterThanEqual('start', filters.dateFrom));
-            }
-
-            if (filters.dateTo) {
-                queries.push(Query.lessThanEqual('end', filters.dateTo));
-            }
-
-            if (filters.priceMax !== undefined) {
-                queries.push(Query.lessThanEqual('price', filters.priceMax));
-            }
-
-            if (filters.userLocation && filters.maxDistance) {
-                queries.push(
-                    Query.distanceLessThan(
-                        'coordinates',
-                        [filters.userLocation.lng, filters.userLocation.lat],
-                        Math.round(filters.maxDistance * 1000)
-                    )
-                );
-            }
-
-            const response = await databases.listRows({
-                databaseId: DATABASE_ID,
-                tableId: EVENTS_TABLE_ID,
-                queries
+            const response = await apiRequest<{ events?: any[] }>('/api/events/search', {
+                method: 'POST',
+                body: { filters, limit, offset },
             });
 
-            const rows = response.rows ?? [];
+            const rows = response.events ?? [];
             const events: Event[] = [];
             for (const row of rows) {
                 await this.ensureSportRelationship(row);

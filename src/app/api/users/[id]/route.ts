@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession, assertUserAccess } from '@/lib/permissions';
 
 const updateSchema = z.object({
-  data: z.record(z.any()),
+  data: z.record(z.string(), z.any()),
 });
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

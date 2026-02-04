@@ -1,22 +1,14 @@
-import { databases, functions } from '@/app/appwrite';
+import { apiRequest } from '@/lib/apiClient';
+import { createId } from '@/lib/id';
 import { Team, UserData, getTeamWinRate, getTeamAvatarUrl } from '@/types';
 import { userService } from './userService';
-import { ExecutionMethod, ID, Query } from 'appwrite';
-
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const TEAMS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID!;
-const USERS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_TABLE_ID!;
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 
 class TeamService {
     async getTeamById(id: string, includeRelations: boolean = false): Promise<Team | undefined> {
         try {
-            const response = await databases.getRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: id
-            });
+            const response = await apiRequest<any>(`/api/teams/${id}`);
 
             const team = this.mapRowToTeam(response);
 
@@ -90,11 +82,9 @@ class TeamService {
                 profileImageId: profileImageId || ''
             };
 
-            const response = await databases.createRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: ID.unique(),
-                data: teamData
+            const response = await apiRequest<any>('/api/teams', {
+                method: 'POST',
+                body: { ...teamData, id: createId() },
             });
 
             const captain = await userService.getUserById(captainId);
@@ -121,13 +111,9 @@ class TeamService {
             pendingSet.add(user.$id);
             const updatedPending = Array.from(pendingSet);
 
-            await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: team.$id,
-                data: {
-                    pending: updatedPending,
-                },
+            await apiRequest(`/api/teams/${team.$id}`, {
+                method: 'PATCH',
+                body: { team: { pending: updatedPending } },
             });
 
             await userService.addTeamInvitation(user.$id, team.$id);
@@ -180,18 +166,11 @@ class TeamService {
         try {
             if (teamIds.length === 0) return [];
 
-            const queries = [
-                Query.limit(50),
-                Query.contains('$id', teamIds)
-            ];
+            const params = new URLSearchParams();
+            params.set('ids', teamIds.join(','));
+            const response = await apiRequest<{ teams?: any[] }>(`/api/teams?${params.toString()}`);
 
-            const response = await databases.listRows({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                queries
-            });
-
-            const teams = response.rows.map(row => this.mapRowToTeam(row));
+            const teams = (response.teams ?? []).map(row => this.mapRowToTeam(row));
 
             if (includeRelations) {
                 await Promise.all(teams.map((team) => this.hydrateTeamRelations(team)));
@@ -206,16 +185,12 @@ class TeamService {
 
     async getTeamsByUserId(userId: string): Promise<Team[]> {
         try {
-            const response = await databases.listRows({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                queries: [
-                    Query.limit(100),
-                    Query.contains('playerIds', userId),
-                ],
-            });
+            const params = new URLSearchParams();
+            params.set('playerId', userId);
+            params.set('limit', '100');
+            const response = await apiRequest<{ teams?: any[] }>(`/api/teams?${params.toString()}`);
 
-            return response.rows.map((row: any) => this.mapRowToTeam(row));
+            return (response.teams ?? []).map((row: any) => this.mapRowToTeam(row));
         } catch (error) {
             console.error('Failed to fetch user teams:', error);
             return [];
@@ -224,14 +199,9 @@ class TeamService {
 
     async updateTeamProfileImage(teamId: string, fileId: string): Promise<Team | undefined> {
         try {
-            const response = await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: teamId,
-                data: {
-                    profileImageId: fileId,
-                    profileImage: fileId,
-                },
+            const response = await apiRequest<any>(`/api/teams/${teamId}`, {
+                method: 'PATCH',
+                body: { team: { profileImageId: fileId, profileImage: fileId } },
             });
 
             return this.mapRowToTeam(response);
@@ -243,11 +213,9 @@ class TeamService {
 
     async updateTeamName(teamId: string, name: string): Promise<Team | undefined> {
         try {
-            const response = await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: teamId,
-                data: { name },
+            const response = await apiRequest<any>(`/api/teams/${teamId}`, {
+                method: 'PATCH',
+                body: { team: { name } },
             });
 
             return this.mapRowToTeam(response);
@@ -267,14 +235,9 @@ class TeamService {
             const nextPlayerIds = Array.from(new Set([...team.playerIds, userId]));
             const nextPending = team.pending.filter(id => id !== userId);
 
-            await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: teamId,
-                data: {
-                    playerIds: nextPlayerIds,
-                    pending: nextPending,
-                },
+            await apiRequest(`/api/teams/${teamId}`, {
+                method: 'PATCH',
+                body: { team: { playerIds: nextPlayerIds, pending: nextPending } },
             });
 
             const user = await userService.getUserById(userId);
@@ -300,11 +263,9 @@ class TeamService {
 
             const nextPending = team.pending.filter(id => id !== userId);
 
-            await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: teamId,
-                data: { pending: nextPending },
+            await apiRequest(`/api/teams/${teamId}`, {
+                method: 'PATCH',
+                body: { team: { pending: nextPending } },
             });
 
             await userService.removeTeamInvitation(userId, teamId);
@@ -324,11 +285,9 @@ class TeamService {
 
             const nextPlayerIds = team.playerIds.filter(id => id !== userId);
 
-            await databases.updateRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: teamId,
-                data: { playerIds: nextPlayerIds },
+            await apiRequest(`/api/teams/${teamId}`, {
+                method: 'PATCH',
+                body: { team: { playerIds: nextPlayerIds } },
             });
 
             const user = await userService.getUserById(userId);
@@ -348,11 +307,7 @@ class TeamService {
         try {
             const team = await this.getTeamById(teamId);
 
-            await databases.deleteRow({
-                databaseId: DATABASE_ID,
-                tableId: TEAMS_TABLE_ID,
-                rowId: teamId,
-            });
+            await apiRequest(`/api/teams/${teamId}`, { method: 'DELETE' });
 
             if (team) {
                 await Promise.all(team.playerIds.map(async (playerId) => {

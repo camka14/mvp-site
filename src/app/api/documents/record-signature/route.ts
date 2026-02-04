@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client, ExecutionMethod, Functions } from 'appwrite';
+import { z } from 'zod';
+import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/permissions';
 
-const APPWRITE_ENDPOINT = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
-const APPWRITE_PROJECT_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
-const FUNCTION_ID = process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID;
+const schema = z.object({
+  templateId: z.string(),
+  documentId: z.string(),
+  eventId: z.string().optional(),
+  userId: z.string().optional(),
+  user: z.record(z.string(), z.any()).optional(),
+  type: z.string().optional(),
+}).passthrough();
 
 const resolveIpAddress = (request: NextRequest): string => {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -28,63 +35,39 @@ const resolveIpAddress = (request: NextRequest): string => {
 };
 
 export async function POST(request: NextRequest) {
+  const session = await requireSession(request);
   const body = await request.json().catch(() => ({}));
-  const templateId = typeof body?.templateId === 'string' ? body.templateId : '';
-  const documentId = typeof body?.documentId === 'string' ? body.documentId : '';
-  const eventId = typeof body?.eventId === 'string' ? body.eventId : undefined;
-  const userId = typeof body?.userId === 'string' ? body.userId : undefined;
-  const user = body?.user;
-  const type = typeof body?.type === 'string' ? body.type : undefined;
-
-  if (!templateId || !documentId) {
-    return NextResponse.json(
-      { error: 'templateId and documentId are required.' },
-      { status: 400 },
-    );
+  const parsed = schema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'templateId and documentId are required.' }, { status: 400 });
   }
 
-  if (!APPWRITE_ENDPOINT || !APPWRITE_PROJECT_ID || !FUNCTION_ID) {
-    return NextResponse.json(
-      { error: 'Appwrite configuration is missing.' },
-      { status: 500 },
-    );
+  const userId = parsed.data.userId ?? session.userId;
+  if (!session.isAdmin && userId !== session.userId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const client = new Client()
-    .setEndpoint(APPWRITE_ENDPOINT)
-    .setProject(APPWRITE_PROJECT_ID);
-  const functions = new Functions(client);
-  const ipAddress = resolveIpAddress(request);
+  await prisma.signedDocuments.create({
+    data: {
+      id: crypto.randomUUID(),
+      signedDocumentId: parsed.data.documentId,
+      templateId: parsed.data.templateId,
+      userId,
+      documentName: parsed.data.type === 'TEXT' ? 'Text Waiver' : 'Signed Document',
+      hostId: null,
+      organizationId: null,
+      eventId: parsed.data.eventId ?? null,
+      status: 'SIGNED',
+      signedAt: new Date().toISOString(),
+      signerEmail: parsed.data.user?.email ?? null,
+      roleIndex: null,
+      signerRole: null,
+      ipAddress: resolveIpAddress(request),
+      requestId: request.headers.get('x-request-id') ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  });
 
-  try {
-    const execution = await functions.createExecution({
-      functionId: FUNCTION_ID,
-      xpath: '/documents/signed',
-      method: ExecutionMethod.POST,
-      body: JSON.stringify({
-        templateId,
-        documentId,
-        eventId,
-        userId,
-        user,
-        type,
-        ipAddress,
-      }),
-      async: false,
-    });
-
-    const responseBody = execution.responseBody || '{}';
-    const result = JSON.parse(responseBody) as { error?: string };
-    if (result?.error) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
-    }
-
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : 'Failed to record signature.';
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return NextResponse.json({ ok: true }, { status: 200 });
 }

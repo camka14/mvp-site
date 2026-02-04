@@ -7,7 +7,7 @@ import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
 import { billService } from '@/lib/billService';
-import { ID } from '@/app/appwrite';
+import { createId } from '@/lib/id';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService, FamilyChild } from '@/lib/familyService';
@@ -585,7 +585,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return;
         }
 
-        const documentId = ID.unique();
+        const documentId = createId();
         setRecordingSignature(true);
         setJoinNotice('Confirming signature...');
         try {

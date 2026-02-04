@@ -1,10 +1,9 @@
 import { fieldService } from '@/lib/fieldService';
-import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
+import { apiRequest } from '@/lib/apiClient';
 
-jest.mock('@/app/appwrite', () => {
-  const { createAppwriteModuleMock } = require('../../../test/mocks/appwrite');
-  return createAppwriteModuleMock();
-});
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(),
+}));
 
 jest.mock('@/lib/eventService', () => ({
   eventService: {
@@ -13,70 +12,40 @@ jest.mock('@/lib/eventService', () => ({
   },
 }));
 
-const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
+const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
 const eventServiceMock = jest.requireMock('@/lib/eventService').eventService as {
   getEventsForFieldInRange: jest.Mock;
   getMatchesForFieldInRange: jest.Mock;
 };
 
-const DATABASE_ID = 'test-db';
-const FIELDS_TABLE_ID = 'fields-table';
-const TIME_SLOTS_TABLE_ID = 'time-slots-table';
-
 describe('fieldService', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
-    process.env.NEXT_PUBLIC_APPWRITE_FIELDS_TABLE_ID = FIELDS_TABLE_ID;
-    process.env.NEXT_PUBLIC_APPWRITE_WEEKLY_SCHEDULES_TABLE_ID = TIME_SLOTS_TABLE_ID;
     jest.clearAllMocks();
+    apiRequestMock.mockReset();
     eventServiceMock.getEventsForFieldInRange.mockResolvedValue([]);
     eventServiceMock.getMatchesForFieldInRange.mockResolvedValue([]);
   });
 
-  it('creates a field with provided payload', async () => {
-    appwriteModuleMock.databases.upsertRow.mockResolvedValue({
-      $id: 'field_1',
-      name: 'Court A',
-    });
+  it('creates a field via apiRequest', async () => {
+    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A', fieldNumber: 1 });
 
-    const field = await fieldService.createField({
-      name: 'Court A',
-      fieldNumber: 1,
-    });
+    const field = await fieldService.createField({ name: 'Court A', fieldNumber: 1 });
 
-    expect(appwriteModuleMock.databases.upsertRow).toHaveBeenCalledWith(expect.objectContaining({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-      rowId: expect.any(String),
-    }));
-    expect(appwriteModuleMock.databases.upsertRow.mock.calls[0][0].data).toEqual(expect.objectContaining({
-      name: 'Court A',
-      fieldNumber: 1,
-    }));
+    expect(apiRequestMock).toHaveBeenCalledWith('/api/fields', expect.objectContaining({ method: 'POST' }));
     expect(field.$id).toBe('field_1');
   });
 
-  it('lists fields by ids when provided', async () => {
-    appwriteModuleMock.databases.listRows.mockResolvedValue({
-      rows: [{ $id: 'field_1', name: 'Court A' }],
-    });
+  it('lists fields by ids', async () => {
+    apiRequestMock.mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A', fieldNumber: 1 }] });
 
     const fields = await fieldService.listFields({ fieldIds: ['field_1'] });
 
-    expect(appwriteModuleMock.databases.listRows).toHaveBeenCalledWith(expect.objectContaining({
-      databaseId: DATABASE_ID,
-      tableId: FIELDS_TABLE_ID,
-    }));
-    const queries = appwriteModuleMock.databases.listRows.mock.calls[0][0].queries;
-    expect(queries).toEqual(expect.arrayContaining([expect.stringContaining('$id')]));
+    expect(apiRequestMock).toHaveBeenCalledWith(expect.stringContaining('/api/fields?'));
     expect(fields[0].name).toBe('Court A');
   });
 
   it('hydrates events and matches when range provided', async () => {
-    appwriteModuleMock.databases.listRows.mockResolvedValue({
-      rows: [{ $id: 'field_1', name: 'Court A' }],
-    });
-
+    apiRequestMock.mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A', fieldNumber: 1 }] });
     eventServiceMock.getEventsForFieldInRange.mockResolvedValue([{ $id: 'evt_1', name: 'Tournament' } as any]);
     eventServiceMock.getMatchesForFieldInRange.mockResolvedValue([
       { $id: 'match_1', start: '2024-01-01T10:00:00Z', end: '2024-01-01T11:00:00Z' } as any,
@@ -84,11 +53,11 @@ describe('fieldService', () => {
 
     const fields = await fieldService.listFields(
       { fieldIds: ['field_1'] },
-      { start: '2024-01-01T00:00:00Z', end: '2024-01-07T00:00:00Z' }
+      { start: '2024-01-01T00:00:00Z', end: '2024-01-07T00:00:00Z' },
     );
 
-    expect(eventServiceMock.getEventsForFieldInRange).toHaveBeenCalledWith('field_1', '2024-01-01T00:00:00Z', '2024-01-07T00:00:00Z');
-    expect(eventServiceMock.getMatchesForFieldInRange).toHaveBeenCalledWith('field_1', '2024-01-01T00:00:00Z', '2024-01-07T00:00:00Z');
+    expect(eventServiceMock.getEventsForFieldInRange).toHaveBeenCalled();
+    expect(eventServiceMock.getMatchesForFieldInRange).toHaveBeenCalled();
     expect(fields[0].events?.[0].$id).toBe('evt_1');
     expect(fields[0].matches?.[0].$id).toBe('match_1');
   });

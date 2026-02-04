@@ -574,7 +574,7 @@ export const finalizeMatch = (
   }
 
   const participants = buildScheduleParticipants(event);
-  const matchesSchedule = new Schedule(
+  const matchesSchedule = new Schedule<Match, PlayingField, Team | UserData, Division>(
     event.start,
     event.fields,
     participants,

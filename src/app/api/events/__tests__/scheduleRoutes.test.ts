@@ -22,8 +22,8 @@ const deleteMatchesByEventMock = jest.fn();
 const saveTeamRecordsMock = jest.fn();
 const acquireEventLockMock = jest.fn();
 const scheduleEventMock = jest.fn();
-const serializeEventAppwriteMock = jest.fn();
-const serializeMatchesAppwriteMock = jest.fn();
+const serializeEventLegacyMock = jest.fn();
+const serializeMatchesLegacyMock = jest.fn();
 const applyMatchUpdatesMock = jest.fn();
 const finalizeMatchMock = jest.fn();
 
@@ -49,8 +49,8 @@ jest.mock('@/server/scheduler/scheduleEvent', () => ({
 }));
 
 jest.mock('@/server/scheduler/serialize', () => ({
-  serializeEventAppwrite: (...args: any[]) => serializeEventAppwriteMock(...args),
-  serializeMatchesAppwrite: (...args: any[]) => serializeMatchesAppwriteMock(...args),
+  serializeEventLegacy: (...args: any[]) => serializeEventLegacyMock(...args),
+  serializeMatchesLegacy: (...args: any[]) => serializeMatchesLegacyMock(...args),
 }));
 
 jest.mock('@/server/scheduler/updateMatch', () => ({
@@ -93,8 +93,8 @@ describe('schedule routes', () => {
       event: { id: 'event_1' },
       matches: [{ id: 'match_1' }],
     });
-    serializeEventAppwriteMock.mockReturnValue({ $id: 'event_1' });
-    serializeMatchesAppwriteMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
 
     const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
       eventDocument: { $id: 'event_1' },
@@ -136,7 +136,7 @@ describe('schedule routes', () => {
       matches: { match_1: { id: 'match_1' } },
       teams: {},
     });
-    serializeMatchesAppwriteMock.mockReturnValue([{ $id: 'match_1' }]);
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', { teamRefereeId: 'team_1' }),

@@ -11,11 +11,11 @@ Replace Appwrite with a self-hosted DigitalOcean stack so the MVP runs entirely 
 ## Progress
 
 - [x] (2026-02-04 00:00Z) Audited `mvp-site` for Appwrite references and captured them in Context and Orientation.
-- [ ] Replace Appwrite data access with Prisma-backed API routes and repositories.
-- [ ] Migrate Appwrite function calls to self-hosted Next.js route handlers.
-- [ ] Replace Appwrite auth confirmation and ID generation.
-- [ ] Remove Appwrite dependencies, configuration, docs, and tests.
-- [ ] Migrate data from Appwrite to Postgres and validate parity.
+- [x] (2026-02-04) Replaced Appwrite data access with Prisma-backed Next.js API routes for events, fields, time slots, teams, organizations, billing, documents, chat, family, invites, products, and refunds.
+- [x] (2026-02-04) Migrated Appwrite function calls to self-hosted Next.js route handlers wired through `apiRequest` in service modules.
+- [x] (2026-02-04) Replaced Appwrite auth confirmation and ID generation (added `createId`, updated confirm-password/signature flows).
+- [x] (2026-02-04) Removed Appwrite dependencies/configuration/tests and marked legacy Appwrite docs/plans.
+- [ ] (2026-02-04) Migrate data from Appwrite to Postgres and validate parity. (Migration script added; execution pending.)
 
 ## Surprises & Discoveries
 
@@ -41,9 +41,11 @@ Replace Appwrite with a self-hosted DigitalOcean stack so the MVP runs entirely 
 
 ## Outcomes & Retrospective
 
-Plan created and ready for implementation. No code changes have been applied yet.
+Implemented full Appwrite removal from runtime code, added Prisma-backed API routes, and rewired service modules to `apiRequest`. Tests now mock the API client instead of Appwrite, and Appwrite dependencies/config were removed. TypeScript now compiles cleanly; remaining work is to run the migration script against real Appwrite data and validate record counts/parity.
 
 ## Context and Orientation
+
+> Status update (2026-02-04): Appwrite SDK/client and env configuration have been removed; notes below reflect the original audit context and are retained for historical reference.
 
 Appwrite is wired in through the SDK client defined in `mvp-site/src/app/appwrite.ts`, which exports `account`, `databases` (Appwrite TablesDB), `functions`, `storage`, `avatars`, and `ID`. These exports are consumed across service modules and client components. Database access via Appwrite appears in `mvp-site/src/lib/eventService.ts`, `mvp-site/src/lib/organizationService.ts`, `mvp-site/src/lib/teamService.ts`, `mvp-site/src/lib/fieldService.ts`, `mvp-site/src/lib/leagueService.ts`, `mvp-site/src/lib/sportsService.ts`, `mvp-site/src/lib/productService.ts`, `mvp-site/src/lib/billService.ts`, `mvp-site/src/lib/refundRequestService.ts`, `mvp-site/src/lib/signedDocumentService.ts`, and `mvp-site/src/lib/chatService.ts`, while Appwrite Function executions are used in `mvp-site/src/lib/paymentService.ts`, `mvp-site/src/lib/registrationService.ts`, `mvp-site/src/lib/familyService.ts`, `mvp-site/src/lib/boldsignService.ts`, `mvp-site/src/lib/chatService.ts`, and portions of `mvp-site/src/lib/eventService.ts` and `mvp-site/src/lib/productService.ts`.
 
@@ -112,6 +114,18 @@ Include concise migration and validation evidence in this plan as work proceeds.
     npm run test:ci
     PASS src/lib/__tests__/eventService.test.ts
     ...
+
+Actuals:
+
+    rg -n "appwrite" mvp-site/src
+    (no output)
+
+    npm run test:ci
+    PASS (19 test suites)
+    Note: console warnings from @react-google-maps/api LoadScript and expected error logs in paymentService negative tests.
+
+    npx tsc --noEmit
+    (no output)
 
 Keep a short mapping note inside the migration script that documents how Appwrite collections map to Prisma models, for example:
 

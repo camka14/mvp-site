@@ -1,4 +1,4 @@
-import { functions } from '@/app/appwrite';
+import { apiRequest } from '@/lib/apiClient';
 import type {
   Event,
   Organization,
@@ -8,22 +8,9 @@ import type {
   TimeSlot,
   UserData,
 } from '@/types';
-import { ExecutionMethod } from 'appwrite';
 import { buildPayload } from './utils';
 
 type PaymentOrganizationContext = Partial<Organization>;
-
-const parseExecutionResponse = <T = unknown>(responseBody: string | null | undefined): T => {
-  if (!responseBody) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(responseBody) as T;
-  } catch (error) {
-    throw new Error('Unable to parse Appwrite function response.');
-  }
-};
 
 type StripeOnboardingLinkResult = {
   onboardingUrl: string;
@@ -51,15 +38,10 @@ class PaymentService {
         organization,
       };
 
-      const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-        xpath: '/billing/purchase-intent',
-        method: ExecutionMethod.POST,
-        body: JSON.stringify(payload),
-        async: false,
+      const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
+        method: 'POST',
+        body: payload,
       });
-
-      const result = parseExecutionResponse<PaymentIntent & { error?: string }>(response.responseBody);
 
       if (result && 'error' in result && result.error) {
         throw new Error(result.error);
@@ -88,15 +70,10 @@ class PaymentService {
         organization,
       };
 
-      const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-        xpath: '/billing/purchase-intent',
-        method: ExecutionMethod.POST,
-        body: JSON.stringify(payload),
-        async: false,
+      const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
+        method: 'POST',
+        body: payload,
       });
-
-      const result = parseExecutionResponse<PaymentIntent & { error?: string }>(response.responseBody);
 
       if (result && 'error' in result && result.error) {
         throw new Error(result.error);
@@ -130,15 +107,10 @@ class PaymentService {
         organization,
       };
 
-      const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-        xpath: `/events/${event.$id}/participants`,
-        method: ExecutionMethod.POST,
-        body: JSON.stringify(payload),
-        async: false,
+      const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {
+        method: 'POST',
+        body: payload,
       });
-
-      const result = parseExecutionResponse<{ error?: string }>(response.responseBody);
 
       if (result && result.error) {
         throw new Error(result.error);
@@ -170,15 +142,10 @@ class PaymentService {
         organization,
       };
 
-      const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-        xpath: `/events/${event.$id}/participants`,
-        method: ExecutionMethod.DELETE,
-        body: JSON.stringify(payload),
-        async: false,
+      const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {
+        method: 'DELETE',
+        body: payload,
       });
-
-      const result = parseExecutionResponse<{ error?: string }>(response.responseBody);
 
       if (result && result.error) {
         throw new Error(result.error);
@@ -197,20 +164,16 @@ class PaymentService {
     const payloadEvent = buildPayload(event)
 
     try {
-      const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-        xpath: '/billing/refund_payment',
-        method: ExecutionMethod.POST,
-        body: JSON.stringify({
-          payloadEvent,
-          user,
-          reason: reason || 'requested_by_customer',
-        }),
-        async: false,
-      });
-
-      const result = parseExecutionResponse<{ error?: string; success: boolean; message?: string; emailSent?: boolean }>(
-        response.responseBody,
+      const result = await apiRequest<{ error?: string; success: boolean; message?: string; emailSent?: boolean }>(
+        '/api/billing/refund',
+        {
+          method: 'POST',
+          body: {
+            payloadEvent,
+            user,
+            reason: reason || 'requested_by_customer',
+          },
+        },
       );
 
       if (result.error) {
@@ -252,15 +215,10 @@ class PaymentService {
         returnUrl,
       };
 
-      const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-        xpath: '/billing/host/connect',
-        method: ExecutionMethod.POST,
-        body: JSON.stringify(payload),
-        async: false,
+      const result = await apiRequest<StripeOnboardingLinkResult & { error?: string }>('/api/billing/host/connect', {
+        method: 'POST',
+        body: payload,
       });
-
-      const result = parseExecutionResponse<StripeOnboardingLinkResult & { error?: string }>(response.responseBody);
 
       if (result.error) {
         throw new Error(result.error);
@@ -292,15 +250,13 @@ class PaymentService {
         returnUrl,
       };
 
-      const response = await functions.createExecution({
-        functionId: process.env.NEXT_PUBLIC_SERVER_FUNCTION_ID!,
-        xpath: '/billing/host/onboarding-link',
-        method: ExecutionMethod.POST,
-        body: JSON.stringify(payload),
-        async: false,
-      });
-
-      const result = parseExecutionResponse<StripeOnboardingLinkResult & { error?: string }>(response.responseBody);
+      const result = await apiRequest<StripeOnboardingLinkResult & { error?: string }>(
+        '/api/billing/host/onboarding-link',
+        {
+          method: 'POST',
+          body: payload,
+        },
+      );
 
       if (result.error) {
         throw new Error(result.error);

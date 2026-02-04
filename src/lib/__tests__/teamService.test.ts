@@ -1,6 +1,10 @@
 import { teamService } from '@/lib/teamService';
+import { apiRequest } from '@/lib/apiClient';
 import type { UserData } from '@/types';
-import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
+
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(),
+}));
 
 jest.mock('@/lib/userService', () => ({
   userService: {
@@ -12,26 +16,13 @@ jest.mock('@/lib/userService', () => ({
   },
 }));
 
-jest.mock('@/app/appwrite', () => {
-  const { createAppwriteModuleMock } = require('../../../test/mocks/appwrite');
-  return createAppwriteModuleMock();
-});
-
-const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
+const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
 const userServiceMock = jest.requireMock('@/lib/userService').userService as {
   getUserById: jest.Mock;
   getUsersByIds: jest.Mock;
   updateUser: jest.Mock;
   addTeamInvitation: jest.Mock;
   removeTeamInvitation: jest.Mock;
-};
-
-const DATABASE_ID = 'test-db';
-const TEAMS_TABLE_ID = 'teams-table';
-
-const setEnv = () => {
-  process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID = DATABASE_ID;
-  process.env.NEXT_PUBLIC_APPWRITE_TEAMS_TABLE_ID = TEAMS_TABLE_ID;
 };
 
 const buildUser = (id: string, overrides: Partial<UserData> = {}): UserData => ({
@@ -55,13 +46,17 @@ const buildUser = (id: string, overrides: Partial<UserData> = {}): UserData => (
 
 describe('teamService', () => {
   beforeEach(() => {
-    setEnv();
-    jest.clearAllMocks();
+    apiRequestMock.mockReset();
+    userServiceMock.getUserById.mockReset();
+    userServiceMock.getUsersByIds.mockReset();
+    userServiceMock.updateUser.mockReset();
+    userServiceMock.addTeamInvitation.mockReset();
+    userServiceMock.removeTeamInvitation.mockReset();
   });
 
   describe('getTeamById', () => {
     it('hydrates players, pending players, and captain when requested', async () => {
-      appwriteModuleMock.databases.getRow.mockResolvedValue({
+      apiRequestMock.mockResolvedValue({
         $id: 'team_1',
         name: 'Spikers',
         sport: 'Volleyball',
@@ -81,11 +76,7 @@ describe('teamService', () => {
 
       const team = await teamService.getTeamById('team_1', true);
 
-      expect(appwriteModuleMock.databases.getRow).toHaveBeenCalledWith({
-        databaseId: DATABASE_ID,
-        tableId: TEAMS_TABLE_ID,
-        rowId: 'team_1',
-      });
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1');
       expect(userServiceMock.getUsersByIds).toHaveBeenNthCalledWith(1, ['user_1']);
       expect(userServiceMock.getUsersByIds).toHaveBeenNthCalledWith(2, ['user_2']);
       expect(userServiceMock.getUserById).not.toHaveBeenCalled();
@@ -95,7 +86,7 @@ describe('teamService', () => {
     });
 
     it('fetches missing captain when not returned in initial hydration', async () => {
-      appwriteModuleMock.databases.getRow.mockResolvedValue({
+      apiRequestMock.mockResolvedValue({
         $id: 'team_missing_captain',
         name: 'Setters',
         sport: 'Volleyball',
@@ -120,7 +111,7 @@ describe('teamService', () => {
 
   describe('createTeam', () => {
     it('creates a team and updates captain team memberships', async () => {
-      appwriteModuleMock.databases.createRow.mockResolvedValue({
+      apiRequestMock.mockResolvedValue({
         $id: 'team_new',
         name: 'New Team',
         sport: 'Volleyball',
@@ -137,16 +128,17 @@ describe('teamService', () => {
 
       const team = await teamService.createTeam('New Team', 'captain_1');
 
-      expect(appwriteModuleMock.databases.createRow).toHaveBeenCalledWith({
-        databaseId: DATABASE_ID,
-        tableId: TEAMS_TABLE_ID,
-        rowId: expect.any(String),
-        data: expect.objectContaining({
-          name: 'New Team',
-          playerIds: ['captain_1'],
-          captainId: 'captain_1',
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/teams',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            name: 'New Team',
+            playerIds: ['captain_1'],
+            captainId: 'captain_1',
+          }),
         }),
-      });
+      );
       expect(userServiceMock.updateUser).toHaveBeenCalledWith('captain_1', {
         teamIds: ['team_new'],
       });
@@ -157,7 +149,7 @@ describe('teamService', () => {
   describe('invitePlayerToTeam', () => {
     it('adds pending invitation and notifies user service', async () => {
       userServiceMock.addTeamInvitation.mockResolvedValue(true);
-      appwriteModuleMock.databases.updateRow.mockResolvedValue({});
+      apiRequestMock.mockResolvedValue({});
 
       const team = {
         $id: 'team_1',
@@ -169,12 +161,13 @@ describe('teamService', () => {
 
       const result = await teamService.invitePlayerToTeam(team, user);
 
-      expect(appwriteModuleMock.databases.updateRow).toHaveBeenCalledWith({
-        databaseId: DATABASE_ID,
-        tableId: TEAMS_TABLE_ID,
-        rowId: 'team_1',
-        data: { pending: ['user_2'] },
-      });
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/teams/team_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: { team: { pending: ['user_2'] } },
+        }),
+      );
       expect(userServiceMock.addTeamInvitation).toHaveBeenCalledWith('user_2', 'team_1');
       expect(result).toBe(true);
     });
