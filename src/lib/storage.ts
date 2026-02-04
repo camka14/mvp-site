@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto';
 
 const DEFAULT_STORAGE_ROOT = './uploads';
 
-const getStorageRoot = (): string => {
+export const getStorageRoot = (): string => {
   return process.env.STORAGE_ROOT || DEFAULT_STORAGE_ROOT;
 };
 
@@ -17,7 +17,7 @@ const safeBasename = (filename: string): string => {
   return base.replace(/[^a-zA-Z0-9._-]/g, '_') || 'file';
 };
 
-const buildStoredName = (originalName: string, organizationId?: string): string => {
+export const buildStoredName = (originalName: string, organizationId?: string): string => {
   const base = safeBasename(originalName);
   const ext = path.extname(base);
   const stem = path.basename(base, ext);
