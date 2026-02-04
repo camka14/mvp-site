@@ -23,7 +23,7 @@ lastUpdated: "2026-02-04"
 
 This guide covers best practices for developing a **full-stack web application** with **Next.js** (App Router) as the front-end framework, **TypeScript** for type safety, **Mantine** as the UI component library, and **Prisma + Postgres** for backend data. The example project is a volleyball event platform (MVP-site) where users can sign up, create profiles, form teams, join events, chat with other players, and handle payments for event registrations. We emphasize a **modular architecture**: Next.js for routing and SSR, Mantine for cohesive UI components, and Prisma-backed API routes for data access, file uploads, and business logic.
 
-**Legacy references**: The repos `mvpDatabase` and `mvp-build-bracket` are **legacy Appwrite-dependent references** only. Use them to understand data shape and historical behavior, but **do not implement new features using Appwrite**. Any Appwrite-specific files or env vars in this repo should be treated as legacy artifacts.
+**Legacy references**: The repos `mvpDatabase` and `mvp-build-bracket` are **legacy backend references** only. Use them to understand data shape and historical behavior, but **do not implement new features using legacy services**. Any legacy-specific files or env vars in this repo should be treated as artifacts.
 
 # ExecPlans
 When writing complex features or significant refactors, use an ExecPlan (as described in `mvp-site/PLANS.md`) from design to implementation.
@@ -160,5 +160,5 @@ We persist raw string IDs for associations (for example `teamIds`, `friendIds`, 
 
 ## Legacy Notes
 
-- Appwrite references are legacy only.
+- Legacy references are read-only.
 - Use `mvpDatabase` and `mvp-build-bracket` **as reference**, not as active dependencies.

@@ -83,13 +83,20 @@ export async function POST(req: NextRequest) {
 
   const stripe = new Stripe(secretKey);
   try {
+    const userId = payload.user?.$id ?? payload.user?.id ?? null;
+    const metadata: Record<string, string> = {
+      purchase_type: purchaseType,
+    };
+    if (userId) metadata.user_id = String(userId);
+    if (payload.productId) metadata.product_id = payload.productId;
+    if (payload.event?.$id || payload.event?.id) {
+      metadata.event_id = String(payload.event?.$id ?? payload.event?.id);
+    }
     const intent = await stripe.paymentIntents.create({
       amount: totalCharge,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
-      metadata: {
-        purchase_type: purchaseType,
-      },
+      metadata,
     });
 
     return NextResponse.json({

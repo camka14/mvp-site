@@ -29,6 +29,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     return NextResponse.json({ error: 'childId is required' }, { status: 400 });
   }
 
+  const needsConsent = Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0;
+  const consentDocumentId = needsConsent ? crypto.randomUUID() : null;
+
   const registration = await prisma.eventRegistrations.create({
     data: {
       id: crypto.randomUUID(),
@@ -36,12 +39,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       registrantId: childId,
       parentId: session.userId,
       registrantType: 'CHILD',
-      status: Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0 ? 'PENDINGCONSENT' : 'ACTIVE',
+      status: needsConsent ? 'PENDINGCONSENT' : 'ACTIVE',
+      consentDocumentId,
+      consentStatus: needsConsent ? 'sent' : null,
       createdBy: session.userId,
       createdAt: new Date(),
       updatedAt: new Date(),
     },
   });
 
-  return NextResponse.json({ registration: withLegacyFields(registration) }, { status: 200 });
+  return NextResponse.json({
+    registration: withLegacyFields(registration),
+    consent: needsConsent
+      ? {
+          documentId: consentDocumentId,
+          status: 'sent',
+          parentSignLink: null,
+          childSignLink: null,
+        }
+      : undefined,
+  }, { status: 200 });
 }

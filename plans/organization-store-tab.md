@@ -39,7 +39,7 @@ Organization detail UI lives in `src/app/organizations/[id]/page.tsx`, using `Se
 Extend shared types to include `Product` (id, organizationId, priceCents, period enum, name/description, isActive) and `Subscription` (id, productId, userId, organizationId, startDate, priceCents, status). Update `Organization` to carry `productIds?` and optionally hydrated `products`.
 
 Implement `productService` to:
-- List products for an organization via Appwrite tables (using a new `NEXT_PUBLIC_APPWRITE_PRODUCTS_TABLE_ID` with fallback to `products`).
+- List products for an organization via Appwrite tables (using a new `NEXT_PUBLIC_LEGACY_PRODUCTS_TABLE_ID` with fallback to `products`).
 - Create products by calling the backend function at `/products` with owner/user/org context.
 - Create subscriptions after payment via `/products/{id}/subscriptions`.
 
