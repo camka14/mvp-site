@@ -28,6 +28,7 @@ import { normalizeEnumValue } from '@/lib/enumUtils';
 import { ExecutionMethod } from 'appwrite';
 import { LeagueScheduleResponse } from './leagueService';
 import { apiRequest } from './apiClient';
+import { normalizeApiEvent, normalizeApiMatch, normalizeOutgoingEventDocument } from './apiMappers';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const EVENTS_TABLE_ID = process.env.NEXT_PUBLIC_APPWRITE_EVENTS_TABLE_ID!;
@@ -254,30 +255,39 @@ class EventService {
         }
     }
     
-      async scheduleEvent(eventDocument: Record<string, any>, options: { participantCount?: number } = {}): Promise<LeagueScheduleResponse> {
-        const payload: Record<string, any> = { eventDocument };
+      async scheduleEvent(
+        eventDocument: Record<string, any>,
+        options: { participantCount?: number; eventId?: string } = {},
+      ): Promise<LeagueScheduleResponse> {
+        const normalizedDocument = normalizeOutgoingEventDocument(eventDocument);
+        const payload: Record<string, any> = { eventDocument: normalizedDocument };
 
         if (typeof options.participantCount === 'number') {
           payload.participantCount = options.participantCount;
         }
 
+        const path = options.eventId ? `/api/events/${options.eventId}/schedule` : '/api/events/schedule';
         const result = await apiRequest<{
           preview?: boolean;
           event?: Event;
           matches?: Match[];
-        }>('/api/events/schedule', {
+        }>(path, {
           method: 'POST',
           body: payload,
         });
 
-        const event = result?.event;
-        if (event && Array.isArray(result.matches)) {
-          event.matches = result.matches;
+        const normalizedMatches = Array.isArray(result?.matches)
+          ? result.matches.map((match) => normalizeApiMatch(match))
+          : undefined;
+        const normalizedEvent = result?.event ? normalizeApiEvent(result.event) ?? undefined : undefined;
+
+        if (normalizedEvent && normalizedMatches) {
+          normalizedEvent.matches = normalizedMatches;
         }
 
         return {
-          preview: typeof result.preview === 'boolean' ? result.preview : false,
-          event,
+          preview: typeof result?.preview === 'boolean' ? result.preview : false,
+          event: normalizedEvent,
         };
       }
 

@@ -18,8 +18,9 @@ import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
 import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
+import { createClientId } from '@/lib/clientId';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
-import { ID, databases } from '@/app/appwrite';
+import { databases } from '@/app/appwrite';
 import UserCard from '@/components/ui/UserCard';
 import { Query } from 'appwrite';
 
@@ -727,7 +728,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const lastResetEventIdRef = useRef<string | null>(null);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => ({
-        key: slot?.$id ?? ID.unique(),
+        key: slot?.$id ?? createClientId(),
         $id: slot?.$id,
         scheduledFieldId: slot?.scheduledFieldId ? slot.scheduledFieldId as string : undefined,
         dayOfWeek: slot?.dayOfWeek,
@@ -958,7 +959,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             if (!organization) {
                 return Array.from({ length: defaultFieldCount }, (_, idx) => ({
-                    $id: ID.unique(),
+                    $id: createClientId(),
                     name: `Field ${idx + 1}`,
                     fieldNumber: idx + 1,
                     type: base.fieldType,
@@ -1605,7 +1606,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (normalized.length < fieldCount) {
                 for (let index = normalized.length; index < fieldCount; index += 1) {
                     normalized.push({
-                        $id: ID.unique(),
+                        $id: createClientId(),
                         name: `Field ${index + 1}`,
                         fieldNumber: index + 1,
                         type: eventData.fieldType,

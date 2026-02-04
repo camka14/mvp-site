@@ -1,0 +1,587 @@
+generator client {
+  provider = "prisma-client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum BillsOwnerTypeEnum {
+  USER
+  TEAM
+}
+
+enum BillsStatusEnum {
+  OPEN
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum BillPaymentsStatusEnum {
+  PENDING
+  PAID
+  VOID
+}
+
+enum RefundRequestsStatusEnum {
+  WAITING
+  APPROVED
+  REJECTED
+}
+
+enum EventsStateEnum {
+  PUBLISHED
+  UNPUBLISHED
+}
+
+enum EventsEventTypeEnum {
+  TOURNAMENT
+  EVENT
+  LEAGUE
+}
+
+enum EventsFieldTypeEnum {
+  INDOOR
+  GRASS
+  SAND
+}
+
+enum ProductsPeriodEnum {
+  WEEK
+  MONTH
+  YEAR
+}
+
+enum SubscriptionsPeriodEnum {
+  WEEK
+  MONTH
+  YEAR
+}
+
+enum SubscriptionsStatusEnum {
+  ACTIVE
+  CANCELLED
+}
+
+enum TemplateDocumentsTypeEnum {
+  PDF
+  TEXT
+}
+
+enum ParentChildLinksStatusEnum {
+  PENDING
+  ACTIVE
+  REVOKED
+  INACTIVE
+}
+
+enum EventRegistrationsRegistrantTypeEnum {
+  SELF
+  CHILD
+  TEAM
+}
+
+enum EventRegistrationsStatusEnum {
+  PENDINGCONSENT
+  ACTIVE
+  BLOCKED
+  CANCELLED
+  CONSENTFAILED
+}
+
+model Fields {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  fieldNumber Int
+  divisions String[]
+  lat Float?
+  long Float?
+  heading Float?
+  inUse Boolean?
+  name String?
+  type String?
+  rentalSlotIds String[]
+  location String?
+  organizationId String?
+}
+
+model Matches {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  start DateTime?
+  end DateTime?
+  division String?
+  team1Points Int[]
+  team2Points Int[]
+  setResults Int[]
+  side String?
+  matchId Int
+  losersBracket Boolean?
+  winnerNextMatchId String?
+  loserNextMatchId String?
+  previousRightId String?
+  previousLeftId String?
+  refereeCheckedIn Boolean?
+  refereeId String?
+  team1Id String?
+  team2Id String?
+  eventId String?
+  fieldId String?
+  teamRefereeId String?
+}
+
+model Divisions {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  name String
+}
+
+model UserData {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  firstName String?
+  lastName String?
+  dateOfBirth DateTime
+  dobVerified Boolean?
+  dobVerifiedAt DateTime?
+  ageVerificationProvider String?
+  teamIds String[]
+  friendIds String[]
+  userName String
+  hasStripeAccount Boolean?
+  followingIds String[]
+  friendRequestIds String[]
+  friendRequestSentIds String[]
+  uploadedImages String[]
+  profileImageId String?
+}
+
+model SensitiveUserData {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  userId String
+  email String
+}
+
+model Invites {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  type String
+  email String
+  status String?
+  eventId String?
+  organizationId String?
+  teamId String?
+  userId String?
+  createdBy String?
+  firstName String?
+  lastName String?
+}
+
+model VolleyBallTeams {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  seed Int
+  playerIds String[]
+  division String?
+  wins Int?
+  losses Int?
+  name String?
+  captainId String
+  pending String[]
+  teamSize Int
+  profileImageId String?
+  sport String?
+}
+
+model Messages {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  body String
+  userId String
+  attachmentUrls String[]
+  chatId String
+  readByIds String[]
+  sentTime DateTime
+}
+
+model ChatGroup {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  name String?
+  userIds String[]
+  hostId String
+}
+
+model LockFiles {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  docId String?
+  expires DateTime
+}
+
+model PaymentIntents {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  eventId String
+  userId String
+}
+
+model Bills {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  ownerType BillsOwnerTypeEnum
+  ownerId String
+  organizationId String?
+  eventId String?
+  totalAmountCents Int
+  paidAmountCents Int?
+  nextPaymentDue DateTime?
+  nextPaymentAmountCents Int?
+  parentBillId String?
+  allowSplit Boolean?
+  status BillsStatusEnum?
+  paymentPlanEnabled Boolean?
+  createdBy String?
+}
+
+model BillPayments {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  billId String
+  sequence Int
+  dueDate DateTime
+  amountCents Int
+  status BillPaymentsStatusEnum?
+  paidAt DateTime?
+  paymentIntentId String?
+  payerUserId String?
+}
+
+model RefundRequests {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  eventId String
+  userId String
+  hostId String?
+  reason String
+  organizationId String?
+  status RefundRequestsStatusEnum?
+}
+
+model StripeAccounts {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  customerId String?
+  accountId String?
+  userId String?
+  organizationId String?
+  email String?
+}
+
+model Events {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  name String
+  start DateTime
+  end DateTime
+  description String?
+  divisions String[]
+  winnerSetCount Int?
+  loserSetCount Int?
+  doubleElimination Boolean?
+  location String
+  rating Float?
+  teamSizeLimit Int
+  maxParticipants Int?
+  minAge Int?
+  maxAge Int?
+  hostId String
+  price Int
+  singleDivision Boolean?
+  waitListIds String[]
+  freeAgentIds String[]
+  cancellationRefundHours Int?
+  teamSignup Boolean?
+  prize String?
+  registrationCutoffHours Int?
+  seedColor Int?
+  imageId String
+  fieldCount Int?
+  winnerBracketPointsToVictory Int[]
+  loserBracketPointsToVictory Int[]
+  coordinates Json
+  gamesPerOpponent Int?
+  includePlayoffs Boolean?
+  playoffTeamCount Int?
+  usesSets Boolean?
+  matchDurationMinutes Int?
+  setDurationMinutes Int?
+  setsPerMatch Int?
+  restTimeMinutes Int?
+  state EventsStateEnum?
+  pointsToVictory Int[]
+  sportId String?
+  timeSlotIds String[]
+  fieldIds String[]
+  teamIds String[]
+  userIds String[]
+  registrationIds String[]
+  leagueScoringConfigId String?
+  organizationId String?
+  autoCancellation Boolean?
+  eventType EventsEventTypeEnum?
+  fieldType EventsFieldTypeEnum?
+  doTeamsRef Boolean?
+  refereeIds String[]
+  allowPaymentPlans Boolean?
+  installmentCount Int?
+  installmentDueDates DateTime[]
+  installmentAmounts Int[]
+  allowTeamSplitDefault Boolean?
+  requiredTemplateIds String[]
+}
+
+model Organizations {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  name String
+  location String?
+  description String?
+  logoId String?
+  ownerId String
+  website String?
+  refIds String[]
+  hasStripeAccount Boolean?
+  coordinates Json?
+  fieldIds String[]
+  productIds String[]
+  teamIds String[]
+}
+
+model Products {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  name String
+  description String?
+  priceCents Int
+  period ProductsPeriodEnum
+  organizationId String
+  createdBy String?
+  isActive Boolean?
+  stripeProductId String?
+  stripePriceId String?
+}
+
+model Subscriptions {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  productId String
+  userId String
+  organizationId String?
+  startDate DateTime
+  priceCents Int
+  period SubscriptionsPeriodEnum
+  status SubscriptionsStatusEnum?
+  stripeSubscriptionId String?
+}
+
+model TimeSlots {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  dayOfWeek Int?
+  startTimeMinutes Int?
+  endTimeMinutes Int?
+  startDate DateTime
+  repeating Boolean
+  endDate DateTime?
+  scheduledFieldId String?
+  price Int?
+}
+
+model LeagueScoringConfigs {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  pointsForWin Int?
+  pointsForDraw Int?
+  pointsForLoss Int?
+  pointsForForfeitWin Int?
+  pointsForForfeitLoss Int?
+  pointsPerSetWin Float?
+  pointsPerSetLoss Float?
+  pointsPerGameWin Float?
+  pointsPerGameLoss Float?
+  pointsPerGoalScored Float?
+  pointsPerGoalConceded Float?
+  maxGoalBonusPoints Int?
+  minGoalBonusThreshold Int?
+  pointsForShutout Float?
+  pointsForCleanSheet Float?
+  applyShutoutOnlyIfWin Boolean?
+  pointsPerGoalDifference Float?
+  maxGoalDifferencePoints Int?
+  pointsPenaltyPerGoalDifference Float?
+  pointsForParticipation Float?
+  pointsForNoShow Float?
+  pointsForWinStreakBonus Float?
+  winStreakThreshold Int?
+  pointsForOvertimeWin Float?
+  pointsForOvertimeLoss Float?
+  overtimeEnabled Boolean?
+  pointsPerRedCard Float?
+  pointsPerYellowCard Float?
+  pointsPerPenalty Float?
+  maxPenaltyDeductions Int?
+  maxPointsPerMatch Float?
+  minPointsPerMatch Float?
+  goalDifferenceTiebreaker Boolean?
+  headToHeadTiebreaker Boolean?
+  totalGoalsTiebreaker Boolean?
+  enableBonusForComebackWin Boolean?
+  bonusPointsForComebackWin Float?
+  enableBonusForHighScoringMatch Boolean?
+  highScoringThreshold Int?
+  bonusPointsForHighScoringMatch Float?
+  enablePenaltyForUnsportingBehavior Boolean?
+  penaltyPointsForUnsportingBehavior Float?
+  pointPrecision Int?
+}
+
+model Sports {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  name String
+  usePointsForWin Boolean?
+  usePointsForDraw Boolean?
+  usePointsForLoss Boolean?
+  usePointsForForfeitWin Boolean?
+  usePointsForForfeitLoss Boolean?
+  usePointsPerSetWin Boolean?
+  usePointsPerSetLoss Boolean?
+  usePointsPerGameWin Boolean?
+  usePointsPerGameLoss Boolean?
+  usePointsPerGoalScored Boolean?
+  usePointsPerGoalConceded Boolean?
+  useMaxGoalBonusPoints Boolean?
+  useMinGoalBonusThreshold Boolean?
+  usePointsForShutout Boolean?
+  usePointsForCleanSheet Boolean?
+  useApplyShutoutOnlyIfWin Boolean?
+  usePointsPerGoalDifference Boolean?
+  useMaxGoalDifferencePoints Boolean?
+  usePointsPenaltyPerGoalDifference Boolean?
+  usePointsForParticipation Boolean?
+  usePointsForNoShow Boolean?
+  usePointsForWinStreakBonus Boolean?
+  useWinStreakThreshold Boolean?
+  usePointsForOvertimeWin Boolean?
+  usePointsForOvertimeLoss Boolean?
+  useOvertimeEnabled Boolean?
+  usePointsPerRedCard Boolean?
+  usePointsPerYellowCard Boolean?
+  usePointsPerPenalty Boolean?
+  useMaxPenaltyDeductions Boolean?
+  useMaxPointsPerMatch Boolean?
+  useMinPointsPerMatch Boolean?
+  useGoalDifferenceTiebreaker Boolean?
+  useHeadToHeadTiebreaker Boolean?
+  useTotalGoalsTiebreaker Boolean?
+  useEnableBonusForComebackWin Boolean?
+  useBonusPointsForComebackWin Boolean?
+  useEnableBonusForHighScoringMatch Boolean?
+  useHighScoringThreshold Boolean?
+  useBonusPointsForHighScoringMatch Boolean?
+  useEnablePenaltyUnsporting Boolean?
+  usePenaltyPointsUnsporting Boolean?
+  usePointPrecision Boolean?
+}
+
+model TemplateDocuments {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  templateId String?
+  type TemplateDocumentsTypeEnum?
+  organizationId String
+  title String
+  description String?
+  signOnce Boolean?
+  status String?
+  createdBy String?
+  roleIndex Int?
+  roleIndexes Int[]
+  signerRoles String[]
+  content String?
+}
+
+model SignedDocuments {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  signedDocumentId String
+  templateId String
+  userId String
+  documentName String
+  hostId String?
+  organizationId String?
+  eventId String?
+  status String?
+  signedAt String?
+  signerEmail String?
+  roleIndex Int?
+  signerRole String?
+  ipAddress String?
+  requestId String?
+}
+
+model ParentChildLinks {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  parentId String
+  childId String
+  status ParentChildLinksStatusEnum
+  relationship String?
+  linkMethod String?
+  createdBy String
+  endedAt DateTime?
+}
+
+model EventRegistrations {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  eventId String
+  registrantId String
+  parentId String?
+  registrantType EventRegistrationsRegistrantTypeEnum
+  status EventRegistrationsStatusEnum
+  ageAtEvent Int?
+  consentDocumentId String?
+  consentStatus String?
+  createdBy String
+}

@@ -1,4 +1,4 @@
-import { databases, ID, functions } from '@/app/appwrite';
+import { databases, ID } from '@/app/appwrite';
 import { ExecutionMethod, Query } from 'appwrite';
 import {
   TimeSlot,

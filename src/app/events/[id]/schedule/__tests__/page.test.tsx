@@ -1,12 +1,11 @@
 import { renderWithMantine } from '../../../../../../test/utils/renderWithMantine';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import LeagueSchedulePage from '../page';
+import { apiRequest } from '@/lib/apiClient';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
 import { organizationService } from '@/lib/organizationService';
 import { formatLocalDateTime } from '@/lib/dateUtils';
-import type { Field, Match } from '@/types';
-import { buildTeam } from '../../../../../../test/factories';
 import { forwardRef, useImperativeHandle } from 'react';
 
 const useSearchParamsMock = jest.fn();
@@ -25,6 +24,10 @@ jest.mock('next/navigation', () => ({
 
 const useAppMock = jest.fn();
 jest.mock('@/app/providers', () => ({ useApp: () => useAppMock() }));
+
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(),
+}));
 
 jest.mock('@/app/appwrite', () => {
   const { createAppwriteModuleMock } = require('../../../../../../test/mocks/appwrite');
@@ -102,26 +105,12 @@ jest.mock('@/app/hooks/useSports', () => {
   };
 });
 
-const mockMatch: Match = {
-  $id: 'match_1',
-  start: formatLocalDateTime(new Date(Date.now() + 26 * 60 * 60 * 1000)),
-  end: formatLocalDateTime(new Date(Date.now() + 28 * 60 * 60 * 1000)),
-  team1Seed: 1,
-  team2Seed: 2,
-  team1Points: [],
-  team2Points: [],
-  setResults: [],
-  field: {
-    $id: 'field_1',
-    name: 'Court A',
-    fieldNumber: 1,
-    type: 'INDOOR',
-    location: 'Sports Center',
-    lat: 0,
-    long: 0,
-  } as Field,
-  team1: buildTeam({ $id: 'team_a', name: 'Aces' }),
-  team2: buildTeam({ $id: 'team_b', name: 'Diggers' }),
+const scheduleFixture = require('../../../../../../test/fixtures/api/schedule.json');
+const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
+
+const buildApiEvent = (overrides: Record<string, any> = {}) => {
+  const event = JSON.parse(JSON.stringify(scheduleFixture.event));
+  return { ...event, ...overrides };
 };
 
 describe('League schedule page', () => {
@@ -149,29 +138,18 @@ describe('League schedule page', () => {
 
     jest.clearAllMocks();
 
-    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
-      $id: 'event_1',
-      name: 'Summer League',
-      eventType: 'LEAGUE',
-      state: 'PUBLISHED',
-      status: 'draft',
-      start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
-      end: formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000)),
-      location: 'Sports Center',
-      hostId: 'host_1',
-      teams: [
-        buildTeam({ $id: 'team_a', name: 'Aces' }),
-        buildTeam({ $id: 'team_b', name: 'Diggers' }),
-      ],
-      fields: [
-        { $id: 'field_1', name: 'Court A', fieldNumber: 1, type: 'INDOOR', location: '', lat: 0, long: 0 },
-      ],
-      timeSlots: [],
-      matches: [mockMatch],
-    });
+    apiRequestMock.mockResolvedValue({ event: buildApiEvent() });
   });
 
   it('renders schedule information', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
     renderWithMantine(<LeagueSchedulePage />);
 
     await waitFor(() => {
@@ -182,6 +160,8 @@ describe('League schedule page', () => {
       expect(screen.getByTestId('league-calendar')).toBeInTheDocument();
     });
     expect(screen.queryByText(/Edit Match/)).not.toBeInTheDocument();
+    expect(capturedEventFormProps?.event?.$id).toBe('event_1');
+    expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
   });
 
   it('allows host to open match editor when in edit mode', async () => {
@@ -214,21 +194,8 @@ describe('League schedule page', () => {
       },
     });
 
-    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
-      $id: 'event_1',
-      name: 'Summer League',
-      eventType: 'LEAGUE',
-      state: 'UNPUBLISHED',
-      status: 'draft',
-      start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
-      end: formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000)),
-      location: 'Sports Center',
-      hostId: 'host_1',
-      fields: [
-        { $id: 'field_1', name: 'Court A', fieldNumber: 1, type: 'INDOOR', location: '', lat: 0, long: 0 },
-      ],
-      matches: [mockMatch],
-      timeSlots: [],
+    apiRequestMock.mockResolvedValue({
+      event: buildApiEvent({ state: 'UNPUBLISHED' }),
     });
 
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
@@ -251,7 +218,7 @@ describe('League schedule page', () => {
     expect(eventService.deleteEvent).not.toHaveBeenCalled();
     expect(leagueService.deleteMatchesByEvent).not.toHaveBeenCalled();
     expect(leagueService.deleteWeeklySchedulesForEvent).not.toHaveBeenCalled();
-    expect(eventService.getEventWithRelations).toHaveBeenCalled();
+    expect(apiRequestMock).toHaveBeenCalledWith('/api/events/event_1');
     confirmSpy.mockRestore();
   });
 
@@ -264,24 +231,14 @@ describe('League schedule page', () => {
       },
     });
 
-    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue({
-      $id: 'event_unpublished',
+    const baseEvent = buildApiEvent({
+      id: 'event_unpublished',
       name: 'Draft League',
-      eventType: 'LEAGUE',
       state: 'UNPUBLISHED',
-      status: 'draft',
       attendees: 12,
-      start: formatLocalDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000)),
-      end: formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000)),
-      location: 'Sports Center',
-      hostId: 'host_1',
-      teams: [
-        buildTeam({ $id: 'team_a', name: 'Aces' }),
-        buildTeam({ $id: 'team_b', name: 'Diggers' }),
-      ],
       fields: [
         {
-          $id: 'field_1',
+          id: 'field_1',
           name: 'Court A',
           fieldNumber: 1,
           type: 'INDOOR',
@@ -291,7 +248,7 @@ describe('League schedule page', () => {
           rentalSlotIds: ['rental_1'],
           rentalSlots: [
             {
-              $id: 'rental_1',
+              id: 'rental_1',
               dayOfWeek: 0,
               startTimeMinutes: 480,
               endTimeMinutes: 540,
@@ -302,22 +259,22 @@ describe('League schedule page', () => {
       ],
       matches: [
         {
-          ...mockMatch,
-          $id: 'match_publish',
+          ...buildApiEvent().matches[0],
+          id: 'match_publish',
           field: {
-            $id: 'field_1',
+            id: 'field_1',
             name: 'Court A',
             fieldNumber: 1,
             type: 'INDOOR',
             location: '',
             lat: 0,
             long: 0,
-          } as Field,
+          },
         },
       ],
       timeSlots: [
         {
-          $id: 'slot_1',
+          id: 'slot_1',
           dayOfWeek: 1,
           startTimeMinutes: 600,
           endTimeMinutes: 660,
@@ -326,6 +283,8 @@ describe('League schedule page', () => {
         },
       ],
     });
+
+    apiRequestMock.mockResolvedValue({ event: baseEvent });
 
     (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
       Promise.resolve({

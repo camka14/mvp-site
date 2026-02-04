@@ -14,8 +14,9 @@ import { tournamentService } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
 import { paymentService } from '@/lib/paymentService';
 import { apiRequest } from '@/lib/apiClient';
+import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
-import { ID } from '@/app/appwrite';
+import { createClientId } from '@/lib/clientId';
 import { toEventPayload } from '@/types';
 import type { Event, EventState, Field, FieldSurfaceType, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
@@ -364,7 +365,7 @@ function EventScheduleContent() {
     const price = Number.isFinite(rentalPurchaseContext.priceCents) ? Number(rentalPurchaseContext.priceCents) : undefined;
 
     return {
-      $id: ID.unique(),
+      $id: createClientId(),
       dayOfWeek,
       startTimeMinutes: startMinutes,
       endTimeMinutes: endMinutes,
@@ -721,7 +722,7 @@ function EventScheduleContent() {
   }, [activeEvent, changesEvent, event, rentalPurchaseContext?.priceCents]);
 
   // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
-  // Hydrate event + match data from Appwrite and sync local component state.
+  // Hydrate event + match data from the API and sync local component state.
   const loadSchedule = useCallback(async () => {
     if (!eventId) return;
     if (isCreateMode) {
@@ -735,12 +736,16 @@ function EventScheduleContent() {
     setInfoMessage(null);
 
     try {
-      const response = await apiRequest<{ event: Event }>(`/api/events/${eventId}`);
-      const fetchedEvent = response?.event ?? null;
+      const response = await apiRequest<{ event?: Event; matches?: Match[] }>(`/api/events/${eventId}`);
+      const fetchedEvent = normalizeApiEvent(response?.event ?? null);
 
       if (!fetchedEvent) {
         setError('League not found.');
         return;
+      }
+
+      if (Array.isArray(response?.matches)) {
+        fetchedEvent.matches = response.matches.map((match) => normalizeApiMatch(match));
       }
 
       hydrateEvent(fetchedEvent);
@@ -1117,7 +1122,8 @@ function EventScheduleContent() {
   }, [setSubmitError]);
 
   const handlePreviewEventUpdate = useCallback((preview: Event) => {
-    const previewClone = cloneValue(preview) as Event;
+    const normalizedPreview = normalizeApiEvent(preview) ?? preview;
+    const previewClone = cloneValue(normalizedPreview) as Event;
     const nextMatches = Array.isArray(previewClone.matches)
       ? (cloneValue(previewClone.matches) as Match[])
       : [];
@@ -1133,7 +1139,7 @@ function EventScheduleContent() {
     (draft: Partial<Event>): Record<string, unknown> => {
       const resolvedId = typeof draft.$id === 'string' && draft.$id.length > 0
         ? draft.$id
-        : eventId ?? ID.unique();
+        : eventId ?? createClientId();
       const normalizedDraft = { ...draft, $id: resolvedId } as Event;
       return toEventPayload(normalizedDraft) as Record<string, unknown>;
     },
@@ -1152,7 +1158,8 @@ function EventScheduleContent() {
 
       try {
         const payload = buildSchedulePayload(draft);
-        const result = await eventService.scheduleEvent(payload);
+        const scheduleEventId = !isCreateMode ? eventId : undefined;
+        const result = await eventService.scheduleEvent(payload, { eventId: scheduleEventId });
         if (!result?.event) {
           throw new Error('Failed to generate schedule preview.');
         }
@@ -1174,7 +1181,7 @@ function EventScheduleContent() {
         setPublishing(false);
       }
     },
-    [buildSchedulePayload, handlePreviewEventUpdate, pathname, router, searchParams],
+    [buildSchedulePayload, eventId, handlePreviewEventUpdate, isCreateMode, pathname, router, searchParams],
   );
 
   const scheduleRegularEvent = useCallback(

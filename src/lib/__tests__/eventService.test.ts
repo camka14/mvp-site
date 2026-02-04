@@ -1,5 +1,6 @@
 import { eventService } from '@/lib/eventService';
 import { sportsService } from '@/lib/sportsService';
+import { apiRequest } from '@/lib/apiClient';
 import { createSport } from '@/types/defaults';
 import type { AppwriteModuleMock } from '../../../test/mocks/appwrite';
 import { ExecutionMethod } from 'appwrite';
@@ -9,6 +10,10 @@ jest.mock('@/app/appwrite', () => {
   return createAppwriteModuleMock();
 });
 
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(),
+}));
+
 jest.mock('@/lib/sportsService', () => ({
   sportsService: {
     getAll: jest.fn(),
@@ -17,6 +22,7 @@ jest.mock('@/lib/sportsService', () => ({
 
 const appwriteModuleMock = jest.requireMock('@/app/appwrite') as AppwriteModuleMock;
 const sportsServiceMock = sportsService as jest.Mocked<typeof sportsService>;
+const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
 
 const DATABASE_ID = 'test-db';
 const EVENTS_TABLE_ID = 'events-table';
@@ -49,6 +55,7 @@ describe('eventService', () => {
     sportsServiceMock.getAll.mockReset();
     sportsServiceMock.getAll.mockResolvedValue([]);
     appwriteModuleMock.databases.listRows.mockResolvedValue({ rows: [] });
+    apiRequestMock.mockReset();
   });
 
   describe('getEventWithRelations', () => {
@@ -245,6 +252,39 @@ describe('eventService', () => {
           fields: [{ $id: 'fld_1' }],
         } as any)
       ).rejects.toThrow('Failed to delete fields for unpublished event');
+    });
+  });
+
+  describe('scheduleEvent', () => {
+    it('posts to the schedule endpoint and normalizes ids', async () => {
+      apiRequestMock.mockResolvedValue({
+        preview: true,
+        event: { id: 'evt_1', name: 'Event' },
+        matches: [{ id: 'match_1', team1Points: [], team2Points: [], setResults: [] }],
+      });
+
+      const response = await eventService.scheduleEvent({ $id: 'evt_1' } as any);
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/events/schedule',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(response.event?.$id).toBe('evt_1');
+      expect(response.event?.matches?.[0]?.$id).toBe('match_1');
+    });
+
+    it('uses the event schedule route when eventId is provided', async () => {
+      apiRequestMock.mockResolvedValue({
+        preview: false,
+        event: { id: 'evt_2', name: 'Event' },
+      });
+
+      await eventService.scheduleEvent({ $id: 'evt_2' } as any, { eventId: 'evt_2' });
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/events/evt_2/schedule',
+        expect.objectContaining({ method: 'POST' }),
+      );
     });
   });
 

@@ -2,6 +2,7 @@ import { Event, Team, Field, Match, TournamentBracket, UserData } from '@/types'
 import { eventService } from './eventService';
 import { authService } from './auth';
 import { apiRequest } from './apiClient';
+import { normalizeApiMatch } from './apiMappers';
 
 class TournamentService {
     async getTournamentBracket(tournamentId: string): Promise<TournamentBracket> {
@@ -171,7 +172,7 @@ class TournamentService {
                 throw new Error('Failed to update match');
             }
 
-            return response.match;
+            return normalizeApiMatch(response.match);
         } catch (error) {
             console.error('Failed to update match:', error);
             throw error;

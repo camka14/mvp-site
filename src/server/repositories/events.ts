@@ -337,6 +337,13 @@ export const saveMatches = async (
   }
 };
 
+export const deleteMatchesByEvent = async (
+  eventId: string,
+  client: PrismaLike = prisma,
+) => {
+  await client.matches.deleteMany({ where: { eventId } });
+};
+
 export const saveEventSchedule = async (event: League | Tournament, client: PrismaLike = prisma) => {
   await client.events.update({
     where: { id: event.id },
