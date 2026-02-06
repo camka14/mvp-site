@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import { sendInviteEmails } from '@/server/inviteEmails';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,11 +83,14 @@ export async function POST(req: NextRequest) {
     });
   }));
 
-  if (created.length === 1) {
-    return NextResponse.json(withLegacyFields(created[0]), { status: 201 });
+  const baseUrl = req.nextUrl.origin;
+  const updatedInvites = await sendInviteEmails(created, baseUrl);
+
+  if (updatedInvites.length === 1) {
+    return NextResponse.json(withLegacyFields(updatedInvites[0]), { status: 201 });
   }
 
-  return NextResponse.json({ invites: withLegacyList(created) }, { status: 201 });
+  return NextResponse.json({ invites: withLegacyList(updatedInvites) }, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest) {

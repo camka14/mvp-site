@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { sendInviteEmails } from '@/server/inviteEmails';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
 
   const inviterId = parsed.data.inviterId ?? session.userId;
-  const sent: any[] = [];
+  const sentRecords: any[] = [];
   const failed: any[] = [];
   const notSent: any[] = [];
 
@@ -102,8 +103,12 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    sent.push(withLegacyFields(record));
+    sentRecords.push(record);
   }
+
+  const baseUrl = req.nextUrl.origin;
+  const updatedSent = await sendInviteEmails(sentRecords, baseUrl);
+  const sent = updatedSent.map((record) => withLegacyFields(record));
 
   return NextResponse.json({ sent, not_sent: notSent, failed }, { status: 200 });
 }
