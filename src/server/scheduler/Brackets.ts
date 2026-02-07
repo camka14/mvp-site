@@ -267,7 +267,8 @@ export class Brackets {
 
     for (const match of orderedMatches) {
       this.attachMatchToParticipants(match);
-      if (match.team1 && match.team2 && !match.referee && this.tournament.referees.length) {
+      // Official referees can be assigned even when the teams are not yet known (future bracket matches).
+      if (!match.referee && this.tournament.referees.length) {
         const availableRefs = this.bracketSchedule.freeParticipants(this.currentDivision, match.start, match.end)
           .filter((participant) => participant instanceof UserData) as UserData[];
         if (availableRefs.length) {

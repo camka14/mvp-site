@@ -560,6 +560,52 @@ const processMatches = (
   }
 };
 
+const assignMissingTeamReferees = (
+  event: Tournament | League,
+  schedule: Schedule<Match, any, any, Division>,
+  matches: Iterable<Match>,
+): void => {
+  const teams = Object.values(event.teams);
+  const unassigned = [...teams];
+  const ordered = Array.from(matches).sort((a, b) => {
+    const startDiff = a.start.getTime() - b.start.getTime();
+    if (startDiff !== 0) return startDiff;
+    const endDiff = a.end.getTime() - b.end.getTime();
+    if (endDiff !== 0) return endDiff;
+    return (a.field?.id ?? '').localeCompare(b.field?.id ?? '');
+  });
+
+  for (const match of ordered) {
+    if (match.teamReferee || !(match.team1 && match.team2)) continue;
+    if (!match.division) continue;
+
+    const availableTeams = schedule
+      .freeParticipants(match.division, match.start, match.end)
+      .filter((participant) => participant instanceof Team) as Team[];
+    const filtered = availableTeams.filter((team) => team !== match.team1 && team !== match.team2);
+    if (!filtered.length) continue;
+
+    let candidate: Team | null = null;
+    for (let i = 0; i < unassigned.length; i += 1) {
+      const candidateTeam = unassigned[0];
+      unassigned.push(unassigned.shift() as Team);
+      if (filtered.includes(candidateTeam)) {
+        candidate = candidateTeam;
+        const idx = unassigned.indexOf(candidateTeam);
+        if (idx >= 0) unassigned.splice(idx, 1);
+        break;
+      }
+    }
+    if (!candidate) {
+      candidate = filtered[0] ?? null;
+    }
+    if (!candidate) continue;
+
+    match.teamReferee = candidate;
+    ensureMatchesArray(candidate).push(match);
+  }
+};
+
 export const finalizeMatch = (
   event: Tournament | League,
   updatedMatch: Match,
@@ -568,20 +614,11 @@ export const finalizeMatch = (
 ): FinalizeResult => {
   syncMatchParticipants(Object.values(event.matches));
 
+  const updatedIsPlayoffMatch = isPlayoffMatch(updatedMatch);
   const seededTeamIds: string[] = [];
-  if (event instanceof League && !isPlayoffMatch(updatedMatch)) {
+  if (event instanceof League && !updatedIsPlayoffMatch) {
     seededTeamIds.push(...seedLeaguePlayoffs(event, updatedMatch, context));
   }
-
-  const participants = buildScheduleParticipants(event);
-  const matchesSchedule = new Schedule<Match, PlayingField, Team | UserData, Division>(
-    event.start,
-    event.fields,
-    participants,
-    event.divisions,
-    currentTime,
-    { endTime: event.end, timeSlots: event.timeSlots },
-  );
 
   const teamOne = updatedMatch.team1;
   const teamTwo = updatedMatch.team2;
@@ -597,6 +634,36 @@ export const finalizeMatch = (
   winner.wins += 1;
   loser.losses += 1;
   updatedMatch.advanceTeams(winner, loser);
+
+  // Regular season league matches should not trigger bracket-style rescheduling. The schedule is pre-built and
+  // independent from match results; rescheduling here was unscheduling future matches without restoring them.
+  if (event instanceof League && !updatedIsPlayoffMatch) {
+    if (event.doTeamsRef && seededTeamIds.length) {
+      const participants = buildScheduleParticipants(event);
+      const schedule = new Schedule<Match, PlayingField, Team | UserData, Division>(
+        event.start,
+        event.fields,
+        participants,
+        event.divisions,
+        currentTime,
+        { endTime: event.end, timeSlots: event.timeSlots },
+      );
+      const playoffMatches = Object.values(event.matches).filter((match) => isPlayoffMatch(match));
+      assignMissingTeamReferees(event, schedule, playoffMatches);
+    }
+
+    return { updatedMatch, seededTeamIds };
+  }
+
+  const participants = buildScheduleParticipants(event);
+  const matchesSchedule = new Schedule<Match, PlayingField, Team | UserData, Division>(
+    event.start,
+    event.fields,
+    participants,
+    event.divisions,
+    currentTime,
+    { endTime: event.end, timeSlots: event.timeSlots },
+  );
 
   const orderedMatches = Object.values(event.matches);
   if (!orderedMatches.length) {
