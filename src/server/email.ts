@@ -1,4 +1,5 @@
-import nodemailer, { TransportOptions, Transporter } from 'nodemailer';
+import nodemailer, { Transporter } from 'nodemailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 
 export interface EmailPayload {
   to: string;
@@ -9,7 +10,7 @@ export interface EmailPayload {
 }
 
 interface EmailConfig {
-  transport: TransportOptions | string;
+  transport: SMTPTransport.Options | string;
   from: string;
   replyTo?: string;
 }
@@ -62,7 +63,7 @@ const resolveEmailConfig = (): EmailConfig | null => {
   const port = parsePort(readEnv('SMTP_PORT'), defaultPort);
   const secure = parseBool(readEnv('SMTP_SECURE')) ?? port === 465;
 
-  const transport: TransportOptions = {
+  const transport: SMTPTransport.Options = {
     host: smtpHost,
     port,
     secure,

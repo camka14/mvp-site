@@ -9,6 +9,7 @@ const config: Config = {
   },
   setupFilesAfterEnv: ['<rootDir>/test/setupTests.ts'],
   testMatch: ['**/?(*.)+(spec|test).[tj]s?(x)'],
+  testPathIgnorePatterns: ['<rootDir>/e2e/'],
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.jest.json' }],
   },

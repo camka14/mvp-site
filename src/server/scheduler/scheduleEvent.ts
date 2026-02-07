@@ -38,6 +38,9 @@ export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContex
 };
 
 const buildLeagueSchedule = (league: League, context: SchedulerContext): ScheduleResult => {
+  if (!league.timeSlots.length) {
+    throw new ScheduleError(describeScheduleFailure(league, league.maxParticipants));
+  }
   let updated: League | null = null;
   let extensionAttempt = 0;
   const maxExtensions = 3;

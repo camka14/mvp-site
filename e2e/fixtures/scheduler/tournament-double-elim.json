@@ -1,0 +1,167 @@
+[
+  {
+    "matchId": 1,
+    "side": "left",
+    "losersBracket": false,
+    "team1Seed": 8,
+    "team2Seed": 2,
+    "previousLeftMatchId": null,
+    "previousRightMatchId": null,
+    "winnerNextMatchId": 7,
+    "loserNextMatchId": 9
+  },
+  {
+    "matchId": 2,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": 7,
+    "team2Seed": 3,
+    "previousLeftMatchId": null,
+    "previousRightMatchId": null,
+    "winnerNextMatchId": 7,
+    "loserNextMatchId": 9
+  },
+  {
+    "matchId": 3,
+    "side": "left",
+    "losersBracket": false,
+    "team1Seed": 6,
+    "team2Seed": 4,
+    "previousLeftMatchId": null,
+    "previousRightMatchId": null,
+    "winnerNextMatchId": 8,
+    "loserNextMatchId": 11
+  },
+  {
+    "matchId": 4,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": 5,
+    "team2Seed": 1,
+    "previousLeftMatchId": null,
+    "previousRightMatchId": null,
+    "winnerNextMatchId": 8,
+    "loserNextMatchId": 11
+  },
+  {
+    "matchId": 7,
+    "side": "left",
+    "losersBracket": false,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 1,
+    "previousRightMatchId": 2,
+    "winnerNextMatchId": 14,
+    "loserNextMatchId": 10
+  },
+  {
+    "matchId": 8,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 3,
+    "previousRightMatchId": 4,
+    "winnerNextMatchId": 14,
+    "loserNextMatchId": 12
+  },
+  {
+    "matchId": 9,
+    "side": "right",
+    "losersBracket": true,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 1,
+    "previousRightMatchId": 2,
+    "winnerNextMatchId": 10,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 10,
+    "side": "left",
+    "losersBracket": true,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 7,
+    "previousRightMatchId": 9,
+    "winnerNextMatchId": 15,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 11,
+    "side": "left",
+    "losersBracket": true,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 3,
+    "previousRightMatchId": 4,
+    "winnerNextMatchId": 12,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 12,
+    "side": "right",
+    "losersBracket": true,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 11,
+    "previousRightMatchId": 8,
+    "winnerNextMatchId": 15,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 14,
+    "side": "left",
+    "losersBracket": false,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 7,
+    "previousRightMatchId": 8,
+    "winnerNextMatchId": 17,
+    "loserNextMatchId": 16
+  },
+  {
+    "matchId": 15,
+    "side": "left",
+    "losersBracket": true,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 10,
+    "previousRightMatchId": 12,
+    "winnerNextMatchId": 16,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 16,
+    "side": "right",
+    "losersBracket": true,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 15,
+    "previousRightMatchId": 14,
+    "winnerNextMatchId": 17,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 17,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 14,
+    "previousRightMatchId": 16,
+    "winnerNextMatchId": 18,
+    "loserNextMatchId": 18
+  },
+  {
+    "matchId": 18,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 17,
+    "previousRightMatchId": 17,
+    "winnerNextMatchId": null,
+    "loserNextMatchId": null
+  }
+]

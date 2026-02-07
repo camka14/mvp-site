@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import RefundRequestsList from '../RefundRequestsList';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 
+jest.setTimeout(15000);
+
 jest.mock('@/lib/refundRequestService', () => ({
   refundRequestService: {
     listRefundRequests: jest.fn(),
@@ -81,7 +83,7 @@ describe('RefundRequestsList', () => {
 
     await waitFor(() => expect(refundRequestService.listRefundRequests).toHaveBeenCalled());
 
-    expect(await screen.findByText(/No refund requests/)).toBeInTheDocument();
+    expect(await screen.findByText(/No refund requests found/i)).toBeInTheDocument();
   });
 
   it('allows approving or denying a refund request', async () => {

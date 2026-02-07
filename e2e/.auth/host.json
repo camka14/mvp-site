@@ -1,0 +1,29 @@
+{
+  "cookies": [
+    {
+      "name": "auth_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX2hvc3QiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzcwNDE5NzcxLCJleHAiOjE3NzEwMjQ1NzF9.Oi_NF2XRIPsi4nwmo-stBsYgRrAMOSkOGr6432myqK4",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1771024571.12,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "auth-user",
+          "value": "{\"$id\":\"user_host\",\"email\":\"host@example.com\",\"name\":\"Host User\"}"
+        },
+        {
+          "name": "app-user",
+          "value": "{\"id\":\"user_host\",\"createdAt\":\"2026-02-06T23:16:09.839Z\",\"updatedAt\":\"2026-02-06T23:16:09.839Z\",\"firstName\":\"Host\",\"lastName\":\"User\",\"dateOfBirth\":\"1990-01-01T00:00:00.000Z\",\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[],\"friendIds\":[],\"userName\":\"hostuser\",\"hasStripeAccount\":true,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"$id\":\"user_host\",\"fullName\":\"Host User\",\"avatarUrl\":\"\"}"
+        }
+      ]
+    }
+  ]
+}

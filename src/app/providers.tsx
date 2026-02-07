@@ -38,13 +38,11 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps) {
-  const [user, setUserState] = useState<UserData | null>(() => {
-    return typeof window !== 'undefined' ? authService.getStoredUserData() : null;
-  });
-  const [authUser, setAuthUserState] = useState<UserAccount | null>(() => {
-    return typeof window !== 'undefined' ? authService.getStoredAuthUser() : null;
-  });
-  const [loading, setLoading] = useState(true);
+  const initialUser = typeof window !== 'undefined' ? authService.getStoredUserData() : null;
+  const initialAuthUser = typeof window !== 'undefined' ? authService.getStoredAuthUser() : null;
+  const [user, setUserState] = useState<UserData | null>(initialUser);
+  const [authUser, setAuthUserState] = useState<UserAccount | null>(initialAuthUser);
+  const [loading, setLoading] = useState(() => !(initialAuthUser || initialUser));
   const [isGuest, setIsGuest] = useState<boolean>(() => (typeof window !== 'undefined' ? authService.isGuest() : false));
 
   useEffect(() => {

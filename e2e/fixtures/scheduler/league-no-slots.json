@@ -1,0 +1,4 @@
+{
+  "eventId": "event_league_no_slots",
+  "error": "Unable to schedule league because no recurring time slots are configured. Add weekly field availability to continue."
+}

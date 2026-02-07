@@ -46,6 +46,8 @@ interface RootLayoutProps {
 }
 
 export default function RootLayout({ children }: RootLayoutProps) {
+  const disableChat = process.env.NEXT_PUBLIC_DISABLE_CHAT === '1';
+
   return (
     <html lang="en" className={inter.className}>
       <head>
@@ -55,12 +57,16 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body className="min-h-screen bg-gray-50">
         <MantineProvider>
           <Providers>
-            <ChatProvider>
-              <ChatUIProvider>
-                {children}
-                <ChatComponents />
-              </ChatUIProvider>
-            </ChatProvider>
+            {disableChat ? (
+              children
+            ) : (
+              <ChatProvider>
+                <ChatUIProvider>
+                  {children}
+                  <ChatComponents />
+                </ChatUIProvider>
+              </ChatProvider>
+            )}
           </Providers>
         </MantineProvider>
       </body>

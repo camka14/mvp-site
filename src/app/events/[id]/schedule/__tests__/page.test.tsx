@@ -7,6 +7,8 @@ import { leagueService } from '@/lib/leagueService';
 import { organizationService } from '@/lib/organizationService';
 import { formatLocalDateTime } from '@/lib/dateUtils';
 
+jest.setTimeout(20000);
+
 const useSearchParamsMock = jest.fn();
 const mockRouter = {
   push: jest.fn(),

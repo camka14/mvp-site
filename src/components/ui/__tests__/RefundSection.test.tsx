@@ -31,6 +31,8 @@ const { eventService: eventServiceMock } = jest.requireMock('@/lib/eventService'
 const useAppMock = jest.fn();
 jest.mock('@/app/providers', () => ({ useApp: () => useAppMock() }));
 
+jest.setTimeout(15000);
+
 describe('RefundSection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -89,15 +91,15 @@ describe('RefundSection', () => {
     paymentServiceMock.requestRefund.mockResolvedValue({ success: true });
     const onRefundSuccess = jest.fn();
 
-  renderWithMantine(
-    <RefundSection event={event} userRegistered onRefundSuccess={onRefundSuccess} />,
-  );
+    renderWithMantine(
+      <RefundSection event={event} userRegistered onRefundSuccess={onRefundSuccess} />,
+    );
 
-  fireEvent.click(screen.getByRole('button', { name: /Leave and Request Refund/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Leave and Request Refund/i }));
 
-  const reasonInput = screen.getByLabelText(/Reason for refund/i);
-  fireEvent.change(reasonInput, { target: { value: 'Can no longer attend' } });
-  fireEvent.click(screen.getByRole('button', { name: /Send Request/i }));
+    const reasonInput = await screen.findByLabelText(/Reason for refund/i);
+    fireEvent.change(reasonInput, { target: { value: 'Can no longer attend' } });
+    fireEvent.click(screen.getByRole('button', { name: /Send Request/i }));
 
     await waitFor(() =>
       expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith(

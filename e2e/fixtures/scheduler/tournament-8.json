@@ -1,0 +1,79 @@
+[
+  {
+    "matchId": 1,
+    "side": "left",
+    "losersBracket": false,
+    "team1Seed": 8,
+    "team2Seed": 2,
+    "previousLeftMatchId": null,
+    "previousRightMatchId": null,
+    "winnerNextMatchId": 5,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 2,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": 7,
+    "team2Seed": 3,
+    "previousLeftMatchId": null,
+    "previousRightMatchId": null,
+    "winnerNextMatchId": 5,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 3,
+    "side": "left",
+    "losersBracket": false,
+    "team1Seed": 6,
+    "team2Seed": 4,
+    "previousLeftMatchId": null,
+    "previousRightMatchId": null,
+    "winnerNextMatchId": 6,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 4,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": 5,
+    "team2Seed": 1,
+    "previousLeftMatchId": null,
+    "previousRightMatchId": null,
+    "winnerNextMatchId": 6,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 5,
+    "side": "left",
+    "losersBracket": false,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 1,
+    "previousRightMatchId": 2,
+    "winnerNextMatchId": 7,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 6,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 3,
+    "previousRightMatchId": 4,
+    "winnerNextMatchId": 7,
+    "loserNextMatchId": null
+  },
+  {
+    "matchId": 7,
+    "side": "right",
+    "losersBracket": false,
+    "team1Seed": null,
+    "team2Seed": null,
+    "previousLeftMatchId": 5,
+    "previousRightMatchId": 6,
+    "winnerNextMatchId": null,
+    "loserNextMatchId": null
+  }
+]
