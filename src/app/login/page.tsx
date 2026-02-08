@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, ChangeEvent, FormEvent, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { authService } from '@/lib/auth';
 import { userService } from '@/lib/userService';
@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const { user, setUser, setAuthUser, loading: authLoading } = useApp();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const today = new Date();
   const maxDob = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -32,6 +33,14 @@ export default function LoginPage() {
       router.push('/discover');
     }
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    const oauth = searchParams.get('oauth');
+    const oauthError = searchParams.get('error');
+    if (oauth === 'google' && oauthError) {
+      setError('Google sign-in failed. Please try again.');
+    }
+  }, [searchParams]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

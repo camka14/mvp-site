@@ -196,7 +196,15 @@ export const authService = {
   },
 
   async oauthLoginWithGoogle(): Promise<void> {
-    throw new Error('OAuth is not configured for the self-hosted auth flow yet.');
+    if (typeof window === 'undefined') {
+      throw new Error('Google OAuth is only available in the browser.');
+    }
+
+    // Preserve where the user was, but only as a same-origin path.
+    const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const url = new URL('/api/auth/google/start', window.location.origin);
+    url.searchParams.set('next', next || '/discover');
+    window.location.assign(url.toString());
   },
 
   async guestLogin(): Promise<void> {

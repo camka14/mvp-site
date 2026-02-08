@@ -51,6 +51,9 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 - **Environment Variables** (`.env.local`):
   - `DATABASE_URL`
   - `JWT_SECRET`
+  - Google OAuth (login button on `/login`):
+    - `GOOGLE_OAUTH_CLIENT_ID`
+    - `GOOGLE_OAUTH_CLIENT_SECRET`
   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
   - **Storage** (if using Spaces):

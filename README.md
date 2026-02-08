@@ -34,6 +34,9 @@ npm install
   - `DATABASE_URL`
   - `AUTH_SECRET`
 - Optional (recommended for full feature parity):
+  - Google OAuth (login button on `/login`):
+  - `GOOGLE_OAUTH_CLIENT_ID`
+  - `GOOGLE_OAUTH_CLIENT_SECRET`
   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
   - `STORAGE_PROVIDER` (`local` or `spaces`)
