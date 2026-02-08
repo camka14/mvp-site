@@ -2758,6 +2758,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 <Text size="xs" c="dimmed" className="md:col-span-2">
                                     Leave age limits blank if anyone can register.
                                 </Text>
+                                {(typeof eventData.minAge === 'number' || typeof eventData.maxAge === 'number') && (
+                                    <Alert color="yellow" variant="light" className="md:col-span-2">
+                                        <Text fw={600} size="sm">
+                                            Age-restricted event
+                                        </Text>
+                                        <Text size="sm">
+                                            We only check age using the date of birth users enter in their profile. If your event requires an age check (for example, 18+ or 21+), you are responsible for verifying attendees&apos; age at check-in.
+                                        </Text>
+                                    </Alert>
+                                )}
                             </div>
 
                             <div className="mt-6 space-y-3">

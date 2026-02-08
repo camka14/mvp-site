@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { calculateAgeOnDate } from '@/lib/age';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,15 +27,28 @@ export async function GET(req: NextRequest) {
     : [];
 
   const childMap = new Map(children.map((child) => [child.id, child]));
+  const sensitiveRows = childIds.length
+    ? await prisma.sensitiveUserData.findMany({
+        where: { userId: { in: childIds } },
+        select: { userId: true, email: true },
+      })
+    : [];
+  const emailByUserId = new Map(sensitiveRows.map((row) => [row.userId, row.email]));
 
   const payload = links.map((link) => {
     const child = childMap.get(link.childId);
+    const email = emailByUserId.get(link.childId) ?? null;
+    const now = new Date();
+    const age = child?.dateOfBirth ? calculateAgeOnDate(child.dateOfBirth, now) : undefined;
     return {
       userId: link.childId,
       firstName: child?.firstName ?? '',
       lastName: child?.lastName ?? '',
-      age: child?.dateOfBirth ? Math.floor((Date.now() - new Date(child.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365)) : undefined,
+      dateOfBirth: child?.dateOfBirth ? child.dateOfBirth.toISOString() : null,
+      age,
       linkStatus: link.status.toLowerCase(),
+      email,
+      hasEmail: Boolean(email),
     };
   });
 

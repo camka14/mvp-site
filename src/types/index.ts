@@ -535,7 +535,7 @@ export enum Sports {
 
 export const SPORTS_LIST: string[] = Object.values(Sports);
 
-export type EventState = 'PUBLISHED' | 'UNPUBLISHED' | 'DRAFT';
+export type EventState = 'PUBLISHED' | 'UNPUBLISHED' | 'TEMPLATE' | 'DRAFT';
 
 export type EventStatus = 'draft' | 'published' | 'archived' | 'cancelled' | 'completed';
 

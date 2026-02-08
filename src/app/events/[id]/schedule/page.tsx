@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select } from '@mantine/core';
+import { DatePickerInput } from '@mantine/dates';
+import { useMediaQuery } from '@mantine/hooks';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -17,6 +19,8 @@ import { apiRequest } from '@/lib/apiClient';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
+import { createId } from '@/lib/id';
+import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
 import { toEventPayload } from '@/types';
 import type { Event, EventState, Field, FieldSurfaceType, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
@@ -142,6 +146,7 @@ function EventScheduleContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -159,6 +164,17 @@ function EventScheduleContent() {
   const [formSeedEvent, setFormSeedEvent] = useState<Event | null>(null);
   const [rentalPaymentData, setRentalPaymentData] = useState<PaymentIntent | null>(null);
   const [showRentalPayment, setShowRentalPayment] = useState(false);
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [templateSummaries, setTemplateSummaries] = useState<Array<{ id: string; name: string }>>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templatePromptOpen, setTemplatePromptOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [selectedTemplateStartDate, setSelectedTemplateStartDate] = useState<Date | null>(null);
+  const [templateSeedKey, setTemplateSeedKey] = useState(0);
+  const templatePromptResolvedRef = useRef(false);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 36em)');
   const eventFormRef = useRef<EventFormHandle>(null);
   const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
   const rentalCoordinates = useMemo<[number, number] | undefined>(() => {
@@ -390,6 +406,10 @@ function EventScheduleContent() {
   const canEditMatches = Boolean(isHost && isEditingEvent);
   const shouldShowCreationSheet = Boolean(isCreateMode || (isEditingEvent && isHost && user));
   const createFormId = 'create-event-form';
+  const templateSelectData = useMemo(
+    () => templateSummaries.map((template) => ({ value: template.id, label: template.name })),
+    [templateSummaries],
+  );
   const defaultSport: Sport = {
     $id: '',
     name: '',
@@ -439,6 +459,106 @@ function EventScheduleContent() {
     $createdAt: '',
     $updatedAt: '',
   };
+
+  const closeTemplatePrompt = useCallback(() => {
+    templatePromptResolvedRef.current = true;
+    setTemplatePromptOpen(false);
+  }, []);
+
+  const handleApplyTemplate = useCallback(async () => {
+    if (!isCreateMode || !user?.$id) {
+      closeTemplatePrompt();
+      return;
+    }
+
+    if (!selectedTemplateId) {
+      setTemplatesError('Select a template to continue.');
+      return;
+    }
+    if (!selectedTemplateStartDate) {
+      setTemplatesError('Select a start date to continue.');
+      return;
+    }
+    if (!eventId) {
+      setTemplatesError('Missing event id for creation.');
+      return;
+    }
+
+    setApplyingTemplate(true);
+    setTemplatesError(null);
+    setActionError(null);
+
+    try {
+      const template = await eventService.getEventWithRelations(selectedTemplateId);
+      if (!template) {
+        throw new Error('Template not found.');
+      }
+
+      const seeded = seedEventFromTemplate(template, {
+        newEventId: eventId,
+        newStartDate: selectedTemplateStartDate,
+        hostId: user.$id,
+        idFactory: createId,
+      });
+
+      setChangesEvent(seeded);
+      setHasUnsavedChanges(false);
+      setTemplateSeedKey((prev) => prev + 1);
+      closeTemplatePrompt();
+    } catch (error) {
+      console.error('Failed to apply template:', error);
+      setActionError(error instanceof Error ? error.message : 'Failed to apply template.');
+    } finally {
+      setApplyingTemplate(false);
+    }
+  }, [closeTemplatePrompt, eventId, isCreateMode, selectedTemplateId, selectedTemplateStartDate, user?.$id]);
+
+  const handleCreateTemplateFromEvent = useCallback(async () => {
+    if (!activeEvent || !user?.$id) {
+      return;
+    }
+    if (!isHost) {
+      setActionError('Only the host can create templates from this event.');
+      return;
+    }
+    if (activeEvent.state === 'TEMPLATE') {
+      setActionError('This event is already a template.');
+      return;
+    }
+    if (creatingTemplate) {
+      return;
+    }
+
+    setCreatingTemplate(true);
+    setActionError(null);
+    setInfoMessage(null);
+
+    try {
+      const full = await eventService.getEventWithRelations(activeEvent.$id);
+      if (!full) {
+        throw new Error('Unable to load event details for templating.');
+      }
+
+      const templateId = createId();
+      const templateEvent = cloneEventAsTemplate(full, { templateId, idFactory: createId });
+      const payload = toEventPayload(templateEvent);
+      await apiRequest('/api/events', {
+        method: 'POST',
+        body: {
+          id: templateId,
+          event: { ...payload, id: templateId },
+        },
+      });
+
+      setInfoMessage(`Template created: ${templateEvent.name}`);
+    } catch (error) {
+      console.error('Failed to create event template:', error);
+      setActionError(error instanceof Error ? error.message : 'Failed to create template.');
+    } finally {
+      setCreatingTemplate(false);
+    }
+  }, [activeEvent, creatingTemplate, isHost, user?.$id]);
+
   const showDateOnMatches = useMemo(() => {
     if (!activeEvent?.start || !activeEvent?.end) return false;
     const start = new Date(activeEvent.start);
@@ -579,6 +699,73 @@ function EventScheduleContent() {
       } as Event;
     });
   }, [createLocationDefaults, eventId, isCreateMode, rentalImmutableDefaults, user]);
+
+  // Create mode: if the host has event templates, prompt to start from one.
+  useEffect(() => {
+    if (!isCreateMode || !user?.$id || isGuest || isRentalFlow) {
+      setTemplateSummaries([]);
+      setTemplatePromptOpen(false);
+      setTemplatesError(null);
+      return;
+    }
+    if (templatePromptResolvedRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setTemplatesLoading(true);
+        setTemplatesError(null);
+        const qs = new URLSearchParams();
+        qs.set('state', 'TEMPLATE');
+        qs.set('hostId', user.$id);
+        if (resolvedHostOrgId) {
+          qs.set('organizationId', resolvedHostOrgId);
+        }
+        qs.set('limit', '50');
+        const response = await apiRequest<{ events?: any[] }>(`/api/events?${qs.toString()}`);
+        const rows = Array.isArray(response?.events) ? response.events : [];
+        const summaries = rows
+          .map((row) => ({
+            id: String(row?.$id ?? row?.id ?? ''),
+            name: String(row?.name ?? 'Untitled Template'),
+          }))
+          .filter((entry) => entry.id.length > 0);
+
+        if (cancelled) return;
+        setTemplateSummaries(summaries);
+
+        if (summaries.length > 0 && !templatePromptResolvedRef.current) {
+          setTemplatePromptOpen(true);
+          setSelectedTemplateId((prev) => prev ?? null);
+          setSelectedTemplateStartDate((prev) => {
+            if (prev) return prev;
+            const base = changesEvent?.start ? parseLocalDateTime(changesEvent.start) : null;
+            const seed = base ?? new Date();
+            const day = new Date(seed);
+            day.setHours(0, 0, 0, 0);
+            return day;
+          });
+        } else {
+          setTemplatePromptOpen(false);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setTemplateSummaries([]);
+        setTemplatePromptOpen(false);
+        setTemplatesError(error instanceof Error ? error.message : 'Failed to load templates.');
+      } finally {
+        if (!cancelled) {
+          setTemplatesLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [changesEvent?.start, isCreateMode, isGuest, isRentalFlow, resolvedHostOrgId, user?.$id]);
 
   useEffect(() => {
     if (!isCreateMode) {
@@ -1756,8 +1943,70 @@ function EventScheduleContent() {
                 </Button>
               </Group>
             </Group>
+            <Modal
+              opened={templatePromptOpen}
+              onClose={closeTemplatePrompt}
+              title="Start from a template?"
+              centered
+              size="lg"
+              fullScreen={Boolean(isMobile)}
+              closeOnClickOutside={!applyingTemplate}
+              closeOnEscape={!applyingTemplate}
+              withCloseButton={!applyingTemplate}
+            >
+              <Stack gap="sm">
+                <Text size="sm" c="dimmed">
+                  Pick a template to prefill this event. Teams and matches will not be copied.
+                </Text>
+                {templatesError && (
+                  <Alert color="red" radius="md">
+                    {templatesError}
+                  </Alert>
+                )}
+                {actionError && (
+                  <Alert color="red" radius="md">
+                    {actionError}
+                  </Alert>
+                )}
+                <Select
+                  label="Template"
+                  placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'}
+                  data={templateSelectData}
+                  value={selectedTemplateId}
+                  onChange={(value) => setSelectedTemplateId(value)}
+                  searchable
+                  clearable
+                  disabled={templatesLoading || applyingTemplate}
+                  nothingFoundMessage="No templates found"
+                />
+                <DatePickerInput
+                  label="New event start date"
+                  value={selectedTemplateStartDate}
+                  onChange={(value) => setSelectedTemplateStartDate(parseLocalDateTime(value))}
+                  minDate={new Date()}
+                  disabled={applyingTemplate}
+                />
+                <Group justify="space-between" mt="md">
+                  <Button
+                    variant="default"
+                    onClick={closeTemplatePrompt}
+                    disabled={applyingTemplate}
+                  >
+                    Start Blank
+                  </Button>
+                  <Button
+                    onClick={handleApplyTemplate}
+                    loading={applyingTemplate}
+                    disabled={!selectedTemplateId || !selectedTemplateStartDate}
+                  >
+                    Use Template
+                  </Button>
+                </Group>
+              </Stack>
+            </Modal>
             {user && changesEvent ? (
               <EventForm
+                key={`create-event-form-${templateSeedKey}`}
                 ref={eventFormRef}
                 isOpen
                 onClose={() => router.push('/events')}
@@ -1846,6 +2095,14 @@ function EventScheduleContent() {
                 >
                   {cancelButtonLabel}
                 </Button>
+                <Button
+                  variant="light"
+                  onClick={handleCreateTemplateFromEvent}
+                  loading={creatingTemplate}
+                  disabled={creatingTemplate || publishing || cancelling || activeEvent.state === 'TEMPLATE'}
+                >
+                  Create Template
+                </Button>
                 {isEditingEvent && (
                   <Button
                     variant="default"
@@ -1862,6 +2119,12 @@ function EventScheduleContent() {
           {infoMessage && (
             <Alert color="green" radius="md" onClose={() => setInfoMessage(null)} withCloseButton>
               {infoMessage}
+            </Alert>
+          )}
+
+          {actionError && (
+            <Alert color="red" radius="md" onClose={() => setActionError(null)} withCloseButton>
+              {actionError}
             </Alert>
           )}
 

@@ -21,6 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
   const events = await prisma.events.findMany({
     where: {
       fieldIds: { has: fieldId },
+      NOT: { state: 'TEMPLATE' },
       ...(start ? { start: { gte: start } } : {}),
       ...(end ? { end: { lte: end } } : {}),
     },

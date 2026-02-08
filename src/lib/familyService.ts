@@ -6,6 +6,7 @@ export type FamilyChild = {
   userId: string;
   firstName: string;
   lastName: string;
+  dateOfBirth?: string | null;
   age?: number;
   linkStatus?: FamilyLinkStatus;
   email?: string | null;

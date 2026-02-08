@@ -43,23 +43,39 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const organizationId = params.get('organizationId') || undefined;
-  const hostId = params.get('hostId') || undefined;
+  let hostId = params.get('hostId') || undefined;
   const sportId = params.get('sportId') || undefined;
   const eventType = params.get('eventType') || undefined;
   const state = params.get('state') || undefined;
   const limit = Number(params.get('limit') || '100');
+
+  const normalizedState = typeof state === 'string' ? state.toUpperCase() : undefined;
+  if (normalizedState === 'TEMPLATE') {
+    // Event templates are private: only the host (or an admin) can list them.
+    const session = await requireSession(req);
+    if (!session.isAdmin) {
+      if (hostId && hostId !== session.userId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      hostId = session.userId;
+    }
+  }
 
   const ids = idsParam
     ? idsParam.split(',').map((id) => id.trim()).filter(Boolean)
     : undefined;
 
   const where: any = {};
+  // Event templates are not real events and should not appear in normal lists.
+  if (!normalizedState) {
+    where.NOT = { state: 'TEMPLATE' };
+  }
   if (ids?.length) where.id = { in: ids };
   if (organizationId) where.organizationId = organizationId;
   if (hostId) where.hostId = hostId;
   if (sportId) where.sportId = sportId;
   if (eventType) where.eventType = eventType;
-  if (state) where.state = state;
+  if (state) where.state = normalizedState ?? state;
 
   const events = await prisma.events.findMany({
     where,

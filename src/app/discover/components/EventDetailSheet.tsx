@@ -12,6 +12,7 @@ import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService, FamilyChild } from '@/lib/familyService';
 import { registrationService, ConsentLinks, EventRegistration } from '@/lib/registrationService';
+import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -42,29 +43,6 @@ const parseDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const calculateAgeOnDate = (dob: Date, onDate: Date): number => {
-    const yearDiff = onDate.getUTCFullYear() - dob.getUTCFullYear();
-    const monthDiff = onDate.getUTCMonth() - dob.getUTCMonth();
-    const dayDiff = onDate.getUTCDate() - dob.getUTCDate();
-    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
-        return yearDiff - 1;
-    }
-    return yearDiff;
-};
-
-const formatAgeRange = (minAge?: number, maxAge?: number): string => {
-    if (typeof minAge === 'number' && typeof maxAge === 'number') {
-        return `${minAge}-${maxAge}`;
-    }
-    if (typeof minAge === 'number') {
-        return `${minAge}+`;
-    }
-    if (typeof maxAge === 'number') {
-        return `Up to ${maxAge}`;
-    }
-    return 'All ages';
 };
 
 export default function EventDetailSheet({ event, isOpen, onClose, renderInline = false }: EventDetailSheetProps) {
@@ -117,16 +95,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const eventStartDate = parseDateValue(currentEvent?.start ?? null);
     const userDob = parseDateValue(user?.dateOfBirth ?? null);
     const userAge = userDob ? calculateAgeOnDate(userDob, eventStartDate ?? new Date()) : undefined;
-    const isDobVerified = user?.dobVerified === true;
-    const isAdult = isDobVerified && typeof userAge === 'number' && userAge >= 18;
+    const hasValidUserAge = typeof userAge === 'number' && Number.isFinite(userAge);
+    const isAdult = typeof userAge === 'number' && Number.isFinite(userAge) && userAge >= 18;
     const ageWithinLimits = !hasAgeLimits
-        || (isDobVerified && typeof userAge === 'number'
-            && (typeof eventMinAge !== 'number' || userAge >= eventMinAge)
-            && (typeof eventMaxAge !== 'number' || userAge <= eventMaxAge));
+        || (typeof userAge === 'number' && Number.isFinite(userAge) && isAgeWithinRange(userAge, eventMinAge, eventMaxAge));
     const selfRegistrationBlockedReason = (() => {
         if (!user) return null;
-        if (!isDobVerified || typeof userAge !== 'number') {
-            return 'Verify your date of birth to register for events.';
+        if (!hasValidUserAge) {
+            return 'Add your date of birth to your profile to register for events.';
         }
         if (userAge < 18) {
             return 'Only adults can register themselves. A parent must register you.';
@@ -855,21 +831,21 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!hasAgeLimits) {
             return true;
         }
-        if (typeof child.age !== 'number') {
+        const childDob = parseDateValue(child.dateOfBirth ?? null);
+        const childAgeAtEvent = childDob ? calculateAgeOnDate(childDob, eventStartDate ?? new Date()) : undefined;
+        if (typeof childAgeAtEvent !== 'number' || !Number.isFinite(childAgeAtEvent)) {
             return false;
         }
-        if (typeof eventMinAge === 'number' && child.age < eventMinAge) {
-            return false;
-        }
-        if (typeof eventMaxAge === 'number' && child.age > eventMaxAge) {
-            return false;
-        }
-        return true;
+        return isAgeWithinRange(childAgeAtEvent, eventMinAge, eventMaxAge);
     };
     const activeChildren = children.filter((child) => (child.linkStatus ?? 'active') === 'active');
     const childOptions = activeChildren.map((child) => {
         const name = `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Child';
-        const ageLabel = typeof child.age === 'number' ? `${child.age}y` : 'age unknown';
+        const childDob = parseDateValue(child.dateOfBirth ?? null);
+        const childAgeAtEvent = childDob ? calculateAgeOnDate(childDob, eventStartDate ?? new Date()) : undefined;
+        const ageLabel = typeof childAgeAtEvent === 'number' && Number.isFinite(childAgeAtEvent)
+            ? `${childAgeAtEvent}y at event`
+            : 'age unknown';
         const eligible = isChildEligible(child);
         return {
             value: child.userId,
@@ -1163,6 +1139,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             <Paper withBorder p="md" radius="md">
                                 {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
                                 {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
+                                {hasAgeLimits && (
+                                    <Alert color="yellow" variant="light" mb="sm">
+                                        <Text fw={600} size="sm">
+                                            Age-restricted event
+                                        </Text>
+                                        <Text size="sm">
+                                            Eligible ages: {formatAgeRange(eventMinAge, eventMaxAge)}. We only check eligibility using the date of birth you enter in your profile. The host may verify age at check-in (for example, photo ID).
+                                        </Text>
+                                    </Alert>
+                                )}
 
                                 {!user ? (
                                     <div style={{ textAlign: 'center' }}>

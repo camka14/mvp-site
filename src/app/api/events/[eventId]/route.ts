@@ -36,6 +36,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
   if (!event) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
+  if (event.state === 'TEMPLATE') {
+    const session = await requireSession(_req);
+    if (!session.isAdmin && session.userId !== event.hostId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
   return NextResponse.json(withLegacyEvent(event), { status: 200 });
 }
 

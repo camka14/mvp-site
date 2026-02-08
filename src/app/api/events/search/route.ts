@@ -65,6 +65,8 @@ export async function POST(req: NextRequest) {
   const offset = parsed.data.offset ?? 0;
 
   const where: any = {};
+  // Event templates are not real events and should never appear in public discovery/search results.
+  where.NOT = { state: 'TEMPLATE' };
   if (filters.eventTypes?.length) {
     where.eventType = { in: filters.eventTypes };
   }
