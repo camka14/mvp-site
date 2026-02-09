@@ -21,9 +21,6 @@ const coerceArray = (value: unknown): string[] | undefined => {
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
-  if (legacy.playerIds === undefined && Array.isArray(legacy.userIds)) {
-    (legacy as any).playerIds = legacy.userIds;
-  }
   if (!Array.isArray(legacy.waitListIds)) {
     (legacy as any).waitListIds = [];
   }

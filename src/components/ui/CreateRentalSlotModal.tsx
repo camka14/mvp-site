@@ -12,6 +12,11 @@ interface CreateRentalSlotModalProps {
   onClose: () => void;
   field: Field | null;
   slot?: TimeSlot | null;
+  /**
+   * Optional calendar range to seed the form when creating a new slot.
+   * Only used when `slot` is not provided.
+   */
+  initialRange?: { start: Date; end: Date } | null;
   onSaved?: (field: Field) => void;
   organizationHasStripeAccount?: boolean;
 }
@@ -91,6 +96,7 @@ export default function CreateRentalSlotModal({
   onClose,
   field,
   slot,
+  initialRange = null,
   onSaved,
   organizationHasStripeAccount = false,
 }: CreateRentalSlotModalProps) {
@@ -153,6 +159,24 @@ export default function CreateRentalSlotModal({
       return;
     }
 
+    if (initialRange?.start instanceof Date && initialRange?.end instanceof Date) {
+      const rangeStart = new Date(initialRange.start.getTime());
+      rangeStart.setSeconds(0, 0);
+      const rangeEnd = new Date(initialRange.end.getTime());
+      rangeEnd.setSeconds(0, 0);
+
+      const startDay = new Date(rangeStart.getTime());
+      startDay.setHours(0, 0, 0, 0);
+
+      setStartDate(startDay);
+      setEndDate(null);
+      setStartTime(toTimeValue(rangeStart));
+      setEndTime(toTimeValue(rangeEnd));
+      setRepeating(true);
+      setPrice(null);
+      return;
+    }
+
     const baseDate = new Date();
     baseDate.setMinutes(0, 0, 0);
     const baseEnd = new Date(baseDate.getTime());
@@ -163,7 +187,7 @@ export default function CreateRentalSlotModal({
     setEndTime(toTimeValue(baseEnd));
     setRepeating(false);
     setPrice(null);
-  }, [opened, slot, organizationHasStripeAccount]);
+  }, [opened, slot, initialRange, organizationHasStripeAccount]);
 
   useEffect(() => {
     if (!organizationHasStripeAccount) {
@@ -422,7 +446,7 @@ export default function CreateRentalSlotModal({
               Cancel
             </Button>
             <Button type="submit" disabled={!field || submitting}>
-              {submitting ? 'Saving…' : 'Create Rental Slot'}
+              {submitting ? 'Saving…' : slot ? 'Save Rental Slot' : 'Create Rental Slot'}
             </Button>
           </Group>
         </Stack>

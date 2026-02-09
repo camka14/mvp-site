@@ -81,7 +81,17 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
         fieldNumber: Number(form.fieldNumber),
         organization: form.organization || undefined,
       };
-      const saved = await fieldService.createField(payload);
+      const saved = isEditMode && payload.$id
+        ? await fieldService.updateField({
+            $id: payload.$id,
+            name: payload.name,
+            type: payload.type,
+            location: payload.location,
+            lat: payload.lat,
+            long: payload.long,
+            fieldNumber: payload.fieldNumber,
+          })
+        : await fieldService.createField(payload);
       onFieldSaved?.(saved);
       onClose();
       setForm(createEmptyState(organization));

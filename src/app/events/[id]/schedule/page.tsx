@@ -935,6 +935,18 @@ function EventScheduleContent() {
       if (Array.isArray(response?.matches)) {
         fetchedEvent.matches = response.matches.map((match: Match) => normalizeApiMatch(match));
       }
+      // `GET /api/events/:id` returns the raw event row and does not include matches.
+      // Matches are stored separately and must be fetched by `eventId`.
+      if (!Array.isArray(fetchedEvent.matches) || fetchedEvent.matches.length === 0) {
+        try {
+          const matchesResponse = await apiRequest<any>(`/api/events/${eventId}/matches`);
+          if (Array.isArray(matchesResponse?.matches)) {
+            fetchedEvent.matches = matchesResponse.matches.map((match: Match) => normalizeApiMatch(match));
+          }
+        } catch (matchesError) {
+          console.error('Failed to load matches for event:', matchesError);
+        }
+      }
 
       hydrateEvent(fetchedEvent);
       if (!hasUnsavedChangesRef.current) {
@@ -2072,7 +2084,7 @@ function EventScheduleContent() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-      <Container size="lg" py="xl">
+      <Container size="xl" pt="xl" pb={0}>
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start">
             <Title order={2} mb="xs">{activeEvent.name}</Title>
@@ -2179,13 +2191,13 @@ function EventScheduleContent() {
             )}
 
             {shouldShowBracketTab && (
-              <Tabs.Panel value="bracket" pt="md">
+              <Tabs.Panel value="bracket" pt="md" pb={0}>
                 {bracketData ? (
                   <TournamentBracketView
                     bracket={bracketData}
                     currentUser={user ?? undefined}
                     isPreview={isPreview}
-                    onMatchClick={canEditMatches ? handleMatchEditRequest : undefined}
+                    onMatchClick={handleMatchClick}
                     canEditMatches={canEditMatches}
                     showDateOnMatches={showDateOnMatches}
                   />

@@ -78,7 +78,6 @@ const clearParticipants = (event: Partial<Event>): Partial<Event> => ({
   ...event,
   teamIds: [],
   userIds: [],
-  playerIds: [],
   waitListIds: [],
   freeAgentIds: [],
   teams: [],

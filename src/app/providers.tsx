@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { authService } from '@/lib/auth';
 import { userService } from '@/lib/userService';
+import { sportsService } from '@/lib/sportsService';
 import { UserData } from '@/types';
 
 interface UserAccount {
@@ -38,18 +39,42 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps) {
-  const initialUser = typeof window !== 'undefined' ? authService.getStoredUserData() : null;
-  const initialAuthUser = typeof window !== 'undefined' ? authService.getStoredAuthUser() : null;
-  const [user, setUserState] = useState<UserData | null>(initialUser);
-  const [authUser, setAuthUserState] = useState<UserAccount | null>(initialAuthUser);
-  const [loading, setLoading] = useState(() => !(initialAuthUser || initialUser));
-  const [isGuest, setIsGuest] = useState<boolean>(() => (typeof window !== 'undefined' ? authService.isGuest() : false));
+  // Keep initial render deterministic between server and client to avoid hydration mismatches.
+  // Any browser-only state (localStorage, cookies via JS, etc.) must be read after mount.
+  const [user, setUserState] = useState<UserData | null>(null);
+  const [authUser, setAuthUserState] = useState<UserAccount | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isGuest, setIsGuest] = useState<boolean>(false);
 
   useEffect(() => {
+    // Prime state from localStorage after mount (optional UX improvement), then verify with the server.
+    try {
+      const guest = authService.isGuest();
+      setIsGuest(guest);
+
+      if (guest) {
+        setUserState(null);
+        setAuthUserState(null);
+      } else {
+        const storedUser = authService.getStoredUserData();
+        const storedAuthUser = authService.getStoredAuthUser();
+        if (storedUser) setUserState(storedUser);
+        if (storedAuthUser) setAuthUserState(storedAuthUser);
+      }
+    } catch {
+      // ignore storage errors; checkAuth will resolve the truth
+    }
+
     checkAuth();
+
+    // Warm sports cache once per app load so sport selectors can render immediately.
+    sportsService.getAll().catch(() => {
+      // Ignore failures; consumers still attempt to load sports when needed.
+    });
   }, []);
 
   const checkAuth = async () => {
+    setLoading(true);
     try {
       const session = await authService.fetchSession();
       const currentAuthUser = session.user;

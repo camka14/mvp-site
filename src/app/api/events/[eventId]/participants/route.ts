@@ -15,9 +15,6 @@ const payloadSchema = z.object({
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
-  if (legacy.playerIds === undefined && Array.isArray(legacy.userIds)) {
-    (legacy as any).playerIds = legacy.userIds;
-  }
   return legacy;
 };
 

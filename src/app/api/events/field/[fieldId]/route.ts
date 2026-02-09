@@ -6,9 +6,6 @@ export const dynamic = 'force-dynamic';
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
-  if (legacy.playerIds === undefined && Array.isArray(legacy.userIds)) {
-    (legacy as any).playerIds = legacy.userIds;
-  }
   return legacy;
 };
 

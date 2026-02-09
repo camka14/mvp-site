@@ -294,6 +294,14 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     for (const group of this.currentGroups) {
       resources.push(...(this.resources.get(group) ?? []));
     }
+    if (!resources.length) {
+      const groupIds = this.currentGroups
+        .map((group) => (group as any)?.id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      const suffix = groupIds.length ? ` for divisions: ${groupIds.join(', ')}` : '';
+      // Include "no fields" so callers can treat this as a configuration error.
+      throw new Error(`Unable to schedule event because no fields are available${suffix}.`);
+    }
     let unlimitedResource = false;
     let bestFuture: Date | null = null;
     let hasCandidate = false;

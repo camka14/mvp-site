@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  await requireSession(req);
+  const session = await requireSession(req);
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body ?? {});
   if (!parsed.success) {
@@ -54,23 +54,55 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
-  const record = await prisma.fields.create({
-    data: {
-      id: data.id,
-      name: data.name ?? null,
-      type: data.type ?? null,
-      location: data.location ?? null,
-      lat: data.lat ?? null,
-      long: data.long ?? null,
-      fieldNumber: data.fieldNumber ?? 0,
-      heading: data.heading ?? null,
-      inUse: data.inUse ?? null,
-      organizationId: data.organizationId ?? null,
-      divisions: Array.isArray(data.divisions) ? data.divisions : [],
-      rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+  const orgId = typeof data.organizationId === 'string' && data.organizationId.trim().length > 0
+    ? data.organizationId.trim()
+    : null;
+
+  const organization = orgId
+    ? await prisma.organizations.findUnique({
+        where: { id: orgId },
+        select: { id: true, ownerId: true, fieldIds: true },
+      })
+    : null;
+
+  if (orgId && !organization) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+  }
+
+  if (organization && !session.isAdmin && organization.ownerId !== session.userId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const record = await prisma.$transaction(async (tx) => {
+    const created = await tx.fields.create({
+      data: {
+        id: data.id,
+        name: data.name ?? null,
+        type: data.type ?? null,
+        location: data.location ?? null,
+        lat: data.lat ?? null,
+        long: data.long ?? null,
+        fieldNumber: data.fieldNumber ?? 0,
+        heading: data.heading ?? null,
+        inUse: data.inUse ?? null,
+        organizationId: orgId,
+        divisions: Array.isArray(data.divisions) ? data.divisions : [],
+        rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+    if (organization && orgId) {
+      const currentIds = Array.isArray(organization.fieldIds) ? organization.fieldIds : [];
+      const nextIds = Array.from(new Set([...currentIds, created.id]));
+      await tx.organizations.update({
+        where: { id: orgId },
+        data: { fieldIds: nextIds, updatedAt: new Date() },
+      });
+    }
+
+    return created;
   });
 
   return NextResponse.json(withLegacyFields(record), { status: 201 });

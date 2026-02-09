@@ -95,7 +95,6 @@ const serializeEventBase = (event: Tournament | League) => ({
   singleDivision: event.singleDivision,
   waitListIds: event.waitListIds ?? [],
   freeAgentIds: event.freeAgentIds ?? [],
-  playerIds: event.players.map((player) => player.id),
   teamIds: Object.keys(event.teams),
   userIds: event.players.map((player) => player.id),
   fieldIds: Object.keys(event.fields),

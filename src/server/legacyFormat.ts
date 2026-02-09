@@ -29,6 +29,31 @@ export const withLegacyList = <T extends Record<string, any>>(rows: T[]): Array<
   $updatedAt?: string | null;
 }> => rows.map((row) => withLegacyFields(row));
 
+const isPlainObject = (value: unknown): value is Record<string, any> => {
+  if (!value || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+};
+
+// Remove Appwrite-style legacy fields (e.g. `$id`, `$createdAt`) from request payloads
+// before passing them into Prisma inputs.
+export const stripLegacyFieldsDeep = <T>(value: T): T => {
+  if (!value) return value;
+  if (value instanceof Date) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => stripLegacyFieldsDeep(item)) as unknown as T;
+  }
+  if (isPlainObject(value)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (key.startsWith('$')) continue;
+      cleaned[key] = stripLegacyFieldsDeep(val);
+    }
+    return cleaned as unknown as T;
+  }
+  return value;
+};
+
 export const normalizeLegacyId = (value: unknown): string | null => {
   if (typeof value === 'string' && value.trim().length > 0) return value;
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);

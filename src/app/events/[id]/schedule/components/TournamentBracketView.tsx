@@ -38,6 +38,8 @@ export default function TournamentBracketView({
     const [showScoreModal, setShowScoreModal] = useState(false);
     // Zoom state - using CSS zoom instead of transform
     const [zoomLevel, setZoomLevel] = useState(1);
+    const rootRef = useRef<HTMLDivElement>(null);
+    const [viewportHeight, setViewportHeight] = useState<number | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [isLosersBracket, setIsLosersBracket] = useState(false);
     const matchRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -50,7 +52,12 @@ export default function TournamentBracketView({
     const GAP_X = 48;
     const GAP_Y = 12;   // per-level extra spacing
     const LEVEL_STEP = Math.round(CARD_H / 2 + GAP_Y);
-    const START_OFFSET = 16; // initial x/y offset from top-left
+    // Padding inside the scroll canvas. Top padding prevents the time badge (-top-3)
+    // from being clipped, while right/bottom are kept tight to avoid extra whitespace.
+    const PAD_LEFT = 0;
+    const PAD_RIGHT = 0;
+    const PAD_TOP = 16;
+    const PAD_BOTTOM = 0;
 
     // Map if needed in future: const matchesById = useMemo(() => Object.fromEntries(bracket.matches.map(m => [m.$id, m])), [bracket.matches]);
 
@@ -228,22 +235,11 @@ export default function TournamentBracketView({
     const contentSize = useMemo(() => {
         let maxX = 0, maxY = 0;
         positionById.forEach(p => { maxX = Math.max(maxX, p.x + CARD_W); maxY = Math.max(maxY, p.y + CARD_H); });
-        return { width: Math.max(0, maxX) + START_OFFSET * 2, height: Math.max(0, maxY) + START_OFFSET * 2 };
+        return {
+            width: Math.max(0, maxX) + PAD_LEFT + PAD_RIGHT,
+            height: Math.max(0, maxY) + PAD_TOP + PAD_BOTTOM,
+        };
     }, [positionById]);
-
-    // Keep the bracket container size fixed (only grows, never shrinks)
-    const [fixedSize, setFixedSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
-    useEffect(() => {
-        setFixedSize(prev => ({
-            width: Math.max(prev.width, contentSize.width),
-            height: Math.max(prev.height, contentSize.height),
-        }));
-    }, [contentSize.width, contentSize.height]);
-
-    // Reset container sizing when switching between winner/loser views
-    useEffect(() => {
-        setFixedSize({ width: 0, height: 0 });
-    }, [isLosersBracket]);
 
     // Removed older tree/round generation helpers in favor of absolute layout computation
 
@@ -278,10 +274,10 @@ export default function TournamentBracketView({
             conns.push({
                 fromId: m.$id,
                 toId: target.$id,
-                x1: START_OFFSET + fromPos.x + CARD_W,
-                y1: START_OFFSET + fromPos.y + CARD_H / 2,
-                x2: START_OFFSET + toPos.x,
-                y2: START_OFFSET + toPos.y + CARD_H / 2,
+                x1: PAD_LEFT + fromPos.x + CARD_W,
+                y1: PAD_TOP + fromPos.y + CARD_H / 2,
+                x2: PAD_LEFT + toPos.x,
+                y2: PAD_TOP + toPos.y + CARD_H / 2,
             });
         });
 
@@ -357,8 +353,30 @@ export default function TournamentBracketView({
         return () => window.removeEventListener('wheel', onWheel as EventListener);
     }, []);
 
-    const allowEditing = Boolean(canEditMatches && typeof onMatchClick === 'function');
-    const allowScoreUpdates = !!onScoreUpdate && !isPreview && !allowEditing;
+    // Fix the overall bracket view height to the visible viewport so panning happens inside the bracket canvas.
+    // We compute the remaining space from this component's top edge to the bottom of the window.
+    const measureViewportHeight = useCallback(() => {
+        const el = rootRef.current;
+        if (!el) return;
+        const top = el.getBoundingClientRect().top;
+        const next = Math.max(0, Math.floor(window.innerHeight - top));
+        setViewportHeight((prev) => (prev === next ? prev : next));
+    }, []);
+
+    useEffect(() => {
+        measureViewportHeight();
+        window.addEventListener('resize', measureViewportHeight);
+        window.addEventListener('orientationchange', measureViewportHeight);
+        return () => {
+            window.removeEventListener('resize', measureViewportHeight);
+            window.removeEventListener('orientationchange', measureViewportHeight);
+        };
+    }, [measureViewportHeight]);
+
+    const hasExternalMatchClick = typeof onMatchClick === 'function';
+    const allowEditing = Boolean(canEditMatches && hasExternalMatchClick);
+    // Only use the internal score modal when no parent click handler is provided.
+    const allowScoreUpdates = !!onScoreUpdate && !isPreview && !hasExternalMatchClick;
 
     const canManageMatch = (match: Match) => {
         if (allowEditing) return true;
@@ -381,7 +399,7 @@ export default function TournamentBracketView({
     }, [allowScoreUpdates]);
 
     const handleMatchClick = (match: Match) => {
-        if (allowEditing) {
+        if (hasExternalMatchClick) {
             onMatchClick?.(match);
             return;
         }
@@ -407,7 +425,11 @@ export default function TournamentBracketView({
     };
 
     return (
-        <div className="h-full flex flex-col min-h-0">
+        <div
+            ref={rootRef}
+            className="flex flex-col min-h-0"
+            style={viewportHeight === null ? undefined : { height: viewportHeight }}
+        >
             {/* Controls Bar */}
             <Paper withBorder p="sm">
                 <Group justify="space-between" align="center" wrap="nowrap" w="100%">
@@ -452,38 +474,40 @@ export default function TournamentBracketView({
                     className="relative inline-block"
                     style={{
                         zoom: zoomLevel, // CSS zoom property
-                        width: (fixedSize.width || contentSize.width),
-                        height: (fixedSize.height || contentSize.height),
+                        width: contentSize.width,
+                        height: contentSize.height,
                     }}
                 >
                     {/* Absolutely positioned matches */}
                     {Object.values(viewById).length === 0 ? (
                         <Text c="dimmed">No matches</Text>
-                    ) : (
-                        <>
-                            {Object.values(viewById).map((m) => {
-                                const pos = positionById.get(m.$id);
-                                if (!pos) return null;
-                                const manageable = allowEditing || canManageMatch(m);
-                                return (
-                                    <div
-                                        key={m.$id}
-                                        ref={el => { matchRefs.current[m.$id] = el; }}
+	                    ) : (
+	                        <>
+	                            {Object.values(viewById).map((m) => {
+	                                const pos = positionById.get(m.$id);
+	                                if (!pos) return null;
+	                                const canInternalManage = canManageMatch(m);
+	                                const clickable = hasExternalMatchClick || canInternalManage;
+	                                const manageHint = allowEditing || (!hasExternalMatchClick && canInternalManage);
+	                                return (
+	                                    <div
+	                                        key={m.$id}
+                                        ref={(el) => { matchRefs.current[m.$id] = el; }}
                                         className="absolute w-72 h-50"
-                                        style={{ left: START_OFFSET + pos.x, top: START_OFFSET + pos.y }}
+                                        style={{ left: PAD_LEFT + pos.x, top: PAD_TOP + pos.y }}
                                     >
-                                        <MatchCard
-                                            match={m}
-                                            onClick={manageable ? () => handleMatchClick(m) : undefined}
-                                            canManage={manageable}
-                                            className="w-full h-full"
-                                            showDate={showDateOnMatches}
-                                        />
-                                    </div>
-                                );
-                            })}
-                        </>
-                    )}
+	                                        <MatchCard
+	                                            match={m}
+	                                            onClick={clickable ? () => handleMatchClick(m) : undefined}
+	                                            canManage={manageHint}
+	                                            className="w-full h-full"
+	                                            showDate={showDateOnMatches}
+	                                        />
+	                                    </div>
+	                                );
+	                            })}
+	                        </>
+	                    )}
 
                     {/* SVG overlay for arrows */}
                     <svg className="pointer-events-none absolute inset-0 z-10" width="100%" height="100%">

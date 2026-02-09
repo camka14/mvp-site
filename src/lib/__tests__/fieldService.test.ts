@@ -35,6 +35,18 @@ describe('fieldService', () => {
     expect(field.$id).toBe('field_1');
   });
 
+  it('updates a field via apiRequest', async () => {
+    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A', fieldNumber: 1 });
+
+    const field = await fieldService.updateField({ $id: 'field_1', name: 'Court A' });
+
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      '/api/fields/field_1',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+    expect(field.$id).toBe('field_1');
+  });
+
   it('lists fields by ids', async () => {
     apiRequestMock.mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A', fieldNumber: 1 }] });
 

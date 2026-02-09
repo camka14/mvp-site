@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch } from '@mantine/core';
+import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
@@ -188,6 +188,17 @@ function OrganizationDetailContent() {
   const [templateSignOnce, setTemplateSignOnce] = useState(true);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [templateEmbedUrl, setTemplateEmbedUrl] = useState<string | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<TemplateDocument | null>(null);
+  const [previewMode, setPreviewMode] = useState<'read' | 'sign'>('read');
+  const [previewAccepted, setPreviewAccepted] = useState(false);
+  const [previewSignComplete, setPreviewSignComplete] = useState(false);
+
+  const openTemplatePreview = useCallback((template: TemplateDocument) => {
+    setPreviewTemplate(template);
+    setPreviewMode(template.type === 'TEXT' ? 'sign' : 'read');
+    setPreviewAccepted(false);
+    setPreviewSignComplete(false);
+  }, []);
 
   const loadOrg = useCallback(async (orgId: string, options?: { silent?: boolean }) => {
     const silent = Boolean(options?.silent);
@@ -944,6 +955,17 @@ function OrganizationDetailContent() {
                             Status: {template.status}
                           </Text>
                         )}
+                        {template.type === 'TEXT' && (
+                          <Group justify="flex-end" mt="sm">
+                            <Button
+                              size="xs"
+                              variant="light"
+                              onClick={() => openTemplatePreview(template)}
+                            >
+                              Preview
+                            </Button>
+                          </Group>
+                        )}
                       </Paper>
                     ))}
                   </SimpleGrid>
@@ -1284,6 +1306,102 @@ function OrganizationDetailContent() {
           }
         }}
       />
+      <Modal
+        opened={Boolean(previewTemplate)}
+        onClose={() => setPreviewTemplate(null)}
+        centered
+        size="lg"
+        title={previewTemplate ? `Preview: ${previewTemplate.title || 'Untitled Template'}` : 'Preview template'}
+      >
+        {previewTemplate ? (
+          <Stack gap="sm">
+            <Group justify="space-between" align="center" gap="sm">
+              <Stack gap={2} style={{ flex: 1 }}>
+                <Text size="sm" c="dimmed">
+                  Preview only. This will not record a signature.
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {previewTemplate.signOnce ? 'Sign once per participant' : 'Sign for every event'}
+                </Text>
+              </Stack>
+              {previewTemplate.type === 'TEXT' && (
+                <SegmentedControl
+                  value={previewMode}
+                  onChange={(value) => {
+                    setPreviewMode(value as 'read' | 'sign');
+                    setPreviewAccepted(false);
+                    setPreviewSignComplete(false);
+                  }}
+                  data={[
+                    { label: 'Signing', value: 'sign' },
+                    { label: 'Read', value: 'read' },
+                  ]}
+                />
+              )}
+            </Group>
+
+            {previewTemplate.type !== 'TEXT' || previewMode === 'read' ? (
+              <Paper
+                withBorder
+                p="md"
+                radius="md"
+                style={{ maxHeight: '65vh', overflowY: 'auto' }}
+              >
+                <Text style={{ whiteSpace: 'pre-wrap' }}>
+                  {previewTemplate.content || 'No waiver text provided.'}
+                </Text>
+              </Paper>
+            ) : previewSignComplete ? (
+              <Paper withBorder p="md" radius="md">
+                <Stack gap="sm">
+                  <Text fw={600}>Preview complete</Text>
+                  <Text size="sm" c="dimmed">
+                    In the real flow, we would now record the signature and continue to the next required document.
+                  </Text>
+                  <Group justify="flex-end" gap="xs">
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        setPreviewAccepted(false);
+                        setPreviewSignComplete(false);
+                      }}
+                    >
+                      Start over
+                    </Button>
+                    <Button onClick={() => setPreviewTemplate(null)}>
+                      Close
+                    </Button>
+                  </Group>
+                </Stack>
+              </Paper>
+            ) : (
+              <Stack gap="sm">
+                <Text size="sm" c="dimmed">
+                  Document 1 of 1{previewTemplate.title ? ` • ${previewTemplate.title}` : ''}
+                </Text>
+                <Paper withBorder p="md" style={{ maxHeight: 420, overflowY: 'auto' }}>
+                  <Text style={{ whiteSpace: 'pre-wrap' }}>
+                    {previewTemplate.content || 'No waiver text provided.'}
+                  </Text>
+                </Paper>
+                <Checkbox
+                  label="I agree to the waiver above."
+                  checked={previewAccepted}
+                  onChange={(event) => setPreviewAccepted(event.currentTarget.checked)}
+                />
+                <Group justify="flex-end">
+                  <Button
+                    onClick={() => setPreviewSignComplete(true)}
+                    disabled={!previewAccepted}
+                  >
+                    Accept and continue
+                  </Button>
+                </Group>
+              </Stack>
+            )}
+          </Stack>
+        ) : null}
+      </Modal>
       <Modal
         opened={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}

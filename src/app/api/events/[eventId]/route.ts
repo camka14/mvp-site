@@ -2,9 +2,70 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
+
+const EVENT_UPDATE_FIELDS = new Set([
+  'name',
+  'start',
+  'end',
+  'description',
+  'divisions',
+  'winnerSetCount',
+  'loserSetCount',
+  'doubleElimination',
+  'location',
+  'rating',
+  'teamSizeLimit',
+  'maxParticipants',
+  'minAge',
+  'maxAge',
+  'hostId',
+  'price',
+  'singleDivision',
+  'waitListIds',
+  'freeAgentIds',
+  'cancellationRefundHours',
+  'teamSignup',
+  'prize',
+  'registrationCutoffHours',
+  'seedColor',
+  'imageId',
+  'fieldCount',
+  'winnerBracketPointsToVictory',
+  'loserBracketPointsToVictory',
+  'coordinates',
+  'gamesPerOpponent',
+  'includePlayoffs',
+  'playoffTeamCount',
+  'usesSets',
+  'matchDurationMinutes',
+  'setDurationMinutes',
+  'setsPerMatch',
+  'restTimeMinutes',
+  'state',
+  'pointsToVictory',
+  'sportId',
+  'timeSlotIds',
+  'fieldIds',
+  'teamIds',
+  'userIds',
+  'registrationIds',
+  'leagueScoringConfigId',
+  'organizationId',
+  'autoCancellation',
+  'eventType',
+  'fieldType',
+  'doTeamsRef',
+  'refereeIds',
+  'allowPaymentPlans',
+  'installmentCount',
+  'installmentDueDates',
+  'installmentAmounts',
+  'allowTeamSplitDefault',
+  'requiredTemplateIds',
+]);
 
 const updateSchema = z.object({
   event: z.record(z.string(), z.any()).optional(),
@@ -12,9 +73,6 @@ const updateSchema = z.object({
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
-  if (legacy.playerIds === undefined && Array.isArray(legacy.userIds)) {
-    (legacy as any).playerIds = legacy.userIds;
-  }
   if (!Array.isArray(legacy.waitListIds)) {
     (legacy as any).waitListIds = [];
   }
@@ -62,10 +120,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const payload = parsed.data.event ?? parsed.data ?? {};
-  if ('playerIds' in payload && !('userIds' in payload)) {
-    payload.userIds = payload.playerIds;
-  }
+  const rawPayload = (parsed.data.event ?? parsed.data ?? {}) as Record<string, any>;
+  const payload = stripLegacyFieldsDeep(rawPayload) as Record<string, any>;
+
+  // Never allow callers to override the URL id or server-managed timestamps.
+  delete payload.id;
+  delete payload.createdAt;
+  delete payload.updatedAt;
+
+  // Drop relationship objects that Prisma doesn't accept on `events.update`.
+  delete payload.players;
+  delete payload.referees;
+  delete payload.teams;
+  delete payload.fields;
+  delete payload.matches;
+  delete payload.timeSlots;
+  delete payload.leagueConfig;
 
   if (payload.installmentDueDates) {
     payload.installmentDueDates = Array.isArray(payload.installmentDueDates)
@@ -83,10 +153,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     if (parsedEnd) payload.end = parsedEnd;
   }
 
+  const data: Record<string, any> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (!EVENT_UPDATE_FIELDS.has(key)) continue;
+    data[key] = value;
+  }
+
   const updated = await prisma.events.update({
     where: { id: eventId },
     data: {
-      ...payload,
+      ...data,
       updatedAt: new Date(),
     },
   });

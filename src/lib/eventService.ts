@@ -111,7 +111,7 @@ class EventService {
         return this.getEvent(id);
     }
 
-    async updateEventParticipants(eventId: string, updates: { playerIds: string[], teamIds: string[] }): Promise<Event> {
+    async updateEventParticipants(eventId: string, updates: { userIds: string[], teamIds: string[] }): Promise<Event> {
         try {
             const response = await apiRequest<any>(`/api/events/${eventId}`, {
                 method: 'PATCH',
@@ -401,9 +401,8 @@ class EventService {
             singleDivision: row.singleDivision,
             waitListIds: row.waitListIds,
             freeAgentIds: row.freeAgentIds,
-            playerIds: row.playerIds,
             teamIds: row.teamIds,
-            userIds: row.userIds,
+            userIds: Array.isArray(row.userIds) ? row.userIds.map(String) : [],
             fieldIds: row.fieldIds,
             timeSlotIds: row.timeSlotIds,
             refereeIds: Array.isArray(row.refereeIds) ? row.refereeIds.map((id: unknown) => String(id)) : [],
@@ -451,7 +450,9 @@ class EventService {
             // Computed properties
             organization,
             // Computed properties
-            attendees: row.teamSignup ? (row.teamIds || []).length : (row.playerIds || []).length,
+            attendees: row.teamSignup
+                ? (Array.isArray(row.teamIds) ? row.teamIds.length : 0)
+                : (Array.isArray(row.userIds) ? row.userIds.length : 0),
             status: row.status as EventStatus | undefined,
             state,
             leagueConfig: this.buildLeagueConfig(row),
@@ -541,12 +542,12 @@ class EventService {
         const teamIds = this.extractStringIds(data.teamIds ?? event.teamIds ?? []);
         const fieldIds = this.extractStringIds(data.fieldIds ?? event.fieldIds ?? []);
         const timeSlotIds = this.extractStringIds(data.timeSlotIds ?? event.timeSlotIds ?? []);
-        const playerIds = this.extractStringIds(data.playerIds ?? data.userIds ?? event.playerIds ?? []);
+        const userIds = this.extractStringIds(data.userIds ?? event.userIds ?? []);
         const refereeIds = this.extractStringIds(data.refereeIds ?? event.refereeIds ?? []);
 
         const [teams, players, fields, timeSlots, organization, referees] = await Promise.all([
             this.resolveTeams(data.teams, teamIds),
-            this.resolvePlayers(data.players, playerIds),
+            this.resolvePlayers(data.players, userIds),
             this.resolveFields(data.fields, fieldIds),
             this.resolveTimeSlots(data.timeSlots, timeSlotIds),
             this.resolveOrganization(data.organization ?? data.organizationId ?? event.organization),

@@ -161,7 +161,20 @@ describe('League schedule page', () => {
 
     jest.clearAllMocks();
 
-    apiRequestMock.mockResolvedValue({ event: buildApiEvent() });
+    // Mirror production behavior:
+    // - `GET /api/events/:id` returns an event row without embedded matches
+    // - matches are loaded via `GET /api/events/:id/matches`
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = buildApiEvent();
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: buildApiEvent().matches });
+      }
+      return Promise.resolve({});
+    });
   });
 
   it('renders schedule information', async () => {

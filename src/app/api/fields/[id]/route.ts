@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSession(req);
+  const session = await requireSession(req);
   const body = await req.json().catch(() => null);
   const parsed = updateSchema.safeParse(body ?? {});
   if (!parsed.success) {
@@ -28,6 +28,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+  const existing = await prisma.fields.findUnique({
+    where: { id },
+    select: { id: true, organizationId: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  if (existing.organizationId) {
+    const org = await prisma.organizations.findUnique({
+      where: { id: existing.organizationId },
+      select: { ownerId: true },
+    });
+    if (!org) {
+      if (!session.isAdmin) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else if (!session.isAdmin && org.ownerId !== session.userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
   const payload = parsed.data.field ?? parsed.data ?? {};
   const updated = await prisma.fields.update({
     where: { id },
@@ -38,8 +60,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSession(req);
+  const session = await requireSession(req);
   const { id } = await params;
-  await prisma.fields.delete({ where: { id } });
+  const existing = await prisma.fields.findUnique({
+    where: { id },
+    select: { id: true, organizationId: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const orgId = existing.organizationId;
+  const organization = orgId
+    ? await prisma.organizations.findUnique({
+        where: { id: orgId },
+        select: { id: true, ownerId: true, fieldIds: true },
+      })
+    : null;
+
+  if (orgId && !organization) {
+    if (!session.isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
+  if (organization && !session.isAdmin && organization.ownerId !== session.userId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.fields.delete({ where: { id } });
+
+    if (organization && orgId) {
+      const currentIds = Array.isArray(organization.fieldIds) ? organization.fieldIds : [];
+      const nextIds = currentIds.filter((fieldId) => fieldId !== id);
+      await tx.organizations.update({
+        where: { id: orgId },
+        data: { fieldIds: nextIds, updatedAt: new Date() },
+      });
+    }
+  });
   return NextResponse.json({ deleted: true }, { status: 200 });
 }

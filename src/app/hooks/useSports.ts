@@ -5,8 +5,9 @@ import type { Sport } from '@/types';
 import { sportsService } from '@/lib/sportsService';
 
 export const useSports = () => {
-  const [sports, setSports] = useState<Sport[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const initialSports = useMemo(() => sportsService.getCached({ allowStale: true }) ?? [], []);
+  const [sports, setSports] = useState<Sport[]>(initialSports);
+  const [loading, setLoading] = useState<boolean>(initialSports.length === 0);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
@@ -14,7 +15,9 @@ export const useSports = () => {
 
     const load = async () => {
       try {
-        setLoading(true);
+        if (!initialSports.length) {
+          setLoading(true);
+        }
         const data = await sportsService.getAll();
         if (!active) return;
         setSports(data);

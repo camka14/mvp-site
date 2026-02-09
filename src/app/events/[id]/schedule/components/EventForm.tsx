@@ -433,12 +433,15 @@ const mapEventToFormState = (event: Event): EventFormState => ({
         if (event.sport && typeof event.sport === 'object' && '$id' in event.sport) {
             return (event.sport as Sport).$id;
         }
-        if (typeof event.sport === 'string') {
+        if (typeof event.sport === 'string' && event.sport.trim().length > 0) {
             return event.sport;
+        }
+        if (typeof event.sportId === 'string' && event.sportId.trim().length > 0) {
+            return event.sportId;
         }
         return '';
     })(),
-    sportConfig: typeof event.sport === 'object' && event.sport !== null
+    sportConfig: event.sport && typeof event.sport === 'object'
         ? { ...(event.sport as Sport) }
         : null,
     fieldType: event.fieldType ?? 'INDOOR',

@@ -384,6 +384,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const fields = Array.isArray(payload.fields) ? payload.fields : [];
   const teams = Array.isArray(payload.teams) ? payload.teams : [];
   const timeSlots = Array.isArray(payload.timeSlots) ? payload.timeSlots : [];
+  const eventDivisionIds = ensureStringArray(payload.divisions);
 
   const fieldIds = Array.isArray(payload.fieldIds) && payload.fieldIds.length
     ? payload.fieldIds
@@ -398,13 +399,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const start = coerceDate(payload.start) ?? new Date();
   const end = coerceDate(payload.end) ?? start;
 
-  const eventData = {
-    id,
-    name: payload.name ?? 'Untitled Event',
-    start,
-    end,
-    description: payload.description ?? null,
-    divisions: ensureStringArray(payload.divisions),
+	  const eventData = {
+	    id,
+	    name: payload.name ?? 'Untitled Event',
+	    start,
+	    end,
+	    description: payload.description ?? null,
+	    divisions: eventDivisionIds,
     winnerSetCount: payload.winnerSetCount ?? null,
     loserSetCount: payload.loserSetCount ?? null,
     doubleElimination: payload.doubleElimination ?? false,
@@ -469,35 +470,47 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     update: eventData,
   });
 
-  for (const field of fields) {
-    const fieldId = field.$id || field.id;
-    if (!fieldId) continue;
-    await client.fields.upsert({
-      where: { id: fieldId },
-      create: {
-        id: fieldId,
-        fieldNumber: field.fieldNumber ?? 0,
-        divisions: ensureArray(field.divisions),
-        lat: field.lat ?? null,
-        long: field.long ?? null,
-        heading: field.heading ?? null,
-        inUse: field.inUse ?? null,
-        name: field.name ?? null,
+	  for (const field of fields) {
+	    const fieldId = field.$id || field.id;
+	    if (!fieldId) continue;
+	    // If the payload omits `field.divisions`, don't wipe the existing field record to `[]`.
+	    // For event scheduling, a field with no division association becomes unusable.
+	    let fieldDivisions = ensureStringArray(field.divisions);
+	    if (!fieldDivisions.length && eventDivisionIds.length) {
+	      fieldDivisions = [...eventDivisionIds];
+	    }
+	    if (!fieldDivisions.length) {
+	      const existing = await client.fields.findUnique({ where: { id: fieldId }, select: { divisions: true } });
+	      if (existing?.divisions?.length) {
+	        fieldDivisions = existing.divisions;
+	      }
+	    }
+	    await client.fields.upsert({
+	      where: { id: fieldId },
+	      create: {
+	        id: fieldId,
+	        fieldNumber: field.fieldNumber ?? 0,
+	        divisions: fieldDivisions,
+	        lat: field.lat ?? null,
+	        long: field.long ?? null,
+	        heading: field.heading ?? null,
+	        inUse: field.inUse ?? null,
+	        name: field.name ?? null,
         type: field.type ?? null,
         rentalSlotIds: ensureArray(field.rentalSlotIds),
         location: field.location ?? null,
         organizationId: field.organizationId ?? payload.organizationId ?? null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      },
-      update: {
-        fieldNumber: field.fieldNumber ?? 0,
-        divisions: ensureArray(field.divisions),
-        lat: field.lat ?? null,
-        long: field.long ?? null,
-        heading: field.heading ?? null,
-        inUse: field.inUse ?? null,
-        name: field.name ?? null,
+	      },
+	      update: {
+	        fieldNumber: field.fieldNumber ?? 0,
+	        divisions: fieldDivisions,
+	        lat: field.lat ?? null,
+	        long: field.long ?? null,
+	        heading: field.heading ?? null,
+	        inUse: field.inUse ?? null,
+	        name: field.name ?? null,
         type: field.type ?? null,
         rentalSlotIds: ensureArray(field.rentalSlotIds),
         location: field.location ?? null,

@@ -54,9 +54,11 @@ const buildLeagueSchedule = (league: League, context: SchedulerContext): Schedul
       }
       updated = scheduled;
     } catch (err) {
-      context.error(`schedule_event: scheduling failed (${err}), attempt ${extensionAttempt + 1}`);
-      if (String(err).toLowerCase().includes('no fields')) {
-        throw err;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      context.error(`schedule_event: scheduling failed (${errMsg}), attempt ${extensionAttempt + 1}`);
+      if (errMsg.toLowerCase().includes('no fields')) {
+        // Misconfiguration: surface this as a 4xx instead of a 500.
+        throw new ScheduleError(errMsg);
       }
       if (extensionAttempt < maxExtensions) {
         extensionAttempt += 1;
@@ -119,8 +121,11 @@ const describeScheduleFailure = (event: League, placeholderCount?: number): stri
   if (teamCount > 1) {
     regularMatches = Math.floor((teamCount * (teamCount - 1) / 2) * gamesPerOpponent);
   }
-  const playoffCount = Math.min(event.playoffTeamCount || 0, teamCount);
-  const playoffMatches = Math.max(playoffCount - 1, 0);
+  const playoffCount = event.includePlayoffs ? Math.min(event.playoffTeamCount || 0, teamCount) : 0;
+  let playoffMatches = Math.max(playoffCount - 1, 0);
+  if (playoffCount >= 2 && event.doubleElimination) {
+    playoffMatches = Math.max(2 * playoffCount - 1, 0);
+  }
   const totalMatches = regularMatches + playoffMatches;
 
   let matchMinutes = 60;
@@ -133,9 +138,13 @@ const describeScheduleFailure = (event: League, placeholderCount?: number): stri
   }
 
   const minutesPerMatch = matchMinutes + bufferMinutes;
+  const weeklySlotMinutesTotal = weeklySlotMinutes(event.timeSlots);
+  const weeklyHoursAvailable = weeklySlotMinutesTotal / 60;
+  const weeklyMatchesCapacity = minutesPerMatch ? Math.floor(weeklySlotMinutesTotal / minutesPerMatch) : 0;
+
   const totalSlotMinutes = calculateSlotMinutes(event);
-  const hoursAvailable = totalSlotMinutes / 60;
-  const matchesCapacity = minutesPerMatch ? Math.floor(totalSlotMinutes / minutesPerMatch) : 0;
+  const totalHoursAvailable = totalSlotMinutes / 60;
+  const totalMatchesCapacity = minutesPerMatch ? Math.floor(totalSlotMinutes / minutesPerMatch) : 0;
 
   if (!totalSlotMinutes) {
     return 'Unable to schedule league because no recurring time slots are configured. Add weekly field availability to continue.';
@@ -144,7 +153,8 @@ const describeScheduleFailure = (event: League, placeholderCount?: number): stri
   return [
     'Unable to schedule league with the provided weekly time slots.',
     `Approximate matches needed: ${totalMatches}.`,
-    `Approximate weekly capacity: ${matchesCapacity} matches (~${hoursAvailable.toFixed(1)} hours).`,
+    `Approximate weekly capacity: ${weeklyMatchesCapacity} matches (~${weeklyHoursAvailable.toFixed(1)} hours/week).`,
+    `Approximate total capacity in schedule window: ${totalMatchesCapacity} matches (~${totalHoursAvailable.toFixed(1)} hours).`,
     'Add more weekly slots, extend the season, or reduce games per opponent/playoff teams to create a schedule.',
   ].join(' ');
 };
@@ -223,8 +233,8 @@ const estimateLeagueMatches = (event: League, teamCount: number): number => {
   if (teamCount > 1) {
     regularMatches = Math.floor((teamCount * (teamCount - 1) / 2) * gamesPerOpponent);
   }
-  const playoffCount = Math.min(event.playoffTeamCount || 0, teamCount);
-  const playoffMatches = Math.max(playoffCount - 1, 0);
+  const playoffCount = event.includePlayoffs ? Math.min(event.playoffTeamCount || 0, teamCount) : 0;
+  const playoffMatches = playoffCount >= 2 ? tournamentMatchCount(playoffCount, Boolean(event.doubleElimination)) : 0;
   return regularMatches + playoffMatches;
 };
 

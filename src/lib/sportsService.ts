@@ -2,7 +2,8 @@ import { apiRequest } from '@/lib/apiClient';
 import { Sport } from '@/types';
 
 const CACHE_KEY = 'sports-cache-v1';
-const CACHE_DURATION_MS = 1;
+// Sports rarely change; keep cache long-lived and refresh opportunistically.
+const CACHE_DURATION_MS = 1000 * 60 * 60 * 24; // 24h
 
 let cachedSports: Sport[] | null = null;
 let cachedAt: number | null = null;
@@ -64,10 +65,12 @@ const mapRowToSport = (row: any): Sport => {
   };
 };
 
-const loadFromStorage = () => {
+const loadFromStorage = (options?: { allowStale?: boolean }) => {
   if (typeof window === 'undefined' || cachedSports) {
     return;
   }
+
+  const allowStale = Boolean(options?.allowStale);
 
   try {
     const raw = window.localStorage.getItem(CACHE_KEY);
@@ -78,9 +81,8 @@ const loadFromStorage = () => {
       return;
     }
 
-    if (Date.now() - parsed.timestamp > CACHE_DURATION_MS) {
-      return;
-    }
+    const isExpired = Date.now() - parsed.timestamp > CACHE_DURATION_MS;
+    if (isExpired && !allowStale) return;
 
     cachedSports = parsed.items.map((item) => mapRowToSport(item));
     cachedAt = parsed.timestamp;
@@ -117,6 +119,10 @@ const fetchSportsFromApi = async (): Promise<Sport[]> => {
 };
 
 export const sportsService = {
+  getCached(options?: { allowStale?: boolean }): Sport[] | null {
+    loadFromStorage({ allowStale: options?.allowStale });
+    return cachedSports;
+  },
   async getAll(forceRefresh: boolean = false): Promise<Sport[]> {
     if (!forceRefresh) {
       if (shouldUseCache()) {

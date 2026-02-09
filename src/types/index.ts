@@ -361,7 +361,6 @@ export interface Event {
   singleDivision: boolean;
   waitListIds: string[];
   freeAgentIds: string[];
-  playerIds?: string[];
   teamIds?: string[];
   userIds?: string[];
   fieldIds?: string[];

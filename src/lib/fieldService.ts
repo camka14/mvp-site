@@ -5,7 +5,6 @@ import { createId } from '@/lib/id';
 import type { Field, Organization, TimeSlot } from '@/types';
 import { eventService } from './eventService';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
-import { organizationService } from './organizationService';
 import { normalizeEnumValue } from '@/lib/enumUtils';
 
 
@@ -21,6 +20,18 @@ export interface CreateFieldData {
   inUse?: boolean;
   organization?: Organization;
   eventId?: string;
+}
+
+export interface UpdateFieldData {
+  $id: string;
+  name?: string;
+  type?: string;
+  location?: string;
+  lat?: number;
+  long?: number;
+  fieldNumber?: number;
+  heading?: number;
+  inUse?: boolean;
 }
 
 export interface ManageRentalSlotResult {
@@ -49,12 +60,36 @@ class FieldService {
       method: 'POST',
       body: { id: rowId, ...payload },
     });
-    if (data.organization) {
-      data.organization?.fieldIds?.push(rowId)
-      organizationService.updateOrganization(data.organization.$id, data.organization)
-    }
 
     const field = this.mapRowToField(response);
+    await this.hydrateFieldRentalSlots([field]);
+    return field;
+  }
+
+  async updateField(data: UpdateFieldData): Promise<Field> {
+    if (!data?.$id) {
+      throw new Error('Field update requires an id');
+    }
+
+    const normalizedType = normalizeEnumValue(data.type);
+    const payload: Record<string, unknown> = {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.type !== undefined ? { type: normalizedType ?? data.type } : {}),
+      ...(data.location !== undefined ? { location: data.location } : {}),
+      ...(data.lat !== undefined ? { lat: data.lat } : {}),
+      ...(data.long !== undefined ? { long: data.long } : {}),
+      ...(data.fieldNumber !== undefined ? { fieldNumber: data.fieldNumber } : {}),
+      ...(data.heading !== undefined ? { heading: data.heading } : {}),
+      ...(data.inUse !== undefined ? { inUse: data.inUse } : {}),
+    };
+
+    const response = await apiRequest<any>(`/api/fields/${data.$id}`, {
+      method: 'PATCH',
+      body: { field: payload },
+    });
+
+    const field = this.mapRowToField(response);
+    await this.hydrateFieldRentalSlots([field]);
     return field;
   }
 
