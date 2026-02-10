@@ -430,11 +430,14 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     state: (event.state as EventState) ?? 'DRAFT',
     eventType: event.eventType,
     sportId: (() => {
-        if (event.sport && typeof event.sport === 'object' && '$id' in event.sport) {
-            return (event.sport as Sport).$id;
+        // `event.sport` is historically inconsistent: it may be a Sport object, a string id, or absent.
+        // Keep runtime compatibility by treating it as unknown and narrowing safely.
+        const sport = (event as { sport?: unknown }).sport;
+        if (sport && typeof sport === 'object' && '$id' in sport) {
+            return (sport as Sport).$id;
         }
-        if (typeof event.sport === 'string' && event.sport.trim().length > 0) {
-            return event.sport;
+        if (typeof sport === 'string' && sport.trim().length > 0) {
+            return sport;
         }
         if (typeof event.sportId === 'string' && event.sportId.trim().length > 0) {
             return event.sportId;

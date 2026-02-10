@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyList } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
+import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 
 export const dynamic = 'force-dynamic';
 
 const inviteSchema = z.object({
   type: z.string(),
+  // Email can be omitted when inviting an existing user by `userId`.
+  // For email-based invites we validate at runtime below.
   email: z.string().optional(),
   status: z.string().optional(),
   eventId: z.string().optional(),
@@ -23,6 +26,8 @@ const inviteSchema = z.object({
 const createSchema = z.object({
   invites: z.array(inviteSchema).optional(),
 }).passthrough();
+
+const emailSchema = z.string().email();
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
@@ -63,32 +68,81 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No invites provided' }, { status: 400 });
   }
 
-  const created = await Promise.all(invitesInput.map((invite: any) => {
-    return prisma.invites.create({
+  const created: any[] = [];
+  const toEmail: any[] = [];
+  for (const invite of invitesInput) {
+    const parsedInvite = inviteSchema.safeParse(invite);
+    if (!parsedInvite.success) {
+      return NextResponse.json({ error: 'Invalid invite', details: parsedInvite.error.flatten() }, { status: 400 });
+    }
+
+    const now = new Date();
+    const inviteUserId = parsedInvite.data.userId ? String(parsedInvite.data.userId) : '';
+    let email = typeof parsedInvite.data.email === 'string' ? parsedInvite.data.email.trim().toLowerCase() : '';
+
+    let ensuredUserId: string;
+    let shouldSendEmail = false;
+
+    if (inviteUserId) {
+      ensuredUserId = inviteUserId;
+
+      // Inviting an existing user by id: email may not be provided by the client (UserData is public and does not
+      // contain email). Derive it from AuthUser/SensitiveUserData so the Invites table always has a valid email.
+      if (!emailSchema.safeParse(email).success) {
+        const authUser = await prisma.authUser.findUnique({ where: { id: inviteUserId } });
+        if (authUser?.email) {
+          email = authUser.email.trim().toLowerCase();
+        } else {
+          const sensitive = await prisma.sensitiveUserData.findFirst({ where: { userId: inviteUserId } });
+          if (sensitive?.email) {
+            email = sensitive.email.trim().toLowerCase();
+          }
+        }
+      }
+
+      if (!emailSchema.safeParse(email).success) {
+        return NextResponse.json({ error: 'Missing invite email' }, { status: 400 });
+      }
+    } else {
+      if (!emailSchema.safeParse(email).success) {
+        return NextResponse.json({ error: 'Invalid email' }, { status: 400 });
+      }
+
+      const ensured = await prisma.$transaction(async (tx) => {
+        return ensureAuthUserAndUserDataByEmail(tx, email, now);
+      });
+      ensuredUserId = ensured.userId;
+      shouldSendEmail = !ensured.authUserExisted;
+    }
+
+    const record = await prisma.invites.create({
       data: {
         id: crypto.randomUUID(),
-        type: invite.type,
-        email: invite.email ?? null,
-        status: invite.status ?? 'pending',
-        eventId: invite.eventId ?? null,
-        organizationId: invite.organizationId ?? null,
-        teamId: invite.teamId ?? null,
-        userId: invite.userId ?? null,
-        createdBy: invite.createdBy ?? session.userId,
-        firstName: invite.firstName ?? null,
-        lastName: invite.lastName ?? null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        type: parsedInvite.data.type,
+        email,
+        status: parsedInvite.data.status ?? 'pending',
+        eventId: parsedInvite.data.eventId ?? null,
+        organizationId: parsedInvite.data.organizationId ?? null,
+        teamId: parsedInvite.data.teamId ?? null,
+        userId: ensuredUserId,
+        createdBy: parsedInvite.data.createdBy ?? session.userId,
+        firstName: parsedInvite.data.firstName ?? null,
+        lastName: parsedInvite.data.lastName ?? null,
+        createdAt: now,
+        updatedAt: now,
       },
     });
-  }));
+
+    created.push(record);
+    if (shouldSendEmail) {
+      toEmail.push(record);
+    }
+  }
 
   const baseUrl = req.nextUrl.origin;
-  const updatedInvites = await sendInviteEmails(created, baseUrl);
-
-  if (updatedInvites.length === 1) {
-    return NextResponse.json(withLegacyFields(updatedInvites[0]), { status: 201 });
-  }
+  const emailed = await sendInviteEmails(toEmail, baseUrl);
+  const emailedMap = new Map(emailed.map((invite) => [invite.id, invite]));
+  const updatedInvites = created.map((invite) => emailedMap.get(invite.id) ?? invite);
 
   return NextResponse.json({ invites: withLegacyList(updatedInvites) }, { status: 201 });
 }

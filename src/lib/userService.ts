@@ -109,13 +109,12 @@ class UserService {
   }
 
   async addTeamInvitation(userId: string, teamId: string): Promise<boolean> {
-    await this.inviteUsersByEmail(userId, [{
-      firstName: '',
-      lastName: '',
-      email: '',
-      type: 'player',
-      teamId,
-    }]);
+    // Inviting an existing user by id: UserData is public and does not include email, so the server
+    // derives/stores the email from AuthUser/SensitiveUserData.
+    await apiFetch('/api/invites', {
+      method: 'POST',
+      body: JSON.stringify({ invites: [{ type: 'player', teamId, userId, status: 'pending' }] }),
+    });
     return true;
   }
 

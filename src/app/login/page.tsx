@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, ChangeEvent, FormEvent, useEffect } from 'react';
+import { useState, ChangeEvent, FormEvent, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { authService } from '@/lib/auth';
@@ -16,7 +16,7 @@ interface FormData {
   dateOfBirth: string;
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState<FormData>({ email: '', password: '', firstName: '', lastName: '', userName: '', dateOfBirth: '' });
   const [loading, setLoading] = useState(false);
@@ -290,5 +290,15 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  // `useSearchParams` triggers a CSR bailout during prerendering; wrapping the component that reads it
+  // in a Suspense boundary is required for `next build` to succeed.
+  return (
+    <Suspense fallback={<Loading />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

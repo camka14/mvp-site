@@ -114,7 +114,16 @@ describe('auth routes', () => {
     });
 
     it('rejects duplicate emails', async () => {
-      prismaMock.authUser.findUnique.mockResolvedValue({ id: 'user_existing' });
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_existing',
+        email: 'duplicate@example.com',
+        name: null,
+        passwordHash: 'salt:hash',
+        lastLogin: new Date(),
+        emailVerifiedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
 
       const req = buildJsonRequest('http://localhost/api/auth/register', {
         email: 'duplicate@example.com',
@@ -127,6 +136,68 @@ describe('auth routes', () => {
       expect(res.status).toBe(409);
       expect(json.error).toBe('Email already in use');
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('claims placeholder invite-created auth user', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: null,
+        passwordHash: '__NO_PASSWORD__',
+        lastLogin: null,
+        emailVerifiedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+      prismaMock.userData.findUnique.mockResolvedValue({
+        id: 'user_1',
+        firstName: null,
+        lastName: null,
+        userName: 'invited',
+        dateOfBirth: new Date('2000-01-01'),
+      });
+
+      prismaMock.authUser.update.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Test User',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.userData.update.mockResolvedValue({
+        id: 'user_1',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        dateOfBirth: new Date('2000-01-01'),
+      });
+      prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'user_1' });
+
+      const req = buildJsonRequest('http://localhost/api/auth/register', {
+        email: 'test@example.com',
+        password: 'password123',
+        name: 'Test User',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        dateOfBirth: '2000-01-01',
+      });
+
+      const res = await REGISTER_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(201);
+      expect(json.user.id).toBe('user_1');
+      expect(prismaMock.authUser.create).not.toHaveBeenCalled();
+      expect(prismaMock.authUser.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user_1' },
+          data: expect.objectContaining({
+            passwordHash: 'hashed',
+          }),
+        }),
+      );
     });
   });
 

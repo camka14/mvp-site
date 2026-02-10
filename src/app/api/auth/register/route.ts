@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -33,33 +34,43 @@ export async function POST(req: NextRequest) {
   const normalizedEmail = email.toLowerCase();
 
   const existingAuth = await prisma.authUser.findUnique({ where: { email: normalizedEmail } });
-  if (existingAuth) {
+  if (existingAuth && !isInvitePlaceholderAuthUser(existingAuth)) {
     return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
   }
 
   const existingSensitive = await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });
-  const userId = existingSensitive?.userId || crypto.randomUUID();
+  const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
   const passwordHash = await hashPassword(password);
 
   const now = new Date();
 
   const [authUser, profile] = await prisma.$transaction(async (tx) => {
-    const createdAuth = await tx.authUser.create({
-      data: {
-        id: userId,
-        email: normalizedEmail,
-        passwordHash,
-        name: name ?? null,
-        createdAt: now,
-        updatedAt: now,
-        lastLogin: now,
-      },
-    });
+    const createdAuth = existingAuth
+      ? await tx.authUser.update({
+          where: { id: existingAuth.id },
+          data: {
+            passwordHash,
+            name: name ?? existingAuth.name,
+            updatedAt: now,
+            lastLogin: now,
+          },
+        })
+      : await tx.authUser.create({
+          data: {
+            id: userId,
+            email: normalizedEmail,
+            passwordHash,
+            name: name ?? null,
+            createdAt: now,
+            updatedAt: now,
+            lastLogin: now,
+          },
+        });
 
-    const existingProfile = await tx.userData.findUnique({ where: { id: userId } });
+    const existingProfile = await tx.userData.findUnique({ where: { id: createdAuth.id } });
     const profileRow = existingProfile
       ? await tx.userData.update({
-          where: { id: userId },
+          where: { id: createdAuth.id },
           data: {
             firstName: firstName ?? existingProfile.firstName,
             lastName: lastName ?? existingProfile.lastName,
@@ -70,7 +81,7 @@ export async function POST(req: NextRequest) {
         })
       : await tx.userData.create({
           data: {
-            id: userId,
+            id: createdAuth.id,
             createdAt: now,
             updatedAt: now,
             firstName: firstName ?? null,
@@ -88,16 +99,16 @@ export async function POST(req: NextRequest) {
         });
 
     await tx.sensitiveUserData.upsert({
-      where: { id: existingSensitive?.id ?? userId },
+      where: { id: existingSensitive?.id ?? createdAuth.id },
       update: {
         email: normalizedEmail,
-        userId,
+        userId: createdAuth.id,
         updatedAt: now,
       },
       create: {
-        id: userId,
+        id: createdAuth.id,
         email: normalizedEmail,
-        userId,
+        userId: createdAuth.id,
         createdAt: now,
         updatedAt: now,
       },

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
+import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
 
   const inviterId = parsed.data.inviterId ?? session.userId;
   const sentRecords: any[] = [];
+  const notEmailedRecords: any[] = [];
   const failed: any[] = [];
   const notSent: any[] = [];
 
@@ -81,8 +83,9 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const sensitive = await prisma.sensitiveUserData.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' } },
+    const now = new Date();
+    const { userId, authUserExisted } = await prisma.$transaction(async (tx) => {
+      return ensureAuthUserAndUserDataByEmail(tx, email, now);
     });
 
     const record = await prisma.invites.create({
@@ -90,25 +93,29 @@ export async function POST(req: NextRequest) {
         id: crypto.randomUUID(),
         type,
         email,
-        status: 'sent',
+        status: 'pending',
         eventId: invite.eventId ?? null,
         organizationId: invite.organizationId ?? null,
         teamId: invite.teamId ?? null,
-        userId: sensitive?.userId ?? null,
+        userId,
         createdBy: inviterId,
         firstName: invite.firstName ?? null,
         lastName: invite.lastName ?? null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: now,
+        updatedAt: now,
       },
     });
 
-    sentRecords.push(record);
+    if (authUserExisted) {
+      notEmailedRecords.push({ ...withLegacyFields(record), reason: 'user_exists' });
+    } else {
+      sentRecords.push(record);
+    }
   }
 
   const baseUrl = req.nextUrl.origin;
   const updatedSent = await sendInviteEmails(sentRecords, baseUrl);
   const sent = updatedSent.map((record) => withLegacyFields(record));
 
-  return NextResponse.json({ sent, not_sent: notSent, failed }, { status: 200 });
+  return NextResponse.json({ sent, not_sent: [...notSent, ...notEmailedRecords], failed }, { status: 200 });
 }

@@ -30,6 +30,12 @@ export async function GET(req: NextRequest) {
     return buildResponse(false);
   }
 
+  const authUser = await prisma.authUser.findUnique({ where: { email } });
+  if (authUser) {
+    const sensitive = await prisma.sensitiveUserData.findFirst({ where: { email } });
+    return buildResponse(true, authUser.id, sensitive?.id);
+  }
+
   const sensitive = await prisma.sensitiveUserData.findFirst({ where: { email } });
   if (!sensitive) {
     return buildResponse(false);
@@ -43,6 +49,12 @@ export async function POST(req: NextRequest) {
   const email = normalizeEmail(body?.email);
   if (!emailSchema.safeParse(email).success) {
     return buildResponse(false);
+  }
+
+  const authUser = await prisma.authUser.findUnique({ where: { email } });
+  if (authUser) {
+    const sensitive = await prisma.sensitiveUserData.findFirst({ where: { email } });
+    return buildResponse(true, authUser.id, sensitive?.id);
   }
 
   const sensitive = await prisma.sensitiveUserData.findFirst({ where: { email } });

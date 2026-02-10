@@ -4,6 +4,27 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 
+const publicUserSelect = {
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  firstName: true,
+  lastName: true,
+  dateOfBirth: true,
+  dobVerified: true,
+  dobVerifiedAt: true,
+  ageVerificationProvider: true,
+  teamIds: true,
+  friendIds: true,
+  userName: true,
+  hasStripeAccount: true,
+  followingIds: true,
+  friendRequestIds: true,
+  friendRequestSentIds: true,
+  uploadedImages: true,
+  profileImageId: true,
+};
+
 const createSchema = z.object({
   id: z.string(),
   data: z.record(z.string(), z.any()),
@@ -14,7 +35,6 @@ const searchSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  await requireSession(req);
   const params = req.nextUrl.searchParams;
   const query = params.get('query') ?? '';
   const parsed = searchSchema.safeParse({ query });
@@ -31,6 +51,7 @@ export async function GET(req: NextRequest) {
         { userName: { contains: term, mode: 'insensitive' } },
       ],
     },
+    select: publicUserSelect,
     take: 20,
     orderBy: { userName: 'asc' },
   });
