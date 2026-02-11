@@ -21,7 +21,26 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
   }
 
-  await prisma.invites.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    // If a team invite is deleted (declined/uninvited), remove the user from the team's pending list
+    // so they can't accept an invite that no longer exists.
+    if (invite.type === 'player' && invite.teamId && invite.userId) {
+      const team = await tx.volleyBallTeams.findUnique({ where: { id: invite.teamId } });
+      if (team) {
+        const pending = Array.isArray(team.pending) ? team.pending : [];
+        const nextPending = pending.filter((userId) => userId !== invite.userId);
+        await tx.volleyBallTeams.update({
+          where: { id: invite.teamId },
+          data: {
+            pending: nextPending,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+
+    await tx.invites.delete({ where: { id: invite.id } });
+  });
+
   return NextResponse.json({ deleted: true }, { status: 200 });
 }
-

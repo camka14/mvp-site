@@ -58,7 +58,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       await acquireEventLock(tx, eventId);
       const event = await loadEventWithRelations(eventId, tx);
 
-      if (!session.isAdmin && session.userId !== event.hostId) {
+      const isHostOrAdmin = session.isAdmin || session.userId === event.hostId;
+      const isEventReferee = Array.isArray((event as any).referees) && (event as any).referees.some((ref: any) => ref?.id === session.userId);
+
+      const targetMatch = event.matches[matchId];
+      if (!targetMatch) {
+        throw new Response('Match not found', { status: 404 });
+      }
+
+      const isTeamRefereeMember = Array.isArray((targetMatch as any).teamReferee?.playerIds)
+        && (targetMatch as any).teamReferee.playerIds.includes(session.userId);
+      const isAssignedRefereeUser = (targetMatch as any).referee?.id === session.userId;
+      const isReferee = Boolean(isEventReferee || isTeamRefereeMember || isAssignedRefereeUser);
+
+      if (!isHostOrAdmin && !isReferee) {
         throw new Response('Forbidden', { status: 403 });
       }
 
@@ -66,15 +79,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Unsupported event type', { status: 400 });
       }
 
-      const targetMatch = event.matches[matchId];
-      if (!targetMatch) {
-        throw new Response('Match not found', { status: 404 });
-      }
+      const updates = isHostOrAdmin
+        ? parsed.data
+        : {
+          team1Points: parsed.data.team1Points,
+          team2Points: parsed.data.team2Points,
+          setResults: parsed.data.setResults,
+          refereeCheckedIn: parsed.data.refereeCheckedIn,
+          teamRefereeId: parsed.data.teamRefereeId,
+          finalize: parsed.data.finalize,
+          time: parsed.data.time,
+        };
 
-      applyMatchUpdates(event, targetMatch, parsed.data);
+      applyMatchUpdates(event, targetMatch, updates);
 
-      if (parsed.data.finalize) {
-        const currentTime = parsed.data.time ? new Date(parsed.data.time) : new Date();
+      if (updates.finalize) {
+        const currentTime = updates.time ? new Date(updates.time) : new Date();
         if (Number.isNaN(currentTime.getTime())) {
           throw new Response('Invalid time', { status: 400 });
         }

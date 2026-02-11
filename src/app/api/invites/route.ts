@@ -154,14 +154,37 @@ export async function DELETE(req: NextRequest) {
   const teamId = body?.teamId as string | undefined;
   const type = body?.type as string | undefined;
 
-  if (userId && !session.isAdmin && userId !== session.userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
   const where: any = {};
   if (userId) where.userId = userId;
   if (teamId) where.teamId = teamId;
   if (type) where.type = type;
+
+  if (!session.isAdmin) {
+    // Non-admin users can:
+    // - delete their own invites (userId === session.userId), or
+    // - if scoped to a team, delete invites for that team when they are the captain, or
+    // - delete invites they created (fallback).
+    const canActOnUser = userId && userId === session.userId;
+
+    let isTeamCaptain = false;
+    if (teamId) {
+      const team = await prisma.volleyBallTeams.findUnique({
+        where: { id: teamId },
+        select: { captainId: true },
+      });
+      isTeamCaptain = Boolean(team && team.captainId === session.userId);
+    }
+
+    if (!canActOnUser && !isTeamCaptain) {
+      where.createdBy = session.userId;
+    }
+
+    // Avoid accidental broad deletes from non-admin callers.
+    const hasScope = Boolean(userId || teamId || type);
+    if (!hasScope) {
+      return NextResponse.json({ error: 'Missing delete scope' }, { status: 400 });
+    }
+  }
 
   await prisma.invites.deleteMany({ where });
   return NextResponse.json({ deleted: true }, { status: 200 });

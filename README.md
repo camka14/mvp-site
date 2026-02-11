@@ -37,6 +37,9 @@ npm install
   - Google OAuth (login button on `/login`):
   - `GOOGLE_OAUTH_CLIENT_ID`
   - `GOOGLE_OAUTH_CLIENT_SECRET`
+  - Mobile Google OAuth token audience allow-list:
+  - `GOOGLE_MOBILE_ANDROID_CLIENT_ID`
+  - `GOOGLE_MOBILE_IOS_CLIENT_ID`
   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
   - `STORAGE_PROVIDER` (`local` or `spaces`)
