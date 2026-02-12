@@ -238,6 +238,20 @@ model ChatGroup {
   hostId String
 }
 
+model PushDeviceTarget {
+  id String @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  userId String
+  pushToken String @unique
+  pushTarget String?
+  pushPlatform String?
+  lastSeenAt DateTime?
+
+  @@index([userId])
+  @@index([pushTarget])
+}
+
 model LockFiles {
   id String @id
   createdAt DateTime?

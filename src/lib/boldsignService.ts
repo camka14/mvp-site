@@ -17,6 +17,11 @@ type CreateTemplateResponse = {
   error?: string;
 };
 
+type TemplateEditUrlResponse = {
+  editUrl?: string;
+  error?: string;
+};
+
 type SignLinksResponse = {
   signLinks?: SignStep[];
   error?: string;
@@ -31,23 +36,47 @@ class BoldSignService {
     signOnce: boolean;
     type: TemplateDocumentType;
     content?: string;
+    file?: File;
   }): Promise<{ createUrl?: string; template: TemplateDocument }> {
-    const result = await apiRequest<CreateTemplateResponse>(
-      `/api/organizations/${params.organizationId}/templates`,
-      {
-        method: 'POST',
-        body: {
-          userId: params.userId,
-          template: {
-            title: params.title,
-            description: params.description,
-            signOnce: params.signOnce,
-            type: params.type,
-            content: params.content,
+    let result: CreateTemplateResponse;
+    if (params.type === 'PDF') {
+      if (!params.file) {
+        throw new Error('PDF file is required for PDF templates.');
+      }
+      const form = new FormData();
+      form.set('userId', params.userId);
+      form.set('title', params.title);
+      form.set('description', params.description ?? '');
+      form.set('signOnce', String(params.signOnce));
+      form.set('type', params.type);
+      form.set('file', params.file);
+      result = await apiRequest<CreateTemplateResponse>(
+        `/api/organizations/${params.organizationId}/templates`,
+        {
+          method: 'POST',
+          body: form,
+          timeoutMs: 60_000,
+        },
+      );
+    } else {
+      result = await apiRequest<CreateTemplateResponse>(
+        `/api/organizations/${params.organizationId}/templates`,
+        {
+          method: 'POST',
+          body: {
+            userId: params.userId,
+            template: {
+              title: params.title,
+              description: params.description,
+              signOnce: params.signOnce,
+              type: params.type,
+              content: params.content,
+            },
           },
         },
-      },
-    );
+      );
+    }
+
     if (result?.error) {
       throw new Error(result.error);
     }
@@ -55,6 +84,25 @@ class BoldSignService {
       throw new Error('Template creation response is missing data.');
     }
     return { createUrl: result.createUrl, template: result.template };
+  }
+
+  async getTemplateEditUrl(params: {
+    organizationId: string;
+    templateDocumentId: string;
+  }): Promise<string> {
+    const result = await apiRequest<TemplateEditUrlResponse>(
+      `/api/organizations/${params.organizationId}/templates/${params.templateDocumentId}/edit-url`,
+      {
+        method: 'GET',
+      },
+    );
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    if (!result?.editUrl) {
+      throw new Error('Template edit response is missing editUrl.');
+    }
+    return result.editUrl;
   }
 
   async createSignLinks(params: {

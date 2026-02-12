@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch } from '@mantine/core';
+import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
@@ -185,13 +185,21 @@ function OrganizationDetailContent() {
   const [templateDescription, setTemplateDescription] = useState('');
   const [templateType, setTemplateType] = useState<'PDF' | 'TEXT'>('PDF');
   const [templateContent, setTemplateContent] = useState('');
+  const [templatePdfFile, setTemplatePdfFile] = useState<File | null>(null);
   const [templateSignOnce, setTemplateSignOnce] = useState(true);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [templateEmbedUrl, setTemplateEmbedUrl] = useState<string | null>(null);
+  const [templateBuilderOpen, setTemplateBuilderOpen] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<TemplateDocument | null>(null);
   const [previewMode, setPreviewMode] = useState<'read' | 'sign'>('read');
   const [previewAccepted, setPreviewAccepted] = useState(false);
   const [previewSignComplete, setPreviewSignComplete] = useState(false);
+
+  const closeTemplateBuilder = useCallback(() => {
+    setTemplateBuilderOpen(false);
+    setTemplateEmbedUrl(null);
+  }, []);
 
   const openTemplatePreview = useCallback((template: TemplateDocument) => {
     setPreviewTemplate(template);
@@ -248,6 +256,43 @@ function OrganizationDetailContent() {
       }
     }
   }, [user?.$id]);
+
+  useEffect(() => {
+    if (!templateBuilderOpen) {
+      return;
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (typeof event.origin === 'string' && !event.origin.includes('boldsign')) {
+        return;
+      }
+      const payload = event.data;
+      const eventName = typeof payload === 'string'
+        ? payload
+        : payload?.event || payload?.eventName || payload?.type || payload?.name || '';
+      const normalized = eventName.toString().toLowerCase();
+      if (!normalized.includes('template')) {
+        return;
+      }
+      if (!normalized.includes('created') && !normalized.includes('saved') && !normalized.includes('publish')) {
+        return;
+      }
+
+      closeTemplateBuilder();
+      notifications.show({
+        color: 'green',
+        message: 'Template saved successfully.',
+      });
+      if (org?.$id) {
+        void loadTemplates(org.$id, { silent: true });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [templateBuilderOpen, closeTemplateBuilder, org?.$id, loadTemplates]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -313,6 +358,10 @@ function OrganizationDetailContent() {
       setTemplatesError('Template title is required.');
       return;
     }
+    if (templateType === 'PDF' && !templatePdfFile) {
+      setTemplatesError('Upload a PDF file to create a PDF template.');
+      return;
+    }
     const trimmedContent = templateContent.trim();
     if (templateType === 'TEXT' && !trimmedContent) {
       setTemplatesError('Template text is required.');
@@ -329,13 +378,16 @@ function OrganizationDetailContent() {
         signOnce: templateSignOnce,
         type: templateType,
         content: templateType === 'TEXT' ? trimmedContent : undefined,
+        file: templateType === 'PDF' ? templatePdfFile ?? undefined : undefined,
       });
       setTemplateEmbedUrl(result.createUrl ?? null);
+      setTemplateBuilderOpen(Boolean(result.createUrl));
       setTemplateModalOpen(false);
       setTemplateTitle('');
       setTemplateDescription('');
       setTemplateType('PDF');
       setTemplateContent('');
+      setTemplatePdfFile(null);
       setTemplateSignOnce(true);
       await loadTemplates(org.$id, { silent: true });
     } catch (error) {
@@ -345,7 +397,30 @@ function OrganizationDetailContent() {
     } finally {
       setCreatingTemplate(false);
     }
-  }, [org, user, templateTitle, templateDescription, templateSignOnce, templateType, templateContent, loadTemplates]);
+  }, [org, user, templateTitle, templateDescription, templateSignOnce, templateType, templateContent, templatePdfFile, loadTemplates]);
+
+  const handleEditPdfTemplate = useCallback(async (template: TemplateDocument) => {
+    if (!org) return;
+    if ((template.type ?? 'PDF') !== 'PDF') {
+      return;
+    }
+    try {
+      setEditingTemplateId(template.$id);
+      setTemplatesError(null);
+      const editUrl = await boldsignService.getTemplateEditUrl({
+        organizationId: org.$id,
+        templateDocumentId: template.$id,
+      });
+      setTemplateEmbedUrl(editUrl);
+      setTemplateBuilderOpen(true);
+    } catch (error) {
+      setTemplatesError(
+        error instanceof Error ? error.message : 'Failed to open template editor.',
+      );
+    } finally {
+      setEditingTemplateId(null);
+    }
+  }, [org]);
 
   const handleConnectStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;
@@ -922,21 +997,6 @@ function OrganizationDetailContent() {
                   </Text>
                 )}
 
-                {templateEmbedUrl && (
-                  <Paper withBorder p="md" radius="md" mb="md">
-                    <Text size="sm" c="dimmed" mb="xs">
-                      Embedded Template Builder
-                    </Text>
-                    <div style={{ height: 620 }}>
-                      <iframe
-                        src={templateEmbedUrl}
-                        title="BoldSign Template Builder"
-                        style={{ width: '100%', height: '100%', border: 'none' }}
-                      />
-                    </div>
-                  </Paper>
-                )}
-
                 {templatesLoading ? (
                   <Text size="sm" c="dimmed">Loading templates...</Text>
                 ) : templateDocuments.length > 0 ? (
@@ -963,6 +1023,18 @@ function OrganizationDetailContent() {
                               onClick={() => openTemplatePreview(template)}
                             >
                               Preview
+                            </Button>
+                          </Group>
+                        )}
+                        {(template.type ?? 'PDF') === 'PDF' && (
+                          <Group justify="flex-end" mt="sm">
+                            <Button
+                              size="xs"
+                              variant="light"
+                              onClick={() => void handleEditPdfTemplate(template)}
+                              loading={editingTemplateId === template.$id}
+                            >
+                              Edit
                             </Button>
                           </Group>
                         )}
@@ -1307,6 +1379,25 @@ function OrganizationDetailContent() {
         }}
       />
       <Modal
+        opened={templateBuilderOpen && Boolean(templateEmbedUrl)}
+        onClose={closeTemplateBuilder}
+        centered
+        size="xl"
+        title="BoldSign Template Builder"
+      >
+        {templateEmbedUrl ? (
+          <div style={{ height: 620 }}>
+            <iframe
+              src={templateEmbedUrl}
+              title="BoldSign Template Builder"
+              style={{ width: '100%', height: '100%', border: 'none' }}
+            />
+          </div>
+        ) : (
+          <Text size="sm" c="dimmed">Preparing builder...</Text>
+        )}
+      </Modal>
+      <Modal
         opened={Boolean(previewTemplate)}
         onClose={() => setPreviewTemplate(null)}
         centered
@@ -1429,6 +1520,17 @@ function OrganizationDetailContent() {
             onChange={(e) => setTemplateDescription(e.currentTarget.value)}
             minRows={3}
           />
+          {templateType === 'PDF' && (
+            <FileInput
+              label="PDF file"
+              placeholder="Upload a PDF template"
+              accept="application/pdf,.pdf"
+              value={templatePdfFile}
+              onChange={setTemplatePdfFile}
+              clearable
+              required
+            />
+          )}
           {templateType === 'TEXT' && (
             <Textarea
               label="Waiver text"
@@ -1450,7 +1552,7 @@ function OrganizationDetailContent() {
             <Button
               onClick={handleCreateTemplate}
               loading={creatingTemplate}
-              disabled={!templateTitle.trim()}
+              disabled={!templateTitle.trim() || (templateType === 'PDF' && !templatePdfFile)}
             >
               Create
             </Button>

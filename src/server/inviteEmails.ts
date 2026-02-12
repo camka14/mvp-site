@@ -1,10 +1,12 @@
 import { prisma } from '@/lib/prisma';
 import { buildInviteEmail } from '@/server/emailTemplates';
 import { isEmailEnabled, sendEmail } from '@/server/email';
+import { sendPushToUsers } from '@/server/pushNotifications';
 
 interface InviteRecord {
   id: string;
   email?: string | null;
+  userId?: string | null;
   type?: string | null;
   eventId?: string | null;
   organizationId?: string | null;
@@ -85,6 +87,25 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
         text: content.text,
         html: content.html,
       });
+
+      const inviteUserId = invite.userId?.trim();
+      if (inviteUserId) {
+        await sendPushToUsers({
+          userIds: [inviteUserId],
+          title: content.subject,
+          body: 'You have a new invitation in MVP. Open the app to review it.',
+          data: {
+            inviteId: invite.id,
+            inviteType: invite.type ?? '',
+            eventId: invite.eventId ?? '',
+            organizationId: invite.organizationId ?? '',
+            teamId: invite.teamId ?? '',
+          },
+        }).catch((error) => {
+          console.warn('Failed to send invite push notification', { inviteId: invite.id, error });
+        });
+      }
+
       return { id: invite.id, status: 'sent' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

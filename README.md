@@ -45,6 +45,9 @@ npm install
   - `STORAGE_PROVIDER` (`local` or `spaces`)
   - `STORAGE_ROOT` (for local storage)
   - `DO_SPACES_ENDPOINT`, `DO_SPACES_REGION`, `DO_SPACES_BUCKET`, `DO_SPACES_KEY`, `DO_SPACES_SECRET`
+  - BoldSign (PDF template builder + embedded signing):
+  - `BOLDSIGN_API_KEY`
+  - `BOLDSIGN_API_BASE_URL` (optional, defaults to `https://api.boldsign.com`)
   - SMTP email invites:
   - `SMTP_URL` (or configure host/port/user/password below)
   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`
