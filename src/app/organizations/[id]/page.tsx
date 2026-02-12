@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput } from '@mantine/core';
+import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
@@ -79,6 +79,99 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
   };
 };
 
+type OrganizationTab =
+  | 'overview'
+  | 'events'
+  | 'teams'
+  | 'users'
+  | 'fields'
+  | 'referees'
+  | 'refunds'
+  | 'store'
+  | 'templates';
+
+type OrganizationUserEventSummary = {
+  eventId: string;
+  eventName: string;
+  start?: string;
+  end?: string;
+  status?: string;
+};
+
+type OrganizationUserDocumentSummary = {
+  signedDocumentRecordId: string;
+  documentId: string;
+  templateId: string;
+  eventId?: string;
+  eventName?: string;
+  title: string;
+  type: 'PDF' | 'TEXT';
+  status?: string;
+  signedAt?: string;
+  viewUrl?: string;
+  content?: string;
+};
+
+type OrganizationUserSummary = {
+  userId: string;
+  fullName: string;
+  userName?: string;
+  events: OrganizationUserEventSummary[];
+  documents: OrganizationUserDocumentSummary[];
+};
+
+const mapOrganizationUserRow = (row: Record<string, any>): OrganizationUserSummary => {
+  const eventsRaw = Array.isArray(row?.events) ? row.events : [];
+  const documentsRaw = Array.isArray(row?.documents) ? row.documents : [];
+
+  const events = eventsRaw
+    .map((eventRow: Record<string, any>): OrganizationUserEventSummary => ({
+      eventId: String(eventRow?.eventId ?? ''),
+      eventName: String(eventRow?.eventName ?? 'Untitled Event'),
+      start: typeof eventRow?.start === 'string' ? eventRow.start : undefined,
+      end: typeof eventRow?.end === 'string' ? eventRow.end : undefined,
+      status: typeof eventRow?.status === 'string' ? eventRow.status : undefined,
+    }))
+    .filter((eventRow) => Boolean(eventRow.eventId));
+
+  const documents = documentsRaw
+    .map((documentRow: Record<string, any>): OrganizationUserDocumentSummary => ({
+      signedDocumentRecordId: String(documentRow?.signedDocumentRecordId ?? ''),
+      documentId: String(documentRow?.documentId ?? ''),
+      templateId: String(documentRow?.templateId ?? ''),
+      eventId: typeof documentRow?.eventId === 'string' ? documentRow.eventId : undefined,
+      eventName: typeof documentRow?.eventName === 'string' ? documentRow.eventName : undefined,
+      title: typeof documentRow?.title === 'string' && documentRow.title.trim()
+        ? documentRow.title.trim()
+        : 'Signed Document',
+      type: documentRow?.type === 'TEXT' ? 'TEXT' : 'PDF',
+      status: typeof documentRow?.status === 'string' ? documentRow.status : undefined,
+      signedAt: typeof documentRow?.signedAt === 'string' ? documentRow.signedAt : undefined,
+      viewUrl: typeof documentRow?.viewUrl === 'string' ? documentRow.viewUrl : undefined,
+      content: typeof documentRow?.content === 'string' ? documentRow.content : undefined,
+    }))
+    .filter((documentRow) => Boolean(documentRow.signedDocumentRecordId));
+
+  return {
+    userId: String(row?.userId ?? ''),
+    fullName: typeof row?.fullName === 'string' && row.fullName.trim() ? row.fullName.trim() : 'Unknown User',
+    userName: typeof row?.userName === 'string' ? row.userName : undefined,
+    events,
+    documents,
+  };
+};
+
+const formatSummaryDateTime = (value?: string): string => {
+  if (!value) {
+    return 'Unknown date';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Unknown date';
+  }
+  return parsed.toLocaleString();
+};
+
 function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
@@ -86,7 +179,7 @@ function OrganizationDetailContent() {
   const { user, authUser, loading: authLoading, isAuthenticated } = useApp();
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'teams' | 'fields' | 'referees' | 'refunds' | 'store' | 'templates'>('overview');
+  const [activeTab, setActiveTab] = useState<OrganizationTab>('overview');
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
@@ -114,6 +207,7 @@ function OrganizationDetailContent() {
         { label: 'Overview', value: 'overview' },
         { label: 'Events', value: 'events' },
         { label: 'Teams', value: 'teams' },
+        { label: 'Users', value: 'users' },
       ];
       if (isOwner) {
         base.push({ label: 'Templates', value: 'templates' });
@@ -195,6 +289,11 @@ function OrganizationDetailContent() {
   const [previewMode, setPreviewMode] = useState<'read' | 'sign'>('read');
   const [previewAccepted, setPreviewAccepted] = useState(false);
   const [previewSignComplete, setPreviewSignComplete] = useState(false);
+  const [organizationUsers, setOrganizationUsers] = useState<OrganizationUserSummary[]>([]);
+  const [organizationUsersLoading, setOrganizationUsersLoading] = useState(false);
+  const [organizationUsersError, setOrganizationUsersError] = useState<string | null>(null);
+  const [expandedOrganizationUserIds, setExpandedOrganizationUserIds] = useState<string[]>([]);
+  const [previewSignedTextDocument, setPreviewSignedTextDocument] = useState<OrganizationUserDocumentSummary | null>(null);
 
   const closeTemplateBuilder = useCallback(() => {
     setTemplateBuilderOpen(false);
@@ -253,6 +352,38 @@ function OrganizationDetailContent() {
     } finally {
       if (!silent) {
         setTemplatesLoading(false);
+      }
+    }
+  }, [user?.$id]);
+
+  const loadOrganizationUsers = useCallback(async (orgId: string, options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setOrganizationUsersLoading(true);
+    }
+    try {
+      if (!user?.$id) {
+        return;
+      }
+      const response = await fetch(`/api/organizations/${orgId}/users`, {
+        credentials: 'include',
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to load organization users.');
+      }
+      const rows = Array.isArray(payload?.users) ? payload.users : [];
+      setOrganizationUsers(rows.map((row: Record<string, any>) => mapOrganizationUserRow(row)));
+      if (!silent) {
+        setOrganizationUsersError(null);
+      }
+    } catch (error) {
+      console.error('Failed to load organization users', error);
+      setOrganizationUsers([]);
+      setOrganizationUsersError(error instanceof Error ? error.message : 'Failed to load organization users.');
+    } finally {
+      if (!silent) {
+        setOrganizationUsersLoading(false);
       }
     }
   }, [user?.$id]);
@@ -326,6 +457,22 @@ function OrganizationDetailContent() {
     }
     loadTemplates(org.$id);
   }, [org, isOwner, user, loadTemplates]);
+
+  useEffect(() => {
+    if (!org || !user) {
+      setOrganizationUsers([]);
+      setExpandedOrganizationUserIds([]);
+      return;
+    }
+    if (activeTab !== 'users') {
+      return;
+    }
+    void loadOrganizationUsers(org.$id);
+  }, [activeTab, org, user, loadOrganizationUsers]);
+
+  useEffect(() => {
+    setExpandedOrganizationUserIds((previous) => previous.filter((userId) => organizationUsers.some((row) => row.userId === userId)));
+  }, [organizationUsers]);
 
   useEffect(() => {
     if (!availableTabs.some((tab) => tab.value === activeTab) && availableTabs.length > 0) {
@@ -421,6 +568,33 @@ function OrganizationDetailContent() {
       setEditingTemplateId(null);
     }
   }, [org]);
+
+  const toggleOrganizationUserExpanded = useCallback((userId: string) => {
+    setExpandedOrganizationUserIds((previous) => (
+      previous.includes(userId)
+        ? previous.filter((entry) => entry !== userId)
+        : [...previous, userId]
+    ));
+  }, []);
+
+  const openOrganizationEvent = useCallback((eventId: string) => {
+    router.push(`/events/${eventId}/schedule`);
+  }, [router]);
+
+  const openSignedDocumentPreview = useCallback((document: OrganizationUserDocumentSummary) => {
+    if (document.type === 'PDF') {
+      if (!document.viewUrl) {
+        notifications.show({
+          color: 'red',
+          message: 'This signed PDF is missing a preview link.',
+        });
+        return;
+      }
+      window.open(document.viewUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setPreviewSignedTextDocument(document);
+  }, []);
 
   const handleConnectStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;
@@ -971,6 +1145,193 @@ function OrganizationDetailContent() {
               </Paper>
             )}
 
+            {activeTab === 'users' && (
+              <Paper withBorder p="md" radius="md">
+                <Group justify="space-between" align="flex-start" mb="md">
+                  <Stack gap={2}>
+                    <Title order={5}>Users</Title>
+                    <Text size="sm" c="dimmed">
+                      Members who signed up for organization events and the documents they signed.
+                    </Text>
+                  </Stack>
+                  <Button
+                    variant="default"
+                    onClick={() => org && loadOrganizationUsers(org.$id)}
+                    loading={organizationUsersLoading}
+                  >
+                    Refresh
+                  </Button>
+                </Group>
+
+                {organizationUsersError && (
+                  <Text size="sm" c="red" mb="md">
+                    {organizationUsersError}
+                  </Text>
+                )}
+
+                {organizationUsersLoading ? (
+                  <Text size="sm" c="dimmed">Loading users...</Text>
+                ) : organizationUsers.length > 0 ? (
+                  <div style={{ overflowX: 'auto' }}>
+                    <Table withTableBorder withColumnBorders highlightOnHover miw={760}>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>User</Table.Th>
+                          <Table.Th>Events</Table.Th>
+                          <Table.Th>Documents</Table.Th>
+                          <Table.Th style={{ width: 120 }}>Details</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {organizationUsers.map((summary) => {
+                          const expanded = expandedOrganizationUserIds.includes(summary.userId);
+                          const condensedEvents = summary.events.slice(0, 2);
+                          const condensedDocuments = summary.documents.slice(0, 2);
+
+                          return (
+                            <Fragment key={summary.userId}>
+                              <Table.Tr>
+                                <Table.Td>
+                                  <Text fw={600}>{summary.fullName}</Text>
+                                  {summary.userName && (
+                                    <Text size="xs" c="dimmed">@{summary.userName}</Text>
+                                  )}
+                                </Table.Td>
+                                <Table.Td>
+                                  {condensedEvents.length > 0 ? (
+                                    <Stack gap={4}>
+                                      {condensedEvents.map((eventSummary) => (
+                                        <Button
+                                          key={eventSummary.eventId}
+                                          size="xs"
+                                          variant="subtle"
+                                          onClick={() => openOrganizationEvent(eventSummary.eventId)}
+                                        >
+                                          {eventSummary.eventName}
+                                        </Button>
+                                      ))}
+                                      {summary.events.length > condensedEvents.length && (
+                                        <Text size="xs" c="dimmed">
+                                          +{summary.events.length - condensedEvents.length} more
+                                        </Text>
+                                      )}
+                                    </Stack>
+                                  ) : (
+                                    <Text size="xs" c="dimmed">No events</Text>
+                                  )}
+                                </Table.Td>
+                                <Table.Td>
+                                  {condensedDocuments.length > 0 ? (
+                                    <Stack gap={4}>
+                                      {condensedDocuments.map((documentSummary) => (
+                                        <Button
+                                          key={documentSummary.signedDocumentRecordId}
+                                          size="xs"
+                                          variant="subtle"
+                                          onClick={() => openSignedDocumentPreview(documentSummary)}
+                                        >
+                                          {documentSummary.title}
+                                        </Button>
+                                      ))}
+                                      {summary.documents.length > condensedDocuments.length && (
+                                        <Text size="xs" c="dimmed">
+                                          +{summary.documents.length - condensedDocuments.length} more
+                                        </Text>
+                                      )}
+                                    </Stack>
+                                  ) : (
+                                    <Text size="xs" c="dimmed">No signed documents</Text>
+                                  )}
+                                </Table.Td>
+                                <Table.Td>
+                                  <Button
+                                    size="xs"
+                                    variant="light"
+                                    onClick={() => toggleOrganizationUserExpanded(summary.userId)}
+                                  >
+                                    {expanded ? 'Collapse' : 'Expand'}
+                                  </Button>
+                                </Table.Td>
+                              </Table.Tr>
+                              {expanded && (
+                                <Table.Tr>
+                                  <Table.Td colSpan={4}>
+                                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                                      <Paper withBorder p="sm" radius="md">
+                                        <Text fw={600} mb="xs">All events</Text>
+                                        {summary.events.length > 0 ? (
+                                          <Stack gap={6}>
+                                            {summary.events.map((eventSummary) => (
+                                              <Group key={`${summary.userId}-${eventSummary.eventId}`} justify="space-between" align="center" wrap="wrap">
+                                                <Stack gap={0}>
+                                                  <Button
+                                                    size="xs"
+                                                    variant="subtle"
+                                                    onClick={() => openOrganizationEvent(eventSummary.eventId)}
+                                                  >
+                                                    {eventSummary.eventName}
+                                                  </Button>
+                                                  <Text size="xs" c="dimmed">
+                                                    {formatSummaryDateTime(eventSummary.start)}
+                                                    {eventSummary.status ? ` • ${eventSummary.status}` : ''}
+                                                  </Text>
+                                                </Stack>
+                                              </Group>
+                                            ))}
+                                          </Stack>
+                                        ) : (
+                                          <Text size="xs" c="dimmed">No events.</Text>
+                                        )}
+                                      </Paper>
+                                      <Paper withBorder p="sm" radius="md">
+                                        <Text fw={600} mb="xs">Signed documents</Text>
+                                        {summary.documents.length > 0 ? (
+                                          <Stack gap={6}>
+                                            {summary.documents.map((documentSummary) => (
+                                              <Group key={documentSummary.signedDocumentRecordId} justify="space-between" align="center" wrap="wrap">
+                                                <Stack gap={0}>
+                                                  <Text size="sm">{documentSummary.title}</Text>
+                                                  <Text size="xs" c="dimmed">
+                                                    {documentSummary.type}
+                                                    {documentSummary.status ? ` • ${documentSummary.status}` : ''}
+                                                    {documentSummary.signedAt ? ` • ${formatSummaryDateTime(documentSummary.signedAt)}` : ''}
+                                                  </Text>
+                                                  {documentSummary.eventName && (
+                                                    <Text size="xs" c="dimmed">
+                                                      Event: {documentSummary.eventName}
+                                                    </Text>
+                                                  )}
+                                                </Stack>
+                                                <Button
+                                                  size="xs"
+                                                  variant="light"
+                                                  onClick={() => openSignedDocumentPreview(documentSummary)}
+                                                >
+                                                  {documentSummary.type === 'PDF' ? 'View PDF' : 'Preview'}
+                                                </Button>
+                                              </Group>
+                                            ))}
+                                          </Stack>
+                                        ) : (
+                                          <Text size="xs" c="dimmed">No documents.</Text>
+                                        )}
+                                      </Paper>
+                                    </SimpleGrid>
+                                  </Table.Td>
+                                </Table.Tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </Table.Tbody>
+                    </Table>
+                  </div>
+                ) : (
+                  <Text size="sm" c="dimmed">No signed-up users found yet.</Text>
+                )}
+              </Paper>
+            )}
+
             {isOwner && activeTab === 'templates' && (
               <Paper withBorder p="md" radius="md">
                 <Group justify="space-between" mb="md">
@@ -1490,6 +1851,42 @@ function OrganizationDetailContent() {
                 </Group>
               </Stack>
             )}
+          </Stack>
+        ) : null}
+      </Modal>
+      <Modal
+        opened={Boolean(previewSignedTextDocument)}
+        onClose={() => setPreviewSignedTextDocument(null)}
+        centered
+        size="lg"
+        title={previewSignedTextDocument ? `Signed text: ${previewSignedTextDocument.title}` : 'Signed text'}
+      >
+        {previewSignedTextDocument ? (
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">
+              {previewSignedTextDocument.signedAt
+                ? `Signed at ${formatSummaryDateTime(previewSignedTextDocument.signedAt)}`
+                : 'Signed time unavailable.'}
+            </Text>
+            {previewSignedTextDocument.eventName && (
+              <Group justify="space-between" align="center" wrap="wrap">
+                <Text size="sm" c="dimmed">Event: {previewSignedTextDocument.eventName}</Text>
+                {previewSignedTextDocument.eventId && (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    onClick={() => openOrganizationEvent(previewSignedTextDocument.eventId as string)}
+                  >
+                    View event
+                  </Button>
+                )}
+              </Group>
+            )}
+            <Paper withBorder p="md" radius="md" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+              <Text style={{ whiteSpace: 'pre-wrap' }}>
+                {previewSignedTextDocument.content || 'No text content is available for this signed record.'}
+              </Text>
+            </Paper>
           </Stack>
         ) : null}
       </Modal>

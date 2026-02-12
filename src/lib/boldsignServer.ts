@@ -150,6 +150,54 @@ const boldSignFormRequest = async <T>(params: {
   return (payload ?? {}) as T;
 };
 
+const boldSignBinaryRequest = async (params: {
+  path: string;
+  query?: Record<string, string | undefined>;
+}): Promise<{
+  data: Buffer;
+  contentType: string;
+  contentDisposition?: string | null;
+}> => {
+  const { apiKey, baseUrl } = getBoldSignConfig();
+  const url = new URL(params.path, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
+  if (params.query) {
+    Object.entries(params.query).forEach(([key, value]) => {
+      if (typeof value === 'string' && value.length > 0) {
+        url.searchParams.set(key, value);
+      }
+    });
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'X-API-KEY': apiKey,
+    },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') ?? '';
+    let payload: unknown = null;
+    if (contentType.includes('application/json')) {
+      payload = await response.json().catch(() => null);
+    } else {
+      payload = await response.text().catch(() => null);
+    }
+    const message = readErrorMessage(payload)
+      ?? (typeof payload === 'string' && payload.trim() ? payload.trim() : null)
+      ?? `BoldSign API request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return {
+    data: Buffer.from(arrayBuffer),
+    contentType: response.headers.get('content-type') ?? 'application/pdf',
+    contentDisposition: response.headers.get('content-disposition'),
+  };
+};
+
 const toPdfDataUri = (buffer: Buffer): string => {
   return `data:application/pdf;base64,${buffer.toString('base64')}`;
 };
@@ -332,4 +380,13 @@ export const getEmbeddedTemplateEditUrl = async (params: {
   }
 
   return { editUrl };
+};
+
+export const downloadSignedDocumentPdf = async (params: {
+  documentId: string;
+}) => {
+  return boldSignBinaryRequest({
+    path: '/v1/document/download',
+    query: { documentId: params.documentId },
+  });
 };
