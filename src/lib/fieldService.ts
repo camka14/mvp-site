@@ -198,7 +198,7 @@ class FieldService {
     const startMinutes = this.coerceMinutes(row.startTimeMinutes ?? row.startTime);
     const endMinutes = this.coerceMinutes(row.endTimeMinutes ?? row.endTime);
     const requiredTemplateIds = Array.isArray(row.requiredTemplateIds)
-      ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id) => id.length > 0)
+      ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id: string) => id.length > 0)
       : [];
     const slot: TimeSlot = {
       $id: String(row.$id ?? row.id ?? ''),
