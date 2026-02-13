@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { upsertEventFromPayload } from '@/server/repositories/events';
+import { deleteMatchesByEvent, loadEventWithRelations, saveEventSchedule, saveMatches, upsertEventFromPayload } from '@/server/repositories/events';
+import { acquireEventLock } from '@/server/repositories/locks';
+import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
+import { SchedulerContext } from '@/server/scheduler/types';
 import { withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +37,23 @@ const withLegacyEvent = (row: any) => {
     (legacy as any).requiredTemplateIds = [];
   }
   return legacy;
+};
+
+const isSchedulableEventType = (value: unknown): boolean => {
+  const normalized = typeof value === 'string' ? value.toUpperCase() : '';
+  return normalized === 'LEAGUE' || normalized === 'TOURNAMENT';
+};
+
+const buildContext = (): SchedulerContext => {
+  const debug = process.env.SCHEDULER_DEBUG === 'true';
+  return {
+    log: (message) => {
+      if (debug) console.log(message);
+    },
+    error: (message) => {
+      console.error(message);
+    },
+  };
 };
 
 export async function GET(req: NextRequest) {
@@ -110,12 +130,33 @@ export async function POST(req: NextRequest) {
     hostId: payload?.hostId ?? session.userId,
   } as Record<string, unknown>;
 
-  await upsertEventFromPayload(eventPayload);
+  try {
+    const context = buildContext();
+    const event = await prisma.$transaction(async (tx) => {
+      await upsertEventFromPayload(eventPayload, tx);
 
-  const event = await prisma.events.findUnique({ where: { id: eventId } });
-  if (!event) {
-    return NextResponse.json({ error: 'Failed to create event' }, { status: 500 });
+      const loaded = await loadEventWithRelations(eventId, tx);
+      if (isSchedulableEventType(loaded.eventType)) {
+        await acquireEventLock(tx, eventId);
+        const scheduled = scheduleEvent({ event: loaded }, context);
+        await deleteMatchesByEvent(eventId, tx);
+        await saveMatches(eventId, scheduled.matches, tx);
+        await saveEventSchedule(scheduled.event, tx);
+      }
+
+      const fresh = await tx.events.findUnique({ where: { id: eventId } });
+      if (!fresh) {
+        throw new Error('Failed to create event');
+      }
+      return fresh;
+    });
+
+    return NextResponse.json({ event: withLegacyEvent(event) }, { status: 201 });
+  } catch (error) {
+    if (error instanceof ScheduleError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    console.error('Create event failed', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-
-  return NextResponse.json({ event: withLegacyEvent(event) }, { status: 201 });
 }
