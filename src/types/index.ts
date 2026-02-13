@@ -211,6 +211,7 @@ export interface TimeSlot {
   endDate?: string | null;
   repeating: boolean;
   price?: number;
+  requiredTemplateIds?: string[];
   event?: Event;
   eventId?: string;
   field?: Field;

@@ -393,6 +393,7 @@ export const ModelName = {
   VolleyBallTeams: 'VolleyBallTeams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
+  PushDeviceTarget: 'PushDeviceTarget',
   LockFiles: 'LockFiles',
   PaymentIntents: 'PaymentIntents',
   Bills: 'Bills',
@@ -427,7 +428,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "volleyBallTeams" | "messages" | "chatGroup" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "volleyBallTeams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1094,6 +1095,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.ChatGroupCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.ChatGroupCountAggregateOutputType> | number
+        }
+      }
+    }
+    PushDeviceTarget: {
+      payload: Prisma.$PushDeviceTargetPayload<ExtArgs>
+      fields: Prisma.PushDeviceTargetFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.PushDeviceTargetFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.PushDeviceTargetFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>
+        }
+        findFirst: {
+          args: Prisma.PushDeviceTargetFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.PushDeviceTargetFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>
+        }
+        findMany: {
+          args: Prisma.PushDeviceTargetFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>[]
+        }
+        create: {
+          args: Prisma.PushDeviceTargetCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>
+        }
+        createMany: {
+          args: Prisma.PushDeviceTargetCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.PushDeviceTargetCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>[]
+        }
+        delete: {
+          args: Prisma.PushDeviceTargetDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>
+        }
+        update: {
+          args: Prisma.PushDeviceTargetUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>
+        }
+        deleteMany: {
+          args: Prisma.PushDeviceTargetDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.PushDeviceTargetUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.PushDeviceTargetUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>[]
+        }
+        upsert: {
+          args: Prisma.PushDeviceTargetUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$PushDeviceTargetPayload>
+        }
+        aggregate: {
+          args: Prisma.PushDeviceTargetAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregatePushDeviceTarget>
+        }
+        groupBy: {
+          args: Prisma.PushDeviceTargetGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.PushDeviceTargetGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.PushDeviceTargetCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.PushDeviceTargetCountAggregateOutputType> | number
         }
       }
     }
@@ -2702,6 +2777,20 @@ export const ChatGroupScalarFieldEnum = {
 export type ChatGroupScalarFieldEnum = (typeof ChatGroupScalarFieldEnum)[keyof typeof ChatGroupScalarFieldEnum]
 
 
+export const PushDeviceTargetScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  userId: 'userId',
+  pushToken: 'pushToken',
+  pushTarget: 'pushTarget',
+  pushPlatform: 'pushPlatform',
+  lastSeenAt: 'lastSeenAt'
+} as const
+
+export type PushDeviceTargetScalarFieldEnum = (typeof PushDeviceTargetScalarFieldEnum)[keyof typeof PushDeviceTargetScalarFieldEnum]
+
+
 export const LockFilesScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -2926,7 +3015,8 @@ export const TimeSlotsScalarFieldEnum = {
   repeating: 'repeating',
   endDate: 'endDate',
   scheduledFieldId: 'scheduledFieldId',
-  price: 'price'
+  price: 'price',
+  requiredTemplateIds: 'requiredTemplateIds'
 } as const
 
 export type TimeSlotsScalarFieldEnum = (typeof TimeSlotsScalarFieldEnum)[keyof typeof TimeSlotsScalarFieldEnum]
@@ -3575,6 +3665,7 @@ export type GlobalOmitConfig = {
   volleyBallTeams?: Prisma.VolleyBallTeamsOmit
   messages?: Prisma.MessagesOmit
   chatGroup?: Prisma.ChatGroupOmit
+  pushDeviceTarget?: Prisma.PushDeviceTargetOmit
   lockFiles?: Prisma.LockFilesOmit
   paymentIntents?: Prisma.PaymentIntentsOmit
   bills?: Prisma.BillsOmit

@@ -451,6 +451,7 @@ model TimeSlots {
   endDate DateTime?
   scheduledFieldId String?
   price Int?
+  requiredTemplateIds String[] @default([])
 
   @@index([scheduledFieldId])
 }

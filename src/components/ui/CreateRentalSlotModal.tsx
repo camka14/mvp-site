@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Group, Modal, NumberInput, Stack, Switch, Text } from '@mantine/core';
+import { Button, Group, Modal, MultiSelect, NumberInput, Stack, Switch, Text } from '@mantine/core';
 import { DatePickerInput, TimeInput } from '@mantine/dates';
 import type { Field, TimeSlot } from '@/types';
 import { fieldService, type ManageRentalSlotResult } from '@/lib/fieldService';
+import { apiRequest } from '@/lib/apiClient';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 
 interface CreateRentalSlotModalProps {
@@ -19,6 +20,7 @@ interface CreateRentalSlotModalProps {
   initialRange?: { start: Date; end: Date } | null;
   onSaved?: (field: Field) => void;
   organizationHasStripeAccount?: boolean;
+  organizationId?: string | null;
 }
 
 const toTimeValue = (date: Date): string => {
@@ -99,6 +101,7 @@ export default function CreateRentalSlotModal({
   initialRange = null,
   onSaved,
   organizationHasStripeAccount = false,
+  organizationId = null,
 }: CreateRentalSlotModalProps) {
   const now = useMemo(() => {
     const current = new Date();
@@ -118,6 +121,9 @@ export default function CreateRentalSlotModal({
   const [endTime, setEndTime] = useState<string>(toTimeValue(defaultEnd));
   const [repeating, setRepeating] = useState<boolean>(false);
   const [price, setPrice] = useState<number | null>(null);
+  const [requiredTemplateIds, setRequiredTemplateIds] = useState<string[]>([]);
+  const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [templatesLoading, setTemplatesLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -156,6 +162,11 @@ export default function CreateRentalSlotModal({
           ? slot.price / 100
           : null,
       );
+      setRequiredTemplateIds(
+        Array.isArray(slot.requiredTemplateIds)
+          ? slot.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)
+          : [],
+      );
       return;
     }
 
@@ -174,6 +185,7 @@ export default function CreateRentalSlotModal({
       setEndTime(toTimeValue(rangeEnd));
       setRepeating(true);
       setPrice(null);
+      setRequiredTemplateIds([]);
       return;
     }
 
@@ -187,7 +199,57 @@ export default function CreateRentalSlotModal({
     setEndTime(toTimeValue(baseEnd));
     setRepeating(false);
     setPrice(null);
+    setRequiredTemplateIds([]);
   }, [opened, slot, initialRange, organizationHasStripeAccount]);
+
+  useEffect(() => {
+    if (!opened) {
+      return;
+    }
+    if (!organizationId) {
+      setTemplateOptions([]);
+      setTemplatesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadTemplates = async () => {
+      try {
+        setTemplatesLoading(true);
+        const response = await apiRequest<{ templates?: any[] }>(
+          `/api/organizations/${organizationId}/templates`,
+        );
+        if (cancelled) {
+          return;
+        }
+        const rows = Array.isArray(response.templates) ? response.templates : [];
+        const options = rows
+          .map((row) => ({
+            value: String(row.$id ?? row.id ?? '').trim(),
+            label: String(row.title ?? 'Untitled template'),
+            status: String(row.status ?? '').toUpperCase(),
+          }))
+          .filter((row) => row.value.length > 0)
+          .filter((row) => row.status !== 'ARCHIVED')
+          .map(({ value, label }) => ({ value, label }));
+        setTemplateOptions(options);
+      } catch (loadError) {
+        console.warn('Failed to load organization templates for rental slot:', loadError);
+        if (!cancelled) {
+          setTemplateOptions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setTemplatesLoading(false);
+        }
+      }
+    };
+
+    loadTemplates();
+    return () => {
+      cancelled = true;
+    };
+  }, [opened, organizationId]);
 
   useEffect(() => {
     if (!organizationHasStripeAccount) {
@@ -294,6 +356,7 @@ export default function CreateRentalSlotModal({
         endDate: endDateValue ? formatLocalDateTime(endDateTime) : null,
         startTimeMinutes: repeating && startMinutes !== null ? startMinutes : undefined,
         endTimeMinutes: repeating && endMinutes !== null ? endMinutes : undefined,
+        requiredTemplateIds,
         price:
           organizationHasStripeAccount && price !== null
             ? Math.round(price * 100)
@@ -310,6 +373,7 @@ export default function CreateRentalSlotModal({
           endDate: payload.endDate ?? null,
           startTimeMinutes: payload.startTimeMinutes,
           endTimeMinutes: payload.endTimeMinutes,
+          requiredTemplateIds: payload.requiredTemplateIds,
           price: organizationHasStripeAccount ? payload.price : undefined,
         };
         result = await fieldService.updateRentalSlot(field, updatePayload);
@@ -415,6 +479,25 @@ export default function CreateRentalSlotModal({
             {!organizationHasStripeAccount && (
               <Text size="xs" c="dimmed" mt={4}>
                 Connect a Stripe account to charge for rentals.
+              </Text>
+            )}
+          </div>
+
+          <div>
+            <MultiSelect
+              label="Required templates (optional)"
+              data={templateOptions}
+              value={requiredTemplateIds}
+              onChange={setRequiredTemplateIds}
+              placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+              searchable
+              clearable
+              disabled={!field || !organizationId || templatesLoading}
+              nothingFoundMessage="No templates found"
+            />
+            {!templatesLoading && organizationId && templateOptions.length === 0 && (
+              <Text size="xs" c="dimmed" mt={4}>
+                No templates available for this organization yet.
               </Text>
             )}
           </div>

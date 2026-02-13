@@ -80,6 +80,7 @@ export type TimeSlotsCountAggregateOutputType = {
   endDate: number
   scheduledFieldId: number
   price: number
+  requiredTemplateIds: number
   _all: number
 }
 
@@ -138,6 +139,7 @@ export type TimeSlotsCountAggregateInputType = {
   endDate?: true
   scheduledFieldId?: true
   price?: true
+  requiredTemplateIds?: true
   _all?: true
 }
 
@@ -239,6 +241,7 @@ export type TimeSlotsGroupByOutputType = {
   endDate: Date | null
   scheduledFieldId: string | null
   price: number | null
+  requiredTemplateIds: string[]
   _count: TimeSlotsCountAggregateOutputType | null
   _avg: TimeSlotsAvgAggregateOutputType | null
   _sum: TimeSlotsSumAggregateOutputType | null
@@ -276,6 +279,7 @@ export type TimeSlotsWhereInput = {
   endDate?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   scheduledFieldId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
   price?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
+  requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
 }
 
 export type TimeSlotsOrderByWithRelationInput = {
@@ -290,6 +294,7 @@ export type TimeSlotsOrderByWithRelationInput = {
   endDate?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduledFieldId?: Prisma.SortOrderInput | Prisma.SortOrder
   price?: Prisma.SortOrderInput | Prisma.SortOrder
+  requiredTemplateIds?: Prisma.SortOrder
 }
 
 export type TimeSlotsWhereUniqueInput = Prisma.AtLeast<{
@@ -307,6 +312,7 @@ export type TimeSlotsWhereUniqueInput = Prisma.AtLeast<{
   endDate?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   scheduledFieldId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
   price?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
+  requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
 }, "id">
 
 export type TimeSlotsOrderByWithAggregationInput = {
@@ -321,6 +327,7 @@ export type TimeSlotsOrderByWithAggregationInput = {
   endDate?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduledFieldId?: Prisma.SortOrderInput | Prisma.SortOrder
   price?: Prisma.SortOrderInput | Prisma.SortOrder
+  requiredTemplateIds?: Prisma.SortOrder
   _count?: Prisma.TimeSlotsCountOrderByAggregateInput
   _avg?: Prisma.TimeSlotsAvgOrderByAggregateInput
   _max?: Prisma.TimeSlotsMaxOrderByAggregateInput
@@ -343,6 +350,7 @@ export type TimeSlotsScalarWhereWithAggregatesInput = {
   endDate?: Prisma.DateTimeNullableWithAggregatesFilter<"TimeSlots"> | Date | string | null
   scheduledFieldId?: Prisma.StringNullableWithAggregatesFilter<"TimeSlots"> | string | null
   price?: Prisma.IntNullableWithAggregatesFilter<"TimeSlots"> | number | null
+  requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
 }
 
 export type TimeSlotsCreateInput = {
@@ -357,6 +365,7 @@ export type TimeSlotsCreateInput = {
   endDate?: Date | string | null
   scheduledFieldId?: string | null
   price?: number | null
+  requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
 }
 
 export type TimeSlotsUncheckedCreateInput = {
@@ -371,6 +380,7 @@ export type TimeSlotsUncheckedCreateInput = {
   endDate?: Date | string | null
   scheduledFieldId?: string | null
   price?: number | null
+  requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
 }
 
 export type TimeSlotsUpdateInput = {
@@ -385,6 +395,7 @@ export type TimeSlotsUpdateInput = {
   endDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   scheduledFieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
 }
 
 export type TimeSlotsUncheckedUpdateInput = {
@@ -399,6 +410,7 @@ export type TimeSlotsUncheckedUpdateInput = {
   endDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   scheduledFieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
 }
 
 export type TimeSlotsCreateManyInput = {
@@ -413,6 +425,7 @@ export type TimeSlotsCreateManyInput = {
   endDate?: Date | string | null
   scheduledFieldId?: string | null
   price?: number | null
+  requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
 }
 
 export type TimeSlotsUpdateManyMutationInput = {
@@ -427,6 +440,7 @@ export type TimeSlotsUpdateManyMutationInput = {
   endDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   scheduledFieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
 }
 
 export type TimeSlotsUncheckedUpdateManyInput = {
@@ -441,6 +455,7 @@ export type TimeSlotsUncheckedUpdateManyInput = {
   endDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   scheduledFieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
 }
 
 export type TimeSlotsCountOrderByAggregateInput = {
@@ -455,6 +470,7 @@ export type TimeSlotsCountOrderByAggregateInput = {
   endDate?: Prisma.SortOrder
   scheduledFieldId?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  requiredTemplateIds?: Prisma.SortOrder
 }
 
 export type TimeSlotsAvgOrderByAggregateInput = {
@@ -499,8 +515,17 @@ export type TimeSlotsSumOrderByAggregateInput = {
   price?: Prisma.SortOrder
 }
 
+export type TimeSlotsCreaterequiredTemplateIdsInput = {
+  set: string[]
+}
+
 export type BoolFieldUpdateOperationsInput = {
   set?: boolean
+}
+
+export type TimeSlotsUpdaterequiredTemplateIdsInput = {
+  set?: string[]
+  push?: string | string[]
 }
 
 
@@ -517,6 +542,7 @@ export type TimeSlotsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   endDate?: boolean
   scheduledFieldId?: boolean
   price?: boolean
+  requiredTemplateIds?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -531,6 +557,7 @@ export type TimeSlotsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   endDate?: boolean
   scheduledFieldId?: boolean
   price?: boolean
+  requiredTemplateIds?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -545,6 +572,7 @@ export type TimeSlotsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   endDate?: boolean
   scheduledFieldId?: boolean
   price?: boolean
+  requiredTemplateIds?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectScalar = {
@@ -559,9 +587,10 @@ export type TimeSlotsSelectScalar = {
   endDate?: boolean
   scheduledFieldId?: boolean
   price?: boolean
+  requiredTemplateIds?: boolean
 }
 
-export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "repeating" | "endDate" | "scheduledFieldId" | "price", ExtArgs["result"]["timeSlots"]>
+export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "repeating" | "endDate" | "scheduledFieldId" | "price" | "requiredTemplateIds", ExtArgs["result"]["timeSlots"]>
 
 export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "TimeSlots"
@@ -578,6 +607,7 @@ export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     endDate: Date | null
     scheduledFieldId: string | null
     price: number | null
+    requiredTemplateIds: string[]
   }, ExtArgs["result"]["timeSlots"]>
   composites: {}
 }
@@ -1012,6 +1042,7 @@ export interface TimeSlotsFieldRefs {
   readonly endDate: Prisma.FieldRef<"TimeSlots", 'DateTime'>
   readonly scheduledFieldId: Prisma.FieldRef<"TimeSlots", 'String'>
   readonly price: Prisma.FieldRef<"TimeSlots", 'Int'>
+  readonly requiredTemplateIds: Prisma.FieldRef<"TimeSlots", 'String[]'>
 }
     
 

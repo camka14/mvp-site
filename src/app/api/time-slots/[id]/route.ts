@@ -32,6 +32,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (parsedDate) payload.endDate = parsedDate;
     }
   }
+  if (payload.requiredTemplateIds !== undefined) {
+    payload.requiredTemplateIds = Array.isArray(payload.requiredTemplateIds)
+      ? Array.from(
+        new Set(
+          payload.requiredTemplateIds
+            .map((id: unknown) => String(id))
+            .filter((id: string) => id.length > 0),
+        ),
+      )
+      : [];
+  }
 
   const updated = await prisma.timeSlots.update({
     where: { id },

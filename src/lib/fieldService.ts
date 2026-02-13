@@ -197,12 +197,16 @@ class FieldService {
   private mapRowToTimeSlot(row: any): TimeSlot {
     const startMinutes = this.coerceMinutes(row.startTimeMinutes ?? row.startTime);
     const endMinutes = this.coerceMinutes(row.endTimeMinutes ?? row.endTime);
+    const requiredTemplateIds = Array.isArray(row.requiredTemplateIds)
+      ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id) => id.length > 0)
+      : [];
     const slot: TimeSlot = {
       $id: String(row.$id ?? row.id ?? ''),
       dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
       repeating: row.repeating === undefined ? false : Boolean(row.repeating),
       scheduledFieldId: typeof row.scheduledFieldId === 'string' ? row.scheduledFieldId : row.fieldId ?? undefined,
       eventId: typeof row.eventId === 'string' ? row.eventId : undefined,
+      requiredTemplateIds,
     };
 
     if (typeof startMinutes === 'number') {
@@ -296,6 +300,9 @@ class FieldService {
       startDate: slot.startDate ?? null,
       endDate: slot.endDate ?? null,
       price: slot.price ?? null,
+      requiredTemplateIds: Array.isArray(slot.requiredTemplateIds)
+        ? Array.from(new Set(slot.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
+        : [],
     };
 
     if (options.slotId) {

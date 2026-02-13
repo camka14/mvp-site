@@ -63,6 +63,11 @@ export type Messages = Prisma.MessagesModel
  */
 export type ChatGroup = Prisma.ChatGroupModel
 /**
+ * Model PushDeviceTarget
+ * 
+ */
+export type PushDeviceTarget = Prisma.PushDeviceTargetModel
+/**
  * Model LockFiles
  * 
  */

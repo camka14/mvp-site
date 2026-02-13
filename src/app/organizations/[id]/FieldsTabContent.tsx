@@ -580,6 +580,9 @@ export default function FieldsTabContent({ organization, organizationId, current
     const selectionStart = selection.start;
     const selectionEnd = selection.end;
     const rentalPriceCents = matchingRentalSlot?.price;
+    const rentalRequiredTemplateIds = Array.isArray(matchingRentalSlot?.requiredTemplateIds)
+      ? matchingRentalSlot.requiredTemplateIds.filter((id) => typeof id === 'string' && id.length > 0)
+      : [];
     const newId = createId();
     const params = new URLSearchParams();
     params.set('create', '1');
@@ -608,6 +611,9 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (typeof rentalPriceCents === 'number' && Number.isFinite(rentalPriceCents) && rentalPriceCents > 0) {
       params.set('rentalPriceCents', String(Math.round(rentalPriceCents)));
     }
+    if (rentalRequiredTemplateIds.length > 0) {
+      params.set('rentalRequiredTemplateIds', rentalRequiredTemplateIds.join(','));
+    }
     if (org?.$id) {
       params.set('rentalOrgId', org.$id);
     }
@@ -615,7 +621,17 @@ export default function FieldsTabContent({ organization, organizationId, current
       params.set('hostOrgId', hostSelection);
     }
     router.push(`/events/${newId}/schedule?${params.toString()}`);
-  }, [currentUser, isSelectionValid, matchingRentalSlot?.price, org?.$id, router, selectedField, selection, hostSelection]);
+  }, [
+    currentUser,
+    hostSelection,
+    isSelectionValid,
+    matchingRentalSlot?.price,
+    matchingRentalSlot?.requiredTemplateIds,
+    org?.$id,
+    router,
+    selectedField,
+    selection,
+  ]);
 
   const handleAddRentalSlotClick = useCallback(() => {
     if (!canManage) return;
@@ -900,6 +916,7 @@ export default function FieldsTabContent({ organization, organizationId, current
           await refreshOrganization();
         }}
         organizationHasStripeAccount={organizationHasStripeAccount}
+        organizationId={organizationId}
       />
     </Paper>
   );

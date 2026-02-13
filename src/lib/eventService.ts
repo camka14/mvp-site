@@ -1161,6 +1161,9 @@ class EventService {
             repeating: row.repeating === undefined ? true : Boolean(row.repeating),
             event: row.event ?? row.eventId ?? row.event?.$id,
             scheduledFieldId: row.scheduledFieldId,
+            requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
+                ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id) => id.length > 0)
+                : [],
         };
 
         const normalizedStartDate = ensureLocalDateTimeString(row.startDate ?? row.start ?? null);

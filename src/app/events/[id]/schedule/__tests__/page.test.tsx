@@ -359,6 +359,7 @@ describe('League schedule page', () => {
         if (key === 'rentalEnd') return end;
         if (key === 'rentalFieldId') return 'field_1';
         if (key === 'rentalOrgId') return 'org_rental';
+        if (key === 'rentalRequiredTemplateIds') return 'tmpl_waiver,tmpl_release';
         if (key === 'mode') return 'edit';
         return null;
       },
@@ -377,5 +378,9 @@ describe('League schedule page', () => {
     });
 
     expect(capturedEventFormProps?.organization).toBeNull();
+    expect(capturedEventFormProps?.immutableDefaults?.requiredTemplateIds).toEqual([
+      'tmpl_waiver',
+      'tmpl_release',
+    ]);
   });
 });

@@ -134,6 +134,22 @@ function EventScheduleContent() {
   const rentalLatParam = searchParams?.get('rentalLat') || undefined;
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
   const rentalPriceParam = searchParams?.get('rentalPriceCents') || undefined;
+  const rentalRequiredTemplateIdsParam = searchParams?.get('rentalRequiredTemplateIds') || undefined;
+  const rentalRequiredTemplateIds = useMemo(
+    () => (
+      rentalRequiredTemplateIdsParam
+        ? Array.from(
+          new Set(
+            rentalRequiredTemplateIdsParam
+              .split(',')
+              .map((id) => id.trim())
+              .filter((id) => id.length > 0),
+          ),
+        )
+        : []
+    ),
+    [rentalRequiredTemplateIdsParam],
+  );
   const isRentalFlow = Boolean(rentalStartParam && rentalEndParam);
   const resolvedHostOrgId = hostOrgIdParam ?? (!isRentalFlow ? orgIdParam : undefined);
   const resolvedRentalOrgId = rentalOrgIdParam ?? (isRentalFlow ? orgIdParam : undefined);
@@ -320,10 +336,14 @@ function EventScheduleContent() {
       defaults.fields = [resolvedField];
       defaults.fieldType = resolvedField.type;
     }
+    if (rentalRequiredTemplateIds.length > 0) {
+      defaults.requiredTemplateIds = rentalRequiredTemplateIds;
+    }
 
     return defaults;
   }, [
     isCreateMode,
+    rentalRequiredTemplateIds,
     rentalOrganization,
     rentalCoordinates,
     rentalEndParam,

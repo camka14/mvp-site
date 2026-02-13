@@ -60,6 +60,7 @@ export const ModelName = {
   VolleyBallTeams: 'VolleyBallTeams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
+  PushDeviceTarget: 'PushDeviceTarget',
   LockFiles: 'LockFiles',
   PaymentIntents: 'PaymentIntents',
   Bills: 'Bills',
@@ -255,6 +256,20 @@ export const ChatGroupScalarFieldEnum = {
 } as const
 
 export type ChatGroupScalarFieldEnum = (typeof ChatGroupScalarFieldEnum)[keyof typeof ChatGroupScalarFieldEnum]
+
+
+export const PushDeviceTargetScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  userId: 'userId',
+  pushToken: 'pushToken',
+  pushTarget: 'pushTarget',
+  pushPlatform: 'pushPlatform',
+  lastSeenAt: 'lastSeenAt'
+} as const
+
+export type PushDeviceTargetScalarFieldEnum = (typeof PushDeviceTargetScalarFieldEnum)[keyof typeof PushDeviceTargetScalarFieldEnum]
 
 
 export const LockFilesScalarFieldEnum = {
@@ -481,7 +496,8 @@ export const TimeSlotsScalarFieldEnum = {
   repeating: 'repeating',
   endDate: 'endDate',
   scheduledFieldId: 'scheduledFieldId',
-  price: 'price'
+  price: 'price',
+  requiredTemplateIds: 'requiredTemplateIds'
 } as const
 
 export type TimeSlotsScalarFieldEnum = (typeof TimeSlotsScalarFieldEnum)[keyof typeof TimeSlotsScalarFieldEnum]

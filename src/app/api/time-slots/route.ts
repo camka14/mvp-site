@@ -16,6 +16,7 @@ const createSchema = z.object({
   repeating: z.boolean().optional(),
   scheduledFieldId: z.string().optional(),
   price: z.number().optional(),
+  requiredTemplateIds: z.array(z.string()).optional(),
 }).passthrough();
 
 export async function GET(req: NextRequest) {
@@ -55,6 +56,9 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
   const startDate = parseDateInput(data.startDate) ?? new Date();
   const endDate = data.endDate === null ? null : parseDateInput(data.endDate);
+  const requiredTemplateIds = Array.isArray(data.requiredTemplateIds)
+    ? Array.from(new Set(data.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
+    : [];
 
   const slot = await prisma.timeSlots.create({
     data: {
@@ -67,6 +71,7 @@ export async function POST(req: NextRequest) {
       repeating: data.repeating ?? false,
       scheduledFieldId: data.scheduledFieldId ?? null,
       price: data.price ?? null,
+      requiredTemplateIds,
       createdAt: new Date(),
       updatedAt: new Date(),
     },
