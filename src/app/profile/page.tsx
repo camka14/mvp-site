@@ -619,7 +619,6 @@ export default function ProfilePage() {
                                                 ? `/api/files/${profileData.profileImageId}/preview?w=320&h=320&fit=cover`
                                                 : ''
                                         }
-                                        bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                                         placeholder="Upload new profile picture"
                                     />
                                 </div>

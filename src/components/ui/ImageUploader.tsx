@@ -7,7 +7,6 @@ import { useDisclosure } from '@mantine/hooks';
 
 interface ImageUploaderProps {
     currentImageUrl?: string;
-    bucketId: string;
     className?: string;
     placeholder?: string;
     onChange?: (fileId: string, url: string) => void; // ✅ Pass both ID and URL
@@ -16,7 +15,6 @@ interface ImageUploaderProps {
 
 export function ImageUploader({
     currentImageUrl,
-    bucketId,
     placeholder = "Click to select image",
     onChange,
     readOnly = false,
@@ -71,7 +69,6 @@ export function ImageUploader({
                 isOpen={opened}
                 onClose={close}
                 onSelect={handleImageSelect}
-                bucketId={bucketId}
             />
         </>
     );

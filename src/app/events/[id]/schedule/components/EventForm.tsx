@@ -2342,7 +2342,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         <div className="block text-sm font-medium mb-2">Event Image</div>
                         <ImageUploader
                             currentImageUrl={selectedImageUrl}
-                            bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                             className="w-full max-w-md"
                             placeholder="Select event image"
                             onChange={allowImageEdit ? handleImageChange : undefined}

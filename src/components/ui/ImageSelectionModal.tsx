@@ -4,14 +4,12 @@ import { useApp } from '@/app/providers';
 import { Modal, Button, SimpleGrid, Image, Alert, Group, Stack, FileButton, Loader, Text, Box } from '@mantine/core';
 
 interface ImageSelectionModalProps {
-    bucketId: string;
     onSelect: (fileId: string, url: string) => void; // ✅ Pass both ID and URL
     onClose: () => void;
     isOpen: boolean;
 }
 
 export function ImageSelectionModal({
-    bucketId,
     onSelect,
     onClose,
     isOpen

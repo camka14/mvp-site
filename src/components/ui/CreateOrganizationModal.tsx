@@ -276,7 +276,6 @@ export default function CreateOrganizationModal({
           <label className="form-label">Logo</label>
           <ImageUploader
             currentImageUrl={logoUrl}
-            bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID as string}
             className="w-full"
             placeholder="Upload or select a logo"
             onChange={(fileId, url) => {

@@ -122,7 +122,6 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
           <label className="form-label">Team Logo (Optional)</label>
           <ImageUploader
             currentImageUrl={selectedTeamImageUrl}
-            bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID as string}
             className="w-full"
             placeholder="Select team logo"
             onChange={(fileId, url) => {

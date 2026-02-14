@@ -650,7 +650,6 @@ export default function TeamDetailModal({
                 )}
             </Modal>
             <ImageSelectionModal
-                bucketId={process.env.NEXT_PUBLIC_IMAGES_BUCKET_ID!}
                 onSelect={handleChangeImage}
                 onClose={() => setImagePickerOpen(false)}
                 isOpen={imagePickerOpen}
