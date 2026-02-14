@@ -6,6 +6,7 @@ import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/l
 const STATE_COOKIE = 'google_oauth_state';
 const VERIFIER_COOKIE = 'google_oauth_verifier';
 const NEXT_COOKIE = 'google_oauth_next';
+const MAX_NEXT_PATH_LENGTH = 2048;
 
 type GoogleTokenResponse = {
   access_token?: string;
@@ -46,9 +47,12 @@ const getRequestOrigin = (req: NextRequest): string => {
 
 const safeNextPath = (value: string | null): string => {
   if (!value) return '/discover';
-  if (!value.startsWith('/')) return '/discover';
-  if (value.startsWith('//')) return '/discover';
-  return value;
+  const next = value.trim();
+  if (!next.startsWith('/')) return '/discover';
+  if (next.startsWith('//')) return '/discover';
+  if (next.length > MAX_NEXT_PATH_LENGTH) return '/discover';
+  if (/[\r\n\t]/.test(next)) return '/discover';
+  return next;
 };
 
 const clearOauthCookies = (res: NextResponse) => {

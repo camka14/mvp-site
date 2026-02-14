@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getStorageProvider } from '@/lib/storageProvider';
+import { summarizeErrorForLog } from '@/lib/serverErrorLog';
 import { Readable } from 'stream';
 import sharp from 'sharp';
 
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   } catch (error) {
     if (error instanceof Response) return error;
-    console.error('File preview failed', error);
+    console.error('File preview failed', summarizeErrorForLog(error));
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

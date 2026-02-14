@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { getStorageProvider } from '@/lib/storageProvider';
+import { summarizeErrorForLog } from '@/lib/serverErrorLog';
 import path from 'path';
 import { Readable } from 'stream';
 
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   } catch (error) {
     if (error instanceof Response) return error;
-    console.error('File download failed', error);
+    console.error('File download failed', summarizeErrorForLog(error));
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
@@ -113,7 +114,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
-    console.error('File delete failed', error);
+    console.error('File delete failed', summarizeErrorForLog(error));
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

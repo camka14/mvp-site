@@ -1,8 +1,5 @@
 // components/ui/TeamDetailModal.tsx
 import React, { useState, useEffect } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea } from '@mantine/core';
 import { Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
@@ -21,18 +18,7 @@ interface TeamDetailModalProps {
     eventFreeAgents?: UserData[];
 }
 
-const inviteeSchema = z.object({
-    firstName: z.string().trim().optional().default(''),
-    lastName: z.string().trim().optional().default(''),
-    email: z.string().trim().email('Please enter a valid email'),
-});
-
-const inviteFormSchema = z.object({
-    invites: z.array(inviteeSchema).min(1, 'Add at least one invite'),
-});
-
-type InviteFormValues = z.infer<typeof inviteFormSchema>;
-type InviteFormInput = z.input<typeof inviteFormSchema>;
+const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function TeamDetailModal({
     currentTeam,
@@ -57,24 +43,14 @@ export default function TeamDetailModal({
     const [editingName, setEditingName] = useState(false);
     const [newName, setNewName] = useState(currentTeam.name || '');
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
-    const {
-        control: inviteControl,
-        register: inviteRegister,
-        handleSubmit: handleInviteSubmit,
-        reset: resetInviteForm,
-        formState: { errors: inviteErrors, isSubmitting: inviteSubmitting },
-    } = useForm<InviteFormInput, any, InviteFormValues>({
-        defaultValues: { invites: [{ firstName: '', lastName: '', email: '' }] },
-        resolver: zodResolver(inviteFormSchema),
-    });
-    const { fields: inviteFields, append: appendInvite, remove: removeInvite } = useFieldArray({
-        control: inviteControl,
-        name: 'invites',
-    });
-
+    const [inviteMode, setInviteMode] = useState<'search' | 'email'>('search');
+    const [emailInviteInput, setEmailInviteInput] = useState('');
+    const [invitingByEmail, setInvitingByEmail] = useState(false);
     const [cancellingInviteIds, setCancellingInviteIds] = useState<Set<string>>(new Set());
 
     const isTeamCaptain = currentTeam.captainId === user?.$id;
+    const normalizedInviteEmail = emailInviteInput.trim().toLowerCase();
+    const inviteEmailValid = EMAIL_REGEX.test(normalizedInviteEmail);
 
     useEffect(() => {
         if (isOpen) {
@@ -91,12 +67,16 @@ export default function TeamDetailModal({
     }, [currentTeam.$id]);
 
     useEffect(() => {
+        if (inviteMode !== 'search') {
+            setSearchResults([]);
+            return;
+        }
         if (searchQuery.length >= 2) {
             performSearch();
         } else {
             setSearchResults([]);
         }
-    }, [searchQuery]);
+    }, [searchQuery, inviteMode]);
 
     const fetchTeamDetails = async () => {
         try {
@@ -209,12 +189,14 @@ export default function TeamDetailModal({
             if (success) {
                 const invitedUser = await userService.getUserById(userId);
                 if (invitedUser) {
-                    setPendingPlayers(prev => [...prev, invitedUser]);
+                    setPendingPlayers(prev => (
+                        prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
+                    ));
                     setSearchResults(prev => prev.filter(user => user.$id !== userId));
 
                     const updatedTeam = {
                         ...currentTeam,
-                        pending: [...currentTeam.pending, userId]
+                        pending: Array.from(new Set([...currentTeam.pending, userId]))
                     };
                     onTeamUpdated?.(updatedTeam);
                 }
@@ -225,23 +207,72 @@ export default function TeamDetailModal({
         }
     };
 
-    const handleInviteByEmail = async (values: InviteFormValues) => {
-        if (!user) {
-            notifications.show({ color: 'red', message: 'You must be logged in to send invites.' });
+    const handleToggleInviteMode = () => {
+        if (inviteMode === 'search') {
+            setInviteMode('email');
+            setSearchQuery('');
+            setSearchResults([]);
             return;
         }
+
+        setInviteMode('search');
+        setEmailInviteInput('');
+    };
+
+    const handleInviteByEmail = async () => {
+        if (!user) {
+            notifications.show({ color: 'red', message: 'You must be logged in to send team invites.' });
+            return;
+        }
+        if (!inviteEmailValid) {
+            notifications.show({ color: 'red', message: 'Enter a valid email address.' });
+            return;
+        }
+        if (invitingByEmail) {
+            return;
+        }
+
+        setInvitingByEmail(true);
+
         try {
-            const invites = values.invites.map((invite) => ({
-                ...invite,
-                type: 'player' as const,
-                teamId: currentTeam.$id,
-            }));
-            await userService.inviteUsersByEmail(user.$id, invites);
-            notifications.show({ color: 'green', message: 'Invites sent via email.' });
-            resetInviteForm({ invites: [{ firstName: '', lastName: '', email: '' }] });
+            const ensuredUser = await userService.ensureUserByEmail(normalizedInviteEmail);
+            const alreadyOnTeam = currentTeam.playerIds.includes(ensuredUser.$id);
+            const alreadyPending =
+                currentTeam.pending.includes(ensuredUser.$id) ||
+                pendingPlayers.some((player) => player.$id === ensuredUser.$id);
+            if (alreadyOnTeam) {
+                notifications.show({ color: 'yellow', message: 'This player is already on the team.' });
+                return;
+            }
+            if (alreadyPending) {
+                notifications.show({ color: 'yellow', message: 'This player already has a pending invite.' });
+                return;
+            }
+
+            const success = await teamService.invitePlayerToTeam(currentTeam, ensuredUser);
+            if (!success) {
+                notifications.show({ color: 'red', message: 'Failed to send invite.' });
+                return;
+            }
+
+            const invitedUser = await userService.getUserById(ensuredUser.$id);
+            if (invitedUser) {
+                setPendingPlayers(prev => (
+                    prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
+                ));
+            }
+            onTeamUpdated?.({
+                ...currentTeam,
+                pending: Array.from(new Set([...currentTeam.pending, ensuredUser.$id])),
+            });
+
+            notifications.show({ color: 'green', message: `Invite sent to ${normalizedInviteEmail}.` });
+            setEmailInviteInput('');
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Failed to send invites';
+            const message = err instanceof Error ? err.message : 'Failed to send invite';
             notifications.show({ color: 'red', message });
+        } finally {
+            setInvitingByEmail(false);
         }
     };
 
@@ -492,23 +523,44 @@ export default function TeamDetailModal({
                             {showAddPlayers && (
                                 <Paper withBorder radius="md" p="md">
                                     <Title order={6} mb="sm">Add players to {currentTeam.name}</Title>
-                                    <TextInput
-                                        placeholder="Search by name or email (min 2 characters)"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.currentTarget.value)}
-                                        mb="sm"
-                                    />
-                                    {searching && (
+                                    <Group align="flex-end" wrap="nowrap" mb="sm">
+                                        <TextInput
+                                            style={{ flex: 1 }}
+                                            placeholder={
+                                                inviteMode === 'search'
+                                                    ? 'Search players (min 2 characters)'
+                                                    : 'name@example.com'
+                                            }
+                                            value={inviteMode === 'search' ? searchQuery : emailInviteInput}
+                                            onChange={(e) => {
+                                                if (inviteMode === 'search') {
+                                                    setSearchQuery(e.currentTarget.value);
+                                                } else {
+                                                    setEmailInviteInput(e.currentTarget.value);
+                                                }
+                                            }}
+                                            error={
+                                                inviteMode === 'email' && emailInviteInput.trim().length > 0 && !inviteEmailValid
+                                                    ? 'Enter a valid email address'
+                                                    : undefined
+                                            }
+                                        />
+                                        <Button onClick={handleToggleInviteMode}>
+                                            {inviteMode === 'search' ? 'Invite by Email' : 'Search Players'}
+                                        </Button>
+                                    </Group>
+
+                                    {inviteMode === 'search' && searching && (
                                         <Group justify="center" py="sm">
                                             <Text c="dimmed" size="sm">Searching...</Text>
                                         </Group>
                                     )}
-                                    {!searching && searchQuery.length >= 2 && getAvailableUsers().length === 0 && (
+                                    {inviteMode === 'search' && !searching && searchQuery.length >= 2 && getAvailableUsers().length === 0 && (
                                         <Text c="dimmed" ta="center" py={8}>
                                             {`No players found matching "${searchQuery}"`}
                                         </Text>
                                     )}
-                                    {!searching && (searchQuery.length < 2 && getFilteredFreeAgents().length > 0) && (
+                                    {inviteMode === 'search' && !searching && (searchQuery.length < 2 && getFilteredFreeAgents().length > 0) && (
                                         <div className="mb-4">
                                             <Text fw={500} size="sm" c="blue" mb={4}>Available Free Agents from Event:</Text>
                                             <div className="space-y-2">
@@ -529,7 +581,7 @@ export default function TeamDetailModal({
                                             </div>
                                         </div>
                                     )}
-                                    {!searching && getAvailableUsers().length > 0 && searchQuery.length >= 2 && (
+                                    {inviteMode === 'search' && !searching && getAvailableUsers().length > 0 && searchQuery.length >= 2 && (
                                         <ScrollArea.Autosize mah={300}>
                                             <div className="space-y-2">
                                                 {getAvailableUsers().map(user => {
@@ -552,72 +604,24 @@ export default function TeamDetailModal({
                                             </div>
                                         </ScrollArea.Autosize>
                                     )}
-                                    <form onSubmit={handleInviteSubmit(handleInviteByEmail)}>
-                                        <Paper withBorder radius="md" p="md" mt="md">
-                                            <Title order={6} mb="xs">Invite new users via email</Title>
-                                            <div className="space-y-3">
-                                                {inviteFields.map((field, index) => {
-                                                    const inviteError = inviteErrors.invites?.[index];
-                                                    return (
-                                                        <Paper key={field.id} withBorder radius="md" p="sm">
-                                                            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
-                                                                <TextInput
-                                                                    label="First name"
-                                                                    placeholder="First name"
-                                                                    {...inviteRegister(`invites.${index}.firstName`)}
-                                                                />
-                                                                <TextInput
-                                                                    label="Last name"
-                                                                    placeholder="Last name"
-                                                                    {...inviteRegister(`invites.${index}.lastName`)}
-                                                                />
-                                                                <TextInput
-                                                                    label="Email"
-                                                                    placeholder="name@example.com"
-                                                                    withAsterisk
-                                                                    error={inviteError?.email?.message}
-                                                                    {...inviteRegister(`invites.${index}.email`)}
-                                                                />
-                                                            </SimpleGrid>
-                                                            <Group justify="space-between" mt="xs">
-                                                                <div>
-                                                                    {inviteError?.root?.message && (
-                                                                        <Text size="xs" c="red">{inviteError.root.message}</Text>
-                                                                    )}
-                                                                </div>
-                                                                {inviteFields.length > 1 && (
-                                                                    <Button
-                                                                        variant="subtle"
-                                                                        color="red"
-                                                                        size="xs"
-                                                                        type="button"
-                                                                        onClick={() => removeInvite(index)}
-                                                                    >
-                                                                        Remove
-                                                                    </Button>
-                                                                )}
-                                                            </Group>
-                                                        </Paper>
-                                                    );
-                                                })}
-                                            </div>
-                                            <Group justify="space-between" align="center" mt="md">
+
+                                    {inviteMode === 'email' && (
+                                        <Paper withBorder radius="md" p="md" mt="sm">
+                                            <Text size="sm" c="dimmed" mb="sm">
+                                                Invite by email will ensure the player account exists, add them to team pending,
+                                                and send an invite email for invite-created accounts.
+                                            </Text>
+                                            <Group justify="flex-end">
                                                 <Button
-                                                    type="button"
-                                                    variant="default"
-                                                    size="lg"
-                                                    radius="md"
-                                                    style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
-                                                    onClick={() => appendInvite({ firstName: '', lastName: '', email: '' })}
+                                                    onClick={handleInviteByEmail}
+                                                    loading={invitingByEmail}
+                                                    disabled={!inviteEmailValid}
                                                 >
-                                                    +
-                                                </Button>
-                                                <Button type="submit" loading={inviteSubmitting}>
-                                                    Send email invites
+                                                    Send Email Invite
                                                 </Button>
                                             </Group>
                                         </Paper>
-                                    </form>
+                                    )}
                                 </Paper>
                             )}
                         </div>

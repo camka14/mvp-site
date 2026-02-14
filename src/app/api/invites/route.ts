@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import { withLegacyList } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
@@ -85,11 +86,19 @@ export async function POST(req: NextRequest) {
 
     if (inviteUserId) {
       ensuredUserId = inviteUserId;
+      const authUser = await prisma.authUser.findUnique({
+        where: { id: inviteUserId },
+        select: {
+          email: true,
+          passwordHash: true,
+          lastLogin: true,
+          emailVerifiedAt: true,
+        },
+      });
 
       // Inviting an existing user by id: email may not be provided by the client (UserData is public and does not
       // contain email). Derive it from AuthUser/SensitiveUserData so the Invites table always has a valid email.
       if (!emailSchema.safeParse(email).success) {
-        const authUser = await prisma.authUser.findUnique({ where: { id: inviteUserId } });
         if (authUser?.email) {
           email = authUser.email.trim().toLowerCase();
         } else {
@@ -103,6 +112,10 @@ export async function POST(req: NextRequest) {
       if (!emailSchema.safeParse(email).success) {
         return NextResponse.json({ error: 'Missing invite email' }, { status: 400 });
       }
+
+      // Team-email mode in clients can ensure users first, then invite by userId.
+      // If this is still an invite-created placeholder account, send the email invite now.
+      shouldSendEmail = isInvitePlaceholderAuthUser(authUser);
     } else {
       if (!emailSchema.safeParse(email).success) {
         return NextResponse.json({ error: 'Invalid email' }, { status: 400 });

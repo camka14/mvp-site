@@ -7,6 +7,12 @@ const prismaMock = {
   invites: {
     create: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
+  sensitiveUserData: {
+    findFirst: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -33,6 +39,8 @@ describe('/api/invites', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
+    prismaMock.authUser.findUnique.mockResolvedValue(null);
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
   });
 
   it('returns a consistent { invites: [] } response shape even for a single invite', async () => {
@@ -78,5 +86,46 @@ describe('/api/invites', () => {
     expect(prismaMock.invites.create).toHaveBeenCalledTimes(1);
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([], 'http://localhost');
   });
-});
 
+  it('sends email when a userId invite targets an invite-placeholder auth account', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'captain_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      id: 'user_placeholder',
+      email: 'placeholder@example.com',
+      passwordHash: '__NO_PASSWORD__',
+      lastLogin: null,
+      emailVerifiedAt: null,
+    });
+
+    const createdAt = new Date('2020-01-01T00:00:00.000Z');
+    const createdInvite = {
+      id: 'invite_placeholder',
+      type: 'player',
+      email: 'placeholder@example.com',
+      status: 'pending',
+      eventId: null,
+      organizationId: null,
+      teamId: 'team_1',
+      userId: 'user_placeholder',
+      createdBy: 'captain_1',
+      firstName: null,
+      lastName: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    prismaMock.invites.create.mockResolvedValue(createdInvite);
+    sendInviteEmailsMock.mockResolvedValue([createdInvite]);
+
+    const res = await POST(
+      jsonRequest({
+        invites: [{ type: 'player', teamId: 'team_1', userId: 'user_placeholder' }],
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.invites[0].$id).toBe('invite_placeholder');
+    expect(ensureAuthUserAndUserDataByEmailMock).not.toHaveBeenCalled();
+    expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'http://localhost');
+  });
+});

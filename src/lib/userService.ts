@@ -53,6 +53,19 @@ class UserService {
     return response.users ?? [];
   }
 
+  async ensureUserByEmail(email: string): Promise<UserData> {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) {
+      throw new Error('Email is required');
+    }
+
+    const response = await apiFetch<{ user: UserData }>('/api/users/ensure', {
+      method: 'POST',
+      body: JSON.stringify({ email: normalized }),
+    });
+    return response.user;
+  }
+
   async updateUser(id: string, updates: Partial<UserData>): Promise<UserData> {
     const response = await apiFetch<{ user: UserData }>(`/api/users/${id}`, {
       method: 'PATCH',

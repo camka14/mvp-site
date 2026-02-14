@@ -80,6 +80,18 @@ describe('google oauth routes', () => {
     expect(cookieText).toContain('google_oauth_next=');
   });
 
+  it('GET /api/auth/google/start normalizes unsafe next values to /discover', async () => {
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
+
+    const req = new NextRequest('http://localhost/api/auth/google/start?next=%2F%2Fevil.com%0Ainjected');
+    const res = await START_GET(req);
+
+    expect(res.status).toBe(302);
+    const setCookies = getSetCookies(res);
+    const cookieText = setCookies.join('\n');
+    expect(cookieText).toContain('google_oauth_next=%2Fdiscover');
+  });
+
   it('GET /api/auth/google/callback exchanges code, creates user if needed, and sets auth cookie', async () => {
     process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
     process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'client-secret';
@@ -114,5 +126,37 @@ describe('google oauth routes', () => {
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
     expect(prismaMock.authUser.create).toHaveBeenCalled();
   });
-});
 
+  it('GET /api/auth/google/callback falls back to /discover when next cookie is unsafe', async () => {
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'client-secret';
+
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'access-token' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ email: 'test@example.com', email_verified: true, name: 'Test User' }) });
+    (globalThis as any).fetch = fetchMock;
+
+    prismaMock.authUser.findUnique.mockResolvedValue(null);
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+    prismaMock.authUser.create.mockResolvedValue({
+      id: 'user_1',
+      email: 'test@example.com',
+      name: 'Test User',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    prismaMock.userData.findUnique.mockResolvedValue(null);
+    prismaMock.userData.create.mockResolvedValue({ id: 'user_1' });
+    prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'user_1' });
+
+    const req = new NextRequest('http://localhost/api/auth/google/callback?code=code123&state=state123', {
+      headers: {
+        cookie: 'google_oauth_state=state123; google_oauth_verifier=verifier123; google_oauth_next=//evil.com%0Ainjected',
+      },
+    });
+    const res = await CALLBACK_GET(req);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('http://localhost/discover');
+  });
+});

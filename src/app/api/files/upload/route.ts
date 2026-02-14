@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { getStorageProvider } from '@/lib/storageProvider';
+import { summarizeErrorForLog } from '@/lib/serverErrorLog';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     if (error instanceof Response) return error;
-    console.error('File upload failed', error);
+    console.error('File upload failed', summarizeErrorForLog(error));
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

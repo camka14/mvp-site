@@ -124,6 +124,39 @@ const createLocalProvider = (): StorageProvider => {
   };
 };
 
+export const normalizeSpacesEndpoint = (endpointValue: string, bucket: string): string => {
+  const value = endpointValue.trim();
+  const normalizedBucket = bucket.trim().toLowerCase();
+  const withProtocol = value.includes('://') ? value : `https://${value}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(withProtocol);
+  } catch {
+    throw new Error('DO_SPACES_ENDPOINT must be a valid URL or hostname');
+  }
+
+  const bucketPrefix = `${normalizedBucket}.`;
+  let hostname = parsed.hostname.toLowerCase();
+
+  // Spaces endpoints are sometimes configured as "<bucket>.<region>.digitaloceanspaces.com".
+  // The S3 client already prefixes the bucket for virtual-host requests, so strip bucket prefixes.
+  while (hostname.startsWith(bucketPrefix)) {
+    hostname = hostname.slice(bucketPrefix.length);
+  }
+
+  if (!hostname) {
+    throw new Error('DO_SPACES_ENDPOINT host is invalid');
+  }
+
+  const normalized = new URL(`${parsed.protocol}//${hostname}`);
+  if (parsed.port) {
+    normalized.port = parsed.port;
+  }
+
+  return normalized.toString().replace(/\/$/, '');
+};
+
 const getSpacesConfig = () => {
   const endpoint = process.env.DO_SPACES_ENDPOINT;
   const region = process.env.DO_SPACES_REGION;
@@ -135,7 +168,13 @@ const getSpacesConfig = () => {
     throw new Error('DigitalOcean Spaces environment variables are missing');
   }
 
-  return { endpoint, region, bucket, key, secret };
+  return {
+    endpoint: normalizeSpacesEndpoint(endpoint, bucket),
+    region,
+    bucket,
+    key,
+    secret,
+  };
 };
 
 const createSpacesProvider = (): StorageProvider => {

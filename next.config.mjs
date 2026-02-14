@@ -4,6 +4,15 @@ const nextConfig = {
     experimental: {
         optimizePackageImports: ['date-fns'],
     },
+    async redirects() {
+        return [
+            {
+                source: '/events',
+                destination: '/discover',
+                permanent: false,
+            },
+        ];
+    },
 };
 
 export default nextConfig;

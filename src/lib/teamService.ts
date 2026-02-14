@@ -106,6 +106,10 @@ class TeamService {
                 // Player already on team; nothing to do
                 return false;
             }
+            if (team.pending.includes(user.$id)) {
+                // Invite already pending; avoid duplicate invite rows and emails.
+                return false;
+            }
 
             const pendingSet = new Set(team.pending ?? []);
             pendingSet.add(user.$id);
