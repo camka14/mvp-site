@@ -35,8 +35,10 @@ const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX 
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 
 type JoinIntent = {
-    mode: 'user' | 'team';
+    mode: 'user' | 'team' | 'child';
     team?: Team | null;
+    childId?: string;
+    childEmail?: string | null;
 };
 
 const parseDateValue = (value?: string | null): Date | null => {
@@ -82,6 +84,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [childRegistration, setChildRegistration] = useState<EventRegistration | null>(null);
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
+    const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -141,6 +144,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setPendingJoin(null);
             setPendingSignedDocumentId(null);
             setShowPasswordModal(false);
+            setShowJoinChoiceModal(false);
             setPassword('');
             setPasswordError(null);
             setConfirmingPassword(false);
@@ -341,6 +345,24 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         });
     }, [currentEvent, user]);
 
+    const registerChildForEvent = useCallback(async (childId: string) => {
+        if (!currentEvent) {
+            throw new Error('Event is not loaded.');
+        }
+
+        setRegisteringChild(true);
+        try {
+            const result = await registrationService.registerChildForEvent(currentEvent.$id, childId);
+            setChildRegistration(result.registration ?? null);
+            setChildConsent(result.consent ?? null);
+            setChildRegistrationChildId(childId);
+            setJoinNotice('Child registration started. Consent is required to complete registration.');
+            await loadEventDetails();
+        } finally {
+            setRegisteringChild(false);
+        }
+    }, [currentEvent, loadEventDetails]);
+
     const beginSigningFlow = useCallback(async (intent: JoinIntent) => {
         if (!currentEvent || !user) {
             return false;
@@ -366,6 +388,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const finalizeJoin = useCallback(async (intent: JoinIntent) => {
         if (!user || !currentEvent) return;
+
+        if (intent.mode === 'child') {
+            if (!intent.childId) {
+                throw new Error('Select a child to register.');
+            }
+            await registerChildForEvent(intent.childId);
+            return;
+        }
 
         const resolvedTeam = (() => {
             if (intent.mode !== 'team') {
@@ -416,7 +446,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setPaymentData(paymentIntent);
             setShowPaymentModal(true);
         }
-    }, [createBillForOwner, currentEvent, isFreeForUser, loadEventDetails, selectedTeamId, user, userTeams]);
+    }, [
+        createBillForOwner,
+        currentEvent,
+        isFreeForUser,
+        loadEventDetails,
+        registerChildForEvent,
+        selectedTeamId,
+        user,
+        userTeams,
+    ]);
 
     const cancelPasswordConfirmation = useCallback(() => {
         setShowPasswordModal(false);
@@ -456,11 +495,15 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             }
 
             const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+            const signerContext = pendingJoin.mode === 'child' ? 'parent_guardian' : 'participant';
             const links = await boldsignService.createSignLinks({
                 eventId: currentEvent.$id,
                 user,
                 userEmail: authUser.email,
                 redirectUrl,
+                signerContext,
+                childUserId: pendingJoin.childId,
+                childEmail: pendingJoin.childEmail ?? undefined,
             });
 
             if (!links.length) {
@@ -688,27 +731,38 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return;
         }
 
-        setRegisteringChild(true);
         setJoinError(null);
         setJoinNotice(null);
 
+        let signingStarted = false;
         try {
-            const result = await registrationService.registerChildForEvent(currentEvent.$id, selectedChildId);
-            setChildRegistration(result.registration ?? null);
-            setChildConsent(result.consent ?? null);
-            setChildRegistrationChildId(selectedChildId);
-            setJoinNotice('Child registration started. Consent is required to complete registration.');
-            await loadEventDetails();
+            signingStarted = await beginSigningFlow({
+                mode: 'child',
+                childId: selectedChildId,
+                childEmail: selectedChild?.email ?? null,
+            });
+            if (signingStarted) {
+                return;
+            }
+            await registerChildForEvent(selectedChildId);
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to register child.');
-        } finally {
-            setRegisteringChild(false);
         }
     };
 
     // Update the join event handlers
-    const handleJoinEvent = async () => {
+    const handleJoinEvent = async (selection?: 'self' | 'child') => {
         if (!user || !currentEvent) return;
+        if (!selection && canRegisterChild && activeChildren.length > 0) {
+            setShowJoinChoiceModal(true);
+            return;
+        }
+        if (selection === 'child') {
+            setShowJoinChoiceModal(false);
+            await handleRegisterChild();
+            return;
+        }
+        setShowJoinChoiceModal(false);
         if (selfRegistrationBlockedReason) {
             setJoinError(selfRegistrationBlockedReason);
             return;
@@ -1222,7 +1276,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     <Button
                                                         fullWidth
                                                         color="blue"
-                                                        onClick={handleJoinEvent}
+                                                        onClick={() => { void handleJoinEvent(); }}
                                                         disabled={selfJoinDisabled}
                                                     >
                                                         {confirmingPurchase
@@ -1657,6 +1711,37 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             />
 
             <Modal
+                opened={showJoinChoiceModal}
+                onClose={() => setShowJoinChoiceModal(false)}
+                centered
+                title="Join for yourself or child?"
+                zIndex={SIGN_MODAL_Z_INDEX}
+            >
+                <Stack gap="sm">
+                    <Text size="sm" c="dimmed">
+                        You have linked child profiles. Do you want to join this event yourself, or register a child instead?
+                    </Text>
+                    <Group justify="flex-end">
+                        <Button
+                            variant="default"
+                            onClick={() => {
+                                void handleJoinEvent('child');
+                            }}
+                        >
+                            Register Child
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                void handleJoinEvent('self');
+                            }}
+                        >
+                            Join Myself
+                        </Button>
+                    </Group>
+                </Stack>
+            </Modal>
+
+            <Modal
                 opened={showPasswordModal}
                 onClose={cancelPasswordConfirmation}
                 centered
@@ -1710,6 +1795,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             Document {currentSignIndex + 1} of {signLinks.length}
                             {signLinks[currentSignIndex]?.title ? ` • ${signLinks[currentSignIndex]?.title}` : ''}
                         </Text>
+                        {signLinks[currentSignIndex]?.requiredSignerLabel && (
+                            <Text size="xs" c="dimmed" mb="xs">
+                                Required signer: {signLinks[currentSignIndex]?.requiredSignerLabel}
+                            </Text>
+                        )}
                         {signLinks[currentSignIndex]?.type === 'TEXT' ? (
                             <Stack gap="sm">
                                 <Paper withBorder p="md" style={{ maxHeight: 420, overflowY: 'auto' }}>

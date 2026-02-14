@@ -197,12 +197,26 @@ class FieldService {
   private mapRowToTimeSlot(row: any): TimeSlot {
     const startMinutes = this.coerceMinutes(row.startTimeMinutes ?? row.startTime);
     const endMinutes = this.coerceMinutes(row.endTimeMinutes ?? row.endTime);
+    const normalizedDays = Array.from(
+      new Set(
+        (Array.isArray(row.daysOfWeek) && row.daysOfWeek.length
+          ? row.daysOfWeek
+          : row.dayOfWeek !== undefined
+            ? [row.dayOfWeek]
+            : []
+        )
+          .map((value: unknown) => Number(value))
+          .filter((value: number) => Number.isInteger(value) && value >= 0 && value <= 6),
+      ),
+    ) as NonNullable<TimeSlot['daysOfWeek']>;
+
     const requiredTemplateIds = Array.isArray(row.requiredTemplateIds)
       ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id: string) => id.length > 0)
       : [];
     const slot: TimeSlot = {
       $id: String(row.$id ?? row.id ?? ''),
-      dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
+      dayOfWeek: (normalizedDays[0] ?? Number(row.dayOfWeek ?? 0)) as TimeSlot['dayOfWeek'],
+      daysOfWeek: normalizedDays,
       repeating: row.repeating === undefined ? false : Boolean(row.repeating),
       scheduledFieldId: typeof row.scheduledFieldId === 'string' ? row.scheduledFieldId : row.fieldId ?? undefined,
       eventId: typeof row.eventId === 'string' ? row.eventId : undefined,
@@ -288,11 +302,19 @@ class FieldService {
   }
 
   private serializeTimeSlotForUpsert(
-    slot: Partial<TimeSlot> & { dayOfWeek: TimeSlot['dayOfWeek'] },
+    slot: Partial<TimeSlot> & { dayOfWeek: NonNullable<TimeSlot['dayOfWeek']> },
     options: { slotId?: string; fieldId: string }
   ): Record<string, unknown> {
+    const normalizedDays = Array.from(
+      new Set(
+        (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length ? slot.daysOfWeek : [slot.dayOfWeek])
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+      ),
+    );
     const payload: Record<string, unknown> = {
-      dayOfWeek: slot.dayOfWeek,
+      dayOfWeek: (normalizedDays[0] ?? slot.dayOfWeek),
+      daysOfWeek: normalizedDays,
       repeating: slot.repeating ?? false,
       scheduledFieldId: options.fieldId,
       startTimeMinutes: slot.startTimeMinutes ?? null,
@@ -314,7 +336,7 @@ class FieldService {
 
   async createRentalSlot(
     field: Field,
-    slotInput: Partial<TimeSlot> & { dayOfWeek: TimeSlot['dayOfWeek'] }
+    slotInput: Partial<TimeSlot> & { dayOfWeek: NonNullable<TimeSlot['dayOfWeek']> }
   ): Promise<ManageRentalSlotResult> {
     const slotId = createId();
     const slotPayload = this.serializeTimeSlotForUpsert(slotInput, {
@@ -348,7 +370,7 @@ class FieldService {
 
   async updateRentalSlot(
     field: Field,
-    slotInput: Partial<TimeSlot> & { $id: string; dayOfWeek: TimeSlot['dayOfWeek'] }
+    slotInput: Partial<TimeSlot> & { $id: string; dayOfWeek: NonNullable<TimeSlot['dayOfWeek']> }
   ): Promise<ManageRentalSlotResult> {
     const slotId = slotInput.$id;
     if (!slotId) {

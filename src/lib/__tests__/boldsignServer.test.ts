@@ -53,6 +53,39 @@ describe('boldsignServer', () => {
     );
     const payload = JSON.parse(String((init as RequestInit).body));
     expect(payload.Files[0]).toMatch(/^data:application\/pdf;base64,/);
+    expect(payload.Roles).toEqual([{ Name: 'Participant', Index: 1 }]);
+  });
+
+  it('creates embedded template url with multiple preset roles', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          templateId: 'tmpl_multi',
+          createUrl: 'https://app.boldsign.com/template/edit/tmpl_multi',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const result = await createEmbeddedTemplateFromPdf({
+      fileBytes: Buffer.from('test-pdf-content'),
+      title: 'Child Consent',
+      roles: [
+        { signerRole: 'Parent/Guardian', signerContext: 'parent_guardian' },
+        { signerRole: 'Child', signerContext: 'child' },
+      ],
+    });
+
+    expect(result.roles).toEqual([
+      expect.objectContaining({ roleIndex: 1, signerRole: 'Parent/Guardian' }),
+      expect.objectContaining({ roleIndex: 2, signerRole: 'Child' }),
+    ]);
+    const [, init] = fetchMock.mock.calls[0];
+    const payload = JSON.parse(String((init as RequestInit).body));
+    expect(payload.Roles).toEqual([
+      { Name: 'Parent/Guardian', Index: 1 },
+      { Name: 'Child', Index: 2 },
+    ]);
   });
 
   it('falls back to default role when template properties response has no roles', async () => {
@@ -64,7 +97,7 @@ describe('boldsignServer', () => {
     );
 
     const roles = await getTemplateRoles('tmpl_123');
-    expect(roles).toEqual([{ roleIndex: 1, signerRole: 'Participant' }]);
+    expect(roles).toEqual([{ roleIndex: 1, signerRole: 'Participant', signerContext: 'participant' }]);
   });
 
   it('creates a document from template and fetches embedded sign link', async () => {

@@ -27,6 +27,10 @@ import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
+import {
+  getRequiredSignerTypeLabel,
+  normalizeRequiredSignerType,
+} from '@/lib/templateSignerTypes';
 
 export default function OrganizationDetailPage() {
   return (
@@ -61,6 +65,7 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
         .map((entry: string) => entry.trim())
     : undefined;
   const signOnceRaw = row?.signOnce;
+  const requiredSignerType = normalizeRequiredSignerType(row?.requiredSignerType);
 
   return {
     $id: String(row?.$id ?? ''),
@@ -73,6 +78,7 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
     roleIndex: Number.isFinite(roleIndex) ? roleIndex : undefined,
     roleIndexes: roleIndexes && roleIndexes.length ? roleIndexes : undefined,
     signerRoles: signerRoles && signerRoles.length ? signerRoles : undefined,
+    requiredSignerType,
     type: normalizeTemplateType(row?.type),
     content: row?.content ?? undefined,
     $createdAt: row?.$createdAt ?? undefined,
@@ -281,6 +287,9 @@ function OrganizationDetailContent() {
   const [templateContent, setTemplateContent] = useState('');
   const [templatePdfFile, setTemplatePdfFile] = useState<File | null>(null);
   const [templateSignOnce, setTemplateSignOnce] = useState(true);
+  const [templateRequiredSignerType, setTemplateRequiredSignerType] = useState<
+    'PARTICIPANT' | 'PARENT_GUARDIAN' | 'CHILD' | 'PARENT_GUARDIAN_CHILD'
+  >('PARTICIPANT');
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [templateEmbedUrl, setTemplateEmbedUrl] = useState<string | null>(null);
   const [templateBuilderOpen, setTemplateBuilderOpen] = useState(false);
@@ -523,6 +532,7 @@ function OrganizationDetailContent() {
         title: trimmedTitle,
         description: templateDescription.trim() || undefined,
         signOnce: templateSignOnce,
+        requiredSignerType: templateRequiredSignerType,
         type: templateType,
         content: templateType === 'TEXT' ? trimmedContent : undefined,
         file: templateType === 'PDF' ? templatePdfFile ?? undefined : undefined,
@@ -536,6 +546,7 @@ function OrganizationDetailContent() {
       setTemplateContent('');
       setTemplatePdfFile(null);
       setTemplateSignOnce(true);
+      setTemplateRequiredSignerType('PARTICIPANT');
       await loadTemplates(org.$id, { silent: true });
     } catch (error) {
       setTemplatesError(
@@ -544,7 +555,18 @@ function OrganizationDetailContent() {
     } finally {
       setCreatingTemplate(false);
     }
-  }, [org, user, templateTitle, templateDescription, templateSignOnce, templateType, templateContent, templatePdfFile, loadTemplates]);
+  }, [
+    org,
+    user,
+    templateTitle,
+    templateDescription,
+    templateSignOnce,
+    templateRequiredSignerType,
+    templateType,
+    templateContent,
+    templatePdfFile,
+    loadTemplates,
+  ]);
 
   const handleEditPdfTemplate = useCallback(async (template: TemplateDocument) => {
     if (!org) return;
@@ -1369,6 +1391,9 @@ function OrganizationDetailContent() {
                           {template.signOnce ? 'Sign once per participant' : 'Sign for every event'}
                         </Text>
                         <Text size="xs" c="dimmed">
+                          Required signer: {getRequiredSignerTypeLabel(template.requiredSignerType)}
+                        </Text>
+                        <Text size="xs" c="dimmed">
                           Type: {template.type ?? 'PDF'}
                         </Text>
                         {template.status && (
@@ -1743,11 +1768,26 @@ function OrganizationDetailContent() {
         opened={templateBuilderOpen && Boolean(templateEmbedUrl)}
         onClose={closeTemplateBuilder}
         centered
-        size="xl"
+        size="75vw"
         title="BoldSign Template Builder"
+        styles={{
+          content: {
+            width: '75vw',
+            maxWidth: '75vw',
+            height: '90vh',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+          },
+          body: {
+            flex: 1,
+            minHeight: 0,
+            padding: 0,
+          },
+        }}
       >
         {templateEmbedUrl ? (
-          <div style={{ height: 620 }}>
+          <div style={{ height: '100%', minHeight: 0 }}>
             <iframe
               src={templateEmbedUrl}
               title="BoldSign Template Builder"
@@ -1755,7 +1795,7 @@ function OrganizationDetailContent() {
             />
           </div>
         ) : (
-          <Text size="sm" c="dimmed">Preparing builder...</Text>
+          <Text size="sm" c="dimmed" p="md">Preparing builder...</Text>
         )}
       </Modal>
       <Modal
@@ -1774,6 +1814,9 @@ function OrganizationDetailContent() {
                 </Text>
                 <Text size="xs" c="dimmed">
                   {previewTemplate.signOnce ? 'Sign once per participant' : 'Sign for every event'}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Required signer: {getRequiredSignerTypeLabel(previewTemplate.requiredSignerType)}
                 </Text>
               </Stack>
               {previewTemplate.type === 'TEXT' && (
@@ -1937,6 +1980,24 @@ function OrganizationDetailContent() {
               required
             />
           )}
+          <Select
+            label="Required signer"
+            value={templateRequiredSignerType}
+            onChange={(value) => {
+              setTemplateRequiredSignerType(
+                normalizeRequiredSignerType(value) as
+                  'PARTICIPANT' | 'PARENT_GUARDIAN' | 'CHILD' | 'PARENT_GUARDIAN_CHILD',
+              );
+            }}
+            data={[
+              { label: 'Participant', value: 'PARTICIPANT' },
+              { label: 'Parent/Guardian', value: 'PARENT_GUARDIAN' },
+              { label: 'Child', value: 'CHILD' },
+              { label: 'Parent/Guardian + Child', value: 'PARENT_GUARDIAN_CHILD' },
+            ]}
+            allowDeselect={false}
+            required
+          />
           <Switch
             label="Sign once per participant"
             checked={templateSignOnce}

@@ -28,6 +28,7 @@ export type ConsentLinks = {
   status?: ConsentStatus;
   parentSignLink?: string;
   childSignLink?: string;
+  childEmail?: string;
 };
 
 type RegistrationResponse = {

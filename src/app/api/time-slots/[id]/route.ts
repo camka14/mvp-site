@@ -10,6 +10,21 @@ const updateSchema = z.object({
   slot: z.record(z.string(), z.any()).optional(),
 }).passthrough();
 
+const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: number[] | null }): number[] => {
+  const source = Array.isArray(input.daysOfWeek) && input.daysOfWeek.length
+    ? input.daysOfWeek
+    : typeof input.dayOfWeek === 'number'
+      ? [input.dayOfWeek]
+      : [];
+  return Array.from(
+    new Set(
+      source
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+    ),
+  ).sort((a, b) => a - b);
+};
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -43,13 +58,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       )
       : [];
   }
+  if (payload.dayOfWeek !== undefined || payload.daysOfWeek !== undefined) {
+    const normalizedDays = normalizeDaysOfWeek({
+      dayOfWeek: typeof payload.dayOfWeek === 'number' ? payload.dayOfWeek : undefined,
+      daysOfWeek: Array.isArray(payload.daysOfWeek) ? payload.daysOfWeek : undefined,
+    });
+    payload.dayOfWeek = normalizedDays[0] ?? null;
+  }
+  delete payload.daysOfWeek;
 
   const updated = await prisma.timeSlots.update({
     where: { id },
-    data: { ...payload, updatedAt: new Date() },
+    data: { ...payload, updatedAt: new Date() } as any,
   });
-
-  return NextResponse.json(withLegacyFields(updated), { status: 200 });
+  const normalizedDays = normalizeDaysOfWeek({
+    dayOfWeek: updated.dayOfWeek ?? undefined,
+    daysOfWeek: (updated as any).daysOfWeek ?? undefined,
+  });
+  return NextResponse.json(withLegacyFields({
+    ...updated,
+    dayOfWeek: normalizedDays[0] ?? updated.dayOfWeek ?? null,
+    daysOfWeek: normalizedDays,
+  } as any), { status: 200 });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

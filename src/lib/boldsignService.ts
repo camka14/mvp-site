@@ -1,5 +1,6 @@
 import { apiRequest } from '@/lib/apiClient';
 import type { TemplateDocument, TemplateDocumentType, UserData } from '@/types';
+import type { TemplateRequiredSignerType } from '@/types';
 
 export type SignStep = {
   templateId: string;
@@ -9,6 +10,8 @@ export type SignStep = {
   title?: string;
   signOnce?: boolean;
   content?: string;
+  requiredSignerType?: TemplateRequiredSignerType;
+  requiredSignerLabel?: string;
 };
 
 type CreateTemplateResponse = {
@@ -34,6 +37,7 @@ class BoldSignService {
     title: string;
     description?: string;
     signOnce: boolean;
+    requiredSignerType: TemplateRequiredSignerType;
     type: TemplateDocumentType;
     content?: string;
     file?: File;
@@ -48,6 +52,7 @@ class BoldSignService {
       form.set('title', params.title);
       form.set('description', params.description ?? '');
       form.set('signOnce', String(params.signOnce));
+      form.set('requiredSignerType', params.requiredSignerType);
       form.set('type', params.type);
       form.set('file', params.file);
       result = await apiRequest<CreateTemplateResponse>(
@@ -69,6 +74,7 @@ class BoldSignService {
               title: params.title,
               description: params.description,
               signOnce: params.signOnce,
+              requiredSignerType: params.requiredSignerType,
               type: params.type,
               content: params.content,
             },
@@ -110,6 +116,9 @@ class BoldSignService {
     user: UserData;
     userEmail: string;
     redirectUrl?: string;
+    signerContext?: 'participant' | 'parent_guardian' | 'child';
+    childUserId?: string;
+    childEmail?: string;
   }): Promise<SignStep[]> {
     const result = await apiRequest<SignLinksResponse>(
       `/api/events/${params.eventId}/sign`,
@@ -120,6 +129,9 @@ class BoldSignService {
           userId: params.user.$id,
           userEmail: params.userEmail,
           redirectUrl: params.redirectUrl,
+          signerContext: params.signerContext ?? 'participant',
+          childUserId: params.childUserId,
+          childEmail: params.childEmail,
         },
       },
     );

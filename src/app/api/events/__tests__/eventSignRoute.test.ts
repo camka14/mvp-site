@@ -12,6 +12,12 @@ const prismaMock = {
   signedDocuments: {
     findMany: jest.fn(),
   },
+  parentChildLinks: {
+    findFirst: jest.fn(),
+  },
+  userData: {
+    findUnique: jest.fn(),
+  },
   sensitiveUserData: {
     findFirst: jest.fn(),
   },
@@ -61,6 +67,12 @@ describe('POST /api/events/[eventId]/sign', () => {
       name: 'Weekend Open',
     });
     prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue(null);
+    prismaMock.userData.findUnique.mockResolvedValue({
+      firstName: 'Player',
+      lastName: 'One',
+      userName: 'player1',
+    });
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'player@example.com' });
     prismaMock.authUser.findUnique.mockResolvedValue(null);
   });
@@ -136,6 +148,182 @@ describe('POST /api/events/[eventId]/sign', () => {
         templateId: 'bold_tmpl_1',
         signerEmail: 'player@example.com',
         roleIndex: 2,
+      }),
+    );
+  });
+
+  it('filters parent/guardian templates for participant self-signing', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_participant',
+        type: 'TEXT',
+        title: 'Participant Waiver',
+        content: 'Participant waiver',
+        signOnce: false,
+        requiredSignerType: 'PARTICIPANT',
+      },
+      {
+        id: 'tmpl_parent',
+        type: 'TEXT',
+        title: 'Parent Waiver',
+        content: 'Parent waiver',
+        signOnce: false,
+        requiredSignerType: 'PARENT_GUARDIAN',
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_participant', 'tmpl_parent'],
+      name: 'Weekend Open',
+    });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        userId: 'user_1',
+        signerContext: 'participant',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toHaveLength(1);
+    expect(data.signLinks[0]).toEqual(expect.objectContaining({
+      templateId: 'tmpl_participant',
+      requiredSignerType: 'PARTICIPANT',
+    }));
+  });
+
+  it('returns parent/guardian templates when signing for a child registration', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_parent',
+        type: 'TEXT',
+        title: 'Parent Waiver',
+        content: 'Parent waiver',
+        signOnce: false,
+        requiredSignerType: 'PARENT_GUARDIAN',
+      },
+      {
+        id: 'tmpl_child',
+        type: 'TEXT',
+        title: 'Child Waiver',
+        content: 'Child waiver',
+        signOnce: false,
+        requiredSignerType: 'CHILD',
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_parent', 'tmpl_child'],
+      name: 'Weekend Open',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'parent_guardian',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toHaveLength(1);
+    expect(data.signLinks[0]).toEqual(expect.objectContaining({
+      templateId: 'tmpl_parent',
+      requiredSignerType: 'PARENT_GUARDIAN',
+      requiredSignerLabel: 'Parent/Guardian',
+    }));
+  });
+
+  it('returns parent/guardian+child templates with the combined signer label', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_parent_child',
+        type: 'TEXT',
+        title: 'Joint Waiver',
+        content: 'Joint waiver',
+        signOnce: false,
+        requiredSignerType: 'PARENT_GUARDIAN_CHILD',
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_parent_child'],
+      name: 'Weekend Open',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'parent_guardian',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toHaveLength(1);
+    expect(data.signLinks[0]).toEqual(expect.objectContaining({
+      templateId: 'tmpl_parent_child',
+      requiredSignerType: 'PARENT_GUARDIAN_CHILD',
+      requiredSignerLabel: 'Parent/Guardian + Child',
+    }));
+  });
+
+  it('uses the child signer role for child-context PDF signing', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_child_pdf',
+        templateId: 'bold_tmpl_child',
+        type: 'PDF',
+        title: 'Child PDF Waiver',
+        description: 'Child must sign',
+        signOnce: false,
+        requiredSignerType: 'CHILD',
+        roleIndex: 1,
+        roleIndexes: [1, 2],
+        signerRoles: ['Parent/Guardian', 'Child'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_child_pdf'],
+      name: 'Weekend Open',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([
+      { roleIndex: 1, signerRole: 'Parent/Guardian' },
+      { roleIndex: 2, signerRole: 'Child' },
+    ]);
+    sendDocumentFromTemplateMock.mockResolvedValue({ documentId: 'doc_child_1' });
+    getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_child_1' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'child',
+        childUserId: 'child_1',
+        childEmail: 'child@example.com',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toHaveLength(1);
+    expect(data.signLinks[0]).toEqual(expect.objectContaining({
+      templateId: 'tmpl_child_pdf',
+      type: 'PDF',
+      requiredSignerType: 'CHILD',
+    }));
+    expect(sendDocumentFromTemplateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roleIndex: 2,
+        signerRole: 'Child',
       }),
     );
   });

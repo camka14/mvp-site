@@ -30,7 +30,8 @@ export interface LeagueFieldTemplateInput {
 export interface LeagueSlotCreationInput {
   fieldKey?: string;
   field?: Field;
-  dayOfWeek: TimeSlot['dayOfWeek'];
+  dayOfWeek?: NonNullable<TimeSlot['dayOfWeek']>;
+  daysOfWeek?: NonNullable<TimeSlot['daysOfWeek']>;
   startTimeMinutes: number;
   endTimeMinutes?: number;
   startDate?: string;
@@ -55,7 +56,7 @@ class LeagueService {
       return [];
     }
 
-    const created = await Promise.all(slots.map(async (slot) => {
+    const createdNested = await Promise.all(slots.map(async (slot) => {
       const startTime = this.normalizeTime(slot.startTimeMinutes);
       if (typeof startTime !== 'number') {
         throw new Error('TimeSlot requires a start time');
@@ -68,32 +69,44 @@ class LeagueService {
       if (!fieldId) {
         throw new Error('TimeSlot requires a related field');
       }
-      const data: Record<string, unknown> = {
-        eventId,
-        scheduledFieldId: fieldId,
-        dayOfWeek: slot.dayOfWeek,
-        startTimeMinutes: startTime,
-        endTimeMinutes: endTime,
-        repeating: typeof slot.repeating === 'boolean' ? slot.repeating : true,
-      };
 
-      if (slot.startDate) {
-        data.startDate = slot.startDate;
-      }
-      if (slot.endDate !== undefined) {
-        data.endDate = slot.endDate;
+      const normalizedDays = this.normalizeDays(slot);
+      if (!normalizedDays.length) {
+        throw new Error('TimeSlot requires at least one day');
       }
 
-      const response = await apiRequest<any>('/api/time-slots', {
-        method: 'POST',
-        body: {
-          id: createId(),
-          ...data,
-        },
-      });
+      const createdForSlot = await Promise.all(normalizedDays.map(async (day) => {
+        const data: Record<string, unknown> = {
+          eventId,
+          scheduledFieldId: fieldId,
+          dayOfWeek: day,
+          daysOfWeek: [day],
+          startTimeMinutes: startTime,
+          endTimeMinutes: endTime,
+          repeating: typeof slot.repeating === 'boolean' ? slot.repeating : true,
+        };
 
-      return this.mapRowToTimeSlot(response as any);
+        if (slot.startDate) {
+          data.startDate = slot.startDate;
+        }
+        if (slot.endDate !== undefined) {
+          data.endDate = slot.endDate;
+        }
+
+        const response = await apiRequest<any>('/api/time-slots', {
+          method: 'POST',
+          body: {
+            id: createId(),
+            ...data,
+          },
+        });
+
+        return this.mapRowToTimeSlot(response as any);
+      }));
+
+      return createdForSlot;
     }));
+    const created = createdNested.flat();
 
     await this.appendTimeSlotsToEvent(eventId, created.map((slot) => slot.$id));
 
@@ -179,9 +192,23 @@ class LeagueService {
   private mapRowToTimeSlot(row: any): TimeSlot {
     const startTime = this.normalizeTime(row.startTimeMinutes ?? row.startTime) ?? 0;
     const endTime = this.normalizeTime(row.endTimeMinutes ?? row.endTime) ?? startTime;
+    const normalizedDays = Array.from(
+      new Set(
+        (Array.isArray(row.daysOfWeek) && row.daysOfWeek.length
+          ? row.daysOfWeek
+          : row.dayOfWeek !== undefined
+            ? [row.dayOfWeek]
+            : []
+        )
+          .map((value: unknown) => Number(value))
+          .filter((value: number) => Number.isInteger(value) && value >= 0 && value <= 6),
+      ),
+    ) as NonNullable<TimeSlot['daysOfWeek']>;
+
     const schedule: TimeSlot = {
       $id: String(row.$id ?? row.id ?? ''),
-      dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
+      dayOfWeek: (normalizedDays[0] ?? Number(row.dayOfWeek ?? 0)) as TimeSlot['dayOfWeek'],
+      daysOfWeek: normalizedDays,
       startTimeMinutes: startTime,
       endTimeMinutes: endTime,
       repeating: row.repeating === undefined ? true : Boolean(row.repeating),
@@ -212,6 +239,21 @@ class LeagueService {
     }
 
     return schedule;
+  }
+
+  private normalizeDays(slot: Pick<TimeSlot, 'dayOfWeek' | 'daysOfWeek'>): number[] {
+    return Array.from(
+      new Set(
+        (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+          ? slot.daysOfWeek
+          : slot.dayOfWeek !== undefined
+            ? [slot.dayOfWeek]
+            : []
+        )
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+      ),
+    );
   }
 
   private normalizeTime(value: unknown): number | undefined {

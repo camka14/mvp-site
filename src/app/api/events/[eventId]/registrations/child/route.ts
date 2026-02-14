@@ -62,6 +62,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     return NextResponse.json({ error: 'Child profile not found' }, { status: 404 });
   }
 
+  const childSensitive = await prisma.sensitiveUserData.findFirst({
+    where: { userId: childId },
+    select: { email: true },
+  });
+  const childEmail = childSensitive?.email?.trim() ?? '';
+  if (!childEmail) {
+    return NextResponse.json(
+      { error: 'Child email is required before registration.' },
+      { status: 400 },
+    );
+  }
+
   const childAgeAtEvent = calculateAgeOnDate(child.dateOfBirth, event.start);
   if (!Number.isFinite(childAgeAtEvent)) {
     return NextResponse.json({ error: 'Invalid child date of birth' }, { status: 400 });
@@ -102,6 +114,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           status: 'sent',
           parentSignLink: null,
           childSignLink: null,
+          childEmail,
         }
       : undefined,
   }, { status: 200 });

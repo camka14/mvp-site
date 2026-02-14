@@ -251,20 +251,21 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     while (reference.getTime() + weeks * 7 * 24 * 60 * MINUTE_MS <= this.endTime.getTime()) {
       const weekReference = new Date(reference.getTime() + weeks * 7 * 24 * 60 * MINUTE_MS);
       for (const slot of timeSlots) {
-        const [slotStart, slotEnd] = this.slotRange(slot, weekReference);
-        if (slotEnd.getTime() <= this.startTime.getTime() || slotStart.getTime() >= this.endTime.getTime()) {
-          continue;
-        }
-        const boundedStart = slotStart.getTime() < this.startTime.getTime() ? this.startTime : slotStart;
-        const boundedEnd = slotEnd.getTime() > this.endTime.getTime() ? this.endTime : slotEnd;
-        if (boundedEnd.getTime() <= boundedStart.getTime()) continue;
-        const fieldId = slot.field ?? slot.scheduledFieldId;
-        if (fieldId) {
-          const existing = this.resourceSlots.get(fieldId) ?? [];
-          existing.push([boundedStart, boundedEnd]);
-          this.resourceSlots.set(fieldId, existing);
-        } else {
-          this.globalSlots.push([boundedStart, boundedEnd]);
+        for (const [slotStart, slotEnd] of this.slotRanges(slot, weekReference)) {
+          if (slotEnd.getTime() <= this.startTime.getTime() || slotStart.getTime() >= this.endTime.getTime()) {
+            continue;
+          }
+          const boundedStart = slotStart.getTime() < this.startTime.getTime() ? this.startTime : slotStart;
+          const boundedEnd = slotEnd.getTime() > this.endTime.getTime() ? this.endTime : slotEnd;
+          if (boundedEnd.getTime() <= boundedStart.getTime()) continue;
+          const fieldId = slot.field ?? slot.scheduledFieldId;
+          if (fieldId) {
+            const existing = this.resourceSlots.get(fieldId) ?? [];
+            existing.push([boundedStart, boundedEnd]);
+            this.resourceSlots.set(fieldId, existing);
+          } else {
+            this.globalSlots.push([boundedStart, boundedEnd]);
+          }
         }
       }
       weeks += 1;
@@ -275,17 +276,32 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     this.globalSlots.sort((a, b) => a[0].getTime() - b[0].getTime());
   }
 
-  private slotRange(slot: any, reference: Date): [Date, Date] {
-    const dayOfWeek = slot.dayOfWeek ?? slot.day_of_week ?? 0;
+  private slotRanges(slot: any, reference: Date): Array<[Date, Date]> {
+    const normalizedDays = Array.from(
+      new Set(
+        (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+          ? slot.daysOfWeek
+          : slot.dayOfWeek !== undefined
+            ? [slot.dayOfWeek]
+            : slot.day_of_week !== undefined
+              ? [slot.day_of_week]
+              : [0]
+        )
+          .map((value: unknown) => Number(value))
+          .filter((value: number) => Number.isInteger(value) && value >= 0 && value <= 6),
+      ),
+    );
     const startMinutes = slot.startTimeMinutes ?? slot.start_time_minutes ?? 0;
     const endMinutes = slot.endTimeMinutes ?? slot.end_time_minutes ?? 0;
-    const daysAhead = (dayOfWeek - reference.getDay() + 7) % 7;
-    const slotDate = new Date(reference);
-    slotDate.setHours(0, 0, 0, 0);
-    slotDate.setDate(slotDate.getDate() + daysAhead);
-    const start = new Date(slotDate.getTime() + startMinutes * MINUTE_MS);
-    const end = new Date(slotDate.getTime() + endMinutes * MINUTE_MS);
-    return [start, end];
+    return normalizedDays.map((dayOfWeek) => {
+      const daysAhead = (dayOfWeek - reference.getDay() + 7) % 7;
+      const slotDate = new Date(reference);
+      slotDate.setHours(0, 0, 0, 0);
+      slotDate.setDate(slotDate.getDate() + daysAhead);
+      const start = new Date(slotDate.getTime() + startMinutes * MINUTE_MS);
+      const end = new Date(slotDate.getTime() + endMinutes * MINUTE_MS);
+      return [start, end];
+    });
   }
 
   private nextValidStartTime(candidate: Date, durationMs: number): Date {

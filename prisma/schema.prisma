@@ -565,6 +565,7 @@ model TemplateDocuments {
   title String
   description String?
   signOnce Boolean?
+  requiredSignerType String @default("PARTICIPANT")
   status String?
   createdBy String?
   roleIndex Int?

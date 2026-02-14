@@ -3,6 +3,7 @@ import {
   NumberInput,
   Switch,
   Select as MantineSelect,
+  MultiSelect as MantineMultiSelect,
   Button,
   Card,
   Group,
@@ -15,7 +16,6 @@ import {
   Paper,
   Title,
 } from '@mantine/core';
-import { TimeInput } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 
@@ -31,6 +31,38 @@ const DAYS_OF_WEEK = [
   { value: '6', label: 'Sunday' },
 ];
 
+const toAmPmLabel = (minutes: number): string => {
+  const clamped = Math.max(0, Math.min(minutes, 24 * 60 - 1));
+  const hour24 = Math.floor(clamped / 60);
+  const minute = clamped % 60;
+  const amPm = hour24 < 12 ? 'AM' : 'PM';
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${minute.toString().padStart(2, '0')} ${amPm}`;
+};
+
+const TIME_OPTIONS = Array.from({ length: (24 * 60) / 15 }, (_, index) => {
+  const minutes = index * 15;
+  return {
+    value: String(minutes),
+    label: toAmPmLabel(minutes),
+  };
+});
+
+const normalizeSlotDays = (slot: Pick<LeagueSlotForm, 'dayOfWeek' | 'daysOfWeek'>): number[] => {
+  const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+    ? slot.daysOfWeek
+    : typeof slot.dayOfWeek === 'number'
+      ? [slot.dayOfWeek]
+      : [];
+  return Array.from(
+    new Set(
+      source
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+    ),
+  ).sort((a, b) => a - b);
+};
+
 const createFieldStub = (fieldId: string, label?: string): Field => ({
   $id: fieldId,
   name: label ?? '',
@@ -41,38 +73,12 @@ const createFieldStub = (fieldId: string, label?: string): Field => ({
   fieldNumber: 0,
 });
 
-const minutesToTimeString = (minutes?: number): string => {
-  if (typeof minutes !== 'number' || Number.isNaN(minutes)) {
-    return '';
-  }
-
-  const normalized = Math.max(0, Math.floor(minutes));
-  const hours = Math.floor(normalized / 60) % 24;
-  const mins = normalized % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-};
-
-const parseTimeInput = (value: string): number | undefined => {
-  if (!value) {
-    return undefined;
-  }
-
-  const [hoursRaw, minutesRaw] = value.split(':');
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
-
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return undefined;
-  }
-
-  return hours * 60 + minutes;
-};
-
 export interface LeagueSlotForm {
   key: string;
   $id?: string;
   scheduledFieldId?: string;
   dayOfWeek?: number;
+  daysOfWeek?: number[];
   startTimeMinutes?: number;
   endTimeMinutes?: number;
   repeating?: boolean;
@@ -205,8 +211,19 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             className="mt-4"
             label="Playoff Team Count"
             min={2}
-            value={leagueData.playoffTeamCount || undefined}
-            onChange={(value) => onLeagueDataChange({ playoffTeamCount: Number(value) || undefined })}
+            value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+            onChange={(value) => {
+              const numeric = typeof value === 'number' ? value : Number(value);
+              onLeagueDataChange({
+                playoffTeamCount: Number.isFinite(numeric) ? numeric : undefined,
+              });
+            }}
+            error={
+              leagueData.includePlayoffs &&
+              !(typeof leagueData.playoffTeamCount === 'number' && leagueData.playoffTeamCount >= 2)
+                ? 'Playoff team count is required'
+                : undefined
+            }
           />
         )}
 
@@ -298,10 +315,19 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                   },
                 ]
               : availableFieldOptions;
+            const selectedDays = normalizeSlotDays(slot);
             const fieldMissing = !slot.scheduledFieldId;
-            const dayMissing = typeof slot.dayOfWeek !== 'number';
+            const dayMissing = selectedDays.length === 0;
             const startMissing = !(typeof slot.startTimeMinutes === 'number' && Number.isFinite(slot.startTimeMinutes));
             const endMissing = !(typeof slot.endTimeMinutes === 'number' && Number.isFinite(slot.endTimeMinutes));
+            const startTimeOptions = typeof slot.startTimeMinutes === 'number' &&
+              !TIME_OPTIONS.some((option) => option.value === String(slot.startTimeMinutes))
+              ? [...TIME_OPTIONS, { value: String(slot.startTimeMinutes), label: toAmPmLabel(slot.startTimeMinutes) }]
+              : TIME_OPTIONS;
+            const endTimeOptions = typeof slot.endTimeMinutes === 'number' &&
+              !TIME_OPTIONS.some((option) => option.value === String(slot.endTimeMinutes))
+              ? [...TIME_OPTIONS, { value: String(slot.endTimeMinutes), label: toAmPmLabel(slot.endTimeMinutes) }]
+              : TIME_OPTIONS;
             return (
               <Card key={slot.key} shadow="xs" radius="md" padding="lg" withBorder>
                 <div className="flex flex-col gap-4">
@@ -345,34 +371,54 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       error={fieldMissing && !readOnly ? 'Select a field' : undefined}
                     />
 
-                  <MantineSelect
-                    label="Day of Week"
+                  <MantineMultiSelect
+                    label="Days of Week"
                     withAsterisk
-                    placeholder="Select day"
+                    placeholder="Select one or more days"
                     data={DAYS_OF_WEEK}
-                    value={typeof slot.dayOfWeek === 'number' ? String(slot.dayOfWeek) : null}
+                    value={selectedDays.map((day) => String(day))}
                     comboboxProps={DROPDOWN_PROPS}
-                    onChange={(value) => onUpdateSlot(index, { dayOfWeek: value ? (Number(value) as LeagueSlotForm['dayOfWeek']) : undefined })}
+                    onChange={(values) => {
+                      const days = Array.from(
+                        new Set(
+                          values
+                            .map((value) => Number(value))
+                            .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+                        ),
+                      ).sort((a, b) => a - b);
+                      onUpdateSlot(index, {
+                        dayOfWeek: days[0],
+                        daysOfWeek: days,
+                      });
+                    }}
                     disabled={readOnly}
-                    error={dayMissing && !readOnly ? 'Select a day' : undefined}
+                    error={dayMissing && !readOnly ? 'Select at least one day' : undefined}
                   />
 
-                    <TimeInput
+                    <MantineSelect
                     label="Start Time"
                     withAsterisk
-                    value={minutesToTimeString(slot.startTimeMinutes)}
-                    onChange={(event) => onUpdateSlot(index, { startTimeMinutes: parseTimeInput(event.currentTarget.value) })}
-                    withSeconds={false}
+                    placeholder="Select start time"
+                    data={startTimeOptions}
+                    value={typeof slot.startTimeMinutes === 'number' ? String(slot.startTimeMinutes) : null}
+                    onChange={(value) => onUpdateSlot(index, {
+                      startTimeMinutes: typeof value === 'string' ? Number(value) : undefined,
+                    })}
+                    comboboxProps={DROPDOWN_PROPS}
                     disabled={readOnly}
                     error={startMissing && !readOnly ? 'Select a start time' : undefined}
                   />
 
-                    <TimeInput
+                    <MantineSelect
                       label="End Time"
                       withAsterisk
-                      value={minutesToTimeString(slot.endTimeMinutes)}
-                      onChange={(event) => onUpdateSlot(index, { endTimeMinutes: parseTimeInput(event.currentTarget.value) })}
-                      withSeconds={false}
+                      placeholder="Select end time"
+                      data={endTimeOptions}
+                      value={typeof slot.endTimeMinutes === 'number' ? String(slot.endTimeMinutes) : null}
+                      onChange={(value) => onUpdateSlot(index, {
+                        endTimeMinutes: typeof value === 'string' ? Number(value) : undefined,
+                      })}
+                      comboboxProps={DROPDOWN_PROPS}
                       disabled={readOnly}
                       error={endMissing && !readOnly ? 'Select an end time' : undefined}
                     />

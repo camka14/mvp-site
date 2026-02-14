@@ -38,6 +38,7 @@ describe('leagueService', () => {
         $id: 'temp-slot',
         scheduledFieldId: field.$id,
         dayOfWeek: 2,
+        daysOfWeek: [2],
         startTimeMinutes: 9 * 60,
         endTimeMinutes: 10 * 60,
         startDate: '2025-10-01T00:00:00',
@@ -50,6 +51,7 @@ describe('leagueService', () => {
           $id: 'slot_1',
           scheduledFieldId: field.$id,
           dayOfWeek: 2,
+          daysOfWeek: [2],
           startTimeMinutes: 9 * 60,
           endTimeMinutes: 10 * 60,
           startDate: '2025-10-01T00:00:00',
@@ -72,6 +74,7 @@ describe('leagueService', () => {
             eventId: 'event_1',
             scheduledFieldId: 'field_1',
             dayOfWeek: 2,
+            daysOfWeek: [2],
             startTimeMinutes: 9 * 60,
             endTimeMinutes: 10 * 60,
             startDate: '2025-10-01T00:00:00',
@@ -97,6 +100,68 @@ describe('leagueService', () => {
         endTimeMinutes: 10 * 60,
         repeating: true,
       });
+    });
+
+    it('fans out a multi-day slot into one persisted slot per day', async () => {
+      const slot: TimeSlot = {
+        $id: 'temp-slot',
+        scheduledFieldId: 'field_1',
+        dayOfWeek: 1,
+        daysOfWeek: [1, 3],
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 10 * 60,
+        repeating: true,
+      };
+
+      apiRequestMock
+        .mockResolvedValueOnce({
+          $id: 'slot_mon',
+          scheduledFieldId: 'field_1',
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          repeating: true,
+        })
+        .mockResolvedValueOnce({
+          $id: 'slot_wed',
+          scheduledFieldId: 'field_1',
+          dayOfWeek: 3,
+          daysOfWeek: [3],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          repeating: true,
+        })
+        .mockResolvedValueOnce({ timeSlotIds: [] })
+        .mockResolvedValueOnce({});
+
+      const result = await leagueService.createWeeklySchedules('event_1', [slot]);
+
+      expect(result).toHaveLength(2);
+      expect(apiRequestMock).toHaveBeenNthCalledWith(
+        1,
+        '/api/time-slots',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({ dayOfWeek: 1, daysOfWeek: [1] }),
+        }),
+      );
+      expect(apiRequestMock).toHaveBeenNthCalledWith(
+        2,
+        '/api/time-slots',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({ dayOfWeek: 3, daysOfWeek: [3] }),
+        }),
+      );
+      expect(apiRequestMock).toHaveBeenNthCalledWith(
+        4,
+        '/api/events/event_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: { event: { timeSlotIds: ['slot_mon', 'slot_wed'] } },
+        }),
+      );
     });
   });
 

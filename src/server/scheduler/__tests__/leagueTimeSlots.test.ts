@@ -115,5 +115,98 @@ describe('league scheduling (time slots)', () => {
     const maxStart = Math.max(...scheduled.matches.map((match) => match.start.getTime()));
     expect(maxStart).toBeGreaterThanOrEqual(start.getTime() + threeWeeksMs);
   });
-});
 
+  it('supports multi-day weekly slot input via daysOfWeek on a single slot row', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+
+    // Jan 3, 2026 is a Saturday.
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 0, 10, 13, 0, 0);
+
+    const saturday = 6;
+    const sunday = 0;
+    const multiDaySlot = new TimeSlot({
+      id: 'slot_multi',
+      dayOfWeek: saturday,
+      startDate: new Date(2026, 0, 3),
+      repeating: true,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 13 * 60,
+    }) as TimeSlot & { daysOfWeek?: number[] };
+    multiDaySlot.daysOfWeek = [sunday, saturday];
+
+    const league = new League({
+      id: 'league_multi_day_slot',
+      name: 'Weekend Multi-Day League',
+      start,
+      end,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots: [multiDaySlot],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(6);
+
+    const scheduledDays = new Set(scheduled.matches.map((match) => match.start.getDay()));
+    expect(scheduledDays.has(saturday)).toBe(true);
+    expect(scheduledDays.has(sunday)).toBe(true);
+  });
+
+  it('surfaces a configuration error when selected divisions have no available fields', () => {
+    const openDivision = new Division('OPEN', 'Open');
+    const advancedDivision = new Division('ADVANCED', 'Advanced');
+    const field = buildField(advancedDivision);
+    const teams = buildTeams(4, openDivision);
+
+    const league = new League({
+      id: 'league_missing_fields',
+      name: 'Missing Fields League',
+      start: new Date(2026, 0, 3, 9, 0, 0),
+      end: new Date(2026, 0, 10, 13, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [openDivision],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_open',
+          dayOfWeek: 6,
+          startDate: new Date(2026, 0, 3),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 13 * 60,
+        }),
+      ],
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    expect(() => scheduleEvent({ event: league }, context)).toThrow(
+      /no fields are available.*OPEN/i,
+    );
+  });
+});

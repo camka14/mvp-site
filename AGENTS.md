@@ -154,6 +154,17 @@ We persist raw string IDs for associations (for example `teamIds`, `friendIds`, 
 - Are mocks/spies reset to avoid test bleed?
 - Are async tests using `await`/`waitFor`?
 - Is coverage meaningful (assert on outputs/side-effects)?
+- Do not run Jest suites concurrently from multiple agents in the same checkout; shared `.next`/cache artifacts can cause flaky results.
+
+## Form & Scheduling Standards
+
+- Use date-only calendar inputs for all date-of-birth fields (signup/profile/children). Do not capture time for DOB values.
+- Use 12-hour AM/PM time presentation for user-facing time pickers and labels.
+- Keep one scoring-format control path per form section; do not expose duplicate controls for the same setting.
+- When playoffs are enabled, `playoffTeamCount` must be unset by default and validated as required until explicitly chosen.
+- Field-to-division mapping is mandatory for league/tournament scheduling. Apply fallback in this order: field divisions from payload, then event divisions, then persisted field divisions, then `OPEN`.
+- Weekly scheduling must support multi-day selection at the form boundary (`daysOfWeek`) while remaining backward compatible with legacy `dayOfWeek`.
+- Any event create/edit scheduling change must include regression tests for validation, payload mapping, and scheduler behavior.
 
 ## Security & Permissions
 

@@ -46,6 +46,7 @@ export type TemplateDocumentsMinAggregateOutputType = {
   title: string | null
   description: string | null
   signOnce: boolean | null
+  requiredSignerType: string | null
   status: string | null
   createdBy: string | null
   roleIndex: number | null
@@ -62,6 +63,7 @@ export type TemplateDocumentsMaxAggregateOutputType = {
   title: string | null
   description: string | null
   signOnce: boolean | null
+  requiredSignerType: string | null
   status: string | null
   createdBy: string | null
   roleIndex: number | null
@@ -78,6 +80,7 @@ export type TemplateDocumentsCountAggregateOutputType = {
   title: number
   description: number
   signOnce: number
+  requiredSignerType: number
   status: number
   createdBy: number
   roleIndex: number
@@ -108,6 +111,7 @@ export type TemplateDocumentsMinAggregateInputType = {
   title?: true
   description?: true
   signOnce?: true
+  requiredSignerType?: true
   status?: true
   createdBy?: true
   roleIndex?: true
@@ -124,6 +128,7 @@ export type TemplateDocumentsMaxAggregateInputType = {
   title?: true
   description?: true
   signOnce?: true
+  requiredSignerType?: true
   status?: true
   createdBy?: true
   roleIndex?: true
@@ -140,6 +145,7 @@ export type TemplateDocumentsCountAggregateInputType = {
   title?: true
   description?: true
   signOnce?: true
+  requiredSignerType?: true
   status?: true
   createdBy?: true
   roleIndex?: true
@@ -245,6 +251,7 @@ export type TemplateDocumentsGroupByOutputType = {
   title: string
   description: string | null
   signOnce: boolean | null
+  requiredSignerType: string
   status: string | null
   createdBy: string | null
   roleIndex: number | null
@@ -286,6 +293,7 @@ export type TemplateDocumentsWhereInput = {
   title?: Prisma.StringFilter<"TemplateDocuments"> | string
   description?: Prisma.StringNullableFilter<"TemplateDocuments"> | string | null
   signOnce?: Prisma.BoolNullableFilter<"TemplateDocuments"> | boolean | null
+  requiredSignerType?: Prisma.StringFilter<"TemplateDocuments"> | string
   status?: Prisma.StringNullableFilter<"TemplateDocuments"> | string | null
   createdBy?: Prisma.StringNullableFilter<"TemplateDocuments"> | string | null
   roleIndex?: Prisma.IntNullableFilter<"TemplateDocuments"> | number | null
@@ -304,6 +312,7 @@ export type TemplateDocumentsOrderByWithRelationInput = {
   title?: Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
   signOnce?: Prisma.SortOrderInput | Prisma.SortOrder
+  requiredSignerType?: Prisma.SortOrder
   status?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   roleIndex?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -325,6 +334,7 @@ export type TemplateDocumentsWhereUniqueInput = Prisma.AtLeast<{
   title?: Prisma.StringFilter<"TemplateDocuments"> | string
   description?: Prisma.StringNullableFilter<"TemplateDocuments"> | string | null
   signOnce?: Prisma.BoolNullableFilter<"TemplateDocuments"> | boolean | null
+  requiredSignerType?: Prisma.StringFilter<"TemplateDocuments"> | string
   status?: Prisma.StringNullableFilter<"TemplateDocuments"> | string | null
   createdBy?: Prisma.StringNullableFilter<"TemplateDocuments"> | string | null
   roleIndex?: Prisma.IntNullableFilter<"TemplateDocuments"> | number | null
@@ -343,6 +353,7 @@ export type TemplateDocumentsOrderByWithAggregationInput = {
   title?: Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
   signOnce?: Prisma.SortOrderInput | Prisma.SortOrder
+  requiredSignerType?: Prisma.SortOrder
   status?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   roleIndex?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -369,6 +380,7 @@ export type TemplateDocumentsScalarWhereWithAggregatesInput = {
   title?: Prisma.StringWithAggregatesFilter<"TemplateDocuments"> | string
   description?: Prisma.StringNullableWithAggregatesFilter<"TemplateDocuments"> | string | null
   signOnce?: Prisma.BoolNullableWithAggregatesFilter<"TemplateDocuments"> | boolean | null
+  requiredSignerType?: Prisma.StringWithAggregatesFilter<"TemplateDocuments"> | string
   status?: Prisma.StringNullableWithAggregatesFilter<"TemplateDocuments"> | string | null
   createdBy?: Prisma.StringNullableWithAggregatesFilter<"TemplateDocuments"> | string | null
   roleIndex?: Prisma.IntNullableWithAggregatesFilter<"TemplateDocuments"> | number | null
@@ -387,6 +399,7 @@ export type TemplateDocumentsCreateInput = {
   title: string
   description?: string | null
   signOnce?: boolean | null
+  requiredSignerType?: string
   status?: string | null
   createdBy?: string | null
   roleIndex?: number | null
@@ -405,6 +418,7 @@ export type TemplateDocumentsUncheckedCreateInput = {
   title: string
   description?: string | null
   signOnce?: boolean | null
+  requiredSignerType?: string
   status?: string | null
   createdBy?: string | null
   roleIndex?: number | null
@@ -423,6 +437,7 @@ export type TemplateDocumentsUpdateInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signOnce?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  requiredSignerType?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   roleIndex?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -441,6 +456,7 @@ export type TemplateDocumentsUncheckedUpdateInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signOnce?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  requiredSignerType?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   roleIndex?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -459,6 +475,7 @@ export type TemplateDocumentsCreateManyInput = {
   title: string
   description?: string | null
   signOnce?: boolean | null
+  requiredSignerType?: string
   status?: string | null
   createdBy?: string | null
   roleIndex?: number | null
@@ -477,6 +494,7 @@ export type TemplateDocumentsUpdateManyMutationInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signOnce?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  requiredSignerType?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   roleIndex?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -495,6 +513,7 @@ export type TemplateDocumentsUncheckedUpdateManyInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signOnce?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  requiredSignerType?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   roleIndex?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -513,6 +532,7 @@ export type TemplateDocumentsCountOrderByAggregateInput = {
   title?: Prisma.SortOrder
   description?: Prisma.SortOrder
   signOnce?: Prisma.SortOrder
+  requiredSignerType?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   roleIndex?: Prisma.SortOrder
@@ -536,6 +556,7 @@ export type TemplateDocumentsMaxOrderByAggregateInput = {
   title?: Prisma.SortOrder
   description?: Prisma.SortOrder
   signOnce?: Prisma.SortOrder
+  requiredSignerType?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   roleIndex?: Prisma.SortOrder
@@ -552,6 +573,7 @@ export type TemplateDocumentsMinOrderByAggregateInput = {
   title?: Prisma.SortOrder
   description?: Prisma.SortOrder
   signOnce?: Prisma.SortOrder
+  requiredSignerType?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   roleIndex?: Prisma.SortOrder
@@ -597,6 +619,7 @@ export type TemplateDocumentsSelect<ExtArgs extends runtime.Types.Extensions.Int
   title?: boolean
   description?: boolean
   signOnce?: boolean
+  requiredSignerType?: boolean
   status?: boolean
   createdBy?: boolean
   roleIndex?: boolean
@@ -615,6 +638,7 @@ export type TemplateDocumentsSelectCreateManyAndReturn<ExtArgs extends runtime.T
   title?: boolean
   description?: boolean
   signOnce?: boolean
+  requiredSignerType?: boolean
   status?: boolean
   createdBy?: boolean
   roleIndex?: boolean
@@ -633,6 +657,7 @@ export type TemplateDocumentsSelectUpdateManyAndReturn<ExtArgs extends runtime.T
   title?: boolean
   description?: boolean
   signOnce?: boolean
+  requiredSignerType?: boolean
   status?: boolean
   createdBy?: boolean
   roleIndex?: boolean
@@ -651,6 +676,7 @@ export type TemplateDocumentsSelectScalar = {
   title?: boolean
   description?: boolean
   signOnce?: boolean
+  requiredSignerType?: boolean
   status?: boolean
   createdBy?: boolean
   roleIndex?: boolean
@@ -659,7 +685,7 @@ export type TemplateDocumentsSelectScalar = {
   content?: boolean
 }
 
-export type TemplateDocumentsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "templateId" | "type" | "organizationId" | "title" | "description" | "signOnce" | "status" | "createdBy" | "roleIndex" | "roleIndexes" | "signerRoles" | "content", ExtArgs["result"]["templateDocuments"]>
+export type TemplateDocumentsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "templateId" | "type" | "organizationId" | "title" | "description" | "signOnce" | "requiredSignerType" | "status" | "createdBy" | "roleIndex" | "roleIndexes" | "signerRoles" | "content", ExtArgs["result"]["templateDocuments"]>
 
 export type $TemplateDocumentsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "TemplateDocuments"
@@ -674,6 +700,7 @@ export type $TemplateDocumentsPayload<ExtArgs extends runtime.Types.Extensions.I
     title: string
     description: string | null
     signOnce: boolean | null
+    requiredSignerType: string
     status: string | null
     createdBy: string | null
     roleIndex: number | null
@@ -1112,6 +1139,7 @@ export interface TemplateDocumentsFieldRefs {
   readonly title: Prisma.FieldRef<"TemplateDocuments", 'String'>
   readonly description: Prisma.FieldRef<"TemplateDocuments", 'String'>
   readonly signOnce: Prisma.FieldRef<"TemplateDocuments", 'Boolean'>
+  readonly requiredSignerType: Prisma.FieldRef<"TemplateDocuments", 'String'>
   readonly status: Prisma.FieldRef<"TemplateDocuments", 'String'>
   readonly createdBy: Prisma.FieldRef<"TemplateDocuments", 'String'>
   readonly roleIndex: Prisma.FieldRef<"TemplateDocuments", 'Int'>

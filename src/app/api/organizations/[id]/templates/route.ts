@@ -5,9 +5,13 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
   createEmbeddedTemplateFromPdf,
-  getDefaultTemplateRole,
   isBoldSignConfigured,
 } from '@/lib/boldsignServer';
+import {
+  getBoldSignRolesForRequiredSignerType,
+  normalizeRequiredSignerType,
+  type TemplateRequiredSignerType,
+} from '@/lib/templateSignerTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +40,7 @@ const jsonCreateSchema = z.object({
     signOnce: z.boolean().optional(),
     type: z.string().optional(),
     content: z.string().optional(),
+    requiredSignerType: z.string().optional(),
   }).optional(),
 }).passthrough();
 
@@ -47,6 +52,7 @@ type ParsedTemplateInput = {
     signOnce?: boolean;
     type?: string;
     content?: string;
+    requiredSignerType?: string;
   };
   file?: File;
 };
@@ -71,6 +77,9 @@ const parseTemplateInput = async (request: NextRequest): Promise<{
         signOnce: parseBoolean(form.get('signOnce')),
         type: typeof form.get('type') === 'string' ? String(form.get('type')) : undefined,
         content: typeof form.get('content') === 'string' ? String(form.get('content')) : undefined,
+        requiredSignerType: typeof form.get('requiredSignerType') === 'string'
+          ? String(form.get('requiredSignerType'))
+          : undefined,
       },
       file: isFile ? fileEntry : undefined,
     };
@@ -142,6 +151,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const description = template.description?.trim() || null;
   const createdBy = parsed.value.userId ?? session.userId;
   const signOnce = template.signOnce ?? false;
+  const requiredSignerType: TemplateRequiredSignerType = normalizeRequiredSignerType(
+    template.requiredSignerType,
+  );
   const now = new Date();
 
   if (templateType === 'TEXT') {
@@ -159,6 +171,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         title,
         description,
         signOnce,
+        requiredSignerType,
         status: 'ACTIVE',
         createdBy,
         roleIndex: 0,
@@ -193,15 +206,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Only PDF uploads are supported for PDF templates.' }, { status: 415 });
   }
 
-  const role = getDefaultTemplateRole();
+  const presetRoles = getBoldSignRolesForRequiredSignerType(requiredSignerType).map((role, index) => ({
+    roleIndex: index + 1,
+    signerRole: role.signerRole,
+    signerContext: role.signerContext,
+  }));
   const fileBytes = Buffer.from(await file.arrayBuffer());
   const templateSession = await createEmbeddedTemplateFromPdf({
     fileBytes,
     title,
     description: description ?? undefined,
-    roleIndex: role.roleIndex,
-    signerRole: role.signerRole,
+    roles: presetRoles,
   });
+  const storedRoles = templateSession.roles.length > 0
+    ? templateSession.roles
+    : presetRoles;
 
   const record = await prisma.templateDocuments.create({
     data: {
@@ -212,11 +231,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       title,
       description,
       signOnce,
+      requiredSignerType,
       status: 'ACTIVE',
       createdBy,
-      roleIndex: templateSession.roleIndex,
-      roleIndexes: [templateSession.roleIndex],
-      signerRoles: [templateSession.signerRole],
+      roleIndex: storedRoles[0]?.roleIndex ?? null,
+      roleIndexes: storedRoles.map((role) => role.roleIndex),
+      signerRoles: storedRoles.map((role) => role.signerRole),
       content: null,
       createdAt: now,
       updatedAt: now,

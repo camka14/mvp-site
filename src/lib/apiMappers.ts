@@ -69,8 +69,23 @@ export const normalizeApiMatch = (input: Match): Match => {
 
 const normalizeApiTimeSlot = (input: TimeSlot): TimeSlot => {
   const slot = withLegacyId(input) as TimeSlot & { event?: Event | string; field?: Field | string };
+  const normalizedDays = Array.from(
+    new Set(
+      (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+        ? slot.daysOfWeek
+        : slot.dayOfWeek !== undefined
+          ? [slot.dayOfWeek]
+          : []
+      )
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+    ),
+  ) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+
   return {
     ...slot,
+    dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
+    daysOfWeek: normalizedDays,
     event: withLegacyId(slot.event as Event | null) ?? slot.event,
     field: withLegacyId(slot.field as Field | null) ?? slot.field,
   };

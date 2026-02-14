@@ -22,6 +22,10 @@ import { createClientId } from '@/lib/clientId';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { apiRequest } from '@/lib/apiClient';
 import UserCard from '@/components/ui/UserCard';
+import {
+    getRequiredSignerTypeLabel,
+    normalizeRequiredSignerType,
+} from '@/lib/templateSignerTypes';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -63,6 +67,105 @@ const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EVENT_DIVISION_OPTIONS = [
+    { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
+    { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
+    { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
+    { value: 'expert', label: 'Expert (4.5+)' },
+    { value: 'open', label: 'Open (All Skill Levels)' },
+];
+
+const normalizeWeekdays = (slot: { dayOfWeek?: number; daysOfWeek?: number[] }): number[] => {
+    const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+        ? slot.daysOfWeek
+        : typeof slot.dayOfWeek === 'number'
+            ? [slot.dayOfWeek]
+            : [];
+    return Array.from(
+        new Set(
+            source
+                .map((value) => Number(value))
+                .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+        ),
+    ).sort((a, b) => a - b);
+};
+
+const normalizeDivisionKeys = (values: unknown): string[] => {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+    return Array.from(
+        new Set(
+            values
+                .map((value) => String(value).trim().toLowerCase())
+                .filter((value) => value.length > 0),
+        ),
+    );
+};
+
+const defaultFieldDivisionKeys = (eventDivisions: unknown): string[] => {
+    const normalized = normalizeDivisionKeys(eventDivisions);
+    return normalized.length ? normalized : ['open'];
+};
+
+const mergeSlotPayloadsForForm = (
+    slots: TimeSlot[],
+    fallbackFieldId?: string,
+): Array<Partial<TimeSlot>> => {
+    const groups = new Map<string, {
+        slot: Partial<TimeSlot>;
+        days: Set<number>;
+        ids: string[];
+    }>();
+
+    for (const slot of slots) {
+        const resolvedFieldId = slot.scheduledFieldId ?? fallbackFieldId;
+        const normalizedDays = normalizeWeekdays({
+            dayOfWeek: slot.dayOfWeek,
+            daysOfWeek: slot.daysOfWeek as number[] | undefined,
+        });
+        const key = [
+            resolvedFieldId ?? '',
+            slot.startTimeMinutes ?? '',
+            slot.endTimeMinutes ?? '',
+            slot.repeating ?? true,
+            slot.startDate ?? '',
+            slot.endDate ?? '',
+        ].join('|');
+
+        const existing = groups.get(key);
+        if (!existing) {
+            groups.set(key, {
+                slot: {
+                    $id: slot.$id,
+                    scheduledFieldId: resolvedFieldId,
+                    startTimeMinutes: slot.startTimeMinutes,
+                    endTimeMinutes: slot.endTimeMinutes,
+                    repeating: slot.repeating,
+                    startDate: slot.startDate,
+                    endDate: slot.endDate,
+                },
+                days: new Set(normalizedDays),
+                ids: [slot.$id],
+            });
+            continue;
+        }
+        normalizedDays.forEach((day) => existing.days.add(day));
+        if (slot.$id) {
+            existing.ids.push(slot.$id);
+        }
+    }
+
+    return Array.from(groups.values()).map(({ slot, days, ids }) => {
+        const mergedDays = Array.from(days).sort((a, b) => a - b);
+        return {
+            ...slot,
+            $id: ids.length === 1 ? ids[0] : createClientId(),
+            dayOfWeek: mergedDays[0],
+            daysOfWeek: mergedDays as TimeSlot['daysOfWeek'],
+        };
+    });
+};
 
 const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
     if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
@@ -87,6 +190,7 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
             .map((entry: string) => entry.trim())
         : undefined;
     const signOnceRaw = row?.signOnce;
+    const requiredSignerType = normalizeRequiredSignerType(row?.requiredSignerType);
 
     return {
         $id: String(row?.$id ?? ''),
@@ -99,6 +203,7 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
         roleIndex: Number.isFinite(roleIndex) ? roleIndex : undefined,
         roleIndexes: roleIndexes && roleIndexes.length ? roleIndexes : undefined,
         signerRoles: signerRoles && signerRoles.length ? signerRoles : undefined,
+        requiredSignerType,
         type: normalizeTemplateType(row?.type),
         content: row?.content ?? undefined,
         $createdAt: row?.$createdAt ?? undefined,
@@ -125,16 +230,16 @@ const computeSlotError = (
     }
 
     const slotField = slot.scheduledFieldId;
+    const slotDays = normalizeWeekdays(slot);
 
     if (
-        typeof slot.dayOfWeek !== 'number' ||
+        slotDays.length === 0 ||
         typeof slot.startTimeMinutes !== 'number' ||
         typeof slot.endTimeMinutes !== 'number'
     ) {
         return undefined;
     }
 
-    const slotDayOfWeek = slot.dayOfWeek;
     const slotStartTime = slot.startTimeMinutes;
     const slotEndTime = slot.endTimeMinutes;
 
@@ -156,7 +261,8 @@ const computeSlotError = (
             return false;
         }
 
-        if (typeof other.dayOfWeek !== 'number' || other.dayOfWeek !== slotDayOfWeek) {
+        const otherDays = normalizeWeekdays(other);
+        if (otherDays.length === 0 || !otherDays.some((day) => slotDays.includes(day))) {
             return false;
         }
 
@@ -514,6 +620,7 @@ const leagueSlotSchema: z.ZodType<LeagueSlotForm> = z.object({
     $id: z.string().optional(),
     scheduledFieldId: z.string().optional(),
     dayOfWeek: z.number().int().min(0).max(6).optional(),
+    daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
     startTimeMinutes: z.number().int().nonnegative().optional(),
     endTimeMinutes: z.number().int().positive().optional(),
     repeating: z.boolean().optional(),
@@ -667,6 +774,17 @@ const eventFormSchema = z
         }
 
         if (values.eventType === 'LEAGUE') {
+            if (
+                values.leagueData.includePlayoffs &&
+                !(typeof values.leagueData.playoffTeamCount === 'number' && values.leagueData.playoffTeamCount >= 2)
+            ) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: 'Playoff team count is required when playoffs are enabled',
+                    path: ['leagueData', 'playoffTeamCount'],
+                });
+            }
+
             if (!values.leagueSlots.length) {
                 ctx.addIssue({
                     code: "custom",
@@ -682,11 +800,11 @@ const eventFormSchema = z
                         path: ['leagueSlots', index, 'scheduledFieldId'],
                     });
                 }
-                if (typeof slot.dayOfWeek !== 'number') {
+                if (!normalizeWeekdays(slot).length) {
                     ctx.addIssue({
                         code: "custom",
-                        message: 'Select a day',
-                        path: ['leagueSlots', index, 'dayOfWeek'],
+                        message: 'Select at least one day',
+                        path: ['leagueSlots', index, 'daysOfWeek'],
                     });
                 }
                 if (!Number.isFinite(slot.startTimeMinutes)) {
@@ -730,18 +848,25 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const refsPrefilledRef = useRef<boolean>(false);
     const lastResetEventIdRef = useRef<string | null>(null);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
-    const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => ({
-        key: slot?.$id ?? createClientId(),
-        $id: slot?.$id,
-        scheduledFieldId: slot?.scheduledFieldId ? slot.scheduledFieldId as string : undefined,
-        dayOfWeek: slot?.dayOfWeek,
-        startTimeMinutes: slot?.startTimeMinutes,
-        endTimeMinutes: slot?.endTimeMinutes,
-        repeating: slot?.repeating ?? true,
-        conflicts: [],
-        checking: false,
-        error: undefined,
-    }), []);
+    const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => {
+        const normalizedDays = normalizeWeekdays({
+            dayOfWeek: typeof slot?.dayOfWeek === 'number' ? slot.dayOfWeek : undefined,
+            daysOfWeek: Array.isArray(slot?.daysOfWeek) ? slot.daysOfWeek : undefined,
+        });
+        return {
+            key: slot?.$id ?? createClientId(),
+            $id: slot?.$id,
+            scheduledFieldId: slot?.scheduledFieldId ? slot.scheduledFieldId as string : undefined,
+            dayOfWeek: normalizedDays[0],
+            daysOfWeek: normalizedDays,
+            startTimeMinutes: slot?.startTimeMinutes,
+            endTimeMinutes: slot?.endTimeMinutes,
+            repeating: slot?.repeating ?? true,
+            conflicts: [],
+            checking: false,
+            error: undefined,
+        };
+    }, []);
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);
     // Cached Stripe onboarding state pulled from the current user so paid inputs can be enabled/disabled.
@@ -979,28 +1104,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         const defaultSlots = (() => {
             if (Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
-                return (defaults.timeSlots as TimeSlot[]).map((slot) =>
-                    createSlotForm({
-                        $id: slot.$id,
-                        scheduledFieldId: slot.scheduledFieldId ?? defaultFieldId,
-                        dayOfWeek: slot.dayOfWeek,
-                        startTimeMinutes: slot.startTimeMinutes,
-                        endTimeMinutes: slot.endTimeMinutes,
-                        repeating: slot.repeating,
-                    })
-                );
+                return mergeSlotPayloadsForForm(defaults.timeSlots as TimeSlot[], defaultFieldId)
+                    .map((slot) => createSlotForm(slot));
             }
 
             if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE' && activeEditingEvent.timeSlots?.length) {
-                return (activeEditingEvent.timeSlots || []).map((slot) => {
-                    return createSlotForm({
-                        $id: slot.$id,
-                        scheduledFieldId: slot.scheduledFieldId,
-                        dayOfWeek: slot.dayOfWeek,
-                        startTimeMinutes: slot.startTimeMinutes,
-                        endTimeMinutes: slot.endTimeMinutes,
-                    });
-                });
+                return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
+                    .map((slot) => createSlotForm(slot));
             }
             return [createSlotForm()];
         })();
@@ -1125,9 +1235,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const templateOptions = useMemo(
         () => templateDocuments.map((template) => {
             const templateType = template.type ?? 'PDF';
+            const signerLabel = getRequiredSignerTypeLabel(template.requiredSignerType);
             return {
                 value: template.$id,
-                label: `${template.title || 'Untitled Template'} (${templateType})`,
+                label: `${template.title || 'Untitled Template'} (${templateType}, ${signerLabel})`,
             };
         }),
         [templateDocuments],
@@ -1593,11 +1704,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!shouldManageLocalFields) {
             return;
         }
+        const fallbackDivisions = defaultFieldDivisionKeys(eventData.divisions);
         setFields(prev => {
             const normalized = prev.slice(0, fieldCount).map((field, index) => ({
                 ...field,
                 fieldNumber: index + 1,
                 type: eventData.fieldType,
+                divisions: (() => {
+                    const current = normalizeDivisionKeys(field.divisions);
+                    return current.length ? current : fallbackDivisions;
+                })(),
             }));
 
             if (normalized.length < fieldCount) {
@@ -1610,13 +1726,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         location: '',
                         lat: 0,
                         long: 0,
+                        divisions: fallbackDivisions,
                     } as Field);
                 }
             }
 
             return normalized;
         });
-    }, [fieldCount, shouldManageLocalFields, eventData.fieldType]);
+    }, [fieldCount, shouldManageLocalFields, eventData.fieldType, eventData.divisions]);
 
     // For organizations with existing facilities, seed the field list with their saved ordering.
     useEffect(() => {
@@ -1678,6 +1795,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ...current,
             ...updates,
         };
+        const normalizedDays = normalizeWeekdays(updated);
+        updated.dayOfWeek = normalizedDays[0] as LeagueSlotForm['dayOfWeek'];
+        updated.daysOfWeek = normalizedDays as LeagueSlotForm['daysOfWeek'];
 
         updateLeagueSlots(prev => {
             const next = [...prev];
@@ -1701,6 +1821,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return next;
         });
     }, [hasImmutableFields, setFields, shouldManageLocalFields]);
+
+    const handleLocalFieldDivisionsChange = useCallback((index: number, divisions: string[]) => {
+        if (!shouldManageLocalFields || hasImmutableFields) {
+            return;
+        }
+        const fallbackDivisions = defaultFieldDivisionKeys(eventData.divisions);
+        const normalizedDivisions = normalizeDivisionKeys(divisions);
+        setFields((prev) => {
+            const next = [...prev];
+            if (next[index]) {
+                next[index] = {
+                    ...next[index],
+                    divisions: normalizedDivisions.length ? normalizedDivisions : fallbackDivisions,
+                };
+            }
+            return next;
+        });
+    }, [eventData.divisions, hasImmutableFields, setFields, shouldManageLocalFields]);
 
     // Ensure leagues default their end date to the start date until schedules generate an actual end.
     useEffect(() => {
@@ -1747,23 +1885,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setPlayoffData(buildTournamentConfig());
             }
 
-            const slots = (activeEditingEvent.timeSlots || []).map(slot => {
-                const fieldRef = (() => {
-                    const fieldId = slot.scheduledFieldId
-                    if (!fieldId) {
-                        return undefined;
-                    }
-                    return activeEditingEvent.fields?.find((field) => field.$id === fieldId);
-                })();
-
-                return createSlotForm({
-                    $id: slot.$id,
-                    scheduledFieldId: fieldRef ? fieldRef.$id : "",
-                    dayOfWeek: slot.dayOfWeek,
-                    startTimeMinutes: slot.startTimeMinutes,
-                    endTimeMinutes: slot.endTimeMinutes,
-                });
-            });
+            const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
+            const slots = mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [], fallbackFieldId)
+                .map((slot) => createSlotForm(slot));
 
             const initialSlots = slots.length > 0 ? slots : [createSlotForm()];
             setLeagueSlots(normalizeSlotState(initialSlots, activeEditingEvent.eventType));
@@ -1787,16 +1911,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         const fallbackFieldId = immutableFields[0]?.$id;
-        const slotForms = immutableTimeSlots.map((slot) =>
-            createSlotForm({
-                $id: slot.$id,
-                scheduledFieldId: slot.scheduledFieldId ?? fallbackFieldId,
-                dayOfWeek: slot.dayOfWeek,
-                startTimeMinutes: slot.startTimeMinutes,
-                endTimeMinutes: slot.endTimeMinutes,
-                repeating: slot.repeating,
-            })
-        );
+        const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
+            .map((slot) => createSlotForm(slot));
         setLeagueSlots(normalizeSlotState(slotForms, eventData.eventType));
     }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType]);
 
@@ -2131,11 +2247,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
         } else {
             const localFields = hasImmutableFields ? immutableFields : fields;
+            const fallbackDivisions = defaultFieldDivisionKeys(source.divisions);
             if (localFields.length) {
                 draft.fields = localFields.map((field, idx) => ({
                     ...field,
                     fieldNumber: field.fieldNumber ?? idx + 1,
                     type: field.type || eventData.fieldType,
+                    divisions: (() => {
+                        const normalized = normalizeDivisionKeys(field.divisions);
+                        return normalized.length ? normalized : fallbackDivisions;
+                    })(),
                 }));
                 const fieldIds = toIdList(localFields);
                 if (fieldIds.length) {
@@ -2238,15 +2359,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const slotDocuments = source.leagueSlots
                 .filter((slot) =>
                     slot.scheduledFieldId &&
-                    typeof slot.dayOfWeek === 'number' &&
+                    normalizeWeekdays(slot).length > 0 &&
                     typeof slot.startTimeMinutes === 'number' &&
                     typeof slot.endTimeMinutes === 'number',
                 )
                 .map((slot) => {
                     const slotId = slot.$id || slot.key;
+                    const normalizedDays = normalizeWeekdays(slot);
                     const serialized: TimeSlot = {
                         $id: slotId,
-                        dayOfWeek: slot.dayOfWeek as TimeSlot['dayOfWeek'],
+                        dayOfWeek: normalizedDays[0] as TimeSlot['dayOfWeek'],
+                        daysOfWeek: normalizedDays as TimeSlot['daysOfWeek'],
                         startTimeMinutes: Number(slot.startTimeMinutes),
                         endTimeMinutes: Number(slot.endTimeMinutes),
                         repeating: slot.repeating !== false,
@@ -2924,14 +3047,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             Fields will be created for this event using the names you provide below.
                                         </p>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="space-y-3">
                                         {fields.map((field, index) => (
-                                            <TextInput
-                                                key={field.$id}
-                                                label={`Field ${field.fieldNumber ?? index + 1} Name`}
-                                                value={field.name ?? ''}
-                                                onChange={(event) => handleLocalFieldNameChange(index, event.currentTarget.value)}
-                                            />
+                                            <div key={field.$id} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <TextInput
+                                                    label={`Field ${field.fieldNumber ?? index + 1} Name`}
+                                                    value={field.name ?? ''}
+                                                    onChange={(event) => handleLocalFieldNameChange(index, event.currentTarget.value)}
+                                                />
+                                                <MantineMultiSelect
+                                                    label="Allowed Divisions"
+                                                    data={EVENT_DIVISION_OPTIONS}
+                                                    value={normalizeDivisionKeys(field.divisions)}
+                                                    onChange={(values) => handleLocalFieldDivisionsChange(index, values)}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    searchable
+                                                    clearable
+                                                />
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
@@ -3040,13 +3173,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         label="Divisions"
                                         withAsterisk
                                         placeholder="Select divisions"
-                                        data={[
-                                            { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
-                                            { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
-                                            { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
-                                            { value: 'expert', label: 'Expert (4.5+)' },
-                                            { value: 'open', label: 'Open (All Skill Levels)' },
-                                        ]}
+                                        data={EVENT_DIVISION_OPTIONS}
                                         value={field.value}
                                         disabled={isImmutableField('divisions')}
                                         comboboxProps={sharedComboboxProps}

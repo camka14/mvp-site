@@ -69,9 +69,12 @@ export default function ProfilePage() {
     const [childrenLoading, setChildrenLoading] = useState(false);
     const [childrenError, setChildrenError] = useState<string | null>(null);
     const [creatingChild, setCreatingChild] = useState(false);
+    const [updatingChild, setUpdatingChild] = useState(false);
     const [linkingChild, setLinkingChild] = useState(false);
     const [childFormError, setChildFormError] = useState<string | null>(null);
     const [linkFormError, setLinkFormError] = useState<string | null>(null);
+    const [showAddChildForm, setShowAddChildForm] = useState(false);
+    const [editingChildUserId, setEditingChildUserId] = useState<string | null>(null);
     const [childForm, setChildForm] = useState({
         firstName: '',
         lastName: '',
@@ -117,6 +120,8 @@ export default function ProfilePage() {
     const [restartingSubId, setRestartingSubId] = useState<string | null>(null);
 
     const userHasStripeAccount = Boolean(user?.hasStripeAccount || user?.stripeAccountId);
+    const isEditingChild = Boolean(editingChildUserId);
+    const childFormSubmitting = creatingChild || updatingChild;
     const today = new Date();
     const maxDob = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -200,28 +205,81 @@ export default function ProfilePage() {
         }
     }, [user, loadChildren]);
 
-    const handleCreateChild = async () => {
+    const resetChildForm = () => {
+        setChildForm({
+            firstName: '',
+            lastName: '',
+            email: '',
+            dateOfBirth: '',
+            relationship: 'parent',
+        });
+        setEditingChildUserId(null);
+        setChildFormError(null);
+    };
+
+    const handleOpenAddChild = () => {
+        resetChildForm();
+        setShowAddChildForm(true);
+    };
+
+    const handleEditChild = (child: FamilyChild) => {
+        setChildForm({
+            firstName: child.firstName || '',
+            lastName: child.lastName || '',
+            email: child.email || '',
+            dateOfBirth: toDateInputValue(child.dateOfBirth),
+            relationship: child.relationship || 'parent',
+        });
+        setEditingChildUserId(child.userId);
+        setChildFormError(null);
+        setShowAddChildForm(true);
+    };
+
+    const handleCancelChildForm = () => {
+        resetChildForm();
+        setShowAddChildForm(false);
+    };
+
+    const handleSaveChild = async () => {
         if (!childForm.firstName.trim() || !childForm.lastName.trim() || !childForm.dateOfBirth.trim()) {
             setChildFormError('First name, last name, and date of birth are required.');
             return;
         }
-        setCreatingChild(true);
+
+        const payload = {
+            firstName: childForm.firstName.trim(),
+            lastName: childForm.lastName.trim(),
+            email: childForm.email.trim() || undefined,
+            dateOfBirth: childForm.dateOfBirth.trim(),
+            relationship: childForm.relationship,
+        };
+
         setChildFormError(null);
+
+        if (editingChildUserId) {
+            setUpdatingChild(true);
+            try {
+                await familyService.updateChildAccount({
+                    childUserId: editingChildUserId,
+                    ...payload,
+                });
+                resetChildForm();
+                setShowAddChildForm(false);
+                await loadChildren();
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to update child.';
+                setChildFormError(message);
+            } finally {
+                setUpdatingChild(false);
+            }
+            return;
+        }
+
+        setCreatingChild(true);
         try {
-            await familyService.createChildAccount({
-                firstName: childForm.firstName.trim(),
-                lastName: childForm.lastName.trim(),
-                email: childForm.email.trim() || undefined,
-                dateOfBirth: childForm.dateOfBirth.trim(),
-                relationship: childForm.relationship,
-            });
-            setChildForm({
-                firstName: '',
-                lastName: '',
-                email: '',
-                dateOfBirth: '',
-                relationship: 'parent',
-            });
+            await familyService.createChildAccount(payload);
+            resetChildForm();
+            setShowAddChildForm(false);
             await loadChildren();
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to create child.';
@@ -727,89 +785,63 @@ export default function ProfilePage() {
                                     {childrenError}
                                 </Alert>
                             )}
-                            {childrenLoading ? (
-                                <Text c="dimmed">Loading children...</Text>
-                            ) : children.length === 0 ? (
-                                <Text c="dimmed">No children linked yet.</Text>
-                            ) : (
-                                <SimpleGrid
-                                    cols={3}
-                                    spacing="md"
-                                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}
-                                >
-                                    {children.map((child) => {
-                                        const name = `${child.firstName || ''} ${child.lastName || ''}`.trim();
-                                        const hasEmail = typeof child.hasEmail === 'boolean'
-                                            ? child.hasEmail
-                                            : Boolean(child.email);
-                                        return (
-                                            <Paper key={child.userId} withBorder radius="md" p="md" shadow="xs">
-                                                <Text fw={600}>{name || 'Child'}</Text>
-                                                <Text size="sm" c="dimmed">
-                                                    Age: {typeof child.age === 'number' ? child.age : 'Unknown'}
-                                                </Text>
-                                                <Text size="sm" c="dimmed">
-                                                    Status: {child.linkStatus ?? 'Unknown'}
-                                                </Text>
-                                                {!hasEmail && (
-                                                    <Alert color="yellow" variant="light" mt="sm">
-                                                        Missing email. Consent links cannot be sent until an email is added.
-                                                    </Alert>
-                                                )}
-                                            </Paper>
-                                        );
-                                    })}
-                                </SimpleGrid>
+                            <Button onClick={handleOpenAddChild} mb="md">
+                                Add child
+                            </Button>
+
+                            {showAddChildForm && (
+                                <Paper withBorder radius="md" p="md" shadow="xs" mb="md">
+                                    <div className="space-y-3">
+                                        <Title order={5}>{isEditingChild ? 'Edit child details' : 'Add a child'}</Title>
+                                        {childFormError && (
+                                            <Alert color="red" variant="light">
+                                                {childFormError}
+                                            </Alert>
+                                        )}
+                                        <TextInput
+                                            label="First name"
+                                            value={childForm.firstName}
+                                            onChange={(event) => setChildForm(prev => ({ ...prev, firstName: event.currentTarget.value }))}
+                                        />
+                                        <TextInput
+                                            label="Last name"
+                                            value={childForm.lastName}
+                                            onChange={(event) => setChildForm(prev => ({ ...prev, lastName: event.currentTarget.value }))}
+                                        />
+                                        <TextInput
+                                            label="Email (optional)"
+                                            value={childForm.email}
+                                            onChange={(event) => setChildForm(prev => ({ ...prev, email: event.currentTarget.value }))}
+                                        />
+                                        <TextInput
+                                            label="Date of birth"
+                                            type="date"
+                                            value={childForm.dateOfBirth}
+                                            max={maxDob}
+                                            onChange={(event) => setChildForm(prev => ({ ...prev, dateOfBirth: event.currentTarget.value }))}
+                                        />
+                                        <Select
+                                            label="Relationship"
+                                            data={[
+                                                { value: 'parent', label: 'Parent' },
+                                                { value: 'guardian', label: 'Guardian' },
+                                            ]}
+                                            value={childForm.relationship}
+                                            onChange={(value) => setChildForm(prev => ({ ...prev, relationship: value || 'parent' }))}
+                                        />
+                                        <Group>
+                                            <Button onClick={handleSaveChild} loading={childFormSubmitting}>
+                                                {isEditingChild ? 'Save child' : 'Add child'}
+                                            </Button>
+                                            <Button variant="subtle" color="gray" onClick={handleCancelChildForm}>
+                                                Cancel
+                                            </Button>
+                                        </Group>
+                                    </div>
+                                </Paper>
                             )}
 
-                            <SimpleGrid
-                                cols={2}
-                                spacing="lg"
-                                mt="lg"
-                                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}
-                            >
-                                <div className="space-y-3">
-                                    <Title order={5}>Add a child</Title>
-                                    {childFormError && (
-                                        <Alert color="red" variant="light">
-                                            {childFormError}
-                                        </Alert>
-                                    )}
-                                    <TextInput
-                                        label="First name"
-                                        value={childForm.firstName}
-                                        onChange={(event) => setChildForm(prev => ({ ...prev, firstName: event.currentTarget.value }))}
-                                    />
-                                    <TextInput
-                                        label="Last name"
-                                        value={childForm.lastName}
-                                        onChange={(event) => setChildForm(prev => ({ ...prev, lastName: event.currentTarget.value }))}
-                                    />
-                                    <TextInput
-                                        label="Email (optional)"
-                                        value={childForm.email}
-                                        onChange={(event) => setChildForm(prev => ({ ...prev, email: event.currentTarget.value }))}
-                                    />
-                                    <TextInput
-                                        label="Date of birth"
-                                        type="date"
-                                        value={childForm.dateOfBirth}
-                                        max={maxDob}
-                                        onChange={(event) => setChildForm(prev => ({ ...prev, dateOfBirth: event.currentTarget.value }))}
-                                    />
-                                    <Select
-                                        label="Relationship"
-                                        data={[
-                                            { value: 'parent', label: 'Parent' },
-                                            { value: 'guardian', label: 'Guardian' },
-                                        ]}
-                                        value={childForm.relationship}
-                                        onChange={(value) => setChildForm(prev => ({ ...prev, relationship: value || 'parent' }))}
-                                    />
-                                    <Button onClick={handleCreateChild} loading={creatingChild}>
-                                        Add child
-                                    </Button>
-                                </div>
+                            <Paper withBorder radius="md" p="md" shadow="xs">
                                 <div className="space-y-3">
                                     <Title order={5}>Link an existing child</Title>
                                     {linkFormError && (
@@ -843,7 +875,61 @@ export default function ProfilePage() {
                                         Provide either the child email or user ID to link an existing account.
                                     </Text>
                                 </div>
-                            </SimpleGrid>
+                            </Paper>
+
+                            <Title order={5} mt="lg" mb="sm">Children</Title>
+                            {childrenLoading ? (
+                                <Text c="dimmed">Loading children...</Text>
+                            ) : children.length === 0 ? (
+                                <Text c="dimmed">No children linked yet.</Text>
+                            ) : (
+                                <SimpleGrid
+                                    cols={3}
+                                    spacing="md"
+                                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}
+                                >
+                                    {children.map((child) => {
+                                        const name = `${child.firstName || ''} ${child.lastName || ''}`.trim();
+                                        const hasEmail = typeof child.hasEmail === 'boolean'
+                                            ? child.hasEmail
+                                            : Boolean(child.email);
+                                        const relationship = child.relationship
+                                            ? child.relationship.charAt(0).toUpperCase() + child.relationship.slice(1)
+                                            : 'Unknown';
+                                        return (
+                                            <Paper
+                                                key={child.userId}
+                                                withBorder
+                                                radius="md"
+                                                p="md"
+                                                shadow="xs"
+                                                style={{ aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                                            >
+                                                <div>
+                                                    <Text fw={600}>{name || 'Child'}</Text>
+                                                    <Text size="sm" c="dimmed">
+                                                        Age: {typeof child.age === 'number' ? child.age : 'Unknown'}
+                                                    </Text>
+                                                    <Text size="sm" c="dimmed">
+                                                        Status: {child.linkStatus ?? 'Unknown'}
+                                                    </Text>
+                                                    <Text size="sm" c="dimmed">
+                                                        Relationship: {relationship}
+                                                    </Text>
+                                                    {!hasEmail && (
+                                                        <Alert color="yellow" variant="light" mt="sm">
+                                                            Missing email. Consent links cannot be sent until an email is added.
+                                                        </Alert>
+                                                    )}
+                                                </div>
+                                                <Button size="xs" variant="light" mt="md" onClick={() => handleEditChild(child)}>
+                                                    Edit
+                                                </Button>
+                                            </Paper>
+                                        );
+                                    })}
+                                </SimpleGrid>
+                            )}
                         </Paper>
                     </div>
 

@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
       dateOfBirth: child?.dateOfBirth ? child.dateOfBirth.toISOString() : null,
       age,
       linkStatus: link.status.toLowerCase(),
+      relationship: link.relationship ?? null,
       email,
       hasEmail: Boolean(email),
     };

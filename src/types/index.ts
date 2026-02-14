@@ -204,7 +204,8 @@ export type MatchPayload = Omit<Match, MatchRelationKeys> & {
 
 export interface TimeSlot {
   $id: string;
-  dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  dayOfWeek?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  daysOfWeek?: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
   startTimeMinutes?: number;
   endTimeMinutes?: number;
   startDate?: string;
@@ -467,6 +468,11 @@ export interface Organization {
 }
 
 export type TemplateDocumentType = 'PDF' | 'TEXT';
+export type TemplateRequiredSignerType =
+  | 'PARTICIPANT'
+  | 'PARENT_GUARDIAN'
+  | 'CHILD'
+  | 'PARENT_GUARDIAN_CHILD';
 
 export interface TemplateDocument {
   $id: string;
@@ -479,6 +485,7 @@ export interface TemplateDocument {
   roleIndex?: number;
   roleIndexes?: number[];
   signerRoles?: string[];
+  requiredSignerType?: TemplateRequiredSignerType;
   type?: TemplateDocumentType;
   content?: string;
   $createdAt?: string;
@@ -783,10 +790,32 @@ export function toEventPayload(event: Event): EventPayload {
       })
     : undefined;
 
+  const normalizeSlotDays = (
+    slot: Pick<TimeSlot, 'dayOfWeek' | 'daysOfWeek'>,
+  ): Array<0 | 1 | 2 | 3 | 4 | 5 | 6> => {
+    const rawValues = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+      ? slot.daysOfWeek
+      : slot.dayOfWeek !== undefined
+        ? [slot.dayOfWeek]
+        : [];
+    return Array.from(
+      new Set(
+        rawValues
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+      ),
+    ) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+  };
+
   const timeSlotPayloads = Array.isArray(timeSlots) && timeSlots.length
     ? timeSlots.map((slot) => {
         const { event: slotEvent, ...slotRest } = slot;
-        return slotRest;
+        const normalizedDays = normalizeSlotDays(slot);
+        return {
+          ...slotRest,
+          dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
+          daysOfWeek: normalizedDays,
+        };
       })
     : undefined;
 

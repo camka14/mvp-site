@@ -1153,9 +1153,23 @@ class EventService {
     private mapRowToTimeSlot(row: any): TimeSlot {
         const startTime = this.normalizeTime(row.startTimeMinutes ?? row.startTime) ?? 0;
         const endTime = this.normalizeTime(row.endTimeMinutes ?? row.endTime) ?? startTime;
+        const normalizedDays = Array.from(
+            new Set(
+                (Array.isArray(row.daysOfWeek) && row.daysOfWeek.length
+                    ? row.daysOfWeek
+                    : row.dayOfWeek !== undefined
+                        ? [row.dayOfWeek]
+                        : []
+                )
+                    .map((value: unknown) => Number(value))
+                    .filter((value: number) => Number.isInteger(value) && value >= 0 && value <= 6),
+            ),
+        ) as NonNullable<TimeSlot['daysOfWeek']>;
+
         const slot: TimeSlot = {
             $id: row.$id ?? row.id,
-            dayOfWeek: Number(row.dayOfWeek ?? 0) as TimeSlot['dayOfWeek'],
+            dayOfWeek: (normalizedDays[0] ?? Number(row.dayOfWeek ?? 0)) as TimeSlot['dayOfWeek'],
+            daysOfWeek: normalizedDays,
             startTimeMinutes: startTime,
             endTimeMinutes: endTime,
             repeating: row.repeating === undefined ? true : Boolean(row.repeating),

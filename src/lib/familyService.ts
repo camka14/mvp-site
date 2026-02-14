@@ -9,6 +9,7 @@ export type FamilyChild = {
   dateOfBirth?: string | null;
   age?: number;
   linkStatus?: FamilyLinkStatus;
+  relationship?: string | null;
   email?: string | null;
   hasEmail?: boolean;
 };
@@ -19,6 +20,13 @@ type FamilyChildrenResponse = {
 };
 
 type CreateChildResponse = {
+  childUserId?: string;
+  linkId?: string;
+  status?: FamilyLinkStatus;
+  error?: string;
+};
+
+type UpdateChildResponse = {
   childUserId?: string;
   linkId?: string;
   status?: FamilyLinkStatus;
@@ -53,6 +61,25 @@ class FamilyService {
     const result = await apiRequest<CreateChildResponse>('/api/family/children', {
       method: 'POST',
       body: params,
+    });
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  }
+
+  async updateChildAccount(params: {
+    childUserId: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+    dateOfBirth: string;
+    relationship?: string;
+  }): Promise<UpdateChildResponse> {
+    const { childUserId, ...body } = params;
+    const result = await apiRequest<UpdateChildResponse>(`/api/family/children/${encodeURIComponent(childUserId)}`, {
+      method: 'PATCH',
+      body,
     });
     if (result?.error) {
       throw new Error(result.error);

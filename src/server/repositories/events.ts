@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from '../../generated/prisma/client';
+import type { Prisma, PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import {
   Division,
@@ -22,6 +22,21 @@ const ensureNumberArray = (value: unknown): number[] =>
   ensureArray(value as Array<number | string>)
     .map((item) => (typeof item === 'number' ? item : Number(item)))
     .filter((item) => Number.isFinite(item));
+
+const normalizeDayValues = (slot: { dayOfWeek?: unknown; daysOfWeek?: unknown }): number[] => {
+  const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+    ? slot.daysOfWeek
+    : slot.dayOfWeek !== undefined
+      ? [slot.dayOfWeek]
+      : [];
+  return Array.from(
+    new Set(
+      source
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+    ),
+  ).sort((a, b) => a - b);
+};
 
 const coerceDate = (value: unknown): Date | null => {
   if (value instanceof Date) return value;
@@ -79,10 +94,17 @@ const buildTeams = (rows: any[], divisionMap: Map<string, Division>, fallbackDiv
   return teams;
 };
 
-const buildFields = (rows: any[], divisionMap: Map<string, Division>) => {
+const buildFields = (
+  rows: any[],
+  divisionMap: Map<string, Division>,
+  fallbackDivisionIds: string[],
+) => {
   const fields: Record<string, PlayingField> = {};
   for (const row of rows) {
-    const divisions = ensureStringArray(row.divisions).map((id) =>
+    const divisionIds = ensureStringArray(row.divisions).length
+      ? ensureStringArray(row.divisions)
+      : fallbackDivisionIds;
+    const divisions = divisionIds.map((id) =>
       divisionMap.get(id) ?? new Division(id, id),
     );
     fields[row.id] = new PlayingField({
@@ -100,17 +122,24 @@ const buildFields = (rows: any[], divisionMap: Map<string, Division>) => {
 };
 
 const buildTimeSlots = (rows: any[]) => {
-  return rows.map((row) => new TimeSlot({
-    id: row.id,
-    dayOfWeek: row.dayOfWeek ?? 0,
-    startDate: row.startDate instanceof Date ? row.startDate : new Date(row.startDate),
-    endDate: row.endDate ? new Date(row.endDate) : null,
-    repeating: Boolean(row.repeating),
-    startTimeMinutes: row.startTimeMinutes ?? 0,
-    endTimeMinutes: row.endTimeMinutes ?? 0,
-    price: row.price ?? null,
-    field: row.scheduledFieldId ?? null,
-  }));
+  return rows.flatMap((row) => {
+    const normalizedDays = normalizeDayValues({
+      dayOfWeek: row.dayOfWeek,
+      daysOfWeek: (row as any).daysOfWeek,
+    });
+    const days = normalizedDays.length ? normalizedDays : [0];
+    return days.map((day, index) => new TimeSlot({
+      id: days.length === 1 ? row.id : `${row.id}__d${day}_${index}`,
+      dayOfWeek: day,
+      startDate: row.startDate instanceof Date ? row.startDate : new Date(row.startDate),
+      endDate: row.endDate ? new Date(row.endDate) : null,
+      repeating: Boolean(row.repeating),
+      startTimeMinutes: row.startTimeMinutes ?? 0,
+      endTimeMinutes: row.endTimeMinutes ?? 0,
+      price: row.price ?? null,
+      field: row.scheduledFieldId ?? null,
+    }));
+  });
 };
 
 const buildReferees = (rows: any[], divisions: Division[]) => {
@@ -221,7 +250,8 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
   ]);
 
-  const fields = buildFields(fieldRows, divisionMap);
+  const fallbackFieldDivisionIds = divisionIds.length ? divisionIds : ['OPEN'];
+  const fields = buildFields(fieldRows, divisionMap, fallbackFieldDivisionIds);
   const teams = buildTeams(teamRows, divisionMap, fallbackDivision);
   const timeSlots = buildTimeSlots(timeSlotRows);
   const referees = buildReferees(refereeRows, divisions);
@@ -385,6 +415,34 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const teams = Array.isArray(payload.teams) ? payload.teams : [];
   const timeSlots = Array.isArray(payload.timeSlots) ? payload.timeSlots : [];
   const eventDivisionIds = ensureStringArray(payload.divisions);
+  const normalizedEventDivisionIds = eventDivisionIds.length ? eventDivisionIds : ['OPEN'];
+
+  const expandedTimeSlots = timeSlots.flatMap((slot: any, index: number) => {
+    const baseSlotId = slot.$id || slot.id || `${id}__slot_${index + 1}`;
+    const normalizedDays = normalizeDayValues({
+      dayOfWeek: slot.dayOfWeek,
+      daysOfWeek: slot.daysOfWeek,
+    });
+    if (!normalizedDays.length) {
+      return [{
+        ...slot,
+        id: baseSlotId,
+        dayOfWeek: null,
+      }];
+    }
+    if (normalizedDays.length === 1) {
+      return [{
+        ...slot,
+        id: baseSlotId,
+        dayOfWeek: normalizedDays[0],
+      }];
+    }
+    return normalizedDays.map((day) => ({
+      ...slot,
+      id: `${baseSlotId}__d${day}`,
+      dayOfWeek: day,
+    }));
+  });
 
   const fieldIds = Array.isArray(payload.fieldIds) && payload.fieldIds.length
     ? payload.fieldIds
@@ -392,9 +450,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const teamIds = Array.isArray(payload.teamIds) && payload.teamIds.length
     ? payload.teamIds
     : teams.map((team: any) => team.$id || team.id).filter(Boolean);
-  const timeSlotIds = Array.isArray(payload.timeSlotIds) && payload.timeSlotIds.length
-    ? payload.timeSlotIds
-    : timeSlots.map((slot: any) => slot.$id || slot.id).filter(Boolean);
+  const derivedTimeSlotIds = expandedTimeSlots.map((slot: any) => slot.id).filter(Boolean);
+  const timeSlotIds = derivedTimeSlotIds.length
+    ? derivedTimeSlotIds
+    : Array.isArray(payload.timeSlotIds) && payload.timeSlotIds.length
+      ? payload.timeSlotIds
+      : [];
 
   const start = coerceDate(payload.start) ?? new Date();
   const end = coerceDate(payload.end) ?? start;
@@ -405,7 +466,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
 	    start,
 	    end,
 	    description: payload.description ?? null,
-	    divisions: eventDivisionIds,
+	    divisions: normalizedEventDivisionIds,
     winnerSetCount: payload.winnerSetCount ?? null,
     loserSetCount: payload.loserSetCount ?? null,
     doubleElimination: payload.doubleElimination ?? false,
@@ -485,6 +546,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
 	        fieldDivisions = existing.divisions;
 	      }
 	    }
+	    if (!fieldDivisions.length) {
+	      fieldDivisions = ['OPEN'];
+	    }
 	    await client.fields.upsert({
 	      where: { id: fieldId },
 	      create: {
@@ -558,8 +622,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     });
   }
 
-  for (const slot of timeSlots) {
-    const slotId = slot.$id || slot.id;
+  for (const slot of expandedTimeSlots) {
+    const slotId = slot.id;
     if (!slotId) continue;
     const startDate = coerceDate(slot.startDate) ?? new Date();
     const endDate = slot.endDate ? coerceDate(slot.endDate) : null;

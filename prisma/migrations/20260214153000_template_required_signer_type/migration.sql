@@ -1,0 +1,2 @@
+ALTER TABLE "TemplateDocuments"
+ADD COLUMN "requiredSignerType" TEXT NOT NULL DEFAULT 'PARTICIPANT';

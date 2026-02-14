@@ -1,3 +1,4 @@
+import type { SignerContext } from '@/lib/templateSignerTypes';
 type JsonRecord = Record<string, unknown>;
 
 const DEFAULT_BOLDSIGN_API_BASE_URL = 'https://api.boldsign.com';
@@ -205,11 +206,13 @@ const toPdfDataUri = (buffer: Buffer): string => {
 export type BoldSignTemplateRole = {
   roleIndex: number;
   signerRole: string;
+  signerContext?: SignerContext;
 };
 
 export const getDefaultTemplateRole = (): BoldSignTemplateRole => ({
   roleIndex: DEFAULT_ROLE_INDEX,
   signerRole: DEFAULT_SIGNER_ROLE,
+  signerContext: 'participant',
 });
 
 export const isBoldSignConfigured = (): boolean => {
@@ -222,9 +225,32 @@ export const createEmbeddedTemplateFromPdf = async (params: {
   description?: string;
   roleIndex?: number;
   signerRole?: string;
+  roles?: Array<{
+    roleIndex?: number;
+    signerRole?: string;
+    signerContext?: SignerContext;
+  }>;
 }) => {
-  const roleIndex = params.roleIndex ?? DEFAULT_ROLE_INDEX;
-  const signerRole = params.signerRole?.trim() || DEFAULT_SIGNER_ROLE;
+  const normalizedRoles: BoldSignTemplateRole[] = (() => {
+    const configuredRoles = Array.isArray(params.roles) ? params.roles : [];
+    const fromConfigured = configuredRoles
+      .map((role, index) => ({
+        roleIndex: parseRoleIndex(role.roleIndex) ?? index + 1,
+        signerRole: role.signerRole?.trim() || DEFAULT_SIGNER_ROLE,
+        signerContext: role.signerContext,
+      }))
+      .filter((role) => role.roleIndex > 0 && role.signerRole.length > 0);
+
+    if (fromConfigured.length > 0) {
+      return fromConfigured;
+    }
+
+    return [{
+      roleIndex: params.roleIndex ?? DEFAULT_ROLE_INDEX,
+      signerRole: params.signerRole?.trim() || DEFAULT_SIGNER_ROLE,
+      signerContext: 'participant',
+    }];
+  })();
 
   const payload = await boldSignRequest<JsonRecord>({
     path: '/v1/template/createEmbeddedTemplateUrl',
@@ -244,12 +270,10 @@ export const createEmbeddedTemplateFromPdf = async (params: {
       DisableEmails: true,
       DisableSMS: true,
       HideDocumentId: true,
-      Roles: [
-        {
-          Name: signerRole,
-          Index: roleIndex,
-        },
-      ],
+      Roles: normalizedRoles.map((role) => ({
+        Name: role.signerRole,
+        Index: role.roleIndex,
+      })),
       Files: [toPdfDataUri(params.fileBytes)],
     },
   });
@@ -260,7 +284,13 @@ export const createEmbeddedTemplateFromPdf = async (params: {
     throw new Error('BoldSign template session response is missing templateId or createUrl.');
   }
 
-  return { templateId, createUrl, roleIndex, signerRole };
+  return {
+    templateId,
+    createUrl,
+    roleIndex: normalizedRoles[0]?.roleIndex ?? DEFAULT_ROLE_INDEX,
+    signerRole: normalizedRoles[0]?.signerRole ?? DEFAULT_SIGNER_ROLE,
+    roles: normalizedRoles,
+  };
 };
 
 export const getTemplateRoles = async (templateId: string): Promise<BoldSignTemplateRole[]> => {

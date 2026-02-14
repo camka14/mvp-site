@@ -31,6 +31,7 @@ describe('boldsignService', () => {
       userId: 'user_1',
       title: 'PDF Waiver',
       signOnce: true,
+      requiredSignerType: 'PARTICIPANT',
       type: 'PDF',
       file,
     });
@@ -48,6 +49,7 @@ describe('boldsignService', () => {
     const body = options?.body as FormData;
     expect(body.get('type')).toBe('PDF');
     expect(body.get('title')).toBe('PDF Waiver');
+    expect(body.get('requiredSignerType')).toBe('PARTICIPANT');
     expect(body.get('file')).toBe(file);
   });
 
@@ -68,6 +70,7 @@ describe('boldsignService', () => {
       userId: 'user_1',
       title: 'Text Waiver',
       signOnce: true,
+      requiredSignerType: 'PARTICIPANT',
       type: 'TEXT',
       content: 'Sample waiver text',
     });
@@ -81,6 +84,7 @@ describe('boldsignService', () => {
           template: expect.objectContaining({
             type: 'TEXT',
             content: 'Sample waiver text',
+            requiredSignerType: 'PARTICIPANT',
           }),
         }),
       }),

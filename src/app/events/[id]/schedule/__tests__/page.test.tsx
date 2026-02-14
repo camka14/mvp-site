@@ -48,6 +48,7 @@ jest.mock('@/lib/eventService', () => ({
     deleteUnpublishedEvent: jest.fn(),
     updateEvent: jest.fn(),
     createEvent: jest.fn(),
+    scheduleEvent: jest.fn(),
   },
 }));
 
@@ -65,6 +66,8 @@ jest.mock('@/lib/organizationService', () => ({
 }));
 
 let capturedEventFormProps: any = null;
+let mockEventFormDraft: any = null;
+let mockEventFormValidateResult = true;
 jest.mock('../components/EventForm', () => {
   const React = require('react');
   const { forwardRef, useEffect, useImperativeHandle } = React;
@@ -74,8 +77,8 @@ jest.mock('../components/EventForm', () => {
     }, [props]);
 
     useImperativeHandle(ref, () => ({
-      getDraft: () => props.event ?? {},
-      validate: async () => true,
+      getDraft: () => mockEventFormDraft ?? props.event ?? {},
+      validate: async () => mockEventFormValidateResult,
     }));
     return <div data-testid="event-form" />;
   });
@@ -144,6 +147,8 @@ describe('League schedule page', () => {
     mockRouter.replace.mockReset();
     mockRouter.back.mockReset();
     capturedEventFormProps = null;
+    mockEventFormDraft = null;
+    mockEventFormValidateResult = true;
     useAppMock.mockReturnValue({
       user: { $id: 'host_1' },
       isAuthenticated: true,
@@ -346,6 +351,121 @@ describe('League schedule page', () => {
     expect(payload.fields?.[0]?.rentalSlotIds).toBeUndefined();
     expect(payload).not.toHaveProperty('attendees');
     expect(eventService.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('blocks create publish when form validation fails (for example missing playoff team count)', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return 'edit';
+        return null;
+      },
+    });
+    mockEventFormValidateResult = false;
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const publishButton = await screen.findByRole('button', { name: /create event/i });
+    fireEvent.click(publishButton);
+
+    await waitFor(() => {
+      expect(eventService.scheduleEvent).not.toHaveBeenCalled();
+    });
+    expect(eventService.scheduleEvent).not.toHaveBeenCalled();
+    expect(eventService.createEvent).not.toHaveBeenCalled();
+    expect(eventService.updateEvent).not.toHaveBeenCalled();
+  });
+
+  it('normalizes create payload with multi-day slots and field divisions before schedule preview', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return 'edit';
+        return null;
+      },
+    });
+
+    mockEventFormDraft = {
+      $id: 'event_create_league',
+      name: 'Create League',
+      description: '',
+      location: 'Main Gym',
+      coordinates: [-83.0, 42.0],
+      start: '2026-01-05T09:00:00.000',
+      end: '2026-01-05T09:00:00.000',
+      eventType: 'LEAGUE',
+      sportId: 'volleyball',
+      fieldType: 'INDOOR',
+      price: 0,
+      maxParticipants: 8,
+      teamSizeLimit: 2,
+      teamSignup: true,
+      singleDivision: true,
+      divisions: ['open'],
+      cancellationRefundHours: 24,
+      registrationCutoffHours: 2,
+      requiredTemplateIds: [],
+      imageId: 'image_1',
+      seedColor: 0,
+      waitListIds: [],
+      freeAgentIds: [],
+      refereeIds: [],
+      fields: [
+        {
+          $id: 'field_local_1',
+          name: 'Court A',
+          fieldNumber: 1,
+          type: 'INDOOR',
+          location: '',
+          lat: 0,
+          long: 0,
+          divisions: ['open'],
+        },
+      ],
+      timeSlots: [
+        {
+          $id: 'slot_multi',
+          dayOfWeek: 1,
+          daysOfWeek: [1, 3],
+          startTimeMinutes: 540,
+          endTimeMinutes: 600,
+          repeating: true,
+          scheduledFieldId: 'field_local_1',
+        },
+      ],
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+    };
+
+    (eventService.scheduleEvent as jest.Mock).mockResolvedValue({
+      event: buildApiEvent({
+        id: 'event_create_league',
+        $id: 'event_create_league',
+        eventType: 'LEAGUE',
+      }),
+      preview: false,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const publishButton = await screen.findByRole('button', { name: /create event/i });
+    fireEvent.click(publishButton);
+
+    await waitFor(() => {
+      expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);
+    });
+
+    const [payload] = (eventService.scheduleEvent as jest.Mock).mock.calls[0];
+    expect(payload?.timeSlots?.[0]).toMatchObject({
+      dayOfWeek: 1,
+      daysOfWeek: [1, 3],
+      scheduledFieldId: 'field_local_1',
+    });
+    expect(payload?.fields?.[0]?.divisions).toEqual(['open']);
   });
 
   it('does not pass a host organization when creating a rental as self', async () => {

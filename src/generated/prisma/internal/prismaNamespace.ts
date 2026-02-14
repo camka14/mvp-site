@@ -3137,6 +3137,7 @@ export const TemplateDocumentsScalarFieldEnum = {
   title: 'title',
   description: 'description',
   signOnce: 'signOnce',
+  requiredSignerType: 'requiredSignerType',
   status: 'status',
   createdBy: 'createdBy',
   roleIndex: 'roleIndex',
