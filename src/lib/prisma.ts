@@ -7,9 +7,18 @@ const parseTimeoutMs = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const parseBoolean = (value: string | undefined): boolean | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return undefined;
+};
+
 // Prevent requests from hanging indefinitely when the DB is unreachable.
 // Override via `PG_CONNECTION_TIMEOUT_MS` if you need a different value.
 const connectionTimeoutMillis = parseTimeoutMs(process.env.PG_CONNECTION_TIMEOUT_MS, 5_000);
+const sslRejectUnauthorized = parseBoolean(process.env.PG_SSL_REJECT_UNAUTHORIZED);
 
 const getConnectionString = (): string => {
   const connectionString = process.env.DATABASE_URL;
@@ -20,11 +29,21 @@ const getConnectionString = (): string => {
 };
 
 const createPrismaClient = (): PrismaClient => {
+  const poolConfig: {
+    connectionString: string;
+    connectionTimeoutMillis: number;
+    ssl?: { rejectUnauthorized: boolean };
+  } = {
+    connectionString: getConnectionString(),
+    connectionTimeoutMillis,
+  };
+
+  if (sslRejectUnauthorized !== undefined) {
+    poolConfig.ssl = { rejectUnauthorized: sslRejectUnauthorized };
+  }
+
   const adapter = new PrismaPg(
-    {
-      connectionString: getConnectionString(),
-      connectionTimeoutMillis,
-    },
+    poolConfig,
     {
       onPoolError: (err) => {
         console.error('[prisma] pool error', err);

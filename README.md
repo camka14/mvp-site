@@ -53,6 +53,7 @@ npm install
   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`
   - `SMTP_FROM`, `SMTP_FROM_NAME`, `SMTP_REPLY_TO`
   - Gmail fallback: `GMAIL_USER`, `GMAIL_PASSWORD`
+  - Optional DB TLS override for self-signed cert chains: `PG_SSL_REJECT_UNAUTHORIZED=false`
 4) Run locally
 ```bash
 npm run dev
