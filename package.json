@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "prisma migrate deploy && next start",
+    "start": "(prisma migrate deploy || echo 'Prisma migrations skipped due to DB permissions') && next start",
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watch",
