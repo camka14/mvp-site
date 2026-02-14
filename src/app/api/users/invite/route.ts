@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const baseUrl = req.nextUrl.origin;
+  const baseUrl = getRequestOrigin(req);
   const updatedSent = await sendInviteEmails(sentRecords, baseUrl);
   const sent = updatedSent.map((record) => withLegacyFields(record));
 

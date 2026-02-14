@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import { withLegacyList } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const baseUrl = req.nextUrl.origin;
+  const baseUrl = getRequestOrigin(req);
   const emailed = await sendInviteEmails(toEmail, baseUrl);
   const emailedMap = new Map(emailed.map((invite) => [invite.id, invite]));
   const updatedInvites = created.map((invite) => emailedMap.get(invite.id) ?? invite);

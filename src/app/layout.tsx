@@ -9,6 +9,7 @@ import { MantineProvider } from '@mantine/core';
 import { ChatProvider } from '@/context/ChatContext';
 import { ChatUIProvider } from '@/context/ChatUIContext';
 import { ChatComponents } from '@/components/chat/ChatComponents';
+import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -67,6 +68,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
                 </ChatUIProvider>
               </ChatProvider>
             )}
+            <MobileAppPrompt />
           </Providers>
         </MantineProvider>
       </body>

@@ -28,10 +28,10 @@ jest.mock('@/server/inviteUsers', () => ({
 
 import { POST } from '@/app/api/invites/route';
 
-const jsonRequest = (body: unknown) =>
+const jsonRequest = (body: unknown, headers: Record<string, string> = {}) =>
   new NextRequest('http://localhost/api/invites', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
 
@@ -127,5 +127,39 @@ describe('/api/invites', () => {
     expect(json.invites[0].$id).toBe('invite_placeholder');
     expect(ensureAuthUserAndUserDataByEmailMock).not.toHaveBeenCalled();
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'http://localhost');
+  });
+
+  it('uses forwarded request origin when sending invite emails', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'inviter_1', isAdmin: false });
+    ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_1', authUserExisted: false });
+
+    const createdAt = new Date('2020-01-01T00:00:00.000Z');
+    const createdInvite = {
+      id: 'invite_forwarded',
+      type: 'player',
+      email: 'forwarded@example.com',
+      status: 'pending',
+      eventId: null,
+      organizationId: null,
+      teamId: null,
+      userId: 'user_1',
+      createdBy: 'inviter_1',
+      firstName: null,
+      lastName: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    prismaMock.invites.create.mockResolvedValue(createdInvite);
+    sendInviteEmailsMock.mockResolvedValue([createdInvite]);
+
+    const res = await POST(
+      jsonRequest(
+        { invites: [{ type: 'player', email: 'forwarded@example.com' }] },
+        { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'mvp.razumly.com' },
+      ),
+    );
+
+    expect(res.status).toBe(201);
+    expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'https://mvp.razumly.com');
   });
 });

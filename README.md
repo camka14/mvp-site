@@ -54,6 +54,13 @@ npm install
   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`
   - `SMTP_FROM`, `SMTP_FROM_NAME`, `SMTP_REPLY_TO`
   - Gmail fallback: `GMAIL_USER`, `GMAIL_PASSWORD`
+  - Invite link/app prompt URL controls:
+  - `PUBLIC_WEB_BASE_URL` (canonical origin used in invite emails; recommended in production)
+  - `NEXT_PUBLIC_MVP_IOS_APP_STORE_URL`
+  - `NEXT_PUBLIC_MVP_ANDROID_PLAY_STORE_URL`
+  - `NEXT_PUBLIC_MVP_IOS_DEEP_LINK`
+  - `NEXT_PUBLIC_MVP_ANDROID_DEEP_LINK`
+  - `NEXT_PUBLIC_SHOW_APP_PROMPT` (`0` to disable mobile prompt)
   - Optional DB TLS override for self-signed cert chains: `PG_SSL_REJECT_UNAUTHORIZED=false`
 4) Run locally
 ```bash
