@@ -25,22 +25,34 @@ const getConnectionString = (): string => {
   if (!connectionString) {
     throw new Error('DATABASE_URL is not set');
   }
-  return connectionString;
+
+  if (sslRejectUnauthorized === undefined) {
+    return connectionString;
+  }
+
+  try {
+    const url = new URL(connectionString);
+    // pg's connection string parser gives priority to `sslmode` over the `ssl` object.
+    // Normalize sslmode directly so env override is deterministic.
+    if (sslRejectUnauthorized) {
+      url.searchParams.set('sslmode', 'verify-full');
+    } else {
+      url.searchParams.set('sslmode', 'no-verify');
+    }
+    return url.toString();
+  } catch {
+    return connectionString;
+  }
 };
 
 const createPrismaClient = (): PrismaClient => {
   const poolConfig: {
     connectionString: string;
     connectionTimeoutMillis: number;
-    ssl?: { rejectUnauthorized: boolean };
   } = {
     connectionString: getConnectionString(),
     connectionTimeoutMillis,
   };
-
-  if (sslRejectUnauthorized !== undefined) {
-    poolConfig.ssl = { rejectUnauthorized: sslRejectUnauthorized };
-  }
 
   const adapter = new PrismaPg(
     poolConfig,
