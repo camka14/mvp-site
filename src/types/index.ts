@@ -342,6 +342,9 @@ export interface Team {
   losses: number;
   playerIds: string[];
   captainId: string;
+  managerId?: string;
+  coachIds?: string[];
+  parentTeamId?: string | null;
   pending: string[];
   teamSize: number;
   profileImageId?: string;
@@ -350,6 +353,8 @@ export interface Team {
   // Expanded relationships
   players?: UserData[];
   captain?: UserData;
+  manager?: UserData;
+  coaches?: UserData[];
   pendingPlayers?: UserData[];
   matches?: Match[]; // Tournament matches this team participates in
   // Computed properties

@@ -49,7 +49,7 @@ export default function TeamDetailModal({
     const [invitingByEmail, setInvitingByEmail] = useState(false);
     const [cancellingInviteIds, setCancellingInviteIds] = useState<Set<string>>(new Set());
 
-    const isTeamCaptain = currentTeam.captainId === user?.$id;
+    const isTeamCaptain = currentTeam.captainId === user?.$id || currentTeam.managerId === user?.$id;
     const normalizedInviteEmail = emailInviteInput.trim().toLowerCase();
     const inviteEmailValid = EMAIL_REGEX.test(normalizedInviteEmail);
 

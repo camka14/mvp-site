@@ -21,7 +21,10 @@ const createSchema = z.object({
   wins: z.number().optional(),
   losses: z.number().optional(),
   playerIds: z.array(z.string()).optional(),
-  captainId: z.string(),
+  captainId: z.string().optional(),
+  managerId: z.string().optional(),
+  coachIds: z.array(z.string()).optional(),
+  parentTeamId: z.string().optional(),
   pending: z.array(z.string()).optional(),
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
@@ -35,6 +38,16 @@ const normalizeText = (value: unknown): string | null => {
   return normalized.length ? normalized : null;
 };
 
+const uniqueStrings = (values: unknown[] | null | undefined): string[] => (
+  Array.from(
+    new Set(
+      (values ?? [])
+        .map((value) => String(value).trim())
+        .filter(Boolean),
+    ),
+  )
+);
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
@@ -46,6 +59,7 @@ export async function GET(req: NextRequest) {
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
   if (playerId) where.playerIds = { has: playerId };
+  if (!ids?.length) where.parentTeamId = null;
 
   const teams = await prisma.volleyBallTeams.findMany({
     where,
@@ -64,11 +78,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  if (!session.isAdmin && parsed.data.captainId !== session.userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
   const data = parsed.data;
+  const captainId = session.userId;
+  const managerId = session.userId;
+  const playerIds = uniqueStrings([captainId, ...uniqueStrings(data.playerIds)]);
+  const coachIds = uniqueStrings(data.coachIds);
+  const pending = uniqueStrings(data.pending).filter((userId) => !playerIds.includes(userId));
   const normalizedDivision = normalizeText(data.division) ?? 'Open';
   const sportInput = normalizeText(data.sport) ?? null;
   const normalizedDivisionTypeId = normalizeDivisionIdToken(data.divisionTypeId);
@@ -90,9 +105,12 @@ export async function POST(req: NextRequest) {
       sport: sportInput,
       wins: data.wins ?? 0,
       losses: data.losses ?? 0,
-      playerIds: Array.isArray(data.playerIds) ? data.playerIds : [],
-      captainId: data.captainId,
-      pending: Array.isArray(data.pending) ? data.pending : [],
+      playerIds,
+      captainId,
+      managerId,
+      coachIds,
+      parentTeamId: normalizeText(data.parentTeamId),
+      pending,
       teamSize: data.teamSize ?? 0,
       profileImageId: data.profileImageId ?? null,
       createdAt: new Date(),

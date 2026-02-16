@@ -52,6 +52,8 @@ export type VolleyBallTeamsMinAggregateOutputType = {
   losses: number | null
   name: string | null
   captainId: string | null
+  managerId: string | null
+  parentTeamId: string | null
   teamSize: number | null
   profileImageId: string | null
   sport: string | null
@@ -69,6 +71,8 @@ export type VolleyBallTeamsMaxAggregateOutputType = {
   losses: number | null
   name: string | null
   captainId: string | null
+  managerId: string | null
+  parentTeamId: string | null
   teamSize: number | null
   profileImageId: string | null
   sport: string | null
@@ -87,6 +91,9 @@ export type VolleyBallTeamsCountAggregateOutputType = {
   losses: number
   name: number
   captainId: number
+  managerId: number
+  coachIds: number
+  parentTeamId: number
   pending: number
   teamSize: number
   profileImageId: number
@@ -121,6 +128,8 @@ export type VolleyBallTeamsMinAggregateInputType = {
   losses?: true
   name?: true
   captainId?: true
+  managerId?: true
+  parentTeamId?: true
   teamSize?: true
   profileImageId?: true
   sport?: true
@@ -138,6 +147,8 @@ export type VolleyBallTeamsMaxAggregateInputType = {
   losses?: true
   name?: true
   captainId?: true
+  managerId?: true
+  parentTeamId?: true
   teamSize?: true
   profileImageId?: true
   sport?: true
@@ -156,6 +167,9 @@ export type VolleyBallTeamsCountAggregateInputType = {
   losses?: true
   name?: true
   captainId?: true
+  managerId?: true
+  coachIds?: true
+  parentTeamId?: true
   pending?: true
   teamSize?: true
   profileImageId?: true
@@ -262,6 +276,9 @@ export type VolleyBallTeamsGroupByOutputType = {
   losses: number | null
   name: string | null
   captainId: string
+  managerId: string
+  coachIds: string[]
+  parentTeamId: string | null
   pending: string[]
   teamSize: number
   profileImageId: string | null
@@ -304,6 +321,9 @@ export type VolleyBallTeamsWhereInput = {
   losses?: Prisma.IntNullableFilter<"VolleyBallTeams"> | number | null
   name?: Prisma.StringNullableFilter<"VolleyBallTeams"> | string | null
   captainId?: Prisma.StringFilter<"VolleyBallTeams"> | string
+  managerId?: Prisma.StringFilter<"VolleyBallTeams"> | string
+  coachIds?: Prisma.StringNullableListFilter<"VolleyBallTeams">
+  parentTeamId?: Prisma.StringNullableFilter<"VolleyBallTeams"> | string | null
   pending?: Prisma.StringNullableListFilter<"VolleyBallTeams">
   teamSize?: Prisma.IntFilter<"VolleyBallTeams"> | number
   profileImageId?: Prisma.StringNullableFilter<"VolleyBallTeams"> | string | null
@@ -323,6 +343,9 @@ export type VolleyBallTeamsOrderByWithRelationInput = {
   losses?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrderInput | Prisma.SortOrder
   captainId?: Prisma.SortOrder
+  managerId?: Prisma.SortOrder
+  coachIds?: Prisma.SortOrder
+  parentTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
   pending?: Prisma.SortOrder
   teamSize?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -345,6 +368,9 @@ export type VolleyBallTeamsWhereUniqueInput = Prisma.AtLeast<{
   losses?: Prisma.IntNullableFilter<"VolleyBallTeams"> | number | null
   name?: Prisma.StringNullableFilter<"VolleyBallTeams"> | string | null
   captainId?: Prisma.StringFilter<"VolleyBallTeams"> | string
+  managerId?: Prisma.StringFilter<"VolleyBallTeams"> | string
+  coachIds?: Prisma.StringNullableListFilter<"VolleyBallTeams">
+  parentTeamId?: Prisma.StringNullableFilter<"VolleyBallTeams"> | string | null
   pending?: Prisma.StringNullableListFilter<"VolleyBallTeams">
   teamSize?: Prisma.IntFilter<"VolleyBallTeams"> | number
   profileImageId?: Prisma.StringNullableFilter<"VolleyBallTeams"> | string | null
@@ -364,6 +390,9 @@ export type VolleyBallTeamsOrderByWithAggregationInput = {
   losses?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrderInput | Prisma.SortOrder
   captainId?: Prisma.SortOrder
+  managerId?: Prisma.SortOrder
+  coachIds?: Prisma.SortOrder
+  parentTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
   pending?: Prisma.SortOrder
   teamSize?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -391,6 +420,9 @@ export type VolleyBallTeamsScalarWhereWithAggregatesInput = {
   losses?: Prisma.IntNullableWithAggregatesFilter<"VolleyBallTeams"> | number | null
   name?: Prisma.StringNullableWithAggregatesFilter<"VolleyBallTeams"> | string | null
   captainId?: Prisma.StringWithAggregatesFilter<"VolleyBallTeams"> | string
+  managerId?: Prisma.StringWithAggregatesFilter<"VolleyBallTeams"> | string
+  coachIds?: Prisma.StringNullableListFilter<"VolleyBallTeams">
+  parentTeamId?: Prisma.StringNullableWithAggregatesFilter<"VolleyBallTeams"> | string | null
   pending?: Prisma.StringNullableListFilter<"VolleyBallTeams">
   teamSize?: Prisma.IntWithAggregatesFilter<"VolleyBallTeams"> | number
   profileImageId?: Prisma.StringNullableWithAggregatesFilter<"VolleyBallTeams"> | string | null
@@ -410,6 +442,9 @@ export type VolleyBallTeamsCreateInput = {
   losses?: number | null
   name?: string | null
   captainId: string
+  managerId: string
+  coachIds?: Prisma.VolleyBallTeamsCreatecoachIdsInput | string[]
+  parentTeamId?: string | null
   pending?: Prisma.VolleyBallTeamsCreatependingInput | string[]
   teamSize: number
   profileImageId?: string | null
@@ -429,6 +464,9 @@ export type VolleyBallTeamsUncheckedCreateInput = {
   losses?: number | null
   name?: string | null
   captainId: string
+  managerId: string
+  coachIds?: Prisma.VolleyBallTeamsCreatecoachIdsInput | string[]
+  parentTeamId?: string | null
   pending?: Prisma.VolleyBallTeamsCreatependingInput | string[]
   teamSize: number
   profileImageId?: string | null
@@ -448,6 +486,9 @@ export type VolleyBallTeamsUpdateInput = {
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   captainId?: Prisma.StringFieldUpdateOperationsInput | string
+  managerId?: Prisma.StringFieldUpdateOperationsInput | string
+  coachIds?: Prisma.VolleyBallTeamsUpdatecoachIdsInput | string[]
+  parentTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pending?: Prisma.VolleyBallTeamsUpdatependingInput | string[]
   teamSize?: Prisma.IntFieldUpdateOperationsInput | number
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -467,6 +508,9 @@ export type VolleyBallTeamsUncheckedUpdateInput = {
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   captainId?: Prisma.StringFieldUpdateOperationsInput | string
+  managerId?: Prisma.StringFieldUpdateOperationsInput | string
+  coachIds?: Prisma.VolleyBallTeamsUpdatecoachIdsInput | string[]
+  parentTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pending?: Prisma.VolleyBallTeamsUpdatependingInput | string[]
   teamSize?: Prisma.IntFieldUpdateOperationsInput | number
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -486,6 +530,9 @@ export type VolleyBallTeamsCreateManyInput = {
   losses?: number | null
   name?: string | null
   captainId: string
+  managerId: string
+  coachIds?: Prisma.VolleyBallTeamsCreatecoachIdsInput | string[]
+  parentTeamId?: string | null
   pending?: Prisma.VolleyBallTeamsCreatependingInput | string[]
   teamSize: number
   profileImageId?: string | null
@@ -505,6 +552,9 @@ export type VolleyBallTeamsUpdateManyMutationInput = {
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   captainId?: Prisma.StringFieldUpdateOperationsInput | string
+  managerId?: Prisma.StringFieldUpdateOperationsInput | string
+  coachIds?: Prisma.VolleyBallTeamsUpdatecoachIdsInput | string[]
+  parentTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pending?: Prisma.VolleyBallTeamsUpdatependingInput | string[]
   teamSize?: Prisma.IntFieldUpdateOperationsInput | number
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -524,6 +574,9 @@ export type VolleyBallTeamsUncheckedUpdateManyInput = {
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   captainId?: Prisma.StringFieldUpdateOperationsInput | string
+  managerId?: Prisma.StringFieldUpdateOperationsInput | string
+  coachIds?: Prisma.VolleyBallTeamsUpdatecoachIdsInput | string[]
+  parentTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   pending?: Prisma.VolleyBallTeamsUpdatependingInput | string[]
   teamSize?: Prisma.IntFieldUpdateOperationsInput | number
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -543,6 +596,9 @@ export type VolleyBallTeamsCountOrderByAggregateInput = {
   losses?: Prisma.SortOrder
   name?: Prisma.SortOrder
   captainId?: Prisma.SortOrder
+  managerId?: Prisma.SortOrder
+  coachIds?: Prisma.SortOrder
+  parentTeamId?: Prisma.SortOrder
   pending?: Prisma.SortOrder
   teamSize?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
@@ -568,6 +624,8 @@ export type VolleyBallTeamsMaxOrderByAggregateInput = {
   losses?: Prisma.SortOrder
   name?: Prisma.SortOrder
   captainId?: Prisma.SortOrder
+  managerId?: Prisma.SortOrder
+  parentTeamId?: Prisma.SortOrder
   teamSize?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
   sport?: Prisma.SortOrder
@@ -585,6 +643,8 @@ export type VolleyBallTeamsMinOrderByAggregateInput = {
   losses?: Prisma.SortOrder
   name?: Prisma.SortOrder
   captainId?: Prisma.SortOrder
+  managerId?: Prisma.SortOrder
+  parentTeamId?: Prisma.SortOrder
   teamSize?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
   sport?: Prisma.SortOrder
@@ -598,6 +658,10 @@ export type VolleyBallTeamsSumOrderByAggregateInput = {
 }
 
 export type VolleyBallTeamsCreateplayerIdsInput = {
+  set: string[]
+}
+
+export type VolleyBallTeamsCreatecoachIdsInput = {
   set: string[]
 }
 
@@ -616,6 +680,11 @@ export type NullableIntFieldUpdateOperationsInput = {
   decrement?: number
   multiply?: number
   divide?: number
+}
+
+export type VolleyBallTeamsUpdatecoachIdsInput = {
+  set?: string[]
+  push?: string | string[]
 }
 
 export type VolleyBallTeamsUpdatependingInput = {
@@ -638,6 +707,9 @@ export type VolleyBallTeamsSelect<ExtArgs extends runtime.Types.Extensions.Inter
   losses?: boolean
   name?: boolean
   captainId?: boolean
+  managerId?: boolean
+  coachIds?: boolean
+  parentTeamId?: boolean
   pending?: boolean
   teamSize?: boolean
   profileImageId?: boolean
@@ -657,6 +729,9 @@ export type VolleyBallTeamsSelectCreateManyAndReturn<ExtArgs extends runtime.Typ
   losses?: boolean
   name?: boolean
   captainId?: boolean
+  managerId?: boolean
+  coachIds?: boolean
+  parentTeamId?: boolean
   pending?: boolean
   teamSize?: boolean
   profileImageId?: boolean
@@ -676,6 +751,9 @@ export type VolleyBallTeamsSelectUpdateManyAndReturn<ExtArgs extends runtime.Typ
   losses?: boolean
   name?: boolean
   captainId?: boolean
+  managerId?: boolean
+  coachIds?: boolean
+  parentTeamId?: boolean
   pending?: boolean
   teamSize?: boolean
   profileImageId?: boolean
@@ -695,13 +773,16 @@ export type VolleyBallTeamsSelectScalar = {
   losses?: boolean
   name?: boolean
   captainId?: boolean
+  managerId?: boolean
+  coachIds?: boolean
+  parentTeamId?: boolean
   pending?: boolean
   teamSize?: boolean
   profileImageId?: boolean
   sport?: boolean
 }
 
-export type VolleyBallTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "seed" | "playerIds" | "division" | "divisionTypeId" | "divisionTypeName" | "wins" | "losses" | "name" | "captainId" | "pending" | "teamSize" | "profileImageId" | "sport", ExtArgs["result"]["volleyBallTeams"]>
+export type VolleyBallTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "seed" | "playerIds" | "division" | "divisionTypeId" | "divisionTypeName" | "wins" | "losses" | "name" | "captainId" | "managerId" | "coachIds" | "parentTeamId" | "pending" | "teamSize" | "profileImageId" | "sport", ExtArgs["result"]["volleyBallTeams"]>
 
 export type $VolleyBallTeamsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "VolleyBallTeams"
@@ -719,6 +800,9 @@ export type $VolleyBallTeamsPayload<ExtArgs extends runtime.Types.Extensions.Int
     losses: number | null
     name: string | null
     captainId: string
+    managerId: string
+    coachIds: string[]
+    parentTeamId: string | null
     pending: string[]
     teamSize: number
     profileImageId: string | null
@@ -1158,6 +1242,9 @@ export interface VolleyBallTeamsFieldRefs {
   readonly losses: Prisma.FieldRef<"VolleyBallTeams", 'Int'>
   readonly name: Prisma.FieldRef<"VolleyBallTeams", 'String'>
   readonly captainId: Prisma.FieldRef<"VolleyBallTeams", 'String'>
+  readonly managerId: Prisma.FieldRef<"VolleyBallTeams", 'String'>
+  readonly coachIds: Prisma.FieldRef<"VolleyBallTeams", 'String[]'>
+  readonly parentTeamId: Prisma.FieldRef<"VolleyBallTeams", 'String'>
   readonly pending: Prisma.FieldRef<"VolleyBallTeams", 'String[]'>
   readonly teamSize: Prisma.FieldRef<"VolleyBallTeams", 'Int'>
   readonly profileImageId: Prisma.FieldRef<"VolleyBallTeams", 'String'>

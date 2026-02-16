@@ -251,7 +251,7 @@ function TeamsPageContent() {
                     setShowTeamDetailModal(true);
                   }}
                   actions={
-                    team.captainId === user.$id && (
+                    (team.captainId === user.$id || team.managerId === user.$id) && (
                       <Button
                         onClick={(e) => {
                           e.stopPropagation();

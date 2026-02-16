@@ -186,14 +186,23 @@ model VolleyBallTeams {
   seed Int
   playerIds String[]
   division String?
+  divisionTypeId String?
+  divisionTypeName String?
   wins Int?
   losses Int?
   name String?
   captainId String
+  managerId String
+  coachIds String[] @default([])
+  parentTeamId String?
   pending String[]
   teamSize Int
   profileImageId String?
   sport String?
+
+  @@index([captainId])
+  @@index([managerId])
+  @@index([parentTeamId])
 }
 
 model Messages {

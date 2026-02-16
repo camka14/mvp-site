@@ -714,6 +714,23 @@ class EventService {
                     : row.captain && typeof row.captain === 'object'
                         ? (row.captain as { $id?: string }).$id ?? undefined
                         : undefined,
+            managerId:
+                typeof row.managerId === 'string' && row.managerId.trim().length > 0
+                    ? row.managerId
+                    : (
+                        typeof row.captainId === 'string'
+                            ? row.captainId
+                            : row.captain && typeof row.captain === 'object'
+                                ? (row.captain as { $id?: string }).$id ?? undefined
+                                : undefined
+                    ),
+            coachIds: Array.isArray(row.coachIds)
+                ? row.coachIds.map(String)
+                : [],
+            parentTeamId:
+                typeof row.parentTeamId === 'string' && row.parentTeamId.trim().length > 0
+                    ? row.parentTeamId
+                    : null,
             pending,
             teamSize,
             profileImageId: row.profileImage || row.profileImageId || row.profileImageID,

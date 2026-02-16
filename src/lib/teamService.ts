@@ -45,13 +45,39 @@ class TeamService {
             .map((pendingId) => pendingById.get(pendingId))
             .filter(isDefined);
 
+        const resolveKnownUser = (userId: string) => (
+            playersById.get(userId) ?? pendingById.get(userId)
+        );
+
         if (team.captainId) {
-            team.captain = playersById.get(team.captainId)
-                ?? pendingById.get(team.captainId)
+            team.captain = resolveKnownUser(team.captainId)
                 ?? await userService.getUserById(team.captainId)
                 ?? undefined;
         } else {
             team.captain = undefined;
+        }
+
+        const managerId = team.managerId ?? team.captainId;
+        if (managerId) {
+            team.manager = resolveKnownUser(managerId)
+                ?? await userService.getUserById(managerId)
+                ?? undefined;
+        } else {
+            team.manager = undefined;
+        }
+
+        const coachIds = Array.isArray(team.coachIds) ? team.coachIds : [];
+        if (coachIds.length > 0) {
+            const missingCoachIds = coachIds.filter((coachId) => !resolveKnownUser(coachId));
+            const fetchedCoaches = missingCoachIds.length > 0
+                ? await userService.getUsersByIds(missingCoachIds)
+                : [];
+            const fetchedCoachMap = new Map(fetchedCoaches.map((coach) => [coach.$id, coach]));
+            team.coaches = coachIds
+                .map((coachId) => resolveKnownUser(coachId) ?? fetchedCoachMap.get(coachId))
+                .filter(isDefined);
+        } else {
+            team.coaches = [];
         }
 
         team.currentSize = team.playerIds.length;
@@ -88,6 +114,8 @@ class TeamService {
                 losses: 0,
                 playerIds: [captainId],
                 captainId,
+                managerId: captainId,
+                coachIds: [],
                 pending: [],
                 teamSize: maxPlayers,
                 profileImageId: profileImageId || ''
@@ -168,6 +196,15 @@ class TeamService {
             losses,
             playerIds,
             captainId: row.captainId,
+            managerId: typeof row.managerId === 'string' && row.managerId.trim().length > 0
+                ? row.managerId
+                : row.captainId,
+            coachIds: Array.isArray(row.coachIds)
+                ? row.coachIds.filter((value: any): value is string => typeof value === 'string')
+                : [],
+            parentTeamId: typeof row.parentTeamId === 'string' && row.parentTeamId.trim().length > 0
+                ? row.parentTeamId
+                : null,
             pending,
             teamSize,
             profileImageId: row.profileImageId || row.profileImage || row.profileImageID,

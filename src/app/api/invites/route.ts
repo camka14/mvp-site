@@ -184,9 +184,12 @@ export async function DELETE(req: NextRequest) {
     if (teamId) {
       const team = await prisma.volleyBallTeams.findUnique({
         where: { id: teamId },
-        select: { captainId: true },
+        select: { captainId: true, managerId: true },
       });
-      isTeamCaptain = Boolean(team && team.captainId === session.userId);
+      isTeamCaptain = Boolean(
+        team
+        && (team.captainId === session.userId || team.managerId === session.userId),
+      );
     }
 
     if (!canActOnUser && !isTeamCaptain) {
