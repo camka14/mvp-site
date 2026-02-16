@@ -152,6 +152,22 @@ const resolveSportInput = (sportInput?: Sport | string | null): string => {
     return sportName.toLowerCase();
 };
 
+const DEFAULT_FIELD_SURFACE_TYPE = 'UNKNOWN' as FieldSurfaceType;
+
+const inferFieldSurfaceTypeFromSportInput = (sportInput?: Sport | string | null): FieldSurfaceType => {
+    const normalizedSport = resolveSportInput(sportInput);
+    if (normalizedSport.includes('indoor')) {
+        return 'INDOOR' as FieldSurfaceType;
+    }
+    if (normalizedSport.includes('beach') || normalizedSport.includes('sand')) {
+        return 'SAND' as FieldSurfaceType;
+    }
+    if (normalizedSport.includes('grass')) {
+        return 'GRASS' as FieldSurfaceType;
+    }
+    return DEFAULT_FIELD_SURFACE_TYPE;
+};
+
 const parseDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
     const parsed = new Date(value);
@@ -647,7 +663,6 @@ type EventFormState = {
     eventType: EventType;
     sportId: string;
     sportConfig: Sport | null;
-    fieldType: FieldSurfaceType;
     price: number;
     minAge?: number;
     maxAge?: number;
@@ -910,7 +925,6 @@ const mapEventToFormState = (event: Event): EventFormState => {
     sportConfig: event.sport && typeof event.sport === 'object'
         ? { ...(event.sport as Sport) }
         : null,
-    fieldType: event.fieldType ?? 'INDOOR',
     // Stored in cents in the backend; convert to dollars for the form UI.
     price: Number.isFinite(event.price) ? (event.price as number) / 100 : 0,
     minAge: Number.isFinite(event.minAge) ? event.minAge : undefined,
@@ -982,10 +996,6 @@ type EventFormValues = EventFormState & {
     joinAsParticipant: boolean;
 };
 
-const fieldTypeSchema: z.ZodType<FieldSurfaceType> = z
-    .string()
-    .transform((value) => value.toUpperCase() as FieldSurfaceType);
-
 const leagueSlotSchema: z.ZodType<LeagueSlotForm> = z.object({
     key: z.string(),
     $id: z.string().optional(),
@@ -1038,7 +1048,6 @@ const eventFormSchema = z
         eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE']),
         sportId: z.string().trim(),
         sportConfig: z.any().nullable(),
-        fieldType: fieldTypeSchema,
         price: z.number().min(0, 'Price must be at least 0'),
         minAge: z.number().int().min(0).optional(),
         maxAge: z.number().int().min(0).optional(),
@@ -1391,7 +1400,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (defaults.leagueScoringConfig && typeof defaults.leagueScoringConfig === 'object') {
             next.leagueScoringConfig = createLeagueScoringConfig(defaults.leagueScoringConfig as Partial<LeagueScoringConfig>);
         }
-        if (defaults.fieldType !== undefined) next.fieldType = defaults.fieldType ?? 'INDOOR';
         // Immutable defaults store price in cents; normalize to dollars for UI.
         if (typeof defaults.price === 'number') next.price = defaults.price / 100;
         if (typeof defaults.minAge === 'number') next.minAge = defaults.minAge;
@@ -1552,6 +1560,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         })();
 
         const defaultFields: Field[] = (() => {
+            const inferredFieldSurfaceType = inferFieldSurfaceTypeFromSportInput(base.sportConfig ?? base.sportId);
             if (hasImmutableFields) {
                 return sanitizeFieldsForForm(immutableFields);
             }
@@ -1565,7 +1574,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     $id: createClientId(),
                     name: `Field ${idx + 1}`,
                     fieldNumber: idx + 1,
-                    type: base.fieldType,
+                    type: inferredFieldSurfaceType,
                     location: '',
                 } as Field));
             }
@@ -1792,6 +1801,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
     const joinAsParticipant = formValues.joinAsParticipant;
     const organizationId = organization?.$id ?? eventData.organizationId;
+    const inferredFieldSurfaceType = useMemo(
+        () => inferFieldSurfaceTypeFromSportInput(eventData.sportConfig ?? eventData.sportId),
+        [eventData.sportConfig, eventData.sportId],
+    );
 
     const templateOptions = useMemo(
         () => templateDocuments.map((template) => {
@@ -2621,7 +2634,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setFields(sanitizeFieldsForForm(immutableFields));
     }, [hasImmutableFields, immutableFields, setFields]);
 
-    // When provisioning local fields, mirror field type/count changes into the generated list.
+    // When provisioning local fields, mirror inferred surface/count changes into the generated list.
     useEffect(() => {
         if (!shouldManageLocalFields) {
             return;
@@ -2631,7 +2644,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const normalized: Field[] = prev.slice(0, fieldCount).map((field, index) => ({
                 ...field,
                 fieldNumber: index + 1,
-                type: eventData.fieldType,
+                type: inferredFieldSurfaceType,
                 divisions: (() => {
                     const current = normalizeDivisionKeys(field.divisions);
                     return current.length ? current : fallbackDivisions;
@@ -2644,7 +2657,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         $id: createClientId(),
                         name: `Field ${index + 1}`,
                         fieldNumber: index + 1,
-                        type: eventData.fieldType,
+                        type: inferredFieldSurfaceType,
                         location: '',
                         lat: 0,
                         long: 0,
@@ -2655,7 +2668,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             return normalized;
         });
-    }, [fieldCount, shouldManageLocalFields, eventData.fieldType, eventData.divisions, setFields]);
+    }, [fieldCount, shouldManageLocalFields, eventData.divisions, inferredFieldSurfaceType, setFields]);
 
     // For organizations with existing facilities, seed the field list with their saved ordering.
     useEffect(() => {
@@ -3233,7 +3246,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             eventType: source.eventType,
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
-            fieldType: source.fieldType,
             // Backend stores price in cents; convert dollars from the form to cents before saving.
             price: Math.round(Math.max(0, source.price || 0) * 100),
             minAge,
@@ -3296,7 +3308,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 draft.fields = localFields.map((field, idx) => ({
                     ...field,
                     fieldNumber: field.fieldNumber ?? idx + 1,
-                    type: field.type || eventData.fieldType,
+                    type: field.type || inferredFieldSurfaceType,
                     divisions: (() => {
                         const normalized = normalizeDivisionKeys(field.divisions);
                         return normalized.length ? normalized : fallbackDivisions;
@@ -3502,6 +3514,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         shouldManageLocalFields,
         shouldProvisionFields,
         fieldCount,
+        inferredFieldSurfaceType,
     ]);
 
     const getDraftSnapshot = useCallback(
@@ -3639,30 +3652,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 if (enforcingTeamSettings) {
                                                     setValue('teamSignup', true, { shouldDirty: true });
                                                 }
-                                            }}
-                                        />
-                                    )}
-                                />
-
-                                <Controller
-                                    name="fieldType"
-                                    control={control}
-                                    render={({ field }) => (
-                                        <MantineSelect
-                                            label="Field Type"
-                                            data={[
-                                                { value: 'INDOOR', label: 'Indoor' },
-                                                { value: 'OUTDOOR', label: 'Outdoor' },
-                                                { value: 'SAND', label: 'Sand' },
-                                                { value: 'GRASS', label: 'Grass' },
-                                            ]}
-                                            value={field.value}
-                                            comboboxProps={sharedComboboxProps}
-                                            disabled={isImmutableField('fieldType')}
-                                            onChange={(value) => {
-                                                if (isImmutableField('fieldType')) return;
-                                                const next = (value?.toUpperCase() as FieldSurfaceType) || field.value;
-                                                field.onChange(next);
                                             }}
                                         />
                                     )}

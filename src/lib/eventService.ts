@@ -387,7 +387,7 @@ class EventService {
             end: row.end,
             location: row.location,
             coordinates: row.coordinates,
-            fieldType: (normalizedFieldType ?? 'UNKNOWN') as FieldSurfaceType,
+            ...(normalizedFieldType ? { fieldType: normalizedFieldType as FieldSurfaceType } : {}),
             price: row.price,
             minAge: normalizeAge(row.minAge),
             maxAge: normalizeAge(row.maxAge),

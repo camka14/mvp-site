@@ -374,7 +374,7 @@ export interface Event {
   end: string;
   location: string;
   coordinates: [number, number];
-  fieldType: FieldSurfaceType;
+  fieldType?: FieldSurfaceType;
   price: number;
   minAge?: number;
   maxAge?: number;
@@ -559,7 +559,13 @@ export interface RefundRequest {
 
 export enum Sports {
   Volleyball = 'Volleyball',
+  IndoorVolleyball = 'Indoor Volleyball',
+  BeachVolleyball = 'Beach Volleyball',
+  GrassVolleyball = 'Grass Volleyball',
   Soccer = 'Soccer',
+  IndoorSoccer = 'Indoor Soccer',
+  BeachSoccer = 'Beach Soccer',
+  GrassSoccer = 'Grass Soccer',
   Basketball = 'Basketball',
   Tennis = 'Tennis',
   Pickleball = 'Pickleball',

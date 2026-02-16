@@ -1372,8 +1372,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                             <p className="font-medium">{currentEvent.price === 0 ? 'Free' : `${formatPrice(currentEvent.price)}`}</p>
                                         </div>
                                         <div>
-                                            <span className="text-sm text-gray-600">Field Type</span>
-                                            <p className="font-medium">{currentEvent.fieldType}</p>
+                                            <span className="text-sm text-gray-600">Sport</span>
+                                            <p className="font-medium">
+                                                {currentEvent.sport?.name || currentEvent.sportId || 'TBD'}
+                                            </p>
                                         </div>
                                         {(typeof eventMinAge === 'number' || typeof eventMaxAge === 'number') && (
                                             <div>

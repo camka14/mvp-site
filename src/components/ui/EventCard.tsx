@@ -173,11 +173,6 @@ export default function EventCard({ event, showDistance = false, userLocation, o
               </svg>
               {event.attendees} / {event.maxParticipants} going
             </div>
-
-            <div className="text-xs text-gray-400">
-              <span className="text-green-500">●</span>
-              <span className="ml-1">{event.fieldType}</span>
-            </div>
           </div>
         </div>
       </div>

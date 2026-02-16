@@ -22,7 +22,7 @@ import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
 import { toEventPayload } from '@/types';
-import type { Event, EventState, Field, FieldSurfaceType, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot } from '@/types';
+import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
@@ -344,7 +344,6 @@ function EventScheduleContent() {
   const rentalFieldIdParam = searchParams?.get('rentalFieldId') || undefined;
   const rentalFieldNameParam = searchParams?.get('rentalFieldName') || undefined;
   const rentalFieldNumberParam = searchParams?.get('rentalFieldNumber') || undefined;
-  const rentalFieldTypeParam = searchParams?.get('rentalFieldType') || undefined;
   const rentalLocationParam = searchParams?.get('rentalLocation') || undefined;
   const rentalLatParam = searchParams?.get('rentalLat') || undefined;
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
@@ -523,7 +522,6 @@ function EventScheduleContent() {
       if (!rentalFieldIdParam) {
         return undefined;
       }
-      const fieldType = (rentalFieldTypeParam?.toUpperCase?.() || 'INDOOR') as FieldSurfaceType;
       return {
         $id: rentalFieldIdParam,
         name: rentalFieldNameParam?.trim() || `Field ${fallbackFieldNumber}`,
@@ -531,7 +529,7 @@ function EventScheduleContent() {
         location: rentalLocationParam ?? '',
         lat: rentalCoordinates?.[1] ?? 0,
         long: rentalCoordinates?.[0] ?? 0,
-        type: fieldType,
+        type: 'UNKNOWN',
       };
     })();
 
@@ -553,7 +551,6 @@ function EventScheduleContent() {
     }
     if (resolvedField) {
       defaults.fields = [resolvedField];
-      defaults.fieldType = resolvedField.type;
     }
     if (rentalRequiredTemplateIds.length > 0) {
       defaults.requiredTemplateIds = rentalRequiredTemplateIds;
@@ -569,7 +566,6 @@ function EventScheduleContent() {
     rentalFieldIdParam,
     rentalFieldNameParam,
     rentalFieldNumberParam,
-    rentalFieldTypeParam,
     rentalLocationParam,
     rentalStartParam,
   ]);
@@ -664,7 +660,7 @@ function EventScheduleContent() {
     });
 
     return labels;
-  }, [activeEvent?.divisions]);
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
 
   const scheduleDivisionOptions = useMemo<DivisionOption[]>(() => {
     const labels = new Map<string, string>(divisionLabelsByKey);
@@ -932,7 +928,6 @@ function EventScheduleContent() {
         eventType: 'EVENT',
         sportId: '',
         sport: defaultSport,
-        fieldType: 'INDOOR',
         price: 0,
         maxParticipants: 10,
         teamSizeLimit: 2,
