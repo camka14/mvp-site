@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -980,7 +981,7 @@ function OrganizationDetailContent() {
     } finally {
       setInvitingReferees(false);
     }
-  }, [org, isOwner, user, refereeInvites]);
+  }, [loadOrg, org, isOwner, user, refereeInvites]);
 
   const handleRemoveReferee = useCallback(
     async (refereeId: string) => {
@@ -1021,7 +1022,16 @@ function OrganizationDetailContent() {
             {/* Header */}
             <Group justify="space-between" align="center" mb="lg">
               <Group gap="md">
-                {logoUrl && <img src={logoUrl} alt={org.name} style={{ width: 64, height: 64, borderRadius: '9999px', border: '1px solid #e5e7eb' }} />}
+                {logoUrl && (
+                  <Image
+                    src={logoUrl}
+                    alt={org.name}
+                    width={64}
+                    height={64}
+                    unoptimized
+                    style={{ width: 64, height: 64, borderRadius: '9999px', border: '1px solid #e5e7eb' }}
+                  />
+                )}
                 <div>
                   <Title order={2} mb={2}>{org.name}</Title>
                   <Group gap="md">

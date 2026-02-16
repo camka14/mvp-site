@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { Team, UserData, Event } from '@/types';
@@ -89,15 +89,39 @@ function TeamsPageContent() {
       ? division
       : division?.name || division?.skillLevel || 'Division';
 
+  const loadTeamsData = useCallback(async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const userTeams = await teamService.getTeamsByUserId(user.$id);
+      // Enrich with players so TeamCard can show member avatars
+      const detailedTeams = await teamService.getTeamsByIds(userTeams.map(t => t.$id), true);
+      setTeams(detailedTeams);
+
+      const invites = await userService.listInvites({ userId: user.$id, type: 'player' });
+      const invitationPromises = invites
+        .map(invite => invite.teamId)
+        .filter((teamId): teamId is string => typeof teamId === 'string' && !!teamId)
+        .map(teamId => teamService.getTeamById(teamId, true));
+      const invitations = await Promise.all(invitationPromises);
+      setTeamInvitations(invitations.filter(team => team !== undefined) as Team[]);
+    } catch (error) {
+      console.error('Failed to load teams data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!authLoading) {
       if (!isAuthenticated || !user) {
         router.push('/login');
         return;
       }
-      loadTeamsData();
+      void loadTeamsData();
     }
-  }, [user, authLoading, isAuthenticated, router]);
+  }, [user, authLoading, isAuthenticated, router, loadTeamsData]);
 
   // Load event context (free agents) if arriving from EventJoinModal
   useEffect(() => {
@@ -129,30 +153,6 @@ function TeamsPageContent() {
   }, [searchParams]);
 
   // CreateTeamModal manages its own form state
-
-  const loadTeamsData = async () => {
-    if (!user) return;
-
-    setLoading(true);
-    try {
-      const userTeams = await teamService.getTeamsByUserId(user.$id);
-      // Enrich with players so TeamCard can show member avatars
-      const detailedTeams = await teamService.getTeamsByIds(userTeams.map(t => t.$id), true);
-      setTeams(detailedTeams);
-
-      const invites = await userService.listInvites({ userId: user.$id, type: 'player' });
-      const invitationPromises = invites
-        .map(invite => invite.teamId)
-        .filter((teamId): teamId is string => typeof teamId === 'string' && !!teamId)
-        .map(teamId => teamService.getTeamById(teamId, true));
-      const invitations = await Promise.all(invitationPromises);
-      setTeamInvitations(invitations.filter(team => team !== undefined) as Team[]);
-    } catch (error) {
-      console.error('Failed to load teams data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();

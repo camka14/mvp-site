@@ -426,7 +426,7 @@ export default function FieldsTabContent({ organization, organizationId, current
     return () => {
       cancelled = true;
     };
-  }, [selectedField?.$id, calendarRange?.start, calendarRange?.end]);
+  }, [selectedField, calendarRange]);
 
   const matchingRentalSlot = useMemo(() => {
     if (!selectedField || !selection) return null;

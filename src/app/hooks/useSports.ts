@@ -37,7 +37,7 @@ export const useSports = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialSports.length]);
 
   const sportsById = useMemo(() => {
     const map = new Map<string, Sport>();

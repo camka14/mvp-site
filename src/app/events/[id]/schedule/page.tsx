@@ -130,6 +130,56 @@ const getEventLifecycleStatus = (eventInput: Pick<Event, 'state'> | null | undef
   return 'PUBLISHED';
 };
 
+const DEFAULT_SPORT: Sport = {
+  $id: '',
+  name: '',
+  usePointsForWin: false,
+  usePointsForDraw: false,
+  usePointsForLoss: false,
+  usePointsForForfeitWin: false,
+  usePointsForForfeitLoss: false,
+  usePointsPerSetWin: false,
+  usePointsPerSetLoss: false,
+  usePointsPerGameWin: false,
+  usePointsPerGameLoss: false,
+  usePointsPerGoalScored: false,
+  usePointsPerGoalConceded: false,
+  useMaxGoalBonusPoints: false,
+  useMinGoalBonusThreshold: false,
+  usePointsForShutout: false,
+  usePointsForCleanSheet: false,
+  useApplyShutoutOnlyIfWin: false,
+  usePointsPerGoalDifference: false,
+  useMaxGoalDifferencePoints: false,
+  usePointsPenaltyPerGoalDifference: false,
+  usePointsForParticipation: false,
+  usePointsForNoShow: false,
+  usePointsForWinStreakBonus: false,
+  useWinStreakThreshold: false,
+  usePointsForOvertimeWin: false,
+  usePointsForOvertimeLoss: false,
+  useOvertimeEnabled: false,
+  usePointsPerRedCard: false,
+  usePointsPerYellowCard: false,
+  usePointsPerPenalty: false,
+  useMaxPenaltyDeductions: false,
+  useMaxPointsPerMatch: false,
+  useMinPointsPerMatch: false,
+  useGoalDifferenceTiebreaker: false,
+  useHeadToHeadTiebreaker: false,
+  useTotalGoalsTiebreaker: false,
+  useEnableBonusForComebackWin: false,
+  useBonusPointsForComebackWin: false,
+  useEnableBonusForHighScoringMatch: false,
+  useHighScoringThreshold: false,
+  useBonusPointsForHighScoringMatch: false,
+  useEnablePenaltyUnsporting: false,
+  usePenaltyPointsUnsporting: false,
+  usePointPrecision: false,
+  $createdAt: '',
+  $updatedAt: '',
+};
+
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
@@ -453,55 +503,7 @@ function EventScheduleContent() {
     () => templateSummaries.map((template) => ({ value: template.id, label: template.name })),
     [templateSummaries],
   );
-  const defaultSport: Sport = {
-    $id: '',
-    name: '',
-    usePointsForWin: false,
-    usePointsForDraw: false,
-    usePointsForLoss: false,
-    usePointsForForfeitWin: false,
-    usePointsForForfeitLoss: false,
-    usePointsPerSetWin: false,
-    usePointsPerSetLoss: false,
-    usePointsPerGameWin: false,
-    usePointsPerGameLoss: false,
-    usePointsPerGoalScored: false,
-    usePointsPerGoalConceded: false,
-    useMaxGoalBonusPoints: false,
-    useMinGoalBonusThreshold: false,
-    usePointsForShutout: false,
-    usePointsForCleanSheet: false,
-    useApplyShutoutOnlyIfWin: false,
-    usePointsPerGoalDifference: false,
-    useMaxGoalDifferencePoints: false,
-    usePointsPenaltyPerGoalDifference: false,
-    usePointsForParticipation: false,
-    usePointsForNoShow: false,
-    usePointsForWinStreakBonus: false,
-    useWinStreakThreshold: false,
-    usePointsForOvertimeWin: false,
-    usePointsForOvertimeLoss: false,
-    useOvertimeEnabled: false,
-    usePointsPerRedCard: false,
-    usePointsPerYellowCard: false,
-    usePointsPerPenalty: false,
-    useMaxPenaltyDeductions: false,
-    useMaxPointsPerMatch: false,
-    useMinPointsPerMatch: false,
-    useGoalDifferenceTiebreaker: false,
-    useHeadToHeadTiebreaker: false,
-    useTotalGoalsTiebreaker: false,
-    useEnableBonusForComebackWin: false,
-    useBonusPointsForComebackWin: false,
-    useEnableBonusForHighScoringMatch: false,
-    useHighScoringThreshold: false,
-    useBonusPointsForHighScoringMatch: false,
-    useEnablePenaltyUnsporting: false,
-    usePenaltyPointsUnsporting: false,
-    usePointPrecision: false,
-    $createdAt: '',
-    $updatedAt: '',
-  };
+  const defaultSport = DEFAULT_SPORT;
 
   const closeTemplatePrompt = useCallback(() => {
     templatePromptResolvedRef.current = true;
@@ -741,7 +743,7 @@ function EventScheduleContent() {
         refereeIds: [],
       } as Event;
     });
-  }, [createLocationDefaults, eventId, isCreateMode, rentalImmutableDefaults, user]);
+  }, [createLocationDefaults, defaultSport, eventId, isCreateMode, rentalImmutableDefaults, user]);
 
   // Create mode: if the host has event templates, prompt to start from one.
   useEffect(() => {
@@ -1089,7 +1091,7 @@ function EventScheduleContent() {
           ? activeEvent.leagueScoringConfig
           : null,
       ),
-    [activeEvent?.leagueScoringConfig],
+    [activeEvent],
   );
 
   const baseStandings = useMemo<StandingsRow[]>(() => {
@@ -1307,7 +1309,7 @@ function EventScheduleContent() {
       isHost,
       canManage: !isPreview && isHost,
     };
-  }, [activeEvent, bracketMatchesMap, isPreview, user?.$id]);
+  }, [activeEvent, bracketMatchesMap, isHost, isPreview]);
 
   const showScheduleTab = isLeague;
   const showStandingsTab = isLeague;

@@ -1,5 +1,6 @@
 // components/PaymentModal.tsx
 import React, { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
 import { Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
@@ -109,9 +110,12 @@ export default function PaymentModal({
                     {/* Event Details */}
                     <div className="flex items-center space-x-4">
                         {event.imageId && (
-                            <img
+                            <Image
                                 src={getEventImageUrl({ imageId: event.imageId, width: 80, height: 80 })}
                                 alt={eventName}
+                                width={64}
+                                height={64}
+                                unoptimized
                                 className="w-16 h-16 rounded-lg object-cover"
                             />
                         )}

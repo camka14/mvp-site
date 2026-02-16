@@ -203,7 +203,7 @@ export default function ScoreUpdateModal({
     const winConditionMet = Boolean(target && leader >= target && diff >= 2);
 
     if (!winConditionMet) {
-      // eslint-disable-next-line no-alert
+       
       alert('A team must reach the target points and win by 2 to confirm the set.');
       return;
     }
@@ -223,7 +223,7 @@ export default function ScoreUpdateModal({
       }
     } catch (err) {
       console.error('Failed to persist set result:', err);
-      // eslint-disable-next-line no-alert
+       
       alert('Failed to save set result. Please retry.');
       return;
     }
@@ -239,7 +239,7 @@ export default function ScoreUpdateModal({
         matchCompletionTriggered.current = true;
       } catch (err) {
         console.error('Failed to finalize match:', err);
-        // eslint-disable-next-line no-alert
+         
         alert('Failed to finalize match. Please retry.');
       }
     }
@@ -263,7 +263,7 @@ export default function ScoreUpdateModal({
       }
     } catch (e) {
       console.error('Failed to update score:', e);
-      // eslint-disable-next-line no-alert
+       
       alert('Failed to update score. Please try again.');
     } finally {
       setLoading(false);

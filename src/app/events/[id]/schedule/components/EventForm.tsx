@@ -1454,7 +1454,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         activeEditingEvent,
         applyImmutableDefaults,
         createSlotForm,
-        currentUser?.$id,
         defaultLocation?.coordinates,
         defaultLocation?.location,
         hasImmutableFields,
@@ -1810,7 +1809,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return { ...prev, refereeIds: nextIds, referees: nextRefs };
         });
         setRefereeResults((prev) => prev.filter((candidate) => candidate.$id !== referee.$id));
-    }, []);
+    }, [setEventData]);
 
     const handleRemoveReferee = useCallback((refereeId: string) => {
         setEventData((prev) => ({
@@ -1818,7 +1817,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             refereeIds: (prev.refereeIds || []).filter((id) => id !== refereeId),
             referees: (prev.referees || []).filter((ref) => ref.$id !== refereeId),
         }));
-    }, []);
+    }, [setEventData]);
 
     const handleInviteRefereeEmail = useCallback(async () => {
         if (!currentUser) {
@@ -1900,7 +1899,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         setLeagueSlots(prev => normalizeSlotState(updater(prev), eventData.eventType));
-    }, [eventData.eventType, hasImmutableTimeSlots]);
+    }, [eventData.eventType, hasImmutableTimeSlots, setLeagueSlots]);
 
     const handleLeagueScoringConfigChange = useCallback(
         (key: keyof LeagueScoringConfig, value: LeagueScoringConfig[keyof LeagueScoringConfig]) => {
@@ -1912,7 +1911,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 },
             }));
         },
-        []
+        [setEventData]
     );
 
     useEffect(() => {
@@ -1937,7 +1936,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             return prev;
         });
-    }, [sportsLoading, sportsById]);
+    }, [sportsLoading, sportsById, setEventData]);
 
     useEffect(() => {
         const optionValues = divisionOptions.map((option) => option.value);
@@ -2056,7 +2055,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         setFields(sanitizeFieldsForForm(immutableFields));
-    }, [hasImmutableFields, immutableFields]);
+    }, [hasImmutableFields, immutableFields, setFields]);
 
     // When provisioning local fields, mirror field type/count changes into the generated list.
     useEffect(() => {
@@ -2092,7 +2091,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             return normalized;
         });
-    }, [fieldCount, shouldManageLocalFields, eventData.fieldType, eventData.divisions]);
+    }, [fieldCount, shouldManageLocalFields, eventData.fieldType, eventData.divisions, setFields]);
 
     // For organizations with existing facilities, seed the field list with their saved ordering.
     useEffect(() => {
@@ -2262,7 +2261,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return { ...prev, end: prev.start };
             });
         }
-    }, [eventData.eventType, eventData.start, isEditMode]);
+    }, [eventData.eventType, eventData.start, isEditMode, setEventData]);
 
     // Hydrate league-specific state and slots when opening the modal for an existing event.
     useEffect(() => {
@@ -2314,7 +2313,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             setLeagueSlots(normalizeSlotState([createSlotForm(undefined, normalizeDivisionKeys(eventData.divisions))], 'EVENT'));
             setPlayoffData(buildTournamentConfig());
         }
-    }, [activeEditingEvent, createSlotForm, eventData.divisions, hasImmutableTimeSlots]);
+    }, [activeEditingEvent, createSlotForm, eventData.divisions, hasImmutableTimeSlots, setLeagueData, setLeagueSlots, setPlayoffData]);
 
     useEffect(() => {
         if (!hasImmutableTimeSlots) {
@@ -2324,7 +2323,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
             .map((slot) => createSlotForm(slot, normalizeDivisionKeys(eventData.divisions)));
         setLeagueSlots(normalizeSlotState(slotForms, eventData.eventType));
-    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, eventData.divisions]);
+    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, eventData.divisions, setLeagueSlots]);
 
     // Pull the organization's fields so league/tournament creators can assign real facilities.
     useEffect(() => {
@@ -2345,7 +2344,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return () => {
             isMounted = false;
         };
-    }, [organization, hasImmutableFields]);
+    }, [organization, hasImmutableFields, setFields]);
 
     // Merge any newly loaded fields from the event into local state without losing existing edits.
     useEffect(() => {
@@ -2364,7 +2363,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return Array.from(map.values());
             });
         }
-    }, [activeEditingEvent?.fields, hasImmutableFields]);
+    }, [activeEditingEvent?.fields, hasImmutableFields, setFields]);
 
     // Re-run slot normalization when the modal switches event types (e.g., league -> tournament).
     useEffect(() => {
@@ -2506,14 +2505,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 };
             });
         }
-    }, [eventData.eventType, eventData.teamSignup]);
+    }, [eventData.eventType, eventData.teamSignup, setEventData]);
 
     // Prevents the creator from joining twice when they toggle team-based registration on.
     useEffect(() => {
         if (eventData.teamSignup) {
             setJoinAsParticipant(false);
         }
-    }, [eventData.teamSignup]);
+    }, [eventData.teamSignup, setJoinAsParticipant]);
 
     // Populate human-readable location if empty
     // Converts coordinates into a city/state label when the user hasn't typed an address manually.
@@ -2531,7 +2530,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 })
                 .catch(() => { /* ignore */ });
         }
-    }, [isEditMode, eventData.location, eventData.coordinates]);
+    }, [isEditMode, eventData.location, eventData.coordinates, setEventData]);
 
     useEffect(() => {
         if (!hasExternalRentalField) {
@@ -2561,7 +2560,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }));
             refsPrefilledRef.current = true;
         }
-    }, [organization, isEditMode]);
+    }, [organization, isEditMode, setEventData]);
 
     // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
     const handleConnectStripe = async () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import { memo } from 'react';
+import Image from 'next/image';
 import { getTeamAvatarUrl, getUserAvatarUrl, Match } from '@/types';
 
 interface MatchCardProps {
@@ -105,9 +106,12 @@ function MatchCard({
                     </div>
                     <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
                         {team && (
-                            <img
+                            <Image
                                 src={getTeamAvatarUrl(team, 24)}
                                 alt={getTeamName(team)}
+                                width={24}
+                                height={24}
+                                unoptimized
                                 className="w-6 h-6 rounded-full"
                             />
                         )}
@@ -118,9 +122,12 @@ function MatchCard({
                 <>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                         {team && (
-                            <img
+                            <Image
                                 src={getTeamAvatarUrl(team, 24)}
                                 alt={getTeamName(team)}
+                                width={24}
+                                height={24}
+                                unoptimized
                                 className="w-6 h-6 rounded-full"
                             />
                         )}
@@ -210,9 +217,12 @@ function MatchCard({
                                 {match.referee && (
                                     <span className="flex items-center gap-1">
                                         <span className="text-[10px] uppercase tracking-wide text-gray-500">Official Referee:</span>
-                                        <img
+                                        <Image
                                             src={getUserAvatarUrl(match.referee, 16)}
                                             alt={getUserName(match.referee)}
+                                            width={16}
+                                            height={16}
+                                            unoptimized
                                             className="w-4 h-4 rounded-full"
                                         />
                                         <span className="truncate max-w-[120px]">{getUserName(match.referee)}</span>
@@ -238,9 +248,12 @@ function MatchCard({
                 {match.referee && (
                     <div className="flex items-center gap-1">
                         <span className="text-[10px] uppercase tracking-wide text-gray-500">Official Referee:</span>
-                        <img
+                        <Image
                             src={getUserAvatarUrl(match.referee, 18)}
                             alt={getUserName(match.referee)}
+                            width={16}
+                            height={16}
+                            unoptimized
                             className="w-4 h-4 rounded-full"
                         />
                                 <span className="font-medium truncate max-w-[120px]">{getUserName(match.referee)}</span>
@@ -249,9 +262,12 @@ function MatchCard({
                 {match.teamReferee && (
                     <div className="flex items-center gap-1">
                         <span className="text-[10px] uppercase tracking-wide text-gray-500">Team Referee:</span>
-                        <img
+                        <Image
                             src={getTeamAvatarUrl(match.teamReferee, 18)}
                             alt={match.teamReferee.name || 'Ref Team'}
+                            width={16}
+                            height={16}
+                            unoptimized
                             className="w-4 h-4 rounded-full"
                         />
                                 <span className="font-medium truncate max-w-[120px]">{match.teamReferee.name || 'Ref Team'}</span>

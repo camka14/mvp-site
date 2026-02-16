@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
 import { useApp } from '@/app/providers';
@@ -17,7 +17,7 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
     const [sending, setSending] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const chatMessages = messages[chatId] || [];
+    const chatMessages = useMemo(() => messages[chatId] || [], [messages, chatId]);
     const chatGroup = chatGroups.find(chat => chat.$id === chatId);
 
     useEffect(() => {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { ChatGroup, chatService, Message } from '@/lib/chatService';
 import { useApp } from '@/app/providers';
 
@@ -26,7 +26,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const [messages, setMessages] = useState<Record<string, Message[]>>({});
     const [loading, setLoading] = useState(false);
 
-    const loadChatGroups = async () => {
+    const loadChatGroups = useCallback(async () => {
         if (!user) return;
 
         setLoading(true);
@@ -49,7 +49,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
     const loadMessages = async (chatId: string) => {
         try {
@@ -103,9 +103,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // Load chat groups when user is available
     useEffect(() => {
         if (user) {
-            loadChatGroups();
+            void loadChatGroups();
         }
-    }, [user]);
+    }, [user, loadChatGroups]);
 
     return (
         <ChatContext.Provider value={{

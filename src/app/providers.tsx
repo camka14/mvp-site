@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { authService } from '@/lib/auth';
 import { userService } from '@/lib/userService';
 import { sportsService } from '@/lib/sportsService';
@@ -46,34 +46,17 @@ export function Providers({ children }: ProvidersProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [isGuest, setIsGuest] = useState<boolean>(false);
 
-  useEffect(() => {
-    // Prime state from localStorage after mount (optional UX improvement), then verify with the server.
-    try {
-      const guest = authService.isGuest();
-      setIsGuest(guest);
-
-      if (guest) {
-        setUserState(null);
-        setAuthUserState(null);
-      } else {
-        const storedUser = authService.getStoredUserData();
-        const storedAuthUser = authService.getStoredAuthUser();
-        if (storedUser) setUserState(storedUser);
-        if (storedAuthUser) setAuthUserState(storedAuthUser);
-      }
-    } catch {
-      // ignore storage errors; checkAuth will resolve the truth
-    }
-
-    checkAuth();
-
-    // Warm sports cache once per app load so sport selectors can render immediately.
-    sportsService.getAll().catch(() => {
-      // Ignore failures; consumers still attempt to load sports when needed.
-    });
+  const setUser = useCallback((value: UserData | null) => {
+    setUserState(value);
+    authService.setCurrentUserData(value);
   }, []);
 
-  const checkAuth = async () => {
+  const setAuthUser = useCallback((value: UserAccount | null) => {
+    setAuthUserState(value);
+    authService.setCurrentAuthUser(value);
+  }, []);
+
+  const checkAuth = useCallback(async () => {
     setLoading(true);
     try {
       const session = await authService.fetchSession();
@@ -109,16 +92,34 @@ export function Providers({ children }: ProvidersProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setAuthUser, setUser]);
 
-  const setUser = (value: UserData | null) => {
-    setUserState(value);
-    authService.setCurrentUserData(value);
-  };
-  const setAuthUser = (value: UserAccount | null) => {
-    setAuthUserState(value);
-    authService.setCurrentAuthUser(value);
-  };
+  useEffect(() => {
+    // Prime state from localStorage after mount (optional UX improvement), then verify with the server.
+    try {
+      const guest = authService.isGuest();
+      setIsGuest(guest);
+
+      if (guest) {
+        setUserState(null);
+        setAuthUserState(null);
+      } else {
+        const storedUser = authService.getStoredUserData();
+        const storedAuthUser = authService.getStoredAuthUser();
+        if (storedUser) setUserState(storedUser);
+        if (storedAuthUser) setAuthUserState(storedAuthUser);
+      }
+    } catch {
+      // ignore storage errors; checkAuth will resolve the truth
+    }
+
+    void checkAuth();
+
+    // Warm sports cache once per app load so sport selectors can render immediately.
+    sportsService.getAll().catch(() => {
+      // Ignore failures; consumers still attempt to load sports when needed.
+    });
+  }, [checkAuth]);
 
   const refreshUser = async () => {
     if (!authUser) return;

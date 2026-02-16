@@ -215,7 +215,7 @@ export default function TournamentBracketView({
         };
         visit(rootId, 0);
         return centers;
-    }, [rootId, viewById, getChildrenLimited, pairDepthById]);
+    }, [rootId, viewById, getChildrenLimited, pairDepthById, LEVEL_STEP]);
 
     const positionById = useMemo(() => {
         const positions = new Map<string, { x: number; y: number; round: number; level: number }>();

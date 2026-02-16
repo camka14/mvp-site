@@ -1,5 +1,6 @@
 // components/ui/TeamDetailModal.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea } from '@mantine/core';
 import { Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
@@ -52,33 +53,7 @@ export default function TeamDetailModal({
     const normalizedInviteEmail = emailInviteInput.trim().toLowerCase();
     const inviteEmailValid = EMAIL_REGEX.test(normalizedInviteEmail);
 
-    useEffect(() => {
-        if (isOpen) {
-            fetchTeamDetails();
-        }
-    }, [isOpen, currentTeam.$id]);
-
-    useEffect(() => {
-        setLocalFreeAgents(eventFreeAgents);
-    }, [eventFreeAgents]);
-
-    useEffect(() => {
-        setNewName(currentTeam.name || '');
-    }, [currentTeam.$id]);
-
-    useEffect(() => {
-        if (inviteMode !== 'search') {
-            setSearchResults([]);
-            return;
-        }
-        if (searchQuery.length >= 2) {
-            performSearch();
-        } else {
-            setSearchResults([]);
-        }
-    }, [searchQuery, inviteMode]);
-
-    const fetchTeamDetails = async () => {
+    const fetchTeamDetails = useCallback(async () => {
         try {
             setLoading(true);
 
@@ -101,7 +76,49 @@ export default function TeamDetailModal({
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentTeam.playerIds, currentTeam.pending]);
+
+    const performSearch = useCallback(async () => {
+        setSearching(true);
+        try {
+            const results = await userService.searchUsers(searchQuery);
+            const filteredResults = results.filter(result =>
+                !currentTeam.playerIds.includes(result.$id) &&
+                !currentTeam.pending.includes(result.$id)
+            );
+            setSearchResults(filteredResults);
+        } catch (error) {
+            console.error('Search failed:', error);
+        } finally {
+            setSearching(false);
+        }
+    }, [currentTeam.pending, currentTeam.playerIds, searchQuery]);
+
+    useEffect(() => {
+        if (isOpen) {
+            void fetchTeamDetails();
+        }
+    }, [isOpen, fetchTeamDetails]);
+
+    useEffect(() => {
+        setLocalFreeAgents(eventFreeAgents);
+    }, [eventFreeAgents]);
+
+    useEffect(() => {
+        setNewName(currentTeam.name || '');
+    }, [currentTeam.$id, currentTeam.name]);
+
+    useEffect(() => {
+        if (inviteMode !== 'search') {
+            setSearchResults([]);
+            return;
+        }
+        if (searchQuery.length >= 2) {
+            performSearch();
+        } else {
+            setSearchResults([]);
+        }
+    }, [searchQuery, inviteMode, performSearch]);
 
     const extractFileIdFromUrl = (url: string): string => {
         try {
@@ -138,24 +155,6 @@ export default function TeamDetailModal({
         } catch (e) {
             console.error('Failed to update team name:', e);
             setError('Failed to update team name');
-        }
-    };
-
-    const performSearch = async () => {
-        if (searching) return;
-
-        setSearching(true);
-        try {
-            const results = await userService.searchUsers(searchQuery);
-            const filteredResults = results.filter(result =>
-                !currentTeam.playerIds.includes(result.$id) &&
-                !currentTeam.pending.includes(result.$id)
-            );
-            setSearchResults(filteredResults);
-        } catch (error) {
-            console.error('Search failed:', error);
-        } finally {
-            setSearching(false);
         }
     };
 
@@ -456,9 +455,12 @@ export default function TeamDetailModal({
                                                 }`}
                                         >
                                             <div className="flex items-center space-x-3">
-                                                <img
+                                                <Image
                                                     src={getUserAvatarUrl(player, 40)}
                                                     alt={getUserFullName(player)}
+                                                    width={40}
+                                                    height={40}
+                                                    unoptimized
                                                     className="w-10 h-10 rounded-full object-cover"
                                                 />
                                                 <div>

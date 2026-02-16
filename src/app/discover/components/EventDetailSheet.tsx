@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import { Event, UserData, Team, getEventDateTime, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl, formatPrice } from '@/types';
@@ -125,43 +126,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const isActive = renderInline ? Boolean(isOpen) : isOpen;
 
     useEffect(() => {
-        if (isActive && event) {
-            setDetailedEvent(event);
-            if (event.state !== 'DRAFT') {
-                loadEventDetails();
-            }
-        } else {
-            setDetailedEvent(null);
-            setPlayers([]);
-            setTeams([]);
-            setIsLoadingEvent(false);
-            setIsLoadingTeams(false);
-            setJoinError(null); // Reset error when modal closes
-            setJoinNotice(null);
-            setShowSignModal(false);
-            setSignLinks([]);
-            setCurrentSignIndex(0);
-            setPendingJoin(null);
-            setPendingSignedDocumentId(null);
-            setShowPasswordModal(false);
-            setShowJoinChoiceModal(false);
-            setPassword('');
-            setPasswordError(null);
-            setConfirmingPassword(false);
-            setRecordingSignature(false);
-            setTextAccepted(false);
-            setChildren([]);
-            setChildrenLoading(false);
-            setChildrenError(null);
-            setSelectedChildId('');
-            setRegisteringChild(false);
-            setChildRegistration(null);
-            setChildConsent(null);
-            setChildRegistrationChildId(null);
-        }
-    }, [isActive, event]);
-
-    useEffect(() => {
         if (!isActive || !user) {
             setUserTeams([]);
             setIsLoadingTeams(false);
@@ -251,7 +215,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         };
     }, [isActive, user]);
 
-    const loadEventDetails = async (eventId?: string) => {
+    const loadEventDetails = useCallback(async (eventId?: string) => {
         const targetId = eventId ?? event?.$id;
         if (!targetId) return;
 
@@ -292,7 +256,44 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         } finally {
             setIsLoadingEvent(false);
         }
-    };
+    }, [event]);
+
+    useEffect(() => {
+        if (isActive && event) {
+            setDetailedEvent(event);
+            if (event.state !== 'DRAFT') {
+                void loadEventDetails();
+            }
+        } else {
+            setDetailedEvent(null);
+            setPlayers([]);
+            setTeams([]);
+            setIsLoadingEvent(false);
+            setIsLoadingTeams(false);
+            setJoinError(null); // Reset error when modal closes
+            setJoinNotice(null);
+            setShowSignModal(false);
+            setSignLinks([]);
+            setCurrentSignIndex(0);
+            setPendingJoin(null);
+            setPendingSignedDocumentId(null);
+            setShowPasswordModal(false);
+            setShowJoinChoiceModal(false);
+            setPassword('');
+            setPasswordError(null);
+            setConfirmingPassword(false);
+            setRecordingSignature(false);
+            setTextAccepted(false);
+            setChildren([]);
+            setChildrenLoading(false);
+            setChildrenError(null);
+            setSelectedChildId('');
+            setRegisteringChild(false);
+            setChildRegistration(null);
+            setChildConsent(null);
+            setChildRegistrationChildId(null);
+        }
+    }, [isActive, event, loadEventDetails]);
 
     const handleViewSchedule = (tab?: string) => {
         const schedulePath = `/events/${currentEvent.$id}/schedule`;
@@ -963,13 +964,15 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             <div className="rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm">
                 {/* Optional hero banner */}
                 <div className="relative">
-                    <img
+                    <Image
                         src={getEventImageUrl({ imageId: currentEvent.imageId, width: 800 })}
                         alt={currentEvent.name}
+                        fill
+                        unoptimized
+                        sizes="(max-width: 768px) 100vw, 800px"
                         className="w-full h-48 object-cover"
                         onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.src = 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=200&fit=crop';
+                            e.currentTarget.src = 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=200&fit=crop';
                         }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
@@ -1645,9 +1648,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 isLoading={isLoadingEvent}
                 renderParticipant={(player) => (
                     <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                        <img
+                        <Image
                             src={getUserAvatarUrl(player as UserData, 40)}
                             alt={(player as UserData).fullName}
+                            width={40}
+                            height={40}
+                            unoptimized
                             className="w-10 h-10 rounded-full object-cover"
                         />
                         <div>
@@ -1668,9 +1674,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 isLoading={isLoadingEvent}
                 renderParticipant={(team) => (
                     <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                        <img
+                        <Image
                             src={getTeamAvatarUrl(team as Team, 40)}
                             alt={(team as Team).name || 'Team'}
+                            width={40}
+                            height={40}
+                            unoptimized
                             className="w-10 h-10 rounded-full object-cover"
                         />
                         <div className="flex-1">
@@ -1696,9 +1705,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 isLoading={isLoadingEvent}
                 renderParticipant={(agent) => (
                     <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                        <img
+                        <Image
                             src={getUserAvatarUrl(agent as UserData, 40)}
                             alt={(agent as UserData).fullName}
+                            width={40}
+                            height={40}
+                            unoptimized
                             className="w-10 h-10 rounded-full object-cover"
                         />
                         <div>

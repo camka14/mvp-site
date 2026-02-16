@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import type { Organization } from '@/types';
 
 interface OrganizationCardProps {
@@ -22,9 +23,12 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
     <div className={`card group ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-all duration-200`} onClick={onClick}>
       <div className="card-content">
         <div className="flex items-start space-x-3 mb-4">
-          <img
+          <Image
             src={getOrgLogoUrl(organization, 56)}
             alt={organization.name}
+            width={56}
+            height={56}
+            unoptimized
             className="w-14 h-14 rounded-full object-cover border-2 border-gray-200 group-hover:border-blue-300 transition-colors"
           />
           <div className="flex-1 min-w-0">

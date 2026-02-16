@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import Image from 'next/image';
 import { Event, LocationCoordinates, formatPrice, getEventDateTime, getEventImageUrl } from '@/types';
 import { locationService } from '@/lib/locationService';
 
@@ -88,9 +89,12 @@ export default function EventCard({ event, showDistance = false, userLocation, o
       onClick={onClick}
     >
       <div className="relative h-48 overflow-hidden rounded-t-xl">
-        <img
+        <Image
           src={imageUrl}
           alt={event.name}
+          fill
+          unoptimized
+          sizes="(max-width: 768px) 100vw, 400px"
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
         <div className="absolute top-4 left-4 space-y-2">
