@@ -24,7 +24,6 @@ const buildBaseEvent = (overrides: Partial<Event> = {}): Event => ({
   end: '2026-01-12T10:30:00',
   location: 'Denver',
   coordinates: [0, 0],
-  fieldType: 'INDOOR',
   price: 0,
   imageId: '',
   hostId: 'host_1',
@@ -73,7 +72,6 @@ describe('eventTemplates', () => {
       location: 'Denver',
       lat: 0,
       long: 0,
-      type: 'INDOOR',
       fieldNumber: 1,
     };
 
@@ -169,4 +167,3 @@ describe('eventTemplates', () => {
     expect(seeded.timeSlots?.[0].endDate).toBe('2026-02-08T10:30:00');
   });
 });
-

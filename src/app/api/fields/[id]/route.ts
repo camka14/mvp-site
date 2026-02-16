@@ -6,9 +6,22 @@ import { withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
-const updateSchema = z.object({
-  field: z.record(z.string(), z.any()).optional(),
+const updateEnvelopeSchema = z.object({
+  field: z.unknown().optional(),
 }).passthrough();
+
+const fieldPatchSchema = z.object({
+  name: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  lat: z.number().nullable().optional(),
+  long: z.number().nullable().optional(),
+  fieldNumber: z.number().optional(),
+  heading: z.number().nullable().optional(),
+  inUse: z.boolean().nullable().optional(),
+  organizationId: z.string().nullable().optional(),
+  divisions: z.array(z.string()).optional(),
+  rentalSlotIds: z.array(z.string()).optional(),
+});
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,9 +35,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body ?? {});
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+  const parsedEnvelope = updateEnvelopeSchema.safeParse(body ?? {});
+  if (!parsedEnvelope.success) {
+    return NextResponse.json({ error: 'Invalid input', details: parsedEnvelope.error.flatten() }, { status: 400 });
   }
 
   const { id } = await params;
@@ -50,10 +63,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  const payload = parsed.data.field ?? parsed.data ?? {};
+  const payload = parsedEnvelope.data.field ?? parsedEnvelope.data ?? {};
+  const parsedPayload = fieldPatchSchema.safeParse(payload);
+  if (!parsedPayload.success) {
+    return NextResponse.json({ error: 'Invalid input', details: parsedPayload.error.flatten() }, { status: 400 });
+  }
+
+  const safePayload = parsedPayload.data;
   const updated = await prisma.fields.update({
     where: { id },
-    data: { ...payload, updatedAt: new Date() },
+    data: { ...safePayload, updatedAt: new Date() },
   });
 
   return NextResponse.json(withLegacyFields(updated), { status: 200 });

@@ -510,7 +510,6 @@ export class EventBuilder {
       fields: tournamentFields,
       doubleElimination: this.event.doubleElimination,
       matches: {},
-      fieldType: this.event.fieldType,
       location: this.event.location,
       organizationId: this.event.organizationId,
       winnerSetCount: this.event.winnerSetCount,

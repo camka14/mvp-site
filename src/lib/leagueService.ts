@@ -5,7 +5,6 @@ import {
   Match,
   Event,
   Field,
-  FieldSurfaceType,
 } from '@/types';
 import { eventService } from './eventService';
 
@@ -24,7 +23,6 @@ export interface LeagueFieldTemplateInput {
   key: string;
   name: string;
   fieldNumber: number;
-  fieldType?: FieldSurfaceType;
 }
 
 export interface LeagueSlotCreationInput {

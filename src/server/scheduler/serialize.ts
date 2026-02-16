@@ -82,7 +82,6 @@ const serializeEventBase = (event: Tournament | League) => ({
   end: event.end.toISOString(),
   location: event.location,
   coordinates: event.coordinates ?? null,
-  fieldType: event.fieldType,
   price: event.price ?? null,
   minAge: null,
   maxAge: null,

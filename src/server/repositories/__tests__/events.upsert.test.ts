@@ -53,13 +53,11 @@ const baseEventPayload = () => ({
   eventType: 'LEAGUE',
   sportId: 'sport_1',
   hostId: 'host_1',
-  fieldType: 'INDOOR',
   fields: [
     {
       $id: 'field_1',
       fieldNumber: 1,
       name: 'Court A',
-      type: 'INDOOR',
       location: 'Main Gym',
       lat: 0,
       long: 0,
@@ -153,8 +151,8 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       fieldIds: ['field_old'],
       fields: [
-        { $id: 'field_1', fieldNumber: 1, name: 'Court A', type: 'INDOOR', divisions: ['OPEN'] },
-        { $id: 'field_2', fieldNumber: 2, name: 'Court B', type: 'INDOOR', divisions: ['OPEN'] },
+        { $id: 'field_1', fieldNumber: 1, name: 'Court A', divisions: ['OPEN'] },
+        { $id: 'field_2', fieldNumber: 2, name: 'Court B', divisions: ['OPEN'] },
       ],
       timeSlots: [
         {
@@ -205,7 +203,6 @@ describe('upsertEventFromPayload', () => {
           $id: 'field_1',
           fieldNumber: 1,
           name: 'Court A',
-          type: 'INDOOR',
           divisions: [],
         },
       ],
@@ -231,7 +228,6 @@ describe('upsertEventFromPayload', () => {
           $id: 'field_1',
           fieldNumber: 1,
           name: 'Court A',
-          type: 'INDOOR',
           divisions: [],
         },
       ],
@@ -265,7 +261,6 @@ describe('upsertEventFromPayload', () => {
           $id: 'field_1',
           fieldNumber: 1,
           name: 'Court A',
-          type: 'INDOOR',
           divisions: [],
         },
       ],

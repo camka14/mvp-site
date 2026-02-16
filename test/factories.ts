@@ -99,7 +99,6 @@ export const buildEvent = (overrides: Partial<Event> = {}): Event => {
     end: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
     location: 'Sports Center',
     coordinates: [0, 0],
-    fieldType: 'INDOOR',
     price: 25,
     rating: 5,
     imageId: 'image_1',

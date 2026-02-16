@@ -44,7 +44,6 @@ describe('field routes', () => {
     prismaMock.fields.create.mockResolvedValue({
       id: 'field_1',
       name: 'Court A',
-      type: 'INDOOR',
       location: null,
       lat: null,
       long: null,
@@ -90,4 +89,3 @@ describe('field routes', () => {
     expect(prismaMock.organizations.update).not.toHaveBeenCalled();
   });
 });
-

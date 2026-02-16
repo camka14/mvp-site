@@ -3,7 +3,6 @@ import {
     Event,
     EventType,
     Field,
-    FieldSurfaceType,
     LocationCoordinates,
     Team,
     UserData,
@@ -65,7 +64,6 @@ export interface EventFilters {
     eventTypes?: EventType[];
     sports?: string[];
     divisions?: string[];
-    fieldType?: FieldSurfaceType;
 }
 
 class EventService {
@@ -281,11 +279,9 @@ class EventService {
 
     private withNormalizedEventEnums<T extends Partial<Event>>(event: T): T {
         const normalizedEventType = normalizeEnumValue(event.eventType);
-        const normalizedFieldType = normalizeEnumValue(event.fieldType);
         return {
             ...event,
             ...(normalizedEventType ? { eventType: normalizedEventType as Event['eventType'] } : {}),
-            ...(normalizedFieldType ? { fieldType: normalizedFieldType as FieldSurfaceType } : {}),
         };
     }
 
@@ -362,9 +358,6 @@ class EventService {
     private mapRowToEvent(row: any): Event {
         const state = this.normalizeEventState(row.state);
         const organization = row.organization ?? row.organizationId;
-        const normalizedFieldType =
-            normalizeEnumValue(row.fieldType) ??
-            (typeof row.fieldType === 'string' ? row.fieldType.toUpperCase() : undefined);
         const normalizedEventType =
             normalizeEnumValue(row.eventType) ??
             (typeof row.eventType === 'string' ? row.eventType.toUpperCase() : undefined);
@@ -387,7 +380,6 @@ class EventService {
             end: row.end,
             location: row.location,
             coordinates: row.coordinates,
-            ...(normalizedFieldType ? { fieldType: normalizedFieldType as FieldSurfaceType } : {}),
             price: row.price,
             minAge: normalizeAge(row.minAge),
             maxAge: normalizeAge(row.maxAge),

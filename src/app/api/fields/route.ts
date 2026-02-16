@@ -9,7 +9,6 @@ export const dynamic = 'force-dynamic';
 const createSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
-  type: z.string().optional(),
   location: z.string().optional(),
   lat: z.number().optional(),
   long: z.number().optional(),
@@ -78,7 +77,6 @@ export async function POST(req: NextRequest) {
       data: {
         id: data.id,
         name: data.name ?? null,
-        type: data.type ?? null,
         location: data.location ?? null,
         lat: data.lat ?? null,
         long: data.long ?? null,

@@ -7,7 +7,7 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, FieldSurfaceType, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -150,22 +150,6 @@ const resolveSportInput = (sportInput?: Sport | string | null): string => {
         ? sportInput
         : sportInput?.name ?? sportInput?.$id ?? '';
     return sportName.toLowerCase();
-};
-
-const DEFAULT_FIELD_SURFACE_TYPE = 'UNKNOWN' as FieldSurfaceType;
-
-const inferFieldSurfaceTypeFromSportInput = (sportInput?: Sport | string | null): FieldSurfaceType => {
-    const normalizedSport = resolveSportInput(sportInput);
-    if (normalizedSport.includes('indoor')) {
-        return 'INDOOR' as FieldSurfaceType;
-    }
-    if (normalizedSport.includes('beach') || normalizedSport.includes('sand')) {
-        return 'SAND' as FieldSurfaceType;
-    }
-    if (normalizedSport.includes('grass')) {
-        return 'GRASS' as FieldSurfaceType;
-    }
-    return DEFAULT_FIELD_SURFACE_TYPE;
 };
 
 const parseDateValue = (value?: string | null): Date | null => {
@@ -1560,7 +1544,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         })();
 
         const defaultFields: Field[] = (() => {
-            const inferredFieldSurfaceType = inferFieldSurfaceTypeFromSportInput(base.sportConfig ?? base.sportId);
             if (hasImmutableFields) {
                 return sanitizeFieldsForForm(immutableFields);
             }
@@ -1574,7 +1557,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     $id: createClientId(),
                     name: `Field ${idx + 1}`,
                     fieldNumber: idx + 1,
-                    type: inferredFieldSurfaceType,
                     location: '',
                 } as Field));
             }
@@ -1801,11 +1783,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
     const joinAsParticipant = formValues.joinAsParticipant;
     const organizationId = organization?.$id ?? eventData.organizationId;
-    const inferredFieldSurfaceType = useMemo(
-        () => inferFieldSurfaceTypeFromSportInput(eventData.sportConfig ?? eventData.sportId),
-        [eventData.sportConfig, eventData.sportId],
-    );
-
     const templateOptions = useMemo(
         () => templateDocuments.map((template) => {
             const templateType = template.type ?? 'PDF';
@@ -2634,7 +2611,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setFields(sanitizeFieldsForForm(immutableFields));
     }, [hasImmutableFields, immutableFields, setFields]);
 
-    // When provisioning local fields, mirror inferred surface/count changes into the generated list.
+    // When provisioning local fields, mirror count/division changes into the generated list.
     useEffect(() => {
         if (!shouldManageLocalFields) {
             return;
@@ -2644,7 +2621,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const normalized: Field[] = prev.slice(0, fieldCount).map((field, index) => ({
                 ...field,
                 fieldNumber: index + 1,
-                type: inferredFieldSurfaceType,
                 divisions: (() => {
                     const current = normalizeDivisionKeys(field.divisions);
                     return current.length ? current : fallbackDivisions;
@@ -2657,7 +2633,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         $id: createClientId(),
                         name: `Field ${index + 1}`,
                         fieldNumber: index + 1,
-                        type: inferredFieldSurfaceType,
                         location: '',
                         lat: 0,
                         long: 0,
@@ -2668,7 +2643,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             return normalized;
         });
-    }, [fieldCount, shouldManageLocalFields, eventData.divisions, inferredFieldSurfaceType, setFields]);
+    }, [fieldCount, shouldManageLocalFields, eventData.divisions, setFields]);
 
     // For organizations with existing facilities, seed the field list with their saved ordering.
     useEffect(() => {
@@ -3308,7 +3283,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 draft.fields = localFields.map((field, idx) => ({
                     ...field,
                     fieldNumber: field.fieldNumber ?? idx + 1,
-                    type: field.type || inferredFieldSurfaceType,
                     divisions: (() => {
                         const normalized = normalizeDivisionKeys(field.divisions);
                         return normalized.length ? normalized : fallbackDivisions;
@@ -3514,7 +3488,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         shouldManageLocalFields,
         shouldProvisionFields,
         fieldCount,
-        inferredFieldSurfaceType,
     ]);
 
     const getDraftSnapshot = useCallback(

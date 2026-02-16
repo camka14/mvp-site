@@ -7,7 +7,6 @@
     "end": "2026-03-01T12:00:00Z",
     "location": "Sports Center",
     "coordinates": [0, 0],
-    "fieldType": "INDOOR",
     "price": 25,
     "rating": 5,
     "imageId": "image_1",
@@ -71,7 +70,6 @@
         "id": "field_1",
         "name": "Court A",
         "fieldNumber": 1,
-        "type": "INDOOR",
         "location": "Sports Center",
         "lat": 0,
         "long": 0
@@ -92,7 +90,6 @@
           "id": "field_1",
           "name": "Court A",
           "fieldNumber": 1,
-          "type": "INDOOR",
           "location": "Sports Center",
           "lat": 0,
           "long": 0

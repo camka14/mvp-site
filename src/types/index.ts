@@ -305,7 +305,6 @@ export interface Field {
   location: string;
   lat: number;
   long: number;
-  type: FieldSurfaceType;
   fieldNumber: number;
   heading?: number;
   inUse?: boolean;
@@ -319,7 +318,6 @@ export interface Field {
   rentalSlots?: TimeSlot[];
 }
 
-export type FieldSurfaceType = Uppercase<string>;
 export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE';
 
 type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'rentalSlots' | 'rentalSlotIds';
@@ -374,7 +372,6 @@ export interface Event {
   end: string;
   location: string;
   coordinates: [number, number];
-  fieldType?: FieldSurfaceType;
   price: number;
   minAge?: number;
   maxAge?: number;
@@ -731,13 +728,6 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
     ...base,
   };
 
-  if (typeof payload.type === 'string') {
-    const normalizedType = normalizeEnumValue(payload.type);
-    if (normalizedType) {
-      payload.type = normalizedType as FieldSurfaceType;
-    }
-  }
-
   const divisionIds = Array.isArray(divisions)
     ? uniqueIds(
         divisions.map((divisionEntry) =>
@@ -936,11 +926,6 @@ export function toEventPayload(event: Event): EventPayload {
   if (payload.eventType && payload.eventType !== 'LEAGUE') {
     delete payload.leagueScoringConfig;
     delete payload.leagueScoringConfigId;
-  }
-
-  const normalizedFieldType = normalizeEnumValue(payload.fieldType);
-  if (normalizedFieldType) {
-    payload.fieldType = normalizedFieldType as FieldSurfaceType;
   }
 
   if (resolvedOrganizationId) {

@@ -371,7 +371,6 @@ const buildTemplateBracket = (league: League, seededTeamIds: string[], context: 
     fields: tournamentFields,
     doubleElimination: league.doubleElimination,
     matches: {},
-    fieldType: league.fieldType,
     location: league.location,
     organizationId: league.organizationId ?? null,
     winnerSetCount: league.winnerSetCount,

@@ -596,9 +596,6 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (selectedField.fieldNumber !== undefined) {
       params.set('rentalFieldNumber', String(selectedField.fieldNumber));
     }
-    if (selectedField.type) {
-      params.set('rentalFieldType', selectedField.type);
-    }
     if (selectedField.location) {
       params.set('rentalLocation', selectedField.location);
     }

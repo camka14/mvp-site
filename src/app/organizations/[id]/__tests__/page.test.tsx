@@ -9,7 +9,6 @@ describe('buildFieldCalendarEvents', () => {
     location: '',
     lat: 0,
     long: 0,
-    type: 'INDOOR',
     fieldNumber: 1,
   } as Field;
 
@@ -38,7 +37,6 @@ describe('buildFieldCalendarEvents', () => {
         end: '2025-10-12T02:00:00.000+00:00',
         location: '',
         coordinates: [0, 0],
-        fieldType: 'INDOOR',
         price: 0,
         imageId: '',
         hostId: 'host_1',

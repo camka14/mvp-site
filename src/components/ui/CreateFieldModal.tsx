@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Button, Group, TextInput, NumberInput, Select } from '@mantine/core';
-import type { Field, FieldSurfaceType, Organization } from '@/types';
+import { Modal, Button, Group, TextInput, NumberInput } from '@mantine/core';
+import type { Field, Organization } from '@/types';
 import { fieldService } from '@/lib/fieldService';
 import LocationSelector from '@/components/location/LocationSelector';
 
@@ -17,7 +17,6 @@ interface CreateFieldModalProps {
 type FieldFormState = {
   $id?: string;
   name: string;
-  type: FieldSurfaceType;
   location: string;
   lat: string | number;
   long: string | number;
@@ -28,7 +27,6 @@ type FieldFormState = {
 const createEmptyState = (organization?: Organization): FieldFormState => ({
   $id: undefined,
   name: '',
-  type: 'INDOOR',
   location: '',
   lat: '',
   long: '',
@@ -52,7 +50,6 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
       setForm({
         $id: field.$id,
         name: field.name || '',
-        type: (field.type as FieldSurfaceType) || 'INDOOR',
         location: field.location || '',
         lat: typeof field.lat === 'number' ? field.lat : '',
         long: typeof field.long === 'number' ? field.long : '',
@@ -74,7 +71,6 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
       const payload = {
         $id: form.$id,
         name: form.name.trim(),
-        type: form.type,
         location: form.location.trim() || undefined,
         lat: form.lat === '' ? undefined : Number(form.lat),
         long: form.long === '' ? undefined : Number(form.long),
@@ -85,7 +81,6 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
         ? await fieldService.updateField({
             $id: payload.$id,
             name: payload.name,
-            type: payload.type,
             location: payload.location,
             lat: payload.lat,
             long: payload.long,
@@ -117,17 +112,6 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Select
-            label="Type"
-            data={[{ value: 'INDOOR', label: 'Indoor' }, { value: 'OUTDOOR', label: 'Outdoor' }]}
-            value={form.type}
-            onChange={(value) =>
-              setForm(prev => ({
-                ...prev,
-                type: (value?.toUpperCase() as FieldSurfaceType) || prev.type,
-              }))
-            }
-          />
           <NumberInput
             label="Field Number"
             min={1}

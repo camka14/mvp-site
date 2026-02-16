@@ -465,7 +465,6 @@ export class Tournament {
   freeAgentIds: string[];
   maxParticipants: number;
   teamSignup: boolean;
-  fieldType: string;
   coordinates: number[] | null;
   organizationId: string | null;
   requiredTemplateIds: string[];
@@ -528,7 +527,6 @@ export class Tournament {
     freeAgentIds?: string[];
     maxParticipants: number;
     teamSignup: boolean;
-    fieldType?: string;
     coordinates?: number[] | null;
     organizationId?: string | null;
     requiredTemplateIds?: string[];
@@ -590,7 +588,6 @@ export class Tournament {
     this.freeAgentIds = params.freeAgentIds ?? [];
     this.maxParticipants = params.maxParticipants;
     this.teamSignup = params.teamSignup;
-    this.fieldType = params.fieldType ?? '';
     this.coordinates = params.coordinates ?? null;
     this.organizationId = params.organizationId ?? null;
     this.requiredTemplateIds = params.requiredTemplateIds ?? [];

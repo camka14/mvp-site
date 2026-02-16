@@ -76,7 +76,6 @@ describe('event schedule route - split divisions regression', () => {
       end: new Date('2026-02-28T13:00:00.000Z'),
       location: 'Main Gym',
       coordinates: null,
-      fieldType: 'INDOOR',
       price: 0,
       minAge: null,
       maxAge: null,

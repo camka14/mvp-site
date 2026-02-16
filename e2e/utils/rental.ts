@@ -59,7 +59,6 @@ export const assertRentalQueryParams = (
   expect(url.searchParams.get('rentalFieldId')).toBe(SEED_FIELD.id);
   expect(url.searchParams.get('rentalFieldName')).toBe(SEED_FIELD.name);
   expect(url.searchParams.get('rentalFieldNumber')).toBe(String(SEED_FIELD.fieldNumber));
-  expect(url.searchParams.get('rentalFieldType')).toBe(SEED_FIELD.type);
   expect(url.searchParams.get('rentalLocation')).toBe(SEED_FIELD.location);
   expect(url.searchParams.get('rentalLat')).toBe(String(SEED_FIELD.lat));
   expect(url.searchParams.get('rentalLng')).toBe(String(SEED_FIELD.long));

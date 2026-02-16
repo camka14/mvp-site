@@ -5,13 +5,11 @@ import { createId } from '@/lib/id';
 import type { Field, Organization, TimeSlot } from '@/types';
 import { eventService } from './eventService';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
-import { normalizeEnumValue } from '@/lib/enumUtils';
 
 
 export interface CreateFieldData {
   $id?: string;
   name: string;
-  type?: string;
   location?: string;
   lat?: number;
   long?: number;
@@ -25,7 +23,6 @@ export interface CreateFieldData {
 export interface UpdateFieldData {
   $id: string;
   name?: string;
-  type?: string;
   location?: string;
   lat?: number;
   long?: number;
@@ -42,11 +39,9 @@ export interface ManageRentalSlotResult {
 class FieldService {
   async createField(data: CreateFieldData): Promise<Field> {
     const rowId = data.$id ?? createId();
-    const normalizedType = normalizeEnumValue(data.type);
 
     const payload: Record<string, unknown> = {
       name: data.name,
-      type: normalizedType ?? data.type,
       location: data.location,
       lat: data.lat,
       long: data.long,
@@ -71,10 +66,8 @@ class FieldService {
       throw new Error('Field update requires an id');
     }
 
-    const normalizedType = normalizeEnumValue(data.type);
     const payload: Record<string, unknown> = {
       ...(data.name !== undefined ? { name: data.name } : {}),
-      ...(data.type !== undefined ? { type: normalizedType ?? data.type } : {}),
       ...(data.location !== undefined ? { location: data.location } : {}),
       ...(data.lat !== undefined ? { lat: data.lat } : {}),
       ...(data.long !== undefined ? { long: data.long } : {}),
@@ -156,17 +149,12 @@ class FieldService {
       ? row.rentalSlotIds.map((value: unknown) => String(value))
       : undefined;
 
-    const normalizedType =
-      normalizeEnumValue(row.type) ??
-      (typeof row.type === 'string' ? row.type.toUpperCase() : undefined);
-
     const field: Field = {
       $id: String(row.$id ?? row.id ?? ''),
       name: row.name ?? '',
       location: row.location ?? '',
       lat: Number.isFinite(lat) ? lat : 0,
       long: Number.isFinite(long) ? long : 0,
-      type: (normalizedType ?? 'UNKNOWN') as Field['type'],
       fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
       heading: Number.isFinite(heading) ? heading : undefined,
       inUse: inUse,

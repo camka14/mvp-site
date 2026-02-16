@@ -25,7 +25,6 @@ const filterSchema = z.object({
   eventTypes: z.array(z.string()).optional(),
   sports: z.array(z.string()).optional(),
   divisions: z.array(z.string()).optional(),
-  fieldType: z.string().optional(),
 }).partial();
 
 const searchSchema = z.object({
@@ -66,9 +65,6 @@ export async function POST(req: NextRequest) {
   where.NOT = { state: 'TEMPLATE' };
   if (filters.eventTypes?.length) {
     where.eventType = { in: filters.eventTypes };
-  }
-  if (filters.fieldType) {
-    where.fieldType = filters.fieldType;
   }
   if (typeof filters.priceMax === 'number') {
     where.price = { lte: filters.priceMax };

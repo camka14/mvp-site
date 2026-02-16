@@ -103,7 +103,6 @@ function DiscoverPageContent() {
   const [rentalsLoaded, setRentalsLoaded] = useState(false);
   const [rentalsLoading, setRentalsLoading] = useState(false);
   const [rentalsError, setRentalsError] = useState<string | null>(null);
-  const [selectedFieldTypes, setSelectedFieldTypes] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<[number, number]>([8, 22]);
 
   /**
@@ -386,18 +385,6 @@ function DiscoverPageContent() {
   /**
    * Rentals derived data
    */
-  const availableFieldTypes = useMemo(() => {
-    const types = new Set<string>();
-    rentalOrganizations.forEach((organization) => {
-      (organization.fields || []).forEach((field) => {
-        if (field.type) {
-          types.add(field.type);
-        }
-      });
-    });
-    return Array.from(types).sort((a, b) => a.localeCompare(b));
-  }, [rentalOrganizations]);
-
   const rentalListings = useMemo(() => {
     const referenceDate = new Date();
     const listings: RentalListing[] = [];
@@ -413,10 +400,6 @@ function DiscoverPageContent() {
           : Number((organization as any).long ?? 0);
 
       (organization.fields || []).forEach((field) => {
-        if (selectedFieldTypes.length && field.type && !selectedFieldTypes.includes(field.type)) {
-          return;
-        }
-
         (field.rentalSlots || []).forEach((slot) => {
           const nextOccurrence = getNextRentalOccurrence(slot, referenceDate);
           if (!nextOccurrence) {
@@ -452,7 +435,7 @@ function DiscoverPageContent() {
     });
 
     return listings;
-  }, [rentalOrganizations, selectedFieldTypes, location, kmBetween]);
+  }, [rentalOrganizations, location, kmBetween]);
 
   const defaultTimeRange = useMemo<[number, number]>(() => {
     if (!rentalListings.length) {
@@ -614,9 +597,6 @@ function DiscoverPageContent() {
               rentalsLoading={rentalsLoading}
               rentalsError={rentalsError}
               rentalListings={rentalListings}
-              availableFieldTypes={availableFieldTypes}
-              selectedFieldTypes={selectedFieldTypes}
-              setSelectedFieldTypes={setSelectedFieldTypes}
               timeRange={timeRange}
               setTimeRange={setTimeRange}
               onSelectOrganization={(org) => handleSelectRentalOrganization(org)}
@@ -962,9 +942,6 @@ function RentalsTabContent(props: {
   rentalsLoading: boolean;
   rentalsError: string | null;
   rentalListings: RentalListing[];
-  availableFieldTypes: string[];
-  selectedFieldTypes: string[];
-  setSelectedFieldTypes: (types: string[]) => void;
   timeRange: [number, number];
   setTimeRange: (range: [number, number]) => void;
   onSelectOrganization: (organization: Organization, listings: RentalListing[]) => void;
@@ -973,9 +950,6 @@ function RentalsTabContent(props: {
     rentalsLoading,
     rentalsError,
     rentalListings,
-    availableFieldTypes,
-    selectedFieldTypes,
-    setSelectedFieldTypes,
     timeRange,
     setTimeRange,
     onSelectOrganization,
@@ -1011,27 +985,6 @@ function RentalsTabContent(props: {
           Filters
         </Title>
         <Group gap="md" align="flex-start" wrap="wrap">
-          <div>
-            <Text size="sm" fw={600} mb={6}>
-              Field types
-            </Text>
-            {availableFieldTypes.length ? (
-              <Chip.Group multiple value={selectedFieldTypes} onChange={setSelectedFieldTypes}>
-                <Group gap="xs">
-                  {availableFieldTypes.map((type) => (
-                    <Chip key={type} value={type} radius="sm">
-                      {type}
-                    </Chip>
-                  ))}
-                </Group>
-              </Chip.Group>
-            ) : (
-              <Text size="sm" c="dimmed">
-                No field types available yet.
-              </Text>
-            )}
-          </div>
-
           <div className="flex-1 min-w-[240px]">
             <Text size="sm" fw={600} mb={6}>
               Time Range

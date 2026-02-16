@@ -529,7 +529,6 @@ function EventScheduleContent() {
         location: rentalLocationParam ?? '',
         lat: rentalCoordinates?.[1] ?? 0,
         long: rentalCoordinates?.[0] ?? 0,
-        type: 'UNKNOWN',
       };
     })();
 
