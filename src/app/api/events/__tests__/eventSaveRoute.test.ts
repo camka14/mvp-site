@@ -9,8 +9,12 @@ const prismaMock = {
   divisions: {
     findMany: jest.fn(),
   },
-  $transaction: jest.fn(async (callback: any) => callback(prismaMock)),
+  $transaction: jest.fn(),
 };
+
+prismaMock.$transaction.mockImplementation(
+  async (callback: (tx: typeof prismaMock) => Promise<unknown> | unknown) => callback(prismaMock),
+);
 
 const requireSessionMock = jest.fn();
 
@@ -91,4 +95,3 @@ describe('event save route', () => {
     expect(json.event.divisionFieldIds).toEqual({ open: ['field_1'] });
   });
 });
-

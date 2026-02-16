@@ -399,6 +399,7 @@ class EventService {
             restTimeMinutes: row.restTimeMinutes,
             teamSignup: row.teamSignup,
             singleDivision: row.singleDivision,
+            registrationByDivisionType: Boolean(row.registrationByDivisionType),
             waitListIds: row.waitListIds,
             freeAgentIds: row.freeAgentIds,
             teamIds: row.teamIds,
@@ -422,6 +423,30 @@ class EventService {
                 ? row.requiredTemplateIds.map((id: unknown) => String(id))
                 : [],
             divisions: row.divisions,
+            divisionDetails: Array.isArray(row.divisionDetails)
+                ? row.divisionDetails.map((entry: any) => ({
+                    id: String(entry?.id ?? entry?.$id ?? ''),
+                    name: String(entry?.name ?? entry?.id ?? ''),
+                    key: typeof entry?.key === 'string' ? entry.key : undefined,
+                    divisionTypeId: typeof entry?.divisionTypeId === 'string' ? entry.divisionTypeId : undefined,
+                    divisionTypeName: typeof entry?.divisionTypeName === 'string' ? entry.divisionTypeName : undefined,
+                    ratingType:
+                        entry?.ratingType === 'AGE' || entry?.ratingType === 'SKILL'
+                            ? entry.ratingType
+                            : undefined,
+                    gender:
+                        entry?.gender === 'M' || entry?.gender === 'F' || entry?.gender === 'C'
+                            ? entry.gender
+                            : undefined,
+                    sportId: typeof entry?.sportId === 'string' ? entry.sportId : undefined,
+                    fieldIds: Array.isArray(entry?.fieldIds)
+                        ? entry.fieldIds.map((fieldId: unknown) => String(fieldId)).filter(Boolean)
+                        : [],
+                    ageCutoffDate: typeof entry?.ageCutoffDate === 'string' ? entry.ageCutoffDate : undefined,
+                    ageCutoffLabel: typeof entry?.ageCutoffLabel === 'string' ? entry.ageCutoffLabel : undefined,
+                    ageCutoffSource: typeof entry?.ageCutoffSource === 'string' ? entry.ageCutoffSource : undefined,
+                })).filter((entry: any) => entry.id.length > 0)
+                : undefined,
             divisionFieldIds:
                 row.divisionFieldIds && typeof row.divisionFieldIds === 'object'
                     ? Object.fromEntries(
@@ -679,6 +704,14 @@ class EventService {
             name: row.name ?? '',
             seed,
             division,
+            divisionTypeId:
+                typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length > 0
+                    ? row.divisionTypeId
+                    : undefined,
+            divisionTypeName:
+                typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length > 0
+                    ? row.divisionTypeName
+                    : undefined,
             sport: typeof row.sport === 'string' ? row.sport : row.sport?.name ?? '',
             wins,
             losses,
@@ -1162,8 +1195,8 @@ class EventService {
     private mapRowToTimeSlot(row: any): TimeSlot {
         const startTime = this.normalizeTime(row.startTimeMinutes ?? row.startTime) ?? 0;
         const endTime = this.normalizeTime(row.endTimeMinutes ?? row.endTime) ?? startTime;
-        const normalizedFieldIds = Array.from(
-            new Set(
+        const normalizedFieldIds: string[] = Array.from(
+            new Set<string>(
                 (Array.isArray(row.scheduledFieldIds) && row.scheduledFieldIds.length
                     ? row.scheduledFieldIds
                     : row.scheduledFieldId

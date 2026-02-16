@@ -3,12 +3,24 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import {
+  inferDivisionDetails,
+  normalizeDivisionIdToken,
+} from '@/lib/divisionTypes';
 
 export const dynamic = 'force-dynamic';
 
 const updateSchema = z.object({
   team: z.record(z.string(), z.any()).optional(),
 }).passthrough();
+
+const normalizeText = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length ? normalized : null;
+};
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -38,9 +50,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const payload = parsed.data.team ?? parsed.data ?? {};
+  const normalizedDivision = normalizeText(payload.division)
+    ?? normalizeText(existing.division)
+    ?? 'Open';
+  const sportInput = normalizeText(payload.sport)
+    ?? normalizeText(existing.sport)
+    ?? null;
+  const normalizedDivisionTypeId = normalizeDivisionIdToken(payload.divisionTypeId)
+    ?? normalizeDivisionIdToken(existing.divisionTypeId);
+  const inferredDivision = inferDivisionDetails({
+    identifier: normalizedDivisionTypeId ?? normalizedDivision,
+    sportInput: sportInput ?? undefined,
+  });
+  const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
+  const divisionTypeName = normalizeText(payload.divisionTypeName)
+    ?? normalizeText(existing.divisionTypeName)
+    ?? inferredDivision.divisionTypeName;
+
+  const updateData = {
+    ...payload,
+    division: normalizedDivision,
+    divisionTypeId,
+    divisionTypeName,
+    sport: sportInput,
+    updatedAt: new Date(),
+  };
+
   const updated = await prisma.volleyBallTeams.update({
     where: { id },
-    data: { ...payload, updatedAt: new Date() },
+    data: updateData,
   });
 
   return NextResponse.json(withLegacyFields(updated), { status: 200 });

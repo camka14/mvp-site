@@ -23,6 +23,17 @@ import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFi
 import { apiRequest } from '@/lib/apiClient';
 import UserCard from '@/components/ui/UserCard';
 import {
+    buildDivisionName,
+    buildDivisionToken,
+    buildEventDivisionId,
+    evaluateDivisionAgeEligibility,
+    getDivisionTypeById,
+    getDivisionTypeOptionsForSport,
+    inferDivisionDetails,
+    normalizeDivisionGender,
+    normalizeDivisionRatingType,
+} from '@/lib/divisionTypes';
+import {
     getRequiredSignerTypeLabel,
     normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
@@ -67,19 +78,16 @@ const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const RATED_DIVISION_OPTIONS = [
-    { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
-    { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
-    { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
-    { value: 'expert', label: 'Expert (4.5+)' },
-    { value: 'open', label: 'Open (All Skill Levels)' },
-];
-const GENERIC_DIVISION_OPTIONS = [
-    { value: 'beginner', label: 'Beginner' },
-    { value: 'advanced', label: 'Advanced' },
-    { value: 'open', label: 'Open (All Skill Levels)' },
-];
 const DEFAULT_DIVISION_KEY = 'open';
+const DIVISION_GENDER_OPTIONS = [
+    { value: 'M', label: 'Mens' },
+    { value: 'F', label: 'Womens' },
+    { value: 'C', label: 'CoEd' },
+] as const;
+const DIVISION_RATING_TYPE_OPTIONS = [
+    { value: 'AGE', label: 'Age Based' },
+    { value: 'SKILL', label: 'Skill Based' },
+] as const;
 
 const normalizeWeekdays = (slot: { dayOfWeek?: number; daysOfWeek?: number[] }): number[] => {
     const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
@@ -137,26 +145,91 @@ const defaultFieldDivisionKeys = (eventDivisions: unknown): string[] => {
     return normalized.length ? normalized : [DEFAULT_DIVISION_KEY];
 };
 
-const defaultDivisionKeysForSport = (sportInput?: Sport | string | null): string[] => {
+const resolveSportInput = (sportInput?: Sport | string | null): string => {
     const sportName = typeof sportInput === 'string'
         ? sportInput
         : sportInput?.name ?? sportInput?.$id ?? '';
-    const normalizedSport = sportName.toLowerCase();
-    if (normalizedSport.includes('soccer')) {
-        return ['beginner', 'advanced'];
-    }
-    return ['beginner', 'intermediate', 'advanced'];
+    return sportName.toLowerCase();
 };
 
-const divisionOptionsForSport = (sportInput?: Sport | string | null): Array<{ value: string; label: string }> => {
-    const sportName = typeof sportInput === 'string'
-        ? sportInput
-        : sportInput?.name ?? sportInput?.$id ?? '';
-    const normalizedSport = sportName.toLowerCase();
-    if (normalizedSport.includes('soccer')) {
-        return GENERIC_DIVISION_OPTIONS;
+const parseDateValue = (value?: string | null): Date | null => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+type DivisionDetailForm = {
+    id: string;
+    key: string;
+    name: string;
+    divisionTypeId: string;
+    divisionTypeName: string;
+    ratingType: 'AGE' | 'SKILL';
+    gender: 'M' | 'F' | 'C';
+    sportId?: string;
+    fieldIds?: string[];
+    ageCutoffDate?: string;
+    ageCutoffLabel?: string;
+    ageCutoffSource?: string;
+};
+
+const applyDivisionAgeCutoff = (
+    detail: DivisionDetailForm,
+    sportInput?: string | null,
+    referenceDate?: Date | null,
+): DivisionDetailForm => {
+    const eligibility = evaluateDivisionAgeEligibility({
+        divisionTypeId: detail.divisionTypeId,
+        sportInput: sportInput ?? detail.sportId ?? undefined,
+        referenceDate: referenceDate ?? null,
+    });
+    if (!eligibility.applies) {
+        return {
+            ...detail,
+            ageCutoffDate: undefined,
+            ageCutoffLabel: undefined,
+            ageCutoffSource: undefined,
+        };
     }
-    return RATED_DIVISION_OPTIONS;
+    return {
+        ...detail,
+        ageCutoffDate: eligibility.cutoffDate.toISOString(),
+        ageCutoffLabel: eligibility.message ?? undefined,
+        ageCutoffSource: eligibility.cutoffRule.source,
+    };
+};
+
+const buildDefaultDivisionDetailsForSport = (
+    eventId: string,
+    sportInput?: Sport | string | null,
+    referenceDate?: Date | null,
+): DivisionDetailForm[] => {
+    const sport = resolveSportInput(sportInput);
+    const options = getDivisionTypeOptionsForSport(sport);
+    const fallback = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
+        ?? options.find((option) => option.ratingType === 'SKILL')
+        ?? options[0]
+        ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
+    const token = buildDivisionToken({
+        gender: 'C',
+        ratingType: fallback.ratingType,
+        divisionTypeId: fallback.id,
+    });
+    const detail: DivisionDetailForm = {
+        id: buildEventDivisionId(eventId, token),
+        key: token,
+        name: buildDivisionName({
+            gender: 'C',
+            divisionTypeName: fallback.name,
+        }),
+        divisionTypeId: fallback.id,
+        divisionTypeName: fallback.name,
+        ratingType: fallback.ratingType,
+        gender: 'C',
+        sportId: sport || undefined,
+        fieldIds: [],
+    };
+    return [applyDivisionAgeCutoff(detail, sport, referenceDate)];
 };
 
 const toFieldIdList = (fields: Field[]): string[] => {
@@ -587,7 +660,9 @@ type EventFormState = {
     teamSizeLimit: number;
     teamSignup: boolean;
     singleDivision: boolean;
+    registrationByDivisionType: boolean;
     divisions: string[];
+    divisionDetails: DivisionDetailForm[];
     divisionFieldIds: Record<string, string[]>;
     selectedFieldIds: string[];
     cancellationRefundHours: number;
@@ -607,18 +682,66 @@ type EventFormState = {
     leagueScoringConfig: LeagueScoringConfig;
 };
 
-const divisionKeyFromValue = (value: string | CoreDivision): string => {
+const divisionIdFromValue = (value: string | CoreDivision): string => {
     if (typeof value === 'string') {
-        const normalized = value.toLowerCase();
-        if (normalized.includes('beginner')) return 'beginner';
-        if (normalized.includes('intermediate')) return 'intermediate';
-        if (normalized.includes('advanced')) return 'advanced';
-        if (normalized.includes('expert')) return 'expert';
-        if (normalized.includes('open')) return 'open';
-        return value;
+        return value.trim().toLowerCase();
     }
-    const fallback = (value.skillLevel || value.name || value.id || '').toString();
-    return fallback.toLowerCase() || 'open';
+    const fallback = (
+        value.id
+        || (value as any).$id
+        || value.key
+        || value.skillLevel
+        || value.name
+        || ''
+    ).toString();
+    return fallback.trim().toLowerCase();
+};
+
+const normalizeDivisionDetailEntry = (
+    entry: unknown,
+    eventId: string,
+    sportInput?: string | null,
+    referenceDate?: Date | null,
+): DivisionDetailForm | null => {
+    if (!entry || typeof entry !== 'object') {
+        return null;
+    }
+    const row = entry as Record<string, unknown>;
+    const rawId = normalizeDivisionKeys([row.id ?? row.$id])[0];
+    const inferred = inferDivisionDetails({
+        identifier: (row.key ?? rawId ?? row.name ?? 'c_skill_open') as string,
+        sportInput: sportInput ?? undefined,
+        fallbackName: typeof row.name === 'string' ? row.name : undefined,
+    });
+    const id = rawId || buildEventDivisionId(eventId, inferred.token);
+    const key = normalizeDivisionKeys([row.key])[0] || inferred.token;
+    const ratingType = normalizeDivisionRatingType(row.ratingType) ?? inferred.ratingType;
+    const gender = normalizeDivisionGender(row.gender) ?? inferred.gender;
+    const divisionTypeId = normalizeDivisionKeys([row.divisionTypeId])[0] || inferred.divisionTypeId;
+    const divisionTypeName = typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length > 0
+        ? row.divisionTypeName.trim()
+        : (getDivisionTypeById(sportInput ?? null, divisionTypeId, ratingType)?.name ?? inferred.divisionTypeName);
+    const name = typeof row.name === 'string' && row.name.trim().length > 0
+        ? row.name.trim()
+        : buildDivisionName({ gender, divisionTypeName });
+
+    const baseDetail: DivisionDetailForm = {
+        id,
+        key,
+        name,
+        divisionTypeId,
+        divisionTypeName,
+        ratingType,
+        gender,
+        sportId: typeof row.sportId === 'string' ? row.sportId : sportInput ?? undefined,
+        fieldIds: Array.isArray(row.fieldIds)
+            ? row.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
+            : [],
+        ageCutoffDate: typeof row.ageCutoffDate === 'string' ? row.ageCutoffDate : undefined,
+        ageCutoffLabel: typeof row.ageCutoffLabel === 'string' ? row.ageCutoffLabel : undefined,
+        ageCutoffSource: typeof row.ageCutoffSource === 'string' ? row.ageCutoffSource : undefined,
+    };
+    return applyDivisionAgeCutoff(baseDetail, sportInput, referenceDate);
 };
 
 const buildTournamentConfig = (source?: Partial<TournamentConfig>): TournamentConfig => {
@@ -690,17 +813,8 @@ const extractTournamentConfigFromEvent = (event?: Partial<Event> | null): Tourna
     return buildTournamentConfig(partial);
 };
 
-const mapEventToFormState = (event: Event): EventFormState => ({
-    $id: event.$id,
-    name: event.name,
-    description: event.description ?? '',
-    location: event.location ?? '',
-    coordinates: Array.isArray(event.coordinates) ? event.coordinates as [number, number] : [0, 0],
-    start: event.start,
-    end: event.end,
-    state: (event.state as EventState) ?? 'DRAFT',
-    eventType: event.eventType,
-    sportId: (() => {
+const mapEventToFormState = (event: Event): EventFormState => {
+    const resolvedSportId = (() => {
         // `event.sport` is historically inconsistent: it may be a Sport object, a string id, or absent.
         // Keep runtime compatibility by treating it as unknown and narrowing safely.
         const sport = (event as { sport?: unknown }).sport;
@@ -714,7 +828,85 @@ const mapEventToFormState = (event: Event): EventFormState => ({
             return event.sportId;
         }
         return '';
-    })(),
+    })();
+    const resolvedSportInput = (event.sport && typeof event.sport === 'object'
+        ? ((event.sport as Sport).name || (event.sport as Sport).$id || '')
+        : resolvedSportId) || '';
+    const divisionReferenceDate = parseDateValue(event.start ?? null);
+
+    const normalizedDivisionIds = Array.isArray(event.divisions)
+        ? Array.from(
+            new Set(
+                (event.divisions as (string | CoreDivision)[])
+                    .map(divisionIdFromValue)
+                    .filter((divisionId) => divisionId.length > 0),
+            ),
+        )
+        : [];
+    const normalizedDivisionDetails = (() => {
+        const details = Array.isArray(event.divisionDetails)
+            ? event.divisionDetails
+                .map((entry) => normalizeDivisionDetailEntry(entry, event.$id, resolvedSportInput, divisionReferenceDate))
+                .filter((entry): entry is DivisionDetailForm => Boolean(entry))
+            : [];
+        const detailsById = new Map<string, DivisionDetailForm>();
+        details.forEach((detail) => detailsById.set(detail.id, detail));
+
+        normalizedDivisionIds.forEach((divisionId) => {
+            if (detailsById.has(divisionId)) {
+                return;
+            }
+            const inferred = inferDivisionDetails({
+                identifier: divisionId,
+                sportInput: resolvedSportInput,
+            });
+            detailsById.set(divisionId, applyDivisionAgeCutoff({
+                id: divisionId,
+                key: inferred.token,
+                name: inferred.defaultName,
+                divisionTypeId: inferred.divisionTypeId,
+                divisionTypeName: inferred.divisionTypeName,
+                ratingType: inferred.ratingType,
+                gender: inferred.gender,
+                sportId: resolvedSportInput || undefined,
+                fieldIds: [],
+            }, resolvedSportInput, divisionReferenceDate));
+        });
+
+        if (!detailsById.size) {
+            const defaults = buildDefaultDivisionDetailsForSport(event.$id, resolvedSportInput, divisionReferenceDate);
+            defaults.forEach((detail) => detailsById.set(detail.id, detail));
+        }
+
+        const preferredOrder = normalizedDivisionIds.length
+            ? normalizedDivisionIds
+            : Array.from(detailsById.keys());
+        const ordered: DivisionDetailForm[] = preferredOrder
+            .map((divisionId) => detailsById.get(divisionId))
+            .filter((entry): entry is DivisionDetailForm => Boolean(entry));
+        if (ordered.length === detailsById.size) {
+            return ordered;
+        }
+        detailsById.forEach((detail) => {
+            if (!ordered.some((entry) => entry.id === detail.id)) {
+                ordered.push(detail);
+            }
+        });
+        return ordered;
+    })();
+    const finalDivisionIds = normalizedDivisionDetails.map((detail) => detail.id);
+
+    return {
+    $id: event.$id,
+    name: event.name,
+    description: event.description ?? '',
+    location: event.location ?? '',
+    coordinates: Array.isArray(event.coordinates) ? event.coordinates as [number, number] : [0, 0],
+    start: event.start,
+    end: event.end,
+    state: (event.state as EventState) ?? 'DRAFT',
+    eventType: event.eventType,
+    sportId: resolvedSportId,
     sportConfig: event.sport && typeof event.sport === 'object'
         ? { ...(event.sport as Sport) }
         : null,
@@ -736,10 +928,10 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : 2,
     teamSignup: Boolean(event.teamSignup),
     singleDivision: Boolean(event.singleDivision),
+    registrationByDivisionType: Boolean(event.registrationByDivisionType),
     organizationId: event.organizationId || undefined,
-    divisions: Array.isArray(event.divisions)
-        ? (event.divisions as (string | CoreDivision)[]).map(divisionKeyFromValue)
-        : [],
+    divisions: finalDivisionIds,
+    divisionDetails: normalizedDivisionDetails,
     divisionFieldIds: event.divisionFieldIds && typeof event.divisionFieldIds === 'object'
         ? Object.fromEntries(
             Object.entries(event.divisionFieldIds).map(([divisionKey, fieldIds]) => [
@@ -777,7 +969,8 @@ const mapEventToFormState = (event: Event): EventFormState => ({
             ? (event.leagueScoringConfig as Partial<LeagueScoringConfig>)
             : undefined
     ),
-});
+};
+};
 
 type EventFormValues = EventFormState & {
     leagueSlots: LeagueSlotForm[];
@@ -858,7 +1051,24 @@ const eventFormSchema = z
         teamSizeLimit: z.number().min(1, 'Enter at least 1'),
         teamSignup: z.boolean(),
         singleDivision: z.boolean(),
+        registrationByDivisionType: z.boolean().default(false),
         divisions: z.array(z.string()),
+        divisionDetails: z.array(
+            z.object({
+                id: z.string().trim().min(1),
+                key: z.string().trim().min(1),
+                name: z.string().trim().min(1),
+                divisionTypeId: z.string().trim().min(1),
+                divisionTypeName: z.string().trim().min(1),
+                ratingType: z.enum(['AGE', 'SKILL']),
+                gender: z.enum(['M', 'F', 'C']),
+                sportId: z.string().optional(),
+                fieldIds: z.array(z.string()).optional(),
+                ageCutoffDate: z.string().optional(),
+                ageCutoffLabel: z.string().optional(),
+                ageCutoffSource: z.string().optional(),
+            }),
+        ).default([]),
         divisionFieldIds: z.record(z.string(), z.array(z.string())).default({}),
         selectedFieldIds: z.array(z.string()).default([]),
         cancellationRefundHours: z.number().min(0),
@@ -908,6 +1118,14 @@ const eventFormSchema = z
                 code: "custom",
                 message: 'Select at least one division',
                 path: ['divisions'],
+            });
+        }
+
+        if (values.divisionDetails.length !== values.divisions.length) {
+            ctx.addIssue({
+                code: "custom",
+                message: 'Division details are out of sync. Re-add the affected division.',
+                path: ['divisionDetails'],
             });
         }
 
@@ -1182,10 +1400,46 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (typeof defaults.teamSizeLimit === 'number') next.teamSizeLimit = defaults.teamSizeLimit;
         if (typeof defaults.teamSignup === 'boolean') next.teamSignup = defaults.teamSignup;
         if (typeof defaults.singleDivision === 'boolean') next.singleDivision = defaults.singleDivision;
+        if (typeof defaults.registrationByDivisionType === 'boolean') {
+            next.registrationByDivisionType = defaults.registrationByDivisionType;
+        }
+        if (Array.isArray((defaults as any).divisionDetails)) {
+            const referenceDate = parseDateValue(next.start ?? null);
+            next.divisionDetails = (defaults as any).divisionDetails
+                .map((entry: unknown) => normalizeDivisionDetailEntry(
+                    entry,
+                    next.$id,
+                    resolveSportInput(next.sportConfig ?? next.sportId),
+                    referenceDate,
+                ))
+                .filter((entry: DivisionDetailForm | null): entry is DivisionDetailForm => Boolean(entry));
+        }
         if (defaults.divisions !== undefined) {
             next.divisions = Array.isArray(defaults.divisions)
-                ? defaults.divisions.map(divisionKeyFromValue)
+                ? defaults.divisions.map(divisionIdFromValue).filter((divisionId) => divisionId.length > 0)
                 : [];
+        }
+        if (!next.divisionDetails.length && next.divisions.length) {
+            next.divisionDetails = next.divisions.map((divisionId) => {
+                const inferred = inferDivisionDetails({
+                    identifier: divisionId,
+                    sportInput: resolveSportInput(next.sportConfig ?? next.sportId),
+                });
+                return applyDivisionAgeCutoff({
+                    id: divisionId,
+                    key: inferred.token,
+                    name: inferred.defaultName,
+                    divisionTypeId: inferred.divisionTypeId,
+                    divisionTypeName: inferred.divisionTypeName,
+                    ratingType: inferred.ratingType,
+                    gender: inferred.gender,
+                    sportId: resolveSportInput(next.sportConfig ?? next.sportId) || undefined,
+                    fieldIds: [],
+                }, resolveSportInput(next.sportConfig ?? next.sportId), parseDateValue(next.start ?? null));
+            });
+        }
+        if (!next.divisions.length && next.divisionDetails.length) {
+            next.divisions = next.divisionDetails.map((detail) => detail.id);
         }
         if (defaults.divisionFieldIds && typeof defaults.divisionFieldIds === 'object') {
             next.divisionFieldIds = Object.fromEntries(
@@ -1336,12 +1590,36 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const availableFieldIdsForDivisions = defaultSelectedFieldIds.length
             ? defaultSelectedFieldIds
             : allDefaultFieldIds;
+        const defaultDivisionDetails = (() => {
+            const normalized = Array.isArray(base.divisionDetails)
+                ? base.divisionDetails.filter((detail) => detail && detail.id)
+                : [];
+            if (normalized.length) {
+                return normalized;
+            }
+            return buildDefaultDivisionDetailsForSport(
+                base.$id,
+                base.sportConfig ?? base.sportId,
+                parseDateValue(base.start ?? null),
+            );
+        })();
         const defaultDivisionKeys = (() => {
+            const normalizedFromDetails = normalizeDivisionKeys(defaultDivisionDetails.map((detail) => detail.id));
+            if (normalizedFromDetails.length) {
+                return normalizedFromDetails;
+            }
             const normalized = normalizeDivisionKeys(base.divisions);
             if (normalized.length) {
                 return normalized;
             }
-            return defaultDivisionKeysForSport(base.sportConfig ?? base.sportId);
+            return normalizeDivisionKeys(
+                buildDefaultDivisionDetailsForSport(
+                    base.$id,
+                    base.sportConfig ?? base.sportId,
+                    parseDateValue(base.start ?? null),
+                )
+                    .map((detail) => detail.id),
+            );
         })();
         const defaultDivisionFieldIds = (() => {
             const normalizedFromEvent = normalizeDivisionFieldIds(
@@ -1440,6 +1718,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return {
             ...base,
             divisions: defaultDivisionKeys,
+            divisionDetails: defaultDivisionDetails,
             divisionFieldIds: defaultDivisionFieldIds,
             selectedFieldIds: defaultSelectedFieldIds,
             leagueSlots: normalizeSlotState(defaultSlots, base.eventType),
@@ -1773,9 +2052,55 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         []
     );
     const divisionOptions = useMemo(
-        () => divisionOptionsForSport(eventData.sportConfig ?? eventData.sportId),
-        [eventData.sportConfig, eventData.sportId],
+        () => (eventData.divisionDetails || [])
+            .map((detail) => ({
+                value: detail.id,
+                label: detail.name || buildDivisionName({
+                    gender: detail.gender,
+                    divisionTypeName: detail.divisionTypeName,
+                }),
+            }))
+            .sort((left, right) => left.label.localeCompare(right.label)),
+        [eventData.divisionDetails],
     );
+    const divisionTypeOptions = useMemo(() => {
+        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
+        const catalogOptions = getDivisionTypeOptionsForSport(sportInput);
+        const detailOptions = (eventData.divisionDetails || []).map((detail) => ({
+            id: detail.divisionTypeId,
+            name: detail.divisionTypeName,
+            ratingType: detail.ratingType,
+            sportKey: sportInput || 'event',
+        }));
+        const merged = [...catalogOptions, ...detailOptions];
+        const seen = new Set<string>();
+        return merged.filter((option) => {
+            const key = `${option.ratingType}:${option.id}`;
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
+        });
+    }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportId]);
+
+    const [divisionEditor, setDivisionEditor] = useState<{
+        editingId: string | null;
+        gender: '' | 'M' | 'F' | 'C';
+        ratingType: '' | 'AGE' | 'SKILL';
+        divisionTypeId: string;
+        name: string;
+        nameTouched: boolean;
+        error: string | null;
+    }>({
+        editingId: null,
+        gender: '',
+        ratingType: '',
+        divisionTypeId: '',
+        name: '',
+        nameTouched: false,
+        error: null,
+    });
 
     const handleSearchReferees = useCallback(
         async (query: string) => {
@@ -1914,6 +2239,210 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [setEventData]
     );
 
+    const resetDivisionEditor = useCallback(() => {
+        setDivisionEditor({
+            editingId: null,
+            gender: '',
+            ratingType: '',
+            divisionTypeId: '',
+            name: '',
+            nameTouched: false,
+            error: null,
+        });
+    }, []);
+
+    const divisionTypeSelectOptions = useMemo(
+        () => divisionTypeOptions
+            .filter((option) => !divisionEditor.ratingType || option.ratingType === divisionEditor.ratingType)
+            .map((option) => ({
+                value: option.id,
+                label: option.name,
+            })),
+        [divisionEditor.ratingType, divisionTypeOptions],
+    );
+
+    const getDivisionTypeNameForEditor = useCallback(
+        (ratingType: '' | 'AGE' | 'SKILL', divisionTypeId: string): string => {
+            if (!divisionTypeId) {
+                return '';
+            }
+            const fromCatalog = divisionTypeOptions.find((option) =>
+                option.id === divisionTypeId && (!ratingType || option.ratingType === ratingType),
+            );
+            if (fromCatalog) {
+                return fromCatalog.name;
+            }
+            return getDivisionTypeById(
+                resolveSportInput(eventData.sportConfig ?? eventData.sportId),
+                divisionTypeId,
+                ratingType || undefined,
+            )?.name ?? divisionTypeId.toUpperCase();
+        },
+        [divisionTypeOptions, eventData.sportConfig, eventData.sportId],
+    );
+
+    const updateDivisionEditorSelection = useCallback((
+        updates: Partial<Pick<typeof divisionEditor, 'gender' | 'ratingType' | 'divisionTypeId'>>,
+    ) => {
+        setDivisionEditor((prev) => {
+            const next = { ...prev, ...updates, error: null };
+            if (updates.ratingType && updates.ratingType !== prev.ratingType) {
+                next.divisionTypeId = '';
+            }
+            if (Object.prototype.hasOwnProperty.call(updates, 'divisionTypeId') && !updates.divisionTypeId) {
+                next.divisionTypeId = '';
+            }
+
+            const hasRequiredFields = Boolean(next.gender && next.ratingType && next.divisionTypeId);
+            if (!hasRequiredFields) {
+                next.name = '';
+                next.nameTouched = false;
+                return next;
+            }
+
+            const divisionTypeName = getDivisionTypeNameForEditor(next.ratingType, next.divisionTypeId);
+            next.name = buildDivisionName({
+                gender: next.gender as 'M' | 'F' | 'C',
+                divisionTypeName,
+            });
+            next.nameTouched = false;
+            return next;
+        });
+    }, [getDivisionTypeNameForEditor]);
+
+    const handleEditDivisionDetail = useCallback((divisionId: string) => {
+        const detail = (eventData.divisionDetails || []).find((entry) => entry.id === divisionId);
+        if (!detail) {
+            return;
+        }
+        setDivisionEditor({
+            editingId: detail.id,
+            gender: detail.gender,
+            ratingType: detail.ratingType,
+            divisionTypeId: detail.divisionTypeId,
+            name: detail.name,
+            nameTouched: true,
+            error: null,
+        });
+    }, [eventData.divisionDetails]);
+
+    const handleRemoveDivisionDetail = useCallback((divisionId: string) => {
+        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        const nextDetails = currentDetails.filter((detail) => detail.id !== divisionId);
+        const nextDivisionIds = nextDetails.map((detail) => detail.id);
+        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+        setValue('divisions', nextDivisionIds, { shouldDirty: true, shouldValidate: true });
+
+        const currentFieldMap = getValues('divisionFieldIds') ?? {};
+        const cleanedFieldMap = Object.fromEntries(
+            Object.entries(currentFieldMap).filter(([divisionKey]) => nextDivisionIds.includes(divisionKey)),
+        );
+        setValue('divisionFieldIds', cleanedFieldMap, { shouldDirty: true, shouldValidate: true });
+
+        if (divisionEditor.editingId === divisionId) {
+            resetDivisionEditor();
+        }
+    }, [
+        divisionEditor.editingId,
+        eventData.divisionDetails,
+        getValues,
+        resetDivisionEditor,
+        setValue,
+    ]);
+
+    const handleSaveDivisionDetail = useCallback(() => {
+        const gender = divisionEditor.gender;
+        const ratingType = divisionEditor.ratingType;
+        const divisionTypeId = divisionEditor.divisionTypeId;
+        const name = divisionEditor.name.trim();
+
+        if (!gender || !ratingType || !divisionTypeId) {
+            setDivisionEditor((prev) => ({
+                ...prev,
+                error: 'Select gender, rating type, and division before adding.',
+            }));
+            return;
+        }
+        if (!name.length) {
+            setDivisionEditor((prev) => ({ ...prev, error: 'Division name is required.' }));
+            return;
+        }
+
+        const token = buildDivisionToken({ gender, ratingType, divisionTypeId });
+        const nextId = buildEventDivisionId(eventData.$id, token);
+        const divisionTypeName = getDivisionTypeNameForEditor(ratingType, divisionTypeId);
+        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId) || undefined;
+        const referenceDate = parseDateValue(eventData.start ?? null);
+
+        const currentDetails = Array.isArray(eventData.divisionDetails) ? [...eventData.divisionDetails] : [];
+        const duplicate = currentDetails.find((detail) =>
+            detail.id === nextId && detail.id !== divisionEditor.editingId,
+        );
+        if (duplicate) {
+            setDivisionEditor((prev) => ({
+                ...prev,
+                error: 'That division already exists in this event.',
+            }));
+            return;
+        }
+
+        const nextDetail = applyDivisionAgeCutoff({
+            id: nextId,
+            key: token,
+            name,
+            divisionTypeId,
+            divisionTypeName,
+            ratingType,
+            gender,
+            sportId: sportInput,
+            fieldIds: [],
+        }, sportInput, referenceDate);
+
+        let nextDetails: DivisionDetailForm[] = [];
+        if (divisionEditor.editingId) {
+            nextDetails = currentDetails.map((detail) =>
+                detail.id === divisionEditor.editingId ? nextDetail : detail,
+            );
+        } else {
+            nextDetails = [...currentDetails, nextDetail];
+        }
+        const nextDivisionIds = nextDetails.map((detail) => detail.id);
+
+        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+        setValue('divisions', nextDivisionIds, { shouldDirty: true, shouldValidate: true });
+
+        const currentFieldMap = getValues('divisionFieldIds') ?? {};
+        const remappedFieldMap: Record<string, string[]> = {};
+        Object.entries(currentFieldMap).forEach(([divisionKey, fieldIds]) => {
+            if (divisionEditor.editingId && divisionKey === divisionEditor.editingId) {
+                remappedFieldMap[nextId] = Array.isArray(fieldIds) ? [...fieldIds] : [];
+                return;
+            }
+            if (nextDivisionIds.includes(divisionKey)) {
+                remappedFieldMap[divisionKey] = Array.isArray(fieldIds) ? [...fieldIds] : [];
+            }
+        });
+        setValue('divisionFieldIds', remappedFieldMap, { shouldDirty: true, shouldValidate: true });
+        resetDivisionEditor();
+    }, [
+        divisionEditor,
+        eventData.$id,
+        eventData.divisionDetails,
+        eventData.sportConfig,
+        eventData.sportId,
+        eventData.start,
+        getDivisionTypeNameForEditor,
+        getValues,
+        resetDivisionEditor,
+        setValue,
+    ]);
+
+    const divisionEditorReady = Boolean(
+        divisionEditor.gender
+        && divisionEditor.ratingType
+        && divisionEditor.divisionTypeId,
+    );
+
     useEffect(() => {
         if (sportsLoading) {
             return;
@@ -1939,21 +2468,56 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [sportsLoading, sportsById, setEventData]);
 
     useEffect(() => {
-        const optionValues = divisionOptions.map((option) => option.value);
-        if (!optionValues.length) {
+        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        if (!currentDetails.length) {
+            const defaults = buildDefaultDivisionDetailsForSport(
+                eventData.$id,
+                eventData.sportConfig ?? eventData.sportId,
+                parseDateValue(eventData.start ?? null),
+            );
+            setValue('divisionDetails', defaults, { shouldDirty: false, shouldValidate: true });
+            setValue(
+                'divisions',
+                defaults.map((detail) => detail.id),
+                { shouldDirty: false, shouldValidate: true },
+            );
             return;
         }
-        const current = normalizeDivisionKeys(getValues('divisions')).filter((divisionKey) => optionValues.includes(divisionKey));
-        let next = current;
-        if (!next.length) {
-            const defaultKeys = defaultDivisionKeysForSport(eventData.sportConfig ?? eventData.sportId)
-                .filter((divisionKey) => optionValues.includes(divisionKey));
-            next = defaultKeys.length ? defaultKeys : [optionValues[0]];
+
+        const idsFromDetails = normalizeDivisionKeys(currentDetails.map((detail) => detail.id));
+        const currentDivisionIds = normalizeDivisionKeys(getValues('divisions'));
+        if (!stringArraysEqual(idsFromDetails, currentDivisionIds)) {
+            setValue('divisions', idsFromDetails, { shouldDirty: false, shouldValidate: true });
         }
-        if (!stringArraysEqual(current, next)) {
-            setValue('divisions', next, { shouldDirty: false, shouldValidate: true });
+    }, [eventData.$id, eventData.divisionDetails, eventData.sportConfig, eventData.sportId, eventData.start, getValues, setValue]);
+
+    useEffect(() => {
+        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        if (!currentDetails.length) {
+            return;
         }
-    }, [divisionOptions, eventData.sportConfig, eventData.sportId, getValues, setValue]);
+        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
+        const referenceDate = parseDateValue(eventData.start ?? null);
+        const nextDetails = currentDetails.map((detail) => applyDivisionAgeCutoff({
+            ...detail,
+            sportId: detail.sportId ?? (sportInput || undefined),
+        }, sportInput, referenceDate));
+
+        const changed = nextDetails.some((detail, index) => {
+            const current = currentDetails[index];
+            if (!current) {
+                return true;
+            }
+            return detail.ageCutoffDate !== current.ageCutoffDate
+                || detail.ageCutoffLabel !== current.ageCutoffLabel
+                || detail.ageCutoffSource !== current.ageCutoffSource
+                || detail.sportId !== current.sportId;
+        });
+
+        if (changed) {
+            setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: true });
+        }
+    }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportId, eventData.start, setValue]);
 
     useEffect(() => {
         const selectedDivisionKeys = normalizeDivisionKeys(eventData.divisions);
@@ -2612,12 +3176,49 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             : [];
         const minAge = normalizeNumber(source.minAge);
         const maxAge = normalizeNumber(source.maxAge);
+        const sportInput = resolveSportInput(source.sportConfig ?? source.sportId);
+        const divisionReferenceDate = parseDateValue(source.start ?? null);
+        const normalizedDivisionDetails = (() => {
+            const fromDetails = Array.isArray(source.divisionDetails)
+                ? source.divisionDetails
+                    .map((entry) => normalizeDivisionDetailEntry(entry, source.$id, sportInput, divisionReferenceDate))
+                    .filter((entry): entry is DivisionDetailForm => Boolean(entry))
+                : [];
+            if (fromDetails.length) {
+                return fromDetails;
+            }
+            const fromIds = normalizeDivisionKeys(source.divisions).map((divisionId) => {
+                const inferred = inferDivisionDetails({
+                    identifier: divisionId,
+                    sportInput,
+                });
+                return applyDivisionAgeCutoff({
+                    id: divisionId,
+                    key: inferred.token,
+                    name: inferred.defaultName,
+                    divisionTypeId: inferred.divisionTypeId,
+                    divisionTypeName: inferred.divisionTypeName,
+                    ratingType: inferred.ratingType,
+                    gender: inferred.gender,
+                    sportId: sportInput || undefined,
+                    fieldIds: [],
+                } satisfies DivisionDetailForm, sportInput, divisionReferenceDate);
+            });
+            if (fromIds.length) {
+                return fromIds;
+            }
+            return buildDefaultDivisionDetailsForSport(
+                source.$id,
+                source.sportConfig ?? source.sportId,
+                divisionReferenceDate,
+            );
+        })();
         const normalizedDivisionKeys = (() => {
-            const normalized = normalizeDivisionKeys(source.divisions);
+            const normalized = normalizeDivisionKeys(normalizedDivisionDetails.map((detail) => detail.id));
             if (normalized.length) {
                 return normalized;
             }
-            return defaultDivisionKeysForSport(source.sportConfig ?? source.sportId);
+            return normalizeDivisionKeys(source.divisions);
         })();
         const singleDivisionEnabled = Boolean(source.singleDivision);
 
@@ -2648,7 +3249,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             teamSizeLimit: source.teamSizeLimit,
             teamSignup: source.teamSignup,
             singleDivision: source.singleDivision,
+            registrationByDivisionType: source.registrationByDivisionType,
             divisions: normalizedDivisionKeys,
+            divisionDetails: normalizedDivisionDetails.map((detail) => ({ ...detail })),
             cancellationRefundHours: source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
             requiredTemplateIds: source.requiredTemplateIds,
@@ -3637,28 +4240,128 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
                             <h3 className="text-lg font-semibold mb-4">Event Settings</h3>
 
-                            <Controller
-                                name="divisions"
-                                control={control}
-                                render={({ field, fieldState }) => (
-                                    <MantineMultiSelect
-                                        label="Divisions"
-                                        withAsterisk
-                                        placeholder="Select divisions"
-                                        data={divisionOptions}
-                                        value={field.value}
-                                        disabled={isImmutableField('divisions')}
+                            <div className="space-y-4">
+                                <Text size="sm" fw={600}>
+                                    Divisions
+                                </Text>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <MantineSelect
+                                        label="Gender"
+                                        placeholder="Select gender"
+                                        data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
+                                        value={divisionEditor.gender || null}
                                         comboboxProps={sharedComboboxProps}
-                                        onChange={(vals) => {
-                                            if (isImmutableField('divisions')) return;
-                                            field.onChange(vals);
-                                        }}
-                                        clearable
-                                        searchable
-                                        error={fieldState.error?.message as string | undefined}
+                                        disabled={isImmutableField('divisions')}
+                                        onChange={(value) => updateDivisionEditorSelection({
+                                            gender: (value as '' | 'M' | 'F' | 'C') || '',
+                                        })}
                                     />
+                                    <MantineSelect
+                                        label="Rating Type"
+                                        placeholder="Select age or skill"
+                                        data={DIVISION_RATING_TYPE_OPTIONS.map((option) => ({ ...option }))}
+                                        value={divisionEditor.ratingType || null}
+                                        comboboxProps={sharedComboboxProps}
+                                        disabled={isImmutableField('divisions')}
+                                        onChange={(value) => updateDivisionEditorSelection({
+                                            ratingType: (value as '' | 'AGE' | 'SKILL') || '',
+                                        })}
+                                    />
+                                    <MantineSelect
+                                        label="Division"
+                                        placeholder="Select division"
+                                        data={divisionTypeSelectOptions}
+                                        value={divisionEditor.divisionTypeId || null}
+                                        comboboxProps={sharedComboboxProps}
+                                        disabled={isImmutableField('divisions') || !divisionEditor.ratingType}
+                                        searchable
+                                        onChange={(value) => updateDivisionEditorSelection({
+                                            divisionTypeId: value || '',
+                                        })}
+                                    />
+                                    <TextInput
+                                        label="Division Name"
+                                        placeholder="Division display name"
+                                        value={divisionEditor.name}
+                                        disabled={isImmutableField('divisions') || !divisionEditorReady}
+                                        onChange={(event) =>
+                                            setDivisionEditor((prev) => ({
+                                                ...prev,
+                                                name: event.currentTarget.value,
+                                                nameTouched: true,
+                                                error: null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+                                <Group justify="space-between" align="center">
+                                    <Button
+                                        variant="light"
+                                        onClick={handleSaveDivisionDetail}
+                                        disabled={isImmutableField('divisions')}
+                                    >
+                                        {divisionEditor.editingId ? 'Update Division' : 'Add Division'}
+                                    </Button>
+                                    {divisionEditor.editingId ? (
+                                        <Button variant="subtle" color="gray" onClick={resetDivisionEditor}>
+                                            Cancel Edit
+                                        </Button>
+                                    ) : null}
+                                </Group>
+                                {divisionEditor.error && (
+                                    <Text size="sm" c="red">
+                                        {divisionEditor.error}
+                                    </Text>
                                 )}
-                            />
+                                {errors.divisions?.message && (
+                                    <Text size="sm" c="red">
+                                        {errors.divisions.message as string}
+                                    </Text>
+                                )}
+                                {errors.divisionDetails?.message && (
+                                    <Text size="sm" c="red">
+                                        {errors.divisionDetails.message as string}
+                                    </Text>
+                                )}
+                                <div className="space-y-2">
+                                    {(eventData.divisionDetails || []).map((detail) => (
+                                        <Paper key={detail.id} withBorder radius="md" p="sm">
+                                            <Group justify="space-between" align="center" gap="sm">
+                                                <div>
+                                                    <Text fw={600}>{detail.name}</Text>
+                                                    <Text size="xs" c="dimmed">
+                                                        {`${detail.gender} • ${detail.ratingType === 'AGE' ? 'Age Based' : 'Skill Based'} • ${detail.divisionTypeName}`}
+                                                    </Text>
+                                                    {detail.ratingType === 'AGE' && detail.ageCutoffLabel && (
+                                                        <Text size="xs" c="dimmed">
+                                                            {detail.ageCutoffLabel}
+                                                        </Text>
+                                                    )}
+                                                </div>
+                                                <Group gap="xs">
+                                                    <Button
+                                                        size="xs"
+                                                        variant="subtle"
+                                                        onClick={() => handleEditDivisionDetail(detail.id)}
+                                                        disabled={isImmutableField('divisions')}
+                                                    >
+                                                        Edit
+                                                    </Button>
+                                                    <Button
+                                                        size="xs"
+                                                        variant="subtle"
+                                                        color="red"
+                                                        onClick={() => handleRemoveDivisionDetail(detail.id)}
+                                                        disabled={isImmutableField('divisions')}
+                                                    >
+                                                        Remove
+                                                    </Button>
+                                                </Group>
+                                            </Group>
+                                        </Paper>
+                                    ))}
+                                </div>
+                            </div>
 
                             <Controller
                                 name="requiredTemplateIds"
@@ -3724,6 +4427,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
+                                    <Controller
+                                        name="registrationByDivisionType"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Switch
+                                                label="Register by Division Type"
+                                                description="When enabled, users pick a division type and are auto-assigned to one matching division."
+                                                checked={field.value}
+                                                disabled={isImmutableField('registrationByDivisionType')}
+                                                onChange={(e) => {
+                                                    if (isImmutableField('registrationByDivisionType')) return;
+                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                }}
+                                            />
+                                        )}
+                                    />
                                 </div>
                             ) : (
                                 <div className="mt-6 space-y-2">
@@ -3742,6 +4461,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 disabled={isImmutableField('singleDivision')}
                                                 onChange={(e) => {
                                                     if (isImmutableField('singleDivision')) return;
+                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                }}
+                                            />
+                                        )}
+                                    />
+                                    <Controller
+                                        name="registrationByDivisionType"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Switch
+                                                label="Register by Division Type"
+                                                description="When enabled, users pick a division type and are auto-assigned to one matching division."
+                                                checked={field.value}
+                                                disabled={isImmutableField('registrationByDivisionType')}
+                                                onChange={(e) => {
+                                                    if (isImmutableField('registrationByDivisionType')) return;
                                                     field.onChange(e?.currentTarget?.checked ?? field.value);
                                                 }}
                                             />

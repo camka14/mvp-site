@@ -50,6 +50,24 @@ const buildTeams = (count: number, division: Division) => {
   return teams;
 };
 
+const buildTeamsForDivision = (prefix: string, count: number, division: Division) => {
+  const teams: Record<string, Team> = {};
+  for (let i = 1; i <= count; i += 1) {
+    const id = `${prefix}_team_${i}`;
+    teams[id] = new Team({
+      id,
+      seed: i,
+      captainId: `captain_${prefix}_${i}`,
+      division,
+      name: `${prefix} Team ${i}`,
+      matches: [],
+      wins: 0,
+      losses: 0,
+    });
+  }
+  return teams;
+};
+
 describe('league scheduling (time slots)', () => {
   it('schedules weekend-only league matches across multiple weekends when weekend slots are limited', () => {
     const division = buildDivision();
@@ -227,6 +245,190 @@ describe('league scheduling (time slots)', () => {
     const usedFields = new Set(scheduled.matches.map((match) => match.field?.id).filter(Boolean));
     expect(usedFields.has('field_1')).toBe(true);
     expect(usedFields.has('field_2')).toBe(true);
+  });
+
+  it('schedules regular-season matches within each division when singleDivision is disabled', () => {
+    const beginner = new Division('beginner', 'Beginner');
+    const intermediate = new Division('intermediate', 'Intermediate');
+    const advanced = new Division('advanced', 'Advanced');
+
+    const fieldBeginner = buildFieldById('field_beginner', beginner);
+    const fieldIntermediate = buildFieldById('field_intermediate', intermediate);
+    const fieldAdvanced = buildFieldById('field_advanced', advanced);
+
+    const teams = {
+      ...buildTeamsForDivision('beginner', 2, beginner),
+      ...buildTeamsForDivision('intermediate', 2, intermediate),
+      ...buildTeamsForDivision('advanced', 2, advanced),
+    };
+
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 1, 28, 13, 0, 0);
+
+    const timeSlots = [
+      new TimeSlot({
+        id: 'slot_beginner',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 13 * 60,
+        field: 'field_beginner',
+        divisions: [beginner],
+      }),
+      new TimeSlot({
+        id: 'slot_intermediate',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 13 * 60,
+        field: 'field_intermediate',
+        divisions: [intermediate],
+      }),
+      new TimeSlot({
+        id: 'slot_advanced',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 13 * 60,
+        field: 'field_advanced',
+        divisions: [advanced],
+      }),
+    ];
+
+    const league = new League({
+      id: 'league_multi_division_regular_season',
+      name: 'Multi Division League',
+      start,
+      end,
+      maxParticipants: 6,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams,
+      divisions: [beginner, intermediate, advanced],
+      referees: [],
+      fields: {
+        [fieldBeginner.id]: fieldBeginner,
+        [fieldIntermediate.id]: fieldIntermediate,
+        [fieldAdvanced.id]: fieldAdvanced,
+      },
+      timeSlots,
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(3);
+
+    const divisionCounts = new Map<string, number>();
+    for (const match of scheduled.matches) {
+      const team1Division = match.team1?.division.id;
+      const team2Division = match.team2?.division.id;
+      expect(team1Division).toBeTruthy();
+      expect(team2Division).toBeTruthy();
+      expect(team1Division).toBe(team2Division);
+      expect(match.division.id).toBe(team1Division);
+      divisionCounts.set(match.division.id, (divisionCounts.get(match.division.id) ?? 0) + 1);
+    }
+
+    expect(divisionCounts.get('beginner')).toBe(1);
+    expect(divisionCounts.get('intermediate')).toBe(1);
+    expect(divisionCounts.get('advanced')).toBe(1);
+  });
+
+  it('distributes placeholder teams across divisions when singleDivision is disabled', () => {
+    const beginner = new Division('beginner', 'Beginner');
+    const intermediate = new Division('intermediate', 'Intermediate');
+    const advanced = new Division('advanced', 'Advanced');
+
+    const fieldBeginner = buildFieldById('field_beginner', beginner);
+    const fieldIntermediate = buildFieldById('field_intermediate', intermediate);
+    const fieldAdvanced = buildFieldById('field_advanced', advanced);
+
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 1, 28, 13, 0, 0);
+
+    const timeSlots = [
+      new TimeSlot({
+        id: 'slot_beginner_empty',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 13 * 60,
+        field: 'field_beginner',
+        divisions: [beginner],
+      }),
+      new TimeSlot({
+        id: 'slot_intermediate_empty',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 13 * 60,
+        field: 'field_intermediate',
+        divisions: [intermediate],
+      }),
+      new TimeSlot({
+        id: 'slot_advanced_empty',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 13 * 60,
+        field: 'field_advanced',
+        divisions: [advanced],
+      }),
+    ];
+
+    const league = new League({
+      id: 'league_multi_division_placeholders',
+      name: 'Multi Division Placeholders League',
+      start,
+      end,
+      maxParticipants: 6,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams: {},
+      divisions: [beginner, intermediate, advanced],
+      referees: [],
+      fields: {
+        [fieldBeginner.id]: fieldBeginner,
+        [fieldIntermediate.id]: fieldIntermediate,
+        [fieldAdvanced.id]: fieldAdvanced,
+      },
+      timeSlots,
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(3);
+
+    const divisionCounts = new Map<string, number>();
+    for (const match of scheduled.matches) {
+      divisionCounts.set(match.division.id, (divisionCounts.get(match.division.id) ?? 0) + 1);
+    }
+
+    expect(divisionCounts.get('beginner')).toBe(1);
+    expect(divisionCounts.get('intermediate')).toBe(1);
+    expect(divisionCounts.get('advanced')).toBe(1);
   });
 
   it('surfaces a configuration error when selected divisions have no available fields', () => {

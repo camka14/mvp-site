@@ -12,6 +12,16 @@ export interface UserAccount {
 }
 
 // Division interface matching Python model
+export type DivisionGender = 'M' | 'F' | 'C';
+export type DivisionRatingType = 'AGE' | 'SKILL';
+
+export interface DivisionType {
+  id: string;
+  name: string;
+  ratingType: DivisionRatingType;
+  sportKey?: string;
+}
+
 export interface Division {
   id: string;
   name: string;
@@ -23,6 +33,13 @@ export interface Division {
   skillLevel?: string;
   minRating?: number;
   maxRating?: number;
+  divisionTypeId?: string;
+  divisionTypeName?: string;
+  ratingType?: DivisionRatingType;
+  gender?: DivisionGender;
+  ageCutoffDate?: string;
+  ageCutoffLabel?: string;
+  ageCutoffSource?: string;
 }
 
 export interface LeagueConfig {
@@ -320,6 +337,8 @@ export interface Team {
   name: string;
   seed: number;
   division: Division | string; // Can be expanded or just ID
+  divisionTypeId?: string;
+  divisionTypeName?: string;
   sport: string;
   wins: number;
   losses: number;
@@ -395,9 +414,11 @@ export interface Event {
   installmentDueDates?: string[];
   installmentAmounts?: number[];
   allowTeamSplitDefault?: boolean;
+  registrationByDivisionType?: boolean;
 
   // Relationship fields - can be IDs or expanded objects
   divisions: Division[] | string[];
+  divisionDetails?: Division[];
   timeSlots?: TimeSlot[];
 
   // Tournament-specific fields
@@ -834,6 +855,59 @@ export function toEventPayload(event: Event): EventPayload {
   const payload: EventPayload = {
     ...rest,
   };
+
+  const divisionIds = Array.isArray(rest.divisions)
+    ? uniqueIds(
+        rest.divisions.map((divisionEntry) =>
+          typeof divisionEntry === 'string' ? divisionEntry : extractId(divisionEntry),
+        ),
+      )
+    : [];
+  if (divisionIds.length) {
+    payload.divisions = divisionIds;
+  } else if (Array.isArray(payload.divisions)) {
+    payload.divisions = uniqueIds((payload.divisions as unknown[]).map((entry) => String(entry)));
+  }
+
+  const explicitDivisionDetails = (rest as { divisionDetails?: Array<Division | string> }).divisionDetails;
+  if (Array.isArray(explicitDivisionDetails)) {
+    payload.divisionDetails = explicitDivisionDetails
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') {
+          return null;
+        }
+        const id = extractId(entry);
+        if (!id) {
+          return null;
+        }
+        const division = entry as Division;
+        return {
+          id,
+          name: typeof division.name === 'string' ? division.name : id,
+          key: typeof division.key === 'string' ? division.key : undefined,
+          divisionTypeId:
+            typeof division.divisionTypeId === 'string' ? division.divisionTypeId : undefined,
+          divisionTypeName:
+            typeof division.divisionTypeName === 'string' ? division.divisionTypeName : undefined,
+          ratingType:
+            division.ratingType === 'AGE' || division.ratingType === 'SKILL'
+              ? division.ratingType
+              : undefined,
+          gender:
+            division.gender === 'M' || division.gender === 'F' || division.gender === 'C'
+              ? division.gender
+              : undefined,
+          sportId: typeof division.sportId === 'string' ? division.sportId : undefined,
+          fieldIds: Array.isArray(division.fieldIds)
+            ? uniqueIds(division.fieldIds.map((fieldId) => String(fieldId)))
+            : [],
+          ageCutoffDate: typeof division.ageCutoffDate === 'string' ? division.ageCutoffDate : undefined,
+          ageCutoffLabel: typeof division.ageCutoffLabel === 'string' ? division.ageCutoffLabel : undefined,
+          ageCutoffSource: typeof division.ageCutoffSource === 'string' ? division.ageCutoffSource : undefined,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  }
 
   const hasExplicitReferees = Object.prototype.hasOwnProperty.call(rest, 'refereeIds');
   const explicitRefereeIds = Array.isArray(rest.refereeIds)

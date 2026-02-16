@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import {
+  inferTeamDivisionTypeId,
+  resolveEventDivisionSelection,
+} from '@/app/api/events/[eventId]/registrationDivisionUtils';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +15,9 @@ const payloadSchema = z.object({
   userId: z.string().optional(),
   team: z.record(z.string(), z.any()).optional(),
   teamId: z.string().optional(),
+  divisionId: z.string().optional(),
+  divisionTypeId: z.string().optional(),
+  divisionTypeKey: z.string().optional(),
 }).passthrough();
 
 const withLegacyEvent = (row: any) => {
@@ -59,7 +66,21 @@ async function updateParticipants(
   }
 
   const { eventId } = await params;
-  const event = await prisma.events.findUnique({ where: { id: eventId } });
+  const event = await prisma.events.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      requiredTemplateIds: true,
+      userIds: true,
+      teamIds: true,
+      registrationByDivisionType: true,
+      divisions: true,
+      sportId: true,
+      start: true,
+      minAge: true,
+      maxAge: true,
+    },
+  });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
@@ -75,6 +96,60 @@ async function updateParticipants(
     const ok = await hasSignedRequiredTemplates(event, userId);
     if (!ok) {
       return NextResponse.json({ error: 'Required document signatures missing.' }, { status: 400 });
+    }
+  }
+
+  const divisionSelectionResult = mode === 'add'
+    ? await resolveEventDivisionSelection({
+      event,
+      input: parsed.data,
+    })
+    : null;
+
+  if (mode === 'add' && divisionSelectionResult && !divisionSelectionResult.ok) {
+    return NextResponse.json({ error: divisionSelectionResult.error ?? 'Invalid division selection' }, { status: 400 });
+  }
+  const divisionSelection = mode === 'add' && divisionSelectionResult?.ok
+    ? divisionSelectionResult.selection
+    : { divisionId: null, divisionTypeId: null, divisionTypeKey: null };
+
+  if (teamId && mode === 'add') {
+    const team = await prisma.volleyBallTeams.findUnique({
+      where: { id: teamId },
+      select: {
+        id: true,
+        division: true,
+        divisionTypeId: true,
+        sport: true,
+      },
+    });
+
+    if (!team) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+    }
+
+    const teamDivisionTypeId = inferTeamDivisionTypeId({
+      divisionTypeId: team.divisionTypeId,
+      division: team.division,
+      sport: team.sport,
+    });
+
+    if (divisionSelection.divisionTypeId && !teamDivisionTypeId) {
+      return NextResponse.json(
+        { error: 'This team must be assigned a division type before registering.' },
+        { status: 403 },
+      );
+    }
+
+    if (
+      divisionSelection.divisionTypeId
+      && teamDivisionTypeId
+      && divisionSelection.divisionTypeId !== teamDivisionTypeId
+    ) {
+      return NextResponse.json(
+        { error: 'This team cannot register for the selected division type.' },
+        { status: 403 },
+      );
     }
   }
 
@@ -99,6 +174,45 @@ async function updateParticipants(
     where: { id: eventId },
     data: { userIds: nextUserIds, teamIds: nextTeamIds, updatedAt: new Date() },
   });
+
+  if (teamId) {
+    if (mode === 'add') {
+      const now = new Date();
+      const registrationId = `${eventId}__team__${teamId}`;
+      await prisma.eventRegistrations.upsert({
+        where: { id: registrationId },
+        create: {
+          id: registrationId,
+          eventId,
+          registrantId: teamId,
+          registrantType: 'TEAM',
+          status: 'ACTIVE',
+          ageAtEvent: null,
+          divisionId: divisionSelection.divisionId,
+          divisionTypeId: divisionSelection.divisionTypeId,
+          divisionTypeKey: divisionSelection.divisionTypeKey,
+          createdBy: session.userId,
+          createdAt: now,
+          updatedAt: now,
+        },
+        update: {
+          status: 'ACTIVE',
+          divisionId: divisionSelection.divisionId,
+          divisionTypeId: divisionSelection.divisionTypeId,
+          divisionTypeKey: divisionSelection.divisionTypeKey,
+          updatedAt: now,
+        },
+      });
+    } else {
+      await prisma.eventRegistrations.deleteMany({
+        where: {
+          eventId,
+          registrantId: teamId,
+          registrantType: 'TEAM',
+        },
+      });
+    }
+  }
 
   return NextResponse.json({ event: withLegacyEvent(updated) }, { status: 200 });
 }

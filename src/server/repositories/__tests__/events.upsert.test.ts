@@ -5,6 +5,7 @@ jest.mock('@/lib/prisma', () => ({
 }));
 
 import { upsertEventFromPayload } from '@/server/repositories/events';
+import { buildEventDivisionId } from '@/lib/divisionTypes';
 
 type MockClient = {
   $executeRaw: jest.Mock;
@@ -69,6 +70,8 @@ const baseEventPayload = () => ({
   timeSlots: [],
 });
 
+const divisionId = (token: string) => buildEventDivisionId('event_1', token);
+
 describe('upsertEventFromPayload', () => {
   it('fans out multi-day slot payloads into one persisted slot per day', async () => {
     const client = createMockClient();
@@ -106,7 +109,7 @@ describe('upsertEventFromPayload', () => {
     expect(persistedDays).toEqual([1, 3]);
     const persistedDivisions = client.timeSlots.upsert.mock.calls
       .map((_, index) => client.$executeRaw.mock.calls[index]?.[1]);
-    expect(persistedDivisions).toEqual([['open'], ['open']]);
+    expect(persistedDivisions).toEqual([[divisionId('open')], [divisionId('open')]]);
 
     const eventUpsertArg = client.events.upsert.mock.calls[0][0];
     expect(eventUpsertArg.create.timeSlotIds).toEqual(['slot_multi__d1', 'slot_multi__d3']);
@@ -140,7 +143,7 @@ describe('upsertEventFromPayload', () => {
     expect(client.timeSlots.upsert).toHaveBeenCalledTimes(1);
     expect(client.$executeRaw).toHaveBeenCalled();
     const persistedDivisions = client.$executeRaw.mock.calls[0]?.[1];
-    expect(persistedDivisions).toEqual(['beginner', 'advanced']);
+    expect(persistedDivisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
   });
 
   it('fans out each multi-field slot/day combination and derives event fieldIds from slot assignments', async () => {
@@ -212,8 +215,8 @@ describe('upsertEventFromPayload', () => {
 
     expect(client.fields.findUnique).not.toHaveBeenCalled();
     const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
-    expect(fieldUpsertArg.create.divisions).toEqual(['beginner', 'advanced']);
-    expect(fieldUpsertArg.update.divisions).toEqual(['beginner', 'advanced']);
+    expect(fieldUpsertArg.create.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
+    expect(fieldUpsertArg.update.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
 
@@ -237,8 +240,16 @@ describe('upsertEventFromPayload', () => {
     await upsertEventFromPayload(payload, client as any);
 
     const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
-    expect(fieldUpsertArg.create.divisions).toEqual(['beginner', 'intermediate', 'advanced']);
-    expect(fieldUpsertArg.update.divisions).toEqual(['beginner', 'intermediate', 'advanced']);
+    expect(fieldUpsertArg.create.divisions).toEqual([
+      divisionId('beginner'),
+      divisionId('intermediate'),
+      divisionId('advanced'),
+    ]);
+    expect(fieldUpsertArg.update.divisions).toEqual([
+      divisionId('beginner'),
+      divisionId('intermediate'),
+      divisionId('advanced'),
+    ]);
     expect(client.divisions.upsert).toHaveBeenCalledTimes(3);
   });
 
@@ -263,8 +274,8 @@ describe('upsertEventFromPayload', () => {
     await upsertEventFromPayload(payload, client as any);
 
     const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
-    expect(fieldUpsertArg.create.divisions).toEqual(['beginner', 'advanced']);
-    expect(fieldUpsertArg.update.divisions).toEqual(['beginner', 'advanced']);
+    expect(fieldUpsertArg.create.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
+    expect(fieldUpsertArg.update.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
 });

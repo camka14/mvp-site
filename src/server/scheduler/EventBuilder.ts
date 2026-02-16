@@ -178,9 +178,37 @@ export class EventBuilder {
   private ensurePlaceholderCapacity(targetCount: number): void {
     if (targetCount < 2) targetCount = 2;
     if (Object.keys(this.event.teams).length >= targetCount) return;
-    const division = this.defaultDivision();
+    const divisions = this.event.singleDivision || this.event.divisions.length === 0
+      ? [this.defaultDivision()]
+      : [...this.event.divisions];
+    const placeholderCounts = new Map<string, number>();
+    for (const division of divisions) {
+      placeholderCounts.set(division.id, 0);
+    }
+    for (const team of Object.values(this.event.teams)) {
+      const divisionId = team.division?.id ?? this.defaultDivision().id;
+      placeholderCounts.set(divisionId, (placeholderCounts.get(divisionId) ?? 0) + 1);
+    }
+
+    const pickDivisionForPlaceholder = (): Division => {
+      let selected = divisions[0];
+      let selectedCount = placeholderCounts.get(selected.id) ?? 0;
+
+      for (const division of divisions) {
+        const count = placeholderCounts.get(division.id) ?? 0;
+        if (count < selectedCount) {
+          selected = division;
+          selectedCount = count;
+        }
+      }
+
+      return selected;
+    };
+
     while (Object.keys(this.event.teams).length < targetCount) {
-      const placeholderId = this.generatePlaceholderId('placeholder');
+      const division = pickDivisionForPlaceholder();
+      const safeDivisionId = division.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const placeholderId = this.generatePlaceholderId(`placeholder-${safeDivisionId}`);
       const placeholder = new Team({
         id: placeholderId,
         seed: 0,
@@ -194,6 +222,7 @@ export class EventBuilder {
       });
       this.event.teams[placeholderId] = placeholder;
       this.placeholderIds.add(placeholderId);
+      placeholderCounts.set(division.id, (placeholderCounts.get(division.id) ?? 0) + 1);
     }
   }
 
@@ -218,11 +247,39 @@ export class EventBuilder {
     }
   }
 
-  private buildLeaguePlayoffPlaceholders(count: number): Team[] {
+  private groupsByDivision(participants: Team[]): Array<{ division: Division; teams: Team[] }> {
+    const grouped = new Map<string, { division: Division; teams: Team[] }>();
+    for (const team of participants) {
+      const division = team.division ?? this.defaultDivision();
+      const key = division.id;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.teams.push(team);
+        continue;
+      }
+      grouped.set(key, { division, teams: [team] });
+    }
+
+    const ordered: Array<{ division: Division; teams: Team[] }> = [];
+    const knownDivisionIds = new Set<string>();
+    for (const division of this.event.divisions) {
+      const entry = grouped.get(division.id);
+      if (!entry) continue;
+      ordered.push(entry);
+      knownDivisionIds.add(division.id);
+    }
+    for (const [divisionId, entry] of grouped.entries()) {
+      if (knownDivisionIds.has(divisionId)) continue;
+      ordered.push(entry);
+    }
+    return ordered;
+  }
+
+  private buildLeaguePlayoffPlaceholders(count: number, division: Division): Team[] {
     const placeholders: Team[] = [];
-    const division = this.defaultDivision();
+    const safeDivisionId = division.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     for (let seedIndex = 0; seedIndex < count; seedIndex += 1) {
-      const placeholderId = this.generatePlaceholderId('playoff-placeholder');
+      const placeholderId = this.generatePlaceholderId(`playoff-${safeDivisionId}`);
       const placeholder = new Team({
         id: placeholderId,
         seed: count - seedIndex,
@@ -265,7 +322,22 @@ export class EventBuilder {
     return TIMES.REST * Math.max(multiplier, 1);
   }
 
-  private createMatch(team1: Team | null, team2: Team | null): Match {
+  private resolveMatchDivision(team1: Team | null, team2: Team | null): Division {
+    if (!this.event.singleDivision) {
+      if (team1?.division && team2?.division && team1.division.id === team2.division.id) {
+        return team1.division;
+      }
+      if (team1?.division) {
+        return team1.division;
+      }
+      if (team2?.division) {
+        return team2.division;
+      }
+    }
+    return this.defaultDivision();
+  }
+
+  private createMatch(team1: Team | null, team2: Team | null, divisionOverride?: Division): Match {
     const setCount = this.event.usesSets ? (this.event.setsPerMatch || 1) : 1;
     return new Match({
       id: createId(),
@@ -281,7 +353,7 @@ export class EventBuilder {
       winnerNextMatch: null,
       loserNextMatch: null,
       losersBracket: false,
-      division: this.defaultDivision(),
+      division: divisionOverride ?? this.resolveMatchDivision(team1, team2),
       field: null,
       setResults: Array(setCount).fill(0),
       bufferMs: this.matchBuffer(),
@@ -291,14 +363,14 @@ export class EventBuilder {
     });
   }
 
-  private scheduleRegularSeason(participants: Team[], durationMs: number): Match[] {
+  private scheduleRegularSeasonForDivision(participants: Team[], durationMs: number, division?: Division): Match[] {
     const gamesPerOpponent = this.isLeague ? (this.event.gamesPerOpponent || 1) : 1;
     const rounds = this.roundRobinRounds(participants, gamesPerOpponent);
     const scheduled: Match[] = [];
     for (const roundPairs of rounds) {
       const roundScheduled: Match[] = [];
       for (const [home, away] of roundPairs) {
-        const match = this.createMatch(home, away);
+        const match = this.createMatch(home, away, division);
         this.schedule.scheduleEvent(match, durationMs);
         this.attachMatchToParticipants(match);
         scheduled.push(match);
@@ -309,6 +381,27 @@ export class EventBuilder {
         this.schedule.advanceTo(new Date(lastEnd.getTime() + this.matchBuffer()));
       }
     }
+    return scheduled;
+  }
+
+  private scheduleRegularSeason(participants: Team[], durationMs: number): Match[] {
+    if (participants.length < 2) {
+      return [];
+    }
+
+    if (this.event.singleDivision) {
+      return this.scheduleRegularSeasonForDivision(participants, durationMs, this.defaultDivision());
+    }
+
+    const groupedByDivision = this.groupsByDivision(participants);
+    const scheduled: Match[] = [];
+    for (const { division, teams } of groupedByDivision) {
+      if (teams.length < 2) {
+        continue;
+      }
+      scheduled.push(...this.scheduleRegularSeasonForDivision(teams, durationMs, division));
+    }
+
     return scheduled;
   }
 
@@ -355,10 +448,25 @@ export class EventBuilder {
     }
 
     const league = this.event as League;
-    const playoffCount = Math.min(league.playoffTeamCount || participants.length, participants.length);
-    if (playoffCount < 2) return [];
+    const seeded: Team[] = [];
+    if (this.event.singleDivision) {
+      const playoffCount = Math.min(league.playoffTeamCount || participants.length, participants.length);
+      if (playoffCount < 2) return [];
+      seeded.push(...this.buildLeaguePlayoffPlaceholders(playoffCount, this.defaultDivision()));
+    } else {
+      const groupedByDivision = this.groupsByDivision(participants);
+      for (const { division, teams } of groupedByDivision) {
+        const divisionPlayoffCount = Math.min(league.playoffTeamCount || teams.length, teams.length);
+        if (divisionPlayoffCount < 2) {
+          continue;
+        }
+        seeded.push(...this.buildLeaguePlayoffPlaceholders(divisionPlayoffCount, division));
+      }
+      if (seeded.length < 2) {
+        return [];
+      }
+    }
 
-    const seeded = this.buildLeaguePlayoffPlaceholders(playoffCount);
     const teamLookup = Object.fromEntries(seeded.map((team) => [team.id, team]));
 
     const tournamentFields: Record<string, any> = {};
@@ -441,7 +549,6 @@ export class EventBuilder {
       if (match.teamReferee) {
         match.teamReferee = teamLookup[match.teamReferee.id] ?? match.teamReferee;
       }
-      match.division = this.defaultDivision();
       match.bufferMs = this.matchBuffer();
       this.schedule.scheduleEvent(match, durationMs);
       this.attachMatchToParticipants(match);

@@ -56,10 +56,18 @@ const parseTimeValue = (value: string): number | null => {
   return hours * 60 + minutes;
 };
 
-const toMondayBasedDay = (date: Date): TimeSlot['dayOfWeek'] => {
+type RentalSlotUpsertInput = Partial<TimeSlot> & {
+  dayOfWeek: NonNullable<TimeSlot['dayOfWeek']>;
+};
+
+type RentalSlotUpdateInput = RentalSlotUpsertInput & {
+  $id: string;
+};
+
+const toMondayBasedDay = (date: Date): NonNullable<TimeSlot['dayOfWeek']> => {
   const jsDay = date.getDay(); // 0 => Sunday
   const mondayBased = (jsDay + 6) % 7;
-  return mondayBased as TimeSlot['dayOfWeek'];
+  return mondayBased as NonNullable<TimeSlot['dayOfWeek']>;
 };
 
 const coerceDateValue = (value: unknown): Date | null => {
@@ -349,7 +357,7 @@ export default function CreateRentalSlotModal({
     setSubmitting(true);
     setError(null);
     try {
-      const payload: Partial<TimeSlot> & { dayOfWeek: TimeSlot['dayOfWeek'] } = {
+      const payload: RentalSlotUpsertInput = {
         dayOfWeek,
         repeating,
         startDate: formatLocalDateTime(startDateTime),
@@ -365,7 +373,7 @@ export default function CreateRentalSlotModal({
 
       let result: ManageRentalSlotResult;
       if (slot) {
-        const updatePayload: TimeSlot = {
+        const updatePayload: RentalSlotUpdateInput = {
           $id: slot.$id,
           dayOfWeek: payload.dayOfWeek,
           repeating: payload.repeating ?? false,

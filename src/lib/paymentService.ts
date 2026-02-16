@@ -9,6 +9,7 @@ import type {
   UserData,
 } from '@/types';
 import { buildPayload } from './utils';
+import type { DivisionRegistrationSelection } from '@/lib/registrationService';
 
 type PaymentOrganizationContext = Partial<Organization>;
 
@@ -92,6 +93,7 @@ class PaymentService {
     team?: Team,
     timeSlot?: TimeSlot,
     organization?: PaymentOrganizationContext,
+    selection?: DivisionRegistrationSelection,
   ): Promise<void> {
     try {
       if (!event?.$id) {
@@ -105,6 +107,7 @@ class PaymentService {
         team,
         timeSlot,
         organization,
+        ...selection,
       };
 
       const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {

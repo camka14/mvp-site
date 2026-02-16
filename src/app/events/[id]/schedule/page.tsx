@@ -87,6 +87,151 @@ const formatLatLngLabel = (lat?: number, lng?: number): string => {
   return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 };
 
+type DivisionOption = {
+  value: string;
+  label: string;
+};
+
+const normalizeDivisionToken = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const toDivisionKey = (divisionId: string | null | undefined): string | null => {
+  const normalized = normalizeDivisionToken(divisionId);
+  return normalized ? normalized.toLowerCase() : null;
+};
+
+const getDivisionId = (division: unknown): string | null => {
+  if (typeof division === 'string') {
+    return normalizeDivisionToken(division);
+  }
+
+  if (!division || typeof division !== 'object') {
+    return null;
+  }
+
+  const divisionRecord = division as Record<string, unknown>;
+  return (
+    normalizeDivisionToken(divisionRecord.id) ??
+    normalizeDivisionToken(divisionRecord.$id) ??
+    normalizeDivisionToken(divisionRecord.key) ??
+    normalizeDivisionToken(divisionRecord.name)
+  );
+};
+
+const getDivisionLabel = (division: unknown): string | null => {
+  if (typeof division === 'string') {
+    return normalizeDivisionToken(division);
+  }
+
+  if (!division || typeof division !== 'object') {
+    return null;
+  }
+
+  const divisionRecord = division as Record<string, unknown>;
+  return (
+    normalizeDivisionToken(divisionRecord.name) ??
+    normalizeDivisionToken(divisionRecord.id) ??
+    normalizeDivisionToken(divisionRecord.$id) ??
+    normalizeDivisionToken(divisionRecord.key)
+  );
+};
+
+const getTeamDivision = (team: Match['team1'] | Match['team2']): unknown => {
+  if (!team) {
+    return null;
+  }
+
+  return team.division;
+};
+
+const getMatchDivisionId = (match: Match): string | null =>
+  getDivisionId(match.division) ??
+  getDivisionId(getTeamDivision(match.team1)) ??
+  getDivisionId(getTeamDivision(match.team2));
+
+const getMatchDivisionLabel = (match: Match): string | null =>
+  getDivisionLabel(match.division) ??
+  getDivisionLabel(getTeamDivision(match.team1)) ??
+  getDivisionLabel(getTeamDivision(match.team2));
+
+const pickPreferredRootMatch = (matches: Match[]): Match | null => {
+  if (matches.length === 0) {
+    return null;
+  }
+
+  return matches.reduce<Match>((best, current) => {
+    const bestMatchId = Number.isFinite(best.matchId) ? Number(best.matchId) : Number.NEGATIVE_INFINITY;
+    const currentMatchId = Number.isFinite(current.matchId) ? Number(current.matchId) : Number.NEGATIVE_INFINITY;
+
+    if (currentMatchId > bestMatchId) {
+      return current;
+    }
+    if (currentMatchId < bestMatchId) {
+      return best;
+    }
+    return current.$id.localeCompare(best.$id) < 0 ? current : best;
+  }, matches[0]);
+};
+
+const collectConnectedMatchIds = (matches: Record<string, Match>, rootMatchId: string): Set<string> => {
+  if (!matches[rootMatchId]) {
+    return new Set<string>();
+  }
+
+  const adjacency = new Map<string, Set<string>>();
+  const ensureNode = (id: string) => {
+    if (!adjacency.has(id)) {
+      adjacency.set(id, new Set<string>());
+    }
+  };
+  const connectNodes = (firstId?: string | null, secondId?: string | null) => {
+    if (!firstId || !secondId || !matches[firstId] || !matches[secondId]) {
+      return;
+    }
+    ensureNode(firstId);
+    ensureNode(secondId);
+    adjacency.get(firstId)?.add(secondId);
+    adjacency.get(secondId)?.add(firstId);
+  };
+
+  Object.keys(matches).forEach(ensureNode);
+  Object.values(matches).forEach((match) => {
+    connectNodes(match.$id, match.previousLeftId);
+    connectNodes(match.$id, match.previousRightId);
+    connectNodes(match.$id, match.winnerNextMatchId);
+    connectNodes(match.$id, match.loserNextMatchId);
+  });
+
+  const visited = new Set<string>();
+  const stack: string[] = [rootMatchId];
+
+  while (stack.length > 0) {
+    const currentId = stack.pop();
+    if (!currentId || visited.has(currentId) || !matches[currentId]) {
+      continue;
+    }
+
+    visited.add(currentId);
+    const neighbors = adjacency.get(currentId);
+    if (!neighbors) {
+      continue;
+    }
+
+    neighbors.forEach((neighborId) => {
+      if (!visited.has(neighborId)) {
+        stack.push(neighborId);
+      }
+    });
+  }
+
+  return visited;
+};
+
 
 type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
 
@@ -239,6 +384,8 @@ function EventScheduleContent() {
   const [selectedLifecycleStatus, setSelectedLifecycleStatus] = useState<EventLifecycleStatus | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
+  const [selectedScheduleDivision, setSelectedScheduleDivision] = useState<string>('all');
+  const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
   const [isMatchEditorOpen, setIsMatchEditorOpen] = useState(false);
   const [standingsSort, setStandingsSort] = useState<{ field: StandingsSortField; direction: 'asc' | 'desc' }>({
     field: 'points',
@@ -490,6 +637,73 @@ function EventScheduleContent() {
   const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
   const isEditingEvent = isPreview || isEditParam || isUnpublished;
   const activeMatches = usingChangeCopies ? changesMatches : matches;
+  const divisionLabelsByKey = useMemo(() => {
+    const labels = new Map<string, string>();
+    if (Array.isArray(activeEvent?.divisionDetails)) {
+      activeEvent.divisionDetails.forEach((division) => {
+        const divisionId = getDivisionId(division);
+        const divisionKey = toDivisionKey(divisionId);
+        if (!divisionId || !divisionKey || labels.has(divisionKey)) {
+          return;
+        }
+        labels.set(divisionKey, getDivisionLabel(division) ?? divisionId);
+      });
+    }
+    if (!Array.isArray(activeEvent?.divisions)) {
+      return labels;
+    }
+
+    activeEvent.divisions.forEach((division) => {
+      const divisionId = getDivisionId(division);
+      const divisionKey = toDivisionKey(divisionId);
+      if (!divisionId || !divisionKey || labels.has(divisionKey)) {
+        return;
+      }
+
+      labels.set(divisionKey, getDivisionLabel(division) ?? divisionId);
+    });
+
+    return labels;
+  }, [activeEvent?.divisions]);
+
+  const scheduleDivisionOptions = useMemo<DivisionOption[]>(() => {
+    const labels = new Map<string, string>(divisionLabelsByKey);
+
+    activeMatches.forEach((match) => {
+      const divisionId = getMatchDivisionId(match);
+      const divisionKey = toDivisionKey(divisionId);
+      if (!divisionId || !divisionKey) {
+        return;
+      }
+
+      if (!labels.has(divisionKey)) {
+        labels.set(divisionKey, getMatchDivisionLabel(match) ?? divisionId);
+      }
+    });
+
+    return Array.from(labels.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [activeMatches, divisionLabelsByKey]);
+
+  useEffect(() => {
+    if (selectedScheduleDivision === 'all') {
+      return;
+    }
+
+    if (!scheduleDivisionOptions.some((option) => option.value === selectedScheduleDivision)) {
+      setSelectedScheduleDivision('all');
+    }
+  }, [scheduleDivisionOptions, selectedScheduleDivision]);
+
+  const scheduleMatches = useMemo(() => {
+    if (selectedScheduleDivision === 'all') {
+      return activeMatches;
+    }
+
+    return activeMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedScheduleDivision);
+  }, [activeMatches, selectedScheduleDivision]);
+
   const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
   const isTournament = eventTypeForView === 'TOURNAMENT';
   const isLeague = eventTypeForView === 'LEAGUE';
@@ -1054,7 +1268,7 @@ function EventScheduleContent() {
     [activeMatches],
   );
 
-  const bracketMatchesMap = useMemo<Record<string, Match> | null>(() => {
+  const playoffMatchesMap = useMemo<Record<string, Match> | null>(() => {
     if (!playoffMatches.length) {
       return null;
     }
@@ -1081,6 +1295,85 @@ function EventScheduleContent() {
 
     return map;
   }, [playoffMatches]);
+
+  const playoffRootMatches = useMemo<Match[]>(() => {
+    if (!playoffMatchesMap) {
+      return [];
+    }
+
+    return Object.values(playoffMatchesMap).filter(
+      (match) => !match.winnerNextMatchId || !playoffMatchesMap[match.winnerNextMatchId],
+    );
+  }, [playoffMatchesMap]);
+
+  const bracketDivisionOptions = useMemo<DivisionOption[]>(() => {
+    const labels = new Map<string, string>();
+
+    playoffRootMatches.forEach((match) => {
+      const divisionId = getMatchDivisionId(match);
+      const divisionKey = toDivisionKey(divisionId);
+      if (!divisionId || !divisionKey || labels.has(divisionKey)) {
+        return;
+      }
+
+      labels.set(divisionKey, divisionLabelsByKey.get(divisionKey) ?? getMatchDivisionLabel(match) ?? divisionId);
+    });
+
+    return Array.from(labels.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [divisionLabelsByKey, playoffRootMatches]);
+
+  useEffect(() => {
+    if (bracketDivisionOptions.length === 0) {
+      if (selectedBracketDivision !== null) {
+        setSelectedBracketDivision(null);
+      }
+      return;
+    }
+
+    if (
+      selectedBracketDivision &&
+      bracketDivisionOptions.some((option) => option.value === selectedBracketDivision)
+    ) {
+      return;
+    }
+
+    setSelectedBracketDivision(bracketDivisionOptions[0].value);
+  }, [bracketDivisionOptions, selectedBracketDivision]);
+
+  const selectedBracketRootMatch = useMemo(() => {
+    if (playoffRootMatches.length === 0) {
+      return null;
+    }
+
+    const rootsForDivision = selectedBracketDivision
+      ? playoffRootMatches.filter(
+          (match) => toDivisionKey(getMatchDivisionId(match)) === selectedBracketDivision,
+        )
+      : playoffRootMatches;
+
+    return pickPreferredRootMatch(rootsForDivision);
+  }, [playoffRootMatches, selectedBracketDivision]);
+
+  const bracketMatchesMap = useMemo<Record<string, Match> | null>(() => {
+    if (!playoffMatchesMap || !selectedBracketRootMatch) {
+      return null;
+    }
+
+    const connectedMatchIds = collectConnectedMatchIds(playoffMatchesMap, selectedBracketRootMatch.$id);
+    if (connectedMatchIds.size === 0) {
+      return null;
+    }
+
+    return Array.from(connectedMatchIds).reduce<Record<string, Match>>((acc, matchId) => {
+      const match = playoffMatchesMap[matchId];
+      if (match) {
+        acc[matchId] = match;
+      }
+      return acc;
+    }, {});
+  }, [playoffMatchesMap, selectedBracketRootMatch]);
 
   const playoffMatchIds = useMemo(() => new Set(playoffMatches.map((match) => match.$id)), [playoffMatches]);
 
@@ -1310,6 +1603,13 @@ function EventScheduleContent() {
       canManage: !isPreview && isHost,
     };
   }, [activeEvent, bracketMatchesMap, isHost, isPreview]);
+
+  const scheduleDivisionSelectData = useMemo<DivisionOption[]>(
+    () => [{ value: 'all', label: 'All divisions' }, ...scheduleDivisionOptions],
+    [scheduleDivisionOptions],
+  );
+  const shouldShowScheduleDivisionFilter = scheduleDivisionOptions.length > 1;
+  const shouldShowBracketDivisionFilter = bracketDivisionOptions.length > 1;
 
   const showScheduleTab = isLeague;
   const showStandingsTab = isLeague;
@@ -2317,39 +2617,77 @@ function EventScheduleContent() {
 
             {showScheduleTab && (
               <Tabs.Panel value="schedule" pt="md">
-                {activeMatches.length === 0 ? (
-                  <Paper withBorder radius="md" p="xl" ta="center">
-                    <Text>No matches generated yet.</Text>
-                  </Paper>
-                ) : (
-                  <LeagueCalendarView
-                    matches={activeMatches}
-                    eventStart={activeEvent.start}
-                    eventEnd={activeEvent.end}
-                    onMatchClick={handleMatchClick}
-                    canManage={canEditMatches}
-                    currentUser={user}
-                  />
-                )}
+                <Stack gap="sm">
+                  {shouldShowScheduleDivisionFilter && (
+                    <Group justify="flex-end">
+                      <Select
+                        label="Division"
+                        data={scheduleDivisionSelectData}
+                        value={selectedScheduleDivision}
+                        onChange={(value) => setSelectedScheduleDivision(value ?? 'all')}
+                        allowDeselect={false}
+                        w={220}
+                      />
+                    </Group>
+                  )}
+
+                  {activeMatches.length === 0 ? (
+                    <Paper withBorder radius="md" p="xl" ta="center">
+                      <Text>No matches generated yet.</Text>
+                    </Paper>
+                  ) : scheduleMatches.length === 0 ? (
+                    <Paper withBorder radius="md" p="xl" ta="center">
+                      <Text>No matches found for the selected division.</Text>
+                    </Paper>
+                  ) : (
+                    <LeagueCalendarView
+                      matches={scheduleMatches}
+                      eventStart={activeEvent.start}
+                      eventEnd={activeEvent.end}
+                      onMatchClick={handleMatchClick}
+                      canManage={canEditMatches}
+                      currentUser={user}
+                    />
+                  )}
+                </Stack>
               </Tabs.Panel>
             )}
 
             {shouldShowBracketTab && (
               <Tabs.Panel value="bracket" pt="md" pb={0}>
-                {bracketData ? (
-                  <TournamentBracketView
-                    bracket={bracketData}
-                    currentUser={user ?? undefined}
-                    isPreview={isPreview}
-                    onMatchClick={handleMatchClick}
-                    canEditMatches={canEditMatches}
-                    showDateOnMatches={showDateOnMatches}
-                  />
-                ) : (
-                  <Paper withBorder radius="md" p="xl" ta="center">
-                    <Text>No playoff bracket generated yet.</Text>
-                  </Paper>
-                )}
+                <Stack gap="sm">
+                  {shouldShowBracketDivisionFilter && (
+                    <Group justify="flex-end">
+                      <Select
+                        label="Division"
+                        data={bracketDivisionOptions}
+                        value={selectedBracketDivision ?? bracketDivisionOptions[0]?.value ?? null}
+                        onChange={(value) => setSelectedBracketDivision(value ?? bracketDivisionOptions[0]?.value ?? null)}
+                        allowDeselect={false}
+                        w={220}
+                      />
+                    </Group>
+                  )}
+
+                  {bracketData ? (
+                    <TournamentBracketView
+                      bracket={bracketData}
+                      currentUser={user ?? undefined}
+                      isPreview={isPreview}
+                      onMatchClick={handleMatchClick}
+                      canEditMatches={canEditMatches}
+                      showDateOnMatches={showDateOnMatches}
+                    />
+                  ) : (
+                    <Paper withBorder radius="md" p="xl" ta="center">
+                      <Text>
+                        {playoffMatches.length > 0
+                          ? 'No playoff bracket generated for the selected division.'
+                          : 'No playoff bracket generated yet.'}
+                      </Text>
+                    </Paper>
+                  )}
+                </Stack>
               </Tabs.Panel>
             )}
 

@@ -157,6 +157,13 @@ model Divisions {
   sportId String?
   minRating Float?
   maxRating Float?
+  divisionTypeId String?
+  divisionTypeName String?
+  ratingType String?
+  gender String?
+  ageCutoffDate DateTime?
+  ageCutoffLabel String?
+  ageCutoffSource String?
   fieldIds String[] @default([])
 
   @@index([eventId])
@@ -217,6 +224,8 @@ model VolleyBallTeams {
   seed Int
   playerIds String[]
   division String?
+  divisionTypeId String?
+  divisionTypeName String?
   wins Int?
   losses Int?
   name String?
@@ -357,6 +366,7 @@ model Events {
   hostId String
   price Int
   singleDivision Boolean?
+  registrationByDivisionType Boolean?
   waitListIds String[]
   freeAgentIds String[]
   cancellationRefundHours Int?
@@ -630,6 +640,9 @@ model EventRegistrations {
   registrantType EventRegistrationsRegistrantTypeEnum
   status EventRegistrationsStatusEnum
   ageAtEvent Int?
+  divisionId String?
+  divisionTypeId String?
+  divisionTypeKey String?
   consentDocumentId String?
   consentStatus String?
   createdBy String

@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import {
+  inferDivisionDetails,
+  normalizeDivisionIdToken,
+} from '@/lib/divisionTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +15,8 @@ const createSchema = z.object({
   name: z.string().optional(),
   seed: z.number().optional(),
   division: z.string().optional(),
+  divisionTypeId: z.string().optional(),
+  divisionTypeName: z.string().optional(),
   sport: z.string().optional(),
   wins: z.number().optional(),
   losses: z.number().optional(),
@@ -20,6 +26,14 @@ const createSchema = z.object({
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
 }).passthrough();
+
+const normalizeText = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length ? normalized : null;
+};
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -55,13 +69,25 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
+  const normalizedDivision = normalizeText(data.division) ?? 'Open';
+  const sportInput = normalizeText(data.sport) ?? null;
+  const normalizedDivisionTypeId = normalizeDivisionIdToken(data.divisionTypeId);
+  const inferredDivision = inferDivisionDetails({
+    identifier: normalizedDivisionTypeId ?? normalizedDivision,
+    sportInput: sportInput ?? undefined,
+  });
+  const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
+  const divisionTypeName = normalizeText(data.divisionTypeName) ?? inferredDivision.divisionTypeName;
+
   const team = await prisma.volleyBallTeams.create({
     data: {
       id: data.id,
       name: data.name ?? null,
       seed: data.seed ?? 0,
-      division: data.division ?? null,
-      sport: data.sport ?? null,
+      division: normalizedDivision,
+      divisionTypeId,
+      divisionTypeName,
+      sport: sportInput,
       wins: data.wins ?? 0,
       losses: data.losses ?? 0,
       playerIds: Array.isArray(data.playerIds) ? data.playerIds : [],

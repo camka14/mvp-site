@@ -13,6 +13,12 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
+import {
+  buildEventDivisionId,
+  evaluateDivisionAgeEligibility,
+  extractDivisionTokenFromId,
+  inferDivisionDetails,
+} from '@/lib/divisionTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +40,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'hostId',
   'price',
   'singleDivision',
+  'registrationByDivisionType',
   'waitListIds',
   'freeAgentIds',
   'cancellationRefundHours',
@@ -155,6 +162,15 @@ const normalizeDivisionKeys = (value: unknown): string[] => {
   return Array.from(new Set(keys));
 };
 
+const normalizeDivisionIds = (value: unknown, eventId: string): string[] => {
+  const keys = normalizeDivisionKeys(value);
+  return keys.map((entry) => (
+    entry.includes('__division__') || entry.startsWith('division_')
+      ? entry
+      : buildEventDivisionId(eventId, entry)
+  ));
+};
+
 const normalizeFieldIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
@@ -212,6 +228,65 @@ const coerceDivisionFieldMap = (value: unknown): Record<string, string[]> => {
   return result;
 };
 
+const normalizeDivisionDetailsInput = (
+  value: unknown,
+  eventId: string,
+  sportId?: string | null,
+  eventStart?: Date | null,
+): Array<Record<string, unknown>> => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const details: Array<Record<string, unknown>> = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const row = entry as Record<string, unknown>;
+    const rawIdentifier = normalizeDivisionKey(row.id)
+      ?? normalizeDivisionKey(row.key)
+      ?? normalizeDivisionKey(row.name)
+      ?? 'c_skill_open';
+    const inferred = inferDivisionDetails({
+      identifier: rawIdentifier,
+      sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
+      fallbackName: typeof row.name === 'string' ? row.name : undefined,
+    });
+    const ageEligibility = evaluateDivisionAgeEligibility({
+      divisionTypeId: inferred.divisionTypeId,
+      sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
+      referenceDate: eventStart ?? null,
+    });
+    const id = normalizeDivisionKey(row.id)
+      ?? buildEventDivisionId(eventId, inferred.token);
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    details.push({
+      id,
+      key: normalizeDivisionKey(row.key) ?? inferred.token,
+      name: typeof row.name === 'string' && row.name.trim().length
+        ? row.name.trim()
+        : inferred.defaultName,
+      divisionTypeId: normalizeDivisionKey(row.divisionTypeId) ?? inferred.divisionTypeId,
+      divisionTypeName:
+        typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
+          ? row.divisionTypeName.trim()
+          : inferred.divisionTypeName,
+      ratingType: inferred.ratingType,
+      gender: inferred.gender,
+      sportId: typeof row.sportId === 'string' ? row.sportId : sportId ?? null,
+      ageCutoffDate: ageEligibility.applies ? ageEligibility.cutoffDate.toISOString() : null,
+      ageCutoffLabel: ageEligibility.message ?? null,
+      ageCutoffSource: ageEligibility.applies ? ageEligibility.cutoffRule.source : null,
+      fieldIds: normalizeFieldIds(row.fieldIds),
+    });
+  }
+  return details;
+};
+
 const buildDivisionFieldMap = (
   divisionKeys: string[],
   fieldIds: string[],
@@ -220,22 +295,39 @@ const buildDivisionFieldMap = (
   const normalizedDivisionKeys = divisionKeys.length ? divisionKeys : [DEFAULT_DIVISION_KEY];
   const allowedFieldIds = new Set(fieldIds);
   const merged = new Map<string, Set<string>>();
+  const aliasToCanonical = new Map<string, string>();
 
   for (const divisionKey of normalizedDivisionKeys) {
     merged.set(divisionKey, new Set<string>());
+    const aliases = new Set<string>([
+      divisionKey,
+      extractDivisionTokenFromId(divisionKey) ?? '',
+    ]);
+    aliases.forEach((alias) => {
+      const normalizedAlias = normalizeDivisionKey(alias);
+      if (!normalizedAlias) return;
+      aliasToCanonical.set(normalizedAlias, divisionKey);
+    });
   }
 
   for (const map of maps) {
     for (const [key, ids] of Object.entries(map)) {
-      const normalizedKey = normalizeDivisionKey(key);
-      if (!normalizedKey) continue;
-      const bucket = merged.get(normalizedKey) ?? new Set<string>();
-      for (const id of ids) {
-        if (!allowedFieldIds.size || allowedFieldIds.has(id)) {
-          bucket.add(id);
+      const aliases = new Set<string>([
+        key,
+        extractDivisionTokenFromId(key) ?? '',
+      ]);
+      aliases.forEach((alias) => {
+        const normalizedAlias = normalizeDivisionKey(alias);
+        if (!normalizedAlias) return;
+        const canonicalKey = aliasToCanonical.get(normalizedAlias) ?? normalizedAlias;
+        const bucket = merged.get(canonicalKey) ?? new Set<string>();
+        for (const id of ids) {
+          if (!allowedFieldIds.size || allowedFieldIds.has(id)) {
+            bucket.add(id);
+          }
         }
-      }
-      merged.set(normalizedKey, bucket);
+        merged.set(canonicalKey, bucket);
+      });
     }
   }
 
@@ -249,13 +341,32 @@ const buildDivisionFieldMap = (
 };
 
 const mapDivisionRowsToFieldMap = (
-  rows: Array<{ key: string | null; fieldIds: string[] | null }>,
+  rows: Array<{ id: string; key: string | null; fieldIds: string[] | null }>,
+  divisionKeys: string[],
 ): Record<string, string[]> => {
+  const rowsById = new Map<string, (typeof rows)[number]>();
+  const rowsByKey = new Map<string, (typeof rows)[number]>();
+  rows.forEach((row) => {
+    const rowId = normalizeDivisionKey(row.id);
+    if (rowId) {
+      rowsById.set(rowId, row);
+      const token = extractDivisionTokenFromId(rowId);
+      if (token) {
+        rowsByKey.set(token, row);
+      }
+    }
+    const rowKey = normalizeDivisionKey(row.key);
+    if (rowKey) {
+      rowsByKey.set(rowKey, row);
+    }
+  });
+
   const result: Record<string, string[]> = {};
-  for (const row of rows) {
-    const key = normalizeDivisionKey(row.key);
-    if (!key) continue;
-    result[key] = normalizeFieldIds(row.fieldIds ?? []);
+  for (const divisionKey of divisionKeys) {
+    const row = rowsById.get(divisionKey)
+      ?? rowsByKey.get(divisionKey)
+      ?? rowsByKey.get(extractDivisionTokenFromId(divisionKey) ?? '');
+    result[divisionKey] = normalizeFieldIds(row?.fieldIds ?? []);
   }
   return result;
 };
@@ -287,17 +398,111 @@ const getDivisionFieldMapForEvent = async (
   if (!divisionKeys.length) {
     return {};
   }
-  const rows = await prisma.divisions.findMany({
+  const normalizedKeys = normalizeDivisionKeys(divisionKeys);
+  const rawRows = await prisma.divisions.findMany({
     where: {
       eventId,
-      key: { in: divisionKeys },
+      OR: [
+        { id: { in: normalizedKeys } },
+        { key: { in: normalizedKeys } },
+      ],
     },
     select: {
+      id: true,
       key: true,
       fieldIds: true,
     },
   });
-  return mapDivisionRowsToFieldMap(rows);
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+  return mapDivisionRowsToFieldMap(rows, normalizedKeys);
+};
+
+const getDivisionDetailsForEvent = async (
+  eventId: string,
+  divisionKeys: string[],
+  eventStart?: Date | null,
+): Promise<Array<Record<string, unknown>>> => {
+  if (!divisionKeys.length) {
+    return [];
+  }
+  const normalizedKeys = normalizeDivisionKeys(divisionKeys);
+  const rawRows = await prisma.divisions.findMany({
+    where: {
+      eventId,
+      OR: [
+        { id: { in: normalizedKeys } },
+        { key: { in: normalizedKeys } },
+      ],
+    },
+    select: {
+      id: true,
+      key: true,
+      name: true,
+      sportId: true,
+      divisionTypeId: true,
+      divisionTypeName: true,
+      ratingType: true,
+      gender: true,
+      ageCutoffDate: true,
+      ageCutoffLabel: true,
+      ageCutoffSource: true,
+      fieldIds: true,
+    },
+  });
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+  const rowsById = new Map<string, (typeof rows)[number]>();
+  const rowsByKey = new Map<string, (typeof rows)[number]>();
+  rows.forEach((row) => {
+    const rowId = normalizeDivisionKey(row.id);
+    if (rowId) {
+      rowsById.set(rowId, row);
+      const token = extractDivisionTokenFromId(rowId);
+      if (token) {
+        rowsByKey.set(token, row);
+      }
+    }
+    const rowKey = normalizeDivisionKey(row.key);
+    if (rowKey) {
+      rowsByKey.set(rowKey, row);
+    }
+  });
+
+  return normalizedKeys.map((divisionId) => {
+    const row = rowsById.get(divisionId)
+      ?? rowsByKey.get(divisionId)
+      ?? rowsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')
+      ?? null;
+    const inferred = inferDivisionDetails({
+      identifier: row?.key ?? row?.id ?? divisionId,
+      sportInput: row?.sportId ?? undefined,
+      fallbackName: row?.name ?? undefined,
+    });
+    const ageEligibility = evaluateDivisionAgeEligibility({
+      divisionTypeId: inferred.divisionTypeId,
+      sportInput: row?.sportId ?? undefined,
+      referenceDate: eventStart ?? null,
+    });
+    const ageCutoffDate = (() => {
+      if (row?.ageCutoffDate instanceof Date && !Number.isNaN(row.ageCutoffDate.getTime())) {
+        return row.ageCutoffDate.toISOString();
+      }
+      return ageEligibility.applies ? ageEligibility.cutoffDate.toISOString() : null;
+    })();
+    return {
+      id: row?.id ?? divisionId,
+      key: row?.key ?? inferred.token,
+      name: row?.name ?? inferred.defaultName,
+      divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
+      divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+      ratingType: row?.ratingType ?? inferred.ratingType,
+      gender: row?.gender ?? inferred.gender,
+      sportId: row?.sportId ?? null,
+      ageCutoffDate,
+      ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
+      ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
+      fieldIds: normalizeFieldIds(row?.fieldIds ?? []),
+    };
+  });
 };
 
 const normalizeSlotDays = (input: { dayOfWeek?: unknown; daysOfWeek?: unknown }): number[] => {
@@ -395,6 +600,7 @@ const expandTimeSlotsForUpdate = (
   fallbackStartDate: Date,
   fallbackDivisionKeys: string[],
   enforceAllDivisions: boolean,
+  useDivisionIds: boolean,
 ): ExpandedTimeSlotInput[] => {
   return slots.flatMap((slot, index) => {
     const sourceId = typeof slot.$id === 'string' && slot.$id.length > 0
@@ -440,7 +646,9 @@ const expandTimeSlotsForUpdate = (
         ),
       )
       : [];
-    const normalizedSlotDivisions = normalizeDivisionKeys(slot.divisions);
+    const normalizedSlotDivisions = useDivisionIds
+      ? normalizeDivisionIds(slot.divisions, eventId)
+      : normalizeDivisionKeys(slot.divisions);
     const divisions = enforceAllDivisions
       ? fallbackDivisionKeys
       : normalizedSlotDivisions.length
@@ -543,8 +751,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
     }
   }
   const divisionKeys = normalizeDivisionKeys(event.divisions);
-  const divisionFieldIds = await getDivisionFieldMapForEvent(eventId, divisionKeys);
-  return NextResponse.json(withLegacyEvent({ ...event, divisionFieldIds }), { status: 200 });
+  const [divisionFieldIds, divisionDetails] = await Promise.all([
+    getDivisionFieldMapForEvent(eventId, divisionKeys),
+    getDivisionDetailsForEvent(eventId, divisionKeys, event.start),
+  ]);
+  return NextResponse.json(
+    withLegacyEvent({ ...event, divisionFieldIds, divisionDetails }),
+    { status: 200 },
+  );
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
@@ -583,14 +797,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         ? payload.fields.filter((field): field is Record<string, any> => Boolean(field) && typeof field === 'object')
         : [];
       const hasDivisionFieldMapInput = Object.prototype.hasOwnProperty.call(payload, 'divisionFieldIds');
+      const hasDivisionDetailsInput = Object.prototype.hasOwnProperty.call(payload, 'divisionDetails');
       const incomingDivisionFieldMap = hasDivisionFieldMapInput
         ? coerceDivisionFieldMap(payload.divisionFieldIds)
         : {};
+      const incomingDivisionDetails = hasDivisionDetailsInput
+        ? normalizeDivisionDetailsInput(
+          payload.divisionDetails,
+          eventId,
+          (payload.sportId ?? existing.sportId ?? null) as string | null,
+          parseDateInput(payload.start) ?? existing.start,
+        )
+        : [];
       const incomingFieldDivisionMap = {};
 
       if (Object.prototype.hasOwnProperty.call(payload, 'divisions')) {
-        const normalized = normalizeDivisionKeys(payload.divisions);
-        payload.divisions = normalized.length ? normalized : [DEFAULT_DIVISION_KEY];
+        const normalized = hasDivisionDetailsInput
+          ? normalizeDivisionIds(payload.divisions, eventId)
+          : normalizeDivisionKeys(payload.divisions);
+        payload.divisions = normalized.length
+          ? normalized
+          : [hasDivisionDetailsInput ? buildEventDivisionId(eventId, DEFAULT_DIVISION_KEY) : DEFAULT_DIVISION_KEY];
+      } else if (incomingDivisionDetails.length) {
+        payload.divisions = incomingDivisionDetails
+          .map((detail) => normalizeDivisionKey(detail.id))
+          .filter((id): id is string => Boolean(id));
       }
       if (Object.prototype.hasOwnProperty.call(payload, 'fieldIds')) {
         payload.fieldIds = normalizeFieldIds(payload.fieldIds);
@@ -604,6 +835,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       delete payload.matches;
       delete payload.timeSlots;
       delete payload.divisionFieldIds;
+      delete payload.divisionDetails;
       delete payload.leagueConfig;
 
       if (payload.installmentDueDates) {
@@ -668,10 +900,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       const nextDivisionKeys = (() => {
         if (Array.isArray(data.divisions)) {
-          const normalized = normalizeDivisionKeys(data.divisions);
-          return normalized.length ? normalized : [DEFAULT_DIVISION_KEY];
+          const normalized = hasDivisionDetailsInput
+            ? normalizeDivisionIds(data.divisions, eventId)
+            : normalizeDivisionKeys(data.divisions);
+          return normalized.length
+            ? normalized
+            : [hasDivisionDetailsInput ? buildEventDivisionId(eventId, DEFAULT_DIVISION_KEY) : DEFAULT_DIVISION_KEY];
         }
-        return existingDivisionKeys.length ? existingDivisionKeys : [DEFAULT_DIVISION_KEY];
+        return existingDivisionKeys.length
+          ? existingDivisionKeys
+          : [hasDivisionDetailsInput ? buildEventDivisionId(eventId, DEFAULT_DIVISION_KEY) : DEFAULT_DIVISION_KEY];
       })();
       const nextSingleDivision = typeof data.singleDivision === 'boolean'
         ? data.singleDivision
@@ -680,6 +918,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         ? existing.timeSlotIds.map((value: unknown) => String(value))
         : [];
       const shouldSyncDivisions = hasDivisionFieldMapInput
+        || hasDivisionDetailsInput
         || incomingFields.length > 0
         || hasTimeSlotPayload
         || Object.prototype.hasOwnProperty.call(payload, 'divisions')
@@ -694,14 +933,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         const persistedDivisionRows = await tx.divisions.findMany({
           where: {
             eventId,
-            key: { in: nextDivisionKeys },
+            OR: [
+              { id: { in: nextDivisionKeys } },
+              { key: { in: nextDivisionKeys } },
+            ],
           },
           select: {
+            id: true,
             key: true,
             fieldIds: true,
           },
         });
-        currentDivisionFieldMap = mapDivisionRowsToFieldMap(persistedDivisionRows);
+        currentDivisionFieldMap = mapDivisionRowsToFieldMap(persistedDivisionRows, nextDivisionKeys);
         nextDivisionFieldMap = buildDivisionFieldMap(
           nextDivisionKeys,
           nextFieldIds,
@@ -720,6 +963,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           existing.start,
           nextDivisionKeys,
           nextSingleDivision,
+          hasDivisionDetailsInput,
         );
         data.timeSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
       }
@@ -789,10 +1033,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           const field = incomingFieldsById.get(fieldId);
           if (!field) continue;
           const now = new Date();
-          const fieldDivisions = normalizeDivisionKeys(field.divisions);
+          const fieldDivisions = hasDivisionDetailsInput
+            ? normalizeDivisionIds(field.divisions, eventId)
+            : normalizeDivisionKeys(field.divisions);
           const divisions = fieldDivisions.length
             ? fieldDivisions
-            : (nextDivisionKeys.length ? nextDivisionKeys : [DEFAULT_DIVISION_KEY]);
+            : (
+              nextDivisionKeys.length
+                ? nextDivisionKeys
+                : [hasDivisionDetailsInput ? buildEventDivisionId(eventId, DEFAULT_DIVISION_KEY) : DEFAULT_DIVISION_KEY]
+            );
           const fieldData = {
             fieldNumber: normalizeFieldNumber(field.fieldNumber, index + 1),
             divisions,
@@ -851,11 +1101,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (shouldSyncDivisions) {
         await syncEventDivisions({
           eventId,
-          divisionKeys: nextDivisionKeys,
+          divisionIds: nextDivisionKeys,
           fieldIds: nextFieldIds,
           sportId: (data.sportId ?? existing.sportId ?? null) as string | null,
+          referenceDate: (data.start ?? existing.start ?? null) as Date | null,
           organizationId: (data.organizationId ?? existing.organizationId ?? null) as string | null,
           divisionFieldMap: nextDivisionFieldMap,
+          divisionDetails: incomingDivisionDetails,
         }, tx as any);
       }
 
@@ -878,8 +1130,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       return fresh;
     });
     const divisionKeys = normalizeDivisionKeys(updated.divisions);
-    const divisionFieldIds = await getDivisionFieldMapForEvent(eventId, divisionKeys);
-    return NextResponse.json(withLegacyEvent({ ...updated, divisionFieldIds }), { status: 200 });
+    const [divisionFieldIds, divisionDetails] = await Promise.all([
+      getDivisionFieldMapForEvent(eventId, divisionKeys),
+      getDivisionDetailsForEvent(eventId, divisionKeys, updated.start),
+    ]);
+    return NextResponse.json(
+      withLegacyEvent({ ...updated, divisionFieldIds, divisionDetails }),
+      { status: 200 },
+    );
   } catch (error) {
     if (error instanceof Response) return error;
     if (error instanceof ScheduleError) {

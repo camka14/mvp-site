@@ -14,6 +14,16 @@ import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService, FamilyChild } from '@/lib/familyService';
 import { registrationService, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
+import {
+    buildDivisionToken,
+    evaluateDivisionAgeEligibility,
+    extractDivisionTokenFromId,
+    getDivisionGenderLabel,
+    inferDivisionDetails,
+    normalizeDivisionGender,
+    normalizeDivisionRatingType,
+    parseDivisionToken,
+} from '@/lib/divisionTypes';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -46,6 +56,150 @@ const parseDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+type DivisionSelectionPayload = {
+    divisionId?: string;
+    divisionTypeId?: string;
+    divisionTypeKey?: string;
+};
+
+type EventDivisionOption = {
+    id: string;
+    key: string;
+    name: string;
+    divisionTypeId: string;
+    divisionTypeName: string;
+    divisionTypeKey: string;
+    ratingType: 'AGE' | 'SKILL';
+    gender: 'M' | 'F' | 'C';
+    sportId?: string;
+    ageCutoffDate?: string;
+    ageCutoffLabel?: string;
+    ageCutoffSource?: string;
+};
+
+const normalizeDivisionKey = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    return normalized.length ? normalized : null;
+};
+
+const getDivisionIdFromEventEntry = (entry: unknown): string | null => {
+    if (typeof entry === 'string') {
+        return normalizeDivisionKey(entry);
+    }
+    if (entry && typeof entry === 'object') {
+        const row = entry as Record<string, unknown>;
+        return normalizeDivisionKey(row.id)
+            ?? normalizeDivisionKey(row.$id)
+            ?? normalizeDivisionKey(row.key)
+            ?? normalizeDivisionKey(row.name);
+    }
+    return null;
+};
+
+const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[] => {
+    if (!event) {
+        return [];
+    }
+    const sportInput = typeof event.sport === 'string'
+        ? event.sport
+        : event.sport?.name ?? event.sportId ?? '';
+    const referenceDate = parseDateValue(event.start ?? null);
+    const detailRows = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
+    const detailsById = new Map<string, NonNullable<Event['divisionDetails']>[number]>();
+    const detailsByKey = new Map<string, NonNullable<Event['divisionDetails']>[number]>();
+    detailRows.forEach((detail) => {
+        const detailId = normalizeDivisionKey(detail?.id);
+        const detailKey = normalizeDivisionKey(detail?.key);
+        if (detailId) {
+            detailsById.set(detailId, detail);
+            const token = extractDivisionTokenFromId(detailId);
+            if (token) {
+                detailsByKey.set(token, detail);
+            }
+        }
+        if (detailKey) {
+            detailsByKey.set(detailKey, detail);
+        }
+    });
+
+    const divisionIds = Array.isArray(event.divisions)
+        ? Array.from(
+            new Set(
+                event.divisions
+                    .map(getDivisionIdFromEventEntry)
+                    .filter((entry): entry is string => Boolean(entry)),
+            ),
+        )
+        : [];
+
+    const orderedIds = divisionIds.length
+        ? divisionIds
+        : Array.from(detailsById.keys());
+
+    const options: EventDivisionOption[] = [];
+    const seen = new Set<string>();
+
+    orderedIds.forEach((divisionId) => {
+        const row = detailsById.get(divisionId)
+            ?? detailsByKey.get(divisionId)
+            ?? detailsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')
+            ?? null;
+
+        const inferred = inferDivisionDetails({
+            identifier: (row?.key ?? row?.id ?? divisionId) as string,
+            sportInput,
+            fallbackName: typeof row?.name === 'string' ? row.name : undefined,
+        });
+
+        const ratingType = normalizeDivisionRatingType(row?.ratingType) ?? inferred.ratingType;
+        const gender = normalizeDivisionGender(row?.gender) ?? inferred.gender;
+        const divisionTypeId = normalizeDivisionKey(row?.divisionTypeId) ?? inferred.divisionTypeId;
+        const key = normalizeDivisionKey(row?.key) ?? inferred.token;
+        const parsedKey = parseDivisionToken(key);
+        const divisionTypeKey = parsedKey
+            ? key
+            : buildDivisionToken({ gender, ratingType, divisionTypeId });
+        const ageEligibility = evaluateDivisionAgeEligibility({
+            divisionTypeId,
+            sportInput: row?.sportId ?? sportInput,
+            referenceDate: referenceDate ?? undefined,
+        });
+
+        const option: EventDivisionOption = {
+            id: row?.id ?? divisionId,
+            key,
+            name: row?.name ?? inferred.defaultName,
+            divisionTypeId,
+            divisionTypeName:
+                typeof row?.divisionTypeName === 'string' && row.divisionTypeName.trim().length > 0
+                    ? row.divisionTypeName.trim()
+                    : inferred.divisionTypeName,
+            divisionTypeKey,
+            ratingType,
+            gender,
+            sportId: row?.sportId ?? (sportInput || undefined),
+            ageCutoffDate: typeof row?.ageCutoffDate === 'string'
+                ? row.ageCutoffDate
+                : (ageEligibility.applies ? ageEligibility.cutoffDate.toISOString() : undefined),
+            ageCutoffLabel: typeof row?.ageCutoffLabel === 'string'
+                ? row.ageCutoffLabel
+                : ageEligibility.message ?? undefined,
+            ageCutoffSource: typeof row?.ageCutoffSource === 'string'
+                ? row.ageCutoffSource
+                : (ageEligibility.applies ? ageEligibility.cutoffRule.source : undefined),
+        };
+
+        if (seen.has(option.id)) {
+            return;
+        }
+        seen.add(option.id);
+        options.push(option);
+    });
+
+    return options;
 };
 
 export default function EventDetailSheet({ event, isOpen, onClose, renderInline = false }: EventDetailSheetProps) {
@@ -91,8 +245,72 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [userTeams, setUserTeams] = useState<Team[]>([]);
     const [showTeamJoinOptions, setShowTeamJoinOptions] = useState(false);
     const [selectedTeamId, setSelectedTeamId] = useState('');
+    const [selectedDivisionId, setSelectedDivisionId] = useState('');
+    const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
 
     const currentEvent = detailedEvent || event;
+    const registrationByDivisionType = Boolean(currentEvent?.registrationByDivisionType);
+    const divisionOptions = React.useMemo(
+        () => buildDivisionOptionsForEvent(currentEvent),
+        [currentEvent],
+    );
+    const divisionTypeOptions = React.useMemo(() => {
+        const grouped = new Map<string, EventDivisionOption>();
+        divisionOptions.forEach((option) => {
+            if (!grouped.has(option.divisionTypeKey)) {
+                grouped.set(option.divisionTypeKey, option);
+            }
+        });
+        return Array.from(grouped.values()).map((option) => ({
+            value: option.divisionTypeKey,
+            label: `${getDivisionGenderLabel(option.gender)} ${option.divisionTypeName}`,
+        }));
+    }, [divisionOptions]);
+    const selectedDivisionOption = React.useMemo(() => {
+        if (!divisionOptions.length) {
+            return null;
+        }
+        if (registrationByDivisionType) {
+            const matchingByType = divisionOptions.filter((option) => option.divisionTypeKey === selectedDivisionTypeKey);
+            if (matchingByType.length) {
+                return [...matchingByType].sort((left, right) => left.name.localeCompare(right.name))[0];
+            }
+            return divisionOptions[0];
+        }
+        return divisionOptions.find((option) => option.id === selectedDivisionId) ?? divisionOptions[0];
+    }, [divisionOptions, registrationByDivisionType, selectedDivisionId, selectedDivisionTypeKey]);
+    const divisionSelectionPayload = React.useMemo<DivisionSelectionPayload>(() => {
+        if (!selectedDivisionOption) {
+            return {};
+        }
+        if (registrationByDivisionType) {
+            return {
+                divisionTypeKey: selectedDivisionTypeKey || selectedDivisionOption.divisionTypeKey,
+                divisionTypeId: selectedDivisionOption.divisionTypeId,
+                divisionId: selectedDivisionOption.id,
+            };
+        }
+        return {
+            divisionId: selectedDivisionOption.id,
+            divisionTypeId: selectedDivisionOption.divisionTypeId,
+            divisionTypeKey: selectedDivisionOption.divisionTypeKey,
+        };
+    }, [registrationByDivisionType, selectedDivisionOption, selectedDivisionTypeKey]);
+    const isDivisionSelectionMissing = React.useMemo(() => {
+        if (!divisionOptions.length) {
+            return false;
+        }
+        if (registrationByDivisionType) {
+            return !(selectedDivisionTypeKey || selectedDivisionOption?.divisionTypeKey);
+        }
+        return !(selectedDivisionId || selectedDivisionOption?.id);
+    }, [
+        divisionOptions.length,
+        registrationByDivisionType,
+        selectedDivisionId,
+        selectedDivisionOption,
+        selectedDivisionTypeKey,
+    ]);
     const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
     const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
     const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
@@ -103,6 +321,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const isAdult = typeof userAge === 'number' && Number.isFinite(userAge) && userAge >= 18;
     const ageWithinLimits = !hasAgeLimits
         || (typeof userAge === 'number' && Number.isFinite(userAge) && isAgeWithinRange(userAge, eventMinAge, eventMaxAge));
+    const selectedDivisionAgeForUser = React.useMemo(() => {
+        if (!selectedDivisionOption || hasAgeLimits) {
+            return null;
+        }
+        return evaluateDivisionAgeEligibility({
+            dateOfBirth: userDob ?? undefined,
+            divisionTypeId: selectedDivisionOption.divisionTypeId,
+            sportInput: selectedDivisionOption.sportId ?? undefined,
+            referenceDate: eventStartDate ?? undefined,
+        });
+    }, [eventStartDate, hasAgeLimits, selectedDivisionOption, userDob]);
     const selfRegistrationBlockedReason = (() => {
         if (!user) return null;
         if (!hasValidUserAge) {
@@ -113,6 +342,15 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
         if (!ageWithinLimits) {
             return `This event is limited to ages ${formatAgeRange(eventMinAge, eventMaxAge)}.`;
+        }
+        if (
+            !hasAgeLimits
+            && selectedDivisionAgeForUser?.applies
+            && selectedDivisionAgeForUser.eligible === false
+        ) {
+            return selectedDivisionAgeForUser.message
+                ? `Selected division age requirement: ${selectedDivisionAgeForUser.message}.`
+                : 'You are not age-eligible for the selected division.';
         }
         return null;
     })();
@@ -215,6 +453,28 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         };
     }, [isActive, user]);
 
+    useEffect(() => {
+        if (!divisionOptions.length) {
+            setSelectedDivisionId('');
+            setSelectedDivisionTypeKey('');
+            return;
+        }
+
+        setSelectedDivisionId((previous) => {
+            if (previous && divisionOptions.some((option) => option.id === previous)) {
+                return previous;
+            }
+            return divisionOptions[0].id;
+        });
+
+        setSelectedDivisionTypeKey((previous) => {
+            if (previous && divisionOptions.some((option) => option.divisionTypeKey === previous)) {
+                return previous;
+            }
+            return divisionOptions[0].divisionTypeKey;
+        });
+    }, [divisionOptions]);
+
     const loadEventDetails = useCallback(async (eventId?: string) => {
         const targetId = eventId ?? event?.$id;
         if (!targetId) return;
@@ -292,6 +552,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setChildRegistration(null);
             setChildConsent(null);
             setChildRegistrationChildId(null);
+            setSelectedDivisionId('');
+            setSelectedDivisionTypeKey('');
         }
     }, [isActive, event, loadEventDetails]);
 
@@ -346,14 +608,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         });
     }, [currentEvent, user]);
 
-    const registerChildForEvent = useCallback(async (childId: string) => {
+    const registerChildForEvent = useCallback(async (childId: string, selection: DivisionSelectionPayload = {}) => {
         if (!currentEvent) {
             throw new Error('Event is not loaded.');
         }
 
         setRegisteringChild(true);
         try {
-            const result = await registrationService.registerChildForEvent(currentEvent.$id, childId);
+            const result = await registrationService.registerChildForEvent(currentEvent.$id, childId, selection);
             setChildRegistration(result.registration ?? null);
             setChildConsent(result.consent ?? null);
             setChildRegistrationChildId(childId);
@@ -389,12 +651,20 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const finalizeJoin = useCallback(async (intent: JoinIntent) => {
         if (!user || !currentEvent) return;
+        if (isDivisionSelectionMissing) {
+            throw new Error(
+                registrationByDivisionType
+                    ? 'Select a division type before joining.'
+                    : 'Select a division before joining.',
+            );
+        }
+        const selection = divisionSelectionPayload;
 
         if (intent.mode === 'child') {
             if (!intent.childId) {
                 throw new Error('Select a child to register.');
             }
-            await registerChildForEvent(intent.childId);
+            await registerChildForEvent(intent.childId, selection);
             return;
         }
 
@@ -415,7 +685,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         let registrationResult: EventRegistration | null = null;
 
         if (shouldRegisterSelf) {
-            const result = await registrationService.registerSelfForEvent(currentEvent.$id);
+            const result = await registrationService.registerSelfForEvent(currentEvent.$id, selection);
             registrationResult = result.registration ?? null;
             if (registrationResult?.status && registrationResult.status !== 'active') {
                 setJoinNotice(`Registration status: ${registrationResult.status}`);
@@ -439,7 +709,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
         if (isFreeForUser) {
             if (!shouldRegisterSelf) {
-                await paymentService.joinEvent(user, currentEvent, resolvedTeam);
+                await paymentService.joinEvent(user, currentEvent, resolvedTeam, undefined, undefined, selection);
             }
             await loadEventDetails();
         } else {
@@ -450,8 +720,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     }, [
         createBillForOwner,
         currentEvent,
+        divisionSelectionPayload,
+        isDivisionSelectionMissing,
         isFreeForUser,
         loadEventDetails,
+        registrationByDivisionType,
         registerChildForEvent,
         selectedTeamId,
         user,
@@ -723,6 +996,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;
+        if (isDivisionSelectionMissing) {
+            setJoinError(
+                registrationByDivisionType
+                    ? 'Select a division type before registering a child.'
+                    : 'Select a division before registering a child.',
+            );
+            return;
+        }
         if (!selectedChildId) {
             setJoinError('Select a child to register.');
             return;
@@ -745,7 +1026,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             if (signingStarted) {
                 return;
             }
-            await registerChildForEvent(selectedChildId);
+            await registerChildForEvent(selectedChildId, divisionSelectionPayload);
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to register child.');
         }
@@ -764,6 +1045,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return;
         }
         setShowJoinChoiceModal(false);
+        if (isDivisionSelectionMissing) {
+            setJoinError(
+                registrationByDivisionType
+                    ? 'Select a division type before joining.'
+                    : 'Select a division before joining.',
+            );
+            return;
+        }
         if (selfRegistrationBlockedReason) {
             setJoinError(selfRegistrationBlockedReason);
             return;
@@ -792,6 +1081,18 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     // Team-signup: join as team or free agent
     const handleJoinAsTeam = async () => {
         if (!user || !currentEvent || !selectedTeamId) return;
+        if (teamDivisionTypeMissing || teamDivisionMismatch) {
+            setJoinError(teamDivisionErrorMessage ?? 'Selected team is not eligible for that division type.');
+            return;
+        }
+        if (isDivisionSelectionMissing) {
+            setJoinError(
+                registrationByDivisionType
+                    ? 'Select a division type before joining.'
+                    : 'Select a division before joining.',
+            );
+            return;
+        }
         setJoining(true);
         setJoinError(null);
         setJoinNotice(null);
@@ -883,15 +1184,30 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     );
     const isUserFreeAgent = !!user && (currentEvent.freeAgentIds || []).includes(user.$id);
     const isChildEligible = (child: FamilyChild): boolean => {
-        if (!hasAgeLimits) {
-            return true;
-        }
         const childDob = parseDateValue(child.dateOfBirth ?? null);
-        const childAgeAtEvent = childDob ? calculateAgeOnDate(childDob, eventStartDate ?? new Date()) : undefined;
-        if (typeof childAgeAtEvent !== 'number' || !Number.isFinite(childAgeAtEvent)) {
+        if (!childDob) {
             return false;
         }
-        return isAgeWithinRange(childAgeAtEvent, eventMinAge, eventMaxAge);
+        const childAgeAtEvent = calculateAgeOnDate(childDob, eventStartDate ?? new Date());
+        if (!Number.isFinite(childAgeAtEvent)) {
+            return false;
+        }
+        if (hasAgeLimits) {
+            return isAgeWithinRange(childAgeAtEvent, eventMinAge, eventMaxAge);
+        }
+        if (!selectedDivisionOption) {
+            return true;
+        }
+        const divisionEligibility = evaluateDivisionAgeEligibility({
+            dateOfBirth: childDob,
+            divisionTypeId: selectedDivisionOption.divisionTypeId,
+            sportInput: selectedDivisionOption.sportId ?? undefined,
+            referenceDate: eventStartDate ?? undefined,
+        });
+        if (!divisionEligibility.applies) {
+            return true;
+        }
+        return divisionEligibility.eligible !== false;
     };
     const activeChildren = children.filter((child) => (child.linkStatus ?? 'active') === 'active');
     const childOptions = activeChildren.map((child) => {
@@ -930,9 +1246,48 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         : null;
     const canShowScheduleButton = isEventHost && !renderInline;
     const scheduleButtonLabel = isEventHost ? 'Manage Event' : 'View Schedule';
-    const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase;
+    const selectedTeam = selectedTeamId
+        ? userTeams.find((team) => team.$id === selectedTeamId) ?? null
+        : null;
+    const selectedTeamDivisionTypeId = (() => {
+        if (!selectedTeam) {
+            return null;
+        }
+        if (typeof selectedTeam.divisionTypeId === 'string' && selectedTeam.divisionTypeId.trim().length > 0) {
+            return selectedTeam.divisionTypeId.trim().toLowerCase();
+        }
+        if (typeof selectedTeam.division === 'string' && selectedTeam.division.trim().length > 0) {
+            return inferDivisionDetails({
+                identifier: selectedTeam.division,
+                sportInput: selectedTeam.sport,
+            }).divisionTypeId;
+        }
+        return null;
+    })();
+    const teamDivisionMismatch = Boolean(
+        selectedTeam
+        && selectedDivisionOption?.divisionTypeId
+        && selectedTeamDivisionTypeId
+        && selectedDivisionOption.divisionTypeId !== selectedTeamDivisionTypeId,
+    );
+    const teamDivisionTypeMissing = Boolean(
+        selectedTeam
+        && selectedDivisionOption?.divisionTypeId
+        && !selectedTeamDivisionTypeId,
+    );
+    const teamDivisionErrorMessage = teamDivisionTypeMissing
+        ? 'Selected team must have a division type before it can register.'
+        : teamDivisionMismatch
+            ? `Selected team division type (${selectedTeamDivisionTypeId?.toUpperCase()}) does not match ${selectedDivisionOption?.divisionTypeName ?? 'the selected division type'}.`
+            : null;
+    const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
     const selfWaitlistDisabled = Boolean(selfRegistrationBlockedReason) || joining;
-    const childJoinDisabled = !canRegisterChild || !selectedChildId || !selectedChildEligible || !selectedChildHasEmail || registeringChild;
+    const childJoinDisabled = !canRegisterChild
+        || !selectedChildId
+        || !selectedChildEligible
+        || !selectedChildHasEmail
+        || registeringChild
+        || isDivisionSelectionMissing;
 
     const content = (
         <div className="space-y-6">
@@ -1206,6 +1561,50 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                         </Text>
                                     </Alert>
                                 )}
+                                {divisionOptions.length > 0 && (
+                                    <Paper withBorder p="sm" radius="md" mb="sm" className="space-y-2">
+                                        <Text size="sm" fw={600}>
+                                            {registrationByDivisionType ? 'Division Type' : 'Division'}
+                                        </Text>
+                                        <MantineSelect
+                                            placeholder={registrationByDivisionType ? 'Select a division type' : 'Select a division'}
+                                            data={registrationByDivisionType
+                                                ? divisionTypeOptions
+                                                : divisionOptions.map((option) => ({
+                                                    value: option.id,
+                                                    label: option.name,
+                                                }))}
+                                            value={registrationByDivisionType
+                                                ? (selectedDivisionTypeKey || null)
+                                                : (selectedDivisionId || null)}
+                                            onChange={(value) => {
+                                                if (registrationByDivisionType) {
+                                                    setSelectedDivisionTypeKey(value || '');
+                                                    return;
+                                                }
+                                                setSelectedDivisionId(value || '');
+                                            }}
+                                            comboboxProps={sharedComboboxProps}
+                                        />
+                                        {registrationByDivisionType && selectedDivisionOption && (
+                                            <Text size="xs" c="dimmed">
+                                                Auto-assigned division: {selectedDivisionOption.name}
+                                            </Text>
+                                        )}
+                                        {!hasAgeLimits && selectedDivisionOption?.ageCutoffLabel && (
+                                            <Text size="xs" c="dimmed">
+                                                {selectedDivisionOption.ageCutoffLabel}
+                                            </Text>
+                                        )}
+                                    </Paper>
+                                )}
+                                {isDivisionSelectionMissing && (
+                                    <Alert color="yellow" variant="light" mb="sm">
+                                        {registrationByDivisionType
+                                            ? 'Choose a division type before registration.'
+                                            : 'Choose a division before registration.'}
+                                    </Alert>
+                                )}
 
                                 {!user ? (
                                     <div style={{ textAlign: 'center' }}>
@@ -1413,6 +1812,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                         comboboxProps={sharedComboboxProps}
                                                                     />
                                                                 </div>
+                                                                {teamDivisionErrorMessage && (
+                                                                    <Alert color="yellow" variant="light">
+                                                                        {teamDivisionErrorMessage}
+                                                                    </Alert>
+                                                                )}
 
                                                                 {/* Manage Teams Button Section - Matching Hide/Show button height */}
                                                                 <div className="flex justify-center">
@@ -1443,7 +1847,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                                     setJoining(false);
                                                                                 }
                                                                             }}
-                                                                            disabled={joining || !selectedTeamId}
+                                                                            disabled={joining || !selectedTeamId || teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing}
                                                                             color="orange"
                                                                         >
                                                                             {joining ? 'Adding...' : 'Join Waitlist'}
@@ -1451,7 +1855,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                     ) : (
                                                                         <Button
                                                                             onClick={handleJoinAsTeam}
-                                                                            disabled={joining || !selectedTeamId || confirmingPurchase}
+                                                                            disabled={joining || !selectedTeamId || confirmingPurchase || teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing}
                                                                             color="green"
                                                                         >
                                                                             {confirmingPurchase

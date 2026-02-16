@@ -7,6 +7,7 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { evaluateDivisionAgeEligibility, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,23 +49,137 @@ const getDivisionFieldMapForEvent = async (
   if (!divisionKeys.length) {
     return {};
   }
-  const rows = await prisma.divisions.findMany({
+  const normalizedKeys = normalizeDivisionKeys(divisionKeys);
+  const rawRows = await prisma.divisions.findMany({
     where: {
       eventId,
-      key: { in: divisionKeys },
+      OR: [
+        { id: { in: normalizedKeys } },
+        { key: { in: normalizedKeys } },
+      ],
     },
     select: {
+      id: true,
       key: true,
       fieldIds: true,
     },
   });
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+  const rowsById = new Map<string, (typeof rows)[number]>();
+  const rowsByKey = new Map<string, (typeof rows)[number]>();
+  rows.forEach((row) => {
+    const rowId = normalizeDivisionKey(row.id);
+    if (rowId) {
+      rowsById.set(rowId, row);
+      const token = extractDivisionTokenFromId(rowId);
+      if (token) {
+        rowsByKey.set(token, row);
+      }
+    }
+    const rowKey = normalizeDivisionKey(row.key);
+    if (rowKey) {
+      rowsByKey.set(rowKey, row);
+    }
+  });
   const map: Record<string, string[]> = {};
-  for (const row of rows) {
-    const key = normalizeDivisionKey(row.key);
-    if (!key) continue;
-    map[key] = normalizeFieldIds(row.fieldIds ?? []);
+  for (const key of normalizedKeys) {
+    const row = rowsById.get(key)
+      ?? rowsByKey.get(key)
+      ?? rowsByKey.get(extractDivisionTokenFromId(key) ?? '');
+    map[key] = normalizeFieldIds(row?.fieldIds ?? []);
   }
   return map;
+};
+
+const getDivisionDetailsForEvent = async (
+  eventId: string,
+  divisionKeys: string[],
+  eventStart?: Date | null,
+): Promise<Array<Record<string, unknown>>> => {
+  if (!divisionKeys.length) {
+    return [];
+  }
+  const normalizedKeys = normalizeDivisionKeys(divisionKeys);
+  const rawRows = await prisma.divisions.findMany({
+    where: {
+      eventId,
+      OR: [
+        { id: { in: normalizedKeys } },
+        { key: { in: normalizedKeys } },
+      ],
+    },
+    select: {
+      id: true,
+      key: true,
+      name: true,
+      sportId: true,
+      divisionTypeId: true,
+      divisionTypeName: true,
+      ratingType: true,
+      gender: true,
+      ageCutoffDate: true,
+      ageCutoffLabel: true,
+      ageCutoffSource: true,
+      fieldIds: true,
+    },
+  });
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+
+  const rowsById = new Map<string, (typeof rows)[number]>();
+  const rowsByKey = new Map<string, (typeof rows)[number]>();
+  rows.forEach((row) => {
+    const rowId = normalizeDivisionKey(row.id);
+    if (rowId) {
+      rowsById.set(rowId, row);
+      const token = extractDivisionTokenFromId(rowId);
+      if (token) {
+        rowsByKey.set(token, row);
+      }
+    }
+    const rowKey = normalizeDivisionKey(row.key);
+    if (rowKey) {
+      rowsByKey.set(rowKey, row);
+    }
+  });
+
+  const details = normalizedKeys.map((divisionId) => {
+    const row = rowsById.get(divisionId)
+      ?? rowsByKey.get(divisionId)
+      ?? rowsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')
+      ?? null;
+    const inferred = inferDivisionDetails({
+      identifier: row?.key ?? row?.id ?? divisionId,
+      sportInput: row?.sportId ?? undefined,
+      fallbackName: row?.name ?? undefined,
+    });
+    const ageEligibility = evaluateDivisionAgeEligibility({
+      divisionTypeId: inferred.divisionTypeId,
+      sportInput: row?.sportId ?? undefined,
+      referenceDate: eventStart ?? null,
+    });
+    const ageCutoffDate = (() => {
+      if (row?.ageCutoffDate instanceof Date && !Number.isNaN(row.ageCutoffDate.getTime())) {
+        return row.ageCutoffDate.toISOString();
+      }
+      return ageEligibility.applies ? ageEligibility.cutoffDate.toISOString() : null;
+    })();
+    return {
+      id: row?.id ?? divisionId,
+      key: row?.key ?? inferred.token,
+      name: row?.name ?? inferred.defaultName,
+      divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
+      divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+      ratingType: row?.ratingType ?? inferred.ratingType,
+      gender: row?.gender ?? inferred.gender,
+      sportId: row?.sportId ?? null,
+      ageCutoffDate,
+      ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
+      ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
+      fieldIds: normalizeFieldIds(row?.fieldIds ?? []),
+    };
+  });
+
+  return details;
 };
 
 const withLegacyEvent = (row: any) => {
@@ -197,8 +312,14 @@ export async function POST(req: NextRequest) {
     });
 
     const divisionKeys = normalizeDivisionKeys(event.divisions);
-    const divisionFieldIds = await getDivisionFieldMapForEvent(event.id, divisionKeys);
-    return NextResponse.json({ event: withLegacyEvent({ ...event, divisionFieldIds }) }, { status: 201 });
+    const [divisionFieldIds, divisionDetails] = await Promise.all([
+      getDivisionFieldMapForEvent(event.id, divisionKeys),
+      getDivisionDetailsForEvent(event.id, divisionKeys, event.start),
+    ]);
+    return NextResponse.json(
+      { event: withLegacyEvent({ ...event, divisionFieldIds, divisionDetails }) },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

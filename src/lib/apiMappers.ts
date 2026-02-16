@@ -69,8 +69,8 @@ export const normalizeApiMatch = (input: Match): Match => {
 
 const normalizeApiTimeSlot = (input: TimeSlot): TimeSlot => {
   const slot = withLegacyId(input) as TimeSlot & { event?: Event | string; field?: Field | string };
-  const normalizedFieldIds = Array.from(
-    new Set(
+  const normalizedFieldIds: string[] = Array.from(
+    new Set<string>(
       (Array.isArray((slot as any).scheduledFieldIds) && (slot as any).scheduledFieldIds.length
         ? (slot as any).scheduledFieldIds
         : slot.scheduledFieldId

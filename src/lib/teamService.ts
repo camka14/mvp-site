@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
 import { Team, UserData, getTeamWinRate, getTeamAvatarUrl } from '@/types';
 import { userService } from './userService';
+import { inferDivisionDetails } from '@/lib/divisionTypes';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 
@@ -65,13 +66,23 @@ class TeamService {
         division: string = 'Open',
         sport: string = 'Volleyball',
         maxPlayers: number = 6,
-        profileImageId?: string
+        profileImageId?: string,
+        options?: {
+            divisionTypeId?: string;
+            divisionTypeName?: string;
+        },
     ): Promise<Team> {
         try {
+            const inferredDivision = inferDivisionDetails({
+                identifier: division,
+                sportInput: sport,
+            });
             const teamData = {
                 name,
                 seed: 0,
                 division,
+                divisionTypeId: options?.divisionTypeId ?? inferredDivision.divisionTypeId,
+                divisionTypeName: options?.divisionTypeName ?? inferredDivision.divisionTypeName,
                 sport,
                 wins: 0,
                 losses: 0,
@@ -144,6 +155,14 @@ class TeamService {
             name: row.name,
             seed: typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0),
             division: typeof row.division === 'string' ? row.division : (row.division?.name ?? 'Open'),
+            divisionTypeId:
+                typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length
+                    ? row.divisionTypeId
+                    : undefined,
+            divisionTypeName:
+                typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
+                    ? row.divisionTypeName
+                    : undefined,
             sport: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? 'Volleyball'),
             wins,
             losses,

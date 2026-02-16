@@ -37,11 +37,20 @@ type RegistrationResponse = {
   error?: string;
 };
 
+export type DivisionRegistrationSelection = {
+  divisionId?: string;
+  divisionTypeId?: string;
+  divisionTypeKey?: string;
+};
+
 class RegistrationService {
-  async registerSelfForEvent(eventId: string): Promise<RegistrationResponse> {
+  async registerSelfForEvent(
+    eventId: string,
+    selection: DivisionRegistrationSelection = {},
+  ): Promise<RegistrationResponse> {
     const result = await apiRequest<RegistrationResponse>(`/api/events/${eventId}/registrations/self`, {
       method: 'POST',
-      body: { eventId },
+      body: { eventId, ...selection },
     });
     if (result?.error) {
       throw new Error(result.error);
@@ -49,10 +58,14 @@ class RegistrationService {
     return result;
   }
 
-  async registerChildForEvent(eventId: string, childId: string): Promise<RegistrationResponse> {
+  async registerChildForEvent(
+    eventId: string,
+    childId: string,
+    selection: DivisionRegistrationSelection = {},
+  ): Promise<RegistrationResponse> {
     const result = await apiRequest<RegistrationResponse>(`/api/events/${eventId}/registrations/child`, {
       method: 'POST',
-      body: { eventId, childId },
+      body: { eventId, childId, ...selection },
     });
     if (result?.error) {
       throw new Error(result.error);
