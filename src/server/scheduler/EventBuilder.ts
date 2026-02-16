@@ -367,7 +367,7 @@ export class EventBuilder {
         id: field.id,
         fieldNumber: field.fieldNumber,
         organizationId: field.organizationId,
-        divisions: [...field.divisions],
+        divisions: [...this.event.divisions],
         matches: [],
         events: [],
         rentalSlots: [...field.rentalSlots],

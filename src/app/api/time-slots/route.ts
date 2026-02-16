@@ -10,6 +10,8 @@ const createSchema = z.object({
   id: z.string(),
   dayOfWeek: z.number().optional(),
   daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
+  scheduledFieldIds: z.array(z.string()).optional(),
+  divisions: z.array(z.string()).optional(),
   startTimeMinutes: z.number().nullable().optional(),
   endTimeMinutes: z.number().nullable().optional(),
   startDate: z.string().optional(),
@@ -19,6 +21,32 @@ const createSchema = z.object({
   price: z.number().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
 }).passthrough();
+
+const normalizeDivisionKeys = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => String(entry).trim().toLowerCase())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const normalizeFieldIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => String(entry).trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
 
 const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: number[] | null }): number[] => {
   const source = Array.isArray(input.daysOfWeek) && input.daysOfWeek.length
@@ -33,6 +61,37 @@ const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: nu
         .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
     ),
   ).sort((a, b) => a - b);
+};
+
+const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('timeslots')
+    && normalized.includes('divisions')
+    && normalized.includes('does not exist');
+};
+
+const persistTimeSlotDivisions = async (
+  slotId: string,
+  divisions: string[],
+  updatedAt: Date,
+): Promise<void> => {
+  if (typeof (prisma as any).$executeRaw !== 'function') {
+    return;
+  }
+  try {
+    await prisma.$executeRaw`
+      UPDATE "TimeSlots"
+      SET "divisions" = ${divisions}::TEXT[],
+          "updatedAt" = ${updatedAt}
+      WHERE "id" = ${slotId}
+    `;
+  } catch (error) {
+    if (isMissingTimeSlotDivisionsColumnError(error)) {
+      return;
+    }
+    throw error;
+  }
 };
 
 export async function GET(req: NextRequest) {
@@ -63,10 +122,13 @@ export async function GET(req: NextRequest) {
       dayOfWeek: slot.dayOfWeek ?? undefined,
       daysOfWeek: (slot as any).daysOfWeek ?? undefined,
     });
+    const normalizedDivisions = normalizeDivisionKeys((slot as any).divisions);
     return withLegacyFields({
       ...slot,
       dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
       daysOfWeek: normalizedDays,
+      scheduledFieldIds: slot.scheduledFieldId ? [slot.scheduledFieldId] : [],
+      divisions: normalizedDivisions,
     } as any);
   });
 
@@ -91,6 +153,10 @@ export async function POST(req: NextRequest) {
   const requiredTemplateIds = Array.isArray(data.requiredTemplateIds)
     ? Array.from(new Set(data.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
     : [];
+  const scheduledFieldIds = normalizeFieldIds(data.scheduledFieldIds);
+  const scheduledFieldId = scheduledFieldIds[0] ?? data.scheduledFieldId ?? null;
+  const divisions = normalizeDivisionKeys(data.divisions);
+  const now = new Date();
 
   const slot = await prisma.timeSlots.create({
     data: {
@@ -101,17 +167,20 @@ export async function POST(req: NextRequest) {
       startDate,
       endDate: endDate ?? null,
       repeating: data.repeating ?? false,
-      scheduledFieldId: data.scheduledFieldId ?? null,
+      scheduledFieldId,
       price: data.price ?? null,
       requiredTemplateIds,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: now,
+      updatedAt: now,
     } as any,
   });
+  await persistTimeSlotDivisions(data.id, divisions, now);
 
   return NextResponse.json(withLegacyFields({
     ...slot,
     dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
     daysOfWeek: normalizedDays,
+    scheduledFieldIds: slot.scheduledFieldId ? [slot.scheduledFieldId] : [],
+    divisions,
   } as any), { status: 201 });
 }

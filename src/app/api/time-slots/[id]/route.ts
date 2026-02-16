@@ -25,6 +25,63 @@ const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: nu
   ).sort((a, b) => a - b);
 };
 
+const normalizeDivisionKeys = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => String(entry).trim().toLowerCase())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const normalizeFieldIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => String(entry).trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('timeslots')
+    && normalized.includes('divisions')
+    && normalized.includes('does not exist');
+};
+
+const persistTimeSlotDivisions = async (
+  slotId: string,
+  divisions: string[],
+  updatedAt: Date,
+): Promise<void> => {
+  if (typeof (prisma as any).$executeRaw !== 'function') {
+    return;
+  }
+  try {
+    await prisma.$executeRaw`
+      UPDATE "TimeSlots"
+      SET "divisions" = ${divisions}::TEXT[],
+          "updatedAt" = ${updatedAt}
+      WHERE "id" = ${slotId}
+    `;
+  } catch (error) {
+    if (isMissingTimeSlotDivisionsColumnError(error)) {
+      return;
+    }
+    throw error;
+  }
+};
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -58,6 +115,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       )
       : [];
   }
+  if (payload.scheduledFieldIds !== undefined) {
+    const normalized = normalizeFieldIds(payload.scheduledFieldIds);
+    payload.scheduledFieldId = normalized[0] ?? null;
+    delete payload.scheduledFieldIds;
+  }
+  let payloadDivisions: string[] | null = null;
+  if (payload.divisions !== undefined) {
+    payloadDivisions = normalizeDivisionKeys(payload.divisions);
+    delete payload.divisions;
+  }
   if (payload.dayOfWeek !== undefined || payload.daysOfWeek !== undefined) {
     const normalizedDays = normalizeDaysOfWeek({
       dayOfWeek: typeof payload.dayOfWeek === 'number' ? payload.dayOfWeek : undefined,
@@ -66,19 +133,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     payload.dayOfWeek = normalizedDays[0] ?? null;
   }
   delete payload.daysOfWeek;
+  const updatedAt = new Date();
 
   const updated = await prisma.timeSlots.update({
     where: { id },
-    data: { ...payload, updatedAt: new Date() } as any,
+    data: { ...payload, updatedAt } as any,
   });
+  if (payloadDivisions !== null) {
+    await persistTimeSlotDivisions(id, payloadDivisions, updatedAt);
+  }
   const normalizedDays = normalizeDaysOfWeek({
     dayOfWeek: updated.dayOfWeek ?? undefined,
     daysOfWeek: (updated as any).daysOfWeek ?? undefined,
   });
+  const normalizedDivisions = payloadDivisions ?? normalizeDivisionKeys((updated as any).divisions);
   return NextResponse.json(withLegacyFields({
     ...updated,
     dayOfWeek: normalizedDays[0] ?? updated.dayOfWeek ?? null,
     daysOfWeek: normalizedDays,
+    scheduledFieldIds: updated.scheduledFieldId ? [updated.scheduledFieldId] : [],
+    divisions: normalizedDivisions,
   } as any), { status: 200 });
 }
 

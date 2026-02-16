@@ -15,6 +15,11 @@ export interface UserAccount {
 export interface Division {
   id: string;
   name: string;
+  key?: string;
+  eventId?: string;
+  organizationId?: string;
+  sportId?: string;
+  fieldIds?: string[];
   skillLevel?: string;
   minRating?: number;
   maxRating?: number;
@@ -206,6 +211,7 @@ export interface TimeSlot {
   $id: string;
   dayOfWeek?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   daysOfWeek?: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+  divisions?: string[];
   startTimeMinutes?: number;
   endTimeMinutes?: number;
   startDate?: string;
@@ -217,6 +223,7 @@ export interface TimeSlot {
   eventId?: string;
   field?: Field;
   scheduledFieldId?: string;
+  scheduledFieldIds?: string[];
 }
 
 export type TimeSlotPayload = Omit<TimeSlot, 'event'>;
@@ -382,6 +389,7 @@ export interface Event {
   organizationId?: string | null;
   organization?: Organization | string;
   requiredTemplateIds?: string[];
+  divisionFieldIds?: Record<string, string[]>;
   allowPaymentPlans?: boolean;
   installmentCount?: number;
   installmentDueDates?: string[];

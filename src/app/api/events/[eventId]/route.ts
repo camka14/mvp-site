@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { deleteMatchesByEvent, loadEventWithRelations, saveEventSchedule, saveMatches } from '@/server/repositories/events';
+import {
+  deleteMatchesByEvent,
+  loadEventWithRelations,
+  saveEventSchedule,
+  saveMatches,
+  syncEventDivisions,
+} from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
@@ -133,6 +139,339 @@ const arraysEqual = (left: string[] | null, right: string[] | null): boolean => 
   return left.every((value, index) => value === right[index]);
 };
 
+const DEFAULT_DIVISION_KEY = 'open';
+
+const normalizeDivisionKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length ? normalized : null;
+};
+
+const normalizeDivisionKeys = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const keys = value
+    .map((entry) => normalizeDivisionKey(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  return Array.from(new Set(keys));
+};
+
+const normalizeFieldIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
+};
+
+const normalizeSlotFieldIds = (slot: Record<string, unknown>): string[] => {
+  const fromList = normalizeFieldIds(slot.scheduledFieldIds);
+  if (fromList.length) {
+    return fromList;
+  }
+  if (typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0) {
+    return [slot.scheduledFieldId];
+  }
+  return [];
+};
+
+const normalizeFieldNumber = (value: unknown, fallback: number): number => {
+  const numeric = Number(value);
+  if (Number.isInteger(numeric) && numeric > 0) {
+    return numeric;
+  }
+  return fallback;
+};
+
+const normalizeNullableNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const normalizeNullableString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  return value;
+};
+
+const coerceDivisionFieldMap = (value: unknown): Record<string, string[]> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const result: Record<string, string[]> = {};
+  for (const [rawKey, rawFieldIds] of Object.entries(value as Record<string, unknown>)) {
+    const key = normalizeDivisionKey(rawKey);
+    if (!key) continue;
+    result[key] = normalizeFieldIds(rawFieldIds);
+  }
+  return result;
+};
+
+const buildDivisionFieldMap = (
+  divisionKeys: string[],
+  fieldIds: string[],
+  ...maps: Array<Record<string, string[]>>
+): Record<string, string[]> => {
+  const normalizedDivisionKeys = divisionKeys.length ? divisionKeys : [DEFAULT_DIVISION_KEY];
+  const allowedFieldIds = new Set(fieldIds);
+  const merged = new Map<string, Set<string>>();
+
+  for (const divisionKey of normalizedDivisionKeys) {
+    merged.set(divisionKey, new Set<string>());
+  }
+
+  for (const map of maps) {
+    for (const [key, ids] of Object.entries(map)) {
+      const normalizedKey = normalizeDivisionKey(key);
+      if (!normalizedKey) continue;
+      const bucket = merged.get(normalizedKey) ?? new Set<string>();
+      for (const id of ids) {
+        if (!allowedFieldIds.size || allowedFieldIds.has(id)) {
+          bucket.add(id);
+        }
+      }
+      merged.set(normalizedKey, bucket);
+    }
+  }
+
+  const result: Record<string, string[]> = {};
+  for (const divisionKey of normalizedDivisionKeys) {
+    const ids = Array.from(merged.get(divisionKey) ?? []);
+    result[divisionKey] = ids.length ? ids : [];
+  }
+
+  return result;
+};
+
+const mapDivisionRowsToFieldMap = (
+  rows: Array<{ key: string | null; fieldIds: string[] | null }>,
+): Record<string, string[]> => {
+  const result: Record<string, string[]> = {};
+  for (const row of rows) {
+    const key = normalizeDivisionKey(row.key);
+    if (!key) continue;
+    result[key] = normalizeFieldIds(row.fieldIds ?? []);
+  }
+  return result;
+};
+
+const divisionFieldMapsEqual = (
+  left: Record<string, string[]>,
+  right: Record<string, string[]>,
+): boolean => {
+  const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)])).sort();
+  for (const key of keys) {
+    const leftValues = normalizeFieldIds(left[key]).sort();
+    const rightValues = normalizeFieldIds(right[key]).sort();
+    if (leftValues.length !== rightValues.length) {
+      return false;
+    }
+    for (let index = 0; index < leftValues.length; index += 1) {
+      if (leftValues[index] !== rightValues[index]) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
+
+const getDivisionFieldMapForEvent = async (
+  eventId: string,
+  divisionKeys: string[],
+): Promise<Record<string, string[]>> => {
+  if (!divisionKeys.length) {
+    return {};
+  }
+  const rows = await prisma.divisions.findMany({
+    where: {
+      eventId,
+      key: { in: divisionKeys },
+    },
+    select: {
+      key: true,
+      fieldIds: true,
+    },
+  });
+  return mapDivisionRowsToFieldMap(rows);
+};
+
+const normalizeSlotDays = (input: { dayOfWeek?: unknown; daysOfWeek?: unknown }): number[] => {
+  const source = Array.isArray(input.daysOfWeek) && input.daysOfWeek.length
+    ? input.daysOfWeek
+    : input.dayOfWeek !== undefined
+      ? [input.dayOfWeek]
+      : [];
+
+  return Array.from(
+    new Set(
+      source
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+    ),
+  ).sort((a, b) => a - b);
+};
+
+const normalizeSlotBaseId = (value: string): string => {
+  return value
+    .replace(/__d[0-6]__f.+$/, '')
+    .replace(/__f.+$/, '')
+    .replace(/__d[0-6](?:_\d+)?$/, '');
+};
+
+const buildExpandedSlotId = (
+  sourceId: string,
+  baseSlotId: string,
+  day: number,
+  fieldId: string | null,
+  dayCount: number,
+  fieldCount: number,
+): string => {
+  if (dayCount === 1 && fieldCount === 1) {
+    return sourceId;
+  }
+  if (dayCount > 1 && fieldCount === 1) {
+    return `${baseSlotId}__d${day}`;
+  }
+  if (dayCount === 1 && fieldCount > 1) {
+    return `${baseSlotId}__f${fieldId}`;
+  }
+  return `${baseSlotId}__d${day}__f${fieldId}`;
+};
+
+const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('timeslots')
+    && normalized.includes('divisions')
+    && normalized.includes('does not exist');
+};
+
+const persistTimeSlotDivisions = async (
+  client: any,
+  slotId: string,
+  divisions: string[],
+  updatedAt: Date,
+): Promise<void> => {
+  if (typeof client?.$executeRaw !== 'function') {
+    return;
+  }
+  try {
+    await client.$executeRaw`
+      UPDATE "TimeSlots"
+      SET "divisions" = ${divisions}::TEXT[],
+          "updatedAt" = ${updatedAt}
+      WHERE "id" = ${slotId}
+    `;
+  } catch (error) {
+    if (isMissingTimeSlotDivisionsColumnError(error)) {
+      return;
+    }
+    throw error;
+  }
+};
+
+type ExpandedTimeSlotInput = {
+  id: string;
+  dayOfWeek: number;
+  startTimeMinutes: number | null;
+  endTimeMinutes: number | null;
+  startDate: Date;
+  endDate: Date | null;
+  repeating: boolean;
+  scheduledFieldId: string | null;
+  price: number | null;
+  divisions: string[];
+  requiredTemplateIds: string[];
+};
+
+const expandTimeSlotsForUpdate = (
+  eventId: string,
+  slots: Array<Record<string, any>>,
+  fallbackStartDate: Date,
+  fallbackDivisionKeys: string[],
+  enforceAllDivisions: boolean,
+): ExpandedTimeSlotInput[] => {
+  return slots.flatMap((slot, index) => {
+    const sourceId = typeof slot.$id === 'string' && slot.$id.length > 0
+      ? slot.$id
+      : typeof slot.id === 'string' && slot.id.length > 0
+        ? slot.id
+        : `${eventId}__slot_${index + 1}`;
+    const baseSlotId = normalizeSlotBaseId(sourceId);
+    const normalizedDays = normalizeSlotDays({
+      dayOfWeek: slot.dayOfWeek,
+      daysOfWeek: slot.daysOfWeek,
+    });
+    if (!normalizedDays.length) {
+      return [];
+    }
+
+    const startDate = parseDateInput(slot.startDate) ?? fallbackStartDate;
+    const endDate = slot.endDate === null ? null : parseDateInput(slot.endDate);
+    const startTimeMinutes = typeof slot.startTimeMinutes === 'number'
+      ? slot.startTimeMinutes
+      : Number.isFinite(Number(slot.startTimeMinutes))
+        ? Number(slot.startTimeMinutes)
+        : null;
+    const endTimeMinutes = typeof slot.endTimeMinutes === 'number'
+      ? slot.endTimeMinutes
+      : Number.isFinite(Number(slot.endTimeMinutes))
+        ? Number(slot.endTimeMinutes)
+        : null;
+    const repeating = typeof slot.repeating === 'boolean' ? slot.repeating : true;
+    const normalizedFieldIds = normalizeSlotFieldIds(slot);
+    const expandedFieldIds: Array<string | null> = normalizedFieldIds.length ? normalizedFieldIds : [null];
+    const price = typeof slot.price === 'number'
+      ? slot.price
+      : Number.isFinite(Number(slot.price))
+        ? Number(slot.price)
+        : null;
+    const requiredTemplateIds = Array.isArray(slot.requiredTemplateIds)
+      ? Array.from(
+        new Set(
+          slot.requiredTemplateIds
+            .map((entry: unknown) => String(entry))
+            .filter((entry: string) => entry.length > 0),
+        ),
+      )
+      : [];
+    const normalizedSlotDivisions = normalizeDivisionKeys(slot.divisions);
+    const divisions = enforceAllDivisions
+      ? fallbackDivisionKeys
+      : normalizedSlotDivisions.length
+      ? normalizedSlotDivisions
+      : fallbackDivisionKeys;
+
+    return normalizedDays.flatMap((day) =>
+      expandedFieldIds.map((fieldId) => ({
+        id: buildExpandedSlotId(
+          sourceId,
+          baseSlotId,
+          day,
+          fieldId,
+          normalizedDays.length,
+          expandedFieldIds.length,
+        ),
+        dayOfWeek: day,
+        startTimeMinutes,
+        endTimeMinutes,
+        startDate,
+        endDate: endDate ?? null,
+        repeating,
+        scheduledFieldId: fieldId,
+        price,
+        divisions,
+        requiredTemplateIds,
+      })),
+    );
+  });
+};
+
 const hasScheduleImpact = (existing: any, payload: Record<string, any>): boolean => {
   const scheduleFields = [
     'eventType',
@@ -203,7 +542,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
-  return NextResponse.json(withLegacyEvent(event), { status: 200 });
+  const divisionKeys = normalizeDivisionKeys(event.divisions);
+  const divisionFieldIds = await getDivisionFieldMapForEvent(eventId, divisionKeys);
+  return NextResponse.json(withLegacyEvent({ ...event, divisionFieldIds }), { status: 200 });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
@@ -235,6 +576,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       delete payload.createdAt;
       delete payload.updatedAt;
 
+      const incomingTimeSlots = Array.isArray(payload.timeSlots)
+        ? payload.timeSlots.filter((slot): slot is Record<string, any> => Boolean(slot) && typeof slot === 'object')
+        : null;
+      const incomingFields = Array.isArray(payload.fields)
+        ? payload.fields.filter((field): field is Record<string, any> => Boolean(field) && typeof field === 'object')
+        : [];
+      const hasDivisionFieldMapInput = Object.prototype.hasOwnProperty.call(payload, 'divisionFieldIds');
+      const incomingDivisionFieldMap = hasDivisionFieldMapInput
+        ? coerceDivisionFieldMap(payload.divisionFieldIds)
+        : {};
+      const incomingFieldDivisionMap = {};
+
+      if (Object.prototype.hasOwnProperty.call(payload, 'divisions')) {
+        const normalized = normalizeDivisionKeys(payload.divisions);
+        payload.divisions = normalized.length ? normalized : [DEFAULT_DIVISION_KEY];
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'fieldIds')) {
+        payload.fieldIds = normalizeFieldIds(payload.fieldIds);
+      }
+
       // Drop relationship objects that Prisma doesn't accept on `events.update`.
       delete payload.players;
       delete payload.referees;
@@ -242,6 +603,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       delete payload.fields;
       delete payload.matches;
       delete payload.timeSlots;
+      delete payload.divisionFieldIds;
       delete payload.leagueConfig;
 
       if (payload.installmentDueDates) {
@@ -266,7 +628,218 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data[key] = value;
       }
 
-      const shouldSchedule = hasScheduleImpact(existing, data);
+      const existingDivisionKeys = normalizeDivisionKeys(existing.divisions);
+      const existingFieldIds = normalizeFieldIds(existing.fieldIds);
+      const payloadFieldIds = incomingFields
+        .map((field) => {
+          if (typeof field.$id === 'string' && field.$id.length > 0) {
+            return field.$id;
+          }
+          if (typeof field.id === 'string' && field.id.length > 0) {
+            return field.id;
+          }
+          return null;
+        })
+        .filter((id): id is string => Boolean(id));
+      const hasTimeSlotPayload = incomingTimeSlots !== null;
+      const slotDerivedFieldIds = hasTimeSlotPayload
+        ? normalizeFieldIds(
+          incomingTimeSlots.flatMap((slot) => normalizeSlotFieldIds(slot)),
+        )
+        : [];
+      const nextFieldIds = (() => {
+        if (slotDerivedFieldIds.length) {
+          return slotDerivedFieldIds;
+        }
+        if (Array.isArray(data.fieldIds)) {
+          return normalizeFieldIds(data.fieldIds);
+        }
+        if (payloadFieldIds.length) {
+          return normalizeFieldIds(payloadFieldIds);
+        }
+        return existingFieldIds;
+      })();
+      if (
+        hasTimeSlotPayload
+        || Object.prototype.hasOwnProperty.call(payload, 'fieldIds')
+        || incomingFields.length > 0
+      ) {
+        data.fieldIds = nextFieldIds;
+      }
+      const nextDivisionKeys = (() => {
+        if (Array.isArray(data.divisions)) {
+          const normalized = normalizeDivisionKeys(data.divisions);
+          return normalized.length ? normalized : [DEFAULT_DIVISION_KEY];
+        }
+        return existingDivisionKeys.length ? existingDivisionKeys : [DEFAULT_DIVISION_KEY];
+      })();
+      const nextSingleDivision = typeof data.singleDivision === 'boolean'
+        ? data.singleDivision
+        : Boolean(existing.singleDivision);
+      const existingSlotIds = Array.isArray(existing.timeSlotIds)
+        ? existing.timeSlotIds.map((value: unknown) => String(value))
+        : [];
+      const shouldSyncDivisions = hasDivisionFieldMapInput
+        || incomingFields.length > 0
+        || hasTimeSlotPayload
+        || Object.prototype.hasOwnProperty.call(payload, 'divisions')
+        || Object.prototype.hasOwnProperty.call(payload, 'fieldIds')
+        || Object.prototype.hasOwnProperty.call(payload, 'sportId')
+        || Object.prototype.hasOwnProperty.call(payload, 'organizationId');
+
+      let currentDivisionFieldMap: Record<string, string[]> = {};
+      let nextDivisionFieldMap: Record<string, string[]> = {};
+      let divisionFieldMapChanged = false;
+      if (shouldSyncDivisions && nextDivisionKeys.length) {
+        const persistedDivisionRows = await tx.divisions.findMany({
+          where: {
+            eventId,
+            key: { in: nextDivisionKeys },
+          },
+          select: {
+            key: true,
+            fieldIds: true,
+          },
+        });
+        currentDivisionFieldMap = mapDivisionRowsToFieldMap(persistedDivisionRows);
+        nextDivisionFieldMap = buildDivisionFieldMap(
+          nextDivisionKeys,
+          nextFieldIds,
+          currentDivisionFieldMap,
+          incomingFieldDivisionMap,
+          incomingDivisionFieldMap,
+        );
+        divisionFieldMapChanged = !divisionFieldMapsEqual(currentDivisionFieldMap, nextDivisionFieldMap);
+      }
+
+      let expandedTimeSlots: ExpandedTimeSlotInput[] | null = null;
+      if (incomingTimeSlots !== null) {
+        expandedTimeSlots = expandTimeSlotsForUpdate(
+          eventId,
+          incomingTimeSlots,
+          existing.start,
+          nextDivisionKeys,
+          nextSingleDivision,
+        );
+        data.timeSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
+      }
+
+      const shouldSchedule = hasScheduleImpact(existing, data) || divisionFieldMapChanged || hasTimeSlotPayload;
+
+      if (expandedTimeSlots !== null) {
+        const nextSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
+        const nextSlotIdSet = new Set(nextSlotIds);
+        const staleSlotIds = existingSlotIds.filter((slotId) => !nextSlotIdSet.has(slotId));
+
+        for (const slot of expandedTimeSlots) {
+          const now = new Date();
+          const upsertData = {
+            dayOfWeek: slot.dayOfWeek,
+            startTimeMinutes: slot.startTimeMinutes,
+            endTimeMinutes: slot.endTimeMinutes,
+            startDate: slot.startDate,
+            endDate: slot.endDate,
+            repeating: slot.repeating,
+            scheduledFieldId: slot.scheduledFieldId,
+            price: slot.price,
+            requiredTemplateIds: slot.requiredTemplateIds,
+            updatedAt: now,
+          };
+
+          await tx.timeSlots.upsert({
+            where: { id: slot.id },
+            create: {
+              id: slot.id,
+              ...upsertData,
+              createdAt: now,
+            } as any,
+            update: upsertData as any,
+          });
+          await persistTimeSlotDivisions(tx, slot.id, slot.divisions, now);
+        }
+
+        if (staleSlotIds.length) {
+          await tx.timeSlots.deleteMany({
+            where: { id: { in: staleSlotIds } },
+          });
+        }
+      } else if (nextSingleDivision && nextDivisionKeys.length && existingSlotIds.length) {
+        const now = new Date();
+        for (const slotId of existingSlotIds) {
+          await persistTimeSlotDivisions(tx, slotId, nextDivisionKeys, now);
+        }
+      }
+
+      const nextFieldIdSet = new Set(nextFieldIds);
+      const incomingFieldsById = new Map<string, Record<string, any>>();
+      for (const field of incomingFields) {
+        const fieldId = typeof field.$id === 'string' && field.$id.length > 0
+          ? field.$id
+          : typeof field.id === 'string' && field.id.length > 0
+            ? field.id
+            : null;
+        if (!fieldId) continue;
+        incomingFieldsById.set(fieldId, field);
+      }
+
+      const nextOrganizationId = (data.organizationId ?? existing.organizationId ?? null) as string | null;
+      const shouldPersistLocalFields = incomingFieldsById.size > 0 && !nextOrganizationId;
+      if (shouldPersistLocalFields && typeof (tx as any).fields?.upsert === 'function') {
+        for (const [index, fieldId] of nextFieldIds.entries()) {
+          const field = incomingFieldsById.get(fieldId);
+          if (!field) continue;
+          const now = new Date();
+          const fieldDivisions = normalizeDivisionKeys(field.divisions);
+          const divisions = fieldDivisions.length
+            ? fieldDivisions
+            : (nextDivisionKeys.length ? nextDivisionKeys : [DEFAULT_DIVISION_KEY]);
+          const fieldData = {
+            fieldNumber: normalizeFieldNumber(field.fieldNumber, index + 1),
+            divisions,
+            lat: normalizeNullableNumber(field.lat),
+            long: normalizeNullableNumber(field.long),
+            heading: normalizeNullableNumber(field.heading),
+            inUse: typeof field.inUse === 'boolean' ? field.inUse : null,
+            name: normalizeNullableString(field.name),
+            type: normalizeNullableString(field.type),
+            rentalSlotIds: normalizeFieldIds(field.rentalSlotIds),
+            location: normalizeNullableString(field.location),
+            organizationId: null,
+            updatedAt: now,
+          };
+
+          await (tx as any).fields.upsert({
+            where: { id: fieldId },
+            create: {
+              id: fieldId,
+              ...fieldData,
+              createdAt: now,
+            },
+            update: fieldData,
+          });
+        }
+      }
+
+      const removedFieldIds = existingFieldIds.filter((fieldId) => !nextFieldIdSet.has(fieldId));
+      if (removedFieldIds.length) {
+        if (typeof (tx as any).matches?.deleteMany === 'function') {
+          await (tx as any).matches.deleteMany({
+            where: {
+              eventId,
+              fieldId: { in: removedFieldIds },
+            },
+          });
+        }
+        if (typeof (tx as any).fields?.deleteMany === 'function') {
+          await (tx as any).fields.deleteMany({
+            where: {
+              id: { in: removedFieldIds },
+              organizationId: null,
+            },
+          });
+        }
+      }
+
       const updatedEvent = await tx.events.update({
         where: { id: eventId },
         data: {
@@ -274,6 +847,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           updatedAt: new Date(),
         },
       });
+
+      if (shouldSyncDivisions) {
+        await syncEventDivisions({
+          eventId,
+          divisionKeys: nextDivisionKeys,
+          fieldIds: nextFieldIds,
+          sportId: (data.sportId ?? existing.sportId ?? null) as string | null,
+          organizationId: (data.organizationId ?? existing.organizationId ?? null) as string | null,
+          divisionFieldMap: nextDivisionFieldMap,
+        }, tx as any);
+      }
 
       const nextEventType = (data.eventType ?? existing.eventType ?? updatedEvent.eventType) as string | null;
       if (shouldSchedule && isSchedulableEventType(nextEventType)) {
@@ -293,8 +877,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       return fresh;
     });
-
-    return NextResponse.json(withLegacyEvent(updated), { status: 200 });
+    const divisionKeys = normalizeDivisionKeys(updated.divisions);
+    const divisionFieldIds = await getDivisionFieldMapForEvent(eventId, divisionKeys);
+    return NextResponse.json(withLegacyEvent({ ...updated, divisionFieldIds }), { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     if (error instanceof ScheduleError) {

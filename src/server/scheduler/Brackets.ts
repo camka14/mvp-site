@@ -141,9 +141,7 @@ export class Brackets {
 
   private setupDivision(division: Division): void {
     this.currentDivision = division;
-    this.currentFields = Object.values(this.tournament.fields).filter((field) =>
-      field.divisions.some((d) => d.id === division.id),
-    );
+    this.currentFields = Object.values(this.tournament.fields);
   }
 
   private prepareTeams(teams: Team[]): Team[] {

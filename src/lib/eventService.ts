@@ -422,6 +422,15 @@ class EventService {
                 ? row.requiredTemplateIds.map((id: unknown) => String(id))
                 : [],
             divisions: row.divisions,
+            divisionFieldIds:
+                row.divisionFieldIds && typeof row.divisionFieldIds === 'object'
+                    ? Object.fromEntries(
+                        Object.entries(row.divisionFieldIds as Record<string, unknown>).map(([key, value]) => [
+                            key,
+                            Array.isArray(value) ? value.map((entry) => String(entry)).filter(Boolean) : [],
+                        ]),
+                    )
+                    : undefined,
             timeSlots: row.timeSlots,
             referees: Array.isArray(row.referees) ? (row.referees as UserData[]) : undefined,
             doubleElimination: row.doubleElimination,
@@ -1153,6 +1162,18 @@ class EventService {
     private mapRowToTimeSlot(row: any): TimeSlot {
         const startTime = this.normalizeTime(row.startTimeMinutes ?? row.startTime) ?? 0;
         const endTime = this.normalizeTime(row.endTimeMinutes ?? row.endTime) ?? startTime;
+        const normalizedFieldIds = Array.from(
+            new Set(
+                (Array.isArray(row.scheduledFieldIds) && row.scheduledFieldIds.length
+                    ? row.scheduledFieldIds
+                    : row.scheduledFieldId
+                        ? [row.scheduledFieldId]
+                        : []
+                )
+                    .map((value: unknown) => String(value).trim())
+                    .filter((value: string) => value.length > 0),
+            ),
+        );
         const normalizedDays = Array.from(
             new Set(
                 (Array.isArray(row.daysOfWeek) && row.daysOfWeek.length
@@ -1174,7 +1195,17 @@ class EventService {
             endTimeMinutes: endTime,
             repeating: row.repeating === undefined ? true : Boolean(row.repeating),
             event: row.event ?? row.eventId ?? row.event?.$id,
-            scheduledFieldId: row.scheduledFieldId,
+            scheduledFieldId: normalizedFieldIds[0] ?? row.scheduledFieldId,
+            scheduledFieldIds: normalizedFieldIds,
+            divisions: Array.isArray(row.divisions)
+                ? Array.from(
+                    new Set(
+                        row.divisions
+                            .map((entry: unknown) => String(entry).trim().toLowerCase())
+                            .filter((entry: string) => entry.length > 0),
+                    ),
+                )
+                : [],
             requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
                 ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id: string) => id.length > 0)
                 : [],

@@ -294,6 +294,7 @@ function OrganizationDetailContent() {
   const [templateEmbedUrl, setTemplateEmbedUrl] = useState<string | null>(null);
   const [templateBuilderOpen, setTemplateBuilderOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<TemplateDocument | null>(null);
   const [previewMode, setPreviewMode] = useState<'read' | 'sign'>('read');
   const [previewAccepted, setPreviewAccepted] = useState(false);
@@ -590,6 +591,38 @@ function OrganizationDetailContent() {
       setEditingTemplateId(null);
     }
   }, [org]);
+
+  const handleDeleteTemplate = useCallback(async (template: TemplateDocument) => {
+    if (!org) return;
+
+    const templateTitle = template.title?.trim() || 'Untitled Template';
+    const confirmed = window.confirm(`Delete "${templateTitle}"? This cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeletingTemplateId(template.$id);
+      setTemplatesError(null);
+      await boldsignService.deleteTemplate({
+        organizationId: org.$id,
+        templateDocumentId: template.$id,
+      });
+      if (previewTemplate?.$id === template.$id) {
+        setPreviewTemplate(null);
+        setPreviewAccepted(false);
+        setPreviewSignComplete(false);
+      }
+      await loadTemplates(org.$id, { silent: true });
+      notifications.show({ color: 'green', message: 'Template deleted.' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete template.';
+      setTemplatesError(message);
+      notifications.show({ color: 'red', message });
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  }, [loadTemplates, org, previewTemplate?.$id]);
 
   const toggleOrganizationUserExpanded = useCallback((userId: string) => {
     setExpandedOrganizationUserIds((previous) => (
@@ -1401,29 +1434,39 @@ function OrganizationDetailContent() {
                             Status: {template.status}
                           </Text>
                         )}
-                        {template.type === 'TEXT' && (
-                          <Group justify="flex-end" mt="sm">
+                        <Group justify="flex-end" mt="sm">
+                          {template.type === 'TEXT' && (
                             <Button
                               size="xs"
                               variant="light"
                               onClick={() => openTemplatePreview(template)}
+                              disabled={deletingTemplateId === template.$id}
                             >
                               Preview
                             </Button>
-                          </Group>
-                        )}
-                        {(template.type ?? 'PDF') === 'PDF' && (
-                          <Group justify="flex-end" mt="sm">
+                          )}
+                          {(template.type ?? 'PDF') === 'PDF' && (
                             <Button
                               size="xs"
                               variant="light"
                               onClick={() => void handleEditPdfTemplate(template)}
                               loading={editingTemplateId === template.$id}
+                              disabled={deletingTemplateId === template.$id}
                             >
                               Edit
                             </Button>
-                          </Group>
-                        )}
+                          )}
+                          <Button
+                            size="xs"
+                            color="red"
+                            variant="light"
+                            onClick={() => void handleDeleteTemplate(template)}
+                            loading={deletingTemplateId === template.$id}
+                            disabled={editingTemplateId === template.$id}
+                          >
+                            Delete
+                          </Button>
+                        </Group>
                       </Paper>
                     ))}
                   </SimpleGrid>

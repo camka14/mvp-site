@@ -263,7 +263,7 @@ describe('League schedule page', () => {
     confirmSpy.mockRestore();
   });
 
-  it('publishes an unpublished league by updating state and related data', async () => {
+  it('saves an unpublished league without changing lifecycle state', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
         if (key === 'preview') return '1';
@@ -337,7 +337,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    const publishButton = await screen.findByRole('button', { name: /publish league/i });
+    const publishButton = await screen.findByRole('button', { name: /save league/i });
     fireEvent.click(publishButton);
 
     await waitFor(() => {
@@ -345,7 +345,7 @@ describe('League schedule page', () => {
     });
 
     const [, payload] = (eventService.updateEvent as jest.Mock).mock.calls[0];
-    expect(payload.state).toBe('PUBLISHED');
+    expect(payload.state).toBe('UNPUBLISHED');
     expect(payload.matches).toHaveLength(1);
     expect(payload.timeSlots).toHaveLength(1);
     expect(payload.fields?.[0]?.rentalSlotIds).toBeUndefined();
@@ -376,7 +376,7 @@ describe('League schedule page', () => {
     expect(eventService.updateEvent).not.toHaveBeenCalled();
   });
 
-  it('normalizes create payload with multi-day slots and field divisions before schedule preview', async () => {
+  it('normalizes create payload with multi-day slots and slot divisions before schedule preview', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
         if (key === 'create') return '1';
@@ -427,6 +427,7 @@ describe('League schedule page', () => {
           $id: 'slot_multi',
           dayOfWeek: 1,
           daysOfWeek: [1, 3],
+          divisions: ['open'],
           startTimeMinutes: 540,
           endTimeMinutes: 600,
           repeating: true,
@@ -463,9 +464,9 @@ describe('League schedule page', () => {
     expect(payload?.timeSlots?.[0]).toMatchObject({
       dayOfWeek: 1,
       daysOfWeek: [1, 3],
+      divisions: ['open'],
       scheduledFieldId: 'field_local_1',
     });
-    expect(payload?.fields?.[0]?.divisions).toEqual(['open']);
   });
 
   it('does not pass a host organization when creating a rental as self', async () => {

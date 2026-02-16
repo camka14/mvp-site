@@ -151,7 +151,14 @@ export const DivisionsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
-  name: 'name'
+  name: 'name',
+  key: 'key',
+  eventId: 'eventId',
+  organizationId: 'organizationId',
+  sportId: 'sportId',
+  minRating: 'minRating',
+  maxRating: 'maxRating',
+  fieldIds: 'fieldIds'
 } as const
 
 export type DivisionsScalarFieldEnum = (typeof DivisionsScalarFieldEnum)[keyof typeof DivisionsScalarFieldEnum]
@@ -497,6 +504,7 @@ export const TimeSlotsScalarFieldEnum = {
   endDate: 'endDate',
   scheduledFieldId: 'scheduledFieldId',
   price: 'price',
+  divisions: 'divisions',
   requiredTemplateIds: 'requiredTemplateIds'
 } as const
 

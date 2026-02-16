@@ -182,4 +182,128 @@ describe('LeagueFields', () => {
 
     expect(screen.getByText(/Playoff team count is required/i)).toBeInTheDocument();
   });
+
+  it('defaults playoff team count from participants each time playoffs are enabled', () => {
+    const onLeagueDataChange = jest.fn();
+    const participantCount = 12;
+
+    const firstRender = renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          playoffTeamCount: undefined,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        participantCount={participantCount}
+        onLeagueDataChange={onLeagueDataChange}
+        slots={[baseSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText(/Include Playoffs/i));
+    expect(onLeagueDataChange).toHaveBeenLastCalledWith({
+      includePlayoffs: true,
+      playoffTeamCount: participantCount,
+    });
+
+    firstRender.unmount();
+    onLeagueDataChange.mockClear();
+
+    const secondRender = renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: true,
+          playoffTeamCount: 6,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        participantCount={participantCount}
+        onLeagueDataChange={onLeagueDataChange}
+        slots={[baseSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText(/Include Playoffs/i));
+    expect(onLeagueDataChange).toHaveBeenLastCalledWith({
+      includePlayoffs: false,
+      playoffTeamCount: undefined,
+    });
+
+    secondRender.unmount();
+    onLeagueDataChange.mockClear();
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          playoffTeamCount: 6,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        participantCount={participantCount}
+        onLeagueDataChange={onLeagueDataChange}
+        slots={[baseSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText(/Include Playoffs/i));
+    expect(onLeagueDataChange).toHaveBeenLastCalledWith({
+      includePlayoffs: true,
+      playoffTeamCount: participantCount,
+    });
+  });
+
+  it('locks slot divisions when single division mode is enabled', () => {
+    const onUpdateSlot = jest.fn();
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[{ ...baseSlot, divisions: ['beginner'] }]}
+        onAddSlot={noop}
+        onUpdateSlot={onUpdateSlot}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+        divisionOptions={[
+          { value: 'beginner', label: 'Beginner' },
+          { value: 'advanced', label: 'Advanced' },
+        ]}
+        lockSlotDivisions
+        lockedDivisionKeys={['beginner', 'advanced']}
+      />,
+    );
+
+    const divisionsInput = getLabeledInput(/Divisions/i) as HTMLInputElement;
+    expect(divisionsInput).toBeDisabled();
+  });
 });

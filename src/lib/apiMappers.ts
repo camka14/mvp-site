@@ -69,6 +69,18 @@ export const normalizeApiMatch = (input: Match): Match => {
 
 const normalizeApiTimeSlot = (input: TimeSlot): TimeSlot => {
   const slot = withLegacyId(input) as TimeSlot & { event?: Event | string; field?: Field | string };
+  const normalizedFieldIds = Array.from(
+    new Set(
+      (Array.isArray((slot as any).scheduledFieldIds) && (slot as any).scheduledFieldIds.length
+        ? (slot as any).scheduledFieldIds
+        : slot.scheduledFieldId
+          ? [slot.scheduledFieldId]
+          : []
+      )
+        .map((value: unknown) => String(value).trim())
+        .filter((value: string) => value.length > 0),
+    ),
+  );
   const normalizedDays = Array.from(
     new Set(
       (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
@@ -86,6 +98,17 @@ const normalizeApiTimeSlot = (input: TimeSlot): TimeSlot => {
     ...slot,
     dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
     daysOfWeek: normalizedDays,
+    scheduledFieldId: normalizedFieldIds[0] ?? slot.scheduledFieldId,
+    scheduledFieldIds: normalizedFieldIds,
+    divisions: Array.isArray((slot as any).divisions)
+      ? Array.from(
+          new Set(
+            ((slot as any).divisions as unknown[])
+              .map((value) => String(value).trim().toLowerCase())
+              .filter((value) => value.length > 0),
+          ),
+        )
+      : [],
     event: withLegacyId(slot.event as Event | null) ?? slot.event,
     field: withLegacyId(slot.field as Field | null) ?? slot.field,
   };

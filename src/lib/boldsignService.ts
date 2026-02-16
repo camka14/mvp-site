@@ -30,6 +30,11 @@ type SignLinksResponse = {
   error?: string;
 };
 
+type DeleteTemplateResponse = {
+  deleted?: boolean;
+  error?: string;
+};
+
 class BoldSignService {
   async createTemplate(params: {
     organizationId: string;
@@ -109,6 +114,24 @@ class BoldSignService {
       throw new Error('Template edit response is missing editUrl.');
     }
     return result.editUrl;
+  }
+
+  async deleteTemplate(params: {
+    organizationId: string;
+    templateDocumentId: string;
+  }): Promise<void> {
+    const result = await apiRequest<DeleteTemplateResponse>(
+      `/api/organizations/${params.organizationId}/templates/${params.templateDocumentId}`,
+      {
+        method: 'DELETE',
+      },
+    );
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    if (!result?.deleted) {
+      throw new Error('Failed to delete template.');
+    }
   }
 
   async createSignLinks(params: {

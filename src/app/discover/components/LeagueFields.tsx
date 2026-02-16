@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   NumberInput,
   Switch,
@@ -15,6 +15,7 @@ import {
   SimpleGrid,
   Paper,
   Title,
+  TextInput,
 } from '@mantine/core';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
@@ -63,6 +64,42 @@ const normalizeSlotDays = (slot: Pick<LeagueSlotForm, 'dayOfWeek' | 'daysOfWeek'
   ).sort((a, b) => a - b);
 };
 
+const normalizeDivisionKeys = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => String(entry).trim().toLowerCase())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const normalizeFieldIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => String(entry).trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const normalizeSlotFieldIds = (slot: Pick<LeagueSlotForm, 'scheduledFieldId' | 'scheduledFieldIds'>): string[] => {
+  const fromList = normalizeFieldIds(slot.scheduledFieldIds);
+  if (fromList.length) {
+    return fromList;
+  }
+  return typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0
+    ? [slot.scheduledFieldId]
+    : [];
+};
+
 const createFieldStub = (fieldId: string, label?: string): Field => ({
   $id: fieldId,
   name: label ?? '',
@@ -77,8 +114,10 @@ export interface LeagueSlotForm {
   key: string;
   $id?: string;
   scheduledFieldId?: string;
+  scheduledFieldIds?: string[];
   dayOfWeek?: number;
   daysOfWeek?: number[];
+  divisions?: string[];
   startTimeMinutes?: number;
   endTimeMinutes?: number;
   repeating?: boolean;
@@ -90,6 +129,7 @@ export interface LeagueSlotForm {
 interface LeagueFieldsProps {
   leagueData: LeagueConfig;
   sport?: Sport;
+  participantCount?: number;
   onLeagueDataChange: (updates: Partial<LeagueConfig>) => void;
   slots: LeagueSlotForm[];
   onAddSlot: () => void;
@@ -98,12 +138,16 @@ interface LeagueFieldsProps {
   fields: Field[];
   fieldsLoading: boolean;
   fieldOptions?: { value: string; label: string }[];
+  divisionOptions?: { value: string; label: string }[];
+  lockSlotDivisions?: boolean;
+  lockedDivisionKeys?: string[];
   readOnly?: boolean;
 }
 
 const LeagueFields: React.FC<LeagueFieldsProps> = ({
   leagueData,
   sport,
+  participantCount,
   onLeagueDataChange,
   slots,
   onAddSlot,
@@ -112,6 +156,9 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   fields,
   fieldsLoading,
   fieldOptions,
+  divisionOptions = [],
+  lockSlotDivisions = false,
+  lockedDivisionKeys = [],
   readOnly = false,
 }) => {
   const fieldLookup = useMemo(
@@ -129,6 +176,14 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
 
   const setsPerMatch = leagueData.setsPerMatch ?? 1;
   const pointsToVictory = leagueData.pointsToVictory ?? [];
+  const playoffDefaultTeamCount = Math.max(2, Number.isFinite(participantCount) ? Number(participantCount) : 2);
+  const normalizedLockedDivisionKeys = useMemo(
+    () => normalizeDivisionKeys(lockedDivisionKeys),
+    [lockedDivisionKeys],
+  );
+  const [fieldSearchBySlot, setFieldSearchBySlot] = useState<Record<string, string>>({});
+  const [fieldAnchorBySlot, setFieldAnchorBySlot] = useState<Record<string, string>>({});
+  const fieldItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const syncPoints = (targetLength: number) => {
     const next = pointsToVictory.slice(0, targetLength);
@@ -158,6 +213,90 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
       usesSets: requiresSets,
     });
   };
+
+  const handleIncludePlayoffsChange = (checked: boolean) => {
+    if (!checked) {
+      onLeagueDataChange({
+        includePlayoffs: false,
+        playoffTeamCount: undefined,
+      });
+      return;
+    }
+    onLeagueDataChange({
+      includePlayoffs: true,
+      playoffTeamCount: playoffDefaultTeamCount,
+    });
+  };
+
+  const setSlotSearch = (slotKey: string, value: string) => {
+    setFieldSearchBySlot((prev) => ({ ...prev, [slotKey]: value }));
+  };
+
+  const handleFieldToggle = (
+    slotIndex: number,
+    slot: LeagueSlotForm,
+    fieldOptionsForSlot: Array<{ value: string; label: string }>,
+    fieldId: string,
+    shiftKey: boolean,
+  ) => {
+    const current = normalizeSlotFieldIds(slot);
+    const optionIds = fieldOptionsForSlot.map((option) => option.value);
+    const currentSet = new Set(current);
+    let next = [...current];
+
+    if (shiftKey) {
+      const anchorId = fieldAnchorBySlot[slot.key];
+      const anchorIndex = anchorId ? optionIds.indexOf(anchorId) : -1;
+      const targetIndex = optionIds.indexOf(fieldId);
+      if (anchorIndex >= 0 && targetIndex >= 0) {
+        const start = Math.min(anchorIndex, targetIndex);
+        const end = Math.max(anchorIndex, targetIndex);
+        const range = optionIds.slice(start, end + 1);
+        next = Array.from(new Set([...next, ...range]));
+      } else if (currentSet.has(fieldId)) {
+        next = next.filter((id) => id !== fieldId);
+      } else {
+        next = [...next, fieldId];
+      }
+    } else if (currentSet.has(fieldId)) {
+      next = next.filter((id) => id !== fieldId);
+    } else {
+      next = [...next, fieldId];
+    }
+
+    setFieldAnchorBySlot((prev) => ({ ...prev, [slot.key]: fieldId }));
+    onUpdateSlot(slotIndex, {
+      scheduledFieldIds: next,
+      scheduledFieldId: next[0],
+    });
+  };
+
+  useEffect(() => {
+    slots.forEach((slot) => {
+      const search = (fieldSearchBySlot[slot.key] ?? '').trim().toLowerCase();
+      if (!search) {
+        return;
+      }
+      const slotFieldIds = normalizeSlotFieldIds(slot);
+      const options = slotFieldIds.length
+        ? Array.from(
+            new Map(
+              [...availableFieldOptions, ...slotFieldIds.map((value) => ({ value, label: value }))]
+                .map((option) => [option.value, option]),
+            ).values(),
+          )
+        : availableFieldOptions;
+      const firstMatch = options.find((option) => option.label.toLowerCase().includes(search));
+      if (!firstMatch) {
+        return;
+      }
+      const refKey = `${slot.key}::${firstMatch.value}`;
+      const node = fieldItemRefs.current[refKey];
+      if (node) {
+        node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+  }, [availableFieldOptions, fieldSearchBySlot, slots]);
 
   return (
     <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
@@ -202,7 +341,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           <Switch
             label="Include Playoffs"
             checked={leagueData.includePlayoffs}
-            onChange={(event) => onLeagueDataChange({ includePlayoffs: event.currentTarget.checked })}
+            onChange={(event) => handleIncludePlayoffsChange(event.currentTarget.checked)}
           />
         </div>
 
@@ -305,18 +444,38 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           <Stack gap="md">
             {slots.map((slot, index) => {
               const conflictCount = slot.conflicts.length;
-              const field = fields.find(field => field.$id === slot.scheduledFieldId) ?? null;
-              const fieldOptionsForSlot = slot.scheduledFieldId && !availableFieldOptions.some(option => option.value === slot.scheduledFieldId)
-                ? [
-                  ...availableFieldOptions,
-                  {
-                    value: slot.scheduledFieldId,
-                    label: field?.name || (field?.fieldNumber ? `Field ${field.fieldNumber}` : slot.scheduledFieldId),
-                  },
-                ]
-              : availableFieldOptions;
+              const slotFieldIds = normalizeSlotFieldIds(slot);
+              const fieldOptionsForSlot = slotFieldIds.length
+                ? Array.from(
+                    new Map(
+                      [
+                        ...availableFieldOptions,
+                        ...slotFieldIds.map((fieldId) => {
+                          const field = fieldLookup.get(fieldId) ?? null;
+                          return {
+                            value: fieldId,
+                            label: field?.name || (field?.fieldNumber ? `Field ${field.fieldNumber}` : fieldId),
+                          };
+                        }),
+                      ].map((option) => [option.value, option]),
+                    ).values(),
+                  )
+                : availableFieldOptions;
+            const fieldSearch = fieldSearchBySlot[slot.key] ?? '';
             const selectedDays = normalizeSlotDays(slot);
-            const fieldMissing = !slot.scheduledFieldId;
+            const slotDivisions = normalizeDivisionKeys(slot.divisions);
+            const effectiveSlotDivisions = lockSlotDivisions && normalizedLockedDivisionKeys.length
+              ? normalizedLockedDivisionKeys
+              : slotDivisions;
+            const divisionOptionsForSlot = effectiveSlotDivisions.length
+              ? Array.from(
+                  new Map(
+                    [...divisionOptions, ...effectiveSlotDivisions.map((value) => ({ value, label: value }))]
+                      .map((option) => [option.value, option]),
+                  ).values(),
+                )
+              : divisionOptions;
+            const fieldMissing = slotFieldIds.length === 0;
             const dayMissing = selectedDays.length === 0;
             const startMissing = !(typeof slot.startTimeMinutes === 'number' && Number.isFinite(slot.startTimeMinutes));
             const endMissing = !(typeof slot.endTimeMinutes === 'number' && Number.isFinite(slot.endTimeMinutes));
@@ -347,28 +506,71 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <MantineSelect
-                      label="Field"
-                      withAsterisk
-                      placeholder="Select field"
-                      data={fieldOptionsForSlot}
-                      value={slot.scheduledFieldId}
+                    <div>
+                      <Text fw={500} size="sm" mb={6}>Fields</Text>
+                      <TextInput
+                        placeholder="Search fields..."
+                        value={fieldSearch}
+                        onChange={(event) => setSlotSearch(slot.key, event.currentTarget.value)}
+                        disabled={readOnly}
+                        mb="xs"
+                      />
+                      <div
+                        className={`max-h-44 overflow-y-auto rounded-md border p-1 ${fieldMissing && !readOnly ? 'border-red-500' : 'border-gray-300'}`}
+                      >
+                        <Stack gap={4}>
+                          {fieldOptionsForSlot.map((option) => {
+                            const selected = slotFieldIds.includes(option.value);
+                            const refKey = `${slot.key}::${option.value}`;
+                            const highlighted = fieldSearch.trim().length > 0
+                              && option.label.toLowerCase().includes(fieldSearch.trim().toLowerCase());
+                            return (
+                              <button
+                                key={option.value}
+                                ref={(node) => {
+                                  fieldItemRefs.current[refKey] = node;
+                                }}
+                                type="button"
+                                className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${selected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-100'} ${highlighted ? 'ring-1 ring-blue-300' : ''}`}
+                                onClick={(event) => {
+                                  handleFieldToggle(index, slot, fieldOptionsForSlot, option.value, event.shiftKey);
+                                }}
+                                disabled={readOnly}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="truncate">{option.label}</span>
+                                  {selected ? <Badge size="xs" color="blue" variant="light">Selected</Badge> : null}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </Stack>
+                      </div>
+                      {fieldMissing && !readOnly ? (
+                        <Text size="xs" c="red" mt={4}>Select at least one field</Text>
+                      ) : null}
+                      <Text size="xs" c="dimmed" mt={4}>
+                        Tip: Hold Shift and click another field to select a range.
+                      </Text>
+                    </div>
+
+                    <MantineMultiSelect
+                      label="Divisions"
+                      placeholder="Select one or more divisions"
+                      description={lockSlotDivisions
+                        ? 'Single division is enabled, so every timeslot uses all selected event divisions.'
+                        : undefined}
+                      data={divisionOptionsForSlot}
+                      value={effectiveSlotDivisions}
                       comboboxProps={DROPDOWN_PROPS}
-                      onChange={(value) => {
-                        if (!value) {
-                          onUpdateSlot(index, { scheduledFieldId: undefined });
-                          return;
-                        }
-                        const nextField = fieldLookup.get(value)
-                          ?? createFieldStub(
-                            value,
-                            fieldOptionsForSlot.find(option => option.value === value)?.label,
-                          );
-                        onUpdateSlot(index, { scheduledFieldId: nextField.$id });
+                      onChange={(values) => {
+                        onUpdateSlot(index, {
+                          divisions: normalizeDivisionKeys(values),
+                        });
                       }}
                       searchable
-                      disabled={readOnly}
-                      error={fieldMissing && !readOnly ? 'Select a field' : undefined}
+                      clearable={!lockSlotDivisions}
+                      disabled={readOnly || lockSlotDivisions}
                     />
 
                   <MantineMultiSelect

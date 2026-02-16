@@ -52,12 +52,12 @@ describe('tournament scheduling (time slots)', () => {
     // Two 4-hour windows per week (Sat/Sun) forces a multi-weekend schedule for a 32-team bracket.
     const slotStart = 9 * 60;
     const slotEnd = 13 * 60;
-    const saturday = 6;
-    const sunday = 0;
+    const saturdaySlotDay = 5; // Monday-based index (0=Mon ... 6=Sun)
+    const sundaySlotDay = 6;
     const timeSlots = [
       new TimeSlot({
         id: 'slot_sat',
-        dayOfWeek: saturday,
+        dayOfWeek: saturdaySlotDay,
         startDate: new Date(2026, 0, 3),
         repeating: true,
         startTimeMinutes: slotStart,
@@ -65,7 +65,7 @@ describe('tournament scheduling (time slots)', () => {
       }),
       new TimeSlot({
         id: 'slot_sun',
-        dayOfWeek: sunday,
+        dayOfWeek: sundaySlotDay,
         startDate: new Date(2026, 0, 3),
         repeating: true,
         startTimeMinutes: slotStart,
@@ -97,7 +97,7 @@ describe('tournament scheduling (time slots)', () => {
     const scheduled = scheduleEvent({ event: tournament }, context);
     expect(scheduled.matches.length).toBe(31);
 
-    const weekendDays = new Set([saturday, sunday]);
+    const weekendDays = new Set([6, 0]); // JS Date#getDay() indexes (0=Sun ... 6=Sat)
     for (const match of scheduled.matches) {
       expect(weekendDays.has(match.start.getDay())).toBe(true);
       expect(match.start.getHours()).toBeGreaterThanOrEqual(9);

@@ -151,6 +151,18 @@ model Divisions {
   createdAt DateTime?
   updatedAt DateTime?
   name String
+  key String?
+  eventId String?
+  organizationId String?
+  sportId String?
+  minRating Float?
+  maxRating Float?
+  fieldIds String[] @default([])
+
+  @@index([eventId])
+  @@index([organizationId])
+  @@index([sportId])
+  @@index([key])
 }
 
 model UserData {
@@ -451,6 +463,7 @@ model TimeSlots {
   endDate DateTime?
   scheduledFieldId String?
   price Int?
+  divisions String[] @default([])
   requiredTemplateIds String[] @default([])
 
   @@index([scheduledFieldId])

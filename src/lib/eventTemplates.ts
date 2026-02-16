@@ -56,14 +56,19 @@ const cloneTimeSlots = (
 ): TimeSlot[] => {
   const { idFactory, scheduledFieldIdMap, start, end } = params;
   return sourceSlots.map((slot) => {
-    const scheduledFieldId = slot.scheduledFieldId
-      ? scheduledFieldIdMap?.get(slot.scheduledFieldId) ?? slot.scheduledFieldId
-      : slot.scheduledFieldId;
+    const scheduledFieldIds = Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+      ? slot.scheduledFieldIds
+          .map((fieldId) => scheduledFieldIdMap?.get(fieldId) ?? fieldId)
+      : slot.scheduledFieldId
+      ? [scheduledFieldIdMap?.get(slot.scheduledFieldId) ?? slot.scheduledFieldId]
+      : [];
+    const scheduledFieldId = scheduledFieldIds[0] ?? slot.scheduledFieldId;
 
     return {
       ...slot,
       $id: idFactory(),
       scheduledFieldId,
+      scheduledFieldIds,
       // Align with the new event window (EventForm will also re-stamp these on save for leagues).
       startDate: start,
       endDate: end,

@@ -65,9 +65,18 @@ class LeagueService {
       if (typeof endTime !== 'number') {
         throw new Error('TimeSlot requires an end time');
       }
-      const fieldId = this.extractId(slot.scheduledFieldId);
-      if (!fieldId) {
-        throw new Error('TimeSlot requires a related field');
+      const slotFieldIds = Array.from(
+        new Set(
+          (Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+            ? slot.scheduledFieldIds
+            : [slot.scheduledFieldId]
+          )
+            .map((entry) => this.extractId(entry))
+            .filter(Boolean),
+        ),
+      );
+      if (!slotFieldIds.length) {
+        throw new Error('TimeSlot requires at least one related field');
       }
 
       const normalizedDays = this.normalizeDays(slot);
@@ -75,34 +84,40 @@ class LeagueService {
         throw new Error('TimeSlot requires at least one day');
       }
 
-      const createdForSlot = await Promise.all(normalizedDays.map(async (day) => {
-        const data: Record<string, unknown> = {
-          eventId,
-          scheduledFieldId: fieldId,
-          dayOfWeek: day,
-          daysOfWeek: [day],
-          startTimeMinutes: startTime,
-          endTimeMinutes: endTime,
-          repeating: typeof slot.repeating === 'boolean' ? slot.repeating : true,
-        };
+      const createdForSlot = await Promise.all(
+        normalizedDays.flatMap((day) =>
+          slotFieldIds.map(async (fieldId) => {
+            const data: Record<string, unknown> = {
+              eventId,
+              scheduledFieldId: fieldId,
+              scheduledFieldIds: [fieldId],
+              dayOfWeek: day,
+              daysOfWeek: [day],
+              divisions: Array.isArray(slot.divisions) ? slot.divisions : [],
+              startTimeMinutes: startTime,
+              endTimeMinutes: endTime,
+              repeating: typeof slot.repeating === 'boolean' ? slot.repeating : true,
+            };
 
-        if (slot.startDate) {
-          data.startDate = slot.startDate;
-        }
-        if (slot.endDate !== undefined) {
-          data.endDate = slot.endDate;
-        }
+            if (slot.startDate) {
+              data.startDate = slot.startDate;
+            }
+            if (slot.endDate !== undefined) {
+              data.endDate = slot.endDate;
+            }
 
-        const response = await apiRequest<any>('/api/time-slots', {
-          method: 'POST',
-          body: {
-            id: createId(),
-            ...data,
-          },
-        });
+            const response = await apiRequest<any>('/api/time-slots', {
+              method: 'POST',
+              body: {
+                id: createId(),
+                ...data,
+              },
+            });
 
-        return this.mapRowToTimeSlot(response as any);
-      }));
+            return this.mapRowToTimeSlot(response as any);
+          }),
+        ),
+      );
 
       return createdForSlot;
     }));
@@ -212,6 +227,15 @@ class LeagueService {
       startTimeMinutes: startTime,
       endTimeMinutes: endTime,
       repeating: row.repeating === undefined ? true : Boolean(row.repeating),
+      divisions: Array.isArray(row.divisions)
+        ? Array.from(
+            new Set(
+              row.divisions
+                .map((entry: unknown) => String(entry).trim().toLowerCase())
+                .filter((entry: string) => entry.length > 0),
+            ),
+          )
+        : [],
       event:
         typeof row.eventId === 'string'
           ? row.eventId
@@ -227,6 +251,12 @@ class LeagueService {
           ? row.field
           : row.field && typeof row.field === 'object' && '$id' in row.field
           ? (row.field as { $id?: string }).$id ?? undefined
+          : undefined,
+      scheduledFieldIds:
+        Array.isArray(row.scheduledFieldIds) && row.scheduledFieldIds.length
+          ? Array.from(new Set(row.scheduledFieldIds.map((entry: unknown) => String(entry)).filter(Boolean)))
+          : typeof row.scheduledFieldId === 'string'
+          ? [row.scheduledFieldId]
           : undefined,
     };
 

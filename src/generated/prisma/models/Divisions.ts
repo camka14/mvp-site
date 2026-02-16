@@ -20,8 +20,20 @@ export type DivisionsModel = runtime.Types.Result.DefaultSelection<Prisma.$Divis
 
 export type AggregateDivisions = {
   _count: DivisionsCountAggregateOutputType | null
+  _avg: DivisionsAvgAggregateOutputType | null
+  _sum: DivisionsSumAggregateOutputType | null
   _min: DivisionsMinAggregateOutputType | null
   _max: DivisionsMaxAggregateOutputType | null
+}
+
+export type DivisionsAvgAggregateOutputType = {
+  minRating: number | null
+  maxRating: number | null
+}
+
+export type DivisionsSumAggregateOutputType = {
+  minRating: number | null
+  maxRating: number | null
 }
 
 export type DivisionsMinAggregateOutputType = {
@@ -29,6 +41,12 @@ export type DivisionsMinAggregateOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   name: string | null
+  key: string | null
+  eventId: string | null
+  organizationId: string | null
+  sportId: string | null
+  minRating: number | null
+  maxRating: number | null
 }
 
 export type DivisionsMaxAggregateOutputType = {
@@ -36,6 +54,12 @@ export type DivisionsMaxAggregateOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   name: string | null
+  key: string | null
+  eventId: string | null
+  organizationId: string | null
+  sportId: string | null
+  minRating: number | null
+  maxRating: number | null
 }
 
 export type DivisionsCountAggregateOutputType = {
@@ -43,15 +67,38 @@ export type DivisionsCountAggregateOutputType = {
   createdAt: number
   updatedAt: number
   name: number
+  key: number
+  eventId: number
+  organizationId: number
+  sportId: number
+  minRating: number
+  maxRating: number
+  fieldIds: number
   _all: number
 }
 
+
+export type DivisionsAvgAggregateInputType = {
+  minRating?: true
+  maxRating?: true
+}
+
+export type DivisionsSumAggregateInputType = {
+  minRating?: true
+  maxRating?: true
+}
 
 export type DivisionsMinAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
   name?: true
+  key?: true
+  eventId?: true
+  organizationId?: true
+  sportId?: true
+  minRating?: true
+  maxRating?: true
 }
 
 export type DivisionsMaxAggregateInputType = {
@@ -59,6 +106,12 @@ export type DivisionsMaxAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   name?: true
+  key?: true
+  eventId?: true
+  organizationId?: true
+  sportId?: true
+  minRating?: true
+  maxRating?: true
 }
 
 export type DivisionsCountAggregateInputType = {
@@ -66,6 +119,13 @@ export type DivisionsCountAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   name?: true
+  key?: true
+  eventId?: true
+  organizationId?: true
+  sportId?: true
+  minRating?: true
+  maxRating?: true
+  fieldIds?: true
   _all?: true
 }
 
@@ -107,6 +167,18 @@ export type DivisionsAggregateArgs<ExtArgs extends runtime.Types.Extensions.Inte
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    * 
+   * Select which fields to average
+  **/
+  _avg?: DivisionsAvgAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
+   * Select which fields to sum
+  **/
+  _sum?: DivisionsSumAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
    * Select which fields to find the minimum value
   **/
   _min?: DivisionsMinAggregateInputType
@@ -137,6 +209,8 @@ export type DivisionsGroupByArgs<ExtArgs extends runtime.Types.Extensions.Intern
   take?: number
   skip?: number
   _count?: DivisionsCountAggregateInputType | true
+  _avg?: DivisionsAvgAggregateInputType
+  _sum?: DivisionsSumAggregateInputType
   _min?: DivisionsMinAggregateInputType
   _max?: DivisionsMaxAggregateInputType
 }
@@ -146,7 +220,16 @@ export type DivisionsGroupByOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   name: string
+  key: string | null
+  eventId: string | null
+  organizationId: string | null
+  sportId: string | null
+  minRating: number | null
+  maxRating: number | null
+  fieldIds: string[]
   _count: DivisionsCountAggregateOutputType | null
+  _avg: DivisionsAvgAggregateOutputType | null
+  _sum: DivisionsSumAggregateOutputType | null
   _min: DivisionsMinAggregateOutputType | null
   _max: DivisionsMaxAggregateOutputType | null
 }
@@ -174,6 +257,13 @@ export type DivisionsWhereInput = {
   createdAt?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   name?: Prisma.StringFilter<"Divisions"> | string
+  key?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  eventId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  organizationId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  sportId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
+  maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
+  fieldIds?: Prisma.StringNullableListFilter<"Divisions">
 }
 
 export type DivisionsOrderByWithRelationInput = {
@@ -181,6 +271,13 @@ export type DivisionsOrderByWithRelationInput = {
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrder
+  key?: Prisma.SortOrderInput | Prisma.SortOrder
+  eventId?: Prisma.SortOrderInput | Prisma.SortOrder
+  organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  sportId?: Prisma.SortOrderInput | Prisma.SortOrder
+  minRating?: Prisma.SortOrderInput | Prisma.SortOrder
+  maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
+  fieldIds?: Prisma.SortOrder
 }
 
 export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
@@ -191,6 +288,13 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   name?: Prisma.StringFilter<"Divisions"> | string
+  key?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  eventId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  organizationId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  sportId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
+  maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
+  fieldIds?: Prisma.StringNullableListFilter<"Divisions">
 }, "id">
 
 export type DivisionsOrderByWithAggregationInput = {
@@ -198,9 +302,18 @@ export type DivisionsOrderByWithAggregationInput = {
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrder
+  key?: Prisma.SortOrderInput | Prisma.SortOrder
+  eventId?: Prisma.SortOrderInput | Prisma.SortOrder
+  organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  sportId?: Prisma.SortOrderInput | Prisma.SortOrder
+  minRating?: Prisma.SortOrderInput | Prisma.SortOrder
+  maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
+  fieldIds?: Prisma.SortOrder
   _count?: Prisma.DivisionsCountOrderByAggregateInput
+  _avg?: Prisma.DivisionsAvgOrderByAggregateInput
   _max?: Prisma.DivisionsMaxOrderByAggregateInput
   _min?: Prisma.DivisionsMinOrderByAggregateInput
+  _sum?: Prisma.DivisionsSumOrderByAggregateInput
 }
 
 export type DivisionsScalarWhereWithAggregatesInput = {
@@ -211,6 +324,13 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Divisions"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Divisions"> | Date | string | null
   name?: Prisma.StringWithAggregatesFilter<"Divisions"> | string
+  key?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  eventId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  organizationId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  sportId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  minRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
+  maxRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
+  fieldIds?: Prisma.StringNullableListFilter<"Divisions">
 }
 
 export type DivisionsCreateInput = {
@@ -218,6 +338,13 @@ export type DivisionsCreateInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   name: string
+  key?: string | null
+  eventId?: string | null
+  organizationId?: string | null
+  sportId?: string | null
+  minRating?: number | null
+  maxRating?: number | null
+  fieldIds?: Prisma.DivisionsCreatefieldIdsInput | string[]
 }
 
 export type DivisionsUncheckedCreateInput = {
@@ -225,6 +352,13 @@ export type DivisionsUncheckedCreateInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   name: string
+  key?: string | null
+  eventId?: string | null
+  organizationId?: string | null
+  sportId?: string | null
+  minRating?: number | null
+  maxRating?: number | null
+  fieldIds?: Prisma.DivisionsCreatefieldIdsInput | string[]
 }
 
 export type DivisionsUpdateInput = {
@@ -232,6 +366,13 @@ export type DivisionsUpdateInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
 }
 
 export type DivisionsUncheckedUpdateInput = {
@@ -239,6 +380,13 @@ export type DivisionsUncheckedUpdateInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
 }
 
 export type DivisionsCreateManyInput = {
@@ -246,6 +394,13 @@ export type DivisionsCreateManyInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   name: string
+  key?: string | null
+  eventId?: string | null
+  organizationId?: string | null
+  sportId?: string | null
+  minRating?: number | null
+  maxRating?: number | null
+  fieldIds?: Prisma.DivisionsCreatefieldIdsInput | string[]
 }
 
 export type DivisionsUpdateManyMutationInput = {
@@ -253,6 +408,13 @@ export type DivisionsUpdateManyMutationInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
 }
 
 export type DivisionsUncheckedUpdateManyInput = {
@@ -260,6 +422,13 @@ export type DivisionsUncheckedUpdateManyInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
 }
 
 export type DivisionsCountOrderByAggregateInput = {
@@ -267,6 +436,18 @@ export type DivisionsCountOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
+  key?: Prisma.SortOrder
+  eventId?: Prisma.SortOrder
+  organizationId?: Prisma.SortOrder
+  sportId?: Prisma.SortOrder
+  minRating?: Prisma.SortOrder
+  maxRating?: Prisma.SortOrder
+  fieldIds?: Prisma.SortOrder
+}
+
+export type DivisionsAvgOrderByAggregateInput = {
+  minRating?: Prisma.SortOrder
+  maxRating?: Prisma.SortOrder
 }
 
 export type DivisionsMaxOrderByAggregateInput = {
@@ -274,6 +455,12 @@ export type DivisionsMaxOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
+  key?: Prisma.SortOrder
+  eventId?: Prisma.SortOrder
+  organizationId?: Prisma.SortOrder
+  sportId?: Prisma.SortOrder
+  minRating?: Prisma.SortOrder
+  maxRating?: Prisma.SortOrder
 }
 
 export type DivisionsMinOrderByAggregateInput = {
@@ -281,6 +468,26 @@ export type DivisionsMinOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   name?: Prisma.SortOrder
+  key?: Prisma.SortOrder
+  eventId?: Prisma.SortOrder
+  organizationId?: Prisma.SortOrder
+  sportId?: Prisma.SortOrder
+  minRating?: Prisma.SortOrder
+  maxRating?: Prisma.SortOrder
+}
+
+export type DivisionsSumOrderByAggregateInput = {
+  minRating?: Prisma.SortOrder
+  maxRating?: Prisma.SortOrder
+}
+
+export type DivisionsCreatefieldIdsInput = {
+  set: string[]
+}
+
+export type DivisionsUpdatefieldIdsInput = {
+  set?: string[]
+  push?: string | string[]
 }
 
 
@@ -290,6 +497,13 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   createdAt?: boolean
   updatedAt?: boolean
   name?: boolean
+  key?: boolean
+  eventId?: boolean
+  organizationId?: boolean
+  sportId?: boolean
+  minRating?: boolean
+  maxRating?: boolean
+  fieldIds?: boolean
 }, ExtArgs["result"]["divisions"]>
 
 export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -297,6 +511,13 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   createdAt?: boolean
   updatedAt?: boolean
   name?: boolean
+  key?: boolean
+  eventId?: boolean
+  organizationId?: boolean
+  sportId?: boolean
+  minRating?: boolean
+  maxRating?: boolean
+  fieldIds?: boolean
 }, ExtArgs["result"]["divisions"]>
 
 export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -304,6 +525,13 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   createdAt?: boolean
   updatedAt?: boolean
   name?: boolean
+  key?: boolean
+  eventId?: boolean
+  organizationId?: boolean
+  sportId?: boolean
+  minRating?: boolean
+  maxRating?: boolean
+  fieldIds?: boolean
 }, ExtArgs["result"]["divisions"]>
 
 export type DivisionsSelectScalar = {
@@ -311,9 +539,16 @@ export type DivisionsSelectScalar = {
   createdAt?: boolean
   updatedAt?: boolean
   name?: boolean
+  key?: boolean
+  eventId?: boolean
+  organizationId?: boolean
+  sportId?: boolean
+  minRating?: boolean
+  maxRating?: boolean
+  fieldIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "eventId" | "organizationId" | "sportId" | "minRating" | "maxRating" | "fieldIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -323,6 +558,13 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     createdAt: Date | null
     updatedAt: Date | null
     name: string
+    key: string | null
+    eventId: string | null
+    organizationId: string | null
+    sportId: string | null
+    minRating: number | null
+    maxRating: number | null
+    fieldIds: string[]
   }, ExtArgs["result"]["divisions"]>
   composites: {}
 }
@@ -750,6 +992,13 @@ export interface DivisionsFieldRefs {
   readonly createdAt: Prisma.FieldRef<"Divisions", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Divisions", 'DateTime'>
   readonly name: Prisma.FieldRef<"Divisions", 'String'>
+  readonly key: Prisma.FieldRef<"Divisions", 'String'>
+  readonly eventId: Prisma.FieldRef<"Divisions", 'String'>
+  readonly organizationId: Prisma.FieldRef<"Divisions", 'String'>
+  readonly sportId: Prisma.FieldRef<"Divisions", 'String'>
+  readonly minRating: Prisma.FieldRef<"Divisions", 'Float'>
+  readonly maxRating: Prisma.FieldRef<"Divisions", 'Float'>
+  readonly fieldIds: Prisma.FieldRef<"Divisions", 'String[]'>
 }
     
 

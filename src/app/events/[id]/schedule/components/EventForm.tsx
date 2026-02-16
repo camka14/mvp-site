@@ -67,13 +67,19 @@ const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const EVENT_DIVISION_OPTIONS = [
+const RATED_DIVISION_OPTIONS = [
     { value: 'beginner', label: 'Beginner (1.0 - 2.5)' },
     { value: 'intermediate', label: 'Intermediate (2.5 - 3.5)' },
     { value: 'advanced', label: 'Advanced (3.5 - 4.5)' },
     { value: 'expert', label: 'Expert (4.5+)' },
     { value: 'open', label: 'Open (All Skill Levels)' },
 ];
+const GENERIC_DIVISION_OPTIONS = [
+    { value: 'beginner', label: 'Beginner' },
+    { value: 'advanced', label: 'Advanced' },
+    { value: 'open', label: 'Open (All Skill Levels)' },
+];
+const DEFAULT_DIVISION_KEY = 'open';
 
 const normalizeWeekdays = (slot: { dayOfWeek?: number; daysOfWeek?: number[] }): number[] => {
     const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
@@ -103,9 +109,148 @@ const normalizeDivisionKeys = (values: unknown): string[] => {
     );
 };
 
+const normalizeFieldIds = (values: unknown): string[] => {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+    return Array.from(
+        new Set(
+            values
+                .map((value) => String(value).trim())
+                .filter((value) => value.length > 0),
+        ),
+    );
+};
+
+const normalizeSlotFieldIds = (slot: { scheduledFieldId?: string; scheduledFieldIds?: string[] }): string[] => {
+    const fromList = normalizeFieldIds(slot.scheduledFieldIds);
+    if (fromList.length) {
+        return fromList;
+    }
+    return typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0
+        ? [slot.scheduledFieldId]
+        : [];
+};
+
 const defaultFieldDivisionKeys = (eventDivisions: unknown): string[] => {
     const normalized = normalizeDivisionKeys(eventDivisions);
-    return normalized.length ? normalized : ['open'];
+    return normalized.length ? normalized : [DEFAULT_DIVISION_KEY];
+};
+
+const defaultDivisionKeysForSport = (sportInput?: Sport | string | null): string[] => {
+    const sportName = typeof sportInput === 'string'
+        ? sportInput
+        : sportInput?.name ?? sportInput?.$id ?? '';
+    const normalizedSport = sportName.toLowerCase();
+    if (normalizedSport.includes('soccer')) {
+        return ['beginner', 'advanced'];
+    }
+    return ['beginner', 'intermediate', 'advanced'];
+};
+
+const divisionOptionsForSport = (sportInput?: Sport | string | null): Array<{ value: string; label: string }> => {
+    const sportName = typeof sportInput === 'string'
+        ? sportInput
+        : sportInput?.name ?? sportInput?.$id ?? '';
+    const normalizedSport = sportName.toLowerCase();
+    if (normalizedSport.includes('soccer')) {
+        return GENERIC_DIVISION_OPTIONS;
+    }
+    return RATED_DIVISION_OPTIONS;
+};
+
+const toFieldIdList = (fields: Field[]): string[] => {
+    return Array.from(
+        new Set(
+            fields
+                .map((field) => field?.$id)
+                .filter((fieldId): fieldId is string => typeof fieldId === 'string' && fieldId.length > 0),
+        ),
+    );
+};
+
+const normalizeDivisionFieldIds = (
+    value: unknown,
+    divisionKeys: string[],
+    availableFieldIds: string[],
+): Record<string, string[]> => {
+    const source = value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+    const allowed = new Set(availableFieldIds);
+    const normalizedDivisionKeys = divisionKeys.length ? divisionKeys : [DEFAULT_DIVISION_KEY];
+    const result: Record<string, string[]> = {};
+
+    normalizedDivisionKeys.forEach((divisionKey) => {
+        const rawFieldIds = source[divisionKey];
+        const selected = Array.isArray(rawFieldIds)
+            ? Array.from(new Set(rawFieldIds.map((entry) => String(entry)).filter((entry) => allowed.has(entry))))
+            : [];
+        result[divisionKey] = selected.length ? selected : [...availableFieldIds];
+    });
+
+    return result;
+};
+
+const deriveDivisionFieldIdsFromFields = (
+    fields: Field[],
+    divisionKeys: string[],
+    fallbackFieldIds: string[],
+): Record<string, string[]> => {
+    const normalizedDivisionKeys = divisionKeys.length ? divisionKeys : [DEFAULT_DIVISION_KEY];
+    const map = new Map<string, Set<string>>();
+    normalizedDivisionKeys.forEach((divisionKey) => map.set(divisionKey, new Set<string>()));
+
+    fields.forEach((field) => {
+        const fieldId = field?.$id;
+        if (!fieldId) return;
+        const keys = normalizeDivisionKeys(field.divisions);
+        keys.forEach((key) => {
+            const bucket = map.get(key) ?? new Set<string>();
+            bucket.add(fieldId);
+            map.set(key, bucket);
+        });
+    });
+
+    const result: Record<string, string[]> = {};
+    normalizedDivisionKeys.forEach((divisionKey) => {
+        const mapped = Array.from(map.get(divisionKey) ?? []);
+        result[divisionKey] = mapped.length ? mapped : [...fallbackFieldIds];
+    });
+    return result;
+};
+
+const divisionFieldIdsEqual = (
+    left: Record<string, string[]>,
+    right: Record<string, string[]>,
+): boolean => {
+    const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)])).sort();
+    for (const key of keys) {
+        const leftValues = Array.from(new Set((left[key] ?? []).map(String))).sort();
+        const rightValues = Array.from(new Set((right[key] ?? []).map(String))).sort();
+        if (leftValues.length !== rightValues.length) {
+            return false;
+        }
+        for (let index = 0; index < leftValues.length; index += 1) {
+            if (leftValues[index] !== rightValues[index]) {
+                return false;
+            }
+        }
+    }
+    return true;
+};
+
+const stringArraysEqual = (left: string[], right: string[]): boolean => {
+    if (left.length !== right.length) {
+        return false;
+    }
+    return left.every((value, index) => value === right[index]);
+};
+
+const stringSetsEqual = (left: string[], right: string[]): boolean => {
+    const normalizedLeft = Array.from(new Set(left)).sort();
+    const normalizedRight = Array.from(new Set(right)).sort();
+    return stringArraysEqual(normalizedLeft, normalizedRight);
 };
 
 const mergeSlotPayloadsForForm = (
@@ -115,17 +260,24 @@ const mergeSlotPayloadsForForm = (
     const groups = new Map<string, {
         slot: Partial<TimeSlot>;
         days: Set<number>;
+        divisions: Set<string>;
+        fieldIds: Set<string>;
         ids: string[];
     }>();
 
     for (const slot of slots) {
-        const resolvedFieldId = slot.scheduledFieldId ?? fallbackFieldId;
+        const resolvedFieldIds = normalizeSlotFieldIds({
+            scheduledFieldId: slot.scheduledFieldId,
+            scheduledFieldIds: slot.scheduledFieldIds,
+        });
+        if (!resolvedFieldIds.length && fallbackFieldId) {
+            resolvedFieldIds.push(fallbackFieldId);
+        }
         const normalizedDays = normalizeWeekdays({
             dayOfWeek: slot.dayOfWeek,
             daysOfWeek: slot.daysOfWeek as number[] | undefined,
         });
         const key = [
-            resolvedFieldId ?? '',
             slot.startTimeMinutes ?? '',
             slot.endTimeMinutes ?? '',
             slot.repeating ?? true,
@@ -138,7 +290,8 @@ const mergeSlotPayloadsForForm = (
             groups.set(key, {
                 slot: {
                     $id: slot.$id,
-                    scheduledFieldId: resolvedFieldId,
+                    scheduledFieldId: resolvedFieldIds[0],
+                    scheduledFieldIds: resolvedFieldIds,
                     startTimeMinutes: slot.startTimeMinutes,
                     endTimeMinutes: slot.endTimeMinutes,
                     repeating: slot.repeating,
@@ -146,23 +299,32 @@ const mergeSlotPayloadsForForm = (
                     endDate: slot.endDate,
                 },
                 days: new Set(normalizedDays),
+                divisions: new Set(normalizeDivisionKeys(slot.divisions)),
+                fieldIds: new Set(resolvedFieldIds),
                 ids: [slot.$id],
             });
             continue;
         }
         normalizedDays.forEach((day) => existing.days.add(day));
+        normalizeDivisionKeys(slot.divisions).forEach((divisionKey) => existing.divisions.add(divisionKey));
+        resolvedFieldIds.forEach((fieldId) => existing.fieldIds.add(fieldId));
         if (slot.$id) {
             existing.ids.push(slot.$id);
         }
     }
 
-    return Array.from(groups.values()).map(({ slot, days, ids }) => {
+    return Array.from(groups.values()).map(({ slot, days, divisions, fieldIds, ids }) => {
         const mergedDays = Array.from(days).sort((a, b) => a - b);
+        const mergedDivisions = Array.from(divisions).sort();
+        const mergedFieldIds = Array.from(fieldIds);
         return {
             ...slot,
             $id: ids.length === 1 ? ids[0] : createClientId(),
-            dayOfWeek: mergedDays[0],
+            scheduledFieldId: mergedFieldIds[0],
+            scheduledFieldIds: mergedFieldIds,
+            dayOfWeek: (mergedDays[0] ?? 0) as TimeSlot['dayOfWeek'],
             daysOfWeek: mergedDays as TimeSlot['daysOfWeek'],
+            divisions: mergedDivisions,
         };
     });
 };
@@ -229,10 +391,11 @@ const computeSlotError = (
         return undefined;
     }
 
-    const slotField = slot.scheduledFieldId;
+    const slotFieldIds = normalizeSlotFieldIds(slot);
     const slotDays = normalizeWeekdays(slot);
 
     if (
+        slotFieldIds.length === 0 ||
         slotDays.length === 0 ||
         typeof slot.startTimeMinutes !== 'number' ||
         typeof slot.endTimeMinutes !== 'number'
@@ -252,12 +415,12 @@ const computeSlotError = (
             return false;
         }
 
-        const otherField = other.scheduledFieldId;
-        if (!otherField) {
+        const otherFieldIds = normalizeSlotFieldIds(other);
+        if (!otherFieldIds.length) {
             return false;
         }
 
-        if (otherField !== slotField) {
+        if (!otherFieldIds.some((fieldId) => slotFieldIds.includes(fieldId))) {
             return false;
         }
 
@@ -425,6 +588,8 @@ type EventFormState = {
     teamSignup: boolean;
     singleDivision: boolean;
     divisions: string[];
+    divisionFieldIds: Record<string, string[]>;
+    selectedFieldIds: string[];
     cancellationRefundHours: number;
     registrationCutoffHours: number;
     organizationId?: string;
@@ -575,6 +740,19 @@ const mapEventToFormState = (event: Event): EventFormState => ({
     divisions: Array.isArray(event.divisions)
         ? (event.divisions as (string | CoreDivision)[]).map(divisionKeyFromValue)
         : [],
+    divisionFieldIds: event.divisionFieldIds && typeof event.divisionFieldIds === 'object'
+        ? Object.fromEntries(
+            Object.entries(event.divisionFieldIds).map(([divisionKey, fieldIds]) => [
+                String(divisionKey).toLowerCase(),
+                Array.isArray(fieldIds)
+                    ? Array.from(new Set(fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)))
+                    : [],
+            ]),
+        )
+        : {},
+    selectedFieldIds: Array.isArray(event.fieldIds)
+        ? Array.from(new Set(event.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)))
+        : [],
     cancellationRefundHours: Number.isFinite(event.cancellationRefundHours)
         ? event.cancellationRefundHours
         : 24,
@@ -619,8 +797,10 @@ const leagueSlotSchema: z.ZodType<LeagueSlotForm> = z.object({
     key: z.string(),
     $id: z.string().optional(),
     scheduledFieldId: z.string().optional(),
+    scheduledFieldIds: z.array(z.string()).default([]),
     dayOfWeek: z.number().int().min(0).max(6).optional(),
     daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
+    divisions: z.array(z.string()).default([]),
     startTimeMinutes: z.number().int().nonnegative().optional(),
     endTimeMinutes: z.number().int().positive().optional(),
     repeating: z.boolean().optional(),
@@ -679,6 +859,8 @@ const eventFormSchema = z
         teamSignup: z.boolean(),
         singleDivision: z.boolean(),
         divisions: z.array(z.string()),
+        divisionFieldIds: z.record(z.string(), z.array(z.string())).default({}),
+        selectedFieldIds: z.array(z.string()).default([]),
         cancellationRefundHours: z.number().min(0),
         registrationCutoffHours: z.number().min(0),
         organizationId: z.string().optional(),
@@ -774,6 +956,7 @@ const eventFormSchema = z
         }
 
         if (values.eventType === 'LEAGUE') {
+            const selectedDivisionKeys = normalizeDivisionKeys(values.divisions);
             if (
                 values.leagueData.includePlayoffs &&
                 !(typeof values.leagueData.playoffTeamCount === 'number' && values.leagueData.playoffTeamCount >= 2)
@@ -793,11 +976,11 @@ const eventFormSchema = z
                 });
             }
             values.leagueSlots.forEach((slot, index) => {
-                if (!slot.scheduledFieldId) {
+                if (!normalizeSlotFieldIds(slot).length) {
                     ctx.addIssue({
                         code: "custom",
-                        message: 'Select a field',
-                        path: ['leagueSlots', index, 'scheduledFieldId'],
+                        message: 'Select at least one field',
+                        path: ['leagueSlots', index, 'scheduledFieldIds'],
                     });
                 }
                 if (!normalizeWeekdays(slot).length) {
@@ -819,6 +1002,17 @@ const eventFormSchema = z
                         code: "custom",
                         message: 'Select an end time',
                         path: ['leagueSlots', index, 'endTimeMinutes'],
+                    });
+                }
+                if (
+                    values.singleDivision &&
+                    selectedDivisionKeys.length &&
+                    !stringSetsEqual(normalizeDivisionKeys(slot.divisions), selectedDivisionKeys)
+                ) {
+                    ctx.addIssue({
+                        code: "custom",
+                        message: 'Single division requires every timeslot to include all selected divisions.',
+                        path: ['leagueSlots', index, 'divisions'],
                     });
                 }
                 const error = computeSlotError(values.leagueSlots, index, values.eventType);
@@ -848,17 +1042,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const refsPrefilledRef = useRef<boolean>(false);
     const lastResetEventIdRef = useRef<string | null>(null);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
-    const createSlotForm = useCallback((slot?: Partial<TimeSlot>): LeagueSlotForm => {
+    const createSlotForm = useCallback((slot?: Partial<TimeSlot>, fallbackDivisions: string[] = []): LeagueSlotForm => {
         const normalizedDays = normalizeWeekdays({
             dayOfWeek: typeof slot?.dayOfWeek === 'number' ? slot.dayOfWeek : undefined,
             daysOfWeek: Array.isArray(slot?.daysOfWeek) ? slot.daysOfWeek : undefined,
         });
+        const normalizedDivisions = normalizeDivisionKeys(slot?.divisions);
+        const normalizedFieldIds = normalizeSlotFieldIds({
+            scheduledFieldId: slot?.scheduledFieldId,
+            scheduledFieldIds: slot?.scheduledFieldIds,
+        });
         return {
             key: slot?.$id ?? createClientId(),
             $id: slot?.$id,
-            scheduledFieldId: slot?.scheduledFieldId ? slot.scheduledFieldId as string : undefined,
+            scheduledFieldId: normalizedFieldIds[0],
+            scheduledFieldIds: normalizedFieldIds,
             dayOfWeek: normalizedDays[0],
             daysOfWeek: normalizedDays,
+            divisions: normalizedDivisions.length ? normalizedDivisions : fallbackDivisions,
             startTimeMinutes: slot?.startTimeMinutes,
             endTimeMinutes: slot?.endTimeMinutes,
             repeating: slot?.repeating ?? true,
@@ -912,6 +1113,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 const normalized: TimeSlot = {
                     ...rest,
                     scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                    scheduledFieldIds: normalizeSlotFieldIds({
+                        scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                        scheduledFieldIds: rest.scheduledFieldIds,
+                    }),
                 };
                 return normalized;
             })
@@ -981,6 +1186,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             next.divisions = Array.isArray(defaults.divisions)
                 ? defaults.divisions.map(divisionKeyFromValue)
                 : [];
+        }
+        if (defaults.divisionFieldIds && typeof defaults.divisionFieldIds === 'object') {
+            next.divisionFieldIds = Object.fromEntries(
+                Object.entries(defaults.divisionFieldIds).map(([divisionKey, fieldIds]) => [
+                    String(divisionKey).toLowerCase(),
+                    Array.isArray(fieldIds)
+                        ? Array.from(new Set(fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)))
+                        : [],
+                ]),
+            );
+        }
+        if (Array.isArray(defaults.fieldIds)) {
+            next.selectedFieldIds = Array.from(new Set(defaults.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)));
         }
         if (typeof defaults.cancellationRefundHours === 'number') {
             next.cancellationRefundHours = defaults.cancellationRefundHours;
@@ -1064,6 +1282,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             : base.installmentAmounts.length;
         base.installmentCount = normalizedInstallmentCount || 0;
         base.allowTeamSplitDefault = Boolean(base.allowTeamSplitDefault);
+        if (!base.organizationId && organization?.$id) {
+            base.organizationId = organization.$id;
+        }
 
         const defaultFieldCount = (() => {
             if (activeEditingEvent?.fields?.length) {
@@ -1096,6 +1317,53 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return [];
         })();
+        const allDefaultFieldIds = toFieldIdList(defaultFields);
+        const defaultSelectedFieldIds = (() => {
+            if (Array.isArray(base.selectedFieldIds) && base.selectedFieldIds.length) {
+                return Array.from(new Set(base.selectedFieldIds.filter((fieldId) => allDefaultFieldIds.includes(fieldId))));
+            }
+            if (Array.isArray(activeEditingEvent?.fieldIds) && activeEditingEvent.fieldIds.length) {
+                return Array.from(
+                    new Set(
+                        activeEditingEvent.fieldIds
+                            .map((fieldId) => String(fieldId))
+                            .filter((fieldId) => allDefaultFieldIds.includes(fieldId)),
+                    ),
+                );
+            }
+            return allDefaultFieldIds;
+        })();
+        const availableFieldIdsForDivisions = defaultSelectedFieldIds.length
+            ? defaultSelectedFieldIds
+            : allDefaultFieldIds;
+        const defaultDivisionKeys = (() => {
+            const normalized = normalizeDivisionKeys(base.divisions);
+            if (normalized.length) {
+                return normalized;
+            }
+            return defaultDivisionKeysForSport(base.sportConfig ?? base.sportId);
+        })();
+        const defaultDivisionFieldIds = (() => {
+            const normalizedFromEvent = normalizeDivisionFieldIds(
+                base.divisionFieldIds,
+                defaultDivisionKeys,
+                availableFieldIdsForDivisions,
+            );
+            const hasEventMapValues = Object.values(normalizedFromEvent).some((fieldIds) => fieldIds.length > 0);
+            if (hasEventMapValues) {
+                return normalizedFromEvent;
+            }
+            const derivedFromFields = deriveDivisionFieldIdsFromFields(
+                defaultFields,
+                defaultDivisionKeys,
+                availableFieldIdsForDivisions,
+            );
+            return normalizeDivisionFieldIds(
+                derivedFromFields,
+                defaultDivisionKeys,
+                availableFieldIdsForDivisions,
+            );
+        })();
 
         const defaults = immutableDefaults ?? {};
         const defaultFieldId = Array.isArray(defaults.fields) && defaults.fields.length > 0
@@ -1105,14 +1373,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultSlots = (() => {
             if (Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
                 return mergeSlotPayloadsForForm(defaults.timeSlots as TimeSlot[], defaultFieldId)
-                    .map((slot) => createSlotForm(slot));
+                    .map((slot) => createSlotForm(slot, defaultDivisionKeys));
             }
 
             if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE' && activeEditingEvent.timeSlots?.length) {
                 return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
-                    .map((slot) => createSlotForm(slot));
+                    .map((slot) => createSlotForm(slot, defaultDivisionKeys));
             }
-            return [createSlotForm()];
+            return [createSlotForm(undefined, defaultDivisionKeys)];
         })();
 
         const defaultLeagueData: LeagueConfig = (() => {
@@ -1171,6 +1439,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         return {
             ...base,
+            divisions: defaultDivisionKeys,
+            divisionFieldIds: defaultDivisionFieldIds,
+            selectedFieldIds: defaultSelectedFieldIds,
             leagueSlots: normalizeSlotState(defaultSlots, base.eventType),
             leagueData: defaultLeagueData,
             playoffData: defaultPlayoffData,
@@ -1229,6 +1500,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const playoffData = formValues.playoffData;
     const fields = formValues.fields;
     const fieldCount = formValues.fieldCount;
+    const selectedFieldIds = useMemo(
+        () => (Array.isArray(formValues.selectedFieldIds) ? formValues.selectedFieldIds : []),
+        [formValues.selectedFieldIds],
+    );
+    const divisionFieldIds = useMemo(
+        () => (
+            formValues.divisionFieldIds && typeof formValues.divisionFieldIds === 'object'
+                ? formValues.divisionFieldIds
+                : {}
+        ),
+        [formValues.divisionFieldIds],
+    );
     const joinAsParticipant = formValues.joinAsParticipant;
     const organizationId = organization?.$id ?? eventData.organizationId;
 
@@ -1353,6 +1636,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [setValue],
     );
 
+    const setSelectedFieldIds = useCallback(
+        (value: string[]) => {
+            setValue('selectedFieldIds', value, { shouldDirty: true, shouldValidate: true });
+        },
+        [setValue],
+    );
+
+    const setDivisionFieldIds = useCallback(
+        (value: Record<string, string[]>) => {
+            setValue('divisionFieldIds', value, { shouldDirty: true, shouldValidate: true });
+        },
+        [setValue],
+    );
+
     const setJoinAsParticipant = useCallback(
         (value: boolean) => {
             setValue('joinAsParticipant', value, { shouldDirty: true, shouldValidate: true });
@@ -1461,11 +1758,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [invitingReferees, setInvitingReferees] = useState(false);
 
     const [fieldsLoading, setFieldsLoading] = useState(false);
-    const shouldProvisionFields = !organization && !hasImmutableFields;
+    const organizationHostedEventId = (
+        organization?.$id
+        || eventData.organizationId
+        || (activeEditingEvent?.organization as Organization | undefined)?.$id
+        || activeEditingEvent?.organizationId
+        || ''
+    );
+    const isOrganizationHostedEvent = organizationHostedEventId.length > 0;
+    const shouldProvisionFields = !isOrganizationHostedEvent && !hasImmutableFields;
     const shouldManageLocalFields = shouldProvisionFields && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
+    const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
     const fieldCountOptions = useMemo(
         () => Array.from({ length: 12 }, (_, idx) => ({ value: String(idx + 1), label: String(idx + 1) })),
         []
+    );
+    const divisionOptions = useMemo(
+        () => divisionOptionsForSport(eventData.sportConfig ?? eventData.sportId),
+        [eventData.sportConfig, eventData.sportId],
     );
 
     const handleSearchReferees = useCallback(
@@ -1630,6 +1940,55 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [sportsLoading, sportsById]);
 
     useEffect(() => {
+        const optionValues = divisionOptions.map((option) => option.value);
+        if (!optionValues.length) {
+            return;
+        }
+        const current = normalizeDivisionKeys(getValues('divisions')).filter((divisionKey) => optionValues.includes(divisionKey));
+        let next = current;
+        if (!next.length) {
+            const defaultKeys = defaultDivisionKeysForSport(eventData.sportConfig ?? eventData.sportId)
+                .filter((divisionKey) => optionValues.includes(divisionKey));
+            next = defaultKeys.length ? defaultKeys : [optionValues[0]];
+        }
+        if (!stringArraysEqual(current, next)) {
+            setValue('divisions', next, { shouldDirty: false, shouldValidate: true });
+        }
+    }, [divisionOptions, eventData.sportConfig, eventData.sportId, getValues, setValue]);
+
+    useEffect(() => {
+        const selectedDivisionKeys = normalizeDivisionKeys(eventData.divisions);
+        if (!selectedDivisionKeys.length) {
+            return;
+        }
+        const selectedDivisionSet = new Set(selectedDivisionKeys);
+        const enforceAllSlotDivisions = Boolean(eventData.singleDivision);
+        const hasMismatch = leagueSlots.some((slot) => {
+            const current = normalizeDivisionKeys(slot.divisions);
+            if (enforceAllSlotDivisions) {
+                return !stringSetsEqual(current, selectedDivisionKeys);
+            }
+            const filtered = current.filter((divisionKey) => selectedDivisionSet.has(divisionKey));
+            return filtered.length === 0 || !stringArraysEqual(current, filtered);
+        });
+        if (!hasMismatch) {
+            return;
+        }
+        updateLeagueSlots((prev) =>
+            prev.map((slot) => {
+                const current = normalizeDivisionKeys(slot.divisions);
+                const filtered = current.filter((divisionKey) => selectedDivisionSet.has(divisionKey));
+                return {
+                    ...slot,
+                    divisions: enforceAllSlotDivisions
+                        ? selectedDivisionKeys
+                        : (filtered.length ? filtered : selectedDivisionKeys),
+                };
+            }),
+        );
+    }, [eventData.divisions, eventData.singleDivision, leagueSlots, updateLeagueSlots]);
+
+    useEffect(() => {
         const requiresSets = Boolean(eventData.sportConfig?.usePointsPerSetWin);
         setLeagueData((prev) => {
             const next = { ...prev };
@@ -1706,7 +2065,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         const fallbackDivisions = defaultFieldDivisionKeys(eventData.divisions);
         setFields(prev => {
-            const normalized = prev.slice(0, fieldCount).map((field, index) => ({
+            const normalized: Field[] = prev.slice(0, fieldCount).map((field, index) => ({
                 ...field,
                 fieldNumber: index + 1,
                 type: eventData.fieldType,
@@ -1714,7 +2073,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     const current = normalizeDivisionKeys(field.divisions);
                     return current.length ? current : fallbackDivisions;
                 })(),
-            }));
+            } as Field));
 
             if (normalized.length < fieldCount) {
                 for (let index = normalized.length; index < fieldCount; index += 1) {
@@ -1744,20 +2103,79 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
         );
         setFields(sorted);
-    }, [activeEditingEvent?.fields, shouldManageLocalFields]);
+    }, [activeEditingEvent?.fields, setFields, shouldManageLocalFields]);
 
-    // Clear slot field references that point to deleted ad-hoc fields when the list is regenerated.
     useEffect(() => {
-        if (!shouldManageLocalFields) return;
-        const validIds = new Set(fields.map(field => field.$id));
+        const availableFieldIds = toFieldIdList(fields);
+        const allowed = new Set(availableFieldIds);
+        const normalizedSelected = Array.from(
+            new Set(
+                selectedFieldIds
+                    .map((fieldId) => String(fieldId))
+                    .filter((fieldId) => allowed.has(fieldId)),
+            ),
+        );
+        const nextSelected = normalizedSelected.length ? normalizedSelected : availableFieldIds;
+        if (!stringArraysEqual(selectedFieldIds, nextSelected)) {
+            setValue('selectedFieldIds', nextSelected, { shouldDirty: false, shouldValidate: true });
+        }
+    }, [fields, selectedFieldIds, setValue]);
+
+    useEffect(() => {
+        const divisionKeys = normalizeDivisionKeys(eventData.divisions);
+        const availableFieldIds = isOrganizationManagedEvent
+            ? (selectedFieldIds.length ? selectedFieldIds : toFieldIdList(fields))
+            : toFieldIdList(fields);
+
+        const nextDivisionFieldIds = shouldManageLocalFields
+            ? normalizeDivisionFieldIds(
+                deriveDivisionFieldIdsFromFields(fields, divisionKeys, availableFieldIds),
+                divisionKeys,
+                availableFieldIds,
+            )
+            : normalizeDivisionFieldIds(divisionFieldIds, divisionKeys, availableFieldIds);
+
+        if (!divisionFieldIdsEqual(divisionFieldIds, nextDivisionFieldIds)) {
+            setValue('divisionFieldIds', nextDivisionFieldIds, { shouldDirty: false, shouldValidate: true });
+        }
+    }, [
+        divisionFieldIds,
+        eventData.divisions,
+        fields,
+        isOrganizationManagedEvent,
+        selectedFieldIds,
+        setValue,
+        shouldManageLocalFields,
+    ]);
+
+    // Clear slot field references that point to fields no longer selected/available.
+    useEffect(() => {
+        const availableFieldIds = isOrganizationManagedEvent
+            ? (selectedFieldIds.length ? selectedFieldIds : toFieldIdList(fields))
+            : toFieldIdList(fields);
+        const validIds = new Set(availableFieldIds);
+
+        const hasInvalidSlots = leagueSlots.some((slot) => {
+            const slotFieldIds = normalizeSlotFieldIds(slot);
+            return slotFieldIds.some((fieldId) => !validIds.has(fieldId));
+        });
+        if (!hasInvalidSlots) {
+            return;
+        }
+
         updateLeagueSlots(prev => prev.map(slot => {
-            const fieldId = slot.scheduledFieldId;
-            if (!fieldId || validIds.has(fieldId)) {
+            const slotFieldIds = normalizeSlotFieldIds(slot);
+            const nextFieldIds = slotFieldIds.filter((fieldId) => validIds.has(fieldId));
+            if (stringSetsEqual(slotFieldIds, nextFieldIds)) {
                 return slot;
             }
-            return { ...slot, scheduledFieldId: undefined };
+            return {
+                ...slot,
+                scheduledFieldId: nextFieldIds[0],
+                scheduledFieldIds: nextFieldIds,
+            };
         }));
-    }, [fields, shouldManageLocalFields, updateLeagueSlots]);
+    }, [fields, isOrganizationManagedEvent, leagueSlots, selectedFieldIds, updateLeagueSlots]);
 
     useEffect(() => {
         setHasStripeAccount(Boolean(organization?.hasStripeAccount || currentUser?.hasStripeAccount));
@@ -1769,7 +2187,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         clearErrors('leagueSlots');
-        updateLeagueSlots(prev => [...prev, createSlotForm()]);
+        updateLeagueSlots(prev => [...prev, createSlotForm(undefined, normalizeDivisionKeys(eventData.divisions))]);
     };
 
     // Drops a specific slot by index, leaving at least one slot for the scheduler UI to edit.
@@ -1796,8 +2214,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ...updates,
         };
         const normalizedDays = normalizeWeekdays(updated);
+        const normalizedFieldIds = normalizeSlotFieldIds(updated);
+        const selectedDivisionKeys = normalizeDivisionKeys(eventData.divisions);
+        const normalizedDivisions = normalizeDivisionKeys(updated.divisions);
+        updated.scheduledFieldId = normalizedFieldIds[0];
+        updated.scheduledFieldIds = normalizedFieldIds;
         updated.dayOfWeek = normalizedDays[0] as LeagueSlotForm['dayOfWeek'];
         updated.daysOfWeek = normalizedDays as LeagueSlotForm['daysOfWeek'];
+        updated.divisions = eventData.singleDivision
+            ? selectedDivisionKeys
+            : (normalizedDivisions.length ? normalizedDivisions : selectedDivisionKeys);
 
         updateLeagueSlots(prev => {
             const next = [...prev];
@@ -1821,24 +2247,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return next;
         });
     }, [hasImmutableFields, setFields, shouldManageLocalFields]);
-
-    const handleLocalFieldDivisionsChange = useCallback((index: number, divisions: string[]) => {
-        if (!shouldManageLocalFields || hasImmutableFields) {
-            return;
-        }
-        const fallbackDivisions = defaultFieldDivisionKeys(eventData.divisions);
-        const normalizedDivisions = normalizeDivisionKeys(divisions);
-        setFields((prev) => {
-            const next = [...prev];
-            if (next[index]) {
-                next[index] = {
-                    ...next[index],
-                    divisions: normalizedDivisions.length ? normalizedDivisions : fallbackDivisions,
-                };
-            }
-            return next;
-        });
-    }, [eventData.divisions, hasImmutableFields, setFields, shouldManageLocalFields]);
 
     // Ensure leagues default their end date to the start date until schedules generate an actual end.
     useEffect(() => {
@@ -1887,9 +2295,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
             const slots = mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [], fallbackFieldId)
-                .map((slot) => createSlotForm(slot));
+                .map((slot) => createSlotForm(slot, normalizeDivisionKeys(activeEditingEvent.divisions)));
 
-            const initialSlots = slots.length > 0 ? slots : [createSlotForm()];
+            const initialSlots = slots.length > 0
+                ? slots
+                : [createSlotForm(undefined, normalizeDivisionKeys(activeEditingEvent.divisions))];
             setLeagueSlots(normalizeSlotState(initialSlots, activeEditingEvent.eventType));
         } else if (!activeEditingEvent) {
             setLeagueData({
@@ -1901,10 +2311,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setDurationMinutes: undefined,
                 setsPerMatch: undefined,
             });
-            setLeagueSlots(normalizeSlotState([createSlotForm()], 'EVENT'));
+            setLeagueSlots(normalizeSlotState([createSlotForm(undefined, normalizeDivisionKeys(eventData.divisions))], 'EVENT'));
             setPlayoffData(buildTournamentConfig());
         }
-    }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots]);
+    }, [activeEditingEvent, createSlotForm, eventData.divisions, hasImmutableTimeSlots]);
 
     useEffect(() => {
         if (!hasImmutableTimeSlots) {
@@ -1912,9 +2322,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         const fallbackFieldId = immutableFields[0]?.$id;
         const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
-            .map((slot) => createSlotForm(slot));
+            .map((slot) => createSlotForm(slot, normalizeDivisionKeys(eventData.divisions)));
         setLeagueSlots(normalizeSlotState(slotForms, eventData.eventType));
-    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType]);
+    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, eventData.divisions]);
 
     // Pull the organization's fields so league/tournament creators can assign real facilities.
     useEffect(() => {
@@ -1962,22 +2372,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [eventData.eventType, updateLeagueSlots]);
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
-    const leagueFieldOptions = useMemo(() => {
-        if (!fields.length) {
-            return [] as { value: string; label: string }[];
+    const selectedFieldSet = useMemo(
+        () => new Set(selectedFieldIds),
+        [selectedFieldIds],
+    );
+    const selectedFields = useMemo(() => {
+        if (!isOrganizationManagedEvent) {
+            return fields;
         }
-        return fields.map(field => ({
-            value: field.$id,
-            label: field.name?.trim() || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Field'),
-        }));
-    }, [fields]);
+        if (!selectedFieldSet.size) {
+            return fields;
+        }
+        return fields.filter((field) => field.$id && selectedFieldSet.has(field.$id));
+    }, [fields, isOrganizationManagedEvent, selectedFieldSet]);
+    const leagueFieldOptions = useMemo(() => {
+        return selectedFields
+            .filter((field): field is Field & { $id: string } => typeof field.$id === 'string' && field.$id.length > 0)
+            .map((field) => ({
+                value: field.$id,
+                label: field.name?.trim() || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Field'),
+            }));
+    }, [selectedFields]);
 
-    const eventOrganizationId = useMemo(() => {
-        return organization?.$id
-            || (activeEditingEvent?.organization as Organization | undefined)?.$id
-            || activeEditingEvent?.organizationId
-            || '';
-    }, [activeEditingEvent?.organization, activeEditingEvent?.organizationId, organization?.$id]);
+    const eventOrganizationId = organizationHostedEventId;
 
     const hasExternalRentalField = useMemo(() => {
         if (!eventOrganizationId) {
@@ -2003,6 +2420,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 const normalized: TimeSlot = {
                     ...rest,
                     scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                    scheduledFieldIds: normalizeSlotFieldIds({
+                        scheduledFieldId: rest.scheduledFieldId ?? fallbackFieldId,
+                        scheduledFieldIds: rest.scheduledFieldIds,
+                    }),
                 };
                 return normalized;
             })
@@ -2011,12 +2432,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [activeEditingEvent?.fields, activeEditingEvent?.timeSlots, hasExternalRentalField, immutableFields]);
 
     const fieldsReferencedInSlots = useMemo(() => {
+        const availableFields = isOrganizationManagedEvent ? selectedFields : fields;
         if (!leagueSlots.length) {
+            if (availableFields.length) {
+                return availableFields;
+            }
             return hasImmutableFields ? immutableFields : ([] as Field[]);
         }
 
         const fieldMap = new Map<string, Field>();
-        fields.forEach(field => {
+        availableFields.forEach(field => {
             if (field?.$id) {
                 fieldMap.set(field.$id, field);
             }
@@ -2026,24 +2451,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const picked: Field[] = [];
 
         leagueSlots.forEach(slot => {
-            const slotFieldId = slot.scheduledFieldId;
-            if (!slotFieldId || seen.has(slotFieldId)) {
-                return;
-            }
-
-            const resolved = fieldMap.get(slotFieldId);
-            if (resolved) {
-                picked.push(resolved);
-            }
-            seen.add(slotFieldId);
+            const slotFieldIds = normalizeSlotFieldIds(slot);
+            slotFieldIds.forEach((slotFieldId) => {
+                if (seen.has(slotFieldId)) {
+                    return;
+                }
+                const resolved = fieldMap.get(slotFieldId);
+                if (resolved) {
+                    picked.push(resolved);
+                }
+                seen.add(slotFieldId);
+            });
         });
+
+        if (!picked.length && availableFields.length) {
+            return availableFields;
+        }
 
         if (!picked.length && hasImmutableFields) {
             return immutableFields;
         }
 
         return picked;
-    }, [leagueSlots, fields, hasImmutableFields, immutableFields]);
+    }, [fields, hasImmutableFields, immutableFields, isOrganizationManagedEvent, leagueSlots, selectedFields]);
 
     const selectedImageId = eventData.imageId;
     const selectedImageUrl = useMemo(
@@ -2065,19 +2495,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     useEffect(() => {
         if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') &&
-            (!eventData.teamSignup || !eventData.singleDivision)) {
+            !eventData.teamSignup) {
             setEventData(prev => {
-                if (prev.teamSignup && prev.singleDivision) {
+                if (prev.teamSignup) {
                     return prev;
                 }
                 return {
                     ...prev,
                     teamSignup: true,
-                    singleDivision: true,
                 };
             });
         }
-    }, [eventData.eventType, eventData.teamSignup, eventData.singleDivision]);
+    }, [eventData.eventType, eventData.teamSignup]);
 
     // Prevents the creator from joining twice when they toggle team-based registration on.
     useEffect(() => {
@@ -2184,6 +2613,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             : [];
         const minAge = normalizeNumber(source.minAge);
         const maxAge = normalizeNumber(source.maxAge);
+        const normalizedDivisionKeys = (() => {
+            const normalized = normalizeDivisionKeys(source.divisions);
+            if (normalized.length) {
+                return normalized;
+            }
+            return defaultDivisionKeysForSport(source.sportConfig ?? source.sportId);
+        })();
+        const singleDivisionEnabled = Boolean(source.singleDivision);
 
         const draft: Partial<Event> = {
             $id: activeEditingEvent?.$id,
@@ -2212,7 +2649,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             teamSizeLimit: source.teamSizeLimit,
             teamSignup: source.teamSignup,
             singleDivision: source.singleDivision,
-            divisions: source.divisions,
+            divisions: normalizedDivisionKeys,
             cancellationRefundHours: source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
             requiredTemplateIds: source.requiredTemplateIds,
@@ -2228,14 +2665,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             coordinates: baseCoordinates,
         };
 
-        const organizationId = organization?.$id;
+        const organizationId = source.organizationId || organizationHostedEventId || undefined;
 
         if (!shouldManageLocalFields) {
             let fieldsToInclude = fieldsReferencedInSlots;
             if (!fieldsToInclude.length && hasImmutableFields) {
                 fieldsToInclude = immutableFields;
             }
-            if (fieldsToInclude.length) {
+            if (isOrganizationManagedEvent) {
+                const fieldIds = toIdList(fieldsToInclude);
+                if (fieldIds.length) {
+                    draft.fieldIds = fieldIds;
+                }
+            } else if (fieldsToInclude.length) {
                 draft.fields = fieldsToInclude.map(field => ({ ...field }));
                 const fieldIds = toIdList(fieldsToInclude);
                 if (fieldIds.length) {
@@ -2247,7 +2689,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
         } else {
             const localFields = hasImmutableFields ? immutableFields : fields;
-            const fallbackDivisions = defaultFieldDivisionKeys(source.divisions);
+            const fallbackDivisions = defaultFieldDivisionKeys(normalizedDivisionKeys);
             if (localFields.length) {
                 draft.fields = localFields.map((field, idx) => ({
                     ...field,
@@ -2264,6 +2706,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
             }
         }
+
+        const normalizedFieldIds = Array.isArray(draft.fieldIds)
+            ? Array.from(new Set(draft.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)))
+            : [];
+        if (normalizedFieldIds.length) {
+            draft.fieldIds = normalizedFieldIds;
+        }
+        delete (draft as Partial<Event>).divisionFieldIds;
 
         if (organizationId) {
             draft.organizationId = organizationId;
@@ -2283,7 +2733,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         if (hasImmutableTimeSlots) {
-            draft.timeSlots = immutableTimeSlots.map(slot => ({ ...slot }));
+            draft.timeSlots = immutableTimeSlots.map((slot) => {
+                const slotDivisions = normalizeDivisionKeys(slot.divisions);
+                return {
+                    ...slot,
+                    divisions: singleDivisionEnabled
+                        ? normalizedDivisionKeys
+                        : (slotDivisions.length ? slotDivisions : normalizedDivisionKeys),
+                };
+            });
             const slotIds = toIdList(immutableTimeSlots);
             if (slotIds.length) {
                 draft.timeSlotIds = slotIds;
@@ -2358,7 +2816,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             const slotDocuments = source.leagueSlots
                 .filter((slot) =>
-                    slot.scheduledFieldId &&
+                    normalizeSlotFieldIds(slot).length > 0 &&
                     normalizeWeekdays(slot).length > 0 &&
                     typeof slot.startTimeMinutes === 'number' &&
                     typeof slot.endTimeMinutes === 'number',
@@ -2366,14 +2824,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 .map((slot) => {
                     const slotId = slot.$id || slot.key;
                     const normalizedDays = normalizeWeekdays(slot);
+                    const slotFieldIds = normalizeSlotFieldIds(slot);
+                    const slotDivisionKeys = normalizeDivisionKeys(slot.divisions);
                     const serialized: TimeSlot = {
                         $id: slotId,
                         dayOfWeek: normalizedDays[0] as TimeSlot['dayOfWeek'],
                         daysOfWeek: normalizedDays as TimeSlot['daysOfWeek'],
+                        scheduledFieldId: slotFieldIds[0],
+                        scheduledFieldIds: slotFieldIds,
+                        divisions: singleDivisionEnabled
+                            ? normalizedDivisionKeys
+                            : (slotDivisionKeys.length ? slotDivisionKeys : normalizedDivisionKeys),
                         startTimeMinutes: Number(slot.startTimeMinutes),
                         endTimeMinutes: Number(slot.endTimeMinutes),
                         repeating: slot.repeating !== false,
-                        scheduledFieldId: slot.scheduledFieldId as string,
                     };
 
                     if (source.start) {
@@ -2394,6 +2858,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 if (slotIds.length) {
                     draft.timeSlotIds = slotIds;
                 }
+                const slotFieldIds = Array.from(
+                    new Set(
+                        slotDocuments.flatMap((slot) => normalizeSlotFieldIds(slot)),
+                    ),
+                );
+                if (slotFieldIds.length) {
+                    draft.fieldIds = slotFieldIds;
+                }
             }
         }
 
@@ -2413,15 +2885,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         activeEditingEvent?.state,
         activeEditingEvent?.$id,
         eventData,
+        fields,
         fieldsReferencedInSlots,
         hasImmutableFields,
         hasImmutableTimeSlots,
         immutableFields,
         immutableTimeSlots,
         isEditMode,
-        organization,
+        isOrganizationManagedEvent,
+        organizationHostedEventId,
         currentUser,
         joinAsParticipant,
+        rentalPurchase,
         shouldManageLocalFields,
         shouldProvisionFields,
         fieldCount,
@@ -2561,7 +3036,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 field.onChange(nextType);
                                                 if (enforcingTeamSettings) {
                                                     setValue('teamSignup', true, { shouldDirty: true });
-                                                    setValue('singleDivision', true, { shouldDirty: true });
                                                 }
                                             }}
                                         />
@@ -3049,24 +3523,23 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </div>
                                     <div className="space-y-3">
                                         {fields.map((field, index) => (
-                                            <div key={field.$id} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div key={field.$id} className="grid grid-cols-1 gap-3">
                                                 <TextInput
                                                     label={`Field ${field.fieldNumber ?? index + 1} Name`}
                                                     value={field.name ?? ''}
                                                     onChange={(event) => handleLocalFieldNameChange(index, event.currentTarget.value)}
                                                 />
-                                                <MantineMultiSelect
-                                                    label="Allowed Divisions"
-                                                    data={EVENT_DIVISION_OPTIONS}
-                                                    value={normalizeDivisionKeys(field.divisions)}
-                                                    onChange={(values) => handleLocalFieldDivisionsChange(index, values)}
-                                                    comboboxProps={sharedComboboxProps}
-                                                    searchable
-                                                    clearable
-                                                />
                                             </div>
                                         ))}
                                     </div>
+                                </div>
+                            )}
+
+                            {isOrganizationManagedEvent && (
+                                <div className="mt-4">
+                                    <Text size="xs" c="dimmed">
+                                        Select event fields directly inside each timeslot.
+                                    </Text>
                                 </div>
                             )}
                         </Paper>
@@ -3173,7 +3646,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         label="Divisions"
                                         withAsterisk
                                         placeholder="Select divisions"
-                                        data={EVENT_DIVISION_OPTIONS}
+                                        data={divisionOptions}
                                         value={field.value}
                                         disabled={isImmutableField('divisions')}
                                         comboboxProps={sharedComboboxProps}
@@ -3260,13 +3733,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         checked
                                         disabled
                                     />
-                                    <Switch
-                                        label="Single Division (all skill levels play together)"
-                                        checked
-                                        disabled
+                                    <Controller
+                                        name="singleDivision"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Switch
+                                                label="Single Division (all skill levels play together)"
+                                                checked={field.value}
+                                                disabled={isImmutableField('singleDivision')}
+                                                onChange={(e) => {
+                                                    if (isImmutableField('singleDivision')) return;
+                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                }}
+                                            />
+                                        )}
                                     />
                                     <Text size="sm" c="dimmed">
-                                        Leagues and tournaments are always team events and use a single division.
+                                        Leagues and tournaments are always team events. When single division is enabled,
+                                        each timeslot is automatically assigned all selected divisions.
                                     </Text>
                                 </div>
                             )}
@@ -3284,14 +3768,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 <LeagueFields
                                     leagueData={leagueData}
                                     sport={eventData.sportConfig ?? undefined}
+                                    participantCount={eventData.maxParticipants}
                                     onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
                                     slots={leagueSlots}
                                     onAddSlot={handleAddSlot}
                                     onUpdateSlot={handleUpdateSlot}
                                     onRemoveSlot={handleRemoveSlot}
-                                    fields={fields}
+                                    fields={selectedFields}
                                     fieldsLoading={fieldsLoading}
                                     fieldOptions={leagueFieldOptions}
+                                    divisionOptions={divisionOptions}
+                                    lockSlotDivisions={Boolean(eventData.singleDivision)}
+                                    lockedDivisionKeys={normalizeDivisionKeys(eventData.divisions)}
                                     readOnly={hasImmutableTimeSlots}
                                 />
 

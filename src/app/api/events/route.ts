@@ -22,6 +22,51 @@ const coerceArray = (value: unknown): string[] | undefined => {
   return undefined;
 };
 
+const normalizeDivisionKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length ? normalized : null;
+};
+
+const normalizeDivisionKeys = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const keys = value
+    .map((entry) => normalizeDivisionKey(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  return Array.from(new Set(keys));
+};
+
+const normalizeFieldIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
+};
+
+const getDivisionFieldMapForEvent = async (
+  eventId: string,
+  divisionKeys: string[],
+): Promise<Record<string, string[]>> => {
+  if (!divisionKeys.length) {
+    return {};
+  }
+  const rows = await prisma.divisions.findMany({
+    where: {
+      eventId,
+      key: { in: divisionKeys },
+    },
+    select: {
+      key: true,
+      fieldIds: true,
+    },
+  });
+  const map: Record<string, string[]> = {};
+  for (const row of rows) {
+    const key = normalizeDivisionKey(row.key);
+    if (!key) continue;
+    map[key] = normalizeFieldIds(row.fieldIds ?? []);
+  }
+  return map;
+};
+
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
   if (!Array.isArray(legacy.waitListIds)) {
@@ -151,7 +196,9 @@ export async function POST(req: NextRequest) {
       return fresh;
     });
 
-    return NextResponse.json({ event: withLegacyEvent(event) }, { status: 201 });
+    const divisionKeys = normalizeDivisionKeys(event.divisions);
+    const divisionFieldIds = await getDivisionFieldMapForEvent(event.id, divisionKeys);
+    return NextResponse.json({ event: withLegacyEvent({ ...event, divisionFieldIds }) }, { status: 201 });
   } catch (error) {
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

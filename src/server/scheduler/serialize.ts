@@ -34,6 +34,8 @@ const serializeTimeSlot = (slot: TimeSlot) => ({
   endTimeMinutes: slot.endTimeMinutes,
   price: slot.price ?? null,
   scheduledFieldId: slot.field ?? null,
+  scheduledFieldIds: slot.field ? [slot.field] : [],
+  divisions: slot.divisions.map((division) => division.id),
 });
 
 const serializeUser = (user: UserData) => ({
@@ -184,6 +186,8 @@ const serializeTimeSlotLegacy = (slot: TimeSlot) => ({
   endTimeMinutes: slot.endTimeMinutes,
   price: slot.price ?? null,
   scheduledFieldId: slot.field ?? null,
+  scheduledFieldIds: slot.field ? [slot.field] : [],
+  divisions: slot.divisions.map((division) => division.id),
 });
 
 const serializeUserLegacy = (user: UserData) => ({

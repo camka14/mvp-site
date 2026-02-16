@@ -1,5 +1,11 @@
 import { Group, Participant, Resource, SchedulableEvent, MINUTE_MS } from './types';
 
+type SlotWindow = {
+  start: Date;
+  end: Date;
+  groupIds: Set<string> | null;
+};
+
 const overlaps = (startA: Date, endA: Date, startB: Date, endB: Date): boolean => {
   return !(startA >= endB && endA > endB) && !(startA < startB && endA <= startB);
 };
@@ -11,8 +17,8 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
   currentTime: Date;
   endTime: Date;
   currentGroups: G[] = [];
-  private globalSlots: Array<[Date, Date]> = [];
-  private resourceSlots: Map<string, Array<[Date, Date]>> = new Map();
+  private globalSlots: SlotWindow[] = [];
+  private resourceSlots: Map<string, SlotWindow[]> = new Map();
   private hasSlots = false;
 
   constructor(
@@ -25,10 +31,11 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
   ) {
     this.resources = new Map();
     this.participants = new Map();
+    const allResources = Object.values(resources);
     for (const group of groups) {
       this.resources.set(
         group,
-        Object.values(resources).filter((res) => res.getGroups().some((g) => g.id === group.id)),
+        allResources,
       );
       this.participants.set(
         group,
@@ -258,26 +265,52 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
           const boundedStart = slotStart.getTime() < this.startTime.getTime() ? this.startTime : slotStart;
           const boundedEnd = slotEnd.getTime() > this.endTime.getTime() ? this.endTime : slotEnd;
           if (boundedEnd.getTime() <= boundedStart.getTime()) continue;
-          const fieldId = slot.field ?? slot.scheduledFieldId;
-          if (fieldId) {
+          const fieldIds = Array.from(
+            new Set(
+              (Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+                ? slot.scheduledFieldIds
+                : Array.isArray(slot.fieldIds) && slot.fieldIds.length
+                  ? slot.fieldIds
+                  : [slot.field ?? slot.scheduledFieldId]
+              )
+                .flatMap((value: unknown) => {
+                  if (typeof value === 'string' && value.length > 0) {
+                    return [value];
+                  }
+                  if (typeof value === 'number' && Number.isFinite(value)) {
+                    return [String(value)];
+                  }
+                  return [];
+                }),
+            ),
+          );
+          const groupIds = this.normalizeGroupIds(slot.divisions);
+          const window: SlotWindow = {
+            start: boundedStart,
+            end: boundedEnd,
+            groupIds: groupIds.size ? groupIds : null,
+          };
+          if (!fieldIds.length) {
+            this.globalSlots.push(window);
+            continue;
+          }
+          for (const fieldId of fieldIds) {
             const existing = this.resourceSlots.get(fieldId) ?? [];
-            existing.push([boundedStart, boundedEnd]);
+            existing.push(window);
             this.resourceSlots.set(fieldId, existing);
-          } else {
-            this.globalSlots.push([boundedStart, boundedEnd]);
           }
         }
       }
       weeks += 1;
     }
     for (const slots of this.resourceSlots.values()) {
-      slots.sort((a, b) => a[0].getTime() - b[0].getTime());
+      slots.sort((a, b) => a.start.getTime() - b.start.getTime());
     }
-    this.globalSlots.sort((a, b) => a[0].getTime() - b[0].getTime());
+    this.globalSlots.sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
   private slotRanges(slot: any, reference: Date): Array<[Date, Date]> {
-    const normalizedDays = Array.from(
+    const normalizedDays: number[] = Array.from(
       new Set(
         (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
           ? slot.daysOfWeek
@@ -294,7 +327,10 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     const startMinutes = slot.startTimeMinutes ?? slot.start_time_minutes ?? 0;
     const endMinutes = slot.endTimeMinutes ?? slot.end_time_minutes ?? 0;
     return normalizedDays.map((dayOfWeek) => {
-      const daysAhead = (dayOfWeek - reference.getDay() + 7) % 7;
+      // Time slots are stored as Monday-based indexes (0=Mon ... 6=Sun),
+      // while JS Date#getDay() uses Sunday-based indexes (0=Sun ... 6=Sat).
+      const referenceDay = (reference.getDay() + 6) % 7;
+      const daysAhead = (dayOfWeek - referenceDay + 7) % 7;
       const slotDate = new Date(reference);
       slotDate.setHours(0, 0, 0, 0);
       slotDate.setDate(slotDate.getDate() + daysAhead);
@@ -318,16 +354,14 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
       // Include "no fields" so callers can treat this as a configuration error.
       throw new Error(`Unable to schedule event because no fields are available${suffix}.`);
     }
-    let unlimitedResource = false;
+    let hasCompatibleSlots = false;
     let bestFuture: Date | null = null;
     let hasCandidate = false;
 
     for (const resource of resources) {
       const slots = this.slotsForResource(resource);
-      if (!slots.length) {
-        unlimitedResource = true;
-        continue;
-      }
+      if (!slots.length) continue;
+      hasCompatibleSlots = true;
       const slotStart = this.alignStartToSlots(slots, candidate, durationMs);
       if (!slotStart) continue;
       hasCandidate = true;
@@ -337,23 +371,30 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
         }
       }
     }
-    if (unlimitedResource) return candidate;
     if (hasCandidate) return bestFuture ?? candidate;
+    if (!hasCompatibleSlots) {
+      const groupIds = this.currentGroups
+        .map((group) => (group as any)?.id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      const suffix = groupIds.length ? ` for divisions: ${groupIds.join(', ')}` : '';
+      throw new Error(`Unable to schedule event because no fields are available${suffix}.`);
+    }
     throw new Error('No available time slots remaining for scheduling');
   }
 
-  private slotsForResource(resource: R): Array<[Date, Date]> {
+  private slotsForResource(resource: R): SlotWindow[] {
     const resourceId = resource.id;
     const specific = resourceId ? this.resourceSlots.get(resourceId) ?? [] : [];
-    if (specific.length && this.globalSlots.length) {
-      return [...specific, ...this.globalSlots].sort((a, b) => a[0].getTime() - b[0].getTime());
-    }
-    if (specific.length) return specific;
-    return this.globalSlots;
+    const combined = specific.length
+      ? (this.globalSlots.length ? [...specific, ...this.globalSlots] : specific)
+      : this.globalSlots;
+    return this.filterSlotsByCurrentGroups(combined);
   }
 
-  private alignStartToSlots(slots: Array<[Date, Date]>, candidate: Date, durationMs: number): Date | null {
-    for (const [start, end] of slots) {
+  private alignStartToSlots(slots: SlotWindow[], candidate: Date, durationMs: number): Date | null {
+    for (const slot of slots) {
+      const start = slot.start;
+      const end = slot.end;
       if (end.getTime() - start.getTime() < durationMs) continue;
       if (start.getTime() <= candidate.getTime() && end.getTime() >= candidate.getTime() + durationMs) {
         return candidate;
@@ -368,9 +409,49 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
   private resourceSupportsTime(resource: R, start: Date, durationMs: number): boolean {
     if (!this.hasSlots) return true;
     const slots = this.slotsForResource(resource);
-    if (!slots.length) return true;
+    if (!slots.length) return false;
     const aligned = this.alignStartToSlots(slots, start, durationMs);
     return aligned?.getTime() === start.getTime();
+  }
+
+  private normalizeGroupIds(value: unknown): Set<string> {
+    if (!Array.isArray(value)) return new Set();
+    return new Set(
+      value
+        .map((entry) => {
+          if (typeof entry === 'string') return entry;
+          if (entry && typeof entry === 'object' && 'id' in entry && typeof (entry as any).id === 'string') {
+            return (entry as any).id as string;
+          }
+          return '';
+        })
+        .map((entry) => entry.trim().toLowerCase())
+        .filter((entry) => entry.length > 0),
+    );
+  }
+
+  private filterSlotsByCurrentGroups(slots: SlotWindow[]): SlotWindow[] {
+    if (!slots.length) return [];
+    const currentGroupIds = new Set(
+      this.currentGroups
+        .map((group) => (group as any)?.id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        .map((id) => id.trim().toLowerCase()),
+    );
+    if (!currentGroupIds.size) {
+      return slots;
+    }
+    return slots
+      .filter((slot) => {
+        if (!slot.groupIds || !slot.groupIds.size) return true;
+        for (const groupId of currentGroupIds) {
+          if (slot.groupIds.has(groupId)) {
+            return true;
+          }
+        }
+        return false;
+      })
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
   private roundToNextFiveMinutes(date: Date): Date {

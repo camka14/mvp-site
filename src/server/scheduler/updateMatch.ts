@@ -355,7 +355,7 @@ const buildTemplateBracket = (league: League, seededTeamIds: string[], context: 
       id: field.id,
       fieldNumber: field.fieldNumber,
       organizationId: field.organizationId ?? null,
-      divisions: field.divisions.length ? field.divisions : [...divisions],
+      divisions: [...divisions],
       matches: [],
       events: [...field.events],
       rentalSlots: [...field.rentalSlots],

@@ -63,10 +63,12 @@ export interface SchedulableEvent {
 export class Division implements Group {
   id: string;
   name: string;
+  fieldIds: string[];
 
-  constructor(id: string, name?: string) {
+  constructor(id: string, name?: string, fieldIds?: string[]) {
     this.id = id;
     this.name = name ?? id;
+    this.fieldIds = Array.isArray(fieldIds) ? fieldIds : [];
   }
 }
 
@@ -80,6 +82,7 @@ export class TimeSlot {
   endTimeMinutes: number;
   price?: number | null;
   field?: string | null;
+  divisions: Division[];
 
   constructor(params: {
     id: string;
@@ -91,6 +94,7 @@ export class TimeSlot {
     endTimeMinutes: number;
     price?: number | null;
     field?: string | null;
+    divisions?: Division[];
   }) {
     this.id = params.id;
     this.dayOfWeek = params.dayOfWeek;
@@ -101,11 +105,14 @@ export class TimeSlot {
     this.endTimeMinutes = params.endTimeMinutes;
     this.price = params.price ?? null;
     this.field = params.field ?? null;
+    this.divisions = params.divisions ?? [];
   }
 
   asDateRange(reference: Date): [Date, Date] {
     const referenceDate = new Date(reference);
-    const daysAhead = (this.dayOfWeek - referenceDate.getDay() + 7) % 7;
+    // Slots store Monday-based indexes (0=Mon ... 6=Sun), while JS Date#getDay() is Sunday-based.
+    const referenceDay = (referenceDate.getDay() + 6) % 7;
+    const daysAhead = (this.dayOfWeek - referenceDay + 7) % 7;
     const slotDate = new Date(referenceDate);
     slotDate.setHours(0, 0, 0, 0);
     slotDate.setDate(slotDate.getDate() + daysAhead);

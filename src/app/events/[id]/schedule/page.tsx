@@ -110,6 +110,26 @@ type LocationDefaults = {
   coordinates?: [number, number];
 };
 
+type EventLifecycleStatus = 'DRAFT' | 'PUBLISHED';
+
+const EVENT_LIFECYCLE_OPTIONS: Array<{ value: EventLifecycleStatus; label: string }> = [
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'PUBLISHED', label: 'Published' },
+];
+
+const getEventLifecycleStatus = (eventInput: Pick<Event, 'state'> | null | undefined): EventLifecycleStatus => {
+  if (!eventInput) {
+    return 'DRAFT';
+  }
+
+  const normalizedState = typeof eventInput.state === 'string' ? eventInput.state.toUpperCase() : 'PUBLISHED';
+  if (normalizedState === 'UNPUBLISHED' || normalizedState === 'DRAFT') {
+    return 'DRAFT';
+  }
+
+  return 'PUBLISHED';
+};
+
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
@@ -165,6 +185,8 @@ function EventScheduleContent() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [reschedulingMatches, setReschedulingMatches] = useState(false);
+  const [selectedLifecycleStatus, setSelectedLifecycleStatus] = useState<EventLifecycleStatus | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   const [isMatchEditorOpen, setIsMatchEditorOpen] = useState(false);
@@ -423,6 +445,7 @@ function EventScheduleContent() {
   const isLeague = eventTypeForView === 'LEAGUE';
   const isHost = activeEvent?.hostId === user?.$id;
   const entityLabel = isTournament ? 'Tournament' : isLeague ? 'League' : 'Event';
+  const activeLifecycleStatus = getEventLifecycleStatus(activeEvent);
   const canEditMatches = Boolean(isHost && isEditingEvent);
   const shouldShowCreationSheet = Boolean(isCreateMode || (isEditingEvent && isHost && user));
   const createFormId = 'create-event-form';
@@ -901,14 +924,7 @@ function EventScheduleContent() {
     });
   }, []);
 
-  const publishButtonLabel = (() => {
-    if (isCreateMode) {
-      return 'Create Event';
-    }
-    if (!activeEvent || isPreview || isUnpublished) return `Publish ${entityLabel}`;
-    if (!isEditingEvent) return `Edit ${entityLabel}`;
-    return `Save ${entityLabel} Changes`;
-  })();
+  const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
     if (isCreateMode) return 'Discard';
     if (isUnpublished) return `Delete ${entityLabel}`;
@@ -916,6 +932,36 @@ function EventScheduleContent() {
     if (isEditingEvent) return `Discard ${entityLabel} Changes`;
     return `Cancel ${entityLabel}`;
   })();
+
+  const handleEnterEditMode = useCallback(() => {
+    if (!pathname) return;
+    setSelectedLifecycleStatus(null);
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    params.set('mode', 'edit');
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const handleLifecycleStatusChange = useCallback((value: string | null) => {
+    if (!value) return;
+
+    const nextStatus = value as EventLifecycleStatus;
+    setSelectedLifecycleStatus(nextStatus);
+    setChangesEvent((prev) => {
+      const base = prev ?? activeEvent;
+      if (!base) return prev;
+
+      const nextState: EventState = nextStatus === 'DRAFT' ? 'UNPUBLISHED' : 'PUBLISHED';
+
+      return {
+        ...base,
+        state: nextState,
+      } as Event;
+    });
+    setHasUnsavedChanges(true);
+    setSubmitError(null);
+    setInfoMessage(null);
+  }, [activeEvent]);
 
   const rentalPaymentEventSummary: PaymentEventSummary = useMemo(() => {
     const source = changesEvent ?? activeEvent ?? event;
@@ -1459,9 +1505,125 @@ function EventScheduleContent() {
     closeRentalPaymentModal();
   }, [closeRentalPaymentModal, scheduleRegularEvent]);
 
-  // Publish the league by persisting the latest event state back through the event service.
+  const saveExistingEvent = useCallback(
+    async ({ rescheduleAfterSave = false }: { rescheduleAfterSave?: boolean } = {}) => {
+      if (!activeEvent) return;
+      if (!event) {
+        setError(`Unable to save ${entityLabel.toLowerCase()} changes without the original event context.`);
+        return;
+      }
+
+      const draft = await getDraftFromForm();
+      if (!draft) {
+        return;
+      }
+
+      const mergedDraft = { ...activeEvent, ...(draft as Event) } as Event;
+      setError(null);
+      setInfoMessage(null);
+      if (rescheduleAfterSave) {
+        setReschedulingMatches(true);
+      } else {
+        setPublishing(true);
+      }
+
+      try {
+        const nextEvent = cloneValue(mergedDraft) as Event;
+        const nextMatches = cloneValue(activeMatches) as Match[];
+        nextEvent.matches = nextMatches;
+
+        if (Array.isArray(nextEvent.fields)) {
+          nextEvent.fields = nextEvent.fields.map((field) => {
+            const sanitized = { ...field };
+            delete sanitized.rentalSlotIds;
+            return sanitized;
+          });
+        }
+
+        if ('attendees' in nextEvent) {
+          delete (nextEvent as Partial<Event>).attendees;
+        }
+
+        const lifecycleStatus = selectedLifecycleStatus ?? getEventLifecycleStatus(nextEvent);
+        nextEvent.state = lifecycleStatus === 'DRAFT' ? 'UNPUBLISHED' : 'PUBLISHED';
+
+        let updatedEvent = nextEvent;
+        if (nextEvent.$id) {
+          updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
+        }
+
+        if (rescheduleAfterSave && updatedEvent.$id) {
+          const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
+          const scheduled = await eventService.scheduleEvent(schedulePayload, { eventId: updatedEvent.$id });
+          if (!scheduled?.event) {
+            throw new Error('Failed to reschedule matches.');
+          }
+          updatedEvent = scheduled.event;
+        }
+
+        if (!Array.isArray(updatedEvent.matches) || updatedEvent.matches.length === 0) {
+          updatedEvent.matches = nextMatches;
+        }
+
+        hydrateEvent(updatedEvent);
+        setHasUnsavedChanges(false);
+        setSelectedLifecycleStatus(null);
+
+        if (pathname) {
+          const params = new URLSearchParams(searchParams?.toString() ?? '');
+          params.delete('preview');
+          params.set('mode', 'edit');
+          const query = params.toString();
+          router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+        }
+
+        await loadSchedule();
+        if (rescheduleAfterSave) {
+          setInfoMessage(`${entityLabel} settings saved and matches rescheduled.`);
+        } else {
+          setInfoMessage(`${entityLabel} changes saved.`);
+        }
+      } catch (err) {
+        console.error(`Failed to save ${entityLabel.toLowerCase()} changes:`, err);
+        setError(
+          rescheduleAfterSave
+            ? `Failed to save ${entityLabel.toLowerCase()} and reschedule matches.`
+            : `Failed to save ${entityLabel.toLowerCase()} changes.`,
+        );
+      } finally {
+        setPublishing(false);
+        setReschedulingMatches(false);
+      }
+    },
+    [
+      activeEvent,
+      activeMatches,
+      entityLabel,
+      event,
+      getDraftFromForm,
+      hydrateEvent,
+      loadSchedule,
+      pathname,
+      router,
+      selectedLifecycleStatus,
+      searchParams,
+    ],
+  );
+
+  const handleSaveEvent = useCallback(async () => {
+    if (publishing || reschedulingMatches) return;
+    setSubmitError(null);
+    await saveExistingEvent();
+  }, [publishing, reschedulingMatches, saveExistingEvent]);
+
+  const handleRescheduleMatches = useCallback(async () => {
+    if (publishing || reschedulingMatches) return;
+    setSubmitError(null);
+    await saveExistingEvent({ rescheduleAfterSave: true });
+  }, [publishing, reschedulingMatches, saveExistingEvent]);
+
   const handlePublish = async () => {
-    if (publishing) return;
+    if (publishing || reschedulingMatches) return;
     setSubmitError(null);
 
     // Create mode: invoke createEvent with current draft and redirect to the new event.
@@ -1522,83 +1684,12 @@ function EventScheduleContent() {
     if (!activeEvent) return;
 
     if (!isPreview && !isEditingEvent && !isUnpublished) {
-      if (!pathname) return;
-      const params = new URLSearchParams(searchParams?.toString() ?? '');
-      params.set('mode', 'edit');
-      const query = params.toString();
-      router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+      handleEnterEditMode();
       return;
     }
 
     if (isEditingEvent) {
-      if (!event) {
-        setError(`Unable to save ${entityLabel.toLowerCase()} changes without the original event context.`);
-        return;
-      }
-
-      const draft = await getDraftFromForm();
-      if (!draft) {
-        return;
-      }
-
-      const mergedDraft = { ...activeEvent, ...(draft as Event) } as Event;
-
-      if (mergedDraft.eventType !== 'EVENT' && !isPreview) {
-        await schedulePreview(mergedDraft);
-        return;
-      }
-
-      setPublishing(true);
-      setError(null);
-      setInfoMessage(null);
-
-      try {
-        const nextEvent = cloneValue(mergedDraft) as Event;
-        const nextMatches = cloneValue(activeMatches) as Match[];
-        nextEvent.matches = nextMatches;
-        if (Array.isArray(nextEvent.fields)) {
-          nextEvent.fields = nextEvent.fields.map((field) => {
-            const sanitized = { ...field };
-            delete sanitized.rentalSlotIds;
-            return sanitized;
-          });
-        }
-        if ('attendees' in nextEvent) {
-          delete (nextEvent as Partial<Event>).attendees;
-        }
-        if (isUnpublished) {
-          nextEvent.state = 'PUBLISHED' as EventState;
-        }
-
-        let updatedEvent = nextEvent;
-        if (nextEvent.$id) {
-          updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
-        }
-
-        if (!Array.isArray(updatedEvent.matches) || updatedEvent.matches.length === 0) {
-          updatedEvent.matches = nextMatches;
-        }
-
-        hydrateEvent(updatedEvent);
-        setHasUnsavedChanges(false);
-
-        if (pathname) {
-          const params = new URLSearchParams(searchParams?.toString() ?? '');
-          params.delete('mode');
-          params.delete('preview');
-          const query = params.toString();
-          router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
-        }
-
-        await loadSchedule();
-        setInfoMessage(isUnpublished ? `${entityLabel} published.` : `${entityLabel} changes saved.`);
-      } catch (err) {
-        console.error(`Failed to save ${entityLabel.toLowerCase()} changes:`, err);
-        setError(isUnpublished ? `Failed to publish ${entityLabel.toLowerCase()}.` : `Failed to save ${entityLabel.toLowerCase()} changes.`);
-      } finally {
-        setPublishing(false);
-      }
-      return;
+      await saveExistingEvent();
     }
   };
 
@@ -1649,6 +1740,7 @@ function EventScheduleContent() {
     if (isEditingEvent) {
       if (!pathname) return;
       setInfoMessage(`${entityLabel} edit cancelled.`);
+      setSelectedLifecycleStatus(null);
       const params = new URLSearchParams(searchParams?.toString() ?? '');
       params.delete('mode');
       const query = params.toString();
@@ -1677,6 +1769,7 @@ function EventScheduleContent() {
     setChangesEvent(cloneValue(event) as Event);
     setChangesMatches(cloneValue(matches) as Match[]);
     setHasUnsavedChanges(false);
+    setSelectedLifecycleStatus(null);
     setError(null);
     setInfoMessage(`${entityLabel} changes cleared.`);
   }, [entityLabel, event, matches]);
@@ -1962,9 +2055,9 @@ function EventScheduleContent() {
                   color="green"
                   onClick={handlePublish}
                   loading={publishing}
-                  disabled={publishing}
+                  disabled={publishing || reschedulingMatches}
                 >
-                  {publishButtonLabel}
+                  {createButtonLabel}
                 </Button>
                 <Button
                   variant="default"
@@ -2110,15 +2203,44 @@ function EventScheduleContent() {
             <Title order={2} mb="xs">{activeEvent.name}</Title>
 
             {isHost && (
-              <Group gap="sm">
-                <Button
-                  color="green"
-                  onClick={handlePublish}
-                  loading={publishing}
-                  disabled={publishing}
-                >
-                  {publishButtonLabel}
-                </Button>
+              <Group gap="sm" wrap="wrap">
+                {!isEditingEvent ? (
+                  <Button
+                    onClick={handleEnterEditMode}
+                    disabled={publishing || reschedulingMatches || cancelling}
+                  >
+                    Edit {entityLabel}
+                  </Button>
+                ) : (
+                  <>
+                    <Select
+                      data={EVENT_LIFECYCLE_OPTIONS}
+                      value={selectedLifecycleStatus ?? activeLifecycleStatus}
+                      onChange={handleLifecycleStatusChange}
+                      allowDeselect={false}
+                      w={160}
+                      disabled={publishing || reschedulingMatches || cancelling || activeEvent.state === 'TEMPLATE'}
+                    />
+                    <Button
+                      color="green"
+                      onClick={isCreateMode ? handlePublish : handleSaveEvent}
+                      loading={publishing}
+                      disabled={publishing || reschedulingMatches}
+                    >
+                      {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
+                    </Button>
+                    {(isLeague || isTournament) && (
+                      <Button
+                        variant="light"
+                        onClick={handleRescheduleMatches}
+                        loading={reschedulingMatches}
+                        disabled={publishing || reschedulingMatches}
+                      >
+                        Reschedule Matches
+                      </Button>
+                    )}
+                  </>
+                )}
                 <Button
                   color="red"
                   variant="light"
@@ -2131,7 +2253,7 @@ function EventScheduleContent() {
                   variant="light"
                   onClick={handleCreateTemplateFromEvent}
                   loading={creatingTemplate}
-                  disabled={creatingTemplate || publishing || cancelling || activeEvent.state === 'TEMPLATE'}
+                  disabled={creatingTemplate || publishing || reschedulingMatches || cancelling || activeEvent.state === 'TEMPLATE'}
                 >
                   Create Template
                 </Button>
