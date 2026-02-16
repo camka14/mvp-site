@@ -335,13 +335,6 @@ export type EnumEventsEventTypeEnumNullableFilter<$PrismaModel = never> = {
   not?: Prisma.NestedEnumEventsEventTypeEnumNullableFilter<$PrismaModel> | $Enums.EventsEventTypeEnum | null
 }
 
-export type EnumEventsFieldTypeEnumNullableFilter<$PrismaModel = never> = {
-  equals?: $Enums.EventsFieldTypeEnum | Prisma.EnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  in?: $Enums.EventsFieldTypeEnum[] | Prisma.ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  notIn?: $Enums.EventsFieldTypeEnum[] | Prisma.ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  not?: Prisma.NestedEnumEventsFieldTypeEnumNullableFilter<$PrismaModel> | $Enums.EventsFieldTypeEnum | null
-}
-
 export type JsonWithAggregatesFilter<$PrismaModel = never> =
 | Prisma.PatchUndefined<
     Prisma.Either<Required<JsonWithAggregatesFilterBase<$PrismaModel>>, Exclude<keyof Required<JsonWithAggregatesFilterBase<$PrismaModel>>, 'path'>>,
@@ -387,16 +380,6 @@ export type EnumEventsEventTypeEnumNullableWithAggregatesFilter<$PrismaModel = n
   _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
   _min?: Prisma.NestedEnumEventsEventTypeEnumNullableFilter<$PrismaModel>
   _max?: Prisma.NestedEnumEventsEventTypeEnumNullableFilter<$PrismaModel>
-}
-
-export type EnumEventsFieldTypeEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
-  equals?: $Enums.EventsFieldTypeEnum | Prisma.EnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  in?: $Enums.EventsFieldTypeEnum[] | Prisma.ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  notIn?: $Enums.EventsFieldTypeEnum[] | Prisma.ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  not?: Prisma.NestedEnumEventsFieldTypeEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.EventsFieldTypeEnum | null
-  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
-  _min?: Prisma.NestedEnumEventsFieldTypeEnumNullableFilter<$PrismaModel>
-  _max?: Prisma.NestedEnumEventsFieldTypeEnumNullableFilter<$PrismaModel>
 }
 
 export type JsonNullableFilter<$PrismaModel = never> =
@@ -881,13 +864,6 @@ export type NestedEnumEventsEventTypeEnumNullableFilter<$PrismaModel = never> = 
   not?: Prisma.NestedEnumEventsEventTypeEnumNullableFilter<$PrismaModel> | $Enums.EventsEventTypeEnum | null
 }
 
-export type NestedEnumEventsFieldTypeEnumNullableFilter<$PrismaModel = never> = {
-  equals?: $Enums.EventsFieldTypeEnum | Prisma.EnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  in?: $Enums.EventsFieldTypeEnum[] | Prisma.ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  notIn?: $Enums.EventsFieldTypeEnum[] | Prisma.ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  not?: Prisma.NestedEnumEventsFieldTypeEnumNullableFilter<$PrismaModel> | $Enums.EventsFieldTypeEnum | null
-}
-
 export type NestedJsonFilter<$PrismaModel = never> =
 | Prisma.PatchUndefined<
     Prisma.Either<Required<NestedJsonFilterBase<$PrismaModel>>, Exclude<keyof Required<NestedJsonFilterBase<$PrismaModel>>, 'path'>>,
@@ -930,16 +906,6 @@ export type NestedEnumEventsEventTypeEnumNullableWithAggregatesFilter<$PrismaMod
   _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
   _min?: Prisma.NestedEnumEventsEventTypeEnumNullableFilter<$PrismaModel>
   _max?: Prisma.NestedEnumEventsEventTypeEnumNullableFilter<$PrismaModel>
-}
-
-export type NestedEnumEventsFieldTypeEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
-  equals?: $Enums.EventsFieldTypeEnum | Prisma.EnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  in?: $Enums.EventsFieldTypeEnum[] | Prisma.ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  notIn?: $Enums.EventsFieldTypeEnum[] | Prisma.ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> | null
-  not?: Prisma.NestedEnumEventsFieldTypeEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.EventsFieldTypeEnum | null
-  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
-  _min?: Prisma.NestedEnumEventsFieldTypeEnumNullableFilter<$PrismaModel>
-  _max?: Prisma.NestedEnumEventsFieldTypeEnumNullableFilter<$PrismaModel>
 }
 
 export type NestedJsonNullableFilter<$PrismaModel = never> =

@@ -63,15 +63,6 @@ export const EventsEventTypeEnum = {
 export type EventsEventTypeEnum = (typeof EventsEventTypeEnum)[keyof typeof EventsEventTypeEnum]
 
 
-export const EventsFieldTypeEnum = {
-  INDOOR: 'INDOOR',
-  GRASS: 'GRASS',
-  SAND: 'SAND'
-} as const
-
-export type EventsFieldTypeEnum = (typeof EventsFieldTypeEnum)[keyof typeof EventsFieldTypeEnum]
-
-
 export const ProductsPeriodEnum = {
   WEEK: 'WEEK',
   MONTH: 'MONTH',

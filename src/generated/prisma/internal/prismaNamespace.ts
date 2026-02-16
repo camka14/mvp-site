@@ -2628,7 +2628,6 @@ export const FieldsScalarFieldEnum = {
   heading: 'heading',
   inUse: 'inUse',
   name: 'name',
-  type: 'type',
   rentalSlotIds: 'rentalSlotIds',
   location: 'location',
   organizationId: 'organizationId'
@@ -2951,7 +2950,6 @@ export const EventsScalarFieldEnum = {
   organizationId: 'organizationId',
   autoCancellation: 'autoCancellation',
   eventType: 'eventType',
-  fieldType: 'fieldType',
   doTeamsRef: 'doTeamsRef',
   refereeIds: 'refereeIds',
   allowPaymentPlans: 'allowPaymentPlans',
@@ -3469,20 +3467,6 @@ export type EnumEventsEventTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputTy
  * Reference to a field of type 'EventsEventTypeEnum[]'
  */
 export type ListEnumEventsEventTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsEventTypeEnum[]'>
-    
-
-
-/**
- * Reference to a field of type 'EventsFieldTypeEnum'
- */
-export type EnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsFieldTypeEnum'>
-    
-
-
-/**
- * Reference to a field of type 'EventsFieldTypeEnum[]'
- */
-export type ListEnumEventsFieldTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsFieldTypeEnum[]'>
     
 
 

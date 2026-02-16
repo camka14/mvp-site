@@ -789,7 +789,6 @@ class EventService {
             location: row.location ?? '',
             lat: Number.isFinite(lat) ? lat : 0,
             long: Number.isFinite(long) ? long : 0,
-            type: row.type ?? '',
             fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
             divisions: Array.isArray(row.divisions) ? row.divisions : undefined,
             organization: row.organization ?? row.organizationId ?? undefined,

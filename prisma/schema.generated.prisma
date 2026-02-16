@@ -42,12 +42,6 @@ enum EventsEventTypeEnum {
   LEAGUE
 }
 
-enum EventsFieldTypeEnum {
-  INDOOR
-  GRASS
-  SAND
-}
-
 enum ProductsPeriodEnum {
   WEEK
   MONTH
@@ -102,7 +96,6 @@ model Fields {
   heading Float?
   inUse Boolean?
   name String?
-  type String?
   rentalSlotIds String[]
   location String?
   organizationId String?
@@ -349,7 +342,6 @@ model Events {
   organizationId String?
   autoCancellation Boolean?
   eventType EventsEventTypeEnum?
-  fieldType EventsFieldTypeEnum?
   doTeamsRef Boolean?
   refereeIds String[]
   allowPaymentPlans Boolean?

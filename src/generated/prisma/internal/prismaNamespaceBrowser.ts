@@ -109,7 +109,6 @@ export const FieldsScalarFieldEnum = {
   heading: 'heading',
   inUse: 'inUse',
   name: 'name',
-  type: 'type',
   rentalSlotIds: 'rentalSlotIds',
   location: 'location',
   organizationId: 'organizationId'
@@ -432,7 +431,6 @@ export const EventsScalarFieldEnum = {
   organizationId: 'organizationId',
   autoCancellation: 'autoCancellation',
   eventType: 'eventType',
-  fieldType: 'fieldType',
   doTeamsRef: 'doTeamsRef',
   refereeIds: 'refereeIds',
   allowPaymentPlans: 'allowPaymentPlans',
