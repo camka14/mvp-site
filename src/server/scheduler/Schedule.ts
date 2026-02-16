@@ -265,23 +265,24 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
           const boundedStart = slotStart.getTime() < this.startTime.getTime() ? this.startTime : slotStart;
           const boundedEnd = slotEnd.getTime() > this.endTime.getTime() ? this.endTime : slotEnd;
           if (boundedEnd.getTime() <= boundedStart.getTime()) continue;
-          const fieldIds = Array.from(
+          const fieldCandidates: unknown[] = Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+            ? slot.scheduledFieldIds
+            : Array.isArray(slot.fieldIds) && slot.fieldIds.length
+              ? slot.fieldIds
+              : [slot.field ?? slot.scheduledFieldId];
+          const fieldIds: string[] = Array.from(
             new Set(
-              (Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
-                ? slot.scheduledFieldIds
-                : Array.isArray(slot.fieldIds) && slot.fieldIds.length
-                  ? slot.fieldIds
-                  : [slot.field ?? slot.scheduledFieldId]
-              )
-                .flatMap((value: unknown) => {
+              fieldCandidates
+                .map((value): string | null => {
                   if (typeof value === 'string' && value.length > 0) {
-                    return [value];
+                    return value;
                   }
                   if (typeof value === 'number' && Number.isFinite(value)) {
-                    return [String(value)];
+                    return String(value);
                   }
-                  return [];
-                }),
+                  return null;
+                })
+                .filter((value): value is string => value !== null),
             ),
           );
           const groupIds = this.normalizeGroupIds(slot.divisions);
