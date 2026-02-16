@@ -82,8 +82,8 @@ const buildBypassHeaders = async (
 };
 
 export const test = base.extend<ApiFixtures>({
-  bypassAuth: async ({}, use) => {
-    await use(async (role = 'host', options) => {
+  bypassAuth: async ({}, applyFixture) => {
+    await applyFixture(async (role = 'host', options) => {
       const user = SEED_USERS[role];
       const mode = options?.mode ?? 'header';
       const context = await playwrightRequest.newContext({ baseURL: resolveBaseUrl() });
@@ -94,22 +94,22 @@ export const test = base.extend<ApiFixtures>({
       }
     });
   },
-  hostApi: async ({ bypassAuth }, use) => {
+  hostApi: async ({ bypassAuth }, applyFixture) => {
     const { headers } = await bypassAuth('host');
     const context = await playwrightRequest.newContext({
       baseURL: resolveBaseUrl(),
       extraHTTPHeaders: headers,
     });
-    await use(context);
+    await applyFixture(context);
     await context.dispose();
   },
-  participantApi: async ({ bypassAuth }, use) => {
+  participantApi: async ({ bypassAuth }, applyFixture) => {
     const { headers } = await bypassAuth('participant');
     const context = await playwrightRequest.newContext({
       baseURL: resolveBaseUrl(),
       extraHTTPHeaders: headers,
     });
-    await use(context);
+    await applyFixture(context);
     await context.dispose();
   },
 });

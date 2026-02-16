@@ -11,8 +11,8 @@ const storageStatePath = (role: SeedUserRole): string => path.join(authDir, `${r
 
 export const test = base.extend<AuthFixtures>({
   authRole: ['host', { option: true }],
-  storageState: async ({ authRole }, use) => {
-    await use(storageStatePath(authRole));
+  storageState: async ({ authRole }, applyFixture) => {
+    await applyFixture(storageStatePath(authRole));
   },
 });
 
