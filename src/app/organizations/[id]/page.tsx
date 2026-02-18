@@ -11,9 +11,10 @@ import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { Organization, Product, UserData, PaymentIntent, TemplateDocument } from '@/types';
+import type { Event, Organization, Product, UserData, PaymentIntent, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
+import { eventService } from '@/lib/eventService';
 import { createId } from '@/lib/id';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
@@ -87,22 +88,6 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
     $createdAt: row?.$createdAt ?? undefined,
   };
 };
-
-type EventTemplateSummary = {
-  id: string;
-  name: string;
-  start: string;
-  end: string;
-  hostId?: string;
-};
-
-const mapEventTemplateSummary = (row: Record<string, any>): EventTemplateSummary => ({
-  id: String(row?.$id ?? row?.id ?? ''),
-  name: String(row?.name ?? 'Untitled Template'),
-  start: typeof row?.start === 'string' ? row.start : '',
-  end: typeof row?.end === 'string' ? row.end : '',
-  hostId: typeof row?.hostId === 'string' ? row.hostId : undefined,
-});
 
 type OrganizationTab =
   | 'overview'
@@ -396,7 +381,7 @@ function OrganizationDetailContent() {
   const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const [eventTemplates, setEventTemplates] = useState<EventTemplateSummary[]>([]);
+  const [eventTemplates, setEventTemplates] = useState<Event[]>([]);
   const [eventTemplatesLoading, setEventTemplatesLoading] = useState(false);
   const [eventTemplatesError, setEventTemplatesError] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -500,11 +485,10 @@ function OrganizationDetailContent() {
       params.set('limit', '200');
       const response = await apiRequest<{ events?: any[] }>(`/api/events?${params.toString()}`);
       const rows = Array.isArray(response?.events) ? response.events : [];
-      setEventTemplates(
-        rows
-          .map((row) => mapEventTemplateSummary(row))
-          .filter((row) => row.id.length > 0 && row.start.length > 0 && row.end.length > 0),
+      const mapped = await Promise.all(
+        rows.map((row) => eventService.mapRowFromDatabase(row, false)),
       );
+      setEventTemplates(mapped.filter((row): row is Event => Boolean(row?.$id)));
       if (!silent) {
         setEventTemplatesError(null);
       }
@@ -1494,15 +1478,18 @@ function OrganizationDetailContent() {
 
             {isOwner && activeTab === 'eventTemplates' && (
               <Paper withBorder p="md" radius="md">
-                <Group justify="space-between" mb="sm">
-                  <Title order={5}>Event Templates Calendar</Title>
-                  <Button
-                    variant="default"
-                    onClick={() => org && loadEventTemplates(org.$id)}
-                    loading={eventTemplatesLoading}
-                  >
-                    Refresh
-                  </Button>
+                <Group justify="space-between" mb="md">
+                  <Title order={5}>Event Templates</Title>
+                  <Group>
+                    <Button
+                      variant="default"
+                      onClick={() => org && loadEventTemplates(org.$id)}
+                      loading={eventTemplatesLoading}
+                    >
+                      Refresh
+                    </Button>
+                    <Button onClick={handleCreateEvent}>+ Create Event</Button>
+                  </Group>
                 </Group>
                 <Text size="sm" c="dimmed" mb="md">
                   Organization-scoped templates for creating new events.
@@ -1512,38 +1499,20 @@ function OrganizationDetailContent() {
                     {eventTemplatesError}
                   </Text>
                 )}
-                <div className="h-[800px]">
-                  <BigCalendar
-                    localizer={localizer}
-                    events={eventTemplates.map((template) => ({
-                      title: template.name,
-                      start: new Date(template.start),
-                      end: new Date(template.end),
-                      resource: template,
-                    }))}
-                    startAccessor="start"
-                    endAccessor="end"
-                    views={["month", "week", "day", "agenda"]}
-                    view={calendarView}
-                    date={calendarDate}
-                    onView={(view) => setCalendarView(view)}
-                    onNavigate={(date) => setCalendarDate(new Date(date))}
-                    step={30}
-                    popup
-                    components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
-                    onSelectEvent={(evt: any) => {
-                      const templateId = String(evt?.resource?.id ?? '');
-                      if (templateId) {
-                        openOrganizationEvent(templateId);
-                      }
-                    }}
-                    formats={ORGANIZATION_CALENDAR_FORMATS}
-                  />
-                </div>
-                {!eventTemplatesLoading && eventTemplates.length === 0 && (
-                  <Text size="sm" c="dimmed" mt="sm">
-                    No event templates yet.
-                  </Text>
+                {eventTemplatesLoading ? (
+                  <Text size="sm" c="dimmed">Loading event templates...</Text>
+                ) : eventTemplates.length > 0 ? (
+                  <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                    {eventTemplates.map((eventTemplate) => (
+                      <EventCard
+                        key={eventTemplate.$id}
+                        event={eventTemplate}
+                        onClick={() => { setSelectedEvent(eventTemplate); setShowEventDetailSheet(true); }}
+                      />
+                    ))}
+                  </SimpleGrid>
+                ) : (
+                  <Text size="sm" c="dimmed">No event templates yet.</Text>
                 )}
               </Paper>
             )}
