@@ -3,6 +3,7 @@
 import { memo } from 'react';
 import Image from 'next/image';
 import { getTeamAvatarUrl, getUserAvatarUrl, Match } from '@/types';
+import { formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 
 interface MatchCardProps {
     match: Match;
@@ -27,6 +28,8 @@ function MatchCard({
     showRefereeInHeader = false,
     fieldLabel,
 }: MatchCardProps) {
+    const isCompactHorizontal = layout === 'horizontal' && hideTimeBadge;
+
     const toTitleCase = (value: string) =>
         value
             .split(/\s+/)
@@ -65,18 +68,8 @@ function MatchCard({
         const date = new Date(timeString);
         if (Number.isNaN(date.getTime())) return '';
         return showDate
-            ? date.toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true,
-            })
-            : date.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true,
-            });
+            ? formatDisplayDateTime(date)
+            : formatDisplayTime(date);
     };
 
     const resolvedFieldLabel = (() => {
@@ -110,7 +103,7 @@ function MatchCard({
         winner: boolean;
         reverseScore?: boolean;
     }) => (
-        <div className={`flex items-center justify-between p-2 rounded ${winner ? 'bg-green-50 border border-green-200' : 'bg-gray-100'}`}>
+        <div className={`flex items-center justify-between ${isCompactHorizontal ? 'p-1.5' : 'p-2'} rounded ${winner ? 'bg-green-50 border border-green-200' : 'bg-gray-100'}`}>
             {reverseScore ? (
                 <>
                     <div className="flex items-center gap-1 text-sm font-mono mr-2">
@@ -191,8 +184,8 @@ function MatchCard({
     );
 
     const renderHorizontalLayout = () => (
-        <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3 items-stretch">
+        <div className={isCompactHorizontal ? 'space-y-2' : 'space-y-3'}>
+            <div className={`grid grid-cols-2 items-stretch ${isCompactHorizontal ? 'gap-2' : 'gap-3'}`}>
                 <div className="h-full">
                     {renderTeamRow({ team: match.team1, points: match.team1Points, winner: result?.winner === 1 })}
                 </div>
@@ -228,8 +221,8 @@ function MatchCard({
                 </div>
             )}
 
-            <div className="p-4 pv-6 space-y-3">
-                <div className="flex items-start justify-between mb-2 gap-3">
+            <div className={`${isCompactHorizontal ? 'p-3 space-y-2' : 'p-4 pv-6 space-y-3'}`}>
+                <div className={`flex items-start justify-between gap-3 ${isCompactHorizontal ? 'mb-1' : 'mb-2'}`}>
                     <div className="flex flex-col gap-1 min-w-0">
                         <div className="text-sm text-gray-600">Match #{match.matchId}</div>
                         {showRefereeInHeader && (match.referee || match.teamReferee) && (

@@ -69,6 +69,89 @@ const buildTeamsForDivision = (prefix: string, count: number, division: Division
 };
 
 describe('league scheduling (time slots)', () => {
+  it('rejects schedulable events with fixed end windows when end is not after start', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+
+    const league = new League({
+      id: 'league_fixed_invalid_window',
+      name: 'Invalid Fixed Window League',
+      start,
+      end: start,
+      noFixedEndDateTime: false,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots: [],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    expect(() => scheduleEvent({ event: league }, context)).toThrow(
+      'End date/time must be after start date/time',
+    );
+  });
+
+  it('allows open-ended schedules to continue past the stored end date/time when enabled', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 0, 3, 11, 0, 0);
+
+    const timeSlots = [
+      new TimeSlot({
+        id: 'slot_open_ended',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 13 * 60,
+      }),
+    ];
+
+    const league = new League({
+      id: 'league_open_ended_window',
+      name: 'Open Ended Window League',
+      start,
+      end,
+      noFixedEndDateTime: true,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots,
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(6);
+    const latestStart = Math.max(...scheduled.matches.map((match) => match.start.getTime()));
+    expect(latestStart).toBeGreaterThan(end.getTime());
+  });
+
   it('schedules weekend-only league matches across multiple weekends when weekend slots are limited', () => {
     const division = buildDivision();
     const field = buildField(division);
@@ -471,6 +554,65 @@ describe('league scheduling (time slots)', () => {
 
     expect(() => scheduleEvent({ event: league }, context)).toThrow(
       /no fields are available.*OPEN/i,
+    );
+  });
+
+  it('does not inflate placeholder team counts in failure messages after retries', () => {
+    const rec = new Division('rec', 'Rec');
+    const open = new Division('open', 'Open');
+    const fieldRec = buildFieldById('field_rec', rec);
+    const fieldOpen = buildFieldById('field_open', open);
+    const start = new Date(2026, 0, 5, 8, 0, 0); // Monday
+    const end = new Date(2026, 0, 26, 22, 0, 0);
+
+    const league = new League({
+      id: 'league_retry_placeholder_growth',
+      name: 'Retry Placeholder Growth',
+      start,
+      end,
+      maxParticipants: 10,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams: {},
+      divisions: [rec, open],
+      referees: [],
+      fields: { [fieldRec.id]: fieldRec, [fieldOpen.id]: fieldOpen },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_rec',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldRec.id,
+          divisions: [rec],
+        }),
+        new TimeSlot({
+          id: 'slot_open',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldOpen.id,
+          divisions: [open],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 10,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    expect(() => scheduleEvent({ event: league }, context)).toThrow(
+      /Approximate matches needed: 54\./,
     );
   });
 });

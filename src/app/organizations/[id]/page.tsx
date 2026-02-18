@@ -21,6 +21,7 @@ import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
+import { apiRequest } from '@/lib/apiClient';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
@@ -28,6 +29,7 @@ import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 import {
   getRequiredSignerTypeLabel,
   normalizeRequiredSignerType,
@@ -92,6 +94,7 @@ type OrganizationTab =
   | 'teams'
   | 'users'
   | 'fields'
+  | 'hosts'
   | 'referees'
   | 'refunds'
   | 'store'
@@ -172,11 +175,23 @@ const formatSummaryDateTime = (value?: string): string => {
   if (!value) {
     return 'Unknown date';
   }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return 'Unknown date';
-  }
-  return parsed.toLocaleString();
+  const formatted = formatDisplayDateTime(value);
+  return formatted || 'Unknown date';
+};
+
+const ORGANIZATION_CALENDAR_FORMATS = {
+  dayFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
+  dayHeaderFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
+  dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${formatDisplayDate(start, { year: '2-digit' })} - ${formatDisplayDate(end, { year: '2-digit' })}`,
+  monthHeaderFormat: (value: Date) => formatDisplayDate(value),
+  agendaDateFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
+  agendaTimeFormat: (value: Date) => formatDisplayTime(value),
+  agendaTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
+  timeGutterFormat: (value: Date) => formatDisplayTime(value),
+  eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
 };
 
 function OrganizationDetailContent() {
@@ -193,6 +208,16 @@ function OrganizationDetailContent() {
   const [showEventDetailSheet, setShowEventDetailSheet] = useState(false);
   const [calendarView, setCalendarView] = useState<View>('month');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [updatingEventHostId, setUpdatingEventHostId] = useState<string | null>(null);
+  const [hostSearch, setHostSearch] = useState('');
+  const [hostResults, setHostResults] = useState<UserData[]>([]);
+  const [hostSearchLoading, setHostSearchLoading] = useState(false);
+  const [hostError, setHostError] = useState<string | null>(null);
+  const [hostInvites, setHostInvites] = useState<{ firstName: string; lastName: string; email: string }[]>([
+    { firstName: '', lastName: '', email: '' },
+  ]);
+  const [hostInviteError, setHostInviteError] = useState<string | null>(null);
+  const [invitingHosts, setInvitingHosts] = useState(false);
   const [refereeSearch, setRefereeSearch] = useState('');
   const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
   const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
@@ -207,7 +232,14 @@ function OrganizationDetailContent() {
   const [managingStripe, setManagingStripe] = useState(false);
   const [stripeEmail, setStripeEmail] = useState('');
   const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
-  const isOwner = Boolean(user && org && user.$id === org.ownerId);
+  const isOwner = Boolean(
+    user
+      && org
+      && (
+        user.$id === org.ownerId
+        || (Array.isArray(org.hostIds) && org.hostIds.includes(user.$id))
+      ),
+  );
   const availableTabs = useMemo(
     () => {
       const base: { label: string; value: typeof activeTab }[] = [
@@ -218,6 +250,7 @@ function OrganizationDetailContent() {
       ];
       if (isOwner) {
         base.push({ label: 'Templates', value: 'templates' });
+        base.push({ label: 'Hosts', value: 'hosts' });
         base.push({ label: 'Referees', value: 'referees' });
         base.push({ label: 'Refunds', value: 'refunds' });
       }
@@ -258,8 +291,72 @@ function OrganizationDetailContent() {
     () => (Array.isArray(org?.refIds) ? org.refIds.filter((id): id is string => typeof id === 'string') : []),
     [org?.refIds],
   );
-
+  const currentHostIds = useMemo(
+    () => (Array.isArray(org?.hostIds) ? org.hostIds.filter((id): id is string => typeof id === 'string') : []),
+    [org?.hostIds],
+  );
+  const currentHosts = useMemo(() => org?.hosts ?? [], [org?.hosts]);
+  const nonOwnerHosts = useMemo(
+    () => currentHosts.filter((host) => host.$id !== org?.ownerId),
+    [currentHosts, org?.ownerId],
+  );
+  const ownerHost = useMemo(() => {
+    if (org?.owner?.$id) {
+      return org.owner;
+    }
+    if (org?.ownerId && user?.$id === org.ownerId) {
+      return user;
+    }
+    return null;
+  }, [org?.owner, org?.ownerId, user]);
+  const unresolvedHostIds = useMemo(
+    () => currentHostIds.filter((hostId) => hostId !== org?.ownerId && !currentHosts.some((host) => host.$id === hostId)),
+    [currentHostIds, currentHosts, org?.ownerId],
+  );
   const currentReferees = useMemo(() => org?.referees ?? [], [org?.referees]);
+  const eventHostOptions = useMemo(() => {
+    const ids = new Set<string>();
+    if (typeof org?.ownerId === 'string' && org.ownerId.length > 0) {
+      ids.add(org.ownerId);
+    }
+    currentHostIds.forEach((hostId) => ids.add(hostId));
+
+    const labelById = new Map<string, string>();
+    const toLabel = (candidate: Partial<UserData> | undefined, fallbackId: string): string => {
+      const firstName = typeof candidate?.firstName === 'string' ? candidate.firstName.trim() : '';
+      const lastName = typeof candidate?.lastName === 'string' ? candidate.lastName.trim() : '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      if (fullName.length > 0) {
+        return fullName;
+      }
+      if (typeof candidate?.userName === 'string' && candidate.userName.trim().length > 0) {
+        return candidate.userName.trim();
+      }
+      return fallbackId;
+    };
+
+    if (org?.owner?.$id) {
+      labelById.set(org.owner.$id, `${toLabel(org.owner, org.owner.$id)} (Owner)`);
+    } else if (org?.ownerId) {
+      labelById.set(org.ownerId, `${org.ownerId} (Owner)`);
+    }
+
+    currentHosts.forEach((host) => {
+      if (!host?.$id) return;
+      labelById.set(host.$id, toLabel(host, host.$id));
+    });
+
+    if (user?.$id && !labelById.has(user.$id)) {
+      labelById.set(user.$id, toLabel(user, user.$id));
+    }
+
+    return Array.from(ids)
+      .map((hostId) => ({
+        value: hostId,
+        label: labelById.get(hostId) ?? hostId,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [currentHostIds, currentHosts, org?.owner, org?.ownerId, user]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productName, setProductName] = useState('');
   const [productDescription, setProductDescription] = useState('');
@@ -895,6 +992,139 @@ function OrganizationDetailContent() {
     }
   }, [org?.$id, purchaseProduct, refreshOrganizationProducts, user]);
 
+  const handleSearchHosts = useCallback(
+    async (query: string) => {
+      setHostSearch(query);
+      setHostError(null);
+      if (query.trim().length < 2) {
+        setHostResults([]);
+        return;
+      }
+      try {
+        setHostSearchLoading(true);
+        const results = await userService.searchUsers(query.trim());
+        const filtered = results.filter((candidate) => !currentHostIds.includes(candidate.$id));
+        setHostResults(filtered);
+      } catch (error) {
+        console.error('Failed to search hosts:', error);
+        setHostError('Failed to search hosts. Try again.');
+      } finally {
+        setHostSearchLoading(false);
+      }
+    },
+    [currentHostIds],
+  );
+
+  const handleAddHost = useCallback(
+    async (host: UserData) => {
+      if (!org || !isOwner) return;
+      const nextHostIds = Array.from(new Set([...(org.hostIds ?? []), host.$id]));
+      try {
+        await organizationService.updateOrganization(org.$id, { hostIds: nextHostIds });
+        setOrg((prev) => {
+          if (!prev) return prev;
+          const existingHosts = prev.hosts ?? [];
+          const nextHosts = existingHosts.some((entry) => entry.$id === host.$id) ? existingHosts : [...existingHosts, host];
+          return { ...prev, hostIds: nextHostIds, hosts: nextHosts };
+        });
+        setHostResults((prev) => prev.filter((candidate) => candidate.$id !== host.$id));
+        notifications.show({
+          color: 'green',
+          message: `${host.firstName || host.userName || 'Host'} added to organization hosts.`,
+        });
+      } catch (error) {
+        console.error('Failed to add host:', error);
+        notifications.show({ color: 'red', message: 'Failed to add host.' });
+      }
+    },
+    [isOwner, org],
+  );
+
+  const handleInviteHostEmails = useCallback(async () => {
+    if (!org || !isOwner || !user) return;
+
+    const sanitized = hostInvites.map((invite) => ({
+      firstName: invite.firstName.trim(),
+      lastName: invite.lastName.trim(),
+      email: invite.email.trim(),
+    }));
+
+    for (const invite of sanitized) {
+      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
+        setHostInviteError('Enter first, last, and valid email for all invites.');
+        return;
+      }
+    }
+
+    setHostInviteError(null);
+    setInvitingHosts(true);
+    try {
+      await userService.inviteUsersByEmail(
+        user.$id,
+        sanitized.map((invite) => ({
+          ...invite,
+          type: 'host' as const,
+          organizationId: org.$id,
+        })),
+      );
+      await loadOrg(org.$id, { silent: true });
+      notifications.show({
+        color: 'green',
+        message: 'Host invites sent. New hosts will be added automatically.',
+      });
+      setHostInvites([{ firstName: '', lastName: '', email: '' }]);
+    } catch (error) {
+      setHostInviteError(error instanceof Error ? error.message : 'Failed to invite hosts.');
+    } finally {
+      setInvitingHosts(false);
+    }
+  }, [hostInvites, isOwner, loadOrg, org, user]);
+
+  const handleRemoveHost = useCallback(
+    async (hostId: string) => {
+      if (!org || !isOwner) return;
+      const nextHostIds = (org.hostIds ?? []).filter((id) => id !== hostId);
+      try {
+        await organizationService.updateOrganization(org.$id, { hostIds: nextHostIds });
+        setOrg((prev) => {
+          if (!prev) return prev;
+          const nextHosts = (prev.hosts ?? []).filter((host) => host.$id !== hostId);
+          return { ...prev, hostIds: nextHostIds, hosts: nextHosts };
+        });
+      } catch (error) {
+        console.error('Failed to remove host:', error);
+        notifications.show({ color: 'red', message: 'Failed to remove host.' });
+      }
+    },
+    [isOwner, org],
+  );
+
+  const handleUpdateEventHost = useCallback(async (eventId: string, hostId: string) => {
+    if (!org || !isOwner || !eventId || !hostId) return;
+    try {
+      setUpdatingEventHostId(eventId);
+      await apiRequest(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        body: { event: { hostId } },
+      });
+      setOrg((prev) => {
+        if (!prev) return prev;
+        const nextEvents = (prev.events ?? []).map((event) => (
+          event.$id === eventId
+            ? { ...event, hostId }
+            : event
+        ));
+        return { ...prev, events: nextEvents };
+      });
+      notifications.show({ color: 'green', message: 'Event host updated.' });
+    } catch (error) {
+      console.error('Failed to update event host', error);
+      notifications.show({ color: 'red', message: 'Failed to update event host.' });
+    } finally {
+      setUpdatingEventHostId(null);
+    }
+  }, [isOwner, org]);
+
   const handleSearchReferees = useCallback(
     async (query: string) => {
       setRefereeSearch(query);
@@ -1077,6 +1307,12 @@ function OrganizationDetailContent() {
                             key={e.$id}
                             event={e}
                             onClick={() => { setSelectedEvent(e); setShowEventDetailSheet(true); }}
+                            hostOptions={isOwner ? eventHostOptions : undefined}
+                            selectedHostId={e.hostId}
+                            hostChangeDisabled={updatingEventHostId === e.$id}
+                            onHostChange={isOwner ? (hostId) => {
+                              void handleUpdateEventHost(e.$id, hostId);
+                            } : undefined}
                           />
                         ))}
                       </SimpleGrid>
@@ -1187,6 +1423,7 @@ function OrganizationDetailContent() {
                     components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
                     onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailSheet(true); }}
                     onSelectSlot={handleCreateEvent}
+                    formats={ORGANIZATION_CALENDAR_FORMATS}
                   />
                 </div>
               </Paper>
@@ -1483,6 +1720,184 @@ function OrganizationDetailContent() {
                 ) : (
                   <Text size="sm" c="dimmed">No templates yet.</Text>
                 )}
+              </Paper>
+            )}
+
+            {isOwner && activeTab === 'hosts' && (
+              <Paper withBorder p="md" radius="md">
+                <Group justify="space-between" mb="md">
+                  <Title order={5}>Hosts</Title>
+                  <Text size="sm" c="dimmed">Manage organization hosts and event editors.</Text>
+                </Group>
+
+                <Stack gap="md">
+                  <div>
+                    <Title order={6} mb="sm">Current Hosts</Title>
+                    <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
+                      {ownerHost && (
+                        <Paper withBorder p="sm" radius="md">
+                          <Group justify="space-between" align="center" gap="sm">
+                            <UserCard user={ownerHost} className="!p-0 !shadow-none flex-1" />
+                            <Text size="xs" fw={600} c="dimmed">Owner</Text>
+                          </Group>
+                        </Paper>
+                      )}
+                      {nonOwnerHosts.map((host) => (
+                        <Paper key={host.$id} withBorder p="sm" radius="md">
+                          <Group justify="space-between" align="center" gap="sm">
+                            <UserCard user={host} className="!p-0 !shadow-none flex-1" />
+                            <Button
+                              size="xs"
+                              variant="subtle"
+                              color="red"
+                              onClick={() => handleRemoveHost(host.$id)}
+                            >
+                              Remove
+                            </Button>
+                          </Group>
+                        </Paper>
+                      ))}
+                    </SimpleGrid>
+                    {!ownerHost && nonOwnerHosts.length === 0 && unresolvedHostIds.length === 0 && (
+                      <Text size="sm" c="dimmed" mt="sm">No hosts yet.</Text>
+                    )}
+                    {unresolvedHostIds.length > 0 && (
+                      <Paper withBorder p="sm" radius="md" mt="sm">
+                        <Text size="xs" c="dimmed" mb="xs">Some hosts are present but profile data is unavailable:</Text>
+                        <Stack gap={4}>
+                          {unresolvedHostIds.map((hostId) => (
+                            <Group key={hostId} justify="space-between" align="center">
+                              <Text size="sm">{hostId}</Text>
+                              <Button size="xs" variant="subtle" color="red" onClick={() => handleRemoveHost(hostId)}>
+                                Remove
+                              </Button>
+                            </Group>
+                          ))}
+                        </Stack>
+                      </Paper>
+                    )}
+                  </div>
+
+                  <Paper withBorder p="md" radius="md">
+                    <Title order={6} mb="xs">Add Hosts</Title>
+                    <TextInput
+                      value={hostSearch}
+                      onChange={(e) => { void handleSearchHosts(e.currentTarget.value); }}
+                      placeholder="Search hosts by name or username"
+                      mb="xs"
+                    />
+                    {hostError && (
+                      <Text size="xs" c="red" mb="xs">
+                        {hostError}
+                      </Text>
+                    )}
+                    {hostSearchLoading ? (
+                      <Text size="sm" c="dimmed">Searching hosts...</Text>
+                    ) : hostSearch.length < 2 ? (
+                      <Text size="sm" c="dimmed">Type at least 2 characters to search for hosts.</Text>
+                    ) : hostResults.length > 0 ? (
+                      <Stack gap="xs">
+                        {hostResults.map((result) => (
+                          <Paper key={result.$id} withBorder p="sm" radius="md">
+                            <Group justify="space-between" align="center" gap="sm">
+                              <UserCard user={result} className="!p-0 !shadow-none flex-1" />
+                              <Button size="xs" onClick={() => handleAddHost(result)}>
+                                Add
+                              </Button>
+                            </Group>
+                          </Paper>
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Text size="sm" c="dimmed">No hosts found. Invite by email below.</Text>
+                    )}
+                  </Paper>
+
+                  <Paper withBorder p="md" radius="md">
+                    <Title order={6} mb="xs">Invite hosts by email</Title>
+                    <Text size="sm" c="dimmed" mb="xs">
+                      Invited hosts get full organization and event editing access.
+                    </Text>
+                    <Stack gap="sm">
+                      {hostInvites.map((invite, index) => (
+                        <Paper key={index} withBorder radius="md" p="sm">
+                          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                            <TextInput
+                              label="First name"
+                              placeholder="First name"
+                              value={invite.firstName}
+                              onChange={(e) => {
+                                const next = [...hostInvites];
+                                next[index] = { ...invite, firstName: e.currentTarget.value };
+                                setHostInvites(next);
+                              }}
+                            />
+                            <TextInput
+                              label="Last name"
+                              placeholder="Last name"
+                              value={invite.lastName}
+                              onChange={(e) => {
+                                const next = [...hostInvites];
+                                next[index] = { ...invite, lastName: e.currentTarget.value };
+                                setHostInvites(next);
+                              }}
+                            />
+                            <TextInput
+                              label="Email"
+                              placeholder="name@example.com"
+                              value={invite.email}
+                              onChange={(e) => {
+                                const next = [...hostInvites];
+                                next[index] = { ...invite, email: e.currentTarget.value };
+                                setHostInvites(next);
+                              }}
+                            />
+                          </SimpleGrid>
+                          {hostInvites.length > 1 && (
+                            <Group justify="flex-end" mt="xs">
+                              <Button
+                                variant="subtle"
+                                color="red"
+                                size="xs"
+                                onClick={() => {
+                                  setHostInvites((prev) => prev.filter((_, i) => i !== index));
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </Group>
+                          )}
+                        </Paper>
+                      ))}
+                      <Group justify="space-between" align="center">
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="lg"
+                          radius="md"
+                          style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
+                          onClick={() =>
+                            setHostInvites((prev) => [...prev, { firstName: '', lastName: '', email: '' }])
+                          }
+                        >
+                          +
+                        </Button>
+                        <Button
+                          onClick={handleInviteHostEmails}
+                          loading={invitingHosts}
+                          disabled={invitingHosts}
+                        >
+                          Add Hosts
+                        </Button>
+                      </Group>
+                      {hostInviteError && (
+                        <Text size="xs" c="red">
+                          {hostInviteError}
+                        </Text>
+                      )}
+                    </Stack>
+                  </Paper>
+                </Stack>
               </Paper>
             )}
 

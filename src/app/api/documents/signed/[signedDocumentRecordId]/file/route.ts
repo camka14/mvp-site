@@ -49,13 +49,17 @@ const hasOrganizationDocumentAccess = async (params: {
 
   const org = await prisma.organizations.findUnique({
     where: { id: organizationId },
-    select: { ownerId: true, refIds: true },
+    select: { ownerId: true, hostIds: true, refIds: true },
   });
   if (!org) {
     return false;
   }
 
   if (org.ownerId === params.sessionUserId) {
+    return true;
+  }
+
+  if (Array.isArray(org.hostIds) && org.hostIds.includes(params.sessionUserId)) {
     return true;
   }
 

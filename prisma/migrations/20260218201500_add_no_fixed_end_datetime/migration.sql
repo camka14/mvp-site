@@ -1,0 +1,2 @@
+ALTER TABLE "Events"
+ADD COLUMN "noFixedEndDateTime" BOOLEAN NOT NULL DEFAULT true;

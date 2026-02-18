@@ -3,6 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import type { Organization } from '@/types';
+import { formatDisplayDate } from '@/lib/dateUtils';
 
 interface OrganizationCardProps {
   organization: Organization;
@@ -62,7 +63,7 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
             </svg>
             {organization.location || '—'}
           </div>
-          <div className="text-gray-400">Created {organization.$createdAt ? new Date(organization.$createdAt).toLocaleDateString() : '—'}</div>
+          <div className="text-gray-400">Created {organization.$createdAt ? formatDisplayDate(organization.$createdAt) : '—'}</div>
         </div>
       </div>
     </div>

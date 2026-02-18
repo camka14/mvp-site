@@ -3,6 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
     if (!org) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
-    if (!session.isAdmin && org.ownerId !== session.userId) {
+    if (!canManageOrganization(session, org)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   } else if (!session.isAdmin && userId !== session.userId) {

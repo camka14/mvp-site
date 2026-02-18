@@ -95,3 +95,88 @@ export const ensureLocalDateTimeString = (value: Date | string | null | undefine
 };
 
 export const nowLocalDateTimeString = (): string => buildFromDate(new Date());
+
+type DisplayYearFormat = '2-digit' | 'numeric';
+
+type DisplayDateOptions = {
+  year?: DisplayYearFormat;
+  timeZone?: string;
+};
+
+type DisplayTimeOptions = {
+  includeSeconds?: boolean;
+  timeZone?: string;
+};
+
+type DisplayDateTimeOptions = DisplayDateOptions & DisplayTimeOptions;
+
+const parseDisplayInput = (value: Date | string | number | null | undefined): Date | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === 'string' && !value.trim()) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export const formatDisplayDate = (
+  value: Date | string | number | null | undefined,
+  options: DisplayDateOptions = {},
+): string => {
+  const parsed = parseDisplayInput(value);
+  if (!parsed) {
+    return '';
+  }
+
+  const { year = 'numeric', timeZone } = options;
+  return new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year,
+    ...(timeZone ? { timeZone } : {}),
+  }).format(parsed);
+};
+
+export const formatDisplayTime = (
+  value: Date | string | number | null | undefined,
+  options: DisplayTimeOptions = {},
+): string => {
+  const parsed = parseDisplayInput(value);
+  if (!parsed) {
+    return '';
+  }
+
+  const { includeSeconds = false, timeZone } = options;
+  return new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: includeSeconds ? '2-digit' : undefined,
+    hour12: true,
+    ...(timeZone ? { timeZone } : {}),
+  }).format(parsed);
+};
+
+export const formatDisplayDateTime = (
+  value: Date | string | number | null | undefined,
+  options: DisplayDateTimeOptions = {},
+): string => {
+  const date = formatDisplayDate(value, { year: options.year, timeZone: options.timeZone });
+  const time = formatDisplayTime(value, {
+    includeSeconds: options.includeSeconds,
+    timeZone: options.timeZone,
+  });
+
+  if (!date || !time) {
+    return '';
+  }
+
+  return `${date} ${time}`;
+};

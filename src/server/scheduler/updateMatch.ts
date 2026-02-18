@@ -10,6 +10,7 @@ import {
   Tournament,
   UserData,
   TIMES,
+  MINUTE_MS,
 } from './types';
 
 export type MatchUpdate = {
@@ -40,6 +41,28 @@ export type FinalizeResult = {
 const noopContext: SchedulerContext = {
   log: () => {},
   error: () => {},
+};
+
+const OPEN_ENDED_RESCHEDULE_WEEKS = 52;
+
+const isOpenEndedSchedule = (event: Tournament | League): boolean => {
+  if (typeof event.noFixedEndDateTime === 'boolean') {
+    return event.noFixedEndDateTime;
+  }
+  return event.start.getTime() === event.end.getTime();
+};
+
+const resolveRescheduleEndTime = (event: Tournament | League, currentTime: Date): Date => {
+  if (!isOpenEndedSchedule(event)) {
+    return event.end;
+  }
+  const baseline = Math.max(event.end.getTime(), currentTime.getTime());
+  return new Date(baseline + OPEN_ENDED_RESCHEDULE_WEEKS * 7 * 24 * 60 * MINUTE_MS);
+};
+
+export const isScheduleWindowExceededError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('No available time slots remaining for scheduling');
 };
 
 const ensureMatchesArray = (participant?: { matches?: Match[] } | null) => {
@@ -645,7 +668,7 @@ export const finalizeMatch = (
         participants,
         event.divisions,
         currentTime,
-        { endTime: event.end, timeSlots: event.timeSlots },
+        { endTime: resolveRescheduleEndTime(event, currentTime), timeSlots: event.timeSlots },
       );
       const playoffMatches = Object.values(event.matches).filter((match) => isPlayoffMatch(match));
       assignMissingTeamReferees(event, schedule, playoffMatches);
@@ -661,7 +684,7 @@ export const finalizeMatch = (
     participants,
     event.divisions,
     currentTime,
-    { endTime: event.end, timeSlots: event.timeSlots },
+    { endTime: resolveRescheduleEndTime(event, currentTime), timeSlots: event.timeSlots },
   );
 
   const orderedMatches = Object.values(event.matches);

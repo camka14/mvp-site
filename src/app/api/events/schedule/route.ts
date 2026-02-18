@@ -7,6 +7,7 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { SchedulerContext } from '@/server/scheduler/types';
+import { canManageEvent } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,12 @@ const buildContext = (): SchedulerContext => {
       console.error(message);
     },
   };
+};
+
+const isFixedEndValidationError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('No fixed end date/time')
+    || message.includes('End date/time must be after start date/time');
 };
 
 export async function POST(req: NextRequest) {
@@ -51,11 +58,18 @@ export async function POST(req: NextRequest) {
       }
 
       await acquireEventLock(tx, eventId);
-      const event = await loadEventWithRelations(eventId, tx);
-
-      if (!session.isAdmin && session.userId !== event.hostId) {
+      const eventAccess = await tx.events.findUnique({
+        where: { id: eventId },
+        select: { id: true, hostId: true, assistantHostIds: true, organizationId: true },
+      });
+      if (!eventAccess) {
+        throw new Response('Not found', { status: 404 });
+      }
+      if (!(await canManageEvent(session, eventAccess, tx))) {
         throw new Response('Forbidden', { status: 403 });
       }
+
+      const event = await loadEventWithRelations(eventId, tx);
 
       if (!['LEAGUE', 'TOURNAMENT'].includes(event.eventType)) {
         return { preview: false, event, matches: Object.values(event.matches) };
@@ -80,6 +94,10 @@ export async function POST(req: NextRequest) {
     if (error instanceof Response) return error;
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (isFixedEndValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid schedule window';
+      return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Schedule event failed', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

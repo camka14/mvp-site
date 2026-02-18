@@ -488,6 +488,8 @@ export class Tournament {
   fieldCount: number | null;
   prize: string | null;
   hostId: string;
+  assistantHostIds: string[];
+  noFixedEndDateTime: boolean;
   imageId: string;
   loserBracketPointsToVictory: number[] | null;
   winnerBracketPointsToVictory: number[] | null;
@@ -550,6 +552,8 @@ export class Tournament {
     fieldCount?: number | null;
     prize?: string | null;
     hostId?: string;
+    assistantHostIds?: string[];
+    noFixedEndDateTime?: boolean;
     imageId?: string;
     loserBracketPointsToVictory?: number[] | null;
     winnerBracketPointsToVictory?: number[] | null;
@@ -611,6 +615,8 @@ export class Tournament {
     this.fieldCount = params.fieldCount ?? null;
     this.prize = params.prize ?? null;
     this.hostId = params.hostId ?? '';
+    this.assistantHostIds = params.assistantHostIds ?? [];
+    this.noFixedEndDateTime = params.noFixedEndDateTime ?? true;
     this.imageId = params.imageId ?? '';
     this.loserBracketPointsToVictory = params.loserBracketPointsToVictory ?? null;
     this.winnerBracketPointsToVictory = params.winnerBracketPointsToVictory ?? null;

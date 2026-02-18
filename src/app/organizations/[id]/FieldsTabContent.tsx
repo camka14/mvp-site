@@ -26,7 +26,7 @@ import Loading from '@/components/ui/Loading';
 import type { Field, Organization, TimeSlot, UserData } from '@/types';
 import { formatPrice } from '@/types';
 import { buildFieldCalendarEvents, type FieldCalendarEntry } from './fieldCalendar';
-import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { notifications } from '@mantine/notifications';
 import { organizationService } from '@/lib/organizationService';
 import { createId } from '@/lib/id';
@@ -58,6 +58,15 @@ const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const MIN_SELECTION_MS = 60 * 60 * 1000;
 const SELECTION_COLOR = '#FED7AA';
 const SELECTION_BORDER_COLOR = '#FDBA74';
+const FIELD_CALENDAR_FORMATS = {
+  dayFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
+  dayHeaderFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
+  dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${formatDisplayDate(start, { year: '2-digit' })} - ${formatDisplayDate(end, { year: '2-digit' })}`,
+  timeGutterFormat: (value: Date) => formatDisplayTime(value),
+  eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
+};
 
 const minutesToDate = (base: Date, minutes: number): Date => {
   const copy = new Date(base.getTime());
@@ -448,8 +457,8 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (!selectedField || !selection) {
       return 'Select a field to continue.';
     }
-    const startLabel = selection.start.toLocaleString();
-    const endLabel = selection.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const startLabel = formatDisplayDateTime(selection.start);
+    const endLabel = formatDisplayTime(selection.end);
 
     if (canManage) {
       const conflictSuffix = existingConflicts.length ? ' (overlaps an event or match on this date)' : '';
@@ -819,6 +828,7 @@ export default function FieldsTabContent({ organization, organizationId, current
                 min={minTime}
                 max={maxTime}
                 scrollToTime={scrollToTime}
+                formats={FIELD_CALENDAR_FORMATS}
                 eventPropGetter={eventPropGetter}
                 draggableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}
                 resizableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}

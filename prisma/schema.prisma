@@ -362,6 +362,8 @@ model Events {
   minAge Int?
   maxAge Int?
   hostId String
+  assistantHostIds String[] @default([])
+  noFixedEndDateTime Boolean @default(true)
   price Int
   singleDivision Boolean?
   registrationByDivisionType Boolean?
@@ -420,6 +422,7 @@ model Organizations {
   description String?
   logoId String?
   ownerId String
+  hostIds String[] @default([])
   website String?
   refIds String[]
   hasStripeAccount Boolean?

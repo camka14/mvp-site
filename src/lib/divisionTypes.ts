@@ -1,4 +1,5 @@
 import { calculateAgeOnDate } from '@/lib/age';
+import { formatDisplayDate } from '@/lib/dateUtils';
 
 export type DivisionGender = 'M' | 'F' | 'C';
 export type DivisionRatingType = 'AGE' | 'SKILL';
@@ -516,11 +517,9 @@ export const describeDivisionAgeBracket = (params: {
     sportInput: params.sportInput,
     referenceDate: params.referenceDate,
   });
-  const cutoffLabel = cutoffDate.toLocaleDateString('en-US', {
+  const cutoffLabel = formatDisplayDate(cutoffDate, {
     timeZone: 'UTC',
     year: 'numeric',
-    month: 'long',
-    day: 'numeric',
   });
 
   if (bracket.kind === 'UNDER_OR_EQUAL') {

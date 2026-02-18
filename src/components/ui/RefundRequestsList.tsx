@@ -7,6 +7,7 @@ import type { RefundRequest } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { organizationService } from '@/lib/organizationService';
+import { formatDisplayDateTime } from '@/lib/dateUtils';
 
 type RefundRequestsListProps = {
   organizationId?: string;
@@ -264,7 +265,7 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm">
-                      {refund.$createdAt ? new Date(refund.$createdAt).toLocaleString() : 'Unknown'}
+                      {refund.$createdAt ? formatDisplayDateTime(refund.$createdAt) : 'Unknown'}
                     </Text>
                   </Table.Td>
                   <Table.Td>

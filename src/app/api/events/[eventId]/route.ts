@@ -13,6 +13,7 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
+import { canManageEvent } from '@/server/accessControl';
 import {
   buildEventDivisionId,
   evaluateDivisionAgeEligibility,
@@ -38,6 +39,8 @@ const EVENT_UPDATE_FIELDS = new Set([
   'minAge',
   'maxAge',
   'hostId',
+  'assistantHostIds',
+  'noFixedEndDateTime',
   'price',
   'singleDivision',
   'registrationByDivisionType',
@@ -85,6 +88,7 @@ const EVENT_UPDATE_FIELDS = new Set([
 
 const updateSchema = z.object({
   event: z.record(z.string(), z.any()).optional(),
+  reschedule: z.boolean().optional(),
 }).passthrough();
 
 const withLegacyEvent = (row: any) => {
@@ -98,8 +102,20 @@ const withLegacyEvent = (row: any) => {
   if (!Array.isArray(legacy.refereeIds)) {
     (legacy as any).refereeIds = [];
   }
+  if (!Array.isArray((legacy as any).assistantHostIds)) {
+    (legacy as any).assistantHostIds = [];
+  }
   if (!Array.isArray(legacy.requiredTemplateIds)) {
     (legacy as any).requiredTemplateIds = [];
+  }
+  if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
+    const start = parseDateInput((legacy as any).start);
+    const end = parseDateInput((legacy as any).end);
+    (legacy as any).noFixedEndDateTime = Boolean(
+      start
+      && end
+      && start.getTime() === end.getTime(),
+    );
   }
   return legacy;
 };
@@ -212,6 +228,26 @@ const normalizeNullableString = (value: unknown): string | null => {
     return null;
   }
   return value;
+};
+
+const normalizeOptionalBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
 };
 
 const coerceDivisionFieldMap = (value: unknown): Record<string, string[]> => {
@@ -684,6 +720,7 @@ const hasScheduleImpact = (existing: any, payload: Record<string, any>): boolean
     'eventType',
     'start',
     'end',
+    'noFixedEndDateTime',
     'divisions',
     'fieldIds',
     'timeSlotIds',
@@ -745,7 +782,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
   }
   if (event.state === 'TEMPLATE') {
     const session = await requireSession(_req);
-    if (!session.isAdmin && session.userId !== event.hostId) {
+    if (!(await canManageEvent(session, event))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
@@ -777,7 +814,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (!existing) {
         throw new Response('Not found', { status: 404 });
       }
-      if (!session.isAdmin && existing.hostId !== session.userId) {
+      if (!(await canManageEvent(session, existing, tx))) {
         throw new Response('Forbidden', { status: 403 });
       }
 
@@ -829,6 +866,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       // Drop relationship objects that Prisma doesn't accept on `events.update`.
       delete payload.players;
       delete payload.referees;
+      delete payload.assistantHosts;
       delete payload.teams;
       delete payload.fields;
       delete payload.matches;
@@ -851,6 +889,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (payload.end) {
         const parsedEnd = parseDateInput(payload.end);
         if (parsedEnd) payload.end = parsedEnd;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(payload, 'noFixedEndDateTime')) {
+        const normalizedNoFixedEndDateTime = normalizeOptionalBoolean(payload.noFixedEndDateTime);
+        if (normalizedNoFixedEndDateTime !== null) {
+          payload.noFixedEndDateTime = normalizedNoFixedEndDateTime;
+        } else {
+          delete payload.noFixedEndDateTime;
+        }
       }
 
       const data: Record<string, any> = {};
@@ -913,6 +960,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const nextSingleDivision = typeof data.singleDivision === 'boolean'
         ? data.singleDivision
         : Boolean(existing.singleDivision);
+      const nextEventTypeRaw = (data.eventType ?? existing.eventType ?? null) as string | null;
+      const nextEventType = typeof nextEventTypeRaw === 'string'
+        ? nextEventTypeRaw.toUpperCase()
+        : nextEventTypeRaw;
+      const nextStart = (data.start ?? existing.start ?? null) as Date | null;
+      const nextEnd = (data.end ?? existing.end ?? null) as Date | null;
+      const nextNoFixedEndDateTime = typeof data.noFixedEndDateTime === 'boolean'
+        ? data.noFixedEndDateTime
+        : typeof (existing as any).noFixedEndDateTime === 'boolean'
+          ? Boolean((existing as any).noFixedEndDateTime)
+          : Boolean(
+            nextStart instanceof Date
+            && nextEnd instanceof Date
+            && nextStart.getTime() === nextEnd.getTime(),
+          );
+      if (isSchedulableEventType(nextEventType) && !nextNoFixedEndDateTime) {
+        if (!(nextStart instanceof Date) || !(nextEnd instanceof Date)) {
+          throw new Response('Start and end date/time are required when no fixed end date/time is disabled.', { status: 400 });
+        }
+        if (nextEnd.getTime() <= nextStart.getTime()) {
+          throw new Response('End date/time must be after start date/time when no fixed end date/time is disabled.', { status: 400 });
+        }
+      }
       const existingSlotIds = Array.isArray(existing.timeSlotIds)
         ? existing.timeSlotIds.map((value: unknown) => String(value))
         : [];
@@ -967,7 +1037,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.timeSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
       }
 
-      const shouldSchedule = hasScheduleImpact(existing, data) || divisionFieldMapChanged || hasTimeSlotPayload;
+      // Keep plain PATCH saves metadata-only; clients must explicitly opt-in to a rebuild.
+      const scheduleChanged = hasScheduleImpact(existing, data) || divisionFieldMapChanged || hasTimeSlotPayload;
+      const shouldSchedule = parsed.data.reschedule === true && scheduleChanged;
 
       if (expandedTimeSlots !== null) {
         const nextSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
@@ -1109,8 +1181,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         }, tx as any);
       }
 
-      const nextEventType = (data.eventType ?? existing.eventType ?? updatedEvent.eventType) as string | null;
-      if (shouldSchedule && isSchedulableEventType(nextEventType)) {
+      const nextEventTypeForSchedule = (data.eventType ?? existing.eventType ?? updatedEvent.eventType) as string | null;
+      if (shouldSchedule && isSchedulableEventType(nextEventTypeForSchedule)) {
         await acquireEventLock(tx, eventId);
         const loaded = await loadEventWithRelations(eventId, tx);
         if (isSchedulableEventType(loaded.eventType)) {
@@ -1153,7 +1225,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
   if (!event) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (!session.isAdmin && event.hostId !== session.userId) {
+  if (!(await canManageEvent(session, event))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

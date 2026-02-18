@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (!session.isAdmin && existing.ownerId !== session.userId) {
+  if (!canManageOrganization(session, existing)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

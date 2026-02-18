@@ -12,6 +12,7 @@ import { format, getDay, parse, startOfWeek } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 import type { Field, Match, UserData } from '@/types';
+import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import MatchCard from './MatchCard';
 
 interface LeagueCalendarViewProps {
@@ -33,6 +34,43 @@ type CalendarResource = {
 };
 
 const UNASSIGNED_FIELD_RESOURCE_ID = '__unassigned_field__';
+const MIN_VISIBLE_HOUR_SLOTS = 6;
+const MIN_HOUR_SLOT_HEIGHT = 112;
+
+const clampHour = (value: number): number => Math.max(0, Math.min(24, value));
+
+const ensureMinimumHourSpan = (range: [number, number]): [number, number] => {
+  let [start, end] = range;
+  start = clampHour(start);
+  end = clampHour(end);
+
+  if (end <= start) {
+    end = Math.min(24, start + 1);
+  }
+
+  const span = end - start;
+  if (span >= MIN_VISIBLE_HOUR_SLOTS) {
+    return [start, end];
+  }
+
+  const shortfall = MIN_VISIBLE_HOUR_SLOTS - span;
+  const expandBefore = Math.floor(shortfall / 2);
+  const expandAfter = shortfall - expandBefore;
+
+  start = Math.max(0, start - expandBefore);
+  end = Math.min(24, end + expandAfter);
+
+  // If one side hit bounds, shift the opposite side to preserve the minimum span.
+  if (end - start < MIN_VISIBLE_HOUR_SLOTS) {
+    if (start === 0) {
+      end = Math.min(24, start + MIN_VISIBLE_HOUR_SLOTS);
+    } else if (end === 24) {
+      start = Math.max(0, end - MIN_VISIBLE_HOUR_SLOTS);
+    }
+  }
+
+  return [start, end];
+};
 
 const parseDateInput = (value?: string | Date | null): Date | null => {
   if (!value) return null;
@@ -155,10 +193,25 @@ const localizer = dateFnsLocalizer({
 const formatHourLabel = (hour: number) => {
   const date = new Date();
   date.setHours(hour, 0, 0, 0);
-  return format(date, 'h a');
+  return formatDisplayTime(date);
 };
 
 const MIN_CALENDAR_HEIGHT = 600;
+
+const calendarFormats = {
+  dayFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
+  dayHeaderFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
+  dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${formatDisplayDate(start, { year: '2-digit' })} - ${formatDisplayDate(end, { year: '2-digit' })}`,
+  monthHeaderFormat: (value: Date) => formatDisplayDate(value),
+  agendaDateFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
+  agendaTimeFormat: (value: Date) => formatDisplayTime(value),
+  agendaTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
+  timeGutterFormat: (value: Date) => formatDisplayTime(value),
+  eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
+};
 
 export function LeagueCalendarView({
   matches,
@@ -317,7 +370,7 @@ export function LeagueCalendarView({
 
   const defaultTimeRange = useMemo<[number, number]>(() => {
     if (!calendarEvents.length) {
-      return [8, 22];
+      return ensureMinimumHourSpan([8, 22]);
     }
 
     let earliest = 24;
@@ -331,11 +384,7 @@ export function LeagueCalendarView({
 
     const floor = Math.max(0, Math.floor(earliest));
     const ceil = Math.min(24, Math.ceil(latest));
-    if (floor === ceil) {
-      const adjusted = Math.min(24, floor + 1);
-      return [Math.max(0, adjusted - 1), adjusted];
-    }
-    return [floor, ceil];
+    return ensureMinimumHourSpan([floor, ceil]);
   }, [calendarEvents]);
 
   const [timeRange, setTimeRange] = useState<[number, number]>(defaultTimeRange);
@@ -399,7 +448,7 @@ export function LeagueCalendarView({
         match={event.resource}
         canManage={canManage}
         onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-        className={`h-full ${matchCardPaddingY} ${
+        className={`h-full ${
           userInvolvedMatchIds.has(event.resource.$id) ? 'border-green-200 hover:border-green-300' : ''
         }`}
         layout="horizontal"
@@ -408,7 +457,7 @@ export function LeagueCalendarView({
         fieldLabel={event.fieldLabel}
       />
     ),
-    [canManage, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
+    [canManage, onMatchClick, userInvolvedMatchIds],
   );
 
   const AgendaEventComponent = useCallback(
@@ -457,13 +506,13 @@ export function LeagueCalendarView({
   }, [calendarView, effectiveCalendarView]);
 
   const visibleHourSpan = useMemo(
-    () => Math.max(1, timeRange[1] - timeRange[0]),
+    () => Math.max(MIN_VISIBLE_HOUR_SLOTS, timeRange[1] - timeRange[0]),
     [timeRange],
   );
 
   const slotGroupPropGetter = useCallback<SlotGroupPropGetter>(
     () => {
-      const baseHeight = MIN_CALENDAR_HEIGHT / visibleHourSpan;
+      const baseHeight = Math.max(MIN_CALENDAR_HEIGHT / visibleHourSpan, MIN_HOUR_SLOT_HEIGHT);
       return {
         style: {
           height: `${baseHeight}px`,
@@ -534,15 +583,15 @@ export function LeagueCalendarView({
               min={0}
               max={24}
               step={1}
-              minRange={1}
+              minRange={MIN_VISIBLE_HOUR_SLOTS}
               value={timeRange}
-              onChange={(value) => setTimeRange(value as [number, number])}
+              onChange={(value) => setTimeRange(ensureMinimumHourSpan(value as [number, number]))}
               marks={[
-                { value: 0, label: '12 AM' },
-                { value: 6, label: '6 AM' },
-                { value: 12, label: '12 PM' },
-                { value: 18, label: '6 PM' },
-                { value: 24, label: '12 AM' },
+                { value: 0, label: formatHourLabel(0) },
+                { value: 6, label: formatHourLabel(6) },
+                { value: 12, label: formatHourLabel(12) },
+                { value: 18, label: formatHourLabel(18) },
+                { value: 24, label: formatHourLabel(24) },
               ]}
               label={(value) => formatHourLabel(value)}
               size="sm"
@@ -574,6 +623,7 @@ export function LeagueCalendarView({
           max={maxTime}
           style={{ height: '100%', minHeight: MIN_CALENDAR_HEIGHT }}
           slotGroupPropGetter={slotGroupPropGetter}
+          formats={calendarFormats}
         />
       </Paper>
     </>

@@ -19,6 +19,12 @@ interface MatchEditModalProps {
   onSave: (updated: Match) => void;
 }
 
+const MATCH_TIME_PICKER_PROPS = {
+  format: '12h' as const,
+  withDropdown: false,
+  amPmLabels: { am: 'AM', pm: 'PM' },
+};
+
 const coerceDate = (value?: string | Date | null): Date | null => parseLocalDateTime(value ?? null);
 
 const resolveTeamName = (team: Match['team1'], fallbackTeams: Team[]): string => {
@@ -491,6 +497,8 @@ export default function MatchEditModal({
           value={startValue}
           onChange={handleStartDateChange}
           withSeconds
+          valueFormat="MM/DD/YYYY hh:mm:ss A"
+          timePickerProps={MATCH_TIME_PICKER_PROPS}
           required
         />
         <DateTimePicker
@@ -498,6 +506,8 @@ export default function MatchEditModal({
           value={endValue}
           onChange={handleEndDateChange}
           withSeconds
+          valueFormat="MM/DD/YYYY hh:mm:ss A"
+          timePickerProps={MATCH_TIME_PICKER_PROPS}
           required
           minDate={startValue ?? undefined}
         />

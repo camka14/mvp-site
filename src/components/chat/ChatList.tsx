@@ -4,6 +4,7 @@ import React from 'react';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
 import { useApp } from '@/app/providers';
+import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 
 export function ChatList() {
     const { chatGroups, loading } = useChat();
@@ -28,16 +29,9 @@ export function ChatList() {
         const diffHours = diffMs / (1000 * 60 * 60);
 
         if (diffHours < 24) {
-            return date.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            });
+            return formatDisplayTime(date);
         } else {
-            return date.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric'
-            });
+            return formatDisplayDate(date, { year: '2-digit' });
         }
     };
 

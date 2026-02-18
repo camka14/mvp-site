@@ -18,34 +18,64 @@ const isLeague = (event: League | Tournament): event is League => {
   return event instanceof League || event.eventType === 'LEAGUE';
 };
 
+const OPEN_ENDED_WEEKS = 52;
+
+const isOpenEndedSchedule = (event: League | Tournament): boolean => {
+  if (typeof event.noFixedEndDateTime === 'boolean') {
+    return event.noFixedEndDateTime;
+  }
+  return event.start.getTime() === event.end.getTime();
+};
+
+const extendOpenEndedWindow = (event: League | Tournament): void => {
+  const baseEndMs = Math.max(event.start.getTime(), event.end.getTime());
+  event.end = new Date(baseEndMs + OPEN_ENDED_WEEKS * 7 * 24 * 60 * MINUTE_MS);
+};
+
 export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContext): ScheduleResult => {
   const { event } = request;
   if (typeof request.participantCount === 'number' && request.participantCount > 0) {
     event.maxParticipants = request.participantCount;
   }
 
-  if (event.start.getTime() === event.end.getTime()) {
-    event.end = new Date(event.start.getTime() + 52 * 7 * 24 * 60 * MINUTE_MS);
+  const openEndedSchedule = isOpenEndedSchedule(event);
+  if (!openEndedSchedule && event.end.getTime() <= event.start.getTime()) {
+    throw new ScheduleError('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
+  }
+  if (openEndedSchedule) {
+    extendOpenEndedWindow(event);
   }
 
-  prepareScheduleWindow(event);
+  prepareScheduleWindow(event, openEndedSchedule);
 
   if (isLeague(event)) {
-    return buildLeagueSchedule(event, context);
+    return buildLeagueSchedule(event, context, openEndedSchedule);
   }
 
   return buildTournamentSchedule(event, context);
 };
 
-const buildLeagueSchedule = (league: League, context: SchedulerContext): ScheduleResult => {
+const buildLeagueSchedule = (
+  league: League,
+  context: SchedulerContext,
+  openEndedSchedule: boolean,
+): ScheduleResult => {
   if (!league.timeSlots.length) {
     throw new ScheduleError(describeScheduleFailure(league, league.maxParticipants));
   }
   let updated: League | null = null;
   let extensionAttempt = 0;
   const maxExtensions = 3;
+  const baseTeams = { ...league.teams };
 
   while (!updated) {
+    // Retry attempts must start from the original roster. Placeholder teams
+    // are synthetic and should not leak into later attempts.
+    league.teams = { ...baseTeams };
+    for (const team of Object.values(league.teams)) {
+      team.matches = [];
+    }
+
     const builder = new EventBuilder(league, context);
     try {
       const scheduled = builder.buildSchedule();
@@ -60,14 +90,24 @@ const buildLeagueSchedule = (league: League, context: SchedulerContext): Schedul
         // Misconfiguration: surface this as a 4xx instead of a 500.
         throw new ScheduleError(errMsg);
       }
-      if (extensionAttempt < maxExtensions) {
+      if (openEndedSchedule && extensionAttempt < maxExtensions) {
         extensionAttempt += 1;
         const extraWeeks = Math.max(2, extensionAttempt * 2);
         league.end = new Date(league.end.getTime() + extraWeeks * 7 * 24 * 60 * MINUTE_MS);
         context.log(`schedule_event: extending season end to ${league.end.toISOString()} for retry`);
         continue;
       }
-      const message = describeScheduleFailure(league, league.maxParticipants);
+      // Build the failure summary from the original roster, not synthetic
+      // playoff placeholders created during the failed attempt.
+      league.teams = { ...baseTeams };
+      for (const team of Object.values(league.teams)) {
+        team.matches = [];
+      }
+      const baselineTeamCount = Object.keys(baseTeams).length;
+      const message = describeScheduleFailure(
+        league,
+        Math.max(league.maxParticipants ?? 0, baselineTeamCount),
+      );
       throw new ScheduleError(message);
     }
   }
@@ -182,7 +222,8 @@ const calculateSlotMinutes = (event: League): number => {
   return totalMinutes;
 };
 
-const prepareScheduleWindow = (event: Tournament | League): void => {
+const prepareScheduleWindow = (event: Tournament | League, allowExtension: boolean): void => {
+  if (!allowExtension) return;
   if (!event.timeSlots.length) return;
   const expectedTeams = projectedTeamCount(event);
   const weeklyMinutes = weeklySlotMinutes(event.timeSlots);

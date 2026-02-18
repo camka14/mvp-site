@@ -44,9 +44,14 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const scheduleEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/scheduler/scheduleEvent', () => ({
+  scheduleEvent: (...args: any[]) => scheduleEventMock(...args),
+  ScheduleError: class ScheduleError extends Error {},
+}));
 
 import { PATCH as eventPatch } from '@/app/api/events/[eventId]/route';
 
@@ -331,5 +336,62 @@ describe('event PATCH route', () => {
 
     const updateArg = prismaMock.events.update.mock.calls[0][0];
     expect(updateArg.data.fieldIds.sort()).toEqual(['field_keep', 'field_new']);
+  });
+
+  it('does not auto-reschedule leagues on regular PATCH saves', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: ['slot_1'],
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        singleDivision: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      noFixedEndDateTime: true,
+      divisions: ['open'],
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+    timeSlotsMock.upsert.mockResolvedValue({});
+    timeSlotsMock.deleteMany.mockResolvedValue({ count: 0 });
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          eventType: 'LEAGUE',
+          timeSlots: [
+            {
+              $id: 'slot_1',
+              dayOfWeek: 5,
+              daysOfWeek: [5],
+              scheduledFieldIds: ['field_1', 'field_2'],
+              startTimeMinutes: 1020,
+              endTimeMinutes: 1260,
+              repeating: true,
+              divisions: ['open'],
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(scheduleEventMock).not.toHaveBeenCalled();
   });
 });

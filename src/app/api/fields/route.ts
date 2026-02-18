@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
   const organization = orgId
     ? await prisma.organizations.findUnique({
         where: { id: orgId },
-        select: { id: true, ownerId: true, fieldIds: true },
+        select: { id: true, ownerId: true, hostIds: true, fieldIds: true },
       })
     : null;
 
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
 
-  if (organization && !session.isAdmin && organization.ownerId !== session.userId) {
+  if (organization && !canManageOrganization(session, organization)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

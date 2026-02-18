@@ -386,6 +386,12 @@ class EventService {
             rating: row.rating,
             imageId: row.imageId,
             hostId: row.hostId,
+            noFixedEndDateTime:
+                typeof row.noFixedEndDateTime === 'boolean'
+                    ? row.noFixedEndDateTime
+                    : row.start && row.end
+                        ? String(row.start) === String(row.end)
+                        : false,
             maxParticipants: row.maxParticipants,
             teamSizeLimit: row.teamSizeLimit,
             restTimeMinutes: row.restTimeMinutes,
@@ -399,6 +405,7 @@ class EventService {
             fieldIds: row.fieldIds,
             timeSlotIds: row.timeSlotIds,
             refereeIds: Array.isArray(row.refereeIds) ? row.refereeIds.map((id: unknown) => String(id)) : [],
+            assistantHostIds: Array.isArray(row.assistantHostIds) ? row.assistantHostIds.map((id: unknown) => String(id)) : [],
             waitList: row.waitList,
             freeAgents: row.freeAgents,
             cancellationRefundHours: row.cancellationRefundHours,
@@ -450,6 +457,7 @@ class EventService {
                     : undefined,
             timeSlots: row.timeSlots,
             referees: Array.isArray(row.referees) ? (row.referees as UserData[]) : undefined,
+            assistantHosts: Array.isArray(row.assistantHosts) ? (row.assistantHosts as UserData[]) : undefined,
             doubleElimination: row.doubleElimination,
             winnerSetCount: row.winnerSetCount,
             loserSetCount: row.loserSetCount,
@@ -570,14 +578,16 @@ class EventService {
         const timeSlotIds = this.extractStringIds(data.timeSlotIds ?? event.timeSlotIds ?? []);
         const userIds = this.extractStringIds(data.userIds ?? event.userIds ?? []);
         const refereeIds = this.extractStringIds(data.refereeIds ?? event.refereeIds ?? []);
+        const assistantHostIds = this.extractStringIds(data.assistantHostIds ?? event.assistantHostIds ?? []);
 
-        const [teams, players, fields, timeSlots, organization, referees] = await Promise.all([
+        const [teams, players, fields, timeSlots, organization, referees, assistantHosts] = await Promise.all([
             this.resolveTeams(data.teams, teamIds),
             this.resolvePlayers(data.players, userIds),
             this.resolveFields(data.fields, fieldIds),
             this.resolveTimeSlots(data.timeSlots, timeSlotIds),
             this.resolveOrganization(data.organization ?? data.organizationId ?? event.organization),
             this.resolvePlayers(data.referees, refereeIds),
+            this.resolvePlayers(data.assistantHosts, assistantHostIds),
         ]);
 
         const matches = await this.resolveMatches(event, data.matches, teams, fields, referees);
@@ -601,6 +611,8 @@ class EventService {
         event.players = players;
         event.refereeIds = refereeIds;
         event.referees = referees;
+        event.assistantHostIds = assistantHostIds;
+        event.assistantHosts = assistantHosts;
         event.fields = fields;
         event.timeSlots = timeSlots;
         event.matches = matches;
@@ -986,6 +998,8 @@ class EventService {
             location: row.location ?? undefined,
             coordinates: coordinates,
             ownerId: row.ownerId ?? undefined,
+            hostIds: Array.isArray(row.hostIds) ? row.hostIds.map((id: unknown) => String(id)) : [],
+            refIds: Array.isArray(row.refIds) ? row.refIds.map((id: unknown) => String(id)) : [],
             hasStripeAccount: typeof row.hasStripeAccount === 'boolean' ? row.hasStripeAccount : Boolean(row.hasStripeAccount),
             $createdAt: row.$createdAt,
             $updatedAt: row.$updatedAt,

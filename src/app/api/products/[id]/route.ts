@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const org = await prisma.organizations.findUnique({ where: { id: existing.organizationId } });
-  if (!session.isAdmin && org?.ownerId !== session.userId) {
+  if (!canManageOrganization(session, org)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -51,7 +52,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   const org = await prisma.organizations.findUnique({ where: { id: existing.organizationId } });
-  if (!session.isAdmin && org?.ownerId !== session.userId) {
+  if (!canManageOrganization(session, org)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

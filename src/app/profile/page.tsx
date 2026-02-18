@@ -22,6 +22,7 @@ import { organizationService } from '@/lib/organizationService';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
 import { profileDocumentService, type ProfileDocumentCard } from '@/lib/profileDocumentService';
+import { formatDisplayDate, formatDisplayDateTime } from '@/lib/dateUtils';
 
 const toDateInputValue = (value?: string | null): string => {
     if (!value) return '';
@@ -50,14 +51,13 @@ const formatDobLabel = (value?: string | null): string => {
     const datePart = toDateInputValue(value);
     if (!datePart) return 'Not provided';
     const date = new Date(`${datePart}T00:00:00Z`);
-    return new Intl.DateTimeFormat(undefined, { timeZone: 'UTC', year: 'numeric', month: 'long', day: '2-digit' }).format(date);
+    return formatDisplayDate(date, { timeZone: 'UTC', year: 'numeric' });
 };
 
 const formatDateTimeLabel = (value?: string): string => {
     if (!value) return 'Unknown date';
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return 'Unknown date';
-    return parsed.toLocaleString();
+    const formatted = formatDisplayDateTime(value);
+    return formatted || 'Unknown date';
 };
 
 export default function ProfilePage() {
@@ -1122,7 +1122,7 @@ export default function ProfilePage() {
                                     <div>
                                         <Text size="sm" fw={500} mb={4}>Member Since</Text>
                                         <p className="text-gray-900 py-2">
-                                            {user.$createdAt ? new Date(user.$createdAt).toLocaleDateString() : 'Unknown'}
+                                            {user.$createdAt ? formatDisplayDate(user.$createdAt) : 'Unknown'}
                                         </p>
                                     </div>
                                 </div>
@@ -1570,7 +1570,7 @@ export default function ProfilePage() {
                                                     ? bill.nextPaymentAmountCents
                                                     : remaining;
                                             const nextDue = bill.nextPaymentDue
-                                                ? new Date(bill.nextPaymentDue).toLocaleDateString()
+                                                ? formatDisplayDate(bill.nextPaymentDue)
                                                 : 'TBD';
                                             const ownerName =
                                                 bill.ownerLabel ??
@@ -1678,7 +1678,7 @@ export default function ProfilePage() {
                                                             Status: {status}
                                                         </Text>
                                                         <Text size="xs" c="dimmed">
-                                                            Started {new Date(sub.startDate).toLocaleDateString()}
+                                                            Started {formatDisplayDate(sub.startDate)}
                                                         </Text>
                                                         {isCancelled ? (
                                                             <Button

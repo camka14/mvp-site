@@ -34,6 +34,25 @@ const ensureNumberArray = (value: unknown): number[] =>
   ensureArray(value as Array<number | string>)
     .map((item) => (typeof item === 'number' ? item : Number(item)))
     .filter((item) => Number.isFinite(item));
+const isSchedulableEventType = (value: unknown): boolean => {
+  const normalized = typeof value === 'string' ? value.toUpperCase() : '';
+  return normalized === 'LEAGUE' || normalized === 'TOURNAMENT';
+};
+const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+  return fallback;
+};
 const DEFAULT_DIVISION_KEY = 'open';
 
 const normalizeDivisionKey = (value: unknown): string | null => {
@@ -711,6 +730,14 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     fieldCount: event.fieldCount ?? null,
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
+    assistantHostIds: ensureStringArray((event as any).assistantHostIds),
+    noFixedEndDateTime: typeof (event as any).noFixedEndDateTime === 'boolean'
+      ? (event as any).noFixedEndDateTime
+      : (
+        event.start instanceof Date
+        && event.end instanceof Date
+        && event.start.getTime() === event.end.getTime()
+      ),
     imageId: event.imageId ?? '',
     loserBracketPointsToVictory: ensureNumberArray(event.loserBracketPointsToVictory),
     winnerBracketPointsToVictory: ensureNumberArray(event.winnerBracketPointsToVictory),
@@ -1159,6 +1186,19 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
 
   const start = coerceDate(payload.start) ?? new Date();
   const end = coerceDate(payload.end) ?? start;
+  const payloadEventType = typeof payload.eventType === 'string'
+    ? payload.eventType.toUpperCase()
+    : null;
+  const fallbackNoFixedEndDateTime = (
+    isSchedulableEventType(payloadEventType)
+      ? true
+      : start.getTime() === end.getTime()
+  );
+  const noFixedEndDateTime = coerceBoolean(payload.noFixedEndDateTime, fallbackNoFixedEndDateTime);
+
+  if (!noFixedEndDateTime && end.getTime() <= start.getTime()) {
+    throw new Error('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
+  }
 
   const eventData = {
     id,
@@ -1177,6 +1217,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     minAge: payload.minAge ?? null,
     maxAge: payload.maxAge ?? null,
     hostId: payload.hostId ?? '',
+    assistantHostIds: ensureStringArray(payload.assistantHostIds),
+    noFixedEndDateTime,
     price: payload.price ?? 0,
     singleDivision: payload.singleDivision ?? false,
     registrationByDivisionType: payload.registrationByDivisionType ?? false,

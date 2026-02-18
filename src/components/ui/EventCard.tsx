@@ -9,6 +9,10 @@ interface EventCardProps {
   showDistance?: boolean;
   userLocation?: LocationCoordinates | null;
   onClick?: () => void;
+  hostOptions?: Array<{ value: string; label: string }>;
+  selectedHostId?: string;
+  onHostChange?: (hostId: string) => void;
+  hostChangeDisabled?: boolean;
 }
 
 const normalizeDivisionKey = (value: unknown): string | null => {
@@ -28,7 +32,16 @@ const startCase = (value: string): string => (
     .join(' ')
 );
 
-export default function EventCard({ event, showDistance = false, userLocation, onClick }: EventCardProps) {
+export default function EventCard({
+  event,
+  showDistance = false,
+  userLocation,
+  onClick,
+  hostOptions,
+  selectedHostId,
+  onHostChange,
+  hostChangeDisabled = false,
+}: EventCardProps) {
   const { date, time } = getEventDateTime(event);
 
   const getEventTypeInfo = () => {
@@ -75,6 +88,8 @@ export default function EventCard({ event, showDistance = false, userLocation, o
   const distance = getDistance();
   const eventTypeInfo = getEventTypeInfo();
   const imageUrl = getEventImageUrl({ imageId: event.imageId, width: 400, height: 200 });
+  const canAssignHost = Array.isArray(hostOptions) && hostOptions.length > 0 && typeof onHostChange === 'function';
+  const hostSelectValue = selectedHostId ?? event.hostId ?? (hostOptions?.[0]?.value ?? '');
 
   const fieldLabels = useMemo(() => {
     const names = new Set<string>();
@@ -242,7 +257,31 @@ export default function EventCard({ event, showDistance = false, userLocation, o
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-2 mt-auto">
+          {canAssignHost && (
+            <div className="pt-2 mt-auto">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Host
+              </label>
+              <select
+                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700"
+                value={hostSelectValue}
+                disabled={hostChangeDisabled}
+                onClick={(clickEvent) => clickEvent.stopPropagation()}
+                onChange={(changeEvent) => {
+                  changeEvent.stopPropagation();
+                  onHostChange?.(changeEvent.currentTarget.value);
+                }}
+              >
+                {hostOptions?.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-2">
             <div className="flex items-center text-sm text-gray-500">
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />

@@ -193,8 +193,22 @@ const withLegacyEvent = (row: any) => {
   if (!Array.isArray(legacy.refereeIds)) {
     (legacy as any).refereeIds = [];
   }
+  if (!Array.isArray((legacy as any).assistantHostIds)) {
+    (legacy as any).assistantHostIds = [];
+  }
   if (!Array.isArray(legacy.requiredTemplateIds)) {
     (legacy as any).requiredTemplateIds = [];
+  }
+  if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
+    const start = legacy.start ? new Date(legacy.start) : null;
+    const end = legacy.end ? new Date(legacy.end) : null;
+    (legacy as any).noFixedEndDateTime = Boolean(
+      start
+      && end
+      && !Number.isNaN(start.getTime())
+      && !Number.isNaN(end.getTime())
+      && start.getTime() === end.getTime(),
+    );
   }
   return legacy;
 };
@@ -214,6 +228,12 @@ const buildContext = (): SchedulerContext => {
       console.error(message);
     },
   };
+};
+
+const isFixedEndValidationError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('No fixed end date/time')
+    || message.includes('End date/time must be after start date/time');
 };
 
 export async function GET(req: NextRequest) {
@@ -323,6 +343,10 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (isFixedEndValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid schedule window';
+      return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Create event failed', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

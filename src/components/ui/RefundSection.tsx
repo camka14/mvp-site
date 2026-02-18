@@ -4,6 +4,7 @@ import { Paper, Text, Button, Alert, Textarea, Group } from '@mantine/core';
 import { Event, Team } from '@/types';
 import { paymentService } from '@/lib/paymentService';
 import { useApp } from '@/app/providers';
+import { formatDisplayDateTime } from '@/lib/dateUtils';
 
 interface RefundSectionProps {
     event: Event;
@@ -134,7 +135,7 @@ export default function RefundSection({ event, userRegistered, onRefundSuccess }
                 </div>
             ) : canAutoRefund ? (
                 <div className="space-y-2">
-                    <Text size="sm" c="dimmed">You can get a full refund until {refundDeadline.toLocaleString()}</Text>
+                    <Text size="sm" c="dimmed">You can get a full refund until {formatDisplayDateTime(refundDeadline)}</Text>
                     <Button fullWidth color="green" onClick={handleRefund} loading={loading}>
                         Get Refund
                     </Button>

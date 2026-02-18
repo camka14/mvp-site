@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/app/providers';
@@ -18,6 +18,7 @@ export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRazumlyAdmin, setIsRazumlyAdmin] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -29,9 +30,47 @@ export default function Navigation() {
     }
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkAdmin = async () => {
+      if (isGuest) {
+        if (!cancelled) setIsRazumlyAdmin(false);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/admin/access', { credentials: 'include' });
+        if (!res.ok) {
+          if (!cancelled) setIsRazumlyAdmin(false);
+          return;
+        }
+        const payload = await res.json().catch(() => ({}));
+        if (!cancelled) {
+          setIsRazumlyAdmin(Boolean(payload?.allowed));
+        }
+      } catch {
+        if (!cancelled) {
+          setIsRazumlyAdmin(false);
+        }
+      }
+    };
+
+    void checkAdmin();
+    return () => {
+      cancelled = true;
+    };
+  }, [isGuest, authUser?.$id]);
+
   if (!authUser) return null;
 
-  const items = isGuest ? baseNav.filter(i => i.href === '/discover') : baseNav;
+  const items = isGuest
+    ? baseNav.filter(i => i.href === '/discover')
+    : (
+      isRazumlyAdmin
+        ? [...baseNav, { label: 'Admin', href: '/admin' }]
+        : baseNav
+    );
 
   return (
     <nav className="bg-white elevation-2 sticky top-0 z-50">

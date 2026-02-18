@@ -310,12 +310,12 @@ export default function CreateRentalSlotModal({
     const endMinutes = parseTimeValue(endTime);
 
     if (repeating && startMinutes === null) {
-      setError('Enter a valid start time (HH:MM).');
+      setError('Enter a valid start time.');
       return;
     }
 
     if (repeating && endMinutes === null) {
-      setError('Enter a valid end time (HH:MM).');
+      setError('Enter a valid end time.');
       return;
     }
 
@@ -413,6 +413,7 @@ export default function CreateRentalSlotModal({
           <DatePickerInput
             label="Start date"
             placeholder="Pick a date"
+            valueFormat="MM/DD/YYYY"
             value={startDate}
             onChange={(value) => {
               const next = coerceDateValue(value);
@@ -429,6 +430,7 @@ export default function CreateRentalSlotModal({
           <DatePickerInput
             label={repeating ? 'End date (optional)' : 'End date'}
             placeholder="Pick an end date"
+            valueFormat="MM/DD/YYYY"
             value={endDate}
             onChange={(value) => setEndDate(coerceDateValue(value))}
             clearable={repeating}

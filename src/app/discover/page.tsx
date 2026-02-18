@@ -37,6 +37,7 @@ import { organizationService } from '@/lib/organizationService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
 import { useSports } from '@/app/hooks/useSports';
 import { createId } from '@/lib/id';
+import { formatDisplayTime } from '@/lib/dateUtils';
 
 type RentalListing = {
   organization: Organization;
@@ -997,11 +998,11 @@ function RentalsTabContent(props: {
               value={timeRange}
               onChange={(value) => setTimeRange(value as [number, number])}
               marks={[
-                { value: 0, label: '12 AM' },
-                { value: 6, label: '6 AM' },
-                { value: 12, label: '12 PM' },
-                { value: 18, label: '6 PM' },
-                { value: 24, label: '12 AM' },
+                { value: 0, label: formatHourLabel(0) },
+                { value: 6, label: formatHourLabel(6) },
+                { value: 12, label: formatHourLabel(12) },
+                { value: 18, label: formatHourLabel(18) },
+                { value: 24, label: formatHourLabel(24) },
               ]}
               label={(value) => formatHourLabel(value)}
               size="sm"
@@ -1050,5 +1051,5 @@ function RentalsTabContent(props: {
 function formatHourLabel(hour: number) {
   const date = new Date();
   date.setHours(hour, 0, 0, 0);
-  return date.toLocaleTimeString([], { hour: 'numeric' });
+  return formatDisplayTime(date);
 }

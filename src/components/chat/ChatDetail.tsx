@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
 import { useApp } from '@/app/providers';
+import { formatDisplayTime } from '@/lib/dateUtils';
 
 interface ChatDetailProps {
     chatId: string;
@@ -44,11 +45,7 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
     };
 
     const formatMessageTime = (timestamp: string) => {
-        return new Date(timestamp).toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
+        return formatDisplayTime(timestamp);
     };
 
     return (

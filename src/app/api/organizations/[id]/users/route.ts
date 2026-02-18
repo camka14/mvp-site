@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,14 +75,16 @@ const getSortTimestamp = (value: string | undefined): number => {
 const hasOrganizationUserAccess = async (params: {
   sessionUserId: string;
   isAdmin: boolean;
-  org: { ownerId: string; refIds: string[] };
+  org: { ownerId: string; refIds: string[]; hostIds: string[] };
   events: OrgEventRow[];
 }): Promise<boolean> => {
-  if (params.isAdmin) {
-    return true;
-  }
-
-  if (params.org.ownerId === params.sessionUserId) {
+  if (canManageOrganization(
+    {
+      userId: params.sessionUserId,
+      isAdmin: params.isAdmin,
+    },
+    params.org,
+  )) {
     return true;
   }
 
@@ -119,7 +122,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const org = await prisma.organizations.findUnique({
     where: { id },
-    select: { id: true, ownerId: true, refIds: true },
+    select: { id: true, ownerId: true, hostIds: true, refIds: true },
   });
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
@@ -149,6 +152,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     isAdmin: session.isAdmin,
     org: {
       ownerId: org.ownerId,
+      hostIds: Array.isArray(org.hostIds) ? org.hostIds.filter((entry): entry is string => typeof entry === 'string') : [],
       refIds: Array.isArray(org.refIds) ? org.refIds.filter((entry): entry is string => typeof entry === 'string') : [],
     },
     events: eventRows,

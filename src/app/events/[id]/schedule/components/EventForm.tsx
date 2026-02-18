@@ -12,7 +12,7 @@ import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
@@ -707,6 +707,19 @@ const coordinatesAreSet = (coordinates?: [number, number]): boolean => {
     return !(lat === 0 && lng === 0);
 };
 
+const toUserLabel = (user: Partial<UserData> | undefined, fallbackId: string): string => {
+    const firstName = typeof user?.firstName === 'string' ? user.firstName.trim() : '';
+    const lastName = typeof user?.lastName === 'string' ? user.lastName.trim() : '';
+    const fullName = `${firstName} ${lastName}`.trim();
+    if (fullName.length > 0) {
+        return fullName;
+    }
+    if (typeof user?.userName === 'string' && user.userName.trim().length > 0) {
+        return user.userName.trim();
+    }
+    return fallbackId;
+};
+
 // Drop match back-references to avoid circular data when React Hook Form clones defaults.
 const sanitizeFieldForForm = (field: Field): Field => {
     const { matches: _matches, ...rest } = field as Field & { matches?: unknown };
@@ -762,6 +775,7 @@ type EventFormState = {
     organizationId?: string;
     requiredTemplateIds: string[];
     hostId?: string;
+    noFixedEndDateTime: boolean;
     imageId: string;
     seedColor: number;
     waitList: string[];
@@ -770,6 +784,7 @@ type EventFormState = {
     teams: Team[];
     referees: UserData[];
     refereeIds: string[];
+    assistantHostIds: string[];
     doTeamsRef: boolean;
     leagueScoringConfig: LeagueScoringConfig;
 };
@@ -906,6 +921,19 @@ const extractTournamentConfigFromEvent = (event?: Partial<Event> | null): Tourna
 };
 
 const mapEventToFormState = (event: Event): EventFormState => {
+    const isSchedulableType = event.eventType === 'LEAGUE' || event.eventType === 'TOURNAMENT';
+    const derivedNoFixedEndDateTime = (() => {
+        if (typeof event.noFixedEndDateTime === 'boolean') {
+            return event.noFixedEndDateTime;
+        }
+        const parsedStart = parseLocalDateTime(event.start);
+        const parsedEnd = parseLocalDateTime(event.end);
+        if (parsedStart && parsedEnd) {
+            return parsedStart.getTime() === parsedEnd.getTime();
+        }
+        return isSchedulableType;
+    })();
+
     const resolvedSportId = (() => {
         // `event.sport` is historically inconsistent: it may be a Sport object, a string id, or absent.
         // Keep runtime compatibility by treating it as unknown and narrowing safely.
@@ -1043,6 +1071,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         ? event.registrationCutoffHours
         : 2,
     hostId: event.hostId || undefined,
+    noFixedEndDateTime: isSchedulableType ? derivedNoFixedEndDateTime : false,
     requiredTemplateIds: Array.isArray(event.requiredTemplateIds)
         ? event.requiredTemplateIds
         : [],
@@ -1054,6 +1083,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     teams: event.teams || [],
     referees: event.referees || [],
     refereeIds: event.refereeIds || [],
+    assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsRef: Boolean(event.doTeamsRef),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
@@ -1162,6 +1192,7 @@ const eventFormSchema = z
         organizationId: z.string().optional(),
         requiredTemplateIds: z.array(z.string()).default([]),
         hostId: z.string().optional(),
+        noFixedEndDateTime: z.boolean().default(false),
         imageId: z.string().trim().min(1, 'Event image is required'),
         seedColor: z.number(),
         waitList: z.array(z.string()),
@@ -1170,6 +1201,7 @@ const eventFormSchema = z
         teams: z.array(z.any()),
         referees: z.array(z.any()),
         refereeIds: z.array(z.string()),
+        assistantHostIds: z.array(z.string()).default([]),
         doTeamsRef: z.boolean(),
         leagueScoringConfig: z.any(),
         leagueSlots: z.array(leagueSlotSchema),
@@ -1205,6 +1237,18 @@ const eventFormSchema = z
                 message: 'Select at least one division',
                 path: ['divisions'],
             });
+        }
+
+        if ((values.eventType === 'LEAGUE' || values.eventType === 'TOURNAMENT') && !values.noFixedEndDateTime) {
+            const parsedStart = parseLocalDateTime(values.start);
+            const parsedEnd = parseLocalDateTime(values.end);
+            if (!parsedStart || !parsedEnd || parsedEnd.getTime() <= parsedStart.getTime()) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: 'End date/time must be after start date/time when no fixed end date/time is disabled.',
+                    path: ['end'],
+                });
+            }
         }
 
         const divisionIds = normalizeDivisionKeys(values.divisions);
@@ -1502,6 +1546,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (typeof defaults.teamSizeLimit === 'number') next.teamSizeLimit = defaults.teamSizeLimit;
         if (typeof defaults.teamSignup === 'boolean') next.teamSignup = defaults.teamSignup;
         if (typeof defaults.singleDivision === 'boolean') next.singleDivision = defaults.singleDivision;
+        if (typeof (defaults as any).noFixedEndDateTime === 'boolean') {
+            next.noFixedEndDateTime = (defaults as any).noFixedEndDateTime;
+        }
         if (typeof defaults.registrationByDivisionType === 'boolean') {
             next.registrationByDivisionType = defaults.registrationByDivisionType;
         }
@@ -2160,6 +2207,103 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const shouldProvisionFields = !isOrganizationHostedEvent && !hasImmutableFields;
     const shouldManageLocalFields = shouldProvisionFields && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
+    const organizationManagerIdSet = useMemo(() => {
+        const ids = new Set<string>();
+        if (typeof organization?.ownerId === 'string' && organization.ownerId.length > 0) {
+            ids.add(organization.ownerId);
+        }
+        if (Array.isArray(organization?.hostIds)) {
+            organization.hostIds
+                .map((id) => String(id))
+                .filter((id) => id.length > 0)
+                .forEach((id) => ids.add(id));
+        }
+        if (typeof eventData.hostId === 'string' && eventData.hostId.length > 0) {
+            ids.add(eventData.hostId);
+        }
+        (eventData.assistantHostIds || []).forEach((id) => {
+            const normalized = String(id).trim();
+            if (normalized.length > 0) {
+                ids.add(normalized);
+            }
+        });
+        return ids;
+    }, [eventData.assistantHostIds, eventData.hostId, organization?.hostIds, organization?.ownerId]);
+    const organizationUsersById = useMemo(() => {
+        const map = new Map<string, Partial<UserData>>();
+        const addUser = (candidate?: UserData | null) => {
+            if (candidate?.$id) {
+                map.set(candidate.$id, candidate);
+            }
+        };
+        addUser(organization?.owner);
+        (organization?.hosts || []).forEach((host) => addUser(host));
+        addUser(currentUser);
+        return map;
+    }, [currentUser, organization?.hosts, organization?.owner]);
+    const organizationHostSelectData = useMemo(
+        () => Array.from(organizationManagerIdSet)
+            .map((id) => {
+                const baseLabel = toUserLabel(organizationUsersById.get(id), id);
+                const label = id === organization?.ownerId ? `${baseLabel} (Owner)` : baseLabel;
+                return { value: id, label };
+            })
+            .sort((left, right) => left.label.localeCompare(right.label)),
+        [organization?.ownerId, organizationManagerIdSet, organizationUsersById],
+    );
+    const assistantHostSelectData = useMemo(
+        () => organizationHostSelectData.filter((option) => option.value !== eventData.hostId),
+        [eventData.hostId, organizationHostSelectData],
+    );
+    const assistantHostValue = useMemo(
+        () => Array.from(
+            new Set(
+                (eventData.assistantHostIds || [])
+                    .map((id) => String(id))
+                    .filter((id) => id.length > 0 && id !== eventData.hostId),
+            ),
+        ),
+        [eventData.assistantHostIds, eventData.hostId],
+    );
+    useEffect(() => {
+        if (!isOrganizationHostedEvent) {
+            return;
+        }
+        if (typeof eventData.hostId === 'string' && eventData.hostId.length > 0) {
+            return;
+        }
+        const fallbackHostId = organization?.ownerId || organizationHostSelectData[0]?.value;
+        if (!fallbackHostId) {
+            return;
+        }
+        setEventData((prev) => ({
+            ...prev,
+            hostId: fallbackHostId,
+            assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== fallbackHostId),
+        }));
+    }, [eventData.hostId, isOrganizationHostedEvent, organization?.ownerId, organizationHostSelectData, setEventData]);
+    const handleHostChange = useCallback((value: string | null) => {
+        if (!value) {
+            return;
+        }
+        setEventData((prev) => ({
+            ...prev,
+            hostId: value,
+            assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== value),
+        }));
+    }, [setEventData]);
+    const handleAssistantHostsChange = useCallback((values: string[]) => {
+        setEventData((prev) => ({
+            ...prev,
+            assistantHostIds: Array.from(
+                new Set(
+                    values
+                        .map((id) => String(id).trim())
+                        .filter((id) => id.length > 0 && id !== prev.hostId),
+                ),
+            ),
+        }));
+    }, [setEventData]);
     const fieldCountOptions = useMemo(
         () => Array.from({ length: 12 }, (_, idx) => ({ value: String(idx + 1), label: String(idx + 1) })),
         []
@@ -2917,22 +3061,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
     }, [hasImmutableFields, setFields, shouldManageLocalFields]);
 
-    // Ensure leagues default their end date to the start date until schedules generate an actual end.
-    useEffect(() => {
-        if (isEditMode) {
-            return;
-        }
-
-        if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') && eventData.start) {
-            setEventData(prev => {
-                if (prev.end === prev.start) {
-                    return prev;
-                }
-                return { ...prev, end: prev.start };
-            });
-        }
-    }, [eventData.eventType, eventData.start, isEditMode, setEventData]);
-
     // Hydrate league-specific state and slots when opening the modal for an existing event.
     useEffect(() => {
         if (hasImmutableTimeSlots) {
@@ -3203,6 +3331,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ],
         [hasExternalRentalField],
     );
+    const supportsNoFixedEndDateTime = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
 
     useEffect(() => {
         if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') &&
@@ -3251,7 +3380,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (eventData.eventType !== 'EVENT') {
             setValue('eventType', 'EVENT', { shouldDirty: true, shouldValidate: true });
         }
-    }, [eventData.eventType, hasExternalRentalField, setValue]);
+        if (eventData.noFixedEndDateTime) {
+            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+        }
+    }, [eventData.eventType, eventData.noFixedEndDateTime, hasExternalRentalField, setValue]);
 
     const leagueError = errors.leagueSlots ? 'Please resolve league timeslot issues before submitting.' : null;
 
@@ -3380,6 +3512,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             start: source.start,
             end: source.end,
             eventType: source.eventType,
+            noFixedEndDateTime: (
+                source.eventType === 'LEAGUE' || source.eventType === 'TOURNAMENT'
+            ) ? Boolean(source.noFixedEndDateTime) : false,
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
             // Backend stores price in cents; convert dollars from the form to cents before saving.
@@ -3411,6 +3546,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             players: source.players,
             referees: source.referees,
             refereeIds: source.refereeIds,
+            assistantHostIds: Array.from(
+                new Set(
+                    (source.assistantHostIds || [])
+                        .map((id) => String(id))
+                        .filter((id) => id.length > 0 && id !== source.hostId),
+                ),
+            ),
             doTeamsRef: source.doTeamsRef,
             coordinates: baseCoordinates,
         };
@@ -3791,12 +3933,77 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 field.onChange(nextType);
                                                 if (enforcingTeamSettings) {
                                                     setValue('teamSignup', true, { shouldDirty: true });
+                                                    setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
+                                                    setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+                                                } else {
+                                                    setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+                                                    const parsedStart = parseLocalDateTime(getValues('start'));
+                                                    const parsedEnd = parseLocalDateTime(getValues('end'));
+                                                    if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                                        const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                                        setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                                    }
                                                 }
                                             }}
                                         />
                                     )}
                                 />
                             </div>
+
+                            {isOrganizationHostedEvent && (
+                                <div className="space-y-2">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Controller
+                                            name="hostId"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <MantineSelect
+                                                    label="Primary Host"
+                                                    placeholder={organizationHostSelectData.length ? 'Select host' : 'No organization hosts available'}
+                                                    data={organizationHostSelectData}
+                                                    value={field.value ?? null}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    disabled={isImmutableField('hostId') || organizationHostSelectData.length === 0}
+                                                    allowDeselect={false}
+                                                    onChange={(value) => {
+                                                        if (isImmutableField('hostId')) return;
+                                                        if (!value) return;
+                                                        field.onChange(value);
+                                                        handleHostChange(value);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                        <Controller
+                                            name="assistantHostIds"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <MantineMultiSelect
+                                                    label="Assistant Hosts"
+                                                    description="Assistant hosts can edit and reschedule this event."
+                                                    placeholder={assistantHostSelectData.length ? 'Select assistant hosts' : 'No additional hosts available'}
+                                                    data={assistantHostSelectData}
+                                                    value={Array.isArray(field.value) ? field.value : assistantHostValue}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    disabled={isImmutableField('assistantHostIds') || assistantHostSelectData.length === 0}
+                                                    searchable
+                                                    clearable
+                                                    onChange={(values) => {
+                                                        if (isImmutableField('assistantHostIds')) return;
+                                                        field.onChange(values);
+                                                        handleAssistantHostsChange(values);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                    </div>
+                                    {organizationHostSelectData.length === 0 && (
+                                        <Text size="xs" c="dimmed">
+                                            Add organization hosts first to assign event hosts.
+                                        </Text>
+                                    )}
+                                </div>
+                            )}
                         </Paper>
 
                         <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
@@ -4160,6 +4367,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                             label={`Installment ${idx + 1} due`}
                                                             value={dueDateValue}
                                                             onChange={(val) => setInstallmentDueDate(idx, val)}
+                                                            valueFormat="MM/DD/YYYY hh:mm A"
+                                                            timePickerProps={{
+                                                                withDropdown: true,
+                                                                format: '12h',
+                                                            }}
                                                             style={{ flex: 1 }}
                                                         />
                                                         <NumberInput
@@ -4314,7 +4526,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         render={({ field }) => (
                                             <DateTimePicker
                                                 label="Start Date & Time"
-                                                valueFormat="DD MMM YYYY hh:mm A"
+                                                valueFormat="MM/DD/YYYY hh:mm A"
                                                 value={parseLocalDateTime(field.value)}
                                                 disabled={isImmutableField('start') || hasExternalRentalField}
                                                 onChange={(val) => {
@@ -4335,16 +4547,50 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     />
                                 </div>
                                 <div>
-                                    {(eventData.eventType === 'EVENT') &&
+                                    {(eventData.eventType === 'EVENT' || supportsNoFixedEndDateTime) &&
                                         <Controller
                                             name="end"
                                             control={control}
                                             render={({ field }) => (
                                                 <DateTimePicker
-                                                    label="End Date & Time"
-                                                    valueFormat="DD MMM YYYY hh:mm A"
+                                                    label={
+                                                        supportsNoFixedEndDateTime ? (
+                                                            <Group justify="space-between" wrap="nowrap" gap="sm">
+                                                                <Text size="sm" fw={500}>End Date & Time</Text>
+                                                                <Checkbox
+                                                                    size="xs"
+                                                                    label="No fixed end date/time"
+                                                                    checked={Boolean(eventData.noFixedEndDateTime)}
+                                                                    disabled={isImmutableField('noFixedEndDateTime') || hasExternalRentalField}
+                                                                    onChange={(event) => {
+                                                                        if (isImmutableField('noFixedEndDateTime')) return;
+                                                                        const checked = event.currentTarget.checked;
+                                                                        setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
+                                                                        if (!checked) {
+                                                                            const parsedStart = parseLocalDateTime(getValues('start'));
+                                                                            const parsedEnd = parseLocalDateTime(getValues('end'));
+                                                                            if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                                                                const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                                                                setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </Group>
+                                                        ) : 'End Date & Time'
+                                                    }
+                                                    description={
+                                                        supportsNoFixedEndDateTime && eventData.noFixedEndDateTime
+                                                            ? 'Open-ended scheduling is enabled. Turn this off to enforce a fixed end date/time.'
+                                                            : undefined
+                                                    }
+                                                    valueFormat="MM/DD/YYYY hh:mm A"
                                                     value={parseLocalDateTime(field.value)}
-                                                    disabled={isImmutableField('end') || hasExternalRentalField}
+                                                    disabled={
+                                                        isImmutableField('end')
+                                                        || hasExternalRentalField
+                                                        || (supportsNoFixedEndDateTime && eventData.noFixedEndDateTime)
+                                                    }
                                                     onChange={(val) => {
                                                         if (isImmutableField('end')) return;
                                                         const parsed = parseLocalDateTime(val as Date | string | null);

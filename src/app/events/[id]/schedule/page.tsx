@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 
@@ -11,9 +11,11 @@ import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { eventService } from '@/lib/eventService';
+import { fieldService } from '@/lib/fieldService';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
+import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
 import { apiRequest } from '@/lib/apiClient';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
@@ -31,6 +33,7 @@ import EventForm, { EventFormHandle } from './components/EventForm';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
+import TeamCard from '@/components/ui/TeamCard';
 
 const cloneValue = <T,>(value: T): T => {
   if (value === null || typeof value !== 'object') {
@@ -93,6 +96,14 @@ type DivisionOption = {
 };
 
 const normalizeDivisionToken = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const normalizeIdToken = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
   }
@@ -385,6 +396,16 @@ function EventScheduleContent() {
   const [activeTab, setActiveTab] = useState<string>('details');
   const [selectedScheduleDivision, setSelectedScheduleDivision] = useState<string>('all');
   const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
+  const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [participantsError, setParticipantsError] = useState<string | null>(null);
+  const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
+  const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
+  const [teamSearchQuery, setTeamSearchQuery] = useState('');
+  const [organizationTeamsForPicker, setOrganizationTeamsForPicker] = useState<Team[]>([]);
+  const [organizationTeamsLoading, setOrganizationTeamsLoading] = useState(false);
+  const [searchTeamPool, setSearchTeamPool] = useState<Team[]>([]);
+  const [searchTeamsLoading, setSearchTeamsLoading] = useState(false);
   const [isMatchEditorOpen, setIsMatchEditorOpen] = useState(false);
   const [standingsSort, setStandingsSort] = useState<{ field: StandingsSortField; direction: 'asc' | 'desc' }>({
     field: 'points',
@@ -702,11 +723,34 @@ function EventScheduleContent() {
   const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
   const isTournament = eventTypeForView === 'TOURNAMENT';
   const isLeague = eventTypeForView === 'LEAGUE';
-  const isHost = activeEvent?.hostId === user?.$id;
+  const activeOrganization = useMemo(() => {
+    if (activeEvent && typeof activeEvent.organization === 'object') {
+      return activeEvent.organization as Organization;
+    }
+    return organizationForCreate;
+  }, [activeEvent, organizationForCreate]);
+  const assistantHostIds = useMemo(
+    () =>
+      Array.isArray(activeEvent?.assistantHostIds)
+        ? activeEvent.assistantHostIds.map((id) => String(id)).filter((id) => id.length > 0)
+        : [],
+    [activeEvent?.assistantHostIds],
+  );
+  const isPrimaryHost = activeEvent?.hostId === user?.$id;
+  const isAssistantHost = Boolean(user?.$id && assistantHostIds.includes(user.$id));
+  const isOrganizationManager = Boolean(
+    user?.$id
+      && activeOrganization
+      && (
+        activeOrganization.ownerId === user.$id
+        || (Array.isArray(activeOrganization.hostIds) && activeOrganization.hostIds.includes(user.$id))
+      ),
+  );
+  const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
   const entityLabel = isTournament ? 'Tournament' : isLeague ? 'League' : 'Event';
   const activeLifecycleStatus = getEventLifecycleStatus(activeEvent);
-  const canEditMatches = Boolean(isHost && isEditingEvent);
-  const shouldShowCreationSheet = Boolean(isCreateMode || (isEditingEvent && isHost && user));
+  const canEditMatches = Boolean(canManageEvent && isEditingEvent);
+  const shouldShowCreationSheet = Boolean(isCreateMode || (isEditingEvent && canManageEvent && user));
   const createFormId = 'create-event-form';
   const templateSelectData = useMemo(
     () => templateSummaries.map((template) => ({ value: template.id, label: template.name })),
@@ -771,8 +815,8 @@ function EventScheduleContent() {
     if (!activeEvent || !user?.$id) {
       return;
     }
-    if (!isHost) {
-      setActionError('Only the host can create templates from this event.');
+    if (!canManageEvent) {
+      setActionError('Only an event host can create templates from this event.');
       return;
     }
     if (activeEvent.state === 'TEMPLATE') {
@@ -811,7 +855,7 @@ function EventScheduleContent() {
     } finally {
       setCreatingTemplate(false);
     }
-  }, [activeEvent, creatingTemplate, isHost, user?.$id]);
+  }, [activeEvent, canManageEvent, creatingTemplate, user?.$id]);
 
   const showDateOnMatches = useMemo(() => {
     if (!activeEvent?.start || !activeEvent?.end) return false;
@@ -832,6 +876,310 @@ function EventScheduleContent() {
     }
     return map;
   }, [activeEvent?.teams]);
+
+  const participantTeamIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    if (Array.isArray(activeEvent?.teamIds)) {
+      activeEvent.teamIds
+        .map((teamId) => normalizeIdToken(teamId))
+        .filter((teamId): teamId is string => Boolean(teamId))
+        .forEach((teamId) => ids.add(teamId));
+    }
+
+    if (Array.isArray(activeEvent?.teams)) {
+      activeEvent.teams.forEach((teamEntry) => {
+        const teamId = normalizeIdToken(teamEntry?.$id);
+        if (teamId) {
+          ids.add(teamId);
+        }
+      });
+    }
+
+    return Array.from(ids);
+  }, [activeEvent?.teamIds, activeEvent?.teams]);
+
+  const participantTeamIdSet = useMemo(() => new Set(participantTeamIds), [participantTeamIds]);
+
+  const organizationIdForParticipants = useMemo(() => {
+    const organizationId = normalizeIdToken(activeEvent?.organizationId);
+    if (organizationId) {
+      return organizationId;
+    }
+
+    if (typeof activeEvent?.organization === 'string') {
+      return normalizeIdToken(activeEvent.organization);
+    }
+
+    if (activeEvent?.organization && typeof activeEvent.organization === 'object') {
+      const objectId = normalizeIdToken((activeEvent.organization as Partial<Organization>).$id);
+      if (objectId) {
+        return objectId;
+      }
+    }
+
+    return null;
+  }, [activeEvent?.organization, activeEvent?.organizationId]);
+
+  const normalizedTeamSearchQuery = teamSearchQuery.trim().toLowerCase();
+
+  const availableOrganizationTeams = useMemo(
+    () => organizationTeamsForPicker.filter((team) => Boolean(team?.$id) && !participantTeamIdSet.has(team.$id)),
+    [organizationTeamsForPicker, participantTeamIdSet],
+  );
+
+  const availableOrganizationTeamIdSet = useMemo(
+    () => new Set(availableOrganizationTeams.map((team) => team.$id)),
+    [availableOrganizationTeams],
+  );
+
+  const searchResultTeams = useMemo(() => {
+    const source = searchTeamPool.filter((team) => {
+      if (!team?.$id || participantTeamIdSet.has(team.$id)) {
+        return false;
+      }
+
+      if (organizationIdForParticipants && availableOrganizationTeamIdSet.has(team.$id)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    const filtered = normalizedTeamSearchQuery
+      ? source.filter((team) => {
+        const teamName = (team.name ?? '').toLowerCase();
+        const sportName = (team.sport ?? '').toLowerCase();
+        const divisionName = (
+          typeof team.division === 'string'
+            ? team.division
+            : team.division?.name ?? team.division?.id ?? ''
+        ).toLowerCase();
+        return (
+          teamName.includes(normalizedTeamSearchQuery) ||
+          sportName.includes(normalizedTeamSearchQuery) ||
+          divisionName.includes(normalizedTeamSearchQuery)
+        );
+      })
+      : source;
+
+    return filtered.slice(0, 24);
+  }, [
+    availableOrganizationTeamIdSet,
+    normalizedTeamSearchQuery,
+    organizationIdForParticipants,
+    participantTeamIdSet,
+    searchTeamPool,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadParticipantTeams = async () => {
+      if (participantTeamIds.length === 0) {
+        setParticipantTeams([]);
+        setParticipantsError(null);
+        setParticipantsLoading(false);
+        return;
+      }
+
+      setParticipantsLoading(true);
+      setParticipantsError(null);
+      try {
+        const hydratedTeams = await teamService.getTeamsByIds(participantTeamIds, true);
+        if (cancelled) {
+          return;
+        }
+        const hydratedById = new Map(hydratedTeams.map((team) => [team.$id, team]));
+        const orderedTeams = participantTeamIds
+          .map((teamId) => hydratedById.get(teamId))
+          .filter((team): team is Team => Boolean(team));
+        setParticipantTeams(orderedTeams);
+      } catch (participantError) {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load participant teams:', participantError);
+        setParticipantsError(participantError instanceof Error ? participantError.message : 'Failed to load teams.');
+      } finally {
+        if (!cancelled) {
+          setParticipantsLoading(false);
+        }
+      }
+    };
+
+    void loadParticipantTeams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [participantTeamIds]);
+
+  useEffect(() => {
+    if (!isAddTeamModalOpen) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadOrganizationTeams = async () => {
+      if (!organizationIdForParticipants) {
+        setOrganizationTeamsForPicker([]);
+        setOrganizationTeamsLoading(false);
+        return;
+      }
+
+      setOrganizationTeamsLoading(true);
+      try {
+        const eventOrganization = activeEvent?.organization;
+        if (eventOrganization && typeof eventOrganization === 'object') {
+          const org = eventOrganization as Organization;
+          if (org.$id === organizationIdForParticipants && Array.isArray(org.teams)) {
+            if (!cancelled) {
+              setOrganizationTeamsForPicker(org.teams);
+            }
+            return;
+          }
+        }
+
+        const organization = await organizationService.getOrganizationById(organizationIdForParticipants, true);
+        if (cancelled) {
+          return;
+        }
+        setOrganizationTeamsForPicker(Array.isArray(organization?.teams) ? organization.teams : []);
+      } catch (organizationError) {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load organization teams:', organizationError);
+        setParticipantsError(organizationError instanceof Error ? organizationError.message : 'Failed to load organization teams.');
+      } finally {
+        if (!cancelled) {
+          setOrganizationTeamsLoading(false);
+        }
+      }
+    };
+
+    const loadSearchPool = async () => {
+      setSearchTeamsLoading(true);
+      try {
+        const response = await apiRequest<{ teams?: Array<Record<string, unknown>> }>('/api/teams?limit=200');
+        const rawRows = Array.isArray(response?.teams) ? response.teams : [];
+        const allTeamIds = Array.from(
+          new Set(
+            rawRows
+              .map((row) => normalizeIdToken((row.$id ?? row.id) as unknown))
+              .filter((teamId): teamId is string => Boolean(teamId)),
+          ),
+        );
+        const hydrated = allTeamIds.length > 0 ? await teamService.getTeamsByIds(allTeamIds, true) : [];
+        if (!cancelled) {
+          setSearchTeamPool(hydrated);
+        }
+      } catch (searchError) {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load team search results:', searchError);
+        setParticipantsError(searchError instanceof Error ? searchError.message : 'Failed to load teams for search.');
+      } finally {
+        if (!cancelled) {
+          setSearchTeamsLoading(false);
+        }
+      }
+    };
+
+    void Promise.all([loadOrganizationTeams(), loadSearchPool()]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent?.organization, isAddTeamModalOpen, organizationIdForParticipants]);
+
+  const syncParticipantTeams = useCallback(
+    async (nextTeamIds: string[], successMessage: string) => {
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) {
+        return;
+      }
+
+      const normalizedTeamIds = Array.from(
+        new Set(
+          nextTeamIds
+            .map((teamId) => normalizeIdToken(teamId))
+            .filter((teamId): teamId is string => Boolean(teamId)),
+        ),
+      );
+      const normalizedUserIds = Array.isArray(activeEvent?.userIds)
+        ? Array.from(new Set(activeEvent.userIds.map((userId) => String(userId)).filter(Boolean)))
+        : [];
+
+      setParticipantsError(null);
+      setActionError(null);
+      try {
+        await eventService.updateEventParticipants(targetEventId, {
+          userIds: normalizedUserIds,
+          teamIds: normalizedTeamIds,
+        });
+
+        const hydratedTeams = normalizedTeamIds.length > 0
+          ? await teamService.getTeamsByIds(normalizedTeamIds, true)
+          : [];
+        const hydratedById = new Map(hydratedTeams.map((team) => [team.$id, team]));
+        const orderedTeams = normalizedTeamIds
+          .map((teamId) => hydratedById.get(teamId))
+          .filter((team): team is Team => Boolean(team));
+
+        setParticipantTeams(orderedTeams);
+        setEvent((prev) => (prev ? { ...prev, teamIds: normalizedTeamIds, teams: orderedTeams } : prev));
+        setChangesEvent((prev) => (prev ? { ...prev, teamIds: normalizedTeamIds, teams: orderedTeams } : prev));
+        setInfoMessage(successMessage);
+      } catch (updateError) {
+        console.error('Failed to update event participants:', updateError);
+        setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
+      }
+    },
+    [activeEvent?.$id, activeEvent?.userIds, eventId],
+  );
+
+  const handleAddTeamToParticipants = useCallback(
+    async (team: Team) => {
+      if (participantsUpdatingTeamId || !team?.$id || participantTeamIdSet.has(team.$id)) {
+        return;
+      }
+
+      setParticipantsUpdatingTeamId(team.$id);
+      await syncParticipantTeams(
+        [...participantTeamIds, team.$id],
+        `${team.name || 'Team'} added to participants.`,
+      );
+      setParticipantsUpdatingTeamId(null);
+    },
+    [participantTeamIdSet, participantTeamIds, participantsUpdatingTeamId, syncParticipantTeams],
+  );
+
+  const handleRemoveTeamFromParticipants = useCallback(
+    async (team: Team) => {
+      if (participantsUpdatingTeamId || !team?.$id || !participantTeamIdSet.has(team.$id)) {
+        return;
+      }
+
+      const shouldRemove = typeof window === 'undefined'
+        ? true
+        : window.confirm(`Remove ${team.name || 'this team'} from participants?`);
+      if (!shouldRemove) {
+        return;
+      }
+
+      setParticipantsUpdatingTeamId(team.$id);
+      await syncParticipantTeams(
+        participantTeamIds.filter((teamId) => teamId !== team.$id),
+        `${team.name || 'Team'} removed from participants.`,
+      );
+      setParticipantsUpdatingTeamId(null);
+    },
+    [participantTeamIdSet, participantTeamIds, participantsUpdatingTeamId, syncParticipantTeams],
+  );
 
   const resolveTeam = useCallback(
     (value: Match['team1'] | string | null | undefined): Team | null => {
@@ -949,6 +1297,7 @@ function EventScheduleContent() {
         teams: [],
         referees: [],
         refereeIds: [],
+        assistantHostIds: [],
       } as Event;
     });
   }, [createLocationDefaults, defaultSport, eventId, isCreateMode, rentalImmutableDefaults, user]);
@@ -1221,6 +1570,75 @@ function EventScheduleContent() {
           }
         } catch (matchesError) {
           console.error('Failed to load matches for event:', matchesError);
+        }
+      }
+
+      if (
+        (!Array.isArray(fetchedEvent.fields) || fetchedEvent.fields.length === 0)
+        && Array.isArray(fetchedEvent.fieldIds)
+        && fetchedEvent.fieldIds.length > 0
+      ) {
+        try {
+          const fieldIds = Array.from(
+            new Set(
+              fetchedEvent.fieldIds
+                .map((fieldId) => String(fieldId).trim())
+                .filter((fieldId) => fieldId.length > 0),
+            ),
+          );
+          if (fieldIds.length > 0) {
+            fetchedEvent.fields = await fieldService.listFields({ fieldIds });
+          }
+        } catch (fieldsError) {
+          console.error('Failed to load fields for event:', fieldsError);
+        }
+      }
+
+      if (Array.isArray(fetchedEvent.matches) && Array.isArray(fetchedEvent.fields) && fetchedEvent.fields.length > 0) {
+        const fieldsById = new Map<string, Field>(
+          fetchedEvent.fields
+            .filter((field): field is Field => Boolean(field?.$id))
+            .map((field) => [field.$id, field]),
+        );
+
+        fetchedEvent.matches = fetchedEvent.matches.map((match) => {
+          const normalizedMatch = normalizeApiMatch(match);
+          if (normalizedMatch.field && typeof normalizedMatch.field === 'object') {
+            return normalizedMatch;
+          }
+
+          const fieldId =
+            typeof normalizedMatch.fieldId === 'string' && normalizedMatch.fieldId.trim().length > 0
+              ? normalizedMatch.fieldId.trim()
+              : null;
+          if (!fieldId) {
+            return normalizedMatch;
+          }
+
+          const field = fieldsById.get(fieldId);
+          if (!field) {
+            return normalizedMatch;
+          }
+
+          return {
+            ...normalizedMatch,
+            field,
+          };
+        });
+      }
+
+      const organizationId = normalizeIdToken(
+        fetchedEvent.organizationId
+        || (typeof fetchedEvent.organization === 'string' ? fetchedEvent.organization : (fetchedEvent.organization as Organization | undefined)?.$id),
+      );
+      if (organizationId && (!fetchedEvent.organization || typeof fetchedEvent.organization === 'string')) {
+        try {
+          const resolvedOrganization = await organizationService.getOrganizationById(organizationId, true);
+          if (resolvedOrganization) {
+            fetchedEvent.organization = resolvedOrganization;
+          }
+        } catch (organizationError) {
+          console.error('Failed to load event organization:', organizationError);
         }
       }
 
@@ -1593,10 +2011,10 @@ function EventScheduleContent() {
       tournament: activeEvent,
       matches: bracketMatchesMap,
       teams: Array.isArray(activeEvent.teams) ? activeEvent.teams : [],
-      isHost,
-      canManage: !isPreview && isHost,
+      isHost: canManageEvent,
+      canManage: !isPreview && canManageEvent,
     };
-  }, [activeEvent, bracketMatchesMap, isHost, isPreview]);
+  }, [activeEvent, bracketMatchesMap, canManageEvent, isPreview]);
 
   const scheduleDivisionSelectData = useMemo<DivisionOption[]>(
     () => [{ value: 'all', label: 'All divisions' }, ...scheduleDivisionOptions],
@@ -1607,6 +2025,7 @@ function EventScheduleContent() {
 
   const showScheduleTab = isLeague;
   const showStandingsTab = isLeague;
+  const showParticipantsTab = Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0);
   const defaultTab = showScheduleTab ? 'schedule' : 'details';
   const shouldShowBracketTab = !!bracketData || isPreview;
 
@@ -1620,6 +2039,9 @@ function EventScheduleContent() {
   useEffect(() => {
     const request = searchParams?.get('tab');
     const allowed = new Set<string>(['details']);
+    if (showParticipantsTab) {
+      allowed.add('participants');
+    }
     if (showScheduleTab) {
       allowed.add('schedule');
       allowed.add('standings');
@@ -1630,11 +2052,14 @@ function EventScheduleContent() {
 
     const desired = request && allowed.has(request) ? request : defaultTab;
     setActiveTab(desired);
-  }, [searchParams, shouldShowBracketTab, showScheduleTab, defaultTab]);
+  }, [searchParams, shouldShowBracketTab, showParticipantsTab, showScheduleTab, defaultTab]);
 
   const handleTabChange = (value: string | null) => {
     if (!value) return;
     const allowed = new Set<string>(['details']);
+    if (showParticipantsTab) {
+      allowed.add('participants');
+    }
     if (showScheduleTab) {
       allowed.add('schedule');
       allowed.add('standings');
@@ -2280,13 +2705,6 @@ function EventScheduleContent() {
 
   const canClearChanges = Boolean(event && changesEvent && hasUnsavedChanges);
 
-  const activeOrganization: Organization | null = useMemo(() => {
-    if (activeEvent && typeof activeEvent.organization === 'object') {
-      return activeEvent.organization as Organization;
-    }
-    return organizationForCreate;
-  }, [activeEvent, organizationForCreate]);
-
   const activeLocationDefaults = useMemo(
     () => buildLocationDefaults(activeOrganization),
     [activeOrganization, buildLocationDefaults],
@@ -2347,21 +2765,22 @@ function EventScheduleContent() {
             <Group justify="space-between" align="center">
               <Title order={2}>Create Event</Title>
               <Group gap="sm">
-                <Button
-                  color="green"
-                  onClick={handlePublish}
-                  loading={publishing}
-                  disabled={publishing || reschedulingMatches}
-                >
-                  {createButtonLabel}
-                </Button>
-                <Button
-                  variant="default"
-                  onClick={handleCancel}
-                  loading={cancelling}
-                >
-                  {cancelButtonLabel}
-                </Button>
+                {!publishing && !reschedulingMatches && (
+                  <Button
+                    color="green"
+                    onClick={handlePublish}
+                  >
+                    {createButtonLabel}
+                  </Button>
+                )}
+                {!cancelling && (
+                  <Button
+                    variant="default"
+                    onClick={handleCancel}
+                  >
+                    {cancelButtonLabel}
+                  </Button>
+                )}
               </Group>
             </Group>
             <Modal
@@ -2402,6 +2821,7 @@ function EventScheduleContent() {
                 />
                 <DatePickerInput
                   label="New event start date"
+                  valueFormat="MM/DD/YYYY"
                   value={selectedTemplateStartDate}
                   onChange={(value) => setSelectedTemplateStartDate(parseLocalDateTime(value))}
                   minDate={new Date()}
@@ -2489,6 +2909,14 @@ function EventScheduleContent() {
   }
 
   const leagueConfig = activeEvent.leagueConfig;
+  const isSavingOrRescheduling = publishing || reschedulingMatches;
+  const showEditActionButton = !isEditingEvent && !isSavingOrRescheduling && !cancelling;
+  const showSaveActionButton = isEditingEvent && !publishing && !reschedulingMatches;
+  const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament) && !publishing && !reschedulingMatches;
+  const showCancelActionButton = !cancelling;
+  const showCreateTemplateButton = !creatingTemplate && !publishing && !reschedulingMatches && !cancelling && activeEvent.state !== 'TEMPLATE';
+  const showClearChangesButton = isEditingEvent && canClearChanges;
+  const showLifecycleStatusSelect = isEditingEvent && !isSavingOrRescheduling && !cancelling && activeEvent.state !== 'TEMPLATE';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2498,66 +2926,63 @@ function EventScheduleContent() {
           <Group justify="space-between" align="flex-start">
             <Title order={2} mb="xs">{activeEvent.name}</Title>
 
-            {isHost && (
+            {canManageEvent && (
               <Group gap="sm" wrap="wrap">
-                {!isEditingEvent ? (
-                  <Button
-                    onClick={handleEnterEditMode}
-                    disabled={publishing || reschedulingMatches || cancelling}
-                  >
+                {showEditActionButton && (
+                  <Button onClick={handleEnterEditMode}>
                     Edit {entityLabel}
                   </Button>
-                ) : (
+                )}
+                {isEditingEvent && (
                   <>
-                    <Select
-                      data={EVENT_LIFECYCLE_OPTIONS}
-                      value={selectedLifecycleStatus ?? activeLifecycleStatus}
-                      onChange={handleLifecycleStatusChange}
-                      allowDeselect={false}
-                      w={160}
-                      disabled={publishing || reschedulingMatches || cancelling || activeEvent.state === 'TEMPLATE'}
-                    />
-                    <Button
-                      color="green"
-                      onClick={isCreateMode ? handlePublish : handleSaveEvent}
-                      loading={publishing}
-                      disabled={publishing || reschedulingMatches}
-                    >
-                      {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
-                    </Button>
-                    {(isLeague || isTournament) && (
+                    {showLifecycleStatusSelect && (
+                      <Select
+                        data={EVENT_LIFECYCLE_OPTIONS}
+                        value={selectedLifecycleStatus ?? activeLifecycleStatus}
+                        onChange={handleLifecycleStatusChange}
+                        allowDeselect={false}
+                        w={160}
+                      />
+                    )}
+                    {showSaveActionButton && (
+                      <Button
+                        color="green"
+                        onClick={isCreateMode ? handlePublish : handleSaveEvent}
+                      >
+                        {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
+                      </Button>
+                    )}
+                    {showRescheduleActionButton && (
                       <Button
                         variant="light"
                         onClick={handleRescheduleMatches}
-                        loading={reschedulingMatches}
-                        disabled={publishing || reschedulingMatches}
                       >
                         Reschedule Matches
                       </Button>
                     )}
                   </>
                 )}
-                <Button
-                  color="red"
-                  variant="light"
-                  onClick={handleCancel}
-                  loading={cancelling}
-                >
-                  {cancelButtonLabel}
-                </Button>
-                <Button
-                  variant="light"
-                  onClick={handleCreateTemplateFromEvent}
-                  loading={creatingTemplate}
-                  disabled={creatingTemplate || publishing || reschedulingMatches || cancelling || activeEvent.state === 'TEMPLATE'}
-                >
-                  Create Template
-                </Button>
-                {isEditingEvent && (
+                {showCancelActionButton && (
+                  <Button
+                    color="red"
+                    variant="light"
+                    onClick={handleCancel}
+                  >
+                    {cancelButtonLabel}
+                  </Button>
+                )}
+                {showCreateTemplateButton && (
+                  <Button
+                    variant="light"
+                    onClick={handleCreateTemplateFromEvent}
+                  >
+                    Create Template
+                  </Button>
+                )}
+                {showClearChangesButton && (
                   <Button
                     variant="default"
                     onClick={handleClearChanges}
-                    disabled={!canClearChanges}
                   >
                     Clear Changes
                   </Button>
@@ -2581,9 +3006,10 @@ function EventScheduleContent() {
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tabs.List>
               <Tabs.Tab value="details">Details</Tabs.Tab>
+              {showParticipantsTab && <Tabs.Tab value="participants">Participants</Tabs.Tab>}
               {showScheduleTab && <Tabs.Tab value="schedule">Schedule</Tabs.Tab>}
               {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
-              {showScheduleTab && <Tabs.Tab value="standings">Standings</Tabs.Tab>}
+              {showStandingsTab && <Tabs.Tab value="standings">Standings</Tabs.Tab>}
             </Tabs.List>
 
             <Tabs.Panel value="details" pt="md">
@@ -2608,6 +3034,81 @@ function EventScheduleContent() {
                 />
               )}
             </Tabs.Panel>
+
+            {showParticipantsTab && (
+              <Tabs.Panel value="participants" pt="md">
+                <Stack gap="md">
+                  <Group justify="space-between" align="center">
+                    <Text size="sm" c="dimmed">
+                      {participantTeamIds.length === 1
+                        ? '1 team is currently participating.'
+                        : `${participantTeamIds.length} teams are currently participating.`}
+                    </Text>
+                    {canManageEvent && (
+                      <Button
+                        variant="light"
+                        onClick={() => {
+                          setParticipantsError(null);
+                          setTeamSearchQuery('');
+                          setIsAddTeamModalOpen(true);
+                        }}
+                      >
+                        Add Team
+                      </Button>
+                    )}
+                  </Group>
+
+                  {participantsError && (
+                    <Alert color="red" radius="md">
+                      {participantsError}
+                    </Alert>
+                  )}
+
+                  {participantsLoading ? (
+                    <Paper withBorder radius="md" p="xl">
+                      <Group justify="center" gap="sm">
+                        <Loader size="sm" />
+                        <Text size="sm" c="dimmed">Loading participants...</Text>
+                      </Group>
+                    </Paper>
+                  ) : participantTeams.length === 0 ? (
+                    <Paper withBorder radius="md" p="xl" ta="center">
+                      <Text>No teams have been added yet.</Text>
+                    </Paper>
+                  ) : (
+                    <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+                      {participantTeams.map((team) => (
+                        <TeamCard
+                          key={team.$id}
+                          team={team}
+                          actions={
+                            canManageEvent
+                              ? (
+                                participantsUpdatingTeamId
+                                  ? <Text size="xs" c="dimmed">Updating...</Text>
+                                  : (
+                                    <Button
+                                      size="xs"
+                                      variant="light"
+                                      color="red"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void handleRemoveTeamFromParticipants(team);
+                                      }}
+                                    >
+                                      Remove
+                                    </Button>
+                                  )
+                              )
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </SimpleGrid>
+                  )}
+                </Stack>
+              </Tabs.Panel>
+            )}
 
             {showScheduleTab && (
               <Tabs.Panel value="schedule" pt="md">
@@ -2686,7 +3187,7 @@ function EventScheduleContent() {
               </Tabs.Panel>
             )}
 
-            {showScheduleTab && (
+            {showStandingsTab && (
               <Tabs.Panel value="standings" pt="md">
                 {standings.length === 0 ? (
                   <Paper withBorder radius="md" p="xl" ta="center">
@@ -2778,6 +3279,112 @@ function EventScheduleContent() {
           </Tabs>
         </Stack>
       </Container>
+      <Modal
+        opened={isAddTeamModalOpen}
+        onClose={() => {
+          setIsAddTeamModalOpen(false);
+          setTeamSearchQuery('');
+        }}
+        title="Add Team"
+        size="xl"
+        centered
+        fullScreen={Boolean(isMobile)}
+      >
+        <Stack gap="md">
+          <TextInput
+            label="Search teams"
+            placeholder="Search by team name, sport, or division"
+            value={teamSearchQuery}
+            onChange={(event) => setTeamSearchQuery(event.currentTarget.value)}
+          />
+
+          {organizationIdForParticipants && (
+            <Stack gap="sm">
+              <Text fw={600} size="sm">Organization Teams</Text>
+              {organizationTeamsLoading ? (
+                <Paper withBorder radius="md" p="md">
+                  <Group justify="center" gap="sm">
+                    <Loader size="sm" />
+                    <Text size="sm" c="dimmed">Loading organization teams...</Text>
+                  </Group>
+                </Paper>
+              ) : availableOrganizationTeams.length === 0 ? (
+                <Paper withBorder radius="md" p="md">
+                  <Text size="sm" c="dimmed" ta="center">
+                    No organization teams available to add.
+                  </Text>
+                </Paper>
+              ) : (
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+                  {availableOrganizationTeams.map((team) => (
+                    <TeamCard
+                      key={`org-team-${team.$id}`}
+                      team={team}
+                      actions={
+                        participantsUpdatingTeamId
+                          ? <Text size="xs" c="dimmed">Adding...</Text>
+                          : (
+                            <Button
+                              size="xs"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleAddTeamToParticipants(team);
+                              }}
+                            >
+                              Add
+                            </Button>
+                          )
+                      }
+                    />
+                  ))}
+                </SimpleGrid>
+              )}
+            </Stack>
+          )}
+
+          <Stack gap="sm">
+            <Text fw={600} size="sm">Search Results</Text>
+            {searchTeamsLoading ? (
+              <Paper withBorder radius="md" p="md">
+                <Group justify="center" gap="sm">
+                  <Loader size="sm" />
+                  <Text size="sm" c="dimmed">Loading searchable teams...</Text>
+                </Group>
+              </Paper>
+            ) : searchResultTeams.length === 0 ? (
+              <Paper withBorder radius="md" p="md">
+                <Text size="sm" c="dimmed" ta="center">
+                  No teams match your search.
+                </Text>
+              </Paper>
+            ) : (
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+                {searchResultTeams.map((team) => (
+                  <TeamCard
+                    key={`search-team-${team.$id}`}
+                    team={team}
+                    actions={
+                      participantsUpdatingTeamId
+                        ? <Text size="xs" c="dimmed">Adding...</Text>
+                        : (
+                          <Button
+                            size="xs"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleAddTeamToParticipants(team);
+                            }}
+                          >
+                            Add
+                          </Button>
+                        )
+                    }
+                  />
+                ))}
+              </SimpleGrid>
+            )}
+          </Stack>
+        </Stack>
+      </Modal>
       {scoreUpdateMatch && activeEvent && (
         <ScoreUpdateModal
           match={scoreUpdateMatch}

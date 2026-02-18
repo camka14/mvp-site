@@ -4,9 +4,16 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { loadEventWithRelations, saveMatches, saveTeamRecords } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
-import { applyMatchUpdates, finalizeMatch } from '@/server/scheduler/updateMatch';
+import {
+  applyMatchUpdates,
+  finalizeMatch,
+  isScheduleWindowExceededError,
+} from '@/server/scheduler/updateMatch';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { SchedulerContext } from '@/server/scheduler/types';
+import { canManageEvent } from '@/server/accessControl';
+import { isEmailEnabled, sendEmail } from '@/server/email';
+import { sendPushToUsers } from '@/server/pushNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +49,92 @@ const buildContext = (): SchedulerContext => {
   };
 };
 
+type AutoRescheduleHostNotification = {
+  eventId: string;
+  eventName: string;
+  eventEndIso: string;
+  hostId: string;
+  matchId: string;
+};
+
+class AutoRescheduleWindowExceededError extends Error {
+  notification: AutoRescheduleHostNotification;
+
+  constructor(notification: AutoRescheduleHostNotification) {
+    super('Auto-reschedule exceeded event end date/time');
+    this.name = 'AutoRescheduleWindowExceededError';
+    this.notification = notification;
+  }
+}
+
+const formatHostName = (profile?: { firstName: string | null; lastName: string | null; userName: string | null } | null): string => {
+  const firstName = profile?.firstName?.trim() ?? '';
+  const lastName = profile?.lastName?.trim() ?? '';
+  const fullName = `${firstName} ${lastName}`.trim();
+  if (fullName.length > 0) {
+    return fullName;
+  }
+  const userName = profile?.userName?.trim() ?? '';
+  if (userName.length > 0) {
+    return userName;
+  }
+  return 'Host';
+};
+
+const notifyHostOfAutoRescheduleFailure = async (
+  payload: AutoRescheduleHostNotification,
+): Promise<void> => {
+  if (!payload.hostId.trim()) {
+    return;
+  }
+  const [hostProfile, sensitiveProfile] = await Promise.all([
+    prisma.userData.findUnique({
+      where: { id: payload.hostId },
+      select: { firstName: true, lastName: true, userName: true },
+    }),
+    prisma.sensitiveUserData.findFirst({
+      where: { userId: payload.hostId },
+      select: { email: true },
+    }),
+  ]);
+  const hostName = formatHostName(hostProfile);
+  const title = `Auto-reschedule failed for ${payload.eventName}`;
+  const body = `A finalized match could not be auto-rescheduled before ${payload.eventEndIso}. Extend the event end date/time for auto-rescheduling or reschedule manually.`;
+
+  await sendPushToUsers({
+    userIds: [payload.hostId],
+    title,
+    body,
+    data: {
+      eventId: payload.eventId,
+      matchId: payload.matchId,
+      reason: 'fixed_end_limit',
+    },
+  }).catch((error) => {
+    console.warn('Failed to send auto-reschedule failure push notification', {
+      eventId: payload.eventId,
+      hostId: payload.hostId,
+      error,
+    });
+  });
+
+  const hostEmail = sensitiveProfile?.email?.trim();
+  if (!hostEmail || !isEmailEnabled()) {
+    return;
+  }
+  await sendEmail({
+    to: hostEmail,
+    subject: title,
+    text: `Hello ${hostName},\n\n${body}\n\nEvent: ${payload.eventName}\nEvent ID: ${payload.eventId}\nMatch ID: ${payload.matchId}\n\nYou can extend the event end date/time to continue auto-rescheduling, or reschedule this match manually.`,
+  }).catch((error) => {
+    console.warn('Failed to send auto-reschedule failure email notification', {
+      eventId: payload.eventId,
+      hostId: payload.hostId,
+      error,
+    });
+  });
+};
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ eventId: string; matchId: string }> }) {
   try {
     const session = await requireSession(req);
@@ -56,9 +149,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
     const result = await prisma.$transaction(async (tx) => {
       await acquireEventLock(tx, eventId);
+      const eventAccess = await tx.events.findUnique({
+        where: { id: eventId },
+        select: { id: true, hostId: true, assistantHostIds: true, organizationId: true },
+      });
+      if (!eventAccess) {
+        throw new Response('Event not found', { status: 404 });
+      }
+      const isHostOrAdmin = await canManageEvent(session, eventAccess, tx);
       const event = await loadEventWithRelations(eventId, tx);
 
-      const isHostOrAdmin = session.isAdmin || session.userId === event.hostId;
       const isEventReferee = Array.isArray((event as any).referees) && (event as any).referees.some((ref: any) => ref?.id === session.userId);
 
       const targetMatch = event.matches[matchId];
@@ -98,7 +198,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         if (Number.isNaN(currentTime.getTime())) {
           throw new Response('Invalid time', { status: 400 });
         }
-        finalizeMatch(event, targetMatch, context, currentTime);
+        try {
+          finalizeMatch(event, targetMatch, context, currentTime);
+        } catch (error) {
+          const noFixedEndDateTime = typeof event.noFixedEndDateTime === 'boolean'
+            ? event.noFixedEndDateTime
+            : event.start.getTime() === event.end.getTime();
+          if (!noFixedEndDateTime && isScheduleWindowExceededError(error)) {
+            throw new AutoRescheduleWindowExceededError({
+              eventId: event.id,
+              eventName: event.name || 'Untitled event',
+              eventEndIso: event.end.toISOString(),
+              hostId: event.hostId,
+              matchId: targetMatch.id,
+            });
+          }
+          throw error;
+        }
       }
 
       await saveMatches(eventId, Object.values(event.matches), tx);
@@ -110,6 +226,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     return NextResponse.json({ match: serializeMatchesLegacy([result])[0] }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
+    if (error instanceof AutoRescheduleWindowExceededError) {
+      await notifyHostOfAutoRescheduleFailure(error.notification);
+      return NextResponse.json({
+        error: 'Auto-reschedule failed because the event end date/time has been reached. Extend the end date/time for auto-rescheduling, or reschedule manually.',
+        code: 'AUTO_RESCHEDULE_END_LIMIT',
+      }, { status: 409 });
+    }
     console.error('Match update failed', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
@@ -123,7 +246,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-    if (!session.isAdmin && event.hostId !== session.userId) {
+    if (!(await canManageEvent(session, event))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

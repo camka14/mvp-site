@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,13 +53,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (existing.organizationId) {
     const org = await prisma.organizations.findUnique({
       where: { id: existing.organizationId },
-      select: { ownerId: true },
+      select: { ownerId: true, hostIds: true },
     });
     if (!org) {
       if (!session.isAdmin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-    } else if (!session.isAdmin && org.ownerId !== session.userId) {
+    } else if (!canManageOrganization(session, org)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
@@ -93,7 +94,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const organization = orgId
     ? await prisma.organizations.findUnique({
         where: { id: orgId },
-        select: { id: true, ownerId: true, fieldIds: true },
+        select: { id: true, ownerId: true, hostIds: true, fieldIds: true },
       })
     : null;
 
@@ -103,7 +104,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
   }
 
-  if (organization && !session.isAdmin && organization.ownerId !== session.userId) {
+  if (organization && !canManageOrganization(session, organization)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

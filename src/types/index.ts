@@ -1,4 +1,4 @@
-import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { formatDisplayDate, formatDisplayTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
 
 // User types
@@ -271,7 +271,7 @@ export interface UserData {
   avatarUrl: string;
 }
 
-export type InviteType = 'referee' | 'player';
+export type InviteType = 'referee' | 'player' | 'host';
 export type InviteStatus = 'pending' | 'sent' | 'accepted' | 'rejected';
 
 export interface Invite {
@@ -383,6 +383,7 @@ export interface Event {
   rating?: number;
   imageId: string;
   hostId: string;
+  noFixedEndDateTime?: boolean;
   state: EventState;
   maxParticipants: number;
   teamSizeLimit: number;
@@ -396,6 +397,7 @@ export interface Event {
   fieldIds?: string[];
   timeSlotIds?: string[];
   refereeIds?: string[];
+  assistantHostIds?: string[];
   waitList?: string[];
   freeAgents?: string[];
   cancellationRefundHours: number;
@@ -436,6 +438,7 @@ export interface Event {
   teams?: Team[];
   players?: UserData[];
   referees?: UserData[];
+  assistantHosts?: UserData[];
 
   // League-specific fields (flattened for DB compatibility)
   gamesPerOpponent?: number;
@@ -456,7 +459,7 @@ export interface Event {
   attendees: number;
 }
 
-export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'referees'> & {
+export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'referees' | 'assistantHosts'> & {
   fields?: FieldPayload[];
   matches?: MatchPayload[];
   teams?: TeamPayload[];
@@ -482,6 +485,7 @@ export interface Organization {
   location?: string;
   coordinates?: [number, number];
   ownerId?: string;
+  hostIds?: string[];
   hasStripeAccount?: boolean;
   fieldIds?: string[];
   refIds?: string[];
@@ -495,6 +499,8 @@ export interface Organization {
   teams?: Team[];
   fields?: Field[];
   referees?: UserData[];
+  hosts?: UserData[];
+  owner?: UserData;
   products?: Product[];
 }
 
@@ -780,7 +786,7 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
 }
 
 export function toEventPayload(event: Event): EventPayload {
-  const { matches, fields, teams, timeSlots, organization, referees, ...rest } = event;
+  const { matches, fields, teams, timeSlots, organization, referees, assistantHosts, ...rest } = event;
 
   const matchPayloads = Array.isArray(matches) && matches.length
     ? matches.map(toMatchPayload)
@@ -923,6 +929,19 @@ export function toEventPayload(event: Event): EventPayload {
     }
   }
 
+  const hasExplicitAssistantHosts = Object.prototype.hasOwnProperty.call(rest, 'assistantHostIds');
+  const explicitAssistantHostIds = Array.isArray(rest.assistantHostIds)
+    ? uniqueIds(rest.assistantHostIds.map((id) => (typeof id === 'string' ? id : extractId(id))))
+    : [];
+  if (hasExplicitAssistantHosts) {
+    payload.assistantHostIds = explicitAssistantHostIds;
+  } else if (Array.isArray(assistantHosts)) {
+    const derivedAssistantHostIds = uniqueIds(assistantHosts.map((host) => extractId(host)));
+    if (derivedAssistantHostIds.length) {
+      payload.assistantHostIds = derivedAssistantHostIds;
+    }
+  }
+
   const normalizedEventType = normalizeEnumValue(payload.eventType);
   if (normalizedEventType) {
     payload.eventType = normalizedEventType as EventType;
@@ -1033,14 +1052,9 @@ export function getEventDateTime(event: Event): { date: string; time: string } {
   if (!startDate) {
     return { date: '', time: '' };
   }
-  const [datePart] = formatLocalDateTime(startDate).split('T');
   return {
-    date: datePart ?? '',
-    time: startDate.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    })
+    date: formatDisplayDate(startDate),
+    time: formatDisplayTime(startDate),
   };
 }
 

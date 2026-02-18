@@ -88,6 +88,8 @@ const serializeEventBase = (event: Tournament | League) => ({
   rating: event.rating ?? null,
   imageId: event.imageId,
   hostId: event.hostId,
+  assistantHostIds: event.assistantHostIds ?? [],
+  noFixedEndDateTime: event.noFixedEndDateTime ?? true,
   state: event.state,
   maxParticipants: event.maxParticipants,
   teamSizeLimit: event.teamSizeLimit ?? null,

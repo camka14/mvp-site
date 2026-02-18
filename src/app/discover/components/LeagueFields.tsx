@@ -19,6 +19,7 @@ import {
 } from '@mantine/core';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
+import { formatDisplayDate } from '@/lib/dateUtils';
 
 const DROPDOWN_PROPS = { withinPortal: true, zIndex: 1800 };
 
@@ -38,7 +39,7 @@ const toAmPmLabel = (minutes: number): string => {
   const minute = clamped % 60;
   const amPm = hour24 < 12 ? 'AM' : 'PM';
   const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-  return `${hour12}:${minute.toString().padStart(2, '0')} ${amPm}`;
+  return `${hour12.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} ${amPm}`;
 };
 
 const TIME_OPTIONS = Array.from({ length: (24 * 60) / 15 }, (_, index) => {
@@ -640,8 +641,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           <div key={`${schedule.$id}-${conflictIndex}`} className="flex items-start gap-2 text-sm">
                             <Badge color="red" variant="light">{event.name}</Badge>
                             <span>
-                              {event.start ? new Date(event.start).toLocaleDateString() : ''} -
-                              {event.end ? ` ${new Date(event.end).toLocaleDateString()}` : ''} overlaps this slot.
+                              {event.start ? formatDisplayDate(event.start) : ''} -
+                              {event.end ? ` ${formatDisplayDate(event.end)}` : ''} overlaps this slot.
                             </span>
                           </div>
                         ))}

@@ -42,6 +42,9 @@ class OrganizationService {
     const refIds = Array.isArray(row.refIds)
       ? row.refIds.map((value: unknown) => String(value))
       : undefined;
+    const hostIds = Array.isArray(row.hostIds)
+      ? row.hostIds.map((value: unknown) => String(value))
+      : undefined;
     const productIds = Array.isArray(row.productIds)
       ? row.productIds.map((value: unknown) => String(value))
       : undefined;
@@ -58,6 +61,7 @@ class OrganizationService {
       location: row.location ?? undefined,
       coordinates: coordinates,
       ownerId: row.ownerId ?? row.owner_id ?? undefined,
+      hostIds,
       hasStripeAccount: Boolean(row.hasStripeAccount),
       fieldIds,
       refIds,
@@ -69,6 +73,7 @@ class OrganizationService {
       teams: [],
       fields: [],
       referees: [],
+      hosts: [],
       products: [],
     };
 
@@ -83,6 +88,9 @@ class OrganizationService {
 
     if (data.refIds !== undefined) {
       payload.refIds = Array.isArray(data.refIds) ? data.refIds : [];
+    }
+    if (data.hostIds !== undefined) {
+      payload.hostIds = Array.isArray(data.hostIds) ? data.hostIds : [];
     }
     if (data.teamIds !== undefined) {
       payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
@@ -99,6 +107,9 @@ class OrganizationService {
     const payload = buildPayload(data);
     if (data.refIds !== undefined) {
       payload.refIds = Array.isArray(data.refIds) ? data.refIds : [];
+    }
+    if (data.hostIds !== undefined) {
+      payload.hostIds = Array.isArray(data.hostIds) ? data.hostIds : [];
     }
     if (data.teamIds !== undefined) {
       payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
@@ -172,6 +183,13 @@ class OrganizationService {
         ? organization.refIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
         : [];
       const refereesPromise = refereeIds.length ? userService.getUsersByIds(refereeIds) : Promise.resolve<UserData[]>([]);
+      const hostIds = Array.isArray(organization.hostIds)
+        ? organization.hostIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : [];
+      const hostsPromise = hostIds.length ? userService.getUsersByIds(hostIds) : Promise.resolve<UserData[]>([]);
+      const ownerPromise = organization.ownerId
+        ? userService.getUserById(organization.ownerId)
+        : Promise.resolve(undefined);
 
       const productIds = Array.isArray(organization.productIds)
         ? organization.productIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
@@ -186,10 +204,12 @@ class OrganizationService {
         ? teamService.getTeamsByIds(teamIds, true)
         : Promise.resolve<Team[]>([]);
 
-      const [fields, events, referees, products, teams] = await Promise.all([
+      const [fields, events, referees, hosts, owner, products, teams] = await Promise.all([
         fieldsPromise,
         this.fetchEventsByOrganization(organization.$id),
         refereesPromise,
+        hostsPromise,
+        ownerPromise,
         productsPromise,
         teamsPromise,
       ]);
@@ -197,6 +217,8 @@ class OrganizationService {
       organization.fields = fields;
       organization.events = events;
       organization.referees = referees;
+      organization.hosts = hosts;
+      organization.owner = owner;
       organization.products = products;
       organization.teams = teams;
 

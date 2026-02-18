@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList } from '@/server/legacyFormat';
+import { canManageEvent } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
-  if (!session.isAdmin && event.hostId !== session.userId) {
+  if (!(await canManageEvent(session, event))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
