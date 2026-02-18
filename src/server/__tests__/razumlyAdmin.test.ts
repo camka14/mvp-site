@@ -1,5 +1,13 @@
 /** @jest-environment node */
 
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    authUser: {
+      findUnique: jest.fn(),
+    },
+  },
+}));
+
 import { evaluateRazumlyAdminAccess } from '@/server/razumlyAdmin';
 
 const makeClient = (row: { email: string; emailVerifiedAt: Date | null } | null) => ({
@@ -13,8 +21,16 @@ describe('evaluateRazumlyAdminAccess', () => {
   const originalDomain = process.env.RAZUMLY_ADMIN_DOMAIN;
 
   afterEach(() => {
-    process.env.RAZUMLY_ADMIN_EMAILS = originalAllowList;
-    process.env.RAZUMLY_ADMIN_DOMAIN = originalDomain;
+    if (originalAllowList === undefined) {
+      delete process.env.RAZUMLY_ADMIN_EMAILS;
+    } else {
+      process.env.RAZUMLY_ADMIN_EMAILS = originalAllowList;
+    }
+    if (originalDomain === undefined) {
+      delete process.env.RAZUMLY_ADMIN_DOMAIN;
+    } else {
+      process.env.RAZUMLY_ADMIN_DOMAIN = originalDomain;
+    }
   });
 
   it('rejects when user record is missing', async () => {
