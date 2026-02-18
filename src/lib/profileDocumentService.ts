@@ -17,6 +17,9 @@ export type ProfileDocumentCard = {
   signerContextLabel: string;
   childUserId?: string;
   childEmail?: string;
+  consentStatus?: string;
+  requiresChildEmail?: boolean;
+  statusNote?: string;
   signedAt?: string;
   signedDocumentRecordId?: string;
   viewUrl?: string;

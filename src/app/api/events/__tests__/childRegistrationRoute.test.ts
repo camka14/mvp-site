@@ -16,6 +16,7 @@ const prismaMock = {
     findFirst: jest.fn(),
   },
   eventRegistrations: {
+    findFirst: jest.fn(),
     create: jest.fn(),
   },
 };
@@ -47,6 +48,7 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
       requiredTemplateIds: ['tmpl_1'],
     });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
     prismaMock.userData.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
       if (where.id === 'parent_1') {
         return { dateOfBirth: new Date('1988-04-01T00:00:00.000Z') };
@@ -58,8 +60,17 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
     });
   });
 
-  it('rejects child registration when child has no email', async () => {
+  it('creates pending consent registration when child has no email', async () => {
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: null });
+    prismaMock.eventRegistrations.create.mockResolvedValue({
+      id: 'registration_no_email',
+      status: 'PENDINGCONSENT',
+      eventId: 'event_1',
+      registrantId: 'child_1',
+      parentId: 'parent_1',
+      registrantType: 'CHILD',
+      consentStatus: 'child_email_required',
+    });
 
     const response = await POST(
       jsonPost('http://localhost/api/events/event_1/registrations/child', { childId: 'child_1' }),
@@ -67,9 +78,17 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
     );
     const payload = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(payload.error).toBe('Child email is required before registration.');
-    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(payload.registration).toEqual(expect.objectContaining({
+      registrantId: 'child_1',
+      parentId: 'parent_1',
+      consentStatus: 'child_email_required',
+    }));
+    expect(payload.consent).toEqual(expect.objectContaining({
+      status: 'child_email_required',
+      requiresChildEmail: true,
+    }));
+    expect(prismaMock.eventRegistrations.create).toHaveBeenCalled();
   });
 
   it('creates a child registration when child email is present', async () => {

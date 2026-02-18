@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { calculateAgeOnDate } from '@/lib/age';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,7 @@ async function updateFreeAgents(
 
   const { eventId } = await params;
   const targetUserId = normalizeUserId(parsed.data.userId) ?? session.userId;
+  let managingLinkedChild = false;
 
   if (!session.isAdmin && targetUserId !== session.userId) {
     const canManageChild = await canManageChildFreeAgent({
@@ -58,6 +60,7 @@ async function updateFreeAgents(
     if (!canManageChild) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    managingLinkedChild = true;
   }
 
   const [event, targetUser] = await Promise.all([
@@ -66,11 +69,18 @@ async function updateFreeAgents(
       select: {
         id: true,
         freeAgentIds: true,
+        requiredTemplateIds: true,
+        start: true,
       },
     }),
     prisma.userData.findUnique({
       where: { id: targetUserId },
-      select: { id: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        dateOfBirth: true,
+      },
     }),
   ]);
 
@@ -96,7 +106,26 @@ async function updateFreeAgents(
     },
   });
 
-  return NextResponse.json({ event: withLegacyFields(updated) }, { status: 200 });
+  let warnings: string[] | undefined;
+  if (mode === 'add' && managingLinkedChild && Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0) {
+    const childSensitive = await prisma.sensitiveUserData.findFirst({
+      where: { userId: targetUserId },
+      select: { email: true },
+    });
+    const childEmail = normalizeUserId(childSensitive?.email ?? null);
+    const childAgeAtEvent = calculateAgeOnDate(targetUser.dateOfBirth, event.start);
+    if (!childEmail && Number.isFinite(childAgeAtEvent) && childAgeAtEvent < 13) {
+      const childName = `${(targetUser.firstName ?? '').trim()} ${(targetUser.lastName ?? '').trim()}`.trim() || targetUserId;
+      warnings = [
+        `Under-13 child ${childName} is missing an email and cannot complete child signature steps until an email is added.`,
+      ];
+    }
+  }
+
+  return NextResponse.json({
+    event: withLegacyFields(updated),
+    warnings,
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {

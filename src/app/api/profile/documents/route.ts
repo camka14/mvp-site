@@ -26,6 +26,9 @@ type ProfileDocumentCard = {
   signerContextLabel: string;
   childUserId?: string;
   childEmail?: string;
+  consentStatus?: string;
+  requiresChildEmail?: boolean;
+  statusNote?: string;
   signedAt?: string;
   signedDocumentRecordId?: string;
   viewUrl?: string;
@@ -82,7 +85,7 @@ export async function GET(_req: NextRequest) {
   const session = await requireSession(_req);
   const userId = session.userId;
 
-  const [profile, registrations, signedDocuments] = await Promise.all([
+  const [profile, registrations, signedDocuments, linkedChildren, parentLinksForSelf, selfSensitive] = await Promise.all([
     prisma.userData.findUnique({
       where: { id: userId },
       select: { teamIds: true },
@@ -95,10 +98,13 @@ export async function GET(_req: NextRequest) {
         ],
       },
       select: {
+        id: true,
         eventId: true,
         parentId: true,
         registrantId: true,
         registrantType: true,
+        status: true,
+        consentStatus: true,
       },
     }),
     prisma.signedDocuments.findMany({
@@ -115,11 +121,59 @@ export async function GET(_req: NextRequest) {
         createdAt: true,
       },
     }),
+    prisma.parentChildLinks.findMany({
+      where: {
+        parentId: userId,
+        status: 'ACTIVE',
+      },
+      select: {
+        childId: true,
+      },
+    }),
+    prisma.parentChildLinks.findMany({
+      where: {
+        childId: userId,
+        status: 'ACTIVE',
+      },
+      select: {
+        parentId: true,
+      },
+      take: 1,
+    }),
+    prisma.sensitiveUserData.findFirst({
+      where: { userId },
+      select: {
+        email: true,
+      },
+    }),
   ]);
 
   const teamIds = Array.isArray(profile?.teamIds)
     ? profile.teamIds.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry.trim()))
     : [];
+  const linkedChildIds = Array.from(new Set(
+    linkedChildren
+      .map((link) => normalizeText(link.childId))
+      .filter((value): value is string => Boolean(value)),
+  ));
+  const linkedChildProfiles = linkedChildIds.length
+    ? await prisma.userData.findMany({
+      where: { id: { in: linkedChildIds } },
+      select: {
+        id: true,
+        teamIds: true,
+      },
+    })
+    : [];
+  const linkedChildTeamIds = Array.from(new Set(
+    linkedChildProfiles.flatMap((child) =>
+      Array.isArray(child.teamIds)
+        ? child.teamIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+        : [],
+    ),
+  ));
+  const selfEmail = normalizeText(selfSensitive?.email);
+  const userIsLinkedChild = parentLinksForSelf.length > 0;
 
   const registrationEventIds = Array.from(new Set(
     registrations
@@ -138,8 +192,11 @@ export async function GET(_req: NextRequest) {
       OR: [
         { userIds: { has: userId } },
         ...(teamIds.length ? [{ teamIds: { hasSome: teamIds } }] : []),
+        { freeAgentIds: { has: userId } },
         ...(registrationEventIds.length ? [{ id: { in: registrationEventIds } }] : []),
         ...(signedEventIds.length ? [{ id: { in: signedEventIds } }] : []),
+        ...(linkedChildTeamIds.length ? [{ teamIds: { hasSome: linkedChildTeamIds } }] : []),
+        ...(linkedChildIds.length ? [{ freeAgentIds: { hasSome: linkedChildIds } }] : []),
       ],
     },
     select: {
@@ -148,6 +205,9 @@ export async function GET(_req: NextRequest) {
       start: true,
       organizationId: true,
       requiredTemplateIds: true,
+      userIds: true,
+      teamIds: true,
+      freeAgentIds: true,
     },
   });
 
@@ -193,9 +253,13 @@ export async function GET(_req: NextRequest) {
       && Boolean(normalizeText(registration.eventId)),
   );
   const childIds = Array.from(new Set(
-    childRegistrationRows
-      .map((registration) => normalizeText(registration.registrantId))
-      .filter((value): value is string => Boolean(value)),
+    [
+      ...linkedChildIds,
+      ...childRegistrationRows
+        .map((registration) => normalizeText(registration.registrantId))
+        .filter((value): value is string => Boolean(value)),
+      ...(userIsLinkedChild ? [userId] : []),
+    ],
   ));
   const childEmails = childIds.length
     ? await prisma.sensitiveUserData.findMany({
@@ -209,17 +273,117 @@ export async function GET(_req: NextRequest) {
   const childEmailById = new Map(
     childEmails.map((row) => [row.userId, normalizeText(row.email) ?? '']),
   );
-  const childRegistrationsByEvent = new Map<string, Array<{ childUserId: string; childEmail?: string }>>();
+  const childTeamIdsById = new Map(
+    linkedChildProfiles.map((child) => [
+      child.id,
+      Array.isArray(child.teamIds)
+        ? child.teamIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+        : [],
+    ]),
+  );
+  const childRegistrationByEventAndChild = new Map<string, { consentStatus?: string; registrationStatus?: string }>();
+  const childAssociationsByEvent = new Map<string, Array<{
+    childUserId: string;
+    childEmail?: string;
+    consentStatus?: string;
+    registrationStatus?: string;
+    requiresChildEmail: boolean;
+    statusNote?: string;
+  }>>();
+  const childAssociationKeys = new Set<string>();
+
+  const addChildAssociation = (params: {
+    eventId: string;
+    childUserId: string;
+    childEmail?: string;
+    consentStatus?: string;
+    registrationStatus?: string;
+  }) => {
+    const associationKey = `${params.eventId}:${params.childUserId}`;
+    if (childAssociationKeys.has(associationKey)) {
+      return;
+    }
+    childAssociationKeys.add(associationKey);
+
+    const normalizedConsentStatus = normalizeText(params.consentStatus) ?? undefined;
+    const normalizedRegistrationStatus = normalizeText(params.registrationStatus) ?? undefined;
+    const requiresChildEmail = !params.childEmail;
+    const statusNote = requiresChildEmail
+      ? 'Child email is required before child signer links can be sent.'
+      : undefined;
+
+    const next = childAssociationsByEvent.get(params.eventId) ?? [];
+    next.push({
+      childUserId: params.childUserId,
+      childEmail: params.childEmail,
+      consentStatus: normalizedConsentStatus,
+      registrationStatus: normalizedRegistrationStatus,
+      requiresChildEmail,
+      statusNote,
+    });
+    childAssociationsByEvent.set(params.eventId, next);
+  };
+
   childRegistrationRows.forEach((registration) => {
     const eventId = normalizeText(registration.eventId);
     const childUserId = normalizeText(registration.registrantId);
     if (!eventId || !childUserId) return;
-    const next = childRegistrationsByEvent.get(eventId) ?? [];
-    next.push({
+    childRegistrationByEventAndChild.set(`${eventId}:${childUserId}`, {
+      consentStatus: normalizeText(registration.consentStatus),
+      registrationStatus: normalizeText(registration.status),
+    });
+    addChildAssociation({
+      eventId,
       childUserId,
       childEmail: childEmailById.get(childUserId) || undefined,
+      consentStatus: normalizeText(registration.consentStatus),
+      registrationStatus: normalizeText(registration.status),
     });
-    childRegistrationsByEvent.set(eventId, next);
+  });
+
+  discoverableEvents.forEach((event) => {
+    const eventTeamIds = Array.isArray(event.teamIds)
+      ? event.teamIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+      : [];
+    const eventFreeAgentIds = Array.isArray(event.freeAgentIds)
+      ? event.freeAgentIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+      : [];
+    const eventUserIds = Array.isArray(event.userIds)
+      ? event.userIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+      : [];
+
+    linkedChildIds.forEach((childUserId) => {
+      const childTeamIds = childTeamIdsById.get(childUserId) ?? [];
+      const isOnTeam = childTeamIds.some((teamId) => eventTeamIds.includes(teamId));
+      const isFreeAgent = eventFreeAgentIds.includes(childUserId);
+      if (!isOnTeam && !isFreeAgent) {
+        return;
+      }
+      const registrationMeta = childRegistrationByEventAndChild.get(`${event.id}:${childUserId}`);
+      addChildAssociation({
+        eventId: event.id,
+        childUserId,
+        childEmail: childEmailById.get(childUserId) || undefined,
+        consentStatus: registrationMeta?.consentStatus,
+        registrationStatus: registrationMeta?.registrationStatus,
+      });
+    });
+
+    if (userIsLinkedChild) {
+      const isOnTeam = teamIds.some((teamId) => eventTeamIds.includes(teamId));
+      const isParticipant = eventUserIds.includes(userId);
+      const isFreeAgent = eventFreeAgentIds.includes(userId);
+      if (isOnTeam || isParticipant || isFreeAgent) {
+        const registrationMeta = childRegistrationByEventAndChild.get(`${event.id}:${userId}`);
+        addChildAssociation({
+          eventId: event.id,
+          childUserId: userId,
+          childEmail: selfEmail ?? undefined,
+          consentStatus: registrationMeta?.consentStatus,
+          registrationStatus: registrationMeta?.registrationStatus,
+        });
+      }
+    }
   });
 
   const organizationIds = Array.from(new Set([
@@ -306,18 +470,36 @@ export async function GET(_req: NextRequest) {
         signerContext: SignerContext;
         childUserId?: string;
         childEmail?: string;
+        consentStatus?: string;
+        requiresChildEmail?: boolean;
+        statusNote?: string;
       }> = [];
+      const childRows = childAssociationsByEvent.get(event.id) ?? [];
 
       if (requiredSignerType === 'PARTICIPANT') {
         signerContexts.push({ signerContext: 'participant' });
       }
       if (requiredSignerType === 'PARENT_GUARDIAN' || requiredSignerType === 'PARENT_GUARDIAN_CHILD') {
-        const childRows = childRegistrationsByEvent.get(event.id) ?? [];
         childRows.forEach((childRow) => {
           signerContexts.push({
             signerContext: 'parent_guardian',
             childUserId: childRow.childUserId,
             childEmail: childRow.childEmail,
+            consentStatus: childRow.consentStatus,
+            requiresChildEmail: childRow.requiresChildEmail,
+            statusNote: childRow.statusNote,
+          });
+        });
+      }
+      if (requiredSignerType === 'CHILD' || requiredSignerType === 'PARENT_GUARDIAN_CHILD') {
+        childRows.forEach((childRow) => {
+          signerContexts.push({
+            signerContext: 'child',
+            childUserId: childRow.childUserId,
+            childEmail: childRow.childEmail,
+            consentStatus: childRow.consentStatus,
+            requiresChildEmail: childRow.requiresChildEmail,
+            statusNote: childRow.statusNote,
           });
         });
       }
@@ -358,6 +540,9 @@ export async function GET(_req: NextRequest) {
           signerContextLabel: getSignerContextLabel(context.signerContext),
           childUserId: context.childUserId,
           childEmail: context.childEmail,
+          consentStatus: context.consentStatus,
+          requiresChildEmail: context.requiresChildEmail,
+          statusNote: context.statusNote,
           content: normalizeTemplateType(template.type) === 'TEXT' ? normalizeText(template.content) : undefined,
         });
       });

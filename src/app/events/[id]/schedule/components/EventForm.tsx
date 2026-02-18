@@ -17,10 +17,16 @@ import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
+import { organizationService } from '@/lib/organizationService';
+import { fieldService } from '@/lib/fieldService';
 import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { apiRequest } from '@/lib/apiClient';
+import {
+    requiresOrganizationEventFieldSelection,
+    resolveOrganizationEventFieldIds,
+} from './eventFieldSelection';
 import UserCard from '@/components/ui/UserCard';
 import {
     buildDivisionName,
@@ -1214,6 +1220,13 @@ const eventFormSchema = z
                 path: ['divisionDetails'],
             });
         }
+        if (requiresOrganizationEventFieldSelection(values.eventType, values.organizationId, values.selectedFieldIds)) {
+            ctx.addIssue({
+                code: "custom",
+                message: 'Select at least one organization field for this event.',
+                path: ['selectedFieldIds'],
+            });
+        }
 
         if (values.allowPaymentPlans) {
             const amounts = values.installmentAmounts || [];
@@ -1628,6 +1641,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!base.organizationId && organization?.$id) {
             base.organizationId = organization.$id;
         }
+        const hostedOrganizationId = (
+            organization?.$id
+            || base.organizationId
+            || (activeEditingEvent?.organization as Organization | undefined)?.$id
+            || activeEditingEvent?.organizationId
+            || ''
+        ).trim();
 
         const defaultFieldCount = (() => {
             if (activeEditingEvent?.fields?.length) {
@@ -1644,12 +1664,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (hasImmutableFields) {
                 return sanitizeFieldsForForm(immutableFields);
             }
+            if (hostedOrganizationId && Array.isArray(organization?.fields) && organization.fields.length) {
+                return sanitizeFieldsForForm(organization.fields as Field[]).sort(
+                    (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
+                );
+            }
             if (activeEditingEvent?.fields?.length) {
                 return sanitizeFieldsForForm(activeEditingEvent.fields).sort(
                     (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
                 );
             }
-            if (!organization) {
+            if (!hostedOrganizationId) {
                 return Array.from({ length: defaultFieldCount }, (_, idx) => ({
                     $id: createClientId(),
                     name: `Field ${idx + 1}`,
@@ -2744,16 +2769,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
     }, [fieldCount, shouldManageLocalFields, eventData.divisions, setFields]);
 
-    // For organizations with existing facilities, seed the field list with their saved ordering.
+    // For non-organization events with existing facilities, seed the field list with event ordering.
     useEffect(() => {
-        if (shouldManageLocalFields || !activeEditingEvent?.fields?.length) {
+        if (shouldManageLocalFields || isOrganizationManagedEvent || !activeEditingEvent?.fields?.length) {
             return;
         }
         const sorted = sanitizeFieldsForForm(activeEditingEvent.fields).sort(
             (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
         );
         setFields(sorted);
-    }, [activeEditingEvent?.fields, setFields, shouldManageLocalFields]);
+    }, [activeEditingEvent?.fields, isOrganizationManagedEvent, setFields, shouldManageLocalFields]);
 
     useEffect(() => {
         const availableFieldIds = toFieldIdList(fields);
@@ -2773,9 +2798,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     useEffect(() => {
         const divisionKeys = normalizeDivisionKeys(eventData.divisions);
-        const availableFieldIds = isOrganizationManagedEvent
-            ? (selectedFieldIds.length ? selectedFieldIds : toFieldIdList(fields))
-            : toFieldIdList(fields);
+        const availableFieldIds = toFieldIdList(fields);
 
         const nextDivisionFieldIds = shouldManageLocalFields
             ? normalizeDivisionFieldIds(
@@ -2792,17 +2815,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         divisionFieldIds,
         eventData.divisions,
         fields,
-        isOrganizationManagedEvent,
-        selectedFieldIds,
         setValue,
         shouldManageLocalFields,
     ]);
 
     // Clear slot field references that point to fields no longer selected/available.
     useEffect(() => {
-        const availableFieldIds = isOrganizationManagedEvent
-            ? (selectedFieldIds.length ? selectedFieldIds : toFieldIdList(fields))
-            : toFieldIdList(fields);
+        const availableFieldIds = toFieldIdList(fields);
         const validIds = new Set(availableFieldIds);
 
         const hasInvalidSlots = leagueSlots.some((slot) => {
@@ -2825,7 +2844,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 scheduledFieldIds: nextFieldIds,
             };
         }));
-    }, [fields, isOrganizationManagedEvent, leagueSlots, selectedFieldIds, updateLeagueSlots]);
+    }, [fields, leagueSlots, updateLeagueSlots]);
 
     useEffect(() => {
         setHasStripeAccount(Boolean(organization?.hasStripeAccount || currentUser?.hasStripeAccount));
@@ -2976,26 +2995,78 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setLeagueSlots(normalizeSlotState(slotForms, eventData.eventType));
     }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, setLeagueSlots, slotDivisionKeys]);
 
-    // Pull the organization's fields so league/tournament creators can assign real facilities.
+    // Pull the organization's full field list so timeslot field options are complete in edit/create mode.
     useEffect(() => {
-        let isMounted = true;
-        if (hasImmutableFields) {
+        let cancelled = false;
+
+        if (hasImmutableFields || shouldManageLocalFields) {
             return () => {
-                isMounted = false;
-            };
-        }
-        if (!organization?.fields) {
-            return () => {
-                isMounted = false;
+                cancelled = true;
             };
         }
 
-        setFields(sanitizeFieldsForForm(organization.fields as Field[]));
+        if (!organizationHostedEventId) {
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        const hydrateOrganizationFields = async () => {
+            const sortByFieldNumber = (nextFields: Field[]) =>
+                [...nextFields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
+
+            const seededFields = Array.isArray(organization?.fields)
+                ? sortByFieldNumber(sanitizeFieldsForForm(organization.fields as Field[]))
+                : [];
+            if (seededFields.length) {
+                setFields(seededFields);
+            }
+
+            try {
+                setFieldsLoading(true);
+                const resolvedOrganization = await organizationService.getOrganizationById(organizationHostedEventId, true);
+                if (cancelled) return;
+
+                let resolvedFields = Array.isArray(resolvedOrganization?.fields)
+                    ? sortByFieldNumber(sanitizeFieldsForForm(resolvedOrganization.fields as Field[]))
+                    : seededFields;
+                if (!resolvedFields.length) {
+                    const fallbackFieldIds = Array.isArray(resolvedOrganization?.fieldIds)
+                        ? resolvedOrganization.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
+                        : Array.isArray(organization?.fieldIds)
+                            ? organization.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
+                            : [];
+                    if (fallbackFieldIds.length) {
+                        const fetchedFields = await fieldService.listFields({ fieldIds: fallbackFieldIds });
+                        if (cancelled) return;
+                        resolvedFields = sortByFieldNumber(sanitizeFieldsForForm(fetchedFields));
+                    }
+                }
+                if (resolvedFields.length) {
+                    setFields(resolvedFields);
+                }
+            } catch (error) {
+                console.warn('Failed to hydrate organization fields for event form:', error);
+            } finally {
+                if (!cancelled) {
+                    setFieldsLoading(false);
+                }
+            }
+        };
+
+        hydrateOrganizationFields();
 
         return () => {
-            isMounted = false;
+            cancelled = true;
         };
-    }, [organization, hasImmutableFields, setFields]);
+    }, [
+        organization?.fieldIds,
+        organization?.fields,
+        hasImmutableFields,
+        organizationHostedEventId,
+        setFields,
+        shouldManageLocalFields,
+    ]);
 
     // Merge any newly loaded fields from the event into local state without losing existing edits.
     useEffect(() => {
@@ -3022,19 +3093,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [eventData.eventType, updateLeagueSlots]);
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
-    const selectedFieldSet = useMemo(
-        () => new Set(selectedFieldIds),
-        [selectedFieldIds],
-    );
     const selectedFields = useMemo(() => {
-        if (!isOrganizationManagedEvent) {
-            return fields;
-        }
-        if (!selectedFieldSet.size) {
-            return fields;
-        }
-        return fields.filter((field) => field.$id && selectedFieldSet.has(field.$id));
-    }, [fields, isOrganizationManagedEvent, selectedFieldSet]);
+        return fields;
+    }, [fields]);
     const leagueFieldOptions = useMemo(() => {
         return selectedFields
             .filter((field): field is Field & { $id: string } => typeof field.$id === 'string' && field.$id.length > 0)
@@ -3362,7 +3423,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 fieldsToInclude = immutableFields;
             }
             if (isOrganizationManagedEvent) {
-                const fieldIds = toIdList(fieldsToInclude);
+                const defaultOrganizationFieldIds = toIdList(fields.length ? fields : fieldsToInclude);
+                const fieldIds = source.eventType === 'EVENT'
+                    ? resolveOrganizationEventFieldIds(source.selectedFieldIds, defaultOrganizationFieldIds)
+                    : toIdList(fieldsToInclude);
                 if (fieldIds.length) {
                     draft.fieldIds = fieldIds;
                 }
@@ -4202,7 +4266,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                             )}
 
-                            {isOrganizationManagedEvent && (
+                            {isOrganizationManagedEvent && eventData.eventType === 'LEAGUE' && (
                                 <div className="mt-4">
                                     <Text size="xs" c="dimmed">
                                         Select event fields directly inside each timeslot.
@@ -4508,6 +4572,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
+                                    {isOrganizationManagedEvent && (
+                                        <Controller
+                                            name="selectedFieldIds"
+                                            control={control}
+                                            render={({ field, fieldState }) => (
+                                                <MantineMultiSelect
+                                                    label="Organization Fields"
+                                                    description="Choose which organization fields this event can use."
+                                                    placeholder={fieldsLoading ? 'Loading organization fields...' : 'Select one or more fields'}
+                                                    data={leagueFieldOptions}
+                                                    value={Array.isArray(field.value) ? field.value : []}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    disabled={fieldsLoading || isImmutableField('fieldIds')}
+                                                    onChange={(values) => {
+                                                        if (isImmutableField('fieldIds')) return;
+                                                        field.onChange(values);
+                                                    }}
+                                                    searchable
+                                                    clearable
+                                                    error={fieldState.error?.message}
+                                                />
+                                            )}
+                                        />
+                                    )}
                                 </div>
                             ) : (
                                 <div className="mt-6 space-y-2">

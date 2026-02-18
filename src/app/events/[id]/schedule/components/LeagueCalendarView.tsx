@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Paper, RangeSlider, Text } from '@mantine/core';
+import { Button, Paper, RangeSlider, SegmentedControl, Text } from '@mantine/core';
 import {
   Calendar as BigCalendar,
   dateFnsLocalizer,
@@ -11,11 +11,12 @@ import {
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
-import type { Match, UserData } from '@/types';
+import type { Field, Match, UserData } from '@/types';
 import MatchCard from './MatchCard';
 
 interface LeagueCalendarViewProps {
   matches: Match[];
+  fields?: Field[];
   eventStart?: string;
   eventEnd?: string;
   onMatchClick?: (match: Match) => void;
@@ -23,6 +24,15 @@ interface LeagueCalendarViewProps {
   matchCardPaddingY?: string;
   currentUser?: UserData | null;
 }
+
+type CalendarLayoutMode = 'calendar' | 'resource';
+
+type CalendarResource = {
+  resourceId: string;
+  resourceTitle: string;
+};
+
+const UNASSIGNED_FIELD_RESOURCE_ID = '__unassigned_field__';
 
 const parseDateInput = (value?: string | Date | null): Date | null => {
   if (!value) return null;
@@ -84,12 +94,53 @@ const resolveTeamLabel = (match: Match, key: 'team1' | 'team2') => {
   return 'TBD';
 };
 
+const resolveFieldLabel = (field?: Field | null): string | null => {
+  if (!field) return null;
+
+  const name = typeof field.name === 'string' ? field.name.trim() : '';
+  if (name.length > 0) {
+    return name;
+  }
+
+  if (typeof field.fieldNumber === 'number' && Number.isFinite(field.fieldNumber) && field.fieldNumber > 0) {
+    return `Field ${field.fieldNumber}`;
+  }
+
+  return null;
+};
+
+const resolveMatchFieldId = (match: Match): string | null => {
+  const relationFieldId =
+    match.field && typeof match.field === 'object' && '$id' in match.field && typeof match.field.$id === 'string'
+      ? match.field.$id.trim()
+      : '';
+  if (relationFieldId.length > 0) {
+    return relationFieldId;
+  }
+
+  const fieldId = typeof match.fieldId === 'string' ? match.fieldId.trim() : '';
+  return fieldId.length > 0 ? fieldId : null;
+};
+
+const resolveMatchFieldLabel = (match: Match, fieldLookup: Map<string, Field>): string => {
+  const fieldId = resolveMatchFieldId(match);
+  const relationField = match.field && typeof match.field === 'object' ? match.field : null;
+  const mappedField = fieldId ? fieldLookup.get(fieldId) ?? null : null;
+  return (
+    resolveFieldLabel(relationField) ??
+    resolveFieldLabel(mappedField) ??
+    'Field TBD'
+  );
+};
+
 type CalendarEvent = {
   id: string;
   title: string;
   start: Date;
   end: Date;
   allDay?: boolean;
+  resourceId: string;
+  fieldLabel: string;
   resource: Match;
 };
 
@@ -111,6 +162,7 @@ const MIN_CALENDAR_HEIGHT = 600;
 
 export function LeagueCalendarView({
   matches,
+  fields = [],
   eventStart,
   eventEnd,
   onMatchClick,
@@ -119,6 +171,18 @@ export function LeagueCalendarView({
   currentUser,
 }: LeagueCalendarViewProps) {
   const userTeamIds = useMemo(() => new Set(currentUser?.teamIds ?? []), [currentUser?.teamIds]);
+  const [layoutMode, setLayoutMode] = useState<CalendarLayoutMode>('calendar');
+
+  const fieldLookup = useMemo(() => {
+    const lookup = new Map<string, Field>();
+    fields.forEach((field) => {
+      if (typeof field.$id === 'string' && field.$id.trim().length > 0) {
+        lookup.set(field.$id.trim(), field);
+      }
+    });
+    return lookup;
+  }, [fields]);
+
   const teamHasUser = useCallback(
     (team: Match['team1'], fallbackId?: string | null) => {
       if (!currentUser?.$id) return false;
@@ -193,6 +257,8 @@ export function LeagueCalendarView({
         if (!start) return null;
         const end = coerceDateTime(match.end)
           ?? new Date(start.getTime() + 60 * 60 * 1000);
+        const fieldId = resolveMatchFieldId(match);
+        const fieldLabel = resolveMatchFieldLabel(match, fieldLookup);
 
         return {
           id: match.$id,
@@ -200,12 +266,37 @@ export function LeagueCalendarView({
           start,
           end,
           allDay: false,
+          resourceId: fieldId ?? UNASSIGNED_FIELD_RESOURCE_ID,
+          fieldLabel,
           resource: match,
         } as CalendarEvent;
       })
       .filter((event): event is CalendarEvent => Boolean(event))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [matchesToDisplay]);
+  }, [fieldLookup, matchesToDisplay]);
+
+  const calendarResources = useMemo<CalendarResource[]>(() => {
+    const resources = new Map<string, CalendarResource>();
+
+    fields.forEach((field) => {
+      const fieldId = typeof field.$id === 'string' ? field.$id.trim() : '';
+      if (!fieldId) return;
+      resources.set(fieldId, {
+        resourceId: fieldId,
+        resourceTitle: resolveFieldLabel(field) ?? 'Field TBD',
+      });
+    });
+
+    calendarEvents.forEach((event) => {
+      if (resources.has(event.resourceId)) return;
+      resources.set(event.resourceId, {
+        resourceId: event.resourceId,
+        resourceTitle: event.resourceId === UNASSIGNED_FIELD_RESOURCE_ID ? 'Unassigned' : event.fieldLabel,
+      });
+    });
+
+    return Array.from(resources.values());
+  }, [calendarEvents, fields]);
 
   const initialDate = useMemo(() => {
     if (calendarEvents.length > 0) {
@@ -294,15 +385,10 @@ export function LeagueCalendarView({
   );
 
   const MonthEventComponent = useCallback(({ event }: EventProps<CalendarEvent>) => {
-    const match = event.resource;
-    const field = match?.field && typeof match.field === 'object' ? match.field : null;
-    const fieldLabel =
-      field?.name || (field && 'fieldNumber' in field ? `Field ${(field as any).fieldNumber}` : null);
-
     return (
       <div className="leading-tight text-xs">
         <div className="font-medium truncate">{event.title}</div>
-        {fieldLabel && <div className="opacity-70 truncate">{fieldLabel}</div>}
+        <div className="opacity-70 truncate">{event.fieldLabel}</div>
       </div>
     );
   }, []);
@@ -319,6 +405,7 @@ export function LeagueCalendarView({
         layout="horizontal"
         hideTimeBadge
         showRefereeInHeader
+        fieldLabel={event.fieldLabel}
       />
     ),
     [canManage, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
@@ -336,6 +423,7 @@ export function LeagueCalendarView({
         layout="horizontal"
         hideTimeBadge
         showRefereeInHeader
+        fieldLabel={event.fieldLabel}
       />
     ),
     [canManage, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
@@ -352,7 +440,21 @@ export function LeagueCalendarView({
     [AgendaEventComponent, MonthEventComponent, WeekDayEventComponent],
   );
 
-  const showRange = calendarView === 'week' || calendarView === 'day';
+  const calendarViews = useMemo<View[]>(
+    () => (layoutMode === 'resource' ? ['day', 'week'] : ['month', 'week', 'day', 'agenda']),
+    [layoutMode],
+  );
+  const effectiveCalendarView = useMemo<View>(
+    () => (calendarViews.includes(calendarView) ? calendarView : calendarViews[0]),
+    [calendarView, calendarViews],
+  );
+  const showRange = effectiveCalendarView === 'week' || effectiveCalendarView === 'day';
+
+  useEffect(() => {
+    if (calendarView !== effectiveCalendarView) {
+      setCalendarView(effectiveCalendarView);
+    }
+  }, [calendarView, effectiveCalendarView]);
 
   const visibleHourSpan = useMemo(
     () => Math.max(1, timeRange[1] - timeRange[0]),
@@ -384,7 +486,7 @@ export function LeagueCalendarView({
 
   return (
     <>
-      <style jsx global>{`
+        <style jsx global>{`
         .rbc-event-label {
           display: none;
         }
@@ -403,8 +505,16 @@ export function LeagueCalendarView({
         style={{ width: '100%', minHeight: MIN_CALENDAR_HEIGHT + (showRange ? 120 : 0) }}
         data-testid="league-calendar"
       >
-        {currentUser && (
-          <div className="flex justify-end mb-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <SegmentedControl
+            value={layoutMode}
+            onChange={(value) => setLayoutMode(value as CalendarLayoutMode)}
+            data={[
+              { value: 'calendar', label: 'Calendar' },
+              { value: 'resource', label: 'By Field' },
+            ]}
+          />
+          {currentUser && (
             <Button
               size="sm"
               variant={showMyMatchesOnly ? 'filled' : 'light'}
@@ -413,8 +523,8 @@ export function LeagueCalendarView({
             >
               {showMyMatchesOnly ? 'Showing My Matches' : 'Show Only My Matches'}
             </Button>
-          </div>
-        )}
+          )}
+        </div>
         {showRange && (
           <div className="mb-6">
             <Text size="sm" fw={600} mb={8}>
@@ -442,9 +552,10 @@ export function LeagueCalendarView({
         <BigCalendar
           localizer={localizer}
           events={calendarEvents}
+          resources={layoutMode === 'resource' ? calendarResources : undefined}
           date={calendarDate}
-          view={calendarView}
-          views={['month', 'week', 'day', 'agenda']}
+          view={effectiveCalendarView}
+          views={calendarViews}
           onView={handleViewChange}
           onNavigate={handleNavigate}
           selectable
@@ -456,6 +567,9 @@ export function LeagueCalendarView({
           onSelectEvent={handleSelectEvent}
           startAccessor="start"
           endAccessor="end"
+          resourceAccessor="resourceId"
+          resourceIdAccessor="resourceId"
+          resourceTitleAccessor="resourceTitle"
           min={minTime}
           max={maxTime}
           style={{ height: '100%', minHeight: MIN_CALENDAR_HEIGHT }}

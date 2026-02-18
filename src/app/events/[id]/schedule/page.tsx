@@ -2636,6 +2636,7 @@ function EventScheduleContent() {
                   ) : (
                     <LeagueCalendarView
                       matches={scheduleMatches}
+                      fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
                       eventStart={activeEvent.start}
                       eventEnd={activeEvent.end}
                       onMatchClick={handleMatchClick}

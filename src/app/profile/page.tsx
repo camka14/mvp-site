@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useApp } from '@/app/providers';
 import { userService } from '@/lib/userService';
-import { familyService, FamilyChild } from '@/lib/familyService';
+import { familyService, FamilyChild, FamilyJoinRequest } from '@/lib/familyService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Bill, PaymentIntent, Team, getUserAvatarUrl, formatPrice, formatBillAmount, Product, Organization } from '@/types';
 import type { Subscription } from '@/types';
@@ -78,6 +78,10 @@ export default function ProfilePage() {
     const [children, setChildren] = useState<FamilyChild[]>([]);
     const [childrenLoading, setChildrenLoading] = useState(false);
     const [childrenError, setChildrenError] = useState<string | null>(null);
+    const [joinRequests, setJoinRequests] = useState<FamilyJoinRequest[]>([]);
+    const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
+    const [joinRequestsError, setJoinRequestsError] = useState<string | null>(null);
+    const [resolvingJoinRequestId, setResolvingJoinRequestId] = useState<string | null>(null);
     const [creatingChild, setCreatingChild] = useState(false);
     const [updatingChild, setUpdatingChild] = useState(false);
     const [linkingChild, setLinkingChild] = useState(false);
@@ -225,11 +229,27 @@ export default function ProfilePage() {
         }
     }, []);
 
+    const loadJoinRequests = useCallback(async () => {
+        setJoinRequestsLoading(true);
+        setJoinRequestsError(null);
+        try {
+            const result = await familyService.listJoinRequests();
+            setJoinRequests(result);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to load child join requests.';
+            setJoinRequestsError(message);
+            setJoinRequests([]);
+        } finally {
+            setJoinRequestsLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (user) {
             loadChildren();
+            loadJoinRequests();
         }
-    }, [user, loadChildren]);
+    }, [user, loadChildren, loadJoinRequests]);
 
     const resetChildForm = () => {
         setChildForm({
@@ -291,7 +311,7 @@ export default function ProfilePage() {
                 });
                 resetChildForm();
                 setShowAddChildForm(false);
-                await loadChildren();
+                await Promise.all([loadChildren(), loadJoinRequests(), loadDocuments()]);
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to update child.';
                 setChildFormError(message);
@@ -306,7 +326,7 @@ export default function ProfilePage() {
             await familyService.createChildAccount(payload);
             resetChildForm();
             setShowAddChildForm(false);
-            await loadChildren();
+            await Promise.all([loadChildren(), loadJoinRequests()]);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to create child.';
             setChildFormError(message);
@@ -333,7 +353,7 @@ export default function ProfilePage() {
                 childUserId: '',
                 relationship: 'parent',
             });
-            await loadChildren();
+            await Promise.all([loadChildren(), loadJoinRequests()]);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to link child.';
             setLinkFormError(message);
@@ -639,6 +659,30 @@ export default function ProfilePage() {
         }
     }, [user]);
 
+    const handleResolveJoinRequest = useCallback(async (registrationId: string, action: 'approve' | 'decline') => {
+        if (!registrationId) return;
+        setResolvingJoinRequestId(registrationId);
+        setJoinRequestsError(null);
+        try {
+            const result = await familyService.resolveJoinRequest(registrationId, action);
+            if (Array.isArray(result.warnings) && result.warnings.length > 0) {
+                notifications.show({ color: 'yellow', message: result.warnings[0] });
+            } else {
+                notifications.show({
+                    color: 'green',
+                    message: action === 'approve' ? 'Join request approved.' : 'Join request declined.',
+                });
+            }
+            await Promise.all([loadJoinRequests(), loadChildren(), loadDocuments()]);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to update join request.';
+            setJoinRequestsError(message);
+            notifications.show({ color: 'red', message });
+        } finally {
+            setResolvingJoinRequestId(null);
+        }
+    }, [loadChildren, loadDocuments, loadJoinRequests]);
+
     const resetSigningState = useCallback(() => {
         setShowSignPasswordModal(false);
         setSignPassword('');
@@ -666,6 +710,10 @@ export default function ProfilePage() {
         if (!user) return;
         if (!document.eventId) {
             setDocumentsError('Cannot sign this document because the event is missing.');
+            return;
+        }
+        if (document.requiresChildEmail) {
+            setDocumentsError(document.statusNote || 'Add child email before starting this child-signature document.');
             return;
         }
         if (!authUser?.email) {
@@ -1109,7 +1157,12 @@ export default function ProfilePage() {
                         <Paper withBorder radius="lg" p="md" shadow="sm">
                             <Group justify="space-between" mb="sm">
                                 <Title order={4}>Children</Title>
-                                <Button variant="light" size="xs" onClick={loadChildren} loading={childrenLoading}>
+                                <Button
+                                    variant="light"
+                                    size="xs"
+                                    onClick={() => { void Promise.all([loadChildren(), loadJoinRequests()]); }}
+                                    loading={childrenLoading || joinRequestsLoading}
+                                >
                                     Refresh
                                 </Button>
                             </Group>
@@ -1228,6 +1281,71 @@ export default function ProfilePage() {
                                 </div>
                             </Paper>
 
+                            <Paper withBorder radius="md" p="md" shadow="xs" className="w-full max-w-3xl" mt="md">
+                                <Group justify="space-between" mb="xs">
+                                    <Title order={5}>Join requests awaiting guardian approval</Title>
+                                    <Button
+                                        variant="light"
+                                        size="xs"
+                                        onClick={loadJoinRequests}
+                                        loading={joinRequestsLoading}
+                                    >
+                                        Refresh
+                                    </Button>
+                                </Group>
+                                {joinRequestsError && (
+                                    <Alert color="red" variant="light" mb="sm">
+                                        {joinRequestsError}
+                                    </Alert>
+                                )}
+                                {joinRequestsLoading ? (
+                                    <Text c="dimmed" size="sm">Loading join requests...</Text>
+                                ) : joinRequests.length === 0 ? (
+                                    <Text c="dimmed" size="sm">No pending join requests.</Text>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {joinRequests.map((request) => (
+                                            <Paper key={request.registrationId} withBorder radius="md" p="sm">
+                                                <div className="space-y-1">
+                                                    <Text fw={600}>{request.childFullName || 'Child'} requested to join {request.eventName || 'event'}</Text>
+                                                    <Text size="xs" c="dimmed">
+                                                        Requested: {formatDateTimeLabel(request.requestedAt || undefined)}
+                                                    </Text>
+                                                    <Text size="xs" c="dimmed">
+                                                        Consent status: {request.consentStatus || 'guardian_approval_required'}
+                                                    </Text>
+                                                    {!request.childHasEmail && (
+                                                        <Alert color="yellow" variant="light" mt="xs">
+                                                            Child email is missing. Approval can proceed, but child-signature document steps remain pending.
+                                                        </Alert>
+                                                    )}
+                                                </div>
+                                                <Group mt="sm" justify="flex-end">
+                                                    <Button
+                                                        size="xs"
+                                                        variant="light"
+                                                        color="green"
+                                                        loading={resolvingJoinRequestId === request.registrationId}
+                                                        onClick={() => handleResolveJoinRequest(request.registrationId, 'approve')}
+                                                    >
+                                                        Approve
+                                                    </Button>
+                                                    <Button
+                                                        size="xs"
+                                                        variant="light"
+                                                        color="red"
+                                                        loading={resolvingJoinRequestId === request.registrationId}
+                                                        onClick={() => handleResolveJoinRequest(request.registrationId, 'decline')}
+                                                    >
+                                                        Decline
+                                                    </Button>
+                                                </Group>
+                                            </Paper>
+                                        ))}
+                                    </div>
+                                )}
+                            </Paper>
+
                             <Title order={5} mt="lg" mb="sm">Children</Title>
                             {childrenLoading ? (
                                 <Text c="dimmed">Loading children...</Text>
@@ -1332,14 +1450,25 @@ export default function ProfilePage() {
                                                             <Text size="xs" c="dimmed">
                                                                 Required: {document.requiredSignerLabel}
                                                             </Text>
+                                                            {document.consentStatus && (
+                                                                <Text size="xs" c="dimmed">
+                                                                    Consent status: {document.consentStatus}
+                                                                </Text>
+                                                            )}
+                                                            {document.statusNote && (
+                                                                <Alert color="yellow" variant="light" mt="xs">
+                                                                    {document.statusNote}
+                                                                </Alert>
+                                                            )}
                                                         </div>
                                                         <Button
                                                             size="xs"
                                                             variant="light"
                                                             mt="md"
+                                                            disabled={Boolean(document.requiresChildEmail)}
                                                             onClick={() => handleStartSigningDocument(document)}
                                                         >
-                                                            Sign document
+                                                            {document.requiresChildEmail ? 'Add child email first' : 'Sign document'}
                                                         </Button>
                                                     </Paper>
                                                 ))}

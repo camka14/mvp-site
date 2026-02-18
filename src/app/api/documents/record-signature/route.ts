@@ -42,9 +42,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'templateId and documentId are required.' }, { status: 400 });
   }
 
-  const userId = parsed.data.userId ?? session.userId;
+  const userId = (parsed.data.userId ?? session.userId).trim();
   if (!session.isAdmin && userId !== session.userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const parentLink = await prisma.parentChildLinks.findFirst({
+      where: {
+        parentId: session.userId,
+        childId: userId,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    if (!parentLink) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   await prisma.signedDocuments.create({

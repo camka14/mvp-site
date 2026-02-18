@@ -94,12 +94,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     select: { email: true },
   });
   const childEmail = childSensitive?.email?.trim() ?? '';
-  if (!childEmail) {
-    return NextResponse.json(
-      { error: 'Child email is required before registration.' },
-      { status: 400 },
-    );
-  }
 
   const childAgeCheck = validateRegistrantAgeForSelection({
     dateOfBirth: child.dateOfBirth,
@@ -116,6 +110,43 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
 
   const needsConsent = Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0;
   const consentDocumentId = needsConsent ? crypto.randomUUID() : null;
+  const consentStatus = !needsConsent
+    ? null
+    : childEmail
+      ? 'sent'
+      : 'child_email_required';
+
+  const existingRegistration = await prisma.eventRegistrations.findFirst({
+    where: {
+      eventId,
+      registrantId: childId,
+      parentId: session.userId,
+      registrantType: 'CHILD',
+      status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
+    },
+    orderBy: {
+      updatedAt: 'desc',
+    },
+  });
+
+  if (existingRegistration) {
+    return NextResponse.json({
+      registration: withLegacyFields(existingRegistration),
+      consent: needsConsent
+        ? {
+            documentId: existingRegistration.consentDocumentId ?? consentDocumentId,
+            status: existingRegistration.consentStatus ?? consentStatus ?? 'sent',
+            parentSignLink: null,
+            childSignLink: null,
+            childEmail: childEmail || null,
+            requiresChildEmail: !childEmail,
+          }
+        : undefined,
+      warnings: !childEmail && childAgeAtEvent < 13
+        ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
+        : undefined,
+    }, { status: 200 });
+  }
 
   const registration = await prisma.eventRegistrations.create({
     data: {
@@ -130,7 +161,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       divisionTypeId: divisionSelection.selection.divisionTypeId,
       divisionTypeKey: divisionSelection.selection.divisionTypeKey,
       consentDocumentId,
-      consentStatus: needsConsent ? 'sent' : null,
+      consentStatus,
       createdBy: session.userId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -140,13 +171,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   return NextResponse.json({
     registration: withLegacyFields(registration),
     consent: needsConsent
-      ? {
+        ? {
           documentId: consentDocumentId,
-          status: 'sent',
+          status: consentStatus ?? 'sent',
           parentSignLink: null,
           childSignLink: null,
-          childEmail,
+          childEmail: childEmail || null,
+          requiresChildEmail: !childEmail,
         }
+      : undefined,
+    warnings: !childEmail && childAgeAtEvent < 13
+      ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
       : undefined,
   }, { status: 200 });
 }

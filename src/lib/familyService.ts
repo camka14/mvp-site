@@ -14,8 +14,32 @@ export type FamilyChild = {
   hasEmail?: boolean;
 };
 
+export type FamilyJoinRequest = {
+  registrationId: string;
+  eventId: string;
+  eventName?: string;
+  eventStart?: string | null;
+  childUserId: string;
+  childFirstName?: string;
+  childLastName?: string;
+  childFullName?: string;
+  childDateOfBirth?: string | null;
+  childEmail?: string | null;
+  childHasEmail?: boolean;
+  consentStatus?: string;
+  divisionId?: string | null;
+  divisionTypeId?: string | null;
+  divisionTypeKey?: string | null;
+  requestedAt?: string | null;
+  updatedAt?: string | null;
+};
+
 type FamilyChildrenResponse = {
   children?: FamilyChild[];
+  error?: string;
+};
+type FamilyJoinRequestsResponse = {
+  requests?: FamilyJoinRequest[];
   error?: string;
 };
 
@@ -40,6 +64,22 @@ type LinkChildResponse = {
   error?: string;
 };
 
+type JoinRequestActionResponse = {
+  registration?: {
+    id?: string;
+    status?: string;
+    consentStatus?: string | null;
+  };
+  action?: 'approved' | 'declined';
+  consent?: {
+    status?: string | null;
+    childEmail?: string | null;
+    requiresChildEmail?: boolean;
+  };
+  warnings?: string[];
+  error?: string;
+};
+
 class FamilyService {
   async listChildren(): Promise<FamilyChild[]> {
     const result = await apiRequest<FamilyChildrenResponse>('/api/family/children', {
@@ -49,6 +89,30 @@ class FamilyService {
       throw new Error(result.error);
     }
     return Array.isArray(result?.children) ? result.children : [];
+  }
+
+  async listJoinRequests(): Promise<FamilyJoinRequest[]> {
+    const result = await apiRequest<FamilyJoinRequestsResponse>('/api/family/join-requests', {
+      method: 'GET',
+    });
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    return Array.isArray(result?.requests) ? result.requests : [];
+  }
+
+  async resolveJoinRequest(
+    registrationId: string,
+    action: 'approve' | 'decline',
+  ): Promise<JoinRequestActionResponse> {
+    const result = await apiRequest<JoinRequestActionResponse>(`/api/family/join-requests/${encodeURIComponent(registrationId)}`, {
+      method: 'PATCH',
+      body: { action },
+    });
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    return result;
   }
 
   async createChildAccount(params: {

@@ -12,7 +12,11 @@ const prismaMock = {
   divisions: {
     findMany: jest.fn(),
   },
+  parentChildLinks: {
+    findFirst: jest.fn(),
+  },
   eventRegistrations: {
+    findFirst: jest.fn(),
     create: jest.fn(),
   },
 };
@@ -38,6 +42,8 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
     prismaMock.userData.findUnique.mockResolvedValue({
       dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
     });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ parentId: 'parent_1' });
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
   });
 
   it('requires division selection when registering by individual division', async () => {
@@ -155,5 +161,61 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
         }),
       }),
     );
+  });
+
+  it('creates guardian approval request for minor self registration', async () => {
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      dateOfBirth: new Date('2014-01-01T00:00:00.000Z'),
+    });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      sportId: 'volleyball',
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      requiredTemplateIds: ['tmpl_1'],
+    });
+    prismaMock.divisions.findMany.mockResolvedValueOnce([
+      {
+        id: 'div_a',
+        key: 'c_skill_open',
+        name: 'Open A',
+        sportId: 'volleyball',
+        divisionTypeId: 'open',
+        divisionTypeName: 'Open',
+        ratingType: 'SKILL',
+        gender: 'C',
+        ageCutoffDate: null,
+        ageCutoffLabel: null,
+        ageCutoffSource: null,
+      },
+    ]);
+    prismaMock.eventRegistrations.create.mockResolvedValueOnce({
+      id: 'registration_minor_1',
+      eventId: 'event_1',
+      registrantId: 'user_1',
+      parentId: 'parent_1',
+      registrantType: 'CHILD',
+      status: 'PENDINGCONSENT',
+      consentStatus: 'guardian_approval_required',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/registrations/self', {
+        divisionTypeKey: 'c_skill_open',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.requiresParentApproval).toBe(true);
+    expect(payload.registration).toEqual(expect.objectContaining({
+      registrantId: 'user_1',
+      parentId: 'parent_1',
+      consentStatus: 'guardian_approval_required',
+    }));
   });
 });

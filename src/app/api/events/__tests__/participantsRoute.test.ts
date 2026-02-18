@@ -13,10 +13,23 @@ const prismaMock = {
   signedDocuments: {
     findMany: jest.fn(),
   },
+  userData: {
+    findUnique: jest.fn(),
+    findMany: jest.fn(),
+  },
+  sensitiveUserData: {
+    findMany: jest.fn(),
+  },
+  parentChildLinks: {
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+  },
   volleyBallTeams: {
     findUnique: jest.fn(),
   },
   eventRegistrations: {
+    findFirst: jest.fn(),
+    create: jest.fn(),
     upsert: jest.fn(),
     deleteMany: jest.fn(),
   },
@@ -67,6 +80,14 @@ describe('POST /api/events/[eventId]/participants', () => {
         ageCutoffSource: null,
       },
     ]);
+    prismaMock.userData.findMany.mockResolvedValue([]);
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+    });
+    prismaMock.sensitiveUserData.findMany.mockResolvedValue([]);
+    prismaMock.parentChildLinks.findMany.mockResolvedValue([]);
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ parentId: 'parent_1' });
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
   });
 
   it('rejects team registration when team division type does not match selection', async () => {
@@ -163,7 +184,7 @@ describe('POST /api/events/[eventId]/participants', () => {
     );
   });
 
-  it('rejects team registration when any team member is missing required signatures', async () => {
+  it('allows team registration and returns warning for under-13 players missing email', async () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({
       id: 'event_1',
       requiredTemplateIds: ['tmpl_req'],
@@ -183,9 +204,34 @@ describe('POST /api/events/[eventId]/participants', () => {
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
     });
-    prismaMock.signedDocuments.findMany.mockResolvedValueOnce([
-      { userId: 'user_1', templateId: 'tmpl_req' },
+    prismaMock.userData.findMany.mockResolvedValueOnce([
+      {
+        id: 'user_1',
+        firstName: 'Adult',
+        lastName: 'Player',
+        dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+      },
+      {
+        id: 'user_2',
+        firstName: 'Kid',
+        lastName: 'Player',
+        dateOfBirth: new Date('2015-05-20T00:00:00.000Z'),
+      },
     ]);
+    prismaMock.sensitiveUserData.findMany.mockResolvedValueOnce([
+      { userId: 'user_1', email: 'adult@example.test' },
+    ]);
+    prismaMock.parentChildLinks.findMany.mockResolvedValueOnce([
+      { childId: 'user_2' },
+    ]);
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      userIds: [],
+      teamIds: ['team_1'],
+    });
+    prismaMock.eventRegistrations.upsert.mockResolvedValueOnce({
+      id: 'event_1__team__team_1',
+    });
 
     const response = await POST(
       jsonPost('http://localhost/api/events/event_1/participants', {
@@ -197,9 +243,42 @@ describe('POST /api/events/[eventId]/participants', () => {
     );
     const payload = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(payload.error).toContain('All team members must sign required documents');
-    expect(payload.missingSignerIds).toEqual(['user_2']);
-    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.update).toHaveBeenCalled();
+    expect(payload.warnings).toEqual([
+      expect.stringContaining('Under-13 player Kid Player is missing an email'),
+    ]);
+  });
+
+  it('creates a guardian approval request when a minor adds self as participant', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'child_1', isAdmin: false });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      dateOfBirth: new Date('2014-01-01T00:00:00.000Z'),
+    });
+    prismaMock.eventRegistrations.create.mockResolvedValueOnce({
+      id: 'reg_minor_1',
+      eventId: 'event_1',
+      registrantId: 'child_1',
+      parentId: 'parent_1',
+      registrantType: 'CHILD',
+      status: 'PENDINGCONSENT',
+      consentStatus: 'guardian_approval_required',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        userId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.requiresParentApproval).toBe(true);
+    expect(payload.registration).toEqual(expect.objectContaining({
+      registrantId: 'child_1',
+      parentId: 'parent_1',
+      consentStatus: 'guardian_approval_required',
+    }));
   });
 });

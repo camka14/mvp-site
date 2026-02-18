@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { calculateAgeOnDate } from '@/lib/age';
 import {
   inferTeamDivisionTypeId,
   resolveEventDivisionSelection,
@@ -56,56 +57,12 @@ const normalizeRequiredTemplateIds = (values: unknown): string[] => {
       .filter(Boolean),
   );
 };
-
-const hasSignedRequiredTemplates = async (event: { requiredTemplateIds: string[] | null }, userId?: string) => {
-  if (!userId) return true;
-  const required = normalizeRequiredTemplateIds(event.requiredTemplateIds);
-  if (!required.length) return true;
-  const signed = await prisma.signedDocuments.findMany({
-    where: {
-      userId,
-      templateId: { in: required },
-      status: { in: ['SIGNED', 'signed'] },
-    },
-    select: { templateId: true },
-  });
-  const signedSet = new Set(signed.map((doc) => doc.templateId));
-  return required.every((id) => signedSet.has(id));
-};
-
-const getMissingSignersForRequiredTemplates = async (params: {
-  requiredTemplateIds: string[];
-  userIds: string[];
-}): Promise<string[]> => {
-  const requiredTemplateIds = normalizeRequiredTemplateIds(params.requiredTemplateIds);
-  const userIds = normalizeUserIdList(params.userIds);
-  if (!requiredTemplateIds.length || !userIds.length) {
-    return [];
+const normalizeEmail = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
   }
-
-  const signed = await prisma.signedDocuments.findMany({
-    where: {
-      userId: { in: userIds },
-      templateId: { in: requiredTemplateIds },
-      status: { in: ['SIGNED', 'signed'] },
-    },
-    select: {
-      userId: true,
-      templateId: true,
-    },
-  });
-
-  const signedTemplatesByUser = new Map<string, Set<string>>();
-  signed.forEach((row) => {
-    const templateSet = signedTemplatesByUser.get(row.userId) ?? new Set<string>();
-    templateSet.add(row.templateId);
-    signedTemplatesByUser.set(row.userId, templateSet);
-  });
-
-  return userIds.filter((userId) => {
-    const templateSet = signedTemplatesByUser.get(userId) ?? new Set<string>();
-    return requiredTemplateIds.some((templateId) => !templateSet.has(templateId));
-  });
+  const normalized = value.trim().toLowerCase();
+  return normalized.length ? normalized : null;
 };
 
 async function updateParticipants(
@@ -123,18 +80,6 @@ async function updateParticipants(
   const { eventId } = await params;
   const event = await prisma.events.findUnique({
     where: { id: eventId },
-    select: {
-      id: true,
-      requiredTemplateIds: true,
-      userIds: true,
-      teamIds: true,
-      registrationByDivisionType: true,
-      divisions: true,
-      sportId: true,
-      start: true,
-      minAge: true,
-      maxAge: true,
-    },
   });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -162,6 +107,82 @@ async function updateParticipants(
     : { divisionId: null, divisionTypeId: null, divisionTypeKey: null };
 
   const requiredTemplateIds = normalizeRequiredTemplateIds(event.requiredTemplateIds);
+  const warnings: string[] = [];
+
+  if (mode === 'add' && userId && !teamId) {
+    const registrant = await prisma.userData.findUnique({
+      where: { id: userId },
+      select: { dateOfBirth: true },
+    });
+    if (!registrant) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    const ageAtEvent = calculateAgeOnDate(registrant.dateOfBirth, event.start);
+    if (!Number.isFinite(ageAtEvent)) {
+      return NextResponse.json({ error: 'Invalid date of birth' }, { status: 400 });
+    }
+
+    if (ageAtEvent < 18) {
+      const parentLink = await prisma.parentChildLinks.findFirst({
+        where: {
+          childId: userId,
+          status: 'ACTIVE',
+        },
+        orderBy: {
+          updatedAt: 'desc',
+        },
+        select: {
+          parentId: true,
+        },
+      });
+      if (!parentLink?.parentId) {
+        return NextResponse.json(
+          { error: 'No linked parent/guardian found. Ask a parent to add you first.' },
+          { status: 403 },
+        );
+      }
+
+      const existingRequest = await prisma.eventRegistrations.findFirst({
+        where: {
+          eventId,
+          registrantId: userId,
+          parentId: parentLink.parentId,
+          registrantType: 'CHILD',
+          status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
+        },
+        orderBy: {
+          updatedAt: 'desc',
+        },
+      });
+
+      const requestRegistration = existingRequest ?? await prisma.eventRegistrations.create({
+        data: {
+          id: crypto.randomUUID(),
+          eventId,
+          registrantId: userId,
+          parentId: parentLink.parentId,
+          registrantType: 'CHILD',
+          status: 'PENDINGCONSENT',
+          ageAtEvent,
+          divisionId: divisionSelection.divisionId,
+          divisionTypeId: divisionSelection.divisionTypeId,
+          divisionTypeKey: divisionSelection.divisionTypeKey,
+          consentStatus: 'guardian_approval_required',
+          createdBy: session.userId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      return NextResponse.json({
+        event: withLegacyEvent(event),
+        registration: withLegacyFields(requestRegistration),
+        requiresParentApproval: true,
+      }, { status: 200 });
+    }
+  }
+
   let teamForRegistration:
     | {
       id: string;
@@ -193,29 +214,6 @@ async function updateParticipants(
     };
   }
 
-  if (mode === 'add') {
-    if (teamForRegistration && requiredTemplateIds.length > 0) {
-      const missingSignerIds = await getMissingSignersForRequiredTemplates({
-        requiredTemplateIds,
-        userIds: teamForRegistration.playerIds,
-      });
-      if (missingSignerIds.length > 0) {
-        return NextResponse.json(
-          {
-            error: 'All team members must sign required documents before team registration.',
-            missingSignerIds,
-          },
-          { status: 400 },
-        );
-      }
-    } else {
-      const ok = await hasSignedRequiredTemplates(event, userId);
-      if (!ok) {
-        return NextResponse.json({ error: 'Required document signatures missing.' }, { status: 400 });
-      }
-    }
-  }
-
   if (teamForRegistration && mode === 'add') {
     const team = teamForRegistration;
 
@@ -242,6 +240,55 @@ async function updateParticipants(
         { status: 403 },
       );
     }
+  }
+
+  if (mode === 'add' && teamForRegistration && requiredTemplateIds.length > 0 && teamForRegistration.playerIds.length > 0) {
+    const [childProfiles, childEmails, activeLinks] = await Promise.all([
+      prisma.userData.findMany({
+        where: { id: { in: teamForRegistration.playerIds } },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          dateOfBirth: true,
+        },
+      }),
+      prisma.sensitiveUserData.findMany({
+        where: { userId: { in: teamForRegistration.playerIds } },
+        select: {
+          userId: true,
+          email: true,
+        },
+      }),
+      prisma.parentChildLinks.findMany({
+        where: {
+          childId: { in: teamForRegistration.playerIds },
+          status: 'ACTIVE',
+        },
+        select: {
+          childId: true,
+        },
+      }),
+    ]);
+
+    const childEmailById = new Map(childEmails.map((row) => [row.userId, normalizeEmail(row.email)]));
+    const childIds = new Set(activeLinks.map((row) => row.childId));
+
+    childProfiles.forEach((child) => {
+      if (!childIds.has(child.id)) {
+        return;
+      }
+      const ageAtEvent = calculateAgeOnDate(child.dateOfBirth, event.start);
+      if (!Number.isFinite(ageAtEvent) || ageAtEvent >= 13) {
+        return;
+      }
+      const childEmail = childEmailById.get(child.id);
+      if (childEmail) {
+        return;
+      }
+      const name = `${(child.firstName ?? '').trim()} ${(child.lastName ?? '').trim()}`.trim() || child.id;
+      warnings.push(`Under-13 player ${name} is missing an email and cannot complete child signature steps until an email is added.`);
+    });
   }
 
   let nextUserIds = Array.isArray(event.userIds) ? [...event.userIds] : [];
@@ -305,7 +352,10 @@ async function updateParticipants(
     }
   }
 
-  return NextResponse.json({ event: withLegacyEvent(updated) }, { status: 200 });
+  return NextResponse.json({
+    event: withLegacyEvent(updated),
+    warnings: warnings.length ? warnings : undefined,
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {

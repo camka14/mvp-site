@@ -327,4 +327,62 @@ describe('POST /api/events/[eventId]/sign', () => {
       }),
     );
   });
+
+  it('falls back to parent email for child-context PDF signing when child email is missing', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_child_pdf',
+        templateId: 'bold_tmpl_child',
+        type: 'PDF',
+        title: 'Child PDF Waiver',
+        description: 'Child must sign',
+        signOnce: false,
+        requiredSignerType: 'CHILD',
+        roleIndex: 1,
+        roleIndexes: [1, 2],
+        signerRoles: ['Parent/Guardian', 'Child'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_child_pdf'],
+      name: 'Weekend Open',
+    });
+    prismaMock.parentChildLinks.findFirst
+      .mockResolvedValueOnce({ id: 'link_1' })
+      .mockResolvedValueOnce({ id: 'link_1' });
+    prismaMock.sensitiveUserData.findFirst.mockImplementation(async ({ where }: { where: { userId?: string } }) => {
+      if (where.userId === 'child_1') {
+        return { email: null };
+      }
+      if (where.userId === 'user_1') {
+        return { email: 'parent@example.com' };
+      }
+      return null;
+    });
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([
+      { roleIndex: 1, signerRole: 'Parent/Guardian' },
+      { roleIndex: 2, signerRole: 'Child' },
+    ]);
+    sendDocumentFromTemplateMock.mockResolvedValue({ documentId: 'doc_child_2' });
+    getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_child_2' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'child',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(sendDocumentFromTemplateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signerEmail: 'parent@example.com',
+        roleIndex: 2,
+        signerRole: 'Child',
+      }),
+    );
+  });
 });

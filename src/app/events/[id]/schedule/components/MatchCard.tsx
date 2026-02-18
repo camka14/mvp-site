@@ -13,6 +13,7 @@ interface MatchCardProps {
     layout?: 'vertical' | 'horizontal';
     hideTimeBadge?: boolean;
     showRefereeInHeader?: boolean;
+    fieldLabel?: string;
 }
 
 function MatchCard({
@@ -24,6 +25,7 @@ function MatchCard({
     layout = 'vertical',
     hideTimeBadge = false,
     showRefereeInHeader = false,
+    fieldLabel,
 }: MatchCardProps) {
     const toTitleCase = (value: string) =>
         value
@@ -76,6 +78,24 @@ function MatchCard({
                 hour12: true,
             });
     };
+
+    const resolvedFieldLabel = (() => {
+        const explicitLabel = fieldLabel?.trim();
+        if (explicitLabel) {
+            return explicitLabel;
+        }
+
+        const relationName = match.field?.name?.trim();
+        if (relationName) {
+            return relationName;
+        }
+
+        if (typeof match.field?.fieldNumber === 'number' && match.field.fieldNumber > 0) {
+            return `Field ${match.field.fieldNumber}`;
+        }
+
+        return 'Field TBD';
+    })();
 
     const clickable = typeof onClick === 'function';
 
@@ -237,7 +257,7 @@ function MatchCard({
                             </div>
                         )}
                     </div>
-                    {match.field && <div className="text-sm text-gray-600 shrink-0">Field {match.field.fieldNumber}</div>}
+                    <div className="text-sm text-gray-600 shrink-0">{resolvedFieldLabel}</div>
                 </div>
                 {layout === 'horizontal' ? renderHorizontalLayout() : renderVerticalLayout()}
             </div>

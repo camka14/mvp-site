@@ -88,6 +88,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ch
             },
           });
         }
+
+        await tx.eventRegistrations.updateMany({
+          where: {
+            registrantId: childId,
+            parentId: session.userId,
+            status: 'PENDINGCONSENT',
+            consentStatus: 'child_email_required',
+          },
+          data: {
+            consentStatus: 'sent',
+            updatedAt: now,
+          },
+        });
       }
     }
   });

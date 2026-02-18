@@ -264,11 +264,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   const providedEmail = signerContext === 'child'
     ? pickString(parsed.data.childEmail, parsed.data.targetUserEmail, parsed.data.userEmail)
     : pickString(parsed.data.userEmail, parsed.data.targetUserEmail);
-  const signerEmail = await resolveSignerEmail({
+  let signerEmail = await resolveSignerEmail({
     providedEmail,
     userPayload,
     userId: signerUserId,
   });
+  if (!signerEmail && signerContext === 'child' && childUserId && !session.isAdmin) {
+    const actingAsLinkedChildSigner = await verifyActiveParentLink({
+      parentId: session.userId,
+      childId: childUserId,
+    });
+    if (actingAsLinkedChildSigner) {
+      signerEmail = await resolveSignerEmail({
+        providedEmail: pickString(parsed.data.userEmail, parsed.data.targetUserEmail),
+        userPayload,
+        userId: session.userId,
+      });
+    }
+  }
 
   const signerProfile = await prisma.userData.findUnique({
     where: { id: signerUserId },

@@ -379,6 +379,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const userDob = parseDateValue(user?.dateOfBirth ?? null);
     const userAge = userDob ? calculateAgeOnDate(userDob, eventStartDate ?? new Date()) : undefined;
     const hasValidUserAge = typeof userAge === 'number' && Number.isFinite(userAge);
+    const isMinor = typeof userAge === 'number' && Number.isFinite(userAge) && userAge < 18;
     const isAdult = typeof userAge === 'number' && Number.isFinite(userAge) && userAge >= 18;
     const ageWithinLimits = !hasAgeLimits
         || (typeof userAge === 'number' && Number.isFinite(userAge) && isAgeWithinRange(userAge, eventMinAge, eventMaxAge));
@@ -398,9 +399,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!hasValidUserAge) {
             return 'Add your date of birth to your profile to register for events.';
         }
-        if (userAge < 18) {
-            return 'Only adults can register themselves. A parent must register you.';
-        }
         if (!ageWithinLimits) {
             return `This event is limited to ages ${formatAgeRange(eventMinAge, eventMaxAge)}.`;
         }
@@ -415,7 +413,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
         return null;
     })();
-    const canSelfRegister = !selfRegistrationBlockedReason;
     const canRegisterChild = isAdult;
 
     const isEventHost = !!user && currentEvent && user.$id === currentEvent.hostId;
@@ -681,7 +678,20 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setChildRegistration(result.registration ?? null);
             setChildConsent(result.consent ?? null);
             setChildRegistrationChildId(childId);
-            setJoinNotice('Child registration started. Consent is required to complete registration.');
+            const notices: string[] = [];
+            if (result.requiresParentApproval) {
+                notices.push('Child request sent. A parent/guardian must approve before registration can continue.');
+            } else if (result.consent?.requiresChildEmail) {
+                notices.push('Child registration started. Add child email to continue child-signature document steps.');
+            } else if (result.consent?.status) {
+                notices.push(`Child registration started. Consent status: ${result.consent.status}.`);
+            } else {
+                notices.push('Child registration started.');
+            }
+            if (Array.isArray(result.warnings) && result.warnings.length > 0) {
+                notices.push(result.warnings[0]);
+            }
+            setJoinNotice(notices.join(' '));
             await loadEventDetails();
         } finally {
             setRegisteringChild(false);
@@ -1094,11 +1104,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             );
             return;
         }
-        if (selectedChild && !selectedChildHasEmail) {
-            setJoinError('Child email is required before consent can be sent.');
-            return;
-        }
-
         setJoinError(null);
         setJoinNotice(null);
 
@@ -1150,6 +1155,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
         let signingStarted = false;
         try {
+            if (isMinor) {
+                const result = await registrationService.registerSelfForEvent(currentEvent.$id, divisionSelectionPayload);
+                if (result.requiresParentApproval) {
+                    setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
+                } else {
+                    setJoinNotice(`Registration status: ${result.registration?.status ?? 'pendingConsent'}`);
+                }
+                await loadEventDetails();
+                return;
+            }
             signingStarted = await beginSigningFlow({ mode: 'user' });
             if (signingStarted) {
                 return;
@@ -1379,7 +1394,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const childJoinDisabled = !canRegisterChild
         || !selectedChildId
         || !selectedChildEligible
-        || (isTeamSignup ? joiningChildFreeAgent : (!selectedChildHasEmail || registeringChild || isDivisionSelectionMissing));
+        || (isTeamSignup ? joiningChildFreeAgent : (registeringChild || isDivisionSelectionMissing));
     const childRegistrationPanel = canRegisterChild ? (
         <Paper withBorder p="sm" radius="md" className="space-y-3">
             <Text size="sm" fw={600}>
@@ -1413,7 +1428,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             )}
             {selectedChild && !selectedChildHasEmail && !isTeamSignup && (
                 <Alert color="yellow" variant="light">
-                    The selected child needs an email before consent can be sent.
+                    The selected child can register now, but child-signature steps remain pending until an email is added.
                 </Alert>
             )}
             <Button
@@ -1838,6 +1853,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                         {selfRegistrationBlockedReason}
                                                     </Alert>
                                                 )}
+                                                {!selfRegistrationBlockedReason && isMinor && (
+                                                    <Alert color="blue" variant="light">
+                                                        Your join request will be sent to a linked parent/guardian for approval.
+                                                    </Alert>
+                                                )}
 
                                                 {totalParticipants >= currentEvent.maxParticipants ? (
                                                     <Button
@@ -1870,8 +1890,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                         {confirmingPurchase
                                                             ? 'Confirming purchase…'
                                                             : joining
-                                                                ? 'Joining…'
-                                                                : currentEvent.price > 0
+                                                                ? 'Submitting…'
+                                                                : isMinor
+                                                                    ? 'Request to Join'
+                                                                    : currentEvent.price > 0
                                                                     ? `Join Event - ${formatPrice(currentEvent.price)}`
                                                                     : 'Join Event'}
                                                     </Button>

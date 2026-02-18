@@ -10,6 +10,9 @@ export type RegistrationStatus =
 export type ConsentStatus =
   | 'draft'
   | 'sent'
+  | 'guardian_approval_required'
+  | 'child_email_required'
+  | 'guardian_declined'
   | 'parentSigned'
   | 'childSigned'
   | 'completed'
@@ -25,15 +28,18 @@ export type EventRegistration = {
 
 export type ConsentLinks = {
   documentId?: string;
-  status?: ConsentStatus;
+  status?: ConsentStatus | string;
   parentSignLink?: string;
   childSignLink?: string;
-  childEmail?: string;
+  childEmail?: string | null;
+  requiresChildEmail?: boolean;
 };
 
 type RegistrationResponse = {
   registration?: EventRegistration;
   consent?: ConsentLinks;
+  requiresParentApproval?: boolean;
+  warnings?: string[];
   error?: string;
 };
 

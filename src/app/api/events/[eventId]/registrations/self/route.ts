@@ -66,18 +66,90 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   if (ageCheck.error === 'Invalid date of birth') {
     return NextResponse.json({ error: ageCheck.error }, { status: 400 });
   }
-  const ageAtEvent = ageCheck.ageAtEvent;
-
-  // Product rule: minors must be registered by a parent/guardian.
-  if (ageAtEvent < 18) {
-    return NextResponse.json(
-      { error: 'Only adults can register themselves. A parent must register you.' },
-      { status: 403 },
-    );
-  }
-
   if (ageCheck.error) {
     return NextResponse.json({ error: ageCheck.error }, { status: 403 });
+  }
+  const ageAtEvent = ageCheck.ageAtEvent;
+
+  // Minors can request to join, but a linked parent/guardian must approve.
+  if (ageAtEvent < 18) {
+    const parentLink = await prisma.parentChildLinks.findFirst({
+      where: {
+        childId: session.userId,
+        status: 'ACTIVE',
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      select: {
+        parentId: true,
+      },
+    });
+    if (!parentLink?.parentId) {
+      return NextResponse.json(
+        { error: 'No linked parent/guardian found. Ask a parent to add you first.' },
+        { status: 403 },
+      );
+    }
+
+    const existingRequest = await prisma.eventRegistrations.findFirst({
+      where: {
+        eventId,
+        registrantId: session.userId,
+        parentId: parentLink.parentId,
+        registrantType: 'CHILD',
+        status: {
+          in: ['PENDINGCONSENT', 'ACTIVE'],
+        },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+    if (existingRequest) {
+      return NextResponse.json(
+        {
+          registration: withLegacyFields(existingRequest),
+          requiresParentApproval: true,
+          consent: {
+            status: existingRequest.consentStatus ?? 'guardian_approval_required',
+            parentId: parentLink.parentId,
+          },
+        },
+        { status: 200 },
+      );
+    }
+
+    const registration = await prisma.eventRegistrations.create({
+      data: {
+        id: crypto.randomUUID(),
+        eventId,
+        registrantId: session.userId,
+        parentId: parentLink.parentId,
+        registrantType: 'CHILD',
+        status: 'PENDINGCONSENT',
+        ageAtEvent,
+        divisionId: divisionSelection.selection.divisionId,
+        divisionTypeId: divisionSelection.selection.divisionTypeId,
+        divisionTypeKey: divisionSelection.selection.divisionTypeKey,
+        consentStatus: 'guardian_approval_required',
+        createdBy: session.userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+    return NextResponse.json(
+      {
+        registration: withLegacyFields(registration),
+        requiresParentApproval: true,
+        consent: {
+          status: 'guardian_approval_required',
+          parentId: parentLink.parentId,
+        },
+      },
+      { status: 200 },
+    );
   }
 
   const registration = await prisma.eventRegistrations.create({
