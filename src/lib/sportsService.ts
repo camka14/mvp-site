@@ -1,7 +1,7 @@
 import { apiRequest } from '@/lib/apiClient';
 import { Sport } from '@/types';
 
-const CACHE_KEY = 'sports-cache-v1';
+const CACHE_KEY = 'sports-cache-v2';
 // Sports rarely change; keep cache long-lived and refresh opportunistically.
 const CACHE_DURATION_MS = 1000 * 60 * 60 * 24; // 24h
 

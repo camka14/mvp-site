@@ -9,7 +9,7 @@ import { Bill, PaymentIntent, Team, getUserAvatarUrl, formatPrice, formatBillAmo
 import type { Subscription } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
-import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid, Select } from '@mantine/core';
+import { Container, Group, Title, Text, Button, Paper, TextInput, Alert, Avatar, SimpleGrid, Select, Modal, Stack, PasswordInput, Checkbox, Badge } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { paymentService } from '@/lib/paymentService';
 import { billService } from '@/lib/billService';
@@ -19,6 +19,9 @@ import { ManageTeams } from '@/app/teams/page';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { productService } from '@/lib/productService';
 import { organizationService } from '@/lib/organizationService';
+import { boldsignService, SignStep } from '@/lib/boldsignService';
+import { signedDocumentService } from '@/lib/signedDocumentService';
+import { profileDocumentService, type ProfileDocumentCard } from '@/lib/profileDocumentService';
 
 const toDateInputValue = (value?: string | null): string => {
     if (!value) return '';
@@ -50,8 +53,15 @@ const formatDobLabel = (value?: string | null): string => {
     return new Intl.DateTimeFormat(undefined, { timeZone: 'UTC', year: 'numeric', month: 'long', day: '2-digit' }).format(date);
 };
 
+const formatDateTimeLabel = (value?: string): string => {
+    if (!value) return 'Unknown date';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return 'Unknown date';
+    return parsed.toLocaleString();
+};
+
 export default function ProfilePage() {
-    const { user, loading, setUser } = useApp();
+    const { user, authUser, loading, setUser } = useApp();
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -118,6 +128,22 @@ export default function ProfilePage() {
     const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
     const [cancellingSubId, setCancellingSubId] = useState<string | null>(null);
     const [restartingSubId, setRestartingSubId] = useState<string | null>(null);
+    const [unsignedDocuments, setUnsignedDocuments] = useState<ProfileDocumentCard[]>([]);
+    const [signedDocuments, setSignedDocuments] = useState<ProfileDocumentCard[]>([]);
+    const [loadingDocuments, setLoadingDocuments] = useState(false);
+    const [documentsError, setDocumentsError] = useState<string | null>(null);
+    const [selectedSignedTextDocument, setSelectedSignedTextDocument] = useState<ProfileDocumentCard | null>(null);
+    const [activeSigningDocument, setActiveSigningDocument] = useState<ProfileDocumentCard | null>(null);
+    const [showSignPasswordModal, setShowSignPasswordModal] = useState(false);
+    const [signPassword, setSignPassword] = useState('');
+    const [signPasswordError, setSignPasswordError] = useState<string | null>(null);
+    const [confirmingSignPassword, setConfirmingSignPassword] = useState(false);
+    const [showSignModal, setShowSignModal] = useState(false);
+    const [signLinks, setSignLinks] = useState<SignStep[]>([]);
+    const [currentSignIndex, setCurrentSignIndex] = useState(0);
+    const [pendingSignedDocumentId, setPendingSignedDocumentId] = useState<string | null>(null);
+    const [recordingSignature, setRecordingSignature] = useState(false);
+    const [textAccepted, setTextAccepted] = useState(false);
 
     const userHasStripeAccount = Boolean(user?.hasStripeAccount || user?.stripeAccountId);
     const isEditingChild = Boolean(editingChildUserId);
@@ -596,12 +622,298 @@ export default function ProfilePage() {
         [loadSubscriptions],
     );
 
+    const loadDocuments = useCallback(async () => {
+        if (!user) return;
+        setLoadingDocuments(true);
+        setDocumentsError(null);
+        try {
+            const result = await profileDocumentService.listDocuments();
+            setUnsignedDocuments(result.unsigned);
+            setSignedDocuments(result.signed);
+        } catch (err) {
+            setDocumentsError(err instanceof Error ? err.message : 'Failed to load documents.');
+            setUnsignedDocuments([]);
+            setSignedDocuments([]);
+        } finally {
+            setLoadingDocuments(false);
+        }
+    }, [user]);
+
+    const resetSigningState = useCallback(() => {
+        setShowSignPasswordModal(false);
+        setSignPassword('');
+        setSignPasswordError(null);
+        setShowSignModal(false);
+        setSignLinks([]);
+        setCurrentSignIndex(0);
+        setPendingSignedDocumentId(null);
+        setRecordingSignature(false);
+        setTextAccepted(false);
+        setActiveSigningDocument(null);
+    }, []);
+
+    const handleOpenSignedDocument = useCallback((document: ProfileDocumentCard) => {
+        if (document.type === 'PDF' && document.viewUrl) {
+            if (typeof window !== 'undefined') {
+                window.open(document.viewUrl, '_blank', 'noopener,noreferrer');
+            }
+            return;
+        }
+        setSelectedSignedTextDocument(document);
+    }, []);
+
+    const handleStartSigningDocument = useCallback((document: ProfileDocumentCard) => {
+        if (!user) return;
+        if (!document.eventId) {
+            setDocumentsError('Cannot sign this document because the event is missing.');
+            return;
+        }
+        if (!authUser?.email) {
+            setDocumentsError('Sign-in email is required to sign documents.');
+            return;
+        }
+        setDocumentsError(null);
+        setActiveSigningDocument(document);
+        setSignPassword('');
+        setSignPasswordError(null);
+        setShowSignPasswordModal(true);
+    }, [authUser?.email, user]);
+
+    const confirmPasswordAndStartSigning = useCallback(async () => {
+        if (!activeSigningDocument || !user || !authUser?.email || !activeSigningDocument.eventId) {
+            return;
+        }
+        if (!signPassword.trim()) {
+            setSignPasswordError('Password is required.');
+            return;
+        }
+        setConfirmingSignPassword(true);
+        setSignPasswordError(null);
+        try {
+            const response = await fetch('/api/documents/confirm-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: authUser.email,
+                    password: signPassword,
+                    eventId: activeSigningDocument.eventId,
+                }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result?.error) {
+                throw new Error(result?.error || 'Password confirmation failed.');
+            }
+
+            const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+            const links = await boldsignService.createSignLinks({
+                eventId: activeSigningDocument.eventId,
+                user,
+                userEmail: authUser.email,
+                templateId: activeSigningDocument.templateId,
+                redirectUrl,
+                signerContext: activeSigningDocument.signerContext,
+                childUserId: activeSigningDocument.childUserId,
+                childEmail: activeSigningDocument.childEmail,
+            });
+
+            if (!links.length) {
+                resetSigningState();
+                await loadDocuments();
+                notifications.show({ color: 'yellow', message: 'No unsigned signature step was returned for this document.' });
+                return;
+            }
+
+            setSignLinks(links);
+            setCurrentSignIndex(0);
+            setPendingSignedDocumentId(null);
+            setSignPassword('');
+            setShowSignPasswordModal(false);
+            setShowSignModal(true);
+        } catch (error) {
+            setSignPasswordError(error instanceof Error ? error.message : 'Failed to confirm password.');
+        } finally {
+            setConfirmingSignPassword(false);
+        }
+    }, [activeSigningDocument, authUser?.email, loadDocuments, resetSigningState, signPassword, user]);
+
+    const recordSignature = useCallback(async (payload: {
+        templateId: string;
+        documentId: string;
+        type: SignStep['type'];
+    }) => {
+        if (!activeSigningDocument?.eventId || !user) {
+            throw new Error('Event and user are required to record signatures.');
+        }
+        const response = await fetch('/api/documents/record-signature', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                templateId: payload.templateId,
+                documentId: payload.documentId,
+                eventId: activeSigningDocument.eventId,
+                type: payload.type,
+                userId: user.$id,
+                user,
+            }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.error) {
+            throw new Error(result?.error || 'Failed to record signature.');
+        }
+    }, [activeSigningDocument?.eventId, user]);
+
+    const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
+        const currentLink = signLinks[currentSignIndex];
+        if (!currentLink || currentLink.type === 'TEXT') {
+            return;
+        }
+        if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
+            return;
+        }
+        if (pendingSignedDocumentId || recordingSignature) {
+            return;
+        }
+        if (!currentLink.documentId) {
+            setDocumentsError('Missing document identifier for signature.');
+            return;
+        }
+
+        setRecordingSignature(true);
+        try {
+            await recordSignature({
+                templateId: currentLink.templateId,
+                documentId: currentLink.documentId,
+                type: currentLink.type,
+            });
+            setShowSignModal(false);
+            setPendingSignedDocumentId(currentLink.documentId);
+        } catch (error) {
+            setDocumentsError(error instanceof Error ? error.message : 'Failed to record signature.');
+            resetSigningState();
+        } finally {
+            setRecordingSignature(false);
+        }
+    }, [currentSignIndex, pendingSignedDocumentId, recordSignature, recordingSignature, resetSigningState, signLinks]);
+
+    const handleTextAcceptance = useCallback(async () => {
+        const currentLink = signLinks[currentSignIndex];
+        if (!currentLink || currentLink.type !== 'TEXT') {
+            return;
+        }
+        if (!textAccepted || pendingSignedDocumentId || recordingSignature) {
+            return;
+        }
+
+        const documentId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        setRecordingSignature(true);
+        try {
+            await recordSignature({
+                templateId: currentLink.templateId,
+                documentId,
+                type: currentLink.type,
+            });
+            setShowSignModal(false);
+            setPendingSignedDocumentId(documentId);
+        } catch (error) {
+            setDocumentsError(error instanceof Error ? error.message : 'Failed to record signature.');
+            resetSigningState();
+        } finally {
+            setRecordingSignature(false);
+        }
+    }, [currentSignIndex, pendingSignedDocumentId, recordSignature, recordingSignature, resetSigningState, signLinks, textAccepted]);
+
+    useEffect(() => {
+        setTextAccepted(false);
+    }, [currentSignIndex, signLinks]);
+
+    useEffect(() => {
+        if (!showSignModal) {
+            return;
+        }
+
+        const handleMessage = (event: MessageEvent) => {
+            if (typeof event.origin === 'string' && !event.origin.includes('boldsign')) {
+                return;
+            }
+            const payload = event.data;
+            let eventName = '';
+            if (typeof payload === 'string') {
+                eventName = payload;
+            } else if (payload && typeof payload === 'object') {
+                eventName = payload.event || payload.eventName || payload.type || payload.name || '';
+            }
+            const eventLabel = eventName.toString();
+            if (!eventLabel || (!eventLabel.includes('onDocumentSigned') && !eventLabel.includes('documentSigned'))) {
+                return;
+            }
+
+            const documentId =
+                (payload && typeof payload === 'object' && (payload.documentId || payload.documentID)) || undefined;
+            void handleSignedDocument(
+                typeof documentId === 'string' ? documentId : undefined,
+            );
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => {
+            window.removeEventListener('message', handleMessage);
+        };
+    }, [handleSignedDocument, showSignModal]);
+
+    useEffect(() => {
+        if (!pendingSignedDocumentId) {
+            return;
+        }
+
+        let cancelled = false;
+        const poll = async () => {
+            try {
+                const signed = await signedDocumentService.isDocumentSigned(pendingSignedDocumentId);
+                if (!signed || cancelled) {
+                    return;
+                }
+
+                const nextIndex = currentSignIndex + 1;
+                if (nextIndex < signLinks.length) {
+                    setCurrentSignIndex(nextIndex);
+                    setPendingSignedDocumentId(null);
+                    setShowSignModal(true);
+                    return;
+                }
+
+                resetSigningState();
+                await loadDocuments();
+                notifications.show({ color: 'green', message: 'Document signed.' });
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+                setDocumentsError(error instanceof Error ? error.message : 'Failed to confirm signature.');
+                resetSigningState();
+            }
+        };
+
+        const interval = window.setInterval(poll, 1000);
+        void poll();
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [currentSignIndex, loadDocuments, pendingSignedDocumentId, resetSigningState, signLinks]);
+
     useEffect(() => {
         if (user) {
             loadBills();
             loadSubscriptions();
+            loadDocuments();
         }
-    }, [user, loadBills, loadSubscriptions]);
+    }, [user, loadBills, loadSubscriptions, loadDocuments]);
 
     if (loading) {
         return <Loading />;
@@ -692,7 +1004,14 @@ export default function ProfilePage() {
                                     <div>
                                         <Text size="sm" fw={500} mb={4}>First Name</Text>
                                         {isEditing ? (
-                                            <TextInput value={profileData.firstName} onChange={(e) => setProfileData(prev => ({ ...prev, firstName: e.currentTarget.value }))} required />
+                                            <TextInput
+                                                value={profileData.firstName}
+                                                onChange={(event) => {
+                                                    const value = event.currentTarget.value;
+                                                    setProfileData((prev) => ({ ...prev, firstName: value }));
+                                                }}
+                                                required
+                                            />
                                         ) : (
                                             <p className="text-gray-900 py-2">{user.firstName}</p>
                                         )}
@@ -702,7 +1021,14 @@ export default function ProfilePage() {
                                     <div>
                                         <Text size="sm" fw={500} mb={4}>Last Name</Text>
                                         {isEditing ? (
-                                            <TextInput value={profileData.lastName} onChange={(e) => setProfileData(prev => ({ ...prev, lastName: e.currentTarget.value }))} required />
+                                            <TextInput
+                                                value={profileData.lastName}
+                                                onChange={(event) => {
+                                                    const value = event.currentTarget.value;
+                                                    setProfileData((prev) => ({ ...prev, lastName: value }));
+                                                }}
+                                                required
+                                            />
                                         ) : (
                                             <p className="text-gray-900 py-2">{user.lastName}</p>
                                         )}
@@ -731,7 +1057,14 @@ export default function ProfilePage() {
                                     <div>
                                         <Text size="sm" fw={500} mb={4}>Username</Text>
                                         {isEditing ? (
-                                            <TextInput value={profileData.userName} onChange={(e) => setProfileData(prev => ({ ...prev, userName: e.currentTarget.value }))} required />
+                                            <TextInput
+                                                value={profileData.userName}
+                                                onChange={(event) => {
+                                                    const value = event.currentTarget.value;
+                                                    setProfileData((prev) => ({ ...prev, userName: value }));
+                                                }}
+                                                required
+                                            />
                                         ) : (
                                             <p className="text-gray-900 py-2">@{user.userName}</p>
                                         )}
@@ -790,7 +1123,7 @@ export default function ProfilePage() {
                             </Button>
 
                             {showAddChildForm && (
-                                <Paper withBorder radius="md" p="md" shadow="xs" mb="md">
+                                <Paper withBorder radius="md" p="md" shadow="xs" mb="md" className="w-full max-w-3xl">
                                     <div className="space-y-3">
                                         <Title order={5}>{isEditingChild ? 'Edit child details' : 'Add a child'}</Title>
                                         {childFormError && (
@@ -801,24 +1134,36 @@ export default function ProfilePage() {
                                         <TextInput
                                             label="First name"
                                             value={childForm.firstName}
-                                            onChange={(event) => setChildForm(prev => ({ ...prev, firstName: event.currentTarget.value }))}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setChildForm((prev) => ({ ...prev, firstName: value }));
+                                            }}
                                         />
                                         <TextInput
                                             label="Last name"
                                             value={childForm.lastName}
-                                            onChange={(event) => setChildForm(prev => ({ ...prev, lastName: event.currentTarget.value }))}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setChildForm((prev) => ({ ...prev, lastName: value }));
+                                            }}
                                         />
                                         <TextInput
                                             label="Email (optional)"
                                             value={childForm.email}
-                                            onChange={(event) => setChildForm(prev => ({ ...prev, email: event.currentTarget.value }))}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setChildForm((prev) => ({ ...prev, email: value }));
+                                            }}
                                         />
                                         <TextInput
                                             label="Date of birth"
                                             type="date"
                                             value={childForm.dateOfBirth}
                                             max={maxDob}
-                                            onChange={(event) => setChildForm(prev => ({ ...prev, dateOfBirth: event.currentTarget.value }))}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setChildForm((prev) => ({ ...prev, dateOfBirth: value }));
+                                            }}
                                         />
                                         <Select
                                             label="Relationship"
@@ -841,7 +1186,7 @@ export default function ProfilePage() {
                                 </Paper>
                             )}
 
-                            <Paper withBorder radius="md" p="md" shadow="xs">
+                            <Paper withBorder radius="md" p="md" shadow="xs" className="w-full max-w-3xl">
                                 <div className="space-y-3">
                                     <Title order={5}>Link an existing child</Title>
                                     {linkFormError && (
@@ -852,12 +1197,18 @@ export default function ProfilePage() {
                                     <TextInput
                                         label="Child email"
                                         value={linkForm.childEmail}
-                                        onChange={(event) => setLinkForm(prev => ({ ...prev, childEmail: event.currentTarget.value }))}
+                                        onChange={(event) => {
+                                            const value = event.currentTarget.value;
+                                            setLinkForm((prev) => ({ ...prev, childEmail: value }));
+                                        }}
                                     />
                                     <TextInput
                                         label="Child user ID"
                                         value={linkForm.childUserId}
-                                        onChange={(event) => setLinkForm(prev => ({ ...prev, childUserId: event.currentTarget.value }))}
+                                        onChange={(event) => {
+                                            const value = event.currentTarget.value;
+                                            setLinkForm((prev) => ({ ...prev, childUserId: value }));
+                                        }}
                                     />
                                     <Select
                                         label="Relationship"
@@ -884,9 +1235,8 @@ export default function ProfilePage() {
                                 <Text c="dimmed">No children linked yet.</Text>
                             ) : (
                                 <SimpleGrid
-                                    cols={3}
+                                    cols={{ base: 1, sm: 2, lg: 3 }}
                                     spacing="md"
-                                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}
                                 >
                                     {children.map((child) => {
                                         const name = `${child.firstName || ''} ${child.lastName || ''}`.trim();
@@ -929,6 +1279,114 @@ export default function ProfilePage() {
                                         );
                                     })}
                                 </SimpleGrid>
+                            )}
+                        </Paper>
+                    </div>
+
+                    <div className="mt-8">
+                        <Paper withBorder radius="lg" p="md" shadow="sm">
+                            <Group justify="space-between" mb="sm">
+                                <Title order={4}>Documents</Title>
+                                <Button variant="light" size="xs" onClick={loadDocuments} loading={loadingDocuments}>
+                                    Refresh
+                                </Button>
+                            </Group>
+                            <Text size="sm" c="dimmed" mb="sm">
+                                Signature requests and completed signatures across your events.
+                            </Text>
+                            {documentsError && (
+                                <Alert color="red" mb="sm">
+                                    {documentsError}
+                                </Alert>
+                            )}
+
+                            {loadingDocuments ? (
+                                <Text c="dimmed">Loading documents...</Text>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div>
+                                        <Title order={5} mb="sm">Unsigned</Title>
+                                        {unsignedDocuments.length === 0 ? (
+                                            <Text c="dimmed">No unsigned document requests.</Text>
+                                        ) : (
+                                            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+                                                {unsignedDocuments.map((document) => (
+                                                    <Paper
+                                                        key={document.id}
+                                                        withBorder
+                                                        radius="md"
+                                                        p="md"
+                                                        shadow="xs"
+                                                        style={{ aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                                                    >
+                                                        <div className="space-y-2">
+                                                            <Badge color="yellow" variant="light">Unsigned</Badge>
+                                                            <Text fw={700}>{document.title}</Text>
+                                                            <Text size="sm" c="dimmed">{document.organizationName}</Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                Event: {document.eventName ?? 'Event'}
+                                                            </Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                Signer: {document.signerContextLabel}
+                                                            </Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                Required: {document.requiredSignerLabel}
+                                                            </Text>
+                                                        </div>
+                                                        <Button
+                                                            size="xs"
+                                                            variant="light"
+                                                            mt="md"
+                                                            onClick={() => handleStartSigningDocument(document)}
+                                                        >
+                                                            Sign document
+                                                        </Button>
+                                                    </Paper>
+                                                ))}
+                                            </SimpleGrid>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <Title order={5} mb="sm">Signed</Title>
+                                        {signedDocuments.length === 0 ? (
+                                            <Text c="dimmed">No signed documents yet.</Text>
+                                        ) : (
+                                            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+                                                {signedDocuments.map((document) => (
+                                                    <Paper
+                                                        key={document.id}
+                                                        withBorder
+                                                        radius="md"
+                                                        p="md"
+                                                        shadow="xs"
+                                                        style={{ aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                                                    >
+                                                        <div className="space-y-2">
+                                                            <Badge color="green" variant="light">Signed</Badge>
+                                                            <Text fw={700}>{document.title}</Text>
+                                                            <Text size="sm" c="dimmed">{document.organizationName}</Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                Event: {document.eventName ?? 'Event'}
+                                                            </Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                Signed: {formatDateTimeLabel(document.signedAt)}
+                                                            </Text>
+                                                        </div>
+                                                        <Button
+                                                            size="xs"
+                                                            variant="light"
+                                                            mt="md"
+                                                            onClick={() => handleOpenSignedDocument(document)}
+                                                        >
+                                                            {document.type === 'PDF' ? 'View document' : 'Preview text'}
+                                                        </Button>
+                                                    </Paper>
+                                                ))}
+                                            </SimpleGrid>
+                                        )}
+                                    </div>
+                                </div>
                             )}
                         </Paper>
                     </div>
@@ -1139,8 +1597,24 @@ export default function ProfilePage() {
 
                                 {showEmailSection ? (
                                     <div className="space-y-4">
-                                        <TextInput type="email" placeholder="New email address" value={emailData.email} onChange={(e) => setEmailData(prev => ({ ...prev, email: e.currentTarget.value }))} />
-                                        <TextInput type="password" placeholder="Current password" value={emailData.currentPassword} onChange={(e) => setEmailData(prev => ({ ...prev, currentPassword: e.currentTarget.value }))} />
+                                        <TextInput
+                                            type="email"
+                                            placeholder="New email address"
+                                            value={emailData.email}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setEmailData((prev) => ({ ...prev, email: value }));
+                                            }}
+                                        />
+                                        <TextInput
+                                            type="password"
+                                            placeholder="Current password"
+                                            value={emailData.currentPassword}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setEmailData((prev) => ({ ...prev, currentPassword: value }));
+                                            }}
+                                        />
                                         <Button onClick={handleEmailUpdate} disabled={saving || !emailData.email || !emailData.currentPassword}>Update Email</Button>
                                     </div>
                                 ) : (
@@ -1159,9 +1633,33 @@ export default function ProfilePage() {
 
                                 {showPasswordSection ? (
                                     <div className="space-y-4">
-                                        <TextInput type="password" placeholder="Current password" value={passwordData.currentPassword} onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.currentTarget.value }))} />
-                                        <TextInput type="password" placeholder="New password" value={passwordData.newPassword} onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.currentTarget.value }))} />
-                                        <TextInput type="password" placeholder="Confirm new password" value={passwordData.confirmPassword} onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.currentTarget.value }))} />
+                                        <TextInput
+                                            type="password"
+                                            placeholder="Current password"
+                                            value={passwordData.currentPassword}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setPasswordData((prev) => ({ ...prev, currentPassword: value }));
+                                            }}
+                                        />
+                                        <TextInput
+                                            type="password"
+                                            placeholder="New password"
+                                            value={passwordData.newPassword}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setPasswordData((prev) => ({ ...prev, newPassword: value }));
+                                            }}
+                                        />
+                                        <TextInput
+                                            type="password"
+                                            placeholder="Confirm new password"
+                                            value={passwordData.confirmPassword}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                setPasswordData((prev) => ({ ...prev, confirmPassword: value }));
+                                            }}
+                                        />
                                         <Button onClick={handlePasswordUpdate} disabled={saving || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}>Update Password</Button>
                                     </div>
                                 ) : (
@@ -1171,6 +1669,119 @@ export default function ProfilePage() {
                         </div>
                     )}
                 </Container>
+
+                <Modal
+                    opened={Boolean(selectedSignedTextDocument)}
+                    onClose={() => setSelectedSignedTextDocument(null)}
+                    centered
+                    title={selectedSignedTextDocument ? `Signed text: ${selectedSignedTextDocument.title}` : 'Signed text'}
+                >
+                    {selectedSignedTextDocument ? (
+                        <Stack gap="sm">
+                            <Text size="sm" c="dimmed">
+                                Signed at {formatDateTimeLabel(selectedSignedTextDocument.signedAt)}
+                            </Text>
+                            {selectedSignedTextDocument.eventName && (
+                                <Text size="sm" c="dimmed">
+                                    Event: {selectedSignedTextDocument.eventName}
+                                </Text>
+                            )}
+                            <Paper withBorder radius="md" p="sm" style={{ maxHeight: 260, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                                {selectedSignedTextDocument.content || 'No text content is available for this document.'}
+                            </Paper>
+                        </Stack>
+                    ) : null}
+                </Modal>
+
+                <Modal
+                    opened={showSignPasswordModal}
+                    onClose={resetSigningState}
+                    centered
+                    title="Confirm your password"
+                >
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            void confirmPasswordAndStartSigning();
+                        }}
+                    >
+                        <Stack gap="sm">
+                            <Text size="sm" c="dimmed">
+                                Confirm your password before signing this document.
+                            </Text>
+                            <PasswordInput
+                                label="Password"
+                                value={signPassword}
+                                onChange={(event) => setSignPassword(event.currentTarget.value)}
+                                error={signPasswordError ?? undefined}
+                                required
+                            />
+                            <Group justify="flex-end">
+                                <Button variant="default" onClick={resetSigningState}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" loading={confirmingSignPassword}>
+                                    Continue
+                                </Button>
+                            </Group>
+                        </Stack>
+                    </form>
+                </Modal>
+
+                <Modal
+                    opened={showSignModal}
+                    onClose={resetSigningState}
+                    centered
+                    size="xl"
+                    title="Sign required document"
+                >
+                    {signLinks.length > 0 && (
+                        <Stack gap="sm">
+                            <Text size="sm" c="dimmed">
+                                Document {currentSignIndex + 1} of {signLinks.length}
+                                {signLinks[currentSignIndex]?.title ? ` • ${signLinks[currentSignIndex]?.title}` : ''}
+                            </Text>
+                            {signLinks[currentSignIndex]?.requiredSignerLabel && (
+                                <Text size="xs" c="dimmed">
+                                    Required signer: {signLinks[currentSignIndex]?.requiredSignerLabel}
+                                </Text>
+                            )}
+                            {signLinks[currentSignIndex]?.type === 'TEXT' ? (
+                                <Stack gap="sm">
+                                    <Paper withBorder p="sm" radius="md" style={{ maxHeight: 320, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                                        {signLinks[currentSignIndex]?.content || 'No waiver text provided.'}
+                                    </Paper>
+                                    <Checkbox
+                                        label="I have read and agree to this document."
+                                        checked={textAccepted}
+                                        onChange={(event) => setTextAccepted(event.currentTarget.checked)}
+                                    />
+                                    <Group justify="flex-end">
+                                        <Button variant="default" onClick={resetSigningState}>
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            onClick={() => {
+                                                void handleTextAcceptance();
+                                            }}
+                                            loading={recordingSignature}
+                                            disabled={!textAccepted || recordingSignature}
+                                        >
+                                            Confirm Signature
+                                        </Button>
+                                    </Group>
+                                </Stack>
+                            ) : (
+                                <iframe
+                                    src={signLinks[currentSignIndex]?.url}
+                                    title="BoldSign Signing"
+                                    style={{ width: '100%', height: 520, border: '1px solid #E5E7EB', borderRadius: 8 }}
+                                />
+                            )}
+                        </Stack>
+                    )}
+                </Modal>
+
                 <PaymentModal
                     isOpen={!!billPaymentData && !!payingBill}
                     onClose={closeBillPaymentModal}

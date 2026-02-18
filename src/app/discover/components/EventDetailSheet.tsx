@@ -236,6 +236,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [childrenError, setChildrenError] = useState<string | null>(null);
     const [selectedChildId, setSelectedChildId] = useState('');
     const [registeringChild, setRegisteringChild] = useState(false);
+    const [joiningChildFreeAgent, setJoiningChildFreeAgent] = useState(false);
     const [childRegistration, setChildRegistration] = useState<EventRegistration | null>(null);
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
@@ -254,6 +255,66 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         () => buildDivisionOptionsForEvent(currentEvent),
         [currentEvent],
     );
+    const eventDivisionLabels = React.useMemo(() => {
+        const nameById = new Map<string, string>();
+        divisionOptions.forEach((option) => {
+            const normalizedId = normalizeDivisionKey(option.id);
+            if (normalizedId && !nameById.has(normalizedId)) {
+                nameById.set(normalizedId, option.name);
+            }
+        });
+
+        const labels: string[] = [];
+        const seen = new Set<string>();
+        const appendLabel = (value: string | null | undefined) => {
+            if (typeof value !== 'string') return;
+            const trimmed = value.trim();
+            if (!trimmed.length) return;
+            const dedupeKey = trimmed.toLowerCase();
+            if (seen.has(dedupeKey)) return;
+            seen.add(dedupeKey);
+            labels.push(trimmed);
+        };
+
+        if (!Array.isArray(currentEvent?.divisions)) {
+            return labels;
+        }
+
+        currentEvent.divisions.forEach((division) => {
+            const divisionId = getDivisionIdFromEventEntry(division);
+            const fromOptions = divisionId ? nameById.get(divisionId) : null;
+            if (fromOptions) {
+                appendLabel(fromOptions);
+                return;
+            }
+
+            if (division && typeof division === 'object') {
+                const explicitName = typeof division.name === 'string' ? division.name : null;
+                if (explicitName) {
+                    appendLabel(explicitName);
+                    return;
+                }
+            }
+
+            if (divisionId) {
+                const inferred = inferDivisionDetails({
+                    identifier: extractDivisionTokenFromId(divisionId) ?? divisionId,
+                    sportInput:
+                        typeof currentEvent.sport === 'string'
+                            ? currentEvent.sport
+                            : currentEvent.sport?.name ?? currentEvent.sportId ?? undefined,
+                });
+                appendLabel(inferred.defaultName || divisionId);
+                return;
+            }
+
+            if (typeof division === 'string') {
+                appendLabel(division);
+            }
+        });
+
+        return labels;
+    }, [currentEvent?.divisions, currentEvent?.sport, currentEvent?.sportId, divisionOptions]);
     const divisionTypeOptions = React.useMemo(() => {
         const grouped = new Map<string, EventDivisionOption>();
         divisionOptions.forEach((option) => {
@@ -549,6 +610,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setChildrenError(null);
             setSelectedChildId('');
             setRegisteringChild(false);
+            setJoiningChildFreeAgent(false);
             setChildRegistration(null);
             setChildConsent(null);
             setChildRegistrationChildId(null);
@@ -996,16 +1058,40 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;
+        if (!selectedChildId) {
+            setJoinError(isTeamSignup ? 'Select a child to add as a free agent.' : 'Select a child to register.');
+            return;
+        }
+        if (!selectedChildEligible) {
+            setJoinError('Selected child is not eligible for this event.');
+            return;
+        }
+        if (isTeamSignup) {
+            setJoinError(null);
+            setJoinNotice(null);
+            setJoiningChildFreeAgent(true);
+            try {
+                if (selectedChildIsFreeAgent) {
+                    await eventService.removeFreeAgent(currentEvent.$id, selectedChildId);
+                    setJoinNotice('Child removed from free agent list.');
+                } else {
+                    await eventService.addFreeAgent(currentEvent.$id, selectedChildId);
+                    setJoinNotice('Child added to free agent list.');
+                }
+                await loadEventDetails();
+            } catch (error) {
+                setJoinError(error instanceof Error ? error.message : 'Failed to update child free agent status.');
+            } finally {
+                setJoiningChildFreeAgent(false);
+            }
+            return;
+        }
         if (isDivisionSelectionMissing) {
             setJoinError(
                 registrationByDivisionType
                     ? 'Select a division type before registering a child.'
                     : 'Select a division before registering a child.',
             );
-            return;
-        }
-        if (!selectedChildId) {
-            setJoinError('Select a child to register.');
             return;
         }
         if (selectedChild && !selectedChildHasEmail) {
@@ -1195,6 +1281,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (hasAgeLimits) {
             return isAgeWithinRange(childAgeAtEvent, eventMinAge, eventMaxAge);
         }
+        if (isTeamSignup) {
+            return true;
+        }
         if (!selectedDivisionOption) {
             return true;
         }
@@ -1229,6 +1318,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const selectedChildHasEmail = selectedChild
         ? (typeof selectedChild.hasEmail === 'boolean' ? selectedChild.hasEmail : Boolean(selectedChild.email))
         : true;
+    const selectedChildIsFreeAgent = Boolean(
+        selectedChildId
+        && Array.isArray(currentEvent.freeAgentIds)
+        && currentEvent.freeAgentIds.includes(selectedChildId),
+    );
     const showChildRegistrationStatus = Boolean(selectedChildId && childRegistrationChildId === selectedChildId);
     const hasCoordinates = Array.isArray(currentEvent.coordinates) && currentEvent.coordinates.length >= 2;
     const mapLat = hasCoordinates ? Number(currentEvent.coordinates[1]) : undefined;
@@ -1285,9 +1379,99 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const childJoinDisabled = !canRegisterChild
         || !selectedChildId
         || !selectedChildEligible
-        || !selectedChildHasEmail
-        || registeringChild
-        || isDivisionSelectionMissing;
+        || (isTeamSignup ? joiningChildFreeAgent : (!selectedChildHasEmail || registeringChild || isDivisionSelectionMissing));
+    const childRegistrationPanel = canRegisterChild ? (
+        <Paper withBorder p="sm" radius="md" className="space-y-3">
+            <Text size="sm" fw={600}>
+                {isTeamSignup ? 'Child Free Agent' : 'Register a child'}
+            </Text>
+            {childrenError && (
+                <Alert color="red" variant="light">
+                    {childrenError}
+                </Alert>
+            )}
+            {childrenLoading ? (
+                <Text size="sm" c="dimmed">Loading children...</Text>
+            ) : (
+                <MantineSelect
+                    placeholder="Select a child"
+                    data={childOptions}
+                    value={selectedChildId}
+                    onChange={(value) => setSelectedChildId(value || '')}
+                    comboboxProps={sharedComboboxProps}
+                />
+            )}
+            {!childrenLoading && childOptions.length === 0 && (
+                <Text size="xs" c="dimmed">
+                    No active children linked yet. Add one from your profile.
+                </Text>
+            )}
+            {isTeamSignup && (
+                <Text size="xs" c="dimmed">
+                    Team registration is only for teams. Child profiles can join as free agents.
+                </Text>
+            )}
+            {selectedChild && !selectedChildHasEmail && !isTeamSignup && (
+                <Alert color="yellow" variant="light">
+                    The selected child needs an email before consent can be sent.
+                </Alert>
+            )}
+            <Button
+                fullWidth
+                variant="light"
+                onClick={handleRegisterChild}
+                disabled={childJoinDisabled}
+            >
+                {isTeamSignup
+                    ? (joiningChildFreeAgent
+                        ? 'Updating…'
+                        : (selectedChildIsFreeAgent ? 'Remove child from free agents' : 'Add child as free agent'))
+                    : (registeringChild ? 'Registering…' : 'Register child')}
+            </Button>
+            {hasAgeLimits && (
+                <Text size="xs" c="dimmed">
+                    Eligible ages: {formatAgeRange(eventMinAge, eventMaxAge)}.
+                </Text>
+            )}
+            {!isTeamSignup && showChildRegistrationStatus && childRegistration?.status && (
+                <Text size="xs" c="dimmed">
+                    Registration status: {childRegistration.status}
+                </Text>
+            )}
+            {!isTeamSignup && showChildRegistrationStatus && childConsent?.status && (
+                <Text size="xs" c="dimmed">
+                    Consent status: {childConsent.status}
+                </Text>
+            )}
+            {!isTeamSignup && showChildRegistrationStatus && (childConsent?.parentSignLink || childConsent?.childSignLink) && (
+                <Group gap="xs">
+                    {childConsent.parentSignLink && (
+                        <Button
+                            component="a"
+                            href={childConsent.parentSignLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            size="xs"
+                        >
+                            Parent Sign
+                        </Button>
+                    )}
+                    {childConsent.childSignLink && (
+                        <Button
+                            component="a"
+                            href={childConsent.childSignLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            size="xs"
+                            variant="light"
+                        >
+                            Child Sign
+                        </Button>
+                    )}
+                </Group>
+            )}
+        </Paper>
+    ) : null;
 
     const content = (
         <div className="space-y-6">
@@ -1385,13 +1569,13 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                         )}
                                     </div>
 
-                                    {currentEvent.divisions && currentEvent.divisions.length > 0 && (
+                                    {eventDivisionLabels.length > 0 && (
                                         <div>
                                             <span className="text-sm text-gray-600">Divisions</span>
                                             <div className="flex flex-wrap gap-2 mt-1">
-                                                {currentEvent.divisions.map((division, index) => (
+                                                {eventDivisionLabels.map((divisionLabel, index) => (
                                                     <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                                                        {typeof division === 'string' ? division : (division?.name || division?.id || 'Division')}
+                                                        {divisionLabel}
                                                     </span>
                                                 ))}
                                             </div>
@@ -1704,87 +1888,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     </Button>
                                                 )}
 
-                                                {canRegisterChild && (
-                                                    <Paper withBorder p="sm" radius="md" className="space-y-3">
-                                                        <Text size="sm" fw={600}>Register a child</Text>
-                                                        {childrenError && (
-                                                            <Alert color="red" variant="light">
-                                                                {childrenError}
-                                                            </Alert>
-                                                        )}
-                                                        {childrenLoading ? (
-                                                            <Text size="sm" c="dimmed">Loading children...</Text>
-                                                        ) : (
-                                                            <MantineSelect
-                                                                placeholder="Select a child"
-                                                                data={childOptions}
-                                                                value={selectedChildId}
-                                                                onChange={(value) => setSelectedChildId(value || '')}
-                                                                comboboxProps={sharedComboboxProps}
-                                                            />
-                                                        )}
-                                                        {!childrenLoading && childOptions.length === 0 && (
-                                                            <Text size="xs" c="dimmed">
-                                                                No active children linked yet. Add one from your profile.
-                                                            </Text>
-                                                        )}
-                                                        {selectedChild && !selectedChildHasEmail && (
-                                                            <Alert color="yellow" variant="light">
-                                                                The selected child needs an email before consent can be sent.
-                                                            </Alert>
-                                                        )}
-                                                        <Button
-                                                            fullWidth
-                                                            variant="light"
-                                                            onClick={handleRegisterChild}
-                                                            disabled={childJoinDisabled}
-                                                        >
-                                                            {registeringChild ? 'Registering…' : 'Register child'}
-                                                        </Button>
-                                                        {hasAgeLimits && (
-                                                            <Text size="xs" c="dimmed">
-                                                                Eligible ages: {formatAgeRange(eventMinAge, eventMaxAge)}.
-                                                            </Text>
-                                                        )}
-                                                        {showChildRegistrationStatus && childRegistration?.status && (
-                                                            <Text size="xs" c="dimmed">
-                                                                Registration status: {childRegistration.status}
-                                                            </Text>
-                                                        )}
-                                                        {showChildRegistrationStatus && childConsent?.status && (
-                                                            <Text size="xs" c="dimmed">
-                                                                Consent status: {childConsent.status}
-                                                            </Text>
-                                                        )}
-                                                        {showChildRegistrationStatus && (childConsent?.parentSignLink || childConsent?.childSignLink) && (
-                                                            <Group gap="xs">
-                                                                {childConsent.parentSignLink && (
-                                                                    <Button
-                                                                        component="a"
-                                                                        href={childConsent.parentSignLink}
-                                                                        target="_blank"
-                                                                        rel="noreferrer"
-                                                                        size="xs"
-                                                                    >
-                                                                        Parent Sign
-                                                                    </Button>
-                                                                )}
-                                                                {childConsent.childSignLink && (
-                                                                    <Button
-                                                                        component="a"
-                                                                        href={childConsent.childSignLink}
-                                                                        target="_blank"
-                                                                        rel="noreferrer"
-                                                                        size="xs"
-                                                                        variant="light"
-                                                                    >
-                                                                        Child Sign
-                                                                    </Button>
-                                                                )}
-                                                            </Group>
-                                                        )}
-                                                    </Paper>
-                                                )}
+                                                {childRegistrationPanel}
                                             </div>
                                         ) : (
                                             <div className="space-y-6">
@@ -1945,6 +2049,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                         {joining ? 'Adding…' : 'Join as Free Agent (Free)'}
                                                     </button>
                                                 )}
+
+                                                {childRegistrationPanel}
 
                                                 {/* View Schedule / Bracket Buttons */}
                                                 {canShowScheduleButton && (

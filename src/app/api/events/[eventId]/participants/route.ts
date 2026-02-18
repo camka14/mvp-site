@@ -36,10 +36,30 @@ const extractId = (value: any): string | undefined => {
 };
 
 const ensureUnique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
+const normalizeUserIdList = (values: unknown): string[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return ensureUnique(
+    values
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean),
+  );
+};
+const normalizeRequiredTemplateIds = (values: unknown): string[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return ensureUnique(
+    values
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean),
+  );
+};
 
 const hasSignedRequiredTemplates = async (event: { requiredTemplateIds: string[] | null }, userId?: string) => {
   if (!userId) return true;
-  const required = Array.isArray(event.requiredTemplateIds) ? event.requiredTemplateIds : [];
+  const required = normalizeRequiredTemplateIds(event.requiredTemplateIds);
   if (!required.length) return true;
   const signed = await prisma.signedDocuments.findMany({
     where: {
@@ -51,6 +71,41 @@ const hasSignedRequiredTemplates = async (event: { requiredTemplateIds: string[]
   });
   const signedSet = new Set(signed.map((doc) => doc.templateId));
   return required.every((id) => signedSet.has(id));
+};
+
+const getMissingSignersForRequiredTemplates = async (params: {
+  requiredTemplateIds: string[];
+  userIds: string[];
+}): Promise<string[]> => {
+  const requiredTemplateIds = normalizeRequiredTemplateIds(params.requiredTemplateIds);
+  const userIds = normalizeUserIdList(params.userIds);
+  if (!requiredTemplateIds.length || !userIds.length) {
+    return [];
+  }
+
+  const signed = await prisma.signedDocuments.findMany({
+    where: {
+      userId: { in: userIds },
+      templateId: { in: requiredTemplateIds },
+      status: { in: ['SIGNED', 'signed'] },
+    },
+    select: {
+      userId: true,
+      templateId: true,
+    },
+  });
+
+  const signedTemplatesByUser = new Map<string, Set<string>>();
+  signed.forEach((row) => {
+    const templateSet = signedTemplatesByUser.get(row.userId) ?? new Set<string>();
+    templateSet.add(row.templateId);
+    signedTemplatesByUser.set(row.userId, templateSet);
+  });
+
+  return userIds.filter((userId) => {
+    const templateSet = signedTemplatesByUser.get(userId) ?? new Set<string>();
+    return requiredTemplateIds.some((templateId) => !templateSet.has(templateId));
+  });
 };
 
 async function updateParticipants(
@@ -92,13 +147,6 @@ async function updateParticipants(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  if (mode === 'add') {
-    const ok = await hasSignedRequiredTemplates(event, userId);
-    if (!ok) {
-      return NextResponse.json({ error: 'Required document signatures missing.' }, { status: 400 });
-    }
-  }
-
   const divisionSelectionResult = mode === 'add'
     ? await resolveEventDivisionSelection({
       event,
@@ -113,6 +161,17 @@ async function updateParticipants(
     ? divisionSelectionResult.selection
     : { divisionId: null, divisionTypeId: null, divisionTypeKey: null };
 
+  const requiredTemplateIds = normalizeRequiredTemplateIds(event.requiredTemplateIds);
+  let teamForRegistration:
+    | {
+      id: string;
+      division: string | null;
+      divisionTypeId: string | null;
+      sport: string | null;
+      playerIds: string[];
+    }
+    | null = null;
+
   if (teamId && mode === 'add') {
     const team = await prisma.volleyBallTeams.findUnique({
       where: { id: teamId },
@@ -121,12 +180,44 @@ async function updateParticipants(
         division: true,
         divisionTypeId: true,
         sport: true,
+        playerIds: true,
       },
     });
 
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
+    teamForRegistration = {
+      ...team,
+      playerIds: normalizeUserIdList(team.playerIds),
+    };
+  }
+
+  if (mode === 'add') {
+    if (teamForRegistration && requiredTemplateIds.length > 0) {
+      const missingSignerIds = await getMissingSignersForRequiredTemplates({
+        requiredTemplateIds,
+        userIds: teamForRegistration.playerIds,
+      });
+      if (missingSignerIds.length > 0) {
+        return NextResponse.json(
+          {
+            error: 'All team members must sign required documents before team registration.',
+            missingSignerIds,
+          },
+          { status: 400 },
+        );
+      }
+    } else {
+      const ok = await hasSignedRequiredTemplates(event, userId);
+      if (!ok) {
+        return NextResponse.json({ error: 'Required document signatures missing.' }, { status: 400 });
+      }
+    }
+  }
+
+  if (teamForRegistration && mode === 'add') {
+    const team = teamForRegistration;
 
     const teamDivisionTypeId = inferTeamDivisionTypeId({
       divisionTypeId: team.divisionTypeId,

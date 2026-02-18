@@ -1328,7 +1328,7 @@ class EventService {
         this.sportsCache = null;
         this.sportsCachePromise = null;
 
-        const sports = await sportsService.getAll();
+        const sports = await sportsService.getAll(true);
         const map = new Map<string, Sport>();
         sports.forEach((sport) => {
             if (sport.$id) {
@@ -1400,29 +1400,25 @@ class EventService {
     }
 
     async addFreeAgent(eventId: string, userId: string): Promise<Event> {
-        const existing = await this.getEvent(eventId);
-        if (!existing) throw new Error('Event not found');
-        const updated = Array.from(new Set([...(existing.freeAgentIds || []), userId]));
-        const response = await apiRequest<any>(`/api/events/${eventId}`, {
-            method: 'PATCH',
-            body: { event: { freeAgentIds: updated } },
+        const response = await apiRequest<any>(`/api/events/${eventId}/free-agents`, {
+            method: 'POST',
+            body: { userId },
         });
-        await this.ensureSportRelationship(response);
-        await this.ensureLeagueScoringConfig(response);
-        return this.mapRowToEvent(response);
+        const payload = response?.event ?? response;
+        await this.ensureSportRelationship(payload);
+        await this.ensureLeagueScoringConfig(payload);
+        return this.mapRowToEvent(payload);
     }
 
     async removeFreeAgent(eventId: string, userId: string): Promise<Event> {
-        const existing = await this.getEvent(eventId);
-        if (!existing) throw new Error('Event not found');
-        const updated = (existing.freeAgentIds || []).filter(id => id !== userId);
-        const response = await apiRequest<any>(`/api/events/${eventId}`, {
-            method: 'PATCH',
-            body: { event: { freeAgentIds: updated } },
+        const response = await apiRequest<any>(`/api/events/${eventId}/free-agents`, {
+            method: 'DELETE',
+            body: { userId },
         });
-        await this.ensureSportRelationship(response);
-        await this.ensureLeagueScoringConfig(response);
-        return this.mapRowToEvent(response);
+        const payload = response?.event ?? response;
+        await this.ensureSportRelationship(payload);
+        await this.ensureLeagueScoringConfig(payload);
+        return this.mapRowToEvent(payload);
     }
 
     // Pagination methods remain largely the same but updated to use new types

@@ -116,7 +116,7 @@ export function Providers({ children }: ProvidersProps) {
     void checkAuth();
 
     // Warm sports cache once per app load so sport selectors can render immediately.
-    sportsService.getAll().catch(() => {
+    sportsService.getAll(true).catch(() => {
       // Ignore failures; consumers still attempt to load sports when needed.
     });
   }, [checkAuth]);

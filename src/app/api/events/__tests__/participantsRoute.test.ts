@@ -75,6 +75,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       division: 'Advanced',
       divisionTypeId: 'advanced',
       sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
     });
 
     const response = await POST(
@@ -98,6 +99,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       division: null,
       divisionTypeId: null,
       sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
     });
 
     const response = await POST(
@@ -121,6 +123,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       division: 'Open',
       divisionTypeId: 'open',
       sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
     });
     prismaMock.events.update.mockResolvedValue({
       id: 'event_1',
@@ -158,5 +161,45 @@ describe('POST /api/events/[eventId]/participants', () => {
         }),
       }),
     );
+  });
+
+  it('rejects team registration when any team member is missing required signatures', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_req'],
+      userIds: [],
+      teamIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.volleyBallTeams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+    });
+    prismaMock.signedDocuments.findMany.mockResolvedValueOnce([
+      { userId: 'user_1', templateId: 'tmpl_req' },
+    ]);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        userId: 'user_1',
+        teamId: 'team_1',
+        divisionTypeKey: 'c_skill_open',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain('All team members must sign required documents');
+    expect(payload.missingSignerIds).toEqual(['user_2']);
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 });

@@ -18,7 +18,7 @@ export const useSports = () => {
         if (!initialSports.length) {
           setLoading(true);
         }
-        const data = await sportsService.getAll();
+        const data = await sportsService.getAll(true);
         if (!active) return;
         setSports(data);
         setError(null);

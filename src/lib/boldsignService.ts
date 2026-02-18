@@ -138,6 +138,7 @@ class BoldSignService {
     eventId: string;
     user: UserData;
     userEmail: string;
+    templateId?: string;
     redirectUrl?: string;
     signerContext?: 'participant' | 'parent_guardian' | 'child';
     childUserId?: string;
@@ -151,6 +152,7 @@ class BoldSignService {
           user: params.user,
           userId: params.user.$id,
           userEmail: params.userEmail,
+          templateId: params.templateId,
           redirectUrl: params.redirectUrl,
           signerContext: params.signerContext ?? 'participant',
           childUserId: params.childUserId,

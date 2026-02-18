@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import Image from 'next/image';
 import { Event, LocationCoordinates, formatPrice, getEventDateTime, getEventImageUrl } from '@/types';
 import { locationService } from '@/lib/locationService';
+import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 
 interface EventCardProps {
   event: Event;
@@ -9,6 +10,23 @@ interface EventCardProps {
   userLocation?: LocationCoordinates | null;
   onClick?: () => void;
 }
+
+const normalizeDivisionKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const startCase = (value: string): string => (
+  value
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .filter((chunk) => chunk.length > 0)
+    .map((chunk) => chunk[0].toUpperCase() + chunk.slice(1))
+    .join(' ')
+);
 
 export default function EventCard({ event, showDistance = false, userLocation, onClick }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
@@ -82,6 +100,64 @@ export default function EventCard({ event, showDistance = false, userLocation, o
 
     return Array.from(names);
   }, [event.fields, event.timeSlots]);
+
+  const divisionLabels = useMemo(() => {
+    const details = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
+    const detailsById = new Map<string, (typeof details)[number]>();
+    const detailsByKey = new Map<string, (typeof details)[number]>();
+
+    details.forEach((detail) => {
+      const detailId = normalizeDivisionKey(detail?.id);
+      const detailKey = normalizeDivisionKey(detail?.key);
+      if (detailId) {
+        detailsById.set(detailId, detail);
+        const token = extractDivisionTokenFromId(detailId);
+        if (token) {
+          detailsByKey.set(token, detail);
+        }
+      }
+      if (detailKey) {
+        detailsByKey.set(detailKey, detail);
+      }
+    });
+
+    const seen = new Set<string>();
+    const labels: string[] = [];
+
+    (event.divisions || []).forEach((division) => {
+      const rawId = normalizeDivisionKey(
+        typeof division === 'string'
+          ? division
+          : (division?.id ?? division?.key ?? division?.name),
+      );
+      if (!rawId) {
+        return;
+      }
+
+      const detail = detailsById.get(rawId)
+        ?? detailsByKey.get(rawId)
+        ?? detailsByKey.get(extractDivisionTokenFromId(rawId) ?? '');
+      const labelFromDetail = detail?.name?.trim();
+      const fallbackIdentifier = detail?.key
+        ?? detail?.id
+        ?? extractDivisionTokenFromId(rawId)
+        ?? rawId;
+      const inferred = inferDivisionDetails({
+        identifier: fallbackIdentifier,
+        sportInput: event.sport?.name ?? event.sportId ?? undefined,
+        fallbackName: labelFromDetail || undefined,
+      });
+      const resolvedLabel = labelFromDetail || inferred.defaultName || startCase(fallbackIdentifier);
+      const dedupeKey = resolvedLabel.toLowerCase();
+      if (seen.has(dedupeKey)) {
+        return;
+      }
+      seen.add(dedupeKey);
+      labels.push(resolvedLabel);
+    });
+
+    return labels;
+  }, [event.divisionDetails, event.divisions, event.sport?.name, event.sportId]);
 
   return (
     <div
@@ -157,12 +233,12 @@ export default function EventCard({ event, showDistance = false, userLocation, o
           )}
 
           {/* Show divisions if available */}
-          {event.divisions.length > 0 && (
+          {divisionLabels.length > 0 && (
             <div className="flex items-center text-sm text-gray-500">
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              {event.divisions.join(', ')}
+              {divisionLabels.join(', ')}
             </div>
           )}
 

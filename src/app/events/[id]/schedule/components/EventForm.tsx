@@ -173,6 +173,93 @@ type DivisionDetailForm = {
     ageCutoffSource?: string;
 };
 
+type SlotDivisionLookup = {
+    options: Array<{ value: string; label: string }>;
+    keys: string[];
+    idToName: Map<string, string>;
+    nameToId: Map<string, string>;
+};
+
+const getDivisionDetailLabel = (
+    detail: Pick<DivisionDetailForm, 'name' | 'gender' | 'divisionTypeName'>,
+): string => {
+    if (typeof detail.name === 'string' && detail.name.trim().length > 0) {
+        return detail.name.trim();
+    }
+    return buildDivisionName({
+        gender: detail.gender,
+        divisionTypeName: detail.divisionTypeName,
+    });
+};
+
+const buildSlotDivisionLookup = (details: DivisionDetailForm[]): SlotDivisionLookup => {
+    const optionByValue = new Map<string, { value: string; label: string }>();
+    const orderedKeys: string[] = [];
+    const seenKeys = new Set<string>();
+    const idToName = new Map<string, string>();
+    const nameToId = new Map<string, string>();
+
+    details.forEach((detail) => {
+        const normalizedId = normalizeDivisionKeys([detail.id])[0];
+        const label = getDivisionDetailLabel(detail);
+        const normalizedName = normalizeDivisionKeys([label])[0] ?? normalizedId;
+        if (!normalizedName) {
+            return;
+        }
+
+        if (!optionByValue.has(normalizedName)) {
+            optionByValue.set(normalizedName, {
+                value: normalizedName,
+                label,
+            });
+        }
+        if (!seenKeys.has(normalizedName)) {
+            seenKeys.add(normalizedName);
+            orderedKeys.push(normalizedName);
+        }
+
+        if (normalizedId) {
+            idToName.set(normalizedId, normalizedName);
+            if (!nameToId.has(normalizedName)) {
+                nameToId.set(normalizedName, normalizedId);
+            }
+        }
+    });
+
+    return {
+        options: Array.from(optionByValue.values()).sort((left, right) => left.label.localeCompare(right.label)),
+        keys: orderedKeys,
+        idToName,
+        nameToId,
+    };
+};
+
+const normalizeSlotDivisionKeysWithLookup = (
+    values: unknown,
+    lookup: Pick<SlotDivisionLookup, 'idToName'>,
+): string[] => (
+    Array.from(
+        new Set(
+            normalizeDivisionKeys(values)
+                .map((value) => lookup.idToName.get(value) ?? value)
+                .filter((value) => value.length > 0),
+        ),
+    )
+);
+
+const normalizeSlotDivisionIdsWithLookup = (
+    values: unknown,
+    lookup: Pick<SlotDivisionLookup, 'nameToId'>,
+): string[] => (
+    Array.from(
+        new Set(
+            normalizeDivisionKeys(values)
+                .map((value) => lookup.nameToId.get(value) ?? value)
+                .filter((value) => value.length > 0),
+        ),
+    )
+);
+
 const applyDivisionAgeCutoff = (
     detail: DivisionDetailForm,
     sportInput?: string | null,
@@ -1114,7 +1201,13 @@ const eventFormSchema = z
             });
         }
 
-        if (values.divisionDetails.length !== values.divisions.length) {
+        const divisionIds = normalizeDivisionKeys(values.divisions);
+        const detailIds = normalizeDivisionKeys(
+            values.divisionDetails
+                .map((detail) => detail?.id)
+                .filter((value): value is string => typeof value === 'string'),
+        );
+        if (!stringSetsEqual(divisionIds, detailIds)) {
             ctx.addIssue({
                 code: "custom",
                 message: 'Division details are out of sync. Re-add the affected division.',
@@ -1167,7 +1260,8 @@ const eventFormSchema = z
         }
 
         if (values.eventType === 'LEAGUE') {
-            const selectedDivisionKeys = normalizeDivisionKeys(values.divisions);
+            const slotDivisionLookup = buildSlotDivisionLookup(values.divisionDetails);
+            const selectedDivisionKeys = slotDivisionLookup.keys;
             if (
                 values.leagueData.includePlayoffs &&
                 !(typeof values.leagueData.playoffTeamCount === 'number' && values.leagueData.playoffTeamCount >= 2)
@@ -1218,7 +1312,10 @@ const eventFormSchema = z
                 if (
                     values.singleDivision &&
                     selectedDivisionKeys.length &&
-                    !stringSetsEqual(normalizeDivisionKeys(slot.divisions), selectedDivisionKeys)
+                    !stringSetsEqual(
+                        normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup),
+                        selectedDivisionKeys,
+                    )
                 ) {
                     ctx.addIssue({
                         code: "custom",
@@ -1594,6 +1691,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 parseDateValue(base.start ?? null),
             );
         })();
+        const defaultSlotDivisionKeys = buildSlotDivisionLookup(defaultDivisionDetails).keys;
         const defaultDivisionKeys = (() => {
             const normalizedFromDetails = normalizeDivisionKeys(defaultDivisionDetails.map((detail) => detail.id));
             if (normalizedFromDetails.length) {
@@ -1642,14 +1740,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultSlots = (() => {
             if (Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
                 return mergeSlotPayloadsForForm(defaults.timeSlots as TimeSlot[], defaultFieldId)
-                    .map((slot) => createSlotForm(slot, defaultDivisionKeys));
+                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
             }
 
             if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE' && activeEditingEvent.timeSlots?.length) {
                 return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
-                    .map((slot) => createSlotForm(slot, defaultDivisionKeys));
+                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
             }
-            return [createSlotForm(undefined, defaultDivisionKeys)];
+            return [createSlotForm(undefined, defaultSlotDivisionKeys)];
         })();
 
         const defaultLeagueData: LeagueConfig = (() => {
@@ -2041,17 +2139,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => Array.from({ length: 12 }, (_, idx) => ({ value: String(idx + 1), label: String(idx + 1) })),
         []
     );
-    const divisionOptions = useMemo(
-        () => (eventData.divisionDetails || [])
-            .map((detail) => ({
-                value: detail.id,
-                label: detail.name || buildDivisionName({
-                    gender: detail.gender,
-                    divisionTypeName: detail.divisionTypeName,
-                }),
-            }))
-            .sort((left, right) => left.label.localeCompare(right.label)),
+    const slotDivisionLookup = useMemo(
+        () => buildSlotDivisionLookup(eventData.divisionDetails || []),
         [eventData.divisionDetails],
+    );
+    const slotDivisionKeys = slotDivisionLookup.keys;
+    const divisionOptions = useMemo(
+        () => slotDivisionLookup.options,
+        [slotDivisionLookup],
     );
     const divisionTypeOptions = useMemo(() => {
         const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
@@ -2320,7 +2415,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
         const nextDetails = currentDetails.filter((detail) => detail.id !== divisionId);
         const nextDivisionIds = nextDetails.map((detail) => detail.id);
-        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: false });
         setValue('divisions', nextDivisionIds, { shouldDirty: true, shouldValidate: true });
 
         const currentFieldMap = getValues('divisionFieldIds') ?? {};
@@ -2398,7 +2493,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         const nextDivisionIds = nextDetails.map((detail) => detail.id);
 
-        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: false });
         setValue('divisions', nextDivisionIds, { shouldDirty: true, shouldValidate: true });
 
         const currentFieldMap = getValues('divisionFieldIds') ?? {};
@@ -2465,7 +2560,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 eventData.sportConfig ?? eventData.sportId,
                 parseDateValue(eventData.start ?? null),
             );
-            setValue('divisionDetails', defaults, { shouldDirty: false, shouldValidate: true });
+            setValue('divisionDetails', defaults, { shouldDirty: false, shouldValidate: false });
             setValue(
                 'divisions',
                 defaults.map((detail) => detail.id),
@@ -2505,19 +2600,23 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
 
         if (changed) {
-            setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: true });
+            setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: false });
         }
     }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportId, eventData.start, setValue]);
 
     useEffect(() => {
-        const selectedDivisionKeys = normalizeDivisionKeys(eventData.divisions);
+        const selectedDivisionKeys = slotDivisionKeys;
         if (!selectedDivisionKeys.length) {
             return;
         }
         const selectedDivisionSet = new Set(selectedDivisionKeys);
         const enforceAllSlotDivisions = Boolean(eventData.singleDivision);
         const hasMismatch = leagueSlots.some((slot) => {
-            const current = normalizeDivisionKeys(slot.divisions);
+            const currentRaw = normalizeDivisionKeys(slot.divisions);
+            const current = normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup);
+            if (!stringArraysEqual(currentRaw, current)) {
+                return true;
+            }
             if (enforceAllSlotDivisions) {
                 return !stringSetsEqual(current, selectedDivisionKeys);
             }
@@ -2529,7 +2628,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         updateLeagueSlots((prev) =>
             prev.map((slot) => {
-                const current = normalizeDivisionKeys(slot.divisions);
+                const current = normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup);
                 const filtered = current.filter((divisionKey) => selectedDivisionSet.has(divisionKey));
                 return {
                     ...slot,
@@ -2539,7 +2638,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 };
             }),
         );
-    }, [eventData.divisions, eventData.singleDivision, leagueSlots, updateLeagueSlots]);
+    }, [eventData.singleDivision, leagueSlots, slotDivisionKeys, slotDivisionLookup, updateLeagueSlots]);
 
     useEffect(() => {
         const requiresSets = Boolean(eventData.sportConfig?.usePointsPerSetWin);
@@ -2738,7 +2837,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         clearErrors('leagueSlots');
-        updateLeagueSlots(prev => [...prev, createSlotForm(undefined, normalizeDivisionKeys(eventData.divisions))]);
+        updateLeagueSlots(prev => [...prev, createSlotForm(undefined, slotDivisionKeys)]);
     };
 
     // Drops a specific slot by index, leaving at least one slot for the scheduler UI to edit.
@@ -2766,8 +2865,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         };
         const normalizedDays = normalizeWeekdays(updated);
         const normalizedFieldIds = normalizeSlotFieldIds(updated);
-        const selectedDivisionKeys = normalizeDivisionKeys(eventData.divisions);
-        const normalizedDivisions = normalizeDivisionKeys(updated.divisions);
+        const selectedDivisionKeys = slotDivisionKeys;
+        const normalizedDivisions = normalizeSlotDivisionKeysWithLookup(updated.divisions, slotDivisionLookup);
         updated.scheduledFieldId = normalizedFieldIds[0];
         updated.scheduledFieldIds = normalizedFieldIds;
         updated.dayOfWeek = normalizedDays[0] as LeagueSlotForm['dayOfWeek'];
@@ -2846,11 +2945,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
             const slots = mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [], fallbackFieldId)
-                .map((slot) => createSlotForm(slot, normalizeDivisionKeys(activeEditingEvent.divisions)));
+                .map((slot) => createSlotForm(slot, slotDivisionKeys));
 
             const initialSlots = slots.length > 0
                 ? slots
-                : [createSlotForm(undefined, normalizeDivisionKeys(activeEditingEvent.divisions))];
+                : [createSlotForm(undefined, slotDivisionKeys)];
             setLeagueSlots(normalizeSlotState(initialSlots, activeEditingEvent.eventType));
         } else if (!activeEditingEvent) {
             setLeagueData({
@@ -2862,10 +2961,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setDurationMinutes: undefined,
                 setsPerMatch: undefined,
             });
-            setLeagueSlots(normalizeSlotState([createSlotForm(undefined, normalizeDivisionKeys(eventData.divisions))], 'EVENT'));
+            setLeagueSlots(normalizeSlotState([createSlotForm(undefined, slotDivisionKeys)], 'EVENT'));
             setPlayoffData(buildTournamentConfig());
         }
-    }, [activeEditingEvent, createSlotForm, eventData.divisions, hasImmutableTimeSlots, setLeagueData, setLeagueSlots, setPlayoffData]);
+    }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots, setLeagueData, setLeagueSlots, setPlayoffData, slotDivisionKeys]);
 
     useEffect(() => {
         if (!hasImmutableTimeSlots) {
@@ -2873,9 +2972,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         const fallbackFieldId = immutableFields[0]?.$id;
         const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
-            .map((slot) => createSlotForm(slot, normalizeDivisionKeys(eventData.divisions)));
+            .map((slot) => createSlotForm(slot, slotDivisionKeys));
         setLeagueSlots(normalizeSlotState(slotForms, eventData.eventType));
-    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, eventData.divisions, setLeagueSlots]);
+    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, setLeagueSlots, slotDivisionKeys]);
 
     // Pull the organization's fields so league/tournament creators can assign real facilities.
     useEffect(() => {
@@ -3208,6 +3307,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return normalizeDivisionKeys(source.divisions);
         })();
+        const slotDivisionLookupForDraft = buildSlotDivisionLookup(normalizedDivisionDetails);
         const singleDivisionEnabled = Boolean(source.singleDivision);
 
         const draft: Partial<Event> = {
@@ -3322,7 +3422,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         if (hasImmutableTimeSlots) {
             draft.timeSlots = immutableTimeSlots.map((slot) => {
-                const slotDivisions = normalizeDivisionKeys(slot.divisions);
+                const slotDivisions = normalizeSlotDivisionIdsWithLookup(slot.divisions, slotDivisionLookupForDraft);
                 return {
                     ...slot,
                     divisions: singleDivisionEnabled
@@ -3413,7 +3513,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     const slotId = slot.$id || slot.key;
                     const normalizedDays = normalizeWeekdays(slot);
                     const slotFieldIds = normalizeSlotFieldIds(slot);
-                    const slotDivisionKeys = normalizeDivisionKeys(slot.divisions);
+                    const slotDivisionKeys = normalizeSlotDivisionIdsWithLookup(
+                        slot.divisions,
+                        slotDivisionLookupForDraft,
+                    );
                     const serialized: TimeSlot = {
                         $id: slotId,
                         dayOfWeek: normalizedDays[0] as TimeSlot['dayOfWeek'],
@@ -4475,7 +4578,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     fieldOptions={leagueFieldOptions}
                                     divisionOptions={divisionOptions}
                                     lockSlotDivisions={Boolean(eventData.singleDivision)}
-                                    lockedDivisionKeys={normalizeDivisionKeys(eventData.divisions)}
+                                    lockedDivisionKeys={slotDivisionKeys}
                                     readOnly={hasImmutableTimeSlots}
                                 />
 

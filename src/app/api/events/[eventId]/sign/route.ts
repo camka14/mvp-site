@@ -22,6 +22,7 @@ const schema = z.object({
   userId: z.string().optional(),
   userEmail: z.string().optional(),
   redirectUrl: z.string().optional(),
+  templateId: z.string().optional(),
   user: z.record(z.string(), z.any()).optional(),
   signerContext: z.string().optional(),
   childUserId: z.string().optional(),
@@ -242,6 +243,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     return NextResponse.json({ signLinks: [] }, { status: 200 });
   }
 
+  const requestedTemplateId = pickString(parsed.data.templateId);
+  const templateIdsToSign = requestedTemplateId
+    ? eligibleTemplateIds.filter((templateId) => templateId === requestedTemplateId)
+    : eligibleTemplateIds;
+  if (requestedTemplateId && !templateIdsToSign.length) {
+    return NextResponse.json({ error: 'Template is not available for this signer context.' }, { status: 400 });
+  }
+
   const signed = await prisma.signedDocuments.findMany({
     where: {
       userId: signerUserId,
@@ -290,7 +299,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   }> = [];
 
   try {
-    for (const requiredTemplateId of eligibleTemplateIds) {
+    for (const requiredTemplateId of templateIdsToSign) {
       const template = templatesById.get(requiredTemplateId);
       if (!template) {
         continue;
