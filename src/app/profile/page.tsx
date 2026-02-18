@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import { useApp } from '@/app/providers';
-import { userService } from '@/lib/userService';
+import { userService, type UserSocialGraph } from '@/lib/userService';
 import { familyService, FamilyChild, FamilyJoinRequest } from '@/lib/familyService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { Bill, PaymentIntent, Team, getUserAvatarUrl, formatPrice, formatBillAmount, Product, Organization } from '@/types';
+import { Bill, PaymentIntent, Team, UserData, getUserAvatarUrl, formatPrice, formatBillAmount, Product, Organization } from '@/types';
 import type { Subscription } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
@@ -23,6 +24,7 @@ import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
 import { profileDocumentService, type ProfileDocumentCard } from '@/lib/profileDocumentService';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/dateUtils';
+import { createId } from '@/lib/id';
 
 const toDateInputValue = (value?: string | null): string => {
     if (!value) return '';
@@ -61,6 +63,7 @@ const formatDateTimeLabel = (value?: string): string => {
 };
 
 export default function ProfilePage() {
+    const router = useRouter();
     const { user, authUser, loading, setUser } = useApp();
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -82,6 +85,14 @@ export default function ProfilePage() {
     const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
     const [joinRequestsError, setJoinRequestsError] = useState<string | null>(null);
     const [resolvingJoinRequestId, setResolvingJoinRequestId] = useState<string | null>(null);
+    const [socialGraph, setSocialGraph] = useState<UserSocialGraph | null>(null);
+    const [socialLoading, setSocialLoading] = useState(false);
+    const [socialError, setSocialError] = useState<string | null>(null);
+    const [socialActionUserId, setSocialActionUserId] = useState<string | null>(null);
+    const [socialSearchQuery, setSocialSearchQuery] = useState('');
+    const [socialSearchResults, setSocialSearchResults] = useState<UserData[]>([]);
+    const [socialSearchLoading, setSocialSearchLoading] = useState(false);
+    const [socialSearchError, setSocialSearchError] = useState<string | null>(null);
     const [creatingChild, setCreatingChild] = useState(false);
     const [updatingChild, setUpdatingChild] = useState(false);
     const [linkingChild, setLinkingChild] = useState(false);
@@ -136,6 +147,9 @@ export default function ProfilePage() {
     const [signedDocuments, setSignedDocuments] = useState<ProfileDocumentCard[]>([]);
     const [loadingDocuments, setLoadingDocuments] = useState(false);
     const [documentsError, setDocumentsError] = useState<string | null>(null);
+    const [eventTemplates, setEventTemplates] = useState<Array<{ id: string; name: string; start?: string; end?: string }>>([]);
+    const [loadingEventTemplates, setLoadingEventTemplates] = useState(false);
+    const [eventTemplatesError, setEventTemplatesError] = useState<string | null>(null);
     const [selectedSignedTextDocument, setSelectedSignedTextDocument] = useState<ProfileDocumentCard | null>(null);
     const [activeSigningDocument, setActiveSigningDocument] = useState<ProfileDocumentCard | null>(null);
     const [showSignPasswordModal, setShowSignPasswordModal] = useState(false);
@@ -244,12 +258,77 @@ export default function ProfilePage() {
         }
     }, []);
 
+    const loadSocialGraph = useCallback(async () => {
+        setSocialLoading(true);
+        setSocialError(null);
+        try {
+            const result = await userService.getSocialGraph();
+            setSocialGraph(result);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to load social connections.';
+            setSocialError(message);
+            setSocialGraph(null);
+        } finally {
+            setSocialLoading(false);
+        }
+    }, []);
+
+    const searchSocialUsers = useCallback(async (query: string) => {
+        setSocialSearchQuery(query);
+        const trimmed = query.trim();
+
+        if (trimmed.length < 2) {
+            setSocialSearchResults([]);
+            setSocialSearchError(null);
+            setSocialSearchLoading(false);
+            return;
+        }
+
+        setSocialSearchLoading(true);
+        setSocialSearchError(null);
+        try {
+            const results = await userService.searchUsers(trimmed);
+            setSocialSearchResults(results.filter((candidate) => candidate.$id !== user?.$id));
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to search users.';
+            setSocialSearchError(message);
+            setSocialSearchResults([]);
+        } finally {
+            setSocialSearchLoading(false);
+        }
+    }, [user?.$id]);
+
+    const runSocialAction = useCallback(async (
+        targetUserId: string,
+        action: (userId: string) => Promise<UserData>,
+        successMessage: string,
+    ) => {
+        setSocialActionUserId(targetUserId);
+        setSocialError(null);
+        try {
+            const updatedUser = await action(targetUserId);
+            setUser(updatedUser);
+            notifications.show({ color: 'green', message: successMessage });
+            await loadSocialGraph();
+            if (socialSearchQuery.trim().length >= 2) {
+                await searchSocialUsers(socialSearchQuery);
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to update connection.';
+            setSocialError(message);
+            notifications.show({ color: 'red', message });
+        } finally {
+            setSocialActionUserId(null);
+        }
+    }, [loadSocialGraph, searchSocialUsers, setUser, socialSearchQuery]);
+
     useEffect(() => {
         if (user) {
             loadChildren();
             loadJoinRequests();
+            loadSocialGraph();
         }
-    }, [user, loadChildren, loadJoinRequests]);
+    }, [user, loadChildren, loadJoinRequests, loadSocialGraph]);
 
     const resetChildForm = () => {
         setChildForm({
@@ -659,6 +738,40 @@ export default function ProfilePage() {
         }
     }, [user]);
 
+    const loadEventTemplates = useCallback(async () => {
+        if (!user) return;
+        setLoadingEventTemplates(true);
+        setEventTemplatesError(null);
+        try {
+            const params = new URLSearchParams();
+            params.set('state', 'TEMPLATE');
+            params.set('limit', '100');
+            const response = await fetch(`/api/events?${params.toString()}`, {
+                credentials: 'include',
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Failed to load event templates.');
+            }
+            const rows = Array.isArray(payload?.events) ? payload.events : [];
+            setEventTemplates(
+                rows
+                    .map((row: Record<string, any>) => ({
+                        id: String(row?.$id ?? row?.id ?? ''),
+                        name: String(row?.name ?? 'Untitled Template'),
+                        start: typeof row?.start === 'string' ? row.start : undefined,
+                        end: typeof row?.end === 'string' ? row.end : undefined,
+                    }))
+                    .filter((row: { id: string }) => row.id.length > 0),
+            );
+        } catch (err) {
+            setEventTemplatesError(err instanceof Error ? err.message : 'Failed to load event templates.');
+            setEventTemplates([]);
+        } finally {
+            setLoadingEventTemplates(false);
+        }
+    }, [user]);
+
     const handleResolveJoinRequest = useCallback(async (registrationId: string, action: 'approve' | 'decline') => {
         if (!registrationId) return;
         setResolvingJoinRequestId(registrationId);
@@ -960,8 +1073,9 @@ export default function ProfilePage() {
             loadBills();
             loadSubscriptions();
             loadDocuments();
+            loadEventTemplates();
         }
-    }, [user, loadBills, loadSubscriptions, loadDocuments]);
+    }, [user, loadBills, loadSubscriptions, loadDocuments, loadEventTemplates]);
 
     if (loading) {
         return <Loading />;
@@ -1139,6 +1253,14 @@ export default function ProfilePage() {
                                             <p className="text-2xl font-bold text-green-600">{user.friendIds.length}</p>
                                             <p className="text-gray-600">Friends</p>
                                         </div>
+                                        <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                            <p className="text-2xl font-bold text-indigo-600">{user.followingIds.length}</p>
+                                            <p className="text-gray-600">Following</p>
+                                        </div>
+                                        <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                            <p className="text-2xl font-bold text-purple-600">{socialGraph?.followers.length ?? 0}</p>
+                                            <p className="text-gray-600">Followers</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1150,6 +1272,263 @@ export default function ProfilePage() {
                             <Suspense fallback={<Loading text="Loading teams..." />}>
                                 <ManageTeams showNavigation={false} withContainer={false} />
                             </Suspense>
+                        </Paper>
+                    </div>
+
+                    <div className="mt-8">
+                        <Paper withBorder radius="lg" p="md" shadow="sm">
+                            <Group justify="space-between" mb="sm">
+                                <Title order={4}>Connections</Title>
+                                <Button
+                                    variant="light"
+                                    size="xs"
+                                    onClick={() => { void loadSocialGraph(); }}
+                                    loading={socialLoading}
+                                >
+                                    Refresh
+                                </Button>
+                            </Group>
+                            <Text size="sm" c="dimmed" mb="sm">
+                                Manage friend requests, friends, and following.
+                            </Text>
+                            {socialError && (
+                                <Alert color="red" mb="sm">
+                                    {socialError}
+                                </Alert>
+                            )}
+                            <Paper withBorder radius="md" p="md" shadow="xs" className="w-full max-w-3xl" mb="md">
+                                <div className="space-y-3">
+                                    <Title order={5}>Find people</Title>
+                                    <TextInput
+                                        placeholder="Search by name or username"
+                                        value={socialSearchQuery}
+                                        onChange={(event) => {
+                                            const value = event.currentTarget.value;
+                                            void searchSocialUsers(value);
+                                        }}
+                                    />
+                                    {socialSearchError && (
+                                        <Alert color="red" variant="light">
+                                            {socialSearchError}
+                                        </Alert>
+                                    )}
+                                    {socialSearchLoading ? (
+                                        <Text c="dimmed" size="sm">Searching...</Text>
+                                    ) : socialSearchQuery.trim().length < 2 ? (
+                                        <Text c="dimmed" size="sm">Enter at least 2 characters to search.</Text>
+                                    ) : socialSearchResults.length === 0 ? (
+                                        <Text c="dimmed" size="sm">No users found.</Text>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {socialSearchResults.map((candidate) => {
+                                                const candidateId = candidate.$id;
+                                                const isFriend = user.friendIds.includes(candidateId);
+                                                const isFollowing = user.followingIds.includes(candidateId);
+                                                const hasIncomingRequest = user.friendRequestIds.includes(candidateId);
+                                                const hasOutgoingRequest = user.friendRequestSentIds.includes(candidateId);
+                                                const isActing = socialActionUserId === candidateId;
+
+                                                return (
+                                                    <Paper key={candidateId} withBorder radius="md" p="sm">
+                                                        <Group justify="space-between" align="flex-start">
+                                                            <div>
+                                                                <Text fw={600}>{candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim() || 'User'}</Text>
+                                                                <Text size="sm" c="dimmed">@{candidate.userName || 'user'}</Text>
+                                                            </div>
+                                                            <Group gap="xs">
+                                                                {isFriend ? (
+                                                                    <Button
+                                                                        size="xs"
+                                                                        variant="light"
+                                                                        color="red"
+                                                                        loading={isActing}
+                                                                        onClick={() => { void runSocialAction(candidateId, (id) => userService.removeFriend(id), 'Friend removed.'); }}
+                                                                    >
+                                                                        Remove friend
+                                                                    </Button>
+                                                                ) : hasIncomingRequest ? (
+                                                                    <>
+                                                                        <Button
+                                                                            size="xs"
+                                                                            variant="light"
+                                                                            color="green"
+                                                                            loading={isActing}
+                                                                            onClick={() => { void runSocialAction(candidateId, (id) => userService.acceptFriendRequest(id), 'Friend request accepted.'); }}
+                                                                        >
+                                                                            Accept
+                                                                        </Button>
+                                                                        <Button
+                                                                            size="xs"
+                                                                            variant="light"
+                                                                            color="red"
+                                                                            loading={isActing}
+                                                                            onClick={() => { void runSocialAction(candidateId, (id) => userService.declineFriendRequest(id), 'Friend request declined.'); }}
+                                                                        >
+                                                                            Decline
+                                                                        </Button>
+                                                                    </>
+                                                                ) : hasOutgoingRequest ? (
+                                                                    <Button size="xs" variant="default" disabled>
+                                                                        Request sent
+                                                                    </Button>
+                                                                ) : (
+                                                                    <Button
+                                                                        size="xs"
+                                                                        variant="light"
+                                                                        loading={isActing}
+                                                                        onClick={() => { void runSocialAction(candidateId, (id) => userService.sendFriendRequest(id), 'Friend request sent.'); }}
+                                                                    >
+                                                                        Add friend
+                                                                    </Button>
+                                                                )}
+                                                                <Button
+                                                                    size="xs"
+                                                                    variant="light"
+                                                                    color={isFollowing ? 'red' : 'blue'}
+                                                                    loading={isActing}
+                                                                    onClick={() => {
+                                                                        void runSocialAction(
+                                                                            candidateId,
+                                                                            (id) => (isFollowing ? userService.unfollowUser(id) : userService.followUser(id)),
+                                                                            isFollowing ? 'Unfollowed user.' : 'Following user.',
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    {isFollowing ? 'Unfollow' : 'Follow'}
+                                                                </Button>
+                                                            </Group>
+                                                        </Group>
+                                                    </Paper>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </Paper>
+
+                            <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+                                <Paper withBorder radius="md" p="md" shadow="xs">
+                                    <Title order={5} mb="sm">Incoming Friend Requests</Title>
+                                    {socialLoading ? (
+                                        <Text c="dimmed" size="sm">Loading requests...</Text>
+                                    ) : (socialGraph?.incomingFriendRequests.length ?? 0) === 0 ? (
+                                        <Text c="dimmed" size="sm">No pending friend requests.</Text>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {socialGraph?.incomingFriendRequests.map((requester) => (
+                                                <Paper key={requester.$id} withBorder radius="md" p="sm">
+                                                    <Group justify="space-between">
+                                                        <div>
+                                                            <Text fw={600}>{requester.fullName || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || 'User'}</Text>
+                                                            <Text size="sm" c="dimmed">@{requester.userName || 'user'}</Text>
+                                                        </div>
+                                                        <Group gap="xs">
+                                                            <Button
+                                                                size="xs"
+                                                                variant="light"
+                                                                color="green"
+                                                                loading={socialActionUserId === requester.$id}
+                                                                onClick={() => { void runSocialAction(requester.$id, (id) => userService.acceptFriendRequest(id), 'Friend request accepted.'); }}
+                                                            >
+                                                                Accept
+                                                            </Button>
+                                                            <Button
+                                                                size="xs"
+                                                                variant="light"
+                                                                color="red"
+                                                                loading={socialActionUserId === requester.$id}
+                                                                onClick={() => { void runSocialAction(requester.$id, (id) => userService.declineFriendRequest(id), 'Friend request declined.'); }}
+                                                            >
+                                                                Decline
+                                                            </Button>
+                                                        </Group>
+                                                    </Group>
+                                                </Paper>
+                                            ))}
+                                        </div>
+                                    )}
+                                </Paper>
+
+                                <Paper withBorder radius="md" p="md" shadow="xs">
+                                    <Title order={5} mb="sm">Friends</Title>
+                                    {socialLoading ? (
+                                        <Text c="dimmed" size="sm">Loading friends...</Text>
+                                    ) : (socialGraph?.friends.length ?? 0) === 0 ? (
+                                        <Text c="dimmed" size="sm">No friends yet.</Text>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {socialGraph?.friends.map((friend) => (
+                                                <Paper key={friend.$id} withBorder radius="md" p="sm">
+                                                    <Group justify="space-between">
+                                                        <div>
+                                                            <Text fw={600}>{friend.fullName || `${friend.firstName || ''} ${friend.lastName || ''}`.trim() || 'User'}</Text>
+                                                            <Text size="sm" c="dimmed">@{friend.userName || 'user'}</Text>
+                                                        </div>
+                                                        <Button
+                                                            size="xs"
+                                                            variant="light"
+                                                            color="red"
+                                                            loading={socialActionUserId === friend.$id}
+                                                            onClick={() => { void runSocialAction(friend.$id, (id) => userService.removeFriend(id), 'Friend removed.'); }}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </Group>
+                                                </Paper>
+                                            ))}
+                                        </div>
+                                    )}
+                                </Paper>
+
+                                <Paper withBorder radius="md" p="md" shadow="xs">
+                                    <Title order={5} mb="sm">Following</Title>
+                                    {socialLoading ? (
+                                        <Text c="dimmed" size="sm">Loading following...</Text>
+                                    ) : (socialGraph?.following.length ?? 0) === 0 ? (
+                                        <Text c="dimmed" size="sm">Not following anyone yet.</Text>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {socialGraph?.following.map((entry) => (
+                                                <Paper key={entry.$id} withBorder radius="md" p="sm">
+                                                    <Group justify="space-between">
+                                                        <div>
+                                                            <Text fw={600}>{entry.fullName || `${entry.firstName || ''} ${entry.lastName || ''}`.trim() || 'User'}</Text>
+                                                            <Text size="sm" c="dimmed">@{entry.userName || 'user'}</Text>
+                                                        </div>
+                                                        <Button
+                                                            size="xs"
+                                                            variant="light"
+                                                            color="red"
+                                                            loading={socialActionUserId === entry.$id}
+                                                            onClick={() => { void runSocialAction(entry.$id, (id) => userService.unfollowUser(id), 'Unfollowed user.'); }}
+                                                        >
+                                                            Unfollow
+                                                        </Button>
+                                                    </Group>
+                                                </Paper>
+                                            ))}
+                                        </div>
+                                    )}
+                                </Paper>
+
+                                <Paper withBorder radius="md" p="md" shadow="xs">
+                                    <Title order={5} mb="sm">Following You</Title>
+                                    {socialLoading ? (
+                                        <Text c="dimmed" size="sm">Loading followers...</Text>
+                                    ) : (socialGraph?.followers.length ?? 0) === 0 ? (
+                                        <Text c="dimmed" size="sm">No followers yet.</Text>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {socialGraph?.followers.map((entry) => (
+                                                <Paper key={entry.$id} withBorder radius="md" p="sm">
+                                                    <Text fw={600}>{entry.fullName || `${entry.firstName || ''} ${entry.lastName || ''}`.trim() || 'User'}</Text>
+                                                    <Text size="sm" c="dimmed">@{entry.userName || 'user'}</Text>
+                                                </Paper>
+                                            ))}
+                                        </div>
+                                    )}
+                                </Paper>
+                            </SimpleGrid>
                         </Paper>
                     </div>
 
@@ -1516,6 +1895,75 @@ export default function ProfilePage() {
                                         )}
                                     </div>
                                 </div>
+                            )}
+                        </Paper>
+                    </div>
+
+                    <div className="mt-8">
+                        <Paper withBorder radius="lg" p="md" shadow="sm">
+                            <Group justify="space-between" mb="sm">
+                                <Title order={4}>Event Templates</Title>
+                                <Group>
+                                    <Button
+                                        size="xs"
+                                        variant="default"
+                                        onClick={() => router.push(`/events/${createId()}/schedule?create=1&mode=edit&tab=details`)}
+                                    >
+                                        Create Event
+                                    </Button>
+                                    <Button variant="light" size="xs" onClick={loadEventTemplates} loading={loadingEventTemplates}>
+                                        Refresh
+                                    </Button>
+                                </Group>
+                            </Group>
+                            <Text size="sm" c="dimmed" mb="sm">
+                                Reusable templates for personal (non-organization) events.
+                            </Text>
+                            {eventTemplatesError && (
+                                <Alert color="red" mb="sm">
+                                    {eventTemplatesError}
+                                </Alert>
+                            )}
+                            {loadingEventTemplates ? (
+                                <Text c="dimmed">Loading event templates...</Text>
+                            ) : eventTemplates.length === 0 ? (
+                                <Text c="dimmed">No event templates yet.</Text>
+                            ) : (
+                                <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+                                    {eventTemplates.map((template) => (
+                                        <Paper
+                                            key={template.id}
+                                            withBorder
+                                            radius="md"
+                                            p="md"
+                                            shadow="xs"
+                                            style={{ aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                                        >
+                                            <div className="space-y-2">
+                                                <Badge color="blue" variant="light">Event Template</Badge>
+                                                <Text fw={700}>{template.name}</Text>
+                                                {template.start && (
+                                                    <Text size="xs" c="dimmed">
+                                                        Starts: {formatDateTimeLabel(template.start)}
+                                                    </Text>
+                                                )}
+                                                {template.end && (
+                                                    <Text size="xs" c="dimmed">
+                                                        Ends: {formatDateTimeLabel(template.end)}
+                                                    </Text>
+                                                )}
+                                            </div>
+                                            <Button
+                                                size="xs"
+                                                variant="light"
+                                                mt="md"
+                                                onClick={() => router.push(`/events/${template.id}/schedule`)}
+                                            >
+                                                Open template
+                                            </Button>
+                                        </Paper>
+                                    ))}
+                                </SimpleGrid>
                             )}
                         </Paper>
                     </div>

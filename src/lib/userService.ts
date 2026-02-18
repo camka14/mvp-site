@@ -21,6 +21,15 @@ interface UpdateProfileData {
   profileImageId?: string;
 }
 
+export interface UserSocialGraph {
+  user: UserData;
+  friends: UserData[];
+  following: UserData[];
+  followers: UserData[];
+  incomingFriendRequests: UserData[];
+  outgoingFriendRequests: UserData[];
+}
+
 class UserService {
   async createUser(id: string, data: Partial<UserData>): Promise<UserData> {
     const response = await apiFetch<{ user: UserData }>('/api/users', {
@@ -87,6 +96,71 @@ class UserService {
       method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
     });
+  }
+
+  async getSocialGraph(): Promise<UserSocialGraph> {
+    const response = await apiFetch<{
+      user: UserData;
+      friends?: UserData[];
+      following?: UserData[];
+      followers?: UserData[];
+      incomingFriendRequests?: UserData[];
+      outgoingFriendRequests?: UserData[];
+    }>('/api/users/social');
+
+    return {
+      user: response.user,
+      friends: response.friends ?? [],
+      following: response.following ?? [],
+      followers: response.followers ?? [],
+      incomingFriendRequests: response.incomingFriendRequests ?? [],
+      outgoingFriendRequests: response.outgoingFriendRequests ?? [],
+    };
+  }
+
+  async sendFriendRequest(targetUserId: string): Promise<UserData> {
+    const response = await apiFetch<{ user: UserData }>('/api/users/social/friend-requests', {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    });
+    return response.user;
+  }
+
+  async acceptFriendRequest(requesterUserId: string): Promise<UserData> {
+    const response = await apiFetch<{ user: UserData }>(`/api/users/social/friend-requests/${encodeURIComponent(requesterUserId)}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return response.user;
+  }
+
+  async declineFriendRequest(requesterUserId: string): Promise<UserData> {
+    const response = await apiFetch<{ user: UserData }>(`/api/users/social/friend-requests/${encodeURIComponent(requesterUserId)}`, {
+      method: 'DELETE',
+    });
+    return response.user;
+  }
+
+  async removeFriend(friendUserId: string): Promise<UserData> {
+    const response = await apiFetch<{ user: UserData }>(`/api/users/social/friends/${encodeURIComponent(friendUserId)}`, {
+      method: 'DELETE',
+    });
+    return response.user;
+  }
+
+  async followUser(targetUserId: string): Promise<UserData> {
+    const response = await apiFetch<{ user: UserData }>('/api/users/social/following', {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    });
+    return response.user;
+  }
+
+  async unfollowUser(targetUserId: string): Promise<UserData> {
+    const response = await apiFetch<{ user: UserData }>(`/api/users/social/following/${encodeURIComponent(targetUserId)}`, {
+      method: 'DELETE',
+    });
+    return response.user;
   }
 
   async listUserSubscriptions(_userId: string): Promise<Subscription[]> {

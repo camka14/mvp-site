@@ -23,6 +23,7 @@ const loadEventWithRelationsMock = jest.fn();
 const deleteMatchesByEventMock = jest.fn();
 const saveMatchesMock = jest.fn();
 const saveEventScheduleMock = jest.fn();
+const notifySocialAudienceOfEventCreationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -32,6 +33,9 @@ jest.mock('@/server/repositories/events', () => ({
   deleteMatchesByEvent: (...args: any[]) => deleteMatchesByEventMock(...args),
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
   saveEventSchedule: (...args: any[]) => saveEventScheduleMock(...args),
+}));
+jest.mock('@/server/eventCreationNotifications', () => ({
+  notifySocialAudienceOfEventCreation: (...args: any[]) => notifySocialAudienceOfEventCreationMock(...args),
 }));
 
 import { POST as eventsPost } from '@/app/api/events/route';
@@ -46,6 +50,7 @@ const postRequest = (url: string, body: any) =>
 describe('event save route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    notifySocialAudienceOfEventCreationMock.mockResolvedValue(undefined);
   });
 
   it('creates an event and returns divisionFieldIds for the saved response', async () => {
@@ -93,5 +98,10 @@ describe('event save route', () => {
     const json = await res.json();
     expect(json.event.$id).toBe('event_1');
     expect(json.event.divisionFieldIds).toEqual({ open: ['field_1'] });
+    expect(notifySocialAudienceOfEventCreationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      hostId: 'host_1',
+      eventName: 'Saved Event',
+    }));
   });
 });

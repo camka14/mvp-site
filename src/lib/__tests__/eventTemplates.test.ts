@@ -120,6 +120,19 @@ describe('eventTemplates', () => {
     expect(template.timeSlots?.[0].scheduledFieldId).toBe('new_1');
   });
 
+  it('does not persist host on organization templates', () => {
+    const template = cloneEventAsTemplate(
+      buildBaseEvent({
+        organizationId: 'org_1',
+        hostId: 'host_1',
+      }),
+      { templateId: 'tmpl_org' },
+    );
+
+    expect(template.organizationId).toBe('org_1');
+    expect(template.hostId).toBe('');
+  });
+
   it('seeds a draft event from a template with aligned dates and new slot ids', () => {
     const idFactory = makeIdFactory('seed');
 

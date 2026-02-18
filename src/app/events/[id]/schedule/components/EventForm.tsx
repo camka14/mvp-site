@@ -4765,7 +4765,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             )}
                             {!templatesLoading && organizationId && templateOptions.length === 0 && (
                                 <Text size="sm" c="dimmed">
-                                    No templates yet. Create one in your organization Templates tab.
+                                    No templates yet. Create one in your organization Document Templates tab.
                                 </Text>
                             )}
 

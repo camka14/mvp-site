@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { canManageOrganization } from '@/server/accessControl';
 import { deleteMatchesByEvent, loadEventWithRelations, saveEventSchedule, saveMatches, upsertEventFromPayload } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { evaluateDivisionAgeEligibility, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
+import { notifySocialAudienceOfEventCreation } from '@/server/eventCreationNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -245,16 +247,29 @@ export async function GET(req: NextRequest) {
   const eventType = params.get('eventType') || undefined;
   const state = params.get('state') || undefined;
   const limit = Number(params.get('limit') || '100');
+  let templateSession: Awaited<ReturnType<typeof requireSession>> | null = null;
 
   const normalizedState = typeof state === 'string' ? state.toUpperCase() : undefined;
   if (normalizedState === 'TEMPLATE') {
-    // Event templates are private: only the host (or an admin) can list them.
-    const session = await requireSession(req);
-    if (!session.isAdmin) {
-      if (hostId && hostId !== session.userId) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    templateSession = await requireSession(req);
+    if (!templateSession.isAdmin) {
+      if (organizationId) {
+        const organization = await prisma.organizations.findUnique({
+          where: { id: organizationId },
+          select: { ownerId: true, hostIds: true },
+        });
+        if (!canManageOrganization(templateSession, organization)) {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        // Organization template visibility is org-scoped, not host-scoped.
+        hostId = undefined;
+      } else {
+        // Personal templates are private to the signed-in host.
+        if (hostId && hostId !== templateSession.userId) {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        hostId = templateSession.userId;
       }
-      hostId = session.userId;
     }
   }
 
@@ -269,6 +284,9 @@ export async function GET(req: NextRequest) {
   }
   if (ids?.length) where.id = { in: ids };
   if (organizationId) where.organizationId = organizationId;
+  if (!organizationId && normalizedState === 'TEMPLATE' && templateSession && !templateSession.isAdmin) {
+    where.organizationId = null;
+  }
   if (hostId) where.hostId = hostId;
   if (sportId) where.sportId = sportId;
   if (eventType) where.eventType = eventType;
@@ -336,6 +354,14 @@ export async function POST(req: NextRequest) {
       getDivisionFieldMapForEvent(event.id, divisionKeys),
       getDivisionDetailsForEvent(event.id, divisionKeys, event.start),
     ]);
+    await notifySocialAudienceOfEventCreation({
+      eventId: event.id,
+      hostId: event.hostId,
+      eventName: event.name,
+      eventStart: event.start,
+      location: event.location,
+      baseUrl: req.nextUrl.origin,
+    });
     return NextResponse.json(
       { event: withLegacyEvent({ ...event, divisionFieldIds, divisionDetails }) },
       { status: 201 },

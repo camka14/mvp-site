@@ -133,6 +133,8 @@ export const cloneEventAsTemplate = (
     timeSlotIds: timeSlots.map((slot) => slot.$id),
     fieldIds,
     fields: hasLocalFields ? clonedFields : undefined,
+    // Org templates are shared across org managers; host gets chosen when instantiating an event.
+    hostId: isOrganizationEvent ? '' : source.hostId,
     $createdAt: '',
     $updatedAt: '',
   };

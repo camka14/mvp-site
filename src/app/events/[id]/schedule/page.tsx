@@ -1321,9 +1321,10 @@ function EventScheduleContent() {
         setTemplatesError(null);
         const qs = new URLSearchParams();
         qs.set('state', 'TEMPLATE');
-        qs.set('hostId', user.$id);
         if (resolvedHostOrgId) {
           qs.set('organizationId', resolvedHostOrgId);
+        } else {
+          qs.set('hostId', user.$id);
         }
         qs.set('limit', '50');
         const response = await apiRequest<{ events?: any[] }>(`/api/events?${qs.toString()}`);

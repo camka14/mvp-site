@@ -11,11 +11,11 @@ After this change, trusted Razumly administrators can open an Admin tab in the w
 ## Progress
 
 - [x] (2026-02-18 19:27Z) Mapped existing auth/session flow and navigation surface; confirmed no current secure Razumly-admin check exists.
-- [ ] Implement Razumly-admin authorization helper (verified Razumly email + optional allow-list support).
-- [ ] Add secure admin API routes for constants listing and record patch updates.
-- [ ] Add Admin UI page and nav tab visibility logic based on secure access check.
-- [ ] Add targeted automated tests for admin authorization and admin constants routes.
-- [ ] Run targeted test commands and record outcomes.
+- [x] (2026-02-18 19:33Z) Implemented Razumly-admin authorization helper in `src/server/razumlyAdmin.ts` with verified-email, domain, and optional allow-list checks.
+- [x] (2026-02-18 19:34Z) Added secure admin API routes for access checks, constants listing, and constants patch updates.
+- [x] (2026-02-18 19:35Z) Added protected `/admin` page and client constants editor; wired conditional Admin nav tab.
+- [x] (2026-02-18 19:37Z) Added targeted automated tests for admin helper and admin API routes.
+- [x] (2026-02-18 19:39Z) Executed targeted tests and captured passing outputs.
 
 ## Surprises & Discoveries
 
@@ -24,6 +24,9 @@ After this change, trusted Razumly administrators can open an Admin tab in the w
 
 - Observation: Division type options are currently code-driven in `src/lib/divisionTypes.ts`, while table-driven constants available today are `Sports`, `Divisions`, and `LeagueScoringConfigs`.
   Evidence: schema and route scan across `prisma/schema.prisma` and `src/app/api`.
+
+- Observation: Jest path matching for dynamic route folders (`[kind]`, `[id]`) is shell-sensitive and can skip tests unless run with `--runTestsByPath`.
+  Evidence: first targeted test invocation omitted the nested dynamic-route test file; explicit `--runTestsByPath` executed it.
 
 ## Decision Log
 
@@ -35,9 +38,19 @@ After this change, trusted Razumly administrators can open an Admin tab in the w
   Rationale: Minimizes regression risk in a very large profile component and keeps admin tooling isolated.
   Date/Author: 2026-02-18 / Codex
 
+- Decision: Treat "constants" divisions as global division rows only (`eventId = null` and `organizationId = null`) in admin listing.
+  Rationale: Avoid accidental edits to event-specific/organization-specific operational division records from the global constants tool.
+  Date/Author: 2026-02-18 / Codex
+
 ## Outcomes & Retrospective
 
-Pending implementation.
+Implemented a secure admin management flow for constants:
+- Server guard: verified Razumly email requirement with optional allow-list.
+- Secure API: `/api/admin/access`, `/api/admin/constants`, `/api/admin/constants/[kind]/[id]`.
+- UI: protected `/admin` page with tabs for Sports, Divisions, and League Configs, plus JSON-based patch editor.
+- Navigation: conditional `Admin` tab visibility based on secure access endpoint.
+
+The feature meets the requested behavior while keeping authorization server-enforced. Remaining enhancement opportunity: add create/delete flows in the admin constants UI if needed later.
 
 ## Context and Orientation
 
@@ -91,7 +104,13 @@ All changes are additive and safe to re-run. Route tests use mocks and do not mu
 
 ## Artifacts and Notes
 
-Will capture key test outputs after implementation.
+Key validation commands and outcomes:
+
+    npm test -- src/server/__tests__/razumlyAdmin.test.ts src/app/api/admin/__tests__/accessRoute.test.ts src/app/api/admin/constants/__tests__/route.test.ts
+    PASS: 3 suites, 10 tests
+
+    npm test -- --runTestsByPath "src/app/api/admin/constants/[kind]/[id]/__tests__/route.test.ts"
+    PASS: 1 suite, 3 tests
 
 ## Interfaces and Dependencies
 
@@ -108,4 +127,4 @@ New server helper in `src/server/razumlyAdmin.ts`:
     export const requireRazumlyAdmin(req: NextRequest): Promise<AuthContext & { adminEmail: string }>;
     export const resolveRazumlyAdminFromToken(token: string | null): Promise<{ session: SessionToken | null; status: RazumlyAdminStatus }>;
 
-Revision note (2026-02-18): Initial plan created before code changes to satisfy ExecPlan requirement for this feature.
+Revision note (2026-02-18): Updated after implementation to reflect completed milestones, final decisions, and test evidence.
