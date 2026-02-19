@@ -120,20 +120,21 @@ export async function POST(req: NextRequest) {
     ];
   }
 
-  const hasDistanceFilter = filters.userLocation && typeof filters.maxDistance === 'number';
+  const userLocation = filters.userLocation;
+  const hasDistanceFilter = Boolean(userLocation && typeof filters.maxDistance === 'number');
   let events = await prisma.events.findMany({
     where,
     orderBy: { start: 'asc' },
     ...(hasDistanceFilter ? {} : { take: limit, skip: offset }),
   });
 
-  if (hasDistanceFilter) {
-    const { lat, lng, long } = filters.userLocation;
+  if (userLocation && typeof filters.maxDistance === 'number') {
+    const { lat, lng, long } = userLocation;
     const lon = typeof long === 'number' ? long : lng;
     if (typeof lon !== 'number') {
       return NextResponse.json({ error: 'Invalid input', details: { userLocation: 'Missing longitude' } }, { status: 400 });
     }
-    const maxDistanceMiles = (filters.maxDistance as number) * 0.621371;
+    const maxDistanceMiles = filters.maxDistance * 0.621371;
     events = events.filter((event) => {
       const coords = event.coordinates as any;
       if (!Array.isArray(coords) || coords.length < 2) return true;

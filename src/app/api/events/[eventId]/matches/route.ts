@@ -124,7 +124,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
         if (Object.prototype.hasOwnProperty.call(entry, 'end')) {
           if (entry.end == null) {
-            target.end = null;
+            (target as unknown as { end: Date | null }).end = null;
           } else {
             const parsedEnd = parseDateInput(entry.end);
             if (!parsedEnd) {
@@ -139,9 +139,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             ? entry.division.trim()
             : null;
           if (!divisionId) {
-            target.division = null;
+            (target as unknown as { division: typeof target.division | null }).division = null;
           } else {
-            const division = event.divisions[divisionId];
+            const division = event.divisions.find((candidate) => candidate.id === divisionId);
             if (!division) {
               throw new Response(`Division ${divisionId} not found for match ${matchId}.`, { status: 400 });
             }

@@ -757,6 +757,17 @@ function EventsTabContent(props: {
     setSelectedSports,
   ]);
 
+  const parsePickerDate = useCallback((value: unknown): Date | null => {
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return null;
+  }, []);
+
   const getEventDistanceKm = useCallback((event: Event) => {
     if (!location || !Array.isArray(event.coordinates) || event.coordinates.length < 2) {
       return undefined;
@@ -966,7 +977,7 @@ function EventsTabContent(props: {
         <div className="grid gap-2">
           <DatePickerInput
             value={selectedStartDate}
-            onChange={(value) => setSelectedStartDate(value)}
+            onChange={(value) => setSelectedStartDate(parsePickerDate(value))}
             clearable
             leftSection={<CalendarDays size={16} />}
             placeholder="From today (default)"
@@ -976,7 +987,7 @@ function EventsTabContent(props: {
           />
           <DatePickerInput
             value={selectedEndDate}
-            onChange={(value) => setSelectedEndDate(value)}
+            onChange={(value) => setSelectedEndDate(parsePickerDate(value))}
             clearable
             leftSection={<CalendarDays size={16} />}
             minDate={
