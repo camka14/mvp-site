@@ -14,7 +14,7 @@ const baseNav: NavItem[] = [
 ];
 
 export default function Navigation() {
-  const { authUser, setUser, isGuest } = useApp();
+  const { authUser, setUser, setAuthUser, isGuest } = useApp();
   const pathname = usePathname();
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -24,7 +24,10 @@ export default function Navigation() {
     try {
       await authService.logout();
       setUser(null);
-      router.push('/login');
+      setAuthUser(null);
+      setIsMenuOpen(false);
+      router.replace('/login');
+      router.refresh();
     } catch (error) {
       console.error('Logout error:', error);
     }

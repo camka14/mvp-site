@@ -77,6 +77,7 @@ export default function DiscoverPage() {
 function DiscoverPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
   const { user, loading: authLoading, isAuthenticated } = useApp();
   const { location, requestLocation } = useLocation();
 
@@ -166,15 +167,22 @@ function DiscoverPageContent() {
    * Keep URL in sync with search
    */
   useEffect(() => {
-    const params = new URLSearchParams(searchParams);
+    const params = new URLSearchParams(searchParamsString);
     if (debouncedSearch) {
       params.set('q', debouncedSearch);
     } else {
       params.delete('q');
     }
-    router.push(`/discover?${params.toString()}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]);
+    const nextQuery = params.toString();
+    const nextUrl = nextQuery ? `/discover?${nextQuery}` : '/discover';
+    const currentUrl = searchParamsString ? `/discover?${searchParamsString}` : '/discover';
+    if (nextUrl === currentUrl) {
+      return;
+    }
+    // Keep discover query params in sync without triggering router navigations
+    // that can race with user-initiated route changes (Profile/Organizations).
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }, [debouncedSearch, searchParamsString]);
 
   useEffect(() => {
     if (sportsLoading) return;
