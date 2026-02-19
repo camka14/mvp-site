@@ -73,15 +73,15 @@ export default function Navigation() {
     );
 
   return (
-    <nav className="bg-white elevation-2 sticky top-0 z-50">
+    <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="container-responsive">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link href="/discover" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white" style={{ background: 'var(--ocean-primary)' }}>
               <span className="text-white font-bold text-lg">M</span>
             </div>
-            <span className="text-xl font-bold text-gray-900">MVP</span>
+            <span className="text-xl font-bold text-slate-900">MVP</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -91,8 +91,8 @@ export default function Navigation() {
                 key={item.href}
                 href={item.href}
                 className={`font-medium transition-colors duration-200 ${(pathname === item.href || pathname.startsWith(item.href + '/'))
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'text-blue-700'
+                    : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 {item.label}
@@ -117,9 +117,11 @@ export default function Navigation() {
               </>
             ) : (
               <>
-                <div className="hidden md:flex items-center space-x-2">
-                  <span className="text-sm text-gray-600">Hello,</span>
-                  <span className="text-sm font-medium text-gray-900">
+                <div className="hidden md:flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
+                    {(authUser.name || authUser.email.split('@')[0]).slice(0, 1).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium text-slate-800">
                     {authUser.name || authUser.email.split('@')[0]}
                   </span>
                 </div>

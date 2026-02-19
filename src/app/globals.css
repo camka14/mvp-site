@@ -9,7 +9,7 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #f8fafc;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -40,27 +40,35 @@
 
 /* Button variants - FIXED: Removed elevation classes from @apply */
 .btn-primary {
-  @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  @apply text-white font-medium py-2 px-4 transition-colors duration-200;
+  background: var(--ocean-primary);
+  border-radius: 0.75rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
 
+.btn-primary:hover {
+  background: var(--ocean-primary-hover);
+}
+
 .btn-secondary {
-  @apply bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg border border-gray-300 transition-colors duration-200;
+  @apply bg-white hover:bg-slate-50 text-slate-700 font-medium py-2 px-4 rounded-xl border transition-colors duration-200;
+  border-color: var(--ocean-border);
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .btn-ghost {
-  @apply hover:bg-gray-100 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  @apply hover:bg-slate-100 text-slate-700 font-medium py-2 px-4 rounded-xl transition-colors duration-200;
 }
 
 /* Card component - FIXED: Removed elevation class from @apply */
 .card {
-  @apply bg-white rounded-xl overflow-hidden;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  @apply bg-white rounded-2xl overflow-hidden border;
+  border-color: var(--ocean-border);
+  box-shadow: 0 8px 24px -18px rgba(15, 23, 42, 0.45);
 }
 
 .card:hover {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 14px 30px -20px rgba(15, 23, 42, 0.5);
 }
 
 .card-header {
@@ -143,6 +151,164 @@
   color: #2563eb;
 }
 
+.discover-shell {
+  --discover-bg: var(--ocean-bg);
+  --discover-surface: var(--ocean-surface);
+  --discover-surface-muted: var(--ocean-surface-muted);
+  --discover-border: var(--ocean-border);
+  --discover-text: var(--ocean-text);
+  --discover-text-muted: var(--ocean-text-muted);
+  --discover-primary: var(--ocean-primary);
+}
+
+.discover-page-header {
+  max-width: 56rem;
+}
+
+.discover-title {
+  color: var(--discover-text);
+}
+
+.discover-subtitle {
+  color: var(--discover-text-muted);
+}
+
+.discover-segment-list {
+  background: var(--discover-surface-muted);
+  border: 1px solid var(--discover-border);
+  border-radius: 999px;
+  padding: 0.25rem;
+}
+
+.discover-segment-tab {
+  color: var(--discover-text-muted);
+  font-weight: 600;
+}
+
+.discover-segment-tab[data-active='true'] {
+  background: var(--discover-surface);
+  color: var(--discover-text);
+  box-shadow: 0 2px 6px -4px rgba(15, 23, 42, 0.35);
+}
+
+.discover-filter-panel {
+  background: var(--discover-surface);
+  border-color: var(--discover-border);
+}
+
+.discover-active-filters {
+  background: var(--discover-surface-muted);
+  border-color: var(--discover-border);
+}
+
+.discover-active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--discover-border);
+  background: var(--discover-surface);
+  color: var(--discover-text);
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 600;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.discover-active-filter-chip:hover {
+  border-color: var(--discover-primary);
+  color: var(--discover-primary);
+}
+
+.discover-event-card {
+  background: var(--discover-surface);
+}
+
+.discover-event-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.discover-badge-event {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.discover-badge-league {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.discover-badge-tournament {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.discover-muted-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--discover-border);
+  border-radius: 999px;
+  background: var(--discover-surface-muted);
+  color: var(--discover-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+}
+
+.discover-details-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--discover-border);
+  border-radius: 999px;
+  background: var(--discover-surface-muted);
+  color: var(--discover-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.28rem 0.75rem;
+}
+
+.org-page-shell .org-tab-segmented {
+  width: 100%;
+  border: 1px solid var(--ocean-border);
+  border-radius: 999px;
+  background: var(--ocean-surface-muted);
+  padding: 0.25rem;
+}
+
+.org-page-shell .org-tab-segmented .mantine-SegmentedControl-indicator {
+  background: var(--ocean-surface);
+  border: 1px solid var(--ocean-border);
+  box-shadow: 0 2px 6px -4px rgba(15, 23, 42, 0.35);
+  border-radius: 999px;
+}
+
+.org-page-shell .org-tab-segmented .mantine-SegmentedControl-control {
+  color: var(--ocean-text-muted);
+}
+
+.org-page-shell .org-tab-segmented .mantine-SegmentedControl-label {
+  color: inherit;
+  font-weight: 600;
+}
+
+.org-page-shell .org-tab-content {
+  display: block;
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root {
+  background: var(--ocean-surface);
+  border-color: var(--ocean-border);
+  border-radius: 1rem;
+}
+
 /* Hide details marker */
 summary::-webkit-details-marker {
   display: none;
@@ -203,38 +369,50 @@ summary::-webkit-details-marker {
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --radius: 0.75rem;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #475569;
+  --accent: #ccfbf1;
+  --accent-foreground: #0f766e;
+  --destructive: #ef4444;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #93c5fd;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #93c5fd;
+
+  --ocean-bg: #f8fafc;
+  --ocean-surface: #ffffff;
+  --ocean-surface-muted: #f1f5f9;
+  --ocean-border: #e2e8f0;
+  --ocean-text: #0f172a;
+  --ocean-text-muted: #475569;
+  --ocean-primary: #2563eb;
+  --ocean-primary-hover: #1d4ed8;
+  --ocean-focus: #93c5fd;
+  --ocean-accent: #14b8a6;
+  --ocean-accent-soft: #ccfbf1;
 }
 
 .dark {

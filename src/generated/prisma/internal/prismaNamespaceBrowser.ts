@@ -400,6 +400,7 @@ export const EventsScalarFieldEnum = {
   maxAge: 'maxAge',
   hostId: 'hostId',
   assistantHostIds: 'assistantHostIds',
+  noFixedEndDateTime: 'noFixedEndDateTime',
   price: 'price',
   singleDivision: 'singleDivision',
   registrationByDivisionType: 'registrationByDivisionType',

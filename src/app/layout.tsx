@@ -55,7 +55,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </head>
-      <body className="min-h-screen bg-gray-50">
+      <body className="min-h-screen bg-background text-foreground">
         <MantineProvider>
           <Providers>
             {disableChat ? (

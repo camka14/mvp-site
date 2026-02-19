@@ -273,4 +273,32 @@ describe('upsertEventFromPayload', () => {
     expect(fieldUpsertArg.update.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
+
+  it('retries event upsert without unknown Prisma arguments', async () => {
+    const client = createMockClient();
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    client.events.upsert
+      .mockRejectedValueOnce(new Error('Unknown argument `noFixedEndDateTime`. Available options are marked with ?.'))
+      .mockResolvedValue(undefined);
+
+    const payload = {
+      ...baseEventPayload(),
+      noFixedEndDateTime: false,
+    };
+
+    try {
+      await upsertEventFromPayload(payload, client as any);
+
+      expect(client.events.upsert).toHaveBeenCalledTimes(2);
+      const firstCallArgs = client.events.upsert.mock.calls[0][0];
+      const secondCallArgs = client.events.upsert.mock.calls[1][0];
+      expect(firstCallArgs.create.noFixedEndDateTime).toBe(false);
+      expect(firstCallArgs.update.noFixedEndDateTime).toBe(false);
+      expect(secondCallArgs.create.noFixedEndDateTime).toBeUndefined();
+      expect(secondCallArgs.update.noFixedEndDateTime).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('noFixedEndDateTime'));
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });

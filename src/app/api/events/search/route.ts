@@ -72,6 +72,32 @@ export async function POST(req: NextRequest) {
   if (filters.divisions?.length) {
     where.divisions = { hasSome: filters.divisions };
   }
+  if (filters.sports?.length) {
+    const normalizedSports = Array.from(
+      new Set(
+        filters.sports
+          .map((sport) => String(sport).trim())
+          .filter((sport) => sport.length > 0),
+      ),
+    );
+
+    if (normalizedSports.length > 0) {
+      const matchingSports = await prisma.sports.findMany({
+        where: {
+          OR: normalizedSports.map((sportName) => ({
+            name: { equals: sportName, mode: 'insensitive' as const },
+          })),
+        },
+        select: { id: true },
+      });
+
+      const sportIds = matchingSports.map((sport) => sport.id);
+      if (!sportIds.length) {
+        return NextResponse.json({ events: [] }, { status: 200 });
+      }
+      where.sportId = { in: sportIds };
+    }
+  }
   if (filters.dateFrom) {
     const start = new Date(filters.dateFrom);
     if (!Number.isNaN(start.getTime())) {
@@ -92,26 +118,28 @@ export async function POST(req: NextRequest) {
     ];
   }
 
+  const hasDistanceFilter = filters.userLocation && typeof filters.maxDistance === 'number';
   let events = await prisma.events.findMany({
     where,
     orderBy: { start: 'asc' },
-    take: limit,
-    skip: offset,
+    ...(hasDistanceFilter ? {} : { take: limit, skip: offset }),
   });
 
-  if (filters.userLocation && typeof filters.maxDistance === 'number') {
+  if (hasDistanceFilter) {
     const { lat, lng, long } = filters.userLocation;
     const lon = typeof long === 'number' ? long : lng;
     if (typeof lon !== 'number') {
       return NextResponse.json({ error: 'Invalid input', details: { userLocation: 'Missing longitude' } }, { status: 400 });
     }
+    const maxDistanceMiles = (filters.maxDistance as number) * 0.621371;
     events = events.filter((event) => {
       const coords = event.coordinates as any;
       if (!Array.isArray(coords) || coords.length < 2) return true;
       const [lng, latitude] = coords;
       if (typeof lng !== 'number' || typeof latitude !== 'number') return true;
-      return haversineMiles(lat, lon, latitude, lng) <= (filters.maxDistance as number);
+      return haversineMiles(lat, lon, latitude, lng) <= maxDistanceMiles;
     });
+    events = events.slice(offset, offset + limit);
   }
 
   const normalized = events.map((event) => withLegacyEvent(event));

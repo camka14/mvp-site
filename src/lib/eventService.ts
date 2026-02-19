@@ -80,7 +80,13 @@ class EventService {
             await this.ensureLeagueScoringConfig(response);
 
             const baseEvent = this.mapRowToEvent(response);
-            return await this.hydrateEventRelations(baseEvent, response);
+            try {
+                return await this.hydrateEventRelations(baseEvent, response);
+            } catch (error) {
+                // Keep core event data usable even when one of the relation lookups fails.
+                console.error('Failed to hydrate event relations:', error);
+                return baseEvent;
+            }
         } catch (error) {
             console.error('Failed to fetch event with relations:', error);
             return undefined;
@@ -1400,17 +1406,21 @@ class EventService {
     }
 
     // Waitlist and free-agent helpers used by EventDetailSheet
-    async addToWaitlist(eventId: string, participantId: string): Promise<Event> {
-        const existing = await this.getEvent(eventId);
-        if (!existing) throw new Error('Event not found');
-        const updated = Array.from(new Set([...(existing.waitListIds || []), participantId]));
-        const response = await apiRequest<any>(`/api/events/${eventId}`, {
-            method: 'PATCH',
-            body: { event: { waitListIds: updated } },
+    async addToWaitlist(
+        eventId: string,
+        participantId: string,
+        participantType: 'user' | 'team' = 'user',
+    ): Promise<Event> {
+        const response = await apiRequest<any>(`/api/events/${eventId}/waitlist`, {
+            method: 'POST',
+            body: participantType === 'team'
+                ? { teamId: participantId }
+                : { userId: participantId },
         });
-        await this.ensureSportRelationship(response);
-        await this.ensureLeagueScoringConfig(response);
-        return this.mapRowToEvent(response);
+        const payload = response?.event ?? response;
+        await this.ensureSportRelationship(payload);
+        await this.ensureLeagueScoringConfig(payload);
+        return this.mapRowToEvent(payload);
     }
 
     async addFreeAgent(eventId: string, userId: string): Promise<Event> {
@@ -1451,27 +1461,7 @@ class EventService {
                 events.push(this.mapRowToEvent(row));
             }
 
-            let filtered = events;
-
-            if (filters.sports && filters.sports.length > 0) {
-                const lower = filters.sports.map((sport) => sport.toLowerCase());
-                filtered = filtered.filter(
-                    (event) => event.sport && lower.includes(event.sport.name.toLowerCase()),
-                );
-            }
-
-            // Apply client-side filtering
-            if (filters.query) {
-                const searchTerm = filters.query.toLowerCase();
-                filtered = filtered.filter(event =>
-                    event.name.toLowerCase().includes(searchTerm) ||
-                    event.description.toLowerCase().includes(searchTerm) ||
-                    event.location.toLowerCase().includes(searchTerm) ||
-                    (event.sport?.name ?? '').toLowerCase().includes(searchTerm)
-                );
-            }
-
-            return filtered;
+            return events;
         } catch (error) {
             console.error('Failed to fetch paginated events:', error);
             throw new Error('Failed to load events');

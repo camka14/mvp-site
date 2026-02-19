@@ -1291,7 +1291,7 @@ function OrganizationDetailContent() {
   return (
     <>
       <Navigation />
-      <Container size="lg" py="xl">
+      <Container size="xl" py="xl" className="discover-shell org-page-shell">
         {loading || !org ? (
           <Loading fullScreen={false} text="Loading organization..." />
         ) : (
@@ -1310,7 +1310,7 @@ function OrganizationDetailContent() {
                   />
                 )}
                 <div>
-                  <Title order={2} mb={2}>{org.name}</Title>
+                  <Title order={2} mb={2} className="discover-title">{org.name}</Title>
                   <Group gap="md">
                     {org.website && (
                       <a href={org.website} target="_blank" rel="noreferrer"><Text c="blue">{org.website}</Text></a>
@@ -1328,9 +1328,12 @@ function OrganizationDetailContent() {
               value={activeTab}
               onChange={(v: any) => setActiveTab(v)}
               data={availableTabs}
+              className="org-tab-segmented"
+              radius="xl"
               mb="lg"
             />
 
+            <div className="org-tab-content">
             {activeTab === 'overview' && (
               <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="lg">
                 <div style={{ gridColumn: 'span 2' }}>
@@ -2270,6 +2273,7 @@ function OrganizationDetailContent() {
             {activeTab === 'fields' && org && (
               <FieldsTabContent organization={org} organizationId={id ?? ''} currentUser={user ?? null} />
             )}
+            </div>
           </>
         )}
       </Container>

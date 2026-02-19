@@ -27,6 +27,56 @@ import {
 } from '@/server/scheduler/types';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
+const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
+const warnedMissingEventArguments = new Set<string>();
+
+const extractUnknownPrismaArgument = (error: unknown): string | null => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
+  return match?.[1] ?? null;
+};
+
+const upsertEventWithUnknownArgFallback = async (
+  client: PrismaLike,
+  id: string,
+  eventData: Record<string, unknown>,
+): Promise<void> => {
+  const removedArguments = new Set<string>();
+
+  while (true) {
+    const createData: Record<string, unknown> = { ...eventData, createdAt: new Date() };
+    const updateData: Record<string, unknown> = { ...eventData };
+    for (const argumentName of removedArguments) {
+      delete createData[argumentName];
+      delete updateData[argumentName];
+    }
+
+    try {
+      await client.events.upsert({
+        where: { id },
+        create: createData as any,
+        update: updateData as any,
+      });
+      return;
+    } catch (error) {
+      const unknownArgument = extractUnknownPrismaArgument(error);
+      const hasArgument = unknownArgument
+        ? Object.prototype.hasOwnProperty.call(createData, unknownArgument)
+          || Object.prototype.hasOwnProperty.call(updateData, unknownArgument)
+        : false;
+      if (!unknownArgument || !hasArgument || removedArguments.has(unknownArgument)) {
+        throw error;
+      }
+      removedArguments.add(unknownArgument);
+      if (!warnedMissingEventArguments.has(unknownArgument)) {
+        warnedMissingEventArguments.add(unknownArgument);
+        console.warn(
+          `[events] Prisma client is missing Events.${unknownArgument}; retrying event upsert without it. Regenerate Prisma client to restore this field.`,
+        );
+      }
+    }
+  }
+};
 
 const ensureArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : []);
 const ensureStringArray = (value: unknown): string[] => ensureArray(value as string[]);
@@ -1267,11 +1317,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     updatedAt: new Date(),
   };
 
-  await client.events.upsert({
-    where: { id },
-    create: { ...eventData, createdAt: new Date() },
-    update: eventData,
-  });
+  await upsertEventWithUnknownArgFallback(client, id, eventData as Record<string, unknown>);
 
   await syncEventDivisions({
     eventId: id,

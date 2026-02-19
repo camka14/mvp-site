@@ -58,6 +58,24 @@ const parseDateValue = (value?: string | null): Date | null => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const normalizeUserId = (value: unknown): string | null => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+};
+
+const collectUniqueUserIds = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const ids = value
+        .map((entry) => normalizeUserId(entry))
+        .filter((entry): entry is string => Boolean(entry));
+    return Array.from(new Set(ids));
+};
+
 type DivisionSelectionPayload = {
     divisionId?: string;
     divisionTypeId?: string;
@@ -540,7 +558,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setIsLoadingEvent(true);
         try {
             // Fetch full event with relationships for accurate editing context
-            const latest = await eventService.getEventWithRelations(targetId);
+            let latest = await eventService.getEventWithRelations(targetId);
+            if (!latest) {
+                latest = await eventService.getEvent(targetId);
+            }
             const baseEvent = latest || event;
             if (!baseEvent) {
                 return;
@@ -554,7 +575,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setPlayers(eventPlayers);
             setTeams(eventTeams);
 
-            const freeAgentIds = Array.isArray(baseEvent.freeAgentIds) ? baseEvent.freeAgentIds : [];
+            const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
             const shouldLoadFreeAgents = freeAgentIds.length > 0;
 
             if (shouldLoadFreeAgents) {
@@ -579,13 +600,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     useEffect(() => {
         if (isActive && event) {
             setDetailedEvent(event);
-            if (event.state !== 'DRAFT') {
-                void loadEventDetails();
-            }
+            void loadEventDetails();
         } else {
             setDetailedEvent(null);
             setPlayers([]);
             setTeams([]);
+            setFreeAgents([]);
             setIsLoadingEvent(false);
             setIsLoadingTeams(false);
             setJoinError(null); // Reset error when modal closes
@@ -679,14 +699,19 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setChildConsent(result.consent ?? null);
             setChildRegistrationChildId(childId);
             const notices: string[] = [];
-            if (result.requiresParentApproval) {
+            const registrationStatus = (result.registration?.status ?? '').toLowerCase();
+            if (registrationStatus === 'active') {
+                notices.push('Child registration completed.');
+            } else if (result.requiresParentApproval) {
                 notices.push('Child request sent. A parent/guardian must approve before registration can continue.');
             } else if (result.consent?.requiresChildEmail) {
                 notices.push('Child registration started. Add child email to continue child-signature document steps.');
             } else if (result.consent?.status) {
-                notices.push(`Child registration started. Consent status: ${result.consent.status}.`);
+                notices.push(`Child registration is pending. Consent status: ${result.consent.status}.`);
+            } else if (registrationStatus) {
+                notices.push(`Child registration is pending. Status: ${registrationStatus}.`);
             } else {
-                notices.push('Child registration started.');
+                notices.push('Child registration request submitted and is pending processing.');
             }
             if (Array.isArray(result.warnings) && result.warnings.length > 0) {
                 notices.push(result.warnings[0]);
@@ -1278,12 +1303,20 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const { date, time } = getEventDateTime(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
     const totalParticipants = isTeamSignup ? teams.length : players.length;
+    const normalizedFreeAgentIds = (() => {
+        const fromEvent = collectUniqueUserIds(currentEvent.freeAgentIds);
+        const additionalFromProfiles = freeAgents
+            .map((entry) => normalizeUserId(entry?.$id))
+            .filter((entry): entry is string => Boolean(entry));
+        return Array.from(new Set([...fromEvent, ...additionalFromProfiles]));
+    })();
+    const normalizedFreeAgentIdSet = new Set(normalizedFreeAgentIds);
     // Use expanded relations for registration state
     const isUserRegistered = !!user && (
         (!isTeamSignup && players.some(p => p.$id === user.$id)) ||
         (isTeamSignup && teams.some(t => (t.playerIds || []).includes(user.$id)))
     );
-    const isUserFreeAgent = !!user && (currentEvent.freeAgentIds || []).includes(user.$id);
+    const isUserFreeAgent = !!user && normalizedFreeAgentIdSet.has(user.$id);
     const isChildEligible = (child: FamilyChild): boolean => {
         const childDob = parseDateValue(child.dateOfBirth ?? null);
         if (!childDob) {
@@ -1335,8 +1368,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         : true;
     const selectedChildIsFreeAgent = Boolean(
         selectedChildId
-        && Array.isArray(currentEvent.freeAgentIds)
-        && currentEvent.freeAgentIds.includes(selectedChildId),
+        && normalizedFreeAgentIdSet.has(selectedChildId),
     );
     const showChildRegistrationStatus = Boolean(selectedChildId && childRegistrationChildId === selectedChildId);
     const hasCoordinates = Array.isArray(currentEvent.coordinates) && currentEvent.coordinates.length >= 2;
@@ -1740,7 +1772,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                 <ParticipantsPreview
                                     title="Free Agents"
                                     participants={freeAgents}
-                                    totalCount={currentEvent.freeAgentIds?.length ?? 0}
+                                    totalCount={normalizedFreeAgentIds.length}
                                     isLoading={isLoadingEvent}
                                     onClick={() => setShowFreeAgentsDropdown(true)}
                                     getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
@@ -1868,7 +1900,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                             setJoining(true);
                                                             setJoinError(null);
                                                             try {
-                                                                await eventService.addToWaitlist(currentEvent.$id, user.$id);
+                                                                await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user');
                                                                 await loadEventDetails();
                                                             } catch (e) {
                                                                 setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');
@@ -1967,7 +1999,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                                 setJoining(true);
                                                                                 setJoinError(null);
                                                                                 try {
-                                                                                    await eventService.addToWaitlist(currentEvent.$id, selectedTeamId);
+                                                                                    await eventService.addToWaitlist(currentEvent.$id, selectedTeamId, 'team');
                                                                                     await loadEventDetails();
                                                                                 } catch (e: any) {
                                                                                     setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');

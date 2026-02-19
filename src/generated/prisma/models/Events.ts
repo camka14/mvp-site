@@ -96,6 +96,7 @@ export type EventsMinAggregateOutputType = {
   minAge: number | null
   maxAge: number | null
   hostId: string | null
+  noFixedEndDateTime: boolean | null
   price: number | null
   singleDivision: boolean | null
   registrationByDivisionType: boolean | null
@@ -144,6 +145,7 @@ export type EventsMaxAggregateOutputType = {
   minAge: number | null
   maxAge: number | null
   hostId: string | null
+  noFixedEndDateTime: boolean | null
   price: number | null
   singleDivision: boolean | null
   registrationByDivisionType: boolean | null
@@ -194,6 +196,7 @@ export type EventsCountAggregateOutputType = {
   maxAge: number
   hostId: number
   assistantHostIds: number
+  noFixedEndDateTime: number
   price: number
   singleDivision: number
   registrationByDivisionType: number
@@ -311,6 +314,7 @@ export type EventsMinAggregateInputType = {
   minAge?: true
   maxAge?: true
   hostId?: true
+  noFixedEndDateTime?: true
   price?: true
   singleDivision?: true
   registrationByDivisionType?: true
@@ -359,6 +363,7 @@ export type EventsMaxAggregateInputType = {
   minAge?: true
   maxAge?: true
   hostId?: true
+  noFixedEndDateTime?: true
   price?: true
   singleDivision?: true
   registrationByDivisionType?: true
@@ -409,6 +414,7 @@ export type EventsCountAggregateInputType = {
   maxAge?: true
   hostId?: true
   assistantHostIds?: true
+  noFixedEndDateTime?: true
   price?: true
   singleDivision?: true
   registrationByDivisionType?: true
@@ -561,6 +567,7 @@ export type EventsGroupByOutputType = {
   maxAge: number | null
   hostId: string
   assistantHostIds: string[]
+  noFixedEndDateTime: boolean
   price: number
   singleDivision: boolean | null
   registrationByDivisionType: boolean | null
@@ -649,6 +656,7 @@ export type EventsWhereInput = {
   maxAge?: Prisma.IntNullableFilter<"Events"> | number | null
   hostId?: Prisma.StringFilter<"Events"> | string
   assistantHostIds?: Prisma.StringNullableListFilter<"Events">
+  noFixedEndDateTime?: Prisma.BoolFilter<"Events"> | boolean
   price?: Prisma.IntFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -714,6 +722,7 @@ export type EventsOrderByWithRelationInput = {
   maxAge?: Prisma.SortOrderInput | Prisma.SortOrder
   hostId?: Prisma.SortOrder
   assistantHostIds?: Prisma.SortOrder
+  noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrderInput | Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -782,6 +791,7 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   maxAge?: Prisma.IntNullableFilter<"Events"> | number | null
   hostId?: Prisma.StringFilter<"Events"> | string
   assistantHostIds?: Prisma.StringNullableListFilter<"Events">
+  noFixedEndDateTime?: Prisma.BoolFilter<"Events"> | boolean
   price?: Prisma.IntFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -847,6 +857,7 @@ export type EventsOrderByWithAggregationInput = {
   maxAge?: Prisma.SortOrderInput | Prisma.SortOrder
   hostId?: Prisma.SortOrder
   assistantHostIds?: Prisma.SortOrder
+  noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrderInput | Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -920,6 +931,7 @@ export type EventsScalarWhereWithAggregatesInput = {
   maxAge?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
   hostId?: Prisma.StringWithAggregatesFilter<"Events"> | string
   assistantHostIds?: Prisma.StringNullableListFilter<"Events">
+  noFixedEndDateTime?: Prisma.BoolWithAggregatesFilter<"Events"> | boolean
   price?: Prisma.IntWithAggregatesFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
@@ -985,6 +997,7 @@ export type EventsCreateInput = {
   maxAge?: number | null
   hostId: string
   assistantHostIds?: Prisma.EventsCreateassistantHostIdsInput | string[]
+  noFixedEndDateTime?: boolean
   price: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
@@ -1050,6 +1063,7 @@ export type EventsUncheckedCreateInput = {
   maxAge?: number | null
   hostId: string
   assistantHostIds?: Prisma.EventsCreateassistantHostIdsInput | string[]
+  noFixedEndDateTime?: boolean
   price: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
@@ -1115,6 +1129,7 @@ export type EventsUpdateInput = {
   maxAge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   hostId?: Prisma.StringFieldUpdateOperationsInput | string
   assistantHostIds?: Prisma.EventsUpdateassistantHostIdsInput | string[]
+  noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1180,6 +1195,7 @@ export type EventsUncheckedUpdateInput = {
   maxAge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   hostId?: Prisma.StringFieldUpdateOperationsInput | string
   assistantHostIds?: Prisma.EventsUpdateassistantHostIdsInput | string[]
+  noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1245,6 +1261,7 @@ export type EventsCreateManyInput = {
   maxAge?: number | null
   hostId: string
   assistantHostIds?: Prisma.EventsCreateassistantHostIdsInput | string[]
+  noFixedEndDateTime?: boolean
   price: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
@@ -1310,6 +1327,7 @@ export type EventsUpdateManyMutationInput = {
   maxAge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   hostId?: Prisma.StringFieldUpdateOperationsInput | string
   assistantHostIds?: Prisma.EventsUpdateassistantHostIdsInput | string[]
+  noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1375,6 +1393,7 @@ export type EventsUncheckedUpdateManyInput = {
   maxAge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   hostId?: Prisma.StringFieldUpdateOperationsInput | string
   assistantHostIds?: Prisma.EventsUpdateassistantHostIdsInput | string[]
+  noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1448,6 +1467,7 @@ export type EventsCountOrderByAggregateInput = {
   maxAge?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
   assistantHostIds?: Prisma.SortOrder
+  noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrder
@@ -1537,6 +1557,7 @@ export type EventsMaxOrderByAggregateInput = {
   minAge?: Prisma.SortOrder
   maxAge?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
+  noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrder
@@ -1585,6 +1606,7 @@ export type EventsMinOrderByAggregateInput = {
   minAge?: Prisma.SortOrder
   maxAge?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
+  noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrder
@@ -1715,6 +1737,10 @@ export type EventsUpdateassistantHostIdsInput = {
   push?: string | string[]
 }
 
+export type BoolFieldUpdateOperationsInput = {
+  set?: boolean
+}
+
 export type EventsUpdatewaitListIdsInput = {
   set?: string[]
   push?: string | string[]
@@ -1815,6 +1841,7 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   maxAge?: boolean
   hostId?: boolean
   assistantHostIds?: boolean
+  noFixedEndDateTime?: boolean
   price?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
@@ -1880,6 +1907,7 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   maxAge?: boolean
   hostId?: boolean
   assistantHostIds?: boolean
+  noFixedEndDateTime?: boolean
   price?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
@@ -1945,6 +1973,7 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   maxAge?: boolean
   hostId?: boolean
   assistantHostIds?: boolean
+  noFixedEndDateTime?: boolean
   price?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
@@ -2010,6 +2039,7 @@ export type EventsSelectScalar = {
   maxAge?: boolean
   hostId?: boolean
   assistantHostIds?: boolean
+  noFixedEndDateTime?: boolean
   price?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
@@ -2055,7 +2085,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "registrationIds" | "leagueScoringConfigId" | "organizationId" | "autoCancellation" | "eventType" | "doTeamsRef" | "refereeIds" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "registrationIds" | "leagueScoringConfigId" | "organizationId" | "autoCancellation" | "eventType" | "doTeamsRef" | "refereeIds" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2080,6 +2110,7 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     maxAge: number | null
     hostId: string
     assistantHostIds: string[]
+    noFixedEndDateTime: boolean
     price: number
     singleDivision: boolean | null
     registrationByDivisionType: boolean | null
@@ -2565,6 +2596,7 @@ export interface EventsFieldRefs {
   readonly maxAge: Prisma.FieldRef<"Events", 'Int'>
   readonly hostId: Prisma.FieldRef<"Events", 'String'>
   readonly assistantHostIds: Prisma.FieldRef<"Events", 'String[]'>
+  readonly noFixedEndDateTime: Prisma.FieldRef<"Events", 'Boolean'>
   readonly price: Prisma.FieldRef<"Events", 'Int'>
   readonly singleDivision: Prisma.FieldRef<"Events", 'Boolean'>
   readonly registrationByDivisionType: Prisma.FieldRef<"Events", 'Boolean'>

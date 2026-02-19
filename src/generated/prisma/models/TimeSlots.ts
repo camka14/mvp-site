@@ -539,10 +539,6 @@ export type TimeSlotsCreaterequiredTemplateIdsInput = {
   set: string[]
 }
 
-export type BoolFieldUpdateOperationsInput = {
-  set?: boolean
-}
-
 export type TimeSlotsUpdatedivisionsInput = {
   set?: string[]
   push?: string | string[]
