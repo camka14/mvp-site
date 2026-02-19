@@ -70,7 +70,6 @@ const createPrismaClient = (): PrismaClient => {
 };
 
 declare global {
-   
   var prisma: PrismaClient | undefined;
 }
 
@@ -80,9 +79,9 @@ const getPrisma = (): PrismaClient => {
   }
 
   const client = createPrismaClient();
-  if (process.env.NODE_ENV !== 'production') {
-    global.prisma = client;
-  }
+  // Reuse one Prisma client per process in every environment to avoid
+  // exhausting PostgreSQL connection limits under concurrent requests.
+  global.prisma = client;
   return client;
 };
 
