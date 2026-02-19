@@ -5,6 +5,27 @@ import { apiRequest } from './apiClient';
 import { normalizeApiMatch } from './apiMappers';
 
 class TournamentService {
+    private toBulkMatchUpdatePayload(match: Match): Record<string, unknown> {
+        return {
+            id: match.$id,
+            matchId: match.matchId,
+            team1Points: match.team1Points,
+            team2Points: match.team2Points,
+            setResults: match.setResults,
+            team1Id: match.team1Id ?? match.team1?.$id ?? null,
+            team2Id: match.team2Id ?? match.team2?.$id ?? null,
+            refereeId: match.refereeId ?? match.referee?.$id ?? null,
+            teamRefereeId: match.teamRefereeId ?? match.teamReferee?.$id ?? null,
+            fieldId: match.fieldId ?? match.field?.$id ?? null,
+            previousLeftId: match.previousLeftId ?? match.previousLeftMatch?.$id ?? null,
+            previousRightId: match.previousRightId ?? match.previousRightMatch?.$id ?? null,
+            winnerNextMatchId: match.winnerNextMatchId ?? match.winnerNextMatch?.$id ?? null,
+            loserNextMatchId: match.loserNextMatchId ?? match.loserNextMatch?.$id ?? null,
+            side: match.side ?? null,
+            refereeCheckedIn: match.refereeCheckedIn ?? false,
+        };
+    }
+
     async getTournamentBracket(tournamentId: string): Promise<TournamentBracket> {
         try {
             // Get tournament with expanded relations (teams, etc.)
@@ -181,6 +202,25 @@ class TournamentService {
 
     async updateMatchScores(eventId: string, matchId: string, updates: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'>): Promise<Match> {
         return this.updateMatch(eventId, matchId, updates);
+    }
+
+    async updateMatchesBulk(eventId: string, matches: Match[]): Promise<Match[]> {
+        if (!eventId || !Array.isArray(matches) || matches.length === 0) {
+            return [];
+        }
+
+        const payload = matches
+            .filter((match) => typeof match?.$id === 'string' && match.$id.length > 0)
+            .map((match) => this.toBulkMatchUpdatePayload(match));
+        if (payload.length === 0) {
+            return [];
+        }
+
+        const response = await apiRequest<{ matches?: Match[] }>(`/api/events/${eventId}/matches`, {
+            method: 'PATCH',
+            body: { matches: payload },
+        });
+        return (response.matches ?? []).map((match) => normalizeApiMatch(match));
     }
 
     async completeMatch(

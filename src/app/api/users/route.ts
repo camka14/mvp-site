@@ -34,8 +34,34 @@ const searchSchema = z.object({
   query: z.string().min(1),
 });
 
+const parseIdsParam = (raw: string | null): string[] => {
+  if (!raw) return [];
+  return Array.from(
+    new Set(
+      raw
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
+  const ids = parseIdsParam(params.get('ids'));
+  if (ids.length > 0) {
+    const users = await prisma.userData.findMany({
+      where: { id: { in: ids } },
+      select: publicUserSelect,
+      take: Math.min(ids.length, 200),
+    });
+    const byId = new Map(users.map((user) => [user.id, user] as const));
+    const orderedUsers = ids
+      .map((id) => byId.get(id))
+      .filter((user): user is NonNullable<typeof user> => Boolean(user));
+    return NextResponse.json({ users: withLegacyList(orderedUsers) }, { status: 200 });
+  }
+
   const query = params.get('query') ?? '';
   const parsed = searchSchema.safeParse({ query });
   if (!parsed.success) {

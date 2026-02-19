@@ -2274,6 +2274,13 @@ function EventScheduleContent() {
           updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
         }
 
+        if (updatedEvent.$id && !rescheduleAfterSave && nextMatches.length > 0) {
+          const updatedMatches = await tournamentService.updateMatchesBulk(updatedEvent.$id, nextMatches);
+          if (updatedMatches.length > 0) {
+            updatedEvent.matches = updatedMatches;
+          }
+        }
+
         if (rescheduleAfterSave && updatedEvent.$id) {
           const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
           const scheduled = await eventService.scheduleEvent(schedulePayload, { eventId: updatedEvent.$id });

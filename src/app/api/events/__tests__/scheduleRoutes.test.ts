@@ -83,6 +83,7 @@ jest.mock('@/server/email', () => ({
 import { POST as schedulePost } from '@/app/api/events/schedule/route';
 import { POST as scheduleByIdPost } from '@/app/api/events/[eventId]/schedule/route';
 import { PATCH as matchPatch } from '@/app/api/events/[eventId]/matches/[matchId]/route';
+import { PATCH as matchesPatch } from '@/app/api/events/[eventId]/matches/route';
 
 const jsonRequest = (url: string, body: any) => new NextRequest(url, {
   method: 'POST',
@@ -257,6 +258,72 @@ describe('schedule routes', () => {
     expect(applyMatchUpdatesMock).toHaveBeenCalled();
     expect(saveMatchesMock).toHaveBeenCalled();
     expect(json.match.$id).toBe('match_1');
+  });
+
+  it('bulk updates matches atomically when user is host', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: { id: 'match_1' },
+        match_2: { id: 'match_2' },
+      },
+      teams: {},
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }, { $id: 'match_2' }]);
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [
+          { id: 'match_1', teamRefereeId: 'team_1' },
+          { id: 'match_2', fieldId: 'field_2' },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(applyMatchUpdatesMock).toHaveBeenCalledTimes(2);
+    expect(saveMatchesMock).toHaveBeenCalledTimes(1);
+    expect(json.matches).toHaveLength(2);
+  });
+
+  it('returns 404 when a bulk match update targets a missing match', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: { id: 'match_1' },
+      },
+      teams: {},
+    });
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [{ id: 'match_2', fieldId: 'field_2' }],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(404);
+    expect(saveMatchesMock).not.toHaveBeenCalled();
   });
 
   it('notifies the host when auto-reschedule fails because fixed end time was reached', async () => {

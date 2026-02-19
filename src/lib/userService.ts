@@ -31,6 +31,14 @@ export interface UserSocialGraph {
 }
 
 class UserService {
+  private chunkIds(ids: string[], size: number = 100): string[][] {
+    const chunks: string[][] = [];
+    for (let index = 0; index < ids.length; index += size) {
+      chunks.push(ids.slice(index, index + size));
+    }
+    return chunks;
+  }
+
   async createUser(id: string, data: Partial<UserData>): Promise<UserData> {
     const response = await apiFetch<{ user: UserData }>('/api/users', {
       method: 'POST',
@@ -50,8 +58,27 @@ class UserService {
 
   async getUsersByIds(ids: string[]): Promise<UserData[]> {
     if (ids.length === 0) return [];
-    const results = await Promise.all(ids.map((id) => this.getUserById(id)));
-    return results.filter(Boolean) as UserData[];
+    const uniqueIds = Array.from(new Set(ids.filter((id) => id.trim().length > 0)));
+    if (!uniqueIds.length) return [];
+
+    try {
+      const responses = await Promise.all(
+        this.chunkIds(uniqueIds).map((batch) => {
+          const params = new URLSearchParams();
+          params.set('ids', batch.join(','));
+          return apiFetch<{ users?: UserData[] }>(`/api/users?${params.toString()}`);
+        }),
+      );
+
+      const users = responses.flatMap((response) => response.users ?? []);
+      const byId = new Map(users.map((user) => [user.$id, user] as const));
+      return uniqueIds
+        .map((id) => byId.get(id))
+        .filter((user): user is UserData => Boolean(user));
+    } catch {
+      const results = await Promise.all(uniqueIds.map((id) => this.getUserById(id)));
+      return results.filter(Boolean) as UserData[];
+    }
   }
 
   async searchUsers(query: string): Promise<UserData[]> {
