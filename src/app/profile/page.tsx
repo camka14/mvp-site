@@ -24,7 +24,6 @@ import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
 import { profileDocumentService, type ProfileDocumentCard } from '@/lib/profileDocumentService';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/dateUtils';
-import { createId } from '@/lib/id';
 
 const toDateInputValue = (value?: string | null): string => {
     if (!value) return '';
@@ -1904,13 +1903,6 @@ export default function ProfilePage() {
                             <Group justify="space-between" mb="sm">
                                 <Title order={4}>Event Templates</Title>
                                 <Group>
-                                    <Button
-                                        size="xs"
-                                        variant="default"
-                                        onClick={() => router.push(`/events/${createId()}/schedule?create=1&mode=edit&tab=details`)}
-                                    >
-                                        Create Event
-                                    </Button>
                                     <Button variant="light" size="xs" onClick={loadEventTemplates} loading={loadingEventTemplates}>
                                         Refresh
                                     </Button>

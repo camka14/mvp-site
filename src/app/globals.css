@@ -194,6 +194,7 @@
 .discover-filter-panel {
   background: var(--discover-surface);
   border-color: var(--discover-border);
+  scrollbar-gutter: stable;
 }
 
 .discover-active-filters {

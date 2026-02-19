@@ -650,8 +650,9 @@ function EventScheduleContent() {
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
+  const isTemplateEvent = (activeEvent?.state ?? '').toUpperCase() === 'TEMPLATE';
   const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
-  const isEditingEvent = isPreview || isEditParam || isUnpublished;
+  const isEditingEvent = isTemplateEvent || isPreview || isEditParam || isUnpublished;
   const activeMatches = usingChangeCopies ? changesMatches : matches;
   const divisionLabelsByKey = useMemo(() => {
     const labels = new Map<string, string>();
@@ -747,10 +748,20 @@ function EventScheduleContent() {
       ),
   );
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
-  const entityLabel = isTournament ? 'Tournament' : isLeague ? 'League' : 'Event';
+  const entityLabel = isTemplateEvent
+    ? 'Template'
+    : isTournament
+      ? 'Tournament'
+      : isLeague
+        ? 'League'
+        : 'Event';
   const activeLifecycleStatus = getEventLifecycleStatus(activeEvent);
   const canEditMatches = Boolean(canManageEvent && isEditingEvent);
-  const shouldShowCreationSheet = Boolean(isCreateMode || (isEditingEvent && canManageEvent && user));
+  const shouldShowCreationSheet = Boolean(
+    isCreateMode
+    || (isEditingEvent && canManageEvent && user)
+    || (isTemplateEvent && user),
+  );
   const createFormId = 'create-event-form';
   const templateSelectData = useMemo(
     () => templateSummaries.map((template) => ({ value: template.id, label: template.name })),
@@ -2026,7 +2037,8 @@ function EventScheduleContent() {
 
   const showScheduleTab = isLeague;
   const showStandingsTab = isLeague;
-  const showParticipantsTab = Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0);
+  const showParticipantsTab = !isTemplateEvent
+    && Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0);
   const defaultTab = showScheduleTab ? 'schedule' : 'details';
   const shouldShowBracketTab = !!bracketData || isPreview;
 
@@ -2918,13 +2930,13 @@ function EventScheduleContent() {
 
   const leagueConfig = activeEvent.leagueConfig;
   const isSavingOrRescheduling = publishing || reschedulingMatches;
-  const showEditActionButton = !isEditingEvent && !isSavingOrRescheduling && !cancelling;
+  const showEditActionButton = !isTemplateEvent && !isEditingEvent && !isSavingOrRescheduling && !cancelling;
   const showSaveActionButton = isEditingEvent && !publishing && !reschedulingMatches;
   const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament) && !publishing && !reschedulingMatches;
-  const showCancelActionButton = !cancelling;
-  const showCreateTemplateButton = !creatingTemplate && !publishing && !reschedulingMatches && !cancelling && activeEvent.state !== 'TEMPLATE';
+  const showCancelActionButton = !isTemplateEvent && !cancelling;
+  const showCreateTemplateButton = !creatingTemplate && !publishing && !reschedulingMatches && !cancelling && !isTemplateEvent;
   const showClearChangesButton = isEditingEvent && canClearChanges;
-  const showLifecycleStatusSelect = isEditingEvent && !isSavingOrRescheduling && !cancelling && activeEvent.state !== 'TEMPLATE';
+  const showLifecycleStatusSelect = isEditingEvent && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
 
   return (
     <div className="min-h-screen bg-gray-50">

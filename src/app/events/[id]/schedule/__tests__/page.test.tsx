@@ -205,6 +205,36 @@ describe('League schedule page', () => {
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
   });
 
+  it('uses template wording for template events in edit mode', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = buildApiEvent({
+          eventType: 'LEAGUE',
+          state: 'TEMPLATE',
+        });
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: buildApiEvent().matches });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    expect(await screen.findByRole('button', { name: /save template/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /save league/i })).not.toBeInTheDocument();
+  });
+
   it('allows host to open match editor when in edit mode', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {

@@ -59,6 +59,8 @@ export async function POST(req: NextRequest) {
   const filters = parsed.data.filters ?? {};
   const limit = parsed.data.limit ?? 50;
   const offset = parsed.data.offset ?? 0;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
   const where: any = {};
   // Event templates are not real events and should never appear in public discovery/search results.
@@ -98,12 +100,12 @@ export async function POST(req: NextRequest) {
       where.sportId = { in: sportIds };
     }
   }
-  if (filters.dateFrom) {
-    const start = new Date(filters.dateFrom);
-    if (!Number.isNaN(start.getTime())) {
-      where.start = { ...(where.start ?? {}), gte: start };
-    }
-  }
+  const parsedDateFrom = typeof filters.dateFrom === 'string' ? new Date(filters.dateFrom) : null;
+  const effectiveDateFrom =
+    parsedDateFrom && !Number.isNaN(parsedDateFrom.getTime())
+      ? parsedDateFrom
+      : startOfToday;
+  where.start = { ...(where.start ?? {}), gte: effectiveDateFrom };
   if (filters.dateTo) {
     const end = new Date(filters.dateTo);
     if (!Number.isNaN(end.getTime())) {

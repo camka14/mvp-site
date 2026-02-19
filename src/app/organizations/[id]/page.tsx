@@ -30,6 +30,7 @@ import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
+import RoleRosterManager, { type RoleRosterEntry } from './RoleRosterManager';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 import {
   getRequiredSignerTypeLabel,
@@ -299,10 +300,6 @@ function OrganizationDetailContent() {
     [org?.hostIds],
   );
   const currentHosts = useMemo(() => org?.hosts ?? [], [org?.hosts]);
-  const nonOwnerHosts = useMemo(
-    () => currentHosts.filter((host) => host.$id !== org?.ownerId),
-    [currentHosts, org?.ownerId],
-  );
   const ownerHost = useMemo(() => {
     if (org?.owner?.$id) {
       return org.owner;
@@ -317,6 +314,97 @@ function OrganizationDetailContent() {
     [currentHostIds, currentHosts, org?.ownerId],
   );
   const currentReferees = useMemo(() => org?.referees ?? [], [org?.referees]);
+  const unresolvedRefereeIds = useMemo(
+    () => currentRefereeIds.filter((refereeId) => !currentReferees.some((referee) => referee.$id === refereeId)),
+    [currentRefereeIds, currentReferees],
+  );
+  const userDisplayName = useCallback((candidate: Partial<UserData> | undefined, fallbackId: string): string => {
+    const firstName = typeof candidate?.firstName === 'string' ? candidate.firstName.trim() : '';
+    const lastName = typeof candidate?.lastName === 'string' ? candidate.lastName.trim() : '';
+    const fullName = `${firstName} ${lastName}`.trim();
+    if (fullName.length > 0) {
+      return fullName;
+    }
+    if (typeof candidate?.userName === 'string' && candidate.userName.trim().length > 0) {
+      return candidate.userName.trim();
+    }
+    return fallbackId;
+  }, []);
+  const hostRosterEntries = useMemo<RoleRosterEntry[]>(() => {
+    const entries: RoleRosterEntry[] = [];
+    const seen = new Set<string>();
+
+    if (ownerHost?.$id) {
+      entries.push({
+        id: ownerHost.$id,
+        fullName: userDisplayName(ownerHost, ownerHost.$id),
+        userName: ownerHost.userName || null,
+        status: 'active',
+        subtitle: 'Owner',
+        canRemove: false,
+      });
+      seen.add(ownerHost.$id);
+    } else if (org?.ownerId) {
+      entries.push({
+        id: org.ownerId,
+        fullName: org.ownerId,
+        userName: null,
+        status: 'active',
+        subtitle: 'Owner',
+        canRemove: false,
+      });
+      seen.add(org.ownerId);
+    }
+
+    currentHosts.forEach((host) => {
+      if (!host?.$id || seen.has(host.$id) || host.$id === org?.ownerId) {
+        return;
+      }
+      seen.add(host.$id);
+      entries.push({
+        id: host.$id,
+        fullName: userDisplayName(host, host.$id),
+        userName: host.userName || null,
+        status: 'active',
+        canRemove: true,
+      });
+    });
+
+    unresolvedHostIds.forEach((hostId) => {
+      if (seen.has(hostId)) {
+        return;
+      }
+      entries.push({
+        id: hostId,
+        fullName: hostId,
+        userName: null,
+        status: 'invited',
+        subtitle: hostId,
+        canRemove: true,
+      });
+      seen.add(hostId);
+    });
+
+    return entries;
+  }, [currentHosts, org?.ownerId, ownerHost, unresolvedHostIds, userDisplayName]);
+  const refereeRosterEntries = useMemo<RoleRosterEntry[]>(() => {
+    const activeRows: RoleRosterEntry[] = currentReferees.map((referee) => ({
+      id: referee.$id,
+      fullName: userDisplayName(referee, referee.$id),
+      userName: referee.userName || null,
+      status: 'active',
+      canRemove: true,
+    }));
+    const invitedRows: RoleRosterEntry[] = unresolvedRefereeIds.map((refereeId) => ({
+      id: refereeId,
+      fullName: refereeId,
+      userName: null,
+      status: 'invited',
+      subtitle: refereeId,
+      canRemove: true,
+    }));
+    return [...activeRows, ...invitedRows];
+  }, [currentReferees, unresolvedRefereeIds, userDisplayName]);
   const eventHostOptions = useMemo(() => {
     const ids = new Set<string>();
     if (typeof org?.ownerId === 'string' && org.ownerId.length > 0) {
@@ -325,32 +413,19 @@ function OrganizationDetailContent() {
     currentHostIds.forEach((hostId) => ids.add(hostId));
 
     const labelById = new Map<string, string>();
-    const toLabel = (candidate: Partial<UserData> | undefined, fallbackId: string): string => {
-      const firstName = typeof candidate?.firstName === 'string' ? candidate.firstName.trim() : '';
-      const lastName = typeof candidate?.lastName === 'string' ? candidate.lastName.trim() : '';
-      const fullName = `${firstName} ${lastName}`.trim();
-      if (fullName.length > 0) {
-        return fullName;
-      }
-      if (typeof candidate?.userName === 'string' && candidate.userName.trim().length > 0) {
-        return candidate.userName.trim();
-      }
-      return fallbackId;
-    };
-
     if (org?.owner?.$id) {
-      labelById.set(org.owner.$id, `${toLabel(org.owner, org.owner.$id)} (Owner)`);
+      labelById.set(org.owner.$id, `${userDisplayName(org.owner, org.owner.$id)} (Owner)`);
     } else if (org?.ownerId) {
       labelById.set(org.ownerId, `${org.ownerId} (Owner)`);
     }
 
     currentHosts.forEach((host) => {
       if (!host?.$id) return;
-      labelById.set(host.$id, toLabel(host, host.$id));
+      labelById.set(host.$id, userDisplayName(host, host.$id));
     });
 
     if (user?.$id && !labelById.has(user.$id)) {
-      labelById.set(user.$id, toLabel(user, user.$id));
+      labelById.set(user.$id, userDisplayName(user, user.$id));
     }
 
     return Array.from(ids)
@@ -359,7 +434,7 @@ function OrganizationDetailContent() {
         label: labelById.get(hostId) ?? hostId,
       }))
       .sort((left, right) => left.label.localeCompare(right.label));
-  }, [currentHostIds, currentHosts, org?.owner, org?.ownerId, user]);
+  }, [currentHostIds, currentHosts, org?.owner, org?.ownerId, user, userDisplayName]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productName, setProductName] = useState('');
   const [productDescription, setProductDescription] = useState('');
@@ -1130,6 +1205,12 @@ function OrganizationDetailContent() {
   const handleRemoveHost = useCallback(
     async (hostId: string) => {
       if (!org || !isOwner) return;
+      if (typeof window !== 'undefined') {
+        const confirmed = window.confirm('Remove this host from the organization roster?');
+        if (!confirmed) {
+          return;
+        }
+      }
       const nextHostIds = (org.hostIds ?? []).filter((id) => id !== hostId);
       try {
         await organizationService.updateOrganization(org.$id, { hostIds: nextHostIds });
@@ -1263,6 +1344,12 @@ function OrganizationDetailContent() {
   const handleRemoveReferee = useCallback(
     async (refereeId: string) => {
       if (!org || !isOwner) return;
+      if (typeof window !== 'undefined') {
+        const confirmed = window.confirm('Remove this referee from the organization roster?');
+        if (!confirmed) {
+          return;
+        }
+      }
       const nextRefIds = (org.refIds ?? []).filter((id) => id !== refereeId);
       try {
         await organizationService.updateOrganization(org.$id, { refIds: nextRefIds });
@@ -1491,7 +1578,6 @@ function OrganizationDetailContent() {
                     >
                       Refresh
                     </Button>
-                    <Button onClick={handleCreateEvent}>+ Create Event</Button>
                   </Group>
                 </Group>
                 <Text size="sm" c="dimmed" mb="md">
@@ -1510,7 +1596,7 @@ function OrganizationDetailContent() {
                       <EventCard
                         key={eventTemplate.$id}
                         event={eventTemplate}
-                        onClick={() => { setSelectedEvent(eventTemplate); setShowEventDetailSheet(true); }}
+                        onClick={() => openOrganizationEvent(eventTemplate.$id)}
                       />
                     ))}
                   </SimpleGrid>
@@ -1815,342 +1901,57 @@ function OrganizationDetailContent() {
             )}
 
             {isOwner && activeTab === 'hosts' && (
-              <Paper withBorder p="md" radius="md">
-                <Group justify="space-between" mb="md">
-                  <Title order={5}>Hosts</Title>
-                  <Text size="sm" c="dimmed">Manage organization hosts and event editors.</Text>
-                </Group>
-
-                <Stack gap="md">
-                  <div>
-                    <Title order={6} mb="sm">Current Hosts</Title>
-                    <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
-                      {ownerHost && (
-                        <Paper withBorder p="sm" radius="md">
-                          <Group justify="space-between" align="center" gap="sm">
-                            <UserCard user={ownerHost} className="!p-0 !shadow-none flex-1" />
-                            <Text size="xs" fw={600} c="dimmed">Owner</Text>
-                          </Group>
-                        </Paper>
-                      )}
-                      {nonOwnerHosts.map((host) => (
-                        <Paper key={host.$id} withBorder p="sm" radius="md">
-                          <Group justify="space-between" align="center" gap="sm">
-                            <UserCard user={host} className="!p-0 !shadow-none flex-1" />
-                            <Button
-                              size="xs"
-                              variant="subtle"
-                              color="red"
-                              onClick={() => handleRemoveHost(host.$id)}
-                            >
-                              Remove
-                            </Button>
-                          </Group>
-                        </Paper>
-                      ))}
-                    </SimpleGrid>
-                    {!ownerHost && nonOwnerHosts.length === 0 && unresolvedHostIds.length === 0 && (
-                      <Text size="sm" c="dimmed" mt="sm">No hosts yet.</Text>
-                    )}
-                    {unresolvedHostIds.length > 0 && (
-                      <Paper withBorder p="sm" radius="md" mt="sm">
-                        <Text size="xs" c="dimmed" mb="xs">Some hosts are present but profile data is unavailable:</Text>
-                        <Stack gap={4}>
-                          {unresolvedHostIds.map((hostId) => (
-                            <Group key={hostId} justify="space-between" align="center">
-                              <Text size="sm">{hostId}</Text>
-                              <Button size="xs" variant="subtle" color="red" onClick={() => handleRemoveHost(hostId)}>
-                                Remove
-                              </Button>
-                            </Group>
-                          ))}
-                        </Stack>
-                      </Paper>
-                    )}
-                  </div>
-
-                  <Paper withBorder p="md" radius="md">
-                    <Title order={6} mb="xs">Add Hosts</Title>
-                    <TextInput
-                      value={hostSearch}
-                      onChange={(e) => { void handleSearchHosts(e.currentTarget.value); }}
-                      placeholder="Search hosts by name or username"
-                      mb="xs"
-                    />
-                    {hostError && (
-                      <Text size="xs" c="red" mb="xs">
-                        {hostError}
-                      </Text>
-                    )}
-                    {hostSearchLoading ? (
-                      <Text size="sm" c="dimmed">Searching hosts...</Text>
-                    ) : hostSearch.length < 2 ? (
-                      <Text size="sm" c="dimmed">Type at least 2 characters to search for hosts.</Text>
-                    ) : hostResults.length > 0 ? (
-                      <Stack gap="xs">
-                        {hostResults.map((result) => (
-                          <Paper key={result.$id} withBorder p="sm" radius="md">
-                            <Group justify="space-between" align="center" gap="sm">
-                              <UserCard user={result} className="!p-0 !shadow-none flex-1" />
-                              <Button size="xs" onClick={() => handleAddHost(result)}>
-                                Add
-                              </Button>
-                            </Group>
-                          </Paper>
-                        ))}
-                      </Stack>
-                    ) : (
-                      <Text size="sm" c="dimmed">No hosts found. Invite by email below.</Text>
-                    )}
-                  </Paper>
-
-                  <Paper withBorder p="md" radius="md">
-                    <Title order={6} mb="xs">Invite hosts by email</Title>
-                    <Text size="sm" c="dimmed" mb="xs">
-                      Invited hosts get full organization and event editing access.
-                    </Text>
-                    <Stack gap="sm">
-                      {hostInvites.map((invite, index) => (
-                        <Paper key={index} withBorder radius="md" p="sm">
-                          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
-                            <TextInput
-                              label="First name"
-                              placeholder="First name"
-                              value={invite.firstName}
-                              onChange={(e) => {
-                                const next = [...hostInvites];
-                                next[index] = { ...invite, firstName: e.currentTarget.value };
-                                setHostInvites(next);
-                              }}
-                            />
-                            <TextInput
-                              label="Last name"
-                              placeholder="Last name"
-                              value={invite.lastName}
-                              onChange={(e) => {
-                                const next = [...hostInvites];
-                                next[index] = { ...invite, lastName: e.currentTarget.value };
-                                setHostInvites(next);
-                              }}
-                            />
-                            <TextInput
-                              label="Email"
-                              placeholder="name@example.com"
-                              value={invite.email}
-                              onChange={(e) => {
-                                const next = [...hostInvites];
-                                next[index] = { ...invite, email: e.currentTarget.value };
-                                setHostInvites(next);
-                              }}
-                            />
-                          </SimpleGrid>
-                          {hostInvites.length > 1 && (
-                            <Group justify="flex-end" mt="xs">
-                              <Button
-                                variant="subtle"
-                                color="red"
-                                size="xs"
-                                onClick={() => {
-                                  setHostInvites((prev) => prev.filter((_, i) => i !== index));
-                                }}
-                              >
-                                Remove
-                              </Button>
-                            </Group>
-                          )}
-                        </Paper>
-                      ))}
-                      <Group justify="space-between" align="center">
-                        <Button
-                          type="button"
-                          variant="default"
-                          size="lg"
-                          radius="md"
-                          style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
-                          onClick={() =>
-                            setHostInvites((prev) => [...prev, { firstName: '', lastName: '', email: '' }])
-                          }
-                        >
-                          +
-                        </Button>
-                        <Button
-                          onClick={handleInviteHostEmails}
-                          loading={invitingHosts}
-                          disabled={invitingHosts}
-                        >
-                          Add Hosts
-                        </Button>
-                      </Group>
-                      {hostInviteError && (
-                        <Text size="xs" c="red">
-                          {hostInviteError}
-                        </Text>
-                      )}
-                    </Stack>
-                  </Paper>
-                </Stack>
-              </Paper>
+              <RoleRosterManager
+                roleSingular="Host"
+                rolePlural="Hosts"
+                description="Manage organization hosts and event editors."
+                rosterEntries={hostRosterEntries}
+                searchValue={hostSearch}
+                onSearchChange={(value) => { void handleSearchHosts(value); }}
+                searchResults={hostResults}
+                searchLoading={hostSearchLoading}
+                searchError={hostError}
+                onAddExisting={(candidate) => { void handleAddHost(candidate); }}
+                inviteRows={hostInvites}
+                onInviteRowsChange={(rows) => setHostInvites(rows)}
+                inviteError={hostInviteError}
+                inviting={invitingHosts}
+                onSendInvites={() => { void handleInviteHostEmails(); }}
+                onRemoveFromRoster={(entryId) => { void handleRemoveHost(entryId); }}
+                onImportCsv={() => {
+                  notifications.show({
+                    color: 'blue',
+                    message: 'CSV import for hosts is coming soon.',
+                  });
+                }}
+              />
             )}
 
             {isOwner && activeTab === 'referees' && (
-              <Paper withBorder p="md" radius="md">
-                <Group justify="space-between" mb="md">
-                  <Title order={5}>Referees</Title>
-                  {isOwner && <Text size="sm" c="dimmed">Manage your referee roster</Text>}
-                </Group>
-
-                <Stack gap="md">
-                  <div>
-                    <Title order={6} mb="sm">Current Referees</Title>
-                    {currentReferees.length > 0 ? (
-                      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
-                        {currentReferees.map((ref) => (
-                          <Paper key={ref.$id} withBorder p="sm" radius="md">
-                            <Group justify="space-between" align="center" gap="sm">
-                              <UserCard user={ref} className="!p-0 !shadow-none flex-1" />
-                              {isOwner && (
-                                <Button
-                                  size="xs"
-                                  variant="subtle"
-                                  color="red"
-                                  onClick={() => handleRemoveReferee(ref.$id)}
-                                >
-                                  Remove
-                                </Button>
-                              )}
-                            </Group>
-                          </Paper>
-                        ))}
-                      </SimpleGrid>
-                    ) : (
-                      <Text size="sm" c="dimmed">No referees yet.</Text>
-                    )}
-                  </div>
-
-                  {isOwner && (
-                    <Paper withBorder p="md" radius="md">
-                      <Title order={6} mb="xs">Add Referees</Title>
-                      <TextInput
-                        value={refereeSearch}
-                        onChange={(e) => handleSearchReferees(e.currentTarget.value)}
-                        placeholder="Search referees by name or username"
-                        mb="xs"
-                      />
-                      {refereeError && (
-                        <Text size="xs" c="red" mb="xs">
-                          {refereeError}
-                        </Text>
-                      )}
-                      {refereeSearchLoading ? (
-                        <Text size="sm" c="dimmed">Searching referees...</Text>
-                      ) : refereeSearch.length < 2 ? (
-                        <Text size="sm" c="dimmed">Type at least 2 characters to search for referees.</Text>
-                      ) : refereeResults.length > 0 ? (
-                        <Stack gap="xs">
-                          {refereeResults.map((result) => (
-                            <Paper key={result.$id} withBorder p="sm" radius="md">
-                              <Group justify="space-between" align="center" gap="sm">
-                                <UserCard user={result} className="!p-0 !shadow-none flex-1" />
-                                <Button size="xs" onClick={() => handleAddReferee(result)}>
-                                  Add
-                                </Button>
-                              </Group>
-                            </Paper>
-                          ))}
-                        </Stack>
-                      ) : (
-                        <Stack gap="xs">
-                          <Text size="sm" c="dimmed">No referees found. Invite by email below.</Text>
-                        </Stack>
-                      )}
-                      <div className="mt-6">
-                        <Title order={6} mb="xs">Invite referees by email</Title>
-                        <Text size="sm" c="dimmed" mb="xs">
-                          Add referees to this organization and send them an email invite.
-                        </Text>
-                        <div className="space-y-3">
-                          {refereeInvites.map((invite, index) => (
-                            <Paper key={index} withBorder radius="md" p="sm">
-                              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
-                                <TextInput
-                                  label="First name"
-                                  placeholder="First name"
-                                  value={invite.firstName}
-                                  onChange={(e) => {
-                                    const next = [...refereeInvites];
-                                    next[index] = { ...invite, firstName: e.currentTarget.value };
-                                    setRefereeInvites(next);
-                                  }}
-                                />
-                                <TextInput
-                                  label="Last name"
-                                  placeholder="Last name"
-                                  value={invite.lastName}
-                                  onChange={(e) => {
-                                    const next = [...refereeInvites];
-                                    next[index] = { ...invite, lastName: e.currentTarget.value };
-                                    setRefereeInvites(next);
-                                  }}
-                                />
-                                <TextInput
-                                  label="Email"
-                                  placeholder="name@example.com"
-                                  value={invite.email}
-                                  onChange={(e) => {
-                                    const next = [...refereeInvites];
-                                    next[index] = { ...invite, email: e.currentTarget.value };
-                                    setRefereeInvites(next);
-                                  }}
-                                />
-                              </SimpleGrid>
-                              {refereeInvites.length > 1 && (
-                                <Group justify="flex-end" mt="xs">
-                                  <Button
-                                    variant="subtle"
-                                    color="red"
-                                    size="xs"
-                                    onClick={() => {
-                                      setRefereeInvites((prev) => prev.filter((_, i) => i !== index));
-                                    }}
-                                  >
-                                    Remove
-                                  </Button>
-                                </Group>
-                              )}
-                            </Paper>
-                          ))}
-                          <Group justify="space-between" align="center">
-                            <Button
-                              type="button"
-                              variant="default"
-                              size="lg"
-                              radius="md"
-                              style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
-                              onClick={() =>
-                                setRefereeInvites((prev) => [...prev, { firstName: '', lastName: '', email: '' }])
-                              }
-                            >
-                              +
-                            </Button>
-                            <Button
-                              onClick={handleInviteRefereeEmails}
-                              loading={invitingReferees}
-                              disabled={invitingReferees}
-                            >
-                              Add Referees
-                            </Button>
-                          </Group>
-                          {refereeInviteError && (
-                            <Text size="xs" c="red">
-                              {refereeInviteError}
-                            </Text>
-                          )}
-                        </div>
-                      </div>
-                    </Paper>
-                  )}
-                </Stack>
-              </Paper>
+              <RoleRosterManager
+                roleSingular="Referee"
+                rolePlural="Referees"
+                description="Manage active and invited referees for this organization."
+                rosterEntries={refereeRosterEntries}
+                searchValue={refereeSearch}
+                onSearchChange={(value) => { void handleSearchReferees(value); }}
+                searchResults={refereeResults}
+                searchLoading={refereeSearchLoading}
+                searchError={refereeError}
+                onAddExisting={(candidate) => { void handleAddReferee(candidate); }}
+                inviteRows={refereeInvites}
+                onInviteRowsChange={(rows) => setRefereeInvites(rows)}
+                inviteError={refereeInviteError}
+                inviting={invitingReferees}
+                onSendInvites={() => { void handleInviteRefereeEmails(); }}
+                onRemoveFromRoster={(entryId) => { void handleRemoveReferee(entryId); }}
+                onImportCsv={() => {
+                  notifications.show({
+                    color: 'blue',
+                    message: 'CSV import for referees is coming soon.',
+                  });
+                }}
+              />
             )}
 
             {isOwner && activeTab === 'refunds' && org && (

@@ -97,7 +97,8 @@ function DiscoverPageContent() {
     useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE']);
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
   const [maxDistance, setMaxDistance] = useState<number | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
+  const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
   const searchQuery = searchParams.get('q') || '';
   const [searchTerm, setSearchTerm] = useState(searchQuery);
   const debouncedSearch = useDebounce(searchTerm, 500);
@@ -184,24 +185,36 @@ function DiscoverPageContent() {
 
   const buildEventFilters = useCallback(
     () => {
+      const today = new Date();
+      const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
       const normalizedQuery = debouncedSearch.trim();
-      const hasDate = selectedDate instanceof Date && !Number.isNaN(selectedDate.getTime());
-      const dateFrom = hasDate
+      const normalizedStartDate =
+        selectedStartDate instanceof Date && !Number.isNaN(selectedStartDate.getTime())
+          ? selectedStartDate
+          : null;
+      const normalizedEndDate =
+        selectedEndDate instanceof Date && !Number.isNaN(selectedEndDate.getTime())
+          ? selectedEndDate
+          : null;
+      const effectiveDate = normalizedStartDate
+        ? normalizedStartDate
+        : normalizedEndDate && normalizedEndDate < startOfToday
+          ? normalizedEndDate
+          : startOfToday;
+      const dateFrom = new Date(
+        effectiveDate.getFullYear(),
+        effectiveDate.getMonth(),
+        effectiveDate.getDate(),
+        0,
+        0,
+        0,
+        0,
+      ).toISOString();
+      const dateTo = normalizedEndDate
         ? new Date(
-            selectedDate.getFullYear(),
-            selectedDate.getMonth(),
-            selectedDate.getDate(),
-            0,
-            0,
-            0,
-            0,
-          ).toISOString()
-        : undefined;
-      const dateTo = hasDate
-        ? new Date(
-            selectedDate.getFullYear(),
-            selectedDate.getMonth(),
-            selectedDate.getDate(),
+            normalizedEndDate.getFullYear(),
+            normalizedEndDate.getMonth(),
+            normalizedEndDate.getDate(),
             23,
             59,
             59,
@@ -219,7 +232,16 @@ function DiscoverPageContent() {
         query: normalizedQuery || undefined,
       };
     },
-    [selectedEventTypes, selectedSports, location, maxDistance, debouncedSearch, selectedDate, EVENT_TYPE_OPTIONS],
+    [
+      selectedEventTypes,
+      selectedSports,
+      location,
+      maxDistance,
+      debouncedSearch,
+      selectedStartDate,
+      selectedEndDate,
+      EVENT_TYPE_OPTIONS,
+    ],
   );
 
   const loadFirstPage = useCallback(async () => {
@@ -583,8 +605,10 @@ function DiscoverPageContent() {
               setSelectedSports={setSelectedSports}
               maxDistance={maxDistance}
               setMaxDistance={setMaxDistance}
-              selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
+              selectedStartDate={selectedStartDate}
+              setSelectedStartDate={setSelectedStartDate}
+              selectedEndDate={selectedEndDate}
+              setSelectedEndDate={setSelectedEndDate}
               sports={sportOptions}
               sportsLoading={sportsLoading}
               sportsError={sportsError?.message ?? null}
@@ -653,8 +677,10 @@ function EventsTabContent(props: {
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
   maxDistance: number | null;
   setMaxDistance: (value: number | null) => void;
-  selectedDate: Date | null;
-  setSelectedDate: (value: Date | null) => void;
+  selectedStartDate: Date | null;
+  setSelectedStartDate: (value: Date | null) => void;
+  selectedEndDate: Date | null;
+  setSelectedEndDate: (value: Date | null) => void;
   sports: string[];
   sportsLoading: boolean;
   sportsError: string | null;
@@ -680,8 +706,10 @@ function EventsTabContent(props: {
     setSelectedSports,
     maxDistance,
     setMaxDistance,
-    selectedDate,
-    setSelectedDate,
+    selectedStartDate,
+    setSelectedStartDate,
+    selectedEndDate,
+    setSelectedEndDate,
     sports,
     sportsLoading,
     sportsError,
@@ -716,9 +744,18 @@ function EventsTabContent(props: {
     setSelectedEventTypes([...eventTypeOptions]);
     setSelectedSports([]);
     setMaxDistance(null);
-    setSelectedDate(null);
+    setSelectedStartDate(null);
+    setSelectedEndDate(null);
     setSearchTerm('');
-  }, [eventTypeOptions, setMaxDistance, setSearchTerm, setSelectedDate, setSelectedEventTypes, setSelectedSports]);
+  }, [
+    eventTypeOptions,
+    setMaxDistance,
+    setSearchTerm,
+    setSelectedStartDate,
+    setSelectedEndDate,
+    setSelectedEventTypes,
+    setSelectedSports,
+  ]);
 
   const getEventDistanceKm = useCallback((event: Event) => {
     if (!location || !Array.isArray(event.coordinates) || event.coordinates.length < 2) {
@@ -803,11 +840,19 @@ function EventsTabContent(props: {
     });
   });
 
-  if (selectedDate) {
+  if (selectedStartDate) {
     activeFilters.push({
-      key: 'date',
-      label: selectedDate.toLocaleDateString(),
-      onRemove: () => setSelectedDate(null),
+      key: 'date-from',
+      label: `From ${selectedStartDate.toLocaleDateString()}`,
+      onRemove: () => setSelectedStartDate(null),
+    });
+  }
+
+  if (selectedEndDate) {
+    activeFilters.push({
+      key: 'date-to',
+      label: `Until ${selectedEndDate.toLocaleDateString()}`,
+      onRemove: () => setSelectedEndDate(null),
     });
   }
 
@@ -914,6 +959,47 @@ function EventsTabContent(props: {
         )}
       </div>
 
+      <div>
+        <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
+          Date Range
+        </Text>
+        <div className="grid gap-2">
+          <DatePickerInput
+            value={selectedStartDate}
+            onChange={(value) => setSelectedStartDate(value)}
+            clearable
+            leftSection={<CalendarDays size={16} />}
+            placeholder="From today (default)"
+            aria-label="Filter by start date"
+            valueFormat="MMM D, YYYY"
+            highlightToday
+          />
+          <DatePickerInput
+            value={selectedEndDate}
+            onChange={(value) => setSelectedEndDate(value)}
+            clearable
+            leftSection={<CalendarDays size={16} />}
+            minDate={
+              selectedStartDate
+                ? new Date(
+                    selectedStartDate.getFullYear(),
+                    selectedStartDate.getMonth(),
+                    selectedStartDate.getDate(),
+                    0,
+                    0,
+                    0,
+                    0,
+                  )
+                : undefined
+            }
+            placeholder="No max date"
+            aria-label="Filter by end date"
+            valueFormat="MMM D, YYYY"
+            highlightToday
+          />
+        </div>
+      </div>
+
       {location && (
         <div>
           <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
@@ -958,17 +1044,6 @@ function EventsTabContent(props: {
             <div style={{ minWidth: 190, flexShrink: 0 }}>
               <LocationSearch />
             </div>
-            <div style={{ minWidth: 210, flexShrink: 0 }}>
-              <DatePickerInput
-                value={selectedDate}
-                onChange={(value) => setSelectedDate(value)}
-                clearable
-                leftSection={<CalendarDays size={16} />}
-                placeholder="Any date"
-                aria-label="Filter by date"
-                valueFormat="MMM D, YYYY"
-              />
-            </div>
             <Button
               variant="default"
               leftSection={<Filter size={16} />}
@@ -985,17 +1060,24 @@ function EventsTabContent(props: {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="hidden lg:block">
-          <Paper withBorder p="md" radius="lg" className="discover-filter-panel lg:sticky lg:top-24">
-            <Group justify="space-between" align="center" mb="md">
-              <Text fw={700} size="sm">
-                Filters
-              </Text>
-              <Button variant="subtle" size="compact-sm" onClick={resetFilters} disabled={!activeFilterCount}>
-                Reset
-              </Button>
-            </Group>
-            {filterPanel}
+        <aside className="hidden lg:block lg:sticky lg:top-24 lg:h-[calc(100dvh-6.5rem)]">
+          <Paper
+            withBorder
+            p={0}
+            radius="lg"
+            className="h-full overflow-hidden"
+          >
+            <div className="discover-filter-panel h-full overflow-y-auto p-4">
+              <Group justify="space-between" align="center" mb="md">
+                <Text fw={700} size="sm">
+                  Filters
+                </Text>
+                <Button variant="subtle" size="compact-sm" onClick={resetFilters} disabled={!activeFilterCount}>
+                  Reset
+                </Button>
+              </Group>
+              {filterPanel}
+            </div>
           </Paper>
         </aside>
 

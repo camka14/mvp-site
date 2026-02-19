@@ -178,6 +178,41 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('defaults POST /api/events/search to today-and-later results', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-02-19T15:45:00.000Z'));
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    try {
+      const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            start: expect.objectContaining({
+              gte: expect.any(Date),
+            }),
+          }),
+        }),
+      );
+
+      const callArgs = prismaMock.events.findMany.mock.calls.at(-1)?.[0];
+      const startGte = callArgs?.where?.start?.gte as Date | undefined;
+      const expectedStart = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        new Date().getDate(),
+        0,
+        0,
+        0,
+        0,
+      );
+      expect(startGte?.toISOString()).toBe(expectedStart.toISOString());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('excludes templates from GET /api/events/field/:fieldId results', async () => {
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
