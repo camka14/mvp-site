@@ -11,6 +11,16 @@ const updateSchema = z.object({
   organization: z.record(z.string(), z.any()).optional(),
 }).passthrough();
 
+const sanitizeStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+};
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const org = await prisma.organizations.findUnique({ where: { id } });
@@ -38,9 +48,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const payload = parsed.data.organization ?? parsed.data ?? {};
+  const updateData: Record<string, unknown> = { ...payload, updatedAt: new Date() };
+  if (Object.prototype.hasOwnProperty.call(payload, 'sports')) {
+    updateData.sports = sanitizeStringArray((payload as Record<string, unknown>).sports);
+  }
   const updated = await prisma.organizations.update({
     where: { id },
-    data: { ...payload, updatedAt: new Date() },
+    data: updateData,
   });
 
   return NextResponse.json(withLegacyFields(updated), { status: 200 });

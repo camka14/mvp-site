@@ -424,6 +424,7 @@ model Organizations {
   ownerId String
   hostIds String[] @default([])
   website String?
+  sports String[] @default([])
   refIds String[]
   hasStripeAccount Boolean?
   coordinates Json?

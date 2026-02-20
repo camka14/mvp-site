@@ -199,6 +199,111 @@ describe('auth routes', () => {
         }),
       );
     });
+
+    it('returns profile conflict for claim signup when selection is required', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: null,
+        passwordHash: '__NO_PASSWORD__',
+        lastLogin: null,
+        emailVerifiedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+      prismaMock.userData.findUnique.mockResolvedValue({
+        id: 'user_1',
+        firstName: 'Existing',
+        lastName: 'User',
+        userName: 'existing_user',
+        dateOfBirth: new Date('2010-01-01'),
+      });
+
+      const req = buildJsonRequest('http://localhost/api/auth/register', {
+        email: 'test@example.com',
+        password: 'password123',
+        firstName: 'Incoming',
+        lastName: 'User',
+        userName: 'existing_user',
+        dateOfBirth: '2010-01-01',
+        enforceProfileConflictSelection: true,
+      });
+
+      const res = await REGISTER_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(409);
+      expect(json.code).toBe('PROFILE_CONFLICT');
+      expect(json.conflict.fields).toContain('firstName');
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+      expect(prismaMock.authUser.update).not.toHaveBeenCalled();
+    });
+
+    it('applies selected profile values during claim signup', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: null,
+        passwordHash: '__NO_PASSWORD__',
+        lastLogin: null,
+        emailVerifiedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+      prismaMock.userData.findUnique.mockResolvedValue({
+        id: 'user_1',
+        firstName: 'Existing',
+        lastName: 'User',
+        userName: 'existing_user',
+        dateOfBirth: new Date('2010-01-01'),
+      });
+
+      prismaMock.authUser.update.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Test User',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.userData.update.mockResolvedValue({
+        id: 'user_1',
+        firstName: 'Incoming',
+        lastName: 'User',
+        userName: 'existing_user',
+        dateOfBirth: new Date('2010-01-01'),
+      });
+      prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'user_1' });
+
+      const req = buildJsonRequest('http://localhost/api/auth/register', {
+        email: 'test@example.com',
+        password: 'password123',
+        name: 'Test User',
+        firstName: 'Incoming',
+        lastName: 'User',
+        userName: 'existing_user',
+        dateOfBirth: '2010-01-01',
+        enforceProfileConflictSelection: true,
+        profileSelection: {
+          firstName: 'Incoming',
+        },
+      });
+
+      const res = await REGISTER_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(201);
+      expect(json.user.id).toBe('user_1');
+      expect(prismaMock.userData.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user_1' },
+          data: expect.objectContaining({
+            firstName: 'Incoming',
+          }),
+        }),
+      );
+    });
   });
 
   describe('POST /api/auth/login', () => {

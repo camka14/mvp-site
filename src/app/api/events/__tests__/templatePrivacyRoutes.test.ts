@@ -17,6 +17,7 @@ const requireSessionMock = jest.fn();
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/repositories/events', () => ({ upsertEventFromPayload: jest.fn() }));
+jest.mock('@/server/eventCreationNotifications', () => ({ notifySocialAudienceOfEventCreation: jest.fn() }));
 
 import { GET as eventsGet } from '@/app/api/events/route';
 import { GET as eventGet } from '@/app/api/events/[eventId]/route';
@@ -196,7 +197,8 @@ describe('event template privacy routes', () => {
         }),
       );
 
-      const callArgs = prismaMock.events.findMany.mock.calls.at(-1)?.[0];
+      const findManyCalls = prismaMock.events.findMany.mock.calls;
+      const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
       const startGte = callArgs?.where?.start?.gte as Date | undefined;
       const expectedStart = new Date(
         new Date().getFullYear(),

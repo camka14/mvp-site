@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Button, Group, TextInput, Textarea, Alert } from '@mantine/core';
+import { Modal, Button, Group, TextInput, Textarea, Alert, MultiSelect, Text } from '@mantine/core';
 import type { Organization, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { ImageUploader } from './ImageUploader';
@@ -9,6 +9,7 @@ import { notifications } from '@mantine/notifications';
 import LocationSelector from '@/components/location/LocationSelector';
 import { useLocation } from '@/app/hooks/useLocation';
 import type { LocationInfo } from '@/lib/locationService';
+import { useSports } from '@/app/hooks/useSports';
 
 interface Props {
   isOpen: boolean;
@@ -48,6 +49,7 @@ export default function CreateOrganizationModal({
 }: Props) {
   const isEditing = Boolean(organization);
   const { location: userLocation, locationInfo } = useLocation();
+  const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const initializedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
@@ -56,9 +58,29 @@ export default function CreateOrganizationModal({
     name: '',
     description: '',
     website: '',
+    sports: [] as string[],
     location: '',
     logoId: '',
   });
+
+  const sportOptions = useMemo(() => {
+    const names = new Set<string>();
+    sports.forEach((sport) => {
+      const normalized = typeof sport.name === 'string' ? sport.name.trim() : '';
+      if (normalized) {
+        names.add(normalized);
+      }
+    });
+    form.sports.forEach((sport) => {
+      const normalized = typeof sport === 'string' ? sport.trim() : '';
+      if (normalized) {
+        names.add(normalized);
+      }
+    });
+    return Array.from(names)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ value: name, label: name }));
+  }, [sports, form.sports]);
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const coordinatesPresent = coordinates !== null && (coordinates.lat !== 0 || coordinates.lng !== 0);
 
@@ -94,6 +116,12 @@ export default function CreateOrganizationModal({
         name: organization.name ?? '',
         description: organization.description ?? '',
         website: organization.website ?? '',
+        sports: Array.isArray(organization.sports)
+          ? organization.sports
+            .filter((sport): sport is string => typeof sport === 'string')
+            .map((sport) => sport.trim())
+            .filter((sport) => sport.length > 0)
+          : [],
         location: editingLabel,
         logoId: organization.logoId ?? '',
       });
@@ -124,6 +152,7 @@ export default function CreateOrganizationModal({
       name: '',
       description: '',
       website: '',
+      sports: [],
       location: label,
       logoId: '',
     });
@@ -165,6 +194,14 @@ export default function CreateOrganizationModal({
       const trimmedDescription = form.description.trim();
       const trimmedWebsite = form.website.trim();
       const trimmedLocation = form.location.trim();
+      const selectedSports = Array.from(
+        new Set(
+          form.sports
+            .filter((sport): sport is string => typeof sport === 'string')
+            .map((sport) => sport.trim())
+            .filter((sport) => sport.length > 0),
+        ),
+      );
       const coordinatesPayload = hasValidCoordinates && coordinates
         ? ([Number(coordinates.lng), Number(coordinates.lat)] as [number, number])
         : undefined;
@@ -174,6 +211,7 @@ export default function CreateOrganizationModal({
           name: trimmedName,
           description: trimmedDescription || undefined,
           website: trimmedWebsite || undefined,
+          sports: selectedSports,
           location: trimmedLocation || undefined,
           logoId: form.logoId || undefined,
         };
@@ -190,6 +228,7 @@ export default function CreateOrganizationModal({
           name: trimmedName,
           description: trimmedDescription || undefined,
           website: trimmedWebsite || undefined,
+          sports: selectedSports,
           location: trimmedLocation || undefined,
           coordinates: coordinatesPayload,
           logoId: form.logoId || undefined,
@@ -202,6 +241,7 @@ export default function CreateOrganizationModal({
           name: '',
           description: '',
           website: '',
+          sports: [],
           location: '',
           logoId: '',
         });
@@ -223,7 +263,7 @@ export default function CreateOrganizationModal({
   const modalTitle = isEditing ? 'Edit Organization' : 'Create Organization';
   const submitLabel = submitting ? (isEditing ? 'Saving…' : 'Creating…') : isEditing ? 'Save Changes' : 'Create Organization';
 
-  const handleFieldChange = (field: keyof typeof form) =>
+  const handleFieldChange = (field: 'name' | 'description' | 'website' | 'location' | 'logoId') =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const value = event.currentTarget?.value ?? '';
       setForm((prev) => ({ ...prev, [field]: value }));
@@ -255,6 +295,24 @@ export default function CreateOrganizationModal({
           placeholder="https://example.com"
           type="url"
         />
+        <div>
+          <MultiSelect
+            label="Sports covered"
+            value={form.sports}
+            onChange={(value) => setForm((prev) => ({ ...prev, sports: value }))}
+            data={sportOptions}
+            searchable
+            clearable
+            placeholder={sportsLoading ? 'Loading sports...' : 'Select sports'}
+            nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
+            maxDropdownHeight={220}
+          />
+          {sportsError && (
+            <Text size="xs" c="red" mt={4}>
+              Failed to load sports list. You can still save existing selections.
+            </Text>
+          )}
+        </div>
         <LocationSelector
           value={form.location}
           coordinates={{

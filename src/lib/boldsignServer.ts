@@ -326,9 +326,31 @@ export const sendDocumentFromTemplate = async (params: {
   signerName: string;
   roleIndex: number;
   signerRole?: string;
+  roles?: Array<{
+    roleIndex: number;
+    signerEmail: string;
+    signerName: string;
+    signerRole?: string;
+  }>;
   title?: string;
   message?: string;
 }) => {
+  const rolesPayload = Array.isArray(params.roles) && params.roles.length > 0
+    ? params.roles.map((role) => ({
+      RoleIndex: role.roleIndex,
+      SignerEmail: role.signerEmail,
+      SignerName: role.signerName,
+      ...(role.signerRole ? { SignerRole: role.signerRole } : {}),
+    }))
+    : [
+      {
+        RoleIndex: params.roleIndex,
+        SignerEmail: params.signerEmail,
+        SignerName: params.signerName,
+        ...(params.signerRole ? { SignerRole: params.signerRole } : {}),
+      },
+    ];
+
   const payload = await boldSignRequest<JsonRecord>({
     path: '/v1/template/send',
     method: 'POST',
@@ -339,14 +361,7 @@ export const sendDocumentFromTemplate = async (params: {
       DisableEmails: true,
       DisableSMS: true,
       HideDocumentId: true,
-      Roles: [
-        {
-          RoleIndex: params.roleIndex,
-          SignerEmail: params.signerEmail,
-          SignerName: params.signerName,
-          ...(params.signerRole ? { SignerRole: params.signerRole } : {}),
-        },
-      ],
+      Roles: rolesPayload,
     },
   });
 

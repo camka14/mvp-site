@@ -61,6 +61,7 @@ export type OrganizationsCountAggregateOutputType = {
   ownerId: number
   hostIds: number
   website: number
+  sports: number
   refIds: number
   hasStripeAccount: number
   coordinates: number
@@ -108,6 +109,7 @@ export type OrganizationsCountAggregateInputType = {
   ownerId?: true
   hostIds?: true
   website?: true
+  sports?: true
   refIds?: true
   hasStripeAccount?: true
   coordinates?: true
@@ -200,6 +202,7 @@ export type OrganizationsGroupByOutputType = {
   ownerId: string
   hostIds: string[]
   website: string | null
+  sports: string[]
   refIds: string[]
   hasStripeAccount: boolean | null
   coordinates: runtime.JsonValue | null
@@ -240,6 +243,7 @@ export type OrganizationsWhereInput = {
   ownerId?: Prisma.StringFilter<"Organizations"> | string
   hostIds?: Prisma.StringNullableListFilter<"Organizations">
   website?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  sports?: Prisma.StringNullableListFilter<"Organizations">
   refIds?: Prisma.StringNullableListFilter<"Organizations">
   hasStripeAccount?: Prisma.BoolNullableFilter<"Organizations"> | boolean | null
   coordinates?: Prisma.JsonNullableFilter<"Organizations">
@@ -259,6 +263,7 @@ export type OrganizationsOrderByWithRelationInput = {
   ownerId?: Prisma.SortOrder
   hostIds?: Prisma.SortOrder
   website?: Prisma.SortOrderInput | Prisma.SortOrder
+  sports?: Prisma.SortOrder
   refIds?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrderInput | Prisma.SortOrder
   coordinates?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -281,6 +286,7 @@ export type OrganizationsWhereUniqueInput = Prisma.AtLeast<{
   ownerId?: Prisma.StringFilter<"Organizations"> | string
   hostIds?: Prisma.StringNullableListFilter<"Organizations">
   website?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  sports?: Prisma.StringNullableListFilter<"Organizations">
   refIds?: Prisma.StringNullableListFilter<"Organizations">
   hasStripeAccount?: Prisma.BoolNullableFilter<"Organizations"> | boolean | null
   coordinates?: Prisma.JsonNullableFilter<"Organizations">
@@ -300,6 +306,7 @@ export type OrganizationsOrderByWithAggregationInput = {
   ownerId?: Prisma.SortOrder
   hostIds?: Prisma.SortOrder
   website?: Prisma.SortOrderInput | Prisma.SortOrder
+  sports?: Prisma.SortOrder
   refIds?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrderInput | Prisma.SortOrder
   coordinates?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -325,6 +332,7 @@ export type OrganizationsScalarWhereWithAggregatesInput = {
   ownerId?: Prisma.StringWithAggregatesFilter<"Organizations"> | string
   hostIds?: Prisma.StringNullableListFilter<"Organizations">
   website?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  sports?: Prisma.StringNullableListFilter<"Organizations">
   refIds?: Prisma.StringNullableListFilter<"Organizations">
   hasStripeAccount?: Prisma.BoolNullableWithAggregatesFilter<"Organizations"> | boolean | null
   coordinates?: Prisma.JsonNullableWithAggregatesFilter<"Organizations">
@@ -344,6 +352,7 @@ export type OrganizationsCreateInput = {
   ownerId: string
   hostIds?: Prisma.OrganizationsCreatehostIdsInput | string[]
   website?: string | null
+  sports?: Prisma.OrganizationsCreatesportsInput | string[]
   refIds?: Prisma.OrganizationsCreaterefIdsInput | string[]
   hasStripeAccount?: boolean | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
@@ -363,6 +372,7 @@ export type OrganizationsUncheckedCreateInput = {
   ownerId: string
   hostIds?: Prisma.OrganizationsCreatehostIdsInput | string[]
   website?: string | null
+  sports?: Prisma.OrganizationsCreatesportsInput | string[]
   refIds?: Prisma.OrganizationsCreaterefIdsInput | string[]
   hasStripeAccount?: boolean | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
@@ -382,6 +392,7 @@ export type OrganizationsUpdateInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   hostIds?: Prisma.OrganizationsUpdatehostIdsInput | string[]
   website?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sports?: Prisma.OrganizationsUpdatesportsInput | string[]
   refIds?: Prisma.OrganizationsUpdaterefIdsInput | string[]
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
@@ -401,6 +412,7 @@ export type OrganizationsUncheckedUpdateInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   hostIds?: Prisma.OrganizationsUpdatehostIdsInput | string[]
   website?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sports?: Prisma.OrganizationsUpdatesportsInput | string[]
   refIds?: Prisma.OrganizationsUpdaterefIdsInput | string[]
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
@@ -420,6 +432,7 @@ export type OrganizationsCreateManyInput = {
   ownerId: string
   hostIds?: Prisma.OrganizationsCreatehostIdsInput | string[]
   website?: string | null
+  sports?: Prisma.OrganizationsCreatesportsInput | string[]
   refIds?: Prisma.OrganizationsCreaterefIdsInput | string[]
   hasStripeAccount?: boolean | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
@@ -439,6 +452,7 @@ export type OrganizationsUpdateManyMutationInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   hostIds?: Prisma.OrganizationsUpdatehostIdsInput | string[]
   website?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sports?: Prisma.OrganizationsUpdatesportsInput | string[]
   refIds?: Prisma.OrganizationsUpdaterefIdsInput | string[]
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
@@ -458,6 +472,7 @@ export type OrganizationsUncheckedUpdateManyInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   hostIds?: Prisma.OrganizationsUpdatehostIdsInput | string[]
   website?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sports?: Prisma.OrganizationsUpdatesportsInput | string[]
   refIds?: Prisma.OrganizationsUpdaterefIdsInput | string[]
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
@@ -477,6 +492,7 @@ export type OrganizationsCountOrderByAggregateInput = {
   ownerId?: Prisma.SortOrder
   hostIds?: Prisma.SortOrder
   website?: Prisma.SortOrder
+  sports?: Prisma.SortOrder
   refIds?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrder
   coordinates?: Prisma.SortOrder
@@ -515,6 +531,10 @@ export type OrganizationsCreatehostIdsInput = {
   set: string[]
 }
 
+export type OrganizationsCreatesportsInput = {
+  set: string[]
+}
+
 export type OrganizationsCreaterefIdsInput = {
   set: string[]
 }
@@ -532,6 +552,11 @@ export type OrganizationsCreateteamIdsInput = {
 }
 
 export type OrganizationsUpdatehostIdsInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
+export type OrganizationsUpdatesportsInput = {
   set?: string[]
   push?: string | string[]
 }
@@ -569,6 +594,7 @@ export type OrganizationsSelect<ExtArgs extends runtime.Types.Extensions.Interna
   ownerId?: boolean
   hostIds?: boolean
   website?: boolean
+  sports?: boolean
   refIds?: boolean
   hasStripeAccount?: boolean
   coordinates?: boolean
@@ -588,6 +614,7 @@ export type OrganizationsSelectCreateManyAndReturn<ExtArgs extends runtime.Types
   ownerId?: boolean
   hostIds?: boolean
   website?: boolean
+  sports?: boolean
   refIds?: boolean
   hasStripeAccount?: boolean
   coordinates?: boolean
@@ -607,6 +634,7 @@ export type OrganizationsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   ownerId?: boolean
   hostIds?: boolean
   website?: boolean
+  sports?: boolean
   refIds?: boolean
   hasStripeAccount?: boolean
   coordinates?: boolean
@@ -626,6 +654,7 @@ export type OrganizationsSelectScalar = {
   ownerId?: boolean
   hostIds?: boolean
   website?: boolean
+  sports?: boolean
   refIds?: boolean
   hasStripeAccount?: boolean
   coordinates?: boolean
@@ -634,7 +663,7 @@ export type OrganizationsSelectScalar = {
   teamIds?: boolean
 }
 
-export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "description" | "logoId" | "ownerId" | "hostIds" | "website" | "refIds" | "hasStripeAccount" | "coordinates" | "fieldIds" | "productIds" | "teamIds", ExtArgs["result"]["organizations"]>
+export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "description" | "logoId" | "ownerId" | "hostIds" | "website" | "sports" | "refIds" | "hasStripeAccount" | "coordinates" | "fieldIds" | "productIds" | "teamIds", ExtArgs["result"]["organizations"]>
 
 export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Organizations"
@@ -650,6 +679,7 @@ export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.Inter
     ownerId: string
     hostIds: string[]
     website: string | null
+    sports: string[]
     refIds: string[]
     hasStripeAccount: boolean | null
     coordinates: runtime.JsonValue | null
@@ -1089,6 +1119,7 @@ export interface OrganizationsFieldRefs {
   readonly ownerId: Prisma.FieldRef<"Organizations", 'String'>
   readonly hostIds: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly website: Prisma.FieldRef<"Organizations", 'String'>
+  readonly sports: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly refIds: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly hasStripeAccount: Prisma.FieldRef<"Organizations", 'Boolean'>
   readonly coordinates: Prisma.FieldRef<"Organizations", 'Json'>

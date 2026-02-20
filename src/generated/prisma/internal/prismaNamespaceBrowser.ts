@@ -460,6 +460,7 @@ export const OrganizationsScalarFieldEnum = {
   ownerId: 'ownerId',
   hostIds: 'hostIds',
   website: 'website',
+  sports: 'sports',
   refIds: 'refIds',
   hasStripeAccount: 'hasStripeAccount',
   coordinates: 'coordinates',

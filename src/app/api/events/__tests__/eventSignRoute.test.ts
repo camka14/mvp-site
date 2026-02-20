@@ -274,6 +274,71 @@ describe('POST /api/events/[eventId]/sign', () => {
     }));
   });
 
+  it('assigns all template roles when signing parent+child PDF templates from parent context', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_parent_child_pdf',
+        templateId: 'bold_tmpl_parent_child',
+        type: 'PDF',
+        title: 'Parent + Child PDF Waiver',
+        description: 'Parent and child must sign',
+        signOnce: false,
+        requiredSignerType: 'PARENT_GUARDIAN_CHILD',
+        roleIndex: 1,
+        roleIndexes: [1, 2],
+        signerRoles: ['Parent/Guardian', 'Child'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_parent_child_pdf'],
+      name: 'Weekend Open',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.sensitiveUserData.findFirst.mockImplementation(async ({ where }: { where: { userId?: string } }) => {
+      if (where.userId === 'child_1') {
+        return { email: null };
+      }
+      return { email: 'parent@example.com' };
+    });
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([
+      { roleIndex: 1, signerRole: 'Parent/Guardian' },
+      { roleIndex: 2, signerRole: 'Child' },
+    ]);
+    sendDocumentFromTemplateMock.mockResolvedValue({ documentId: 'doc_parent_child_1' });
+    getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_parent_child_1' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'parent_guardian',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(sendDocumentFromTemplateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateId: 'bold_tmpl_parent_child',
+        roleIndex: 1,
+        signerRole: 'Parent/Guardian',
+        roles: expect.arrayContaining([
+          expect.objectContaining({
+            roleIndex: 1,
+            signerRole: 'Parent/Guardian',
+            signerEmail: 'parent@example.com',
+          }),
+          expect.objectContaining({
+            roleIndex: 2,
+            signerRole: 'Child',
+            signerEmail: 'parent@example.com',
+          }),
+        ]),
+      }),
+    );
+  });
+
   it('uses the child signer role for child-context PDF signing', async () => {
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {

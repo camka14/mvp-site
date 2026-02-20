@@ -51,12 +51,19 @@ class OrganizationService {
     const teamIds = Array.isArray(row.teamIds)
       ? row.teamIds.map((value: unknown) => String(value))
       : undefined;
+    const sports = Array.isArray(row.sports)
+      ? row.sports
+        .filter((value: unknown): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+      : undefined;
 
     const organization: Organization = {
       $id: row.$id,
       name: row.name ?? '',
       description: row.description ?? undefined,
       website: row.website ?? undefined,
+      sports,
       logoId: row.logoId ?? row.logo_id ?? undefined,
       location: row.location ?? undefined,
       coordinates: coordinates,
@@ -95,6 +102,9 @@ class OrganizationService {
     if (data.teamIds !== undefined) {
       payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
     }
+    if (data.sports !== undefined) {
+      payload.sports = Array.isArray(data.sports) ? data.sports : [];
+    }
 
     const response = await apiRequest<any>('/api/organizations', {
       method: 'POST',
@@ -113,6 +123,9 @@ class OrganizationService {
     }
     if (data.teamIds !== undefined) {
       payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
+    }
+    if (data.sports !== undefined) {
+      payload.sports = Array.isArray(data.sports) ? data.sports : [];
     }
     const response = await apiRequest<any>(`/api/organizations/${id}`, {
       method: 'PATCH',

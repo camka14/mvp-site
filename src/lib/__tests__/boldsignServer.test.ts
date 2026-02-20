@@ -131,6 +131,55 @@ describe('boldsignServer', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('sends all provided roles when creating a document from template', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ documentId: 'doc_multi' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await sendDocumentFromTemplate({
+      templateId: 'tmpl_multi',
+      signerEmail: 'parent@example.com',
+      signerName: 'Parent User',
+      roleIndex: 1,
+      signerRole: 'Parent/Guardian',
+      roles: [
+        {
+          roleIndex: 1,
+          signerRole: 'Parent/Guardian',
+          signerEmail: 'parent@example.com',
+          signerName: 'Parent User',
+        },
+        {
+          roleIndex: 2,
+          signerRole: 'Child',
+          signerEmail: 'parent@example.com',
+          signerName: 'Child User',
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    const requestBody = JSON.parse(String(init?.body ?? '{}'));
+    expect(requestBody.Roles).toEqual([
+      expect.objectContaining({
+        RoleIndex: 1,
+        SignerRole: 'Parent/Guardian',
+        SignerEmail: 'parent@example.com',
+        SignerName: 'Parent User',
+      }),
+      expect.objectContaining({
+        RoleIndex: 2,
+        SignerRole: 'Child',
+        SignerEmail: 'parent@example.com',
+        SignerName: 'Child User',
+      }),
+    ]);
+  });
+
   it('fetches embedded template edit url', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ editUrl: 'https://app.boldsign.com/template/edit/tmpl_123' }), {

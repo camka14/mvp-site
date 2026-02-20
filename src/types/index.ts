@@ -481,6 +481,7 @@ export interface Organization {
   name: string;
   description?: string;
   website?: string;
+  sports?: string[];
   logoId?: string;
   location?: string;
   coordinates?: [number, number];

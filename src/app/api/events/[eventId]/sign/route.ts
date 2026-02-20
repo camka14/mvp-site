@@ -112,6 +112,43 @@ const resolveSignerEmail = async (params: {
   return normalizeEmail(fromAuth?.email);
 };
 
+type ResolvedSignerIdentity = {
+  userId: string;
+  email?: string;
+  name: string;
+};
+
+const resolveSignerIdentity = async (params: {
+  userId: string;
+  providedEmail?: string;
+  userPayload?: Record<string, unknown>;
+}): Promise<ResolvedSignerIdentity> => {
+  const email = await resolveSignerEmail({
+    providedEmail: params.providedEmail,
+    userPayload: params.userPayload,
+    userId: params.userId,
+  });
+  const profile = await prisma.userData.findUnique({
+    where: { id: params.userId },
+    select: {
+      firstName: true,
+      lastName: true,
+      userName: true,
+    },
+  });
+  const name = resolveSignerName({
+    userPayload: params.userPayload,
+    signerEmail: email,
+    userId: params.userId,
+    profile,
+  });
+  return {
+    userId: params.userId,
+    email,
+    name,
+  };
+};
+
 const resolveSignerContext = (raw: unknown): SignerContext => normalizeSignerContext(raw, 'participant');
 
 const verifyActiveParentLink = async (params: {
@@ -264,40 +301,50 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   const providedEmail = signerContext === 'child'
     ? pickString(parsed.data.childEmail, parsed.data.targetUserEmail, parsed.data.userEmail)
     : pickString(parsed.data.userEmail, parsed.data.targetUserEmail);
-  let signerEmail = await resolveSignerEmail({
+  let signerIdentity = await resolveSignerIdentity({
+    userId: signerUserId,
     providedEmail,
     userPayload,
-    userId: signerUserId,
   });
-  if (!signerEmail && signerContext === 'child' && childUserId && !session.isAdmin) {
+  if (!signerIdentity.email && signerContext === 'child' && childUserId && !session.isAdmin) {
     const actingAsLinkedChildSigner = await verifyActiveParentLink({
       parentId: session.userId,
       childId: childUserId,
     });
     if (actingAsLinkedChildSigner) {
-      signerEmail = await resolveSignerEmail({
+      const fallbackEmail = await resolveSignerEmail({
         providedEmail: pickString(parsed.data.userEmail, parsed.data.targetUserEmail),
         userPayload,
         userId: session.userId,
       });
+      signerIdentity = {
+        ...signerIdentity,
+        email: fallbackEmail,
+      };
     }
   }
 
-  const signerProfile = await prisma.userData.findUnique({
-    where: { id: signerUserId },
-    select: {
-      firstName: true,
-      lastName: true,
-      userName: true,
-    },
-  });
-
-  const signerName = resolveSignerName({
-    userPayload,
-    signerEmail,
-    userId: signerUserId,
-    profile: signerProfile,
-  });
+  const parentSignerUserId = isChildRegistration
+    ? (session.isAdmin ? (requestedUserId ?? session.userId) : session.userId)
+    : undefined;
+  const parentProvidedEmail = pickString(parsed.data.userEmail, parsed.data.targetUserEmail);
+  const childProvidedEmail = pickString(parsed.data.childEmail, parsed.data.targetUserEmail, parsed.data.userEmail);
+  const [parentSignerIdentity, childSignerIdentity] = await Promise.all([
+    isChildRegistration && parentSignerUserId
+      ? resolveSignerIdentity({
+        userId: parentSignerUserId,
+        providedEmail: parentProvidedEmail,
+        userPayload,
+      })
+      : Promise.resolve<ResolvedSignerIdentity | null>(null),
+    isChildRegistration && childUserId
+      ? resolveSignerIdentity({
+        userId: childUserId,
+        providedEmail: childProvidedEmail,
+        userPayload,
+      })
+      : Promise.resolve<ResolvedSignerIdentity | null>(null),
+  ]);
 
   const signLinks: Array<{
     templateId: string;
@@ -341,7 +388,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       if (!isBoldSignConfigured()) {
         throw new Error('BoldSign is not configured on the server. Set BOLDSIGN_API_KEY.');
       }
-      if (!signerEmail) {
+      if (!signerIdentity.email) {
         throw new Error('A signer email is required for PDF signing.');
       }
       if (!template.templateId) {
@@ -372,20 +419,62 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       }
 
       const selectedRole = pickRoleForSignerContext(templateRoles, signerContext);
+      type RoleAssignment = {
+        roleIndex: number;
+        signerRole: string;
+        signerEmail: string;
+        signerName: string;
+      };
+      const buildRoleAssignment = (role: { roleIndex: number; signerRole: string }): RoleAssignment => {
+        let signerEmailForRole: string | undefined = signerIdentity.email;
+        let signerNameForRole = signerIdentity.name;
+        const next = {
+          roleIndex: role.roleIndex,
+          signerRole: role.signerRole,
+        };
+
+        if (isChildRegistration) {
+          if (roleMatchesSignerContext(role.signerRole, 'parent_guardian')) {
+            signerEmailForRole = parentSignerIdentity?.email ?? signerIdentity.email ?? childSignerIdentity?.email;
+            signerNameForRole = parentSignerIdentity?.name ?? signerIdentity.name;
+          } else if (roleMatchesSignerContext(role.signerRole, 'child')) {
+            signerEmailForRole = childSignerIdentity?.email ?? signerIdentity.email ?? parentSignerIdentity?.email;
+            signerNameForRole = childSignerIdentity?.name ?? signerIdentity.name;
+          }
+        }
+
+        if (!signerEmailForRole) {
+          throw new Error('A signer email is required for PDF signing.');
+        }
+
+        return {
+          ...next,
+          signerEmail: signerEmailForRole,
+          signerName: signerNameForRole,
+        };
+      };
+      const roleAssignments: RoleAssignment[] = (templateRoles.length > 0 ? templateRoles : [selectedRole]).map(buildRoleAssignment);
+      const selectedRoleAssignment: RoleAssignment | undefined = roleAssignments.find(
+        (role) => role.roleIndex === selectedRole.roleIndex && role.signerRole === selectedRole.signerRole,
+      ) ?? roleAssignments[0];
+      if (!selectedRoleAssignment) {
+        throw new Error('Unable to resolve signer role assignment.');
+      }
 
       const sent = await sendDocumentFromTemplate({
         templateId: template.templateId,
-        signerEmail,
-        signerName,
+        signerEmail: selectedRoleAssignment.signerEmail,
+        signerName: selectedRoleAssignment.signerName,
         roleIndex: selectedRole.roleIndex,
         signerRole: selectedRole.signerRole,
+        roles: roleAssignments,
         title: template.title,
         message: template.description ?? undefined,
       });
 
       const embedded = await getEmbeddedSignLink({
         documentId: sent.documentId,
-        signerEmail,
+        signerEmail: selectedRoleAssignment.signerEmail,
         redirectUrl: parsed.data.redirectUrl,
       });
 

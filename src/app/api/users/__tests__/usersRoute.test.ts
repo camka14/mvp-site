@@ -14,7 +14,7 @@ const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row,
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
-  withLegacyList: (...args: any[]) => withLegacyListMock(...args),
+  withLegacyList: (rows: any[]) => withLegacyListMock(rows),
 }));
 
 import { GET as usersGet } from '@/app/api/users/route';

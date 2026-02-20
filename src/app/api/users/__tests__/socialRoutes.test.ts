@@ -14,19 +14,19 @@ const removeFriendMock = jest.fn();
 const followUserMock = jest.fn();
 const unfollowUserMock = jest.fn();
 
-jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
+jest.mock('@/lib/permissions', () => ({ requireSession: (request: NextRequest) => requireSessionMock(request) }));
 jest.mock('@/server/legacyFormat', () => ({
-  withLegacyFields: (...args: any[]) => withLegacyFieldsMock(...args),
-  withLegacyList: (...args: any[]) => withLegacyListMock(...args),
+  withLegacyFields: (row: any) => withLegacyFieldsMock(row),
+  withLegacyList: (rows: any[]) => withLegacyListMock(rows),
 }));
 jest.mock('@/server/socialGraph', () => ({
-  getSocialGraphForUser: (...args: any[]) => getSocialGraphForUserMock(...args),
-  sendFriendRequest: (...args: any[]) => sendFriendRequestMock(...args),
-  acceptFriendRequest: (...args: any[]) => acceptFriendRequestMock(...args),
-  declineFriendRequest: (...args: any[]) => declineFriendRequestMock(...args),
-  removeFriend: (...args: any[]) => removeFriendMock(...args),
-  followUser: (...args: any[]) => followUserMock(...args),
-  unfollowUser: (...args: any[]) => unfollowUserMock(...args),
+  getSocialGraphForUser: (userId: string) => getSocialGraphForUserMock(userId),
+  sendFriendRequest: (senderId: string, targetUserId: string) => sendFriendRequestMock(senderId, targetUserId),
+  acceptFriendRequest: (acceptingUserId: string, requesterId: string) => acceptFriendRequestMock(acceptingUserId, requesterId),
+  declineFriendRequest: (decliningUserId: string, requesterId: string) => declineFriendRequestMock(decliningUserId, requesterId),
+  removeFriend: (userId: string, friendId: string) => removeFriendMock(userId, friendId),
+  followUser: (userId: string, targetUserId: string) => followUserMock(userId, targetUserId),
+  unfollowUser: (userId: string, targetUserId: string) => unfollowUserMock(userId, targetUserId),
   SocialGraphError: class SocialGraphError extends Error {
     status: number;
     constructor(status: number, message: string) {

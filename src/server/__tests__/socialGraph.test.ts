@@ -48,13 +48,13 @@ const update = jest.fn(async (args: any) => {
   return cloneUser(next);
 });
 
-const prismaMock = {
+const prismaMock: any = {
   userData: {
     findMany,
     findUnique,
     update,
   },
-  $transaction: jest.fn(async (callback: any) => callback(prismaMock)),
+  $transaction: jest.fn(async (callback: (tx: any) => unknown): Promise<unknown> => callback(prismaMock)),
 };
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
