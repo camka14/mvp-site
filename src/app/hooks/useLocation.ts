@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { LocationCoordinates, LocationInfo, locationService } from '@/lib/locationService';
 
 // Shared store to keep location in sync across hook consumers
@@ -80,7 +80,7 @@ export function useLocation(): UseLocationReturn {
     };
   }, []);
 
-  const requestLocation = async () => {
+  const requestLocation = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -126,9 +126,9 @@ export function useLocation(): UseLocationReturn {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const searchLocation = async (query: string) => {
+  const searchLocation = useCallback(async (query: string) => {
     setLoading(true);
     setError(null);
     
@@ -153,9 +153,9 @@ export function useLocation(): UseLocationReturn {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const clearLocation = () => {
+  const clearLocation = useCallback(() => {
     setLocation(null);
     setLocationInfo(null);
     setError(null);
@@ -168,9 +168,9 @@ export function useLocation(): UseLocationReturn {
     }
     localStorage.removeItem('user-location');
     localStorage.removeItem('user-location-info');
-  };
+  }, []);
 
-  const setLocationFromInfo = (info: LocationInfo) => {
+  const setLocationFromInfo = useCallback((info: LocationInfo) => {
     const coords = { lat: info.lat, lng: info.lng };
     setLocation(coords);
     setLocationInfo(info);
@@ -182,7 +182,7 @@ export function useLocation(): UseLocationReturn {
     }
     localStorage.setItem('user-location', JSON.stringify(coords));
     localStorage.setItem('user-location-info', JSON.stringify(info));
-  };
+  }, []);
 
   return {
     location,

@@ -1,7 +1,7 @@
 'use client';
 
 import { Dispatch, SetStateAction, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Alert,
   Button,
@@ -76,6 +76,7 @@ export default function DiscoverPage() {
 
 function DiscoverPageContent() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchParamsString = searchParams.toString();
   const { user, loading: authLoading, isAuthenticated } = useApp();
@@ -167,6 +168,12 @@ function DiscoverPageContent() {
    * Keep URL in sync with search
    */
   useEffect(() => {
+    if (pathname !== '/discover') {
+      return;
+    }
+    if (typeof window === 'undefined' || window.location.pathname !== '/discover') {
+      return;
+    }
     const params = new URLSearchParams(searchParamsString);
     if (debouncedSearch) {
       params.set('q', debouncedSearch);
@@ -182,7 +189,7 @@ function DiscoverPageContent() {
     // Keep discover query params in sync without triggering router navigations
     // that can race with user-initiated route changes (Profile/Organizations).
     window.history.replaceState(window.history.state, '', nextUrl);
-  }, [debouncedSearch, searchParamsString]);
+  }, [debouncedSearch, pathname, searchParamsString]);
 
   useEffect(() => {
     if (sportsLoading) return;
@@ -363,12 +370,19 @@ function DiscoverPageContent() {
     loadFirstPage();
   }, [isAuthenticated, authLoading, activeTab, loadFirstPage]);
 
+  const locationRequestAttemptedRef = useRef(false);
   useEffect(() => {
-    let requested = false;
-    if (!location && typeof window !== 'undefined' && !requested) {
-      requested = true;
-      requestLocation().catch(() => {});
+    if (location) {
+      return;
     }
+    if (locationRequestAttemptedRef.current) {
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+    locationRequestAttemptedRef.current = true;
+    requestLocation().catch(() => {});
   }, [location, requestLocation]);
 
   useEffect(() => {
