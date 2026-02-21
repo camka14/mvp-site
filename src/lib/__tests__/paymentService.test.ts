@@ -116,7 +116,54 @@ describe('paymentService', () => {
           method: 'DELETE',
           body: expect.objectContaining({
             user: expect.objectContaining({ $id: mockUser.$id }),
+            userId: mockUser.$id,
             event: expect.objectContaining({ $id: mockEvent.$id }),
+          }),
+        }),
+      );
+    });
+
+    it('sends explicit target user id when leaving on behalf of a linked child', async () => {
+      apiRequestMock.mockResolvedValue({});
+
+      const mockUser = { $id: 'parent_1' } as UserData;
+      const mockEvent = buildEvent({ $id: 'event_1' }) as Event;
+
+      await paymentService.leaveEvent(mockUser, mockEvent, undefined, undefined, undefined, 'child_1');
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        `/api/events/${mockEvent.$id}/participants`,
+        expect.objectContaining({
+          method: 'DELETE',
+          body: expect.objectContaining({
+            user: expect.objectContaining({ $id: mockUser.$id }),
+            userId: 'child_1',
+            event: expect.objectContaining({ $id: mockEvent.$id }),
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('requestRefund', () => {
+    it('sends explicit target user id when refunding on behalf of a linked child', async () => {
+      apiRequestMock.mockResolvedValue({ success: true, emailSent: false });
+
+      const mockUser = { $id: 'parent_1' } as UserData;
+      const mockEvent = buildEvent({ $id: 'event_1' }) as Event;
+
+      const result = await paymentService.requestRefund(mockEvent, mockUser, 'Family emergency', 'child_1');
+
+      expect(result.success).toBe(true);
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/billing/refund',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            user: expect.objectContaining({ $id: mockUser.$id }),
+            userId: 'child_1',
+            payloadEvent: expect.objectContaining({ $id: mockEvent.$id }),
+            reason: 'Family emergency',
           }),
         }),
       );

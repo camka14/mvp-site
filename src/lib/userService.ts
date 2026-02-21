@@ -194,11 +194,22 @@ class UserService {
     return [];
   }
 
-  async listInvites(filters: { userId?: string; type?: string; teamId?: string } = {}): Promise<Invite[]> {
+  async listInvites(filters: { userId?: string; type?: string; types?: string[]; teamId?: string } = {}): Promise<Invite[]> {
     const params = new URLSearchParams();
     if (filters.userId) params.set('userId', filters.userId);
     if (filters.type) params.set('type', filters.type);
     if (filters.teamId) params.set('teamId', filters.teamId);
+    if (filters.types && filters.types.length) {
+      const inviteLists = await Promise.all(
+        filters.types.map(async (inviteType) => {
+          const typeParams = new URLSearchParams(params);
+          typeParams.set('type', inviteType);
+          const response = await apiFetch<{ invites?: Invite[] }>(`/api/invites?${typeParams.toString()}`);
+          return response.invites ?? [];
+        }),
+      );
+      return inviteLists.flat();
+    }
     const response = await apiFetch<{ invites?: Invite[] }>(`/api/invites?${params.toString()}`);
     return response.invites ?? [];
   }
@@ -222,20 +233,35 @@ class UserService {
     return { sent: created, not_sent: [], failed: [] };
   }
 
-  async addTeamInvitation(userId: string, teamId: string): Promise<boolean> {
+  async addTeamInvitation(userId: string, teamId: string, inviteType: string = 'player'): Promise<boolean> {
     // Inviting an existing user by id: UserData is public and does not include email, so the server
     // derives/stores the email from AuthUser/SensitiveUserData.
     await apiFetch('/api/invites', {
       method: 'POST',
-      body: JSON.stringify({ invites: [{ type: 'player', teamId, userId, status: 'pending' }] }),
+      body: JSON.stringify({ invites: [{ type: inviteType, teamId, userId, status: 'pending' }] }),
     });
     return true;
   }
 
-  async removeTeamInvitation(userId: string, teamId: string): Promise<boolean> {
+  async removeTeamInvitation(userId: string, teamId: string, inviteType: string = 'player'): Promise<boolean> {
     await apiFetch('/api/invites', {
       method: 'DELETE',
-      body: JSON.stringify({ userId, teamId, type: 'player' }),
+      body: JSON.stringify({ userId, teamId, type: inviteType }),
+    });
+    return true;
+  }
+
+  async deleteInviteById(inviteId: string): Promise<boolean> {
+    await apiFetch(`/api/invites/${encodeURIComponent(inviteId)}`, {
+      method: 'DELETE',
+    });
+    return true;
+  }
+
+  async acceptInvite(inviteId: string): Promise<boolean> {
+    await apiFetch(`/api/invites/${encodeURIComponent(inviteId)}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
     return true;
   }

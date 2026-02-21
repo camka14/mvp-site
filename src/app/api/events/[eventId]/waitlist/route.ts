@@ -97,7 +97,7 @@ async function updateWaitlist(
   }
 
   if (teamId) {
-    const team = await prisma.volleyBallTeams.findUnique({
+    const team = await prisma.teams.findUnique({
       where: { id: teamId },
       select: {
         id: true,

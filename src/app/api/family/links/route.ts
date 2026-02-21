@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
           userId: childId,
           firstName: child.firstName ?? '',
           lastName: child.lastName ?? '',
+          userName: child.userName?.trim() || null,
         }
       : undefined,
   }, { status: 200 });

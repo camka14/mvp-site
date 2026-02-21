@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   for (const id of event.freeAgentIds ?? []) refundUserIds.add(id);
 
   if (event.teamIds?.length) {
-    const teams = await prisma.volleyBallTeams.findMany({
+    const teams = await prisma.teams.findMany({
       where: { id: { in: event.teamIds } },
       select: { captainId: true },
     });

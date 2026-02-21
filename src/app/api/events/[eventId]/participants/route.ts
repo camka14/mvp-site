@@ -65,6 +65,21 @@ const normalizeEmail = (value: unknown): string | null => {
   return normalized.length ? normalized : null;
 };
 
+const canManageLinkedChildParticipant = async (params: {
+  parentId: string;
+  childId: string;
+}): Promise<boolean> => {
+  const link = await prisma.parentChildLinks.findFirst({
+    where: {
+      parentId: params.parentId,
+      childId: params.childId,
+      status: 'ACTIVE',
+    },
+    select: { id: true },
+  });
+  return Boolean(link);
+};
+
 async function updateParticipants(
   req: NextRequest,
   params: Promise<{ eventId: string }>,
@@ -89,7 +104,15 @@ async function updateParticipants(
   const teamId = parsed.data.teamId ?? extractId(parsed.data.team);
 
   if (userId && !session.isAdmin && session.userId !== userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const canManageChild = mode === 'remove'
+      ? await canManageLinkedChildParticipant({
+        parentId: session.userId,
+        childId: userId,
+      })
+      : false;
+    if (!canManageChild) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   const divisionSelectionResult = mode === 'add'
@@ -194,7 +217,7 @@ async function updateParticipants(
     | null = null;
 
   if (teamId && mode === 'add') {
-    const team = await prisma.volleyBallTeams.findUnique({
+    const team = await prisma.teams.findUnique({
       where: { id: teamId },
       select: {
         id: true,
@@ -291,26 +314,40 @@ async function updateParticipants(
     });
   }
 
-  let nextUserIds = Array.isArray(event.userIds) ? [...event.userIds] : [];
-  let nextTeamIds = Array.isArray(event.teamIds) ? [...event.teamIds] : [];
+  let nextUserIds = normalizeUserIdList(event.userIds);
+  let nextTeamIds = normalizeUserIdList(event.teamIds);
+  let nextWaitListIds = normalizeUserIdList(event.waitListIds);
+  let nextFreeAgentIds = normalizeUserIdList(event.freeAgentIds);
 
   if (teamId) {
     if (mode === 'add') {
       nextTeamIds = ensureUnique([...nextTeamIds, teamId]);
+      nextWaitListIds = nextWaitListIds.filter((id) => id !== teamId);
     } else {
       nextTeamIds = nextTeamIds.filter((id) => id !== teamId);
+      nextWaitListIds = nextWaitListIds.filter((id) => id !== teamId);
     }
   } else if (userId) {
     if (mode === 'add') {
       nextUserIds = ensureUnique([...nextUserIds, userId]);
+      nextWaitListIds = nextWaitListIds.filter((id) => id !== userId);
+      nextFreeAgentIds = nextFreeAgentIds.filter((id) => id !== userId);
     } else {
       nextUserIds = nextUserIds.filter((id) => id !== userId);
+      nextWaitListIds = nextWaitListIds.filter((id) => id !== userId);
+      nextFreeAgentIds = nextFreeAgentIds.filter((id) => id !== userId);
     }
   }
 
   const updated = await prisma.events.update({
     where: { id: eventId },
-    data: { userIds: nextUserIds, teamIds: nextTeamIds, updatedAt: new Date() },
+    data: {
+      userIds: nextUserIds,
+      teamIds: nextTeamIds,
+      waitListIds: nextWaitListIds,
+      freeAgentIds: nextFreeAgentIds,
+      updatedAt: new Date(),
+    },
   });
 
   if (teamId) {

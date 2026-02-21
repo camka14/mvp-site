@@ -14,7 +14,7 @@ const prismaMock = {
   fields: {
     findMany: jest.fn(),
   },
-  volleyBallTeams: {
+  teams: {
     findMany: jest.fn(),
   },
   timeSlots: {
@@ -160,7 +160,7 @@ describe('event schedule route - split divisions regression', () => {
       },
     ]);
 
-    prismaMock.volleyBallTeams.findMany.mockResolvedValue([
+    prismaMock.teams.findMany.mockResolvedValue([
       {
         id: 'team_beginner_1',
         seed: 1,

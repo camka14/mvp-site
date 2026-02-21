@@ -57,7 +57,7 @@ export const ModelName = {
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
   Invites: 'Invites',
-  VolleyBallTeams: 'VolleyBallTeams',
+  Teams: 'Teams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
   PushDeviceTarget: 'PushDeviceTarget',
@@ -224,7 +224,7 @@ export const InvitesScalarFieldEnum = {
 export type InvitesScalarFieldEnum = (typeof InvitesScalarFieldEnum)[keyof typeof InvitesScalarFieldEnum]
 
 
-export const VolleyBallTeamsScalarFieldEnum = {
+export const TeamsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
@@ -238,6 +238,7 @@ export const VolleyBallTeamsScalarFieldEnum = {
   name: 'name',
   captainId: 'captainId',
   managerId: 'managerId',
+  headCoachId: 'headCoachId',
   coachIds: 'coachIds',
   parentTeamId: 'parentTeamId',
   pending: 'pending',
@@ -246,7 +247,7 @@ export const VolleyBallTeamsScalarFieldEnum = {
   sport: 'sport'
 } as const
 
-export type VolleyBallTeamsScalarFieldEnum = (typeof VolleyBallTeamsScalarFieldEnum)[keyof typeof VolleyBallTeamsScalarFieldEnum]
+export type TeamsScalarFieldEnum = (typeof TeamsScalarFieldEnum)[keyof typeof TeamsScalarFieldEnum]
 
 
 export const MessagesScalarFieldEnum = {

@@ -210,7 +210,7 @@ model Invites {
   lastName String?
 }
 
-model VolleyBallTeams {
+model Teams {
   id String @id
   createdAt DateTime?
   updatedAt DateTime?
@@ -224,6 +224,7 @@ model VolleyBallTeams {
   name String?
   captainId String
   managerId String
+  headCoachId String?
   coachIds String[] @default([])
   parentTeamId String?
   pending String[]
@@ -233,7 +234,9 @@ model VolleyBallTeams {
 
   @@index([captainId])
   @@index([managerId])
+  @@index([headCoachId])
   @@index([parentTeamId])
+  @@map("VolleyBallTeams")
 }
 
 model Messages {

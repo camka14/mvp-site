@@ -13,7 +13,7 @@ type MockClient = {
   fields: { findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
   matches: { deleteMany: jest.Mock };
   divisions: { findMany: jest.Mock; deleteMany: jest.Mock; upsert: jest.Mock };
-  volleyBallTeams: { upsert: jest.Mock };
+  teams: { upsert: jest.Mock };
   timeSlots: { upsert: jest.Mock; deleteMany: jest.Mock };
 };
 
@@ -36,7 +36,7 @@ const createMockClient = (): MockClient => ({
     deleteMany: jest.fn().mockResolvedValue(undefined),
     upsert: jest.fn().mockResolvedValue(undefined),
   },
-  volleyBallTeams: {
+  teams: {
     upsert: jest.fn().mockResolvedValue(undefined),
   },
   timeSlots: {

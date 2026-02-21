@@ -10,6 +10,7 @@ const prismaMock = {
   },
   userData: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
@@ -135,6 +136,28 @@ describe('auth routes', () => {
 
       expect(res.status).toBe(409);
       expect(json.error).toBe('Email already in use');
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate usernames (case-insensitive)', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue(null);
+      prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+      prismaMock.userData.findUnique.mockResolvedValue(null);
+      prismaMock.userData.findFirst.mockResolvedValue({ id: 'user_existing' });
+
+      const req = buildJsonRequest('http://localhost/api/auth/register', {
+        email: 'new@example.com',
+        password: 'password123',
+        firstName: 'New',
+        lastName: 'User',
+        userName: 'Existing_User',
+      });
+
+      const res = await REGISTER_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(409);
+      expect(json.error).toBe('Username already in use.');
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
     });
 

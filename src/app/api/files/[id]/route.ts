@@ -72,7 +72,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const [users, teams, events, organizations] = await Promise.all([
       prisma.userData.findMany({ where: { profileImageId: file.id }, select: { id: true } }),
-      prisma.volleyBallTeams.findMany({ where: { profileImageId: file.id }, select: { id: true } }),
+      prisma.teams.findMany({ where: { profileImageId: file.id }, select: { id: true } }),
       prisma.events.findMany({ where: { imageId: file.id }, select: { id: true } }),
       prisma.organizations.findMany({ where: { logoId: file.id }, select: { id: true } }),
     ]);

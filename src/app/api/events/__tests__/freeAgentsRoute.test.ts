@@ -36,8 +36,13 @@ describe('event free-agent route', () => {
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       freeAgentIds: [],
+      requiredTemplateIds: [],
+      start: new Date('2026-03-01T00:00:00.000Z'),
     });
-    prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      id: 'user_1',
+      dateOfBirth: new Date('1995-01-01T00:00:00.000Z'),
+    });
   });
 
   it('adds the current user as a free agent', async () => {
@@ -91,7 +96,12 @@ describe('event free-agent route', () => {
   it('allows a parent to add a linked child as a free agent', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'parent_1', isAdmin: false });
     prismaMock.parentChildLinks.findFirst.mockResolvedValueOnce({ id: 'link_1' });
-    prismaMock.userData.findUnique.mockResolvedValueOnce({ id: 'child_1' });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      id: 'child_1',
+      firstName: 'Child',
+      lastName: 'One',
+      dateOfBirth: new Date('2014-01-01T00:00:00.000Z'),
+    });
     prismaMock.events.update.mockResolvedValueOnce({
       id: 'event_1',
       freeAgentIds: ['child_1'],
@@ -118,6 +128,25 @@ describe('event free-agent route', () => {
         }),
       }),
     );
+  });
+
+  it('requires parent approval when a child account tries to self-add as free agent', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'child_1', isAdmin: false });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      id: 'child_1',
+      dateOfBirth: new Date('2014-01-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/free-agents', { userId: 'child_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('A parent/guardian must approve free-agent registration for child accounts.');
+    expect(payload.requiresParentApproval).toBe(true);
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
   it('forbids adding an unrelated user as free agent', async () => {

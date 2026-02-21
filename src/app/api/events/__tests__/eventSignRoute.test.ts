@@ -11,8 +11,13 @@ const prismaMock = {
   },
   signedDocuments: {
     findMany: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
   },
   parentChildLinks: {
+    findFirst: jest.fn(),
+  },
+  eventRegistrations: {
     findFirst: jest.fn(),
   },
   userData: {
@@ -60,6 +65,7 @@ const jsonPost = (url: string, body: unknown) =>
 describe('POST /api/events/[eventId]/sign', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.BOLDSIGN_DEV_REDIRECT_BASE_URL;
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
@@ -67,7 +73,16 @@ describe('POST /api/events/[eventId]/sign', () => {
       name: 'Weekend Open',
     });
     prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+    prismaMock.signedDocuments.create.mockResolvedValue({
+      id: 'signed_doc_1',
+      signedDocumentId: 'doc_1',
+    });
+    prismaMock.signedDocuments.update.mockResolvedValue({
+      id: 'signed_doc_1',
+      signedDocumentId: 'doc_1',
+    });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue(null);
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
     prismaMock.userData.findUnique.mockResolvedValue({
       firstName: 'Player',
       lastName: 'One',
@@ -124,11 +139,13 @@ describe('POST /api/events/[eventId]/sign', () => {
     getTemplateRolesMock.mockResolvedValue([{ roleIndex: 2, signerRole: 'Participant' }]);
     sendDocumentFromTemplateMock.mockResolvedValue({ documentId: 'doc_1' });
     getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_1' });
+    process.env.BOLDSIGN_DEV_REDIRECT_BASE_URL = 'https://mvp-dev.ngrok-free.app';
 
     const res = await POST(
       jsonPost('http://localhost/api/events/event_1/sign', {
         userId: 'user_1',
         user: { firstName: 'Player', lastName: 'One' },
+        redirectUrl: 'http://localhost:3000/discover',
       }),
       { params: Promise.resolve({ eventId: 'event_1' }) },
     );
@@ -148,6 +165,57 @@ describe('POST /api/events/[eventId]/sign', () => {
         templateId: 'bold_tmpl_1',
         signerEmail: 'player@example.com',
         roleIndex: 2,
+      }),
+    );
+    expect(getEmbeddedSignLinkMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirectUrl: 'https://mvp-dev.ngrok-free.app/discover',
+      }),
+    );
+  });
+
+  it('does not force a redirect URL when the client did not request one', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_1',
+        templateId: 'bold_tmpl_1',
+        type: 'PDF',
+        title: 'PDF Waiver',
+        description: 'Please sign this waiver.',
+        signOnce: false,
+        roleIndex: 1,
+        roleIndexes: [1],
+        signerRoles: ['Participant'],
+        requiredSignerType: 'PARTICIPANT',
+      },
+    ]);
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([{ roleIndex: 2, signerRole: 'Participant' }]);
+    sendDocumentFromTemplateMock.mockResolvedValue({ documentId: 'doc_1' });
+    getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_1' });
+    process.env.BOLDSIGN_DEV_REDIRECT_BASE_URL = 'https://mvp-dev.ngrok-free.app';
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        userId: 'user_1',
+        user: { firstName: 'Player', lastName: 'One' },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toEqual([
+      expect.objectContaining({
+        templateId: 'tmpl_1',
+        type: 'PDF',
+        documentId: 'doc_1',
+        url: 'https://app.boldsign.com/sign/doc_1',
+      }),
+    ]);
+    expect(getEmbeddedSignLinkMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirectUrl: undefined,
       }),
     );
   });
@@ -238,6 +306,50 @@ describe('POST /api/events/[eventId]/sign', () => {
     }));
   });
 
+  it('returns no sign links when the parent has already signed for the same child context', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_parent',
+        templateId: 'bold_tmpl_parent',
+        type: 'PDF',
+        title: 'Parent Waiver',
+        description: 'Parent waiver',
+        signOnce: false,
+        requiredSignerType: 'PARENT_GUARDIAN',
+        roleIndex: 1,
+        roleIndexes: [1],
+        signerRoles: ['Parent/Guardian'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_parent'],
+      name: 'Weekend Open',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.signedDocuments.findMany.mockResolvedValue([
+      {
+        id: 'signed_doc_parent_1',
+        signedDocumentId: 'doc_parent_1',
+        status: 'SIGNED',
+      },
+    ]);
+    isBoldSignConfiguredMock.mockReturnValue(true);
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'parent_guardian',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toEqual([]);
+    expect(sendDocumentFromTemplateMock).not.toHaveBeenCalled();
+  });
+
   it('returns parent/guardian+child templates with the combined signer label', async () => {
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {
@@ -297,7 +409,7 @@ describe('POST /api/events/[eventId]/sign', () => {
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
     prismaMock.sensitiveUserData.findFirst.mockImplementation(async ({ where }: { where: { userId?: string } }) => {
       if (where.userId === 'child_1') {
-        return { email: null };
+        return { email: 'child@example.com' };
       }
       return { email: 'parent@example.com' };
     });
@@ -323,6 +435,7 @@ describe('POST /api/events/[eventId]/sign', () => {
         templateId: 'bold_tmpl_parent_child',
         roleIndex: 1,
         signerRole: 'Parent/Guardian',
+        enableSigningOrder: false,
         roles: expect.arrayContaining([
           expect.objectContaining({
             roleIndex: 1,
@@ -332,14 +445,146 @@ describe('POST /api/events/[eventId]/sign', () => {
           expect.objectContaining({
             roleIndex: 2,
             signerRole: 'Child',
-            signerEmail: 'parent@example.com',
+            signerEmail: 'child@example.com',
           }),
         ]),
       }),
     );
   });
 
-  it('uses the child signer role for child-context PDF signing', async () => {
+  it('enables signing order when parent and child share the same email on parent+child templates', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_parent_child_pdf',
+        templateId: 'bold_tmpl_parent_child',
+        type: 'PDF',
+        title: 'Parent + Child PDF Waiver',
+        description: 'Parent and child must sign',
+        signOnce: false,
+        requiredSignerType: 'PARENT_GUARDIAN_CHILD',
+        roleIndex: 1,
+        roleIndexes: [1, 2],
+        signerRoles: ['Parent/Guardian', 'Child'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_parent_child_pdf'],
+      name: 'Weekend Open',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'shared@example.com' });
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([
+      { roleIndex: 1, signerRole: 'Parent/Guardian' },
+      { roleIndex: 2, signerRole: 'Child' },
+    ]);
+    sendDocumentFromTemplateMock.mockResolvedValue({ documentId: 'doc_parent_child_shared' });
+    getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_parent_child_shared' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'parent_guardian',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(sendDocumentFromTemplateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enableSigningOrder: true,
+        roles: expect.arrayContaining([
+          expect.objectContaining({
+            roleIndex: 1,
+            signerOrder: 1,
+            signerEmail: 'shared@example.com',
+          }),
+          expect.objectContaining({
+            roleIndex: 2,
+            signerOrder: 2,
+            signerEmail: 'shared@example.com',
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('reuses the shared parent+child document when child signs after parent', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'child_1', isAdmin: false });
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_parent_child_pdf',
+        templateId: 'bold_tmpl_parent_child',
+        type: 'PDF',
+        title: 'Parent + Child PDF Waiver',
+        description: 'Parent and child must sign',
+        signOnce: false,
+        requiredSignerType: 'PARENT_GUARDIAN_CHILD',
+        roleIndex: 1,
+        roleIndexes: [1, 2],
+        signerRoles: ['Parent/Guardian', 'Child'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_parent_child_pdf'],
+      name: 'Weekend Open',
+    });
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue({ parentId: 'user_1' });
+    prismaMock.sensitiveUserData.findFirst.mockImplementation(async ({ where }: { where: { userId?: string } }) => {
+      if (where.userId === 'child_1') {
+        return { email: 'child@example.com' };
+      }
+      return { email: 'parent@example.com' };
+    });
+    prismaMock.signedDocuments.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'signed_doc_parent_1',
+          signedDocumentId: 'doc_parent_child_1',
+          status: 'SIGNED',
+        },
+      ]);
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([
+      { roleIndex: 1, signerRole: 'Parent/Guardian' },
+      { roleIndex: 2, signerRole: 'Child' },
+    ]);
+    getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_parent_child_1' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'child',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toEqual([
+      expect.objectContaining({
+        templateId: 'tmpl_parent_child_pdf',
+        documentId: 'doc_parent_child_1',
+      }),
+    ]);
+    expect(sendDocumentFromTemplateMock).not.toHaveBeenCalled();
+    expect(prismaMock.signedDocuments.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          signedDocumentId: 'doc_parent_child_1',
+          userId: 'child_1',
+          signerRole: 'child',
+          signerEmail: 'child@example.com',
+        }),
+      }),
+    );
+  });
+
+  it('uses the child signer role for child-context PDF signing by the child account', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'child_1', isAdmin: false });
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {
         id: 'tmpl_child_pdf',
@@ -359,7 +604,12 @@ describe('POST /api/events/[eventId]/sign', () => {
       requiredTemplateIds: ['tmpl_child_pdf'],
       name: 'Weekend Open',
     });
-    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.sensitiveUserData.findFirst.mockImplementation(async ({ where }: { where: { userId?: string } }) => {
+      if (where.userId === 'child_1') {
+        return { email: 'child@example.com' };
+      }
+      return { email: 'parent@example.com' };
+    });
     isBoldSignConfiguredMock.mockReturnValue(true);
     getTemplateRolesMock.mockResolvedValue([
       { roleIndex: 1, signerRole: 'Parent/Guardian' },
@@ -389,11 +639,12 @@ describe('POST /api/events/[eventId]/sign', () => {
       expect.objectContaining({
         roleIndex: 2,
         signerRole: 'Child',
+        signerEmail: 'child@example.com',
       }),
     );
   });
 
-  it('falls back to parent email for child-context PDF signing when child email is missing', async () => {
+  it('forbids parent accounts from initiating child-context signatures', async () => {
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {
         id: 'tmpl_child_pdf',
@@ -413,9 +664,96 @@ describe('POST /api/events/[eventId]/sign', () => {
       requiredTemplateIds: ['tmpl_child_pdf'],
       name: 'Weekend Open',
     });
-    prismaMock.parentChildLinks.findFirst
-      .mockResolvedValueOnce({ id: 'link_1' })
-      .mockResolvedValueOnce({ id: 'link_1' });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.sensitiveUserData.findFirst.mockImplementation(async ({ where }: { where: { userId?: string } }) => {
+      if (where.userId === 'child_1') {
+        return { email: 'child@example.com' };
+      }
+      return { email: 'parent@example.com' };
+    });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'child',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(data.error).toContain('child account');
+  });
+
+  it('allows parent accounts to initiate child-context signatures when parent and child share email', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_child_pdf',
+        templateId: 'bold_tmpl_child',
+        type: 'PDF',
+        title: 'Child PDF Waiver',
+        description: 'Child must sign',
+        signOnce: false,
+        requiredSignerType: 'CHILD',
+        roleIndex: 1,
+        roleIndexes: [1, 2],
+        signerRoles: ['Parent/Guardian', 'Child'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_child_pdf'],
+      name: 'Weekend Open',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue({ parentId: 'user_1' });
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'shared@example.com' });
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([
+      { roleIndex: 1, signerRole: 'Parent/Guardian' },
+      { roleIndex: 2, signerRole: 'Child' },
+    ]);
+    sendDocumentFromTemplateMock.mockResolvedValue({ documentId: 'doc_child_shared' });
+    getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_child_shared' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'child',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toHaveLength(1);
+    expect(data.signLinks[0]).toEqual(expect.objectContaining({
+      templateId: 'tmpl_child_pdf',
+      type: 'PDF',
+    }));
+  });
+
+  it('returns a child-email error for child-context PDF signing when child email is missing', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'child_1', isAdmin: false });
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_child_pdf',
+        templateId: 'bold_tmpl_child',
+        type: 'PDF',
+        title: 'Child PDF Waiver',
+        description: 'Child must sign',
+        signOnce: false,
+        requiredSignerType: 'CHILD',
+        roleIndex: 1,
+        roleIndexes: [1, 2],
+        signerRoles: ['Parent/Guardian', 'Child'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_child_pdf'],
+      name: 'Weekend Open',
+    });
     prismaMock.sensitiveUserData.findFirst.mockImplementation(async ({ where }: { where: { userId?: string } }) => {
       if (where.userId === 'child_1') {
         return { email: null };
@@ -440,14 +778,55 @@ describe('POST /api/events/[eventId]/sign', () => {
       }),
       { params: Promise.resolve({ eventId: 'event_1' }) },
     );
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data.error).toContain('signer email');
+    expect(sendDocumentFromTemplateMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing unsigned document instead of creating a new BoldSign document', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_1',
+        templateId: 'bold_tmpl_1',
+        type: 'PDF',
+        title: 'PDF Waiver',
+        description: 'Please sign this waiver.',
+        signOnce: false,
+        roleIndex: 1,
+        roleIndexes: [1],
+        signerRoles: ['Participant'],
+      },
+    ]);
+    prismaMock.signedDocuments.findMany.mockResolvedValue([
+      {
+        id: 'signed_doc_pending',
+        signedDocumentId: 'doc_pending_1',
+        status: 'UNSIGNED',
+      },
+    ]);
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([{ roleIndex: 1, signerRole: 'Participant' }]);
+    getEmbeddedSignLinkMock.mockResolvedValue({ signLink: 'https://app.boldsign.com/sign/doc_pending_1' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        userId: 'user_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(sendDocumentFromTemplateMock).toHaveBeenCalledWith(
+    expect(data.signLinks).toEqual([
       expect.objectContaining({
-        signerEmail: 'parent@example.com',
-        roleIndex: 2,
-        signerRole: 'Child',
+        templateId: 'tmpl_1',
+        documentId: 'doc_pending_1',
+        url: 'https://app.boldsign.com/sign/doc_pending_1',
       }),
-    );
+    ]);
+    expect(sendDocumentFromTemplateMock).not.toHaveBeenCalled();
+    expect(prismaMock.signedDocuments.create).not.toHaveBeenCalled();
   });
 });

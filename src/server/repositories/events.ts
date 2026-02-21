@@ -727,7 +727,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
 
   const [fieldRows, teamRows, timeSlotRows, refereeRows, matchRows, leagueConfigRow] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
-    teamIds.length ? client.volleyBallTeams.findMany({ where: { id: { in: teamIds } } }) : Promise.resolve([]),
+    teamIds.length ? client.teams.findMany({ where: { id: { in: teamIds } } }) : Promise.resolve([]),
     timeSlotIds.length ? client.timeSlots.findMany({ where: { id: { in: timeSlotIds } } }) : Promise.resolve([]),
     refereeIds.length ? client.userData.findMany({ where: { id: { in: refereeIds } } }) : Promise.resolve([]),
     client.matches.findMany({ where: { eventId: event.id } }),
@@ -886,7 +886,7 @@ export const saveEventSchedule = async (event: League | Tournament, client: Pris
 
 export const saveTeamRecords = async (teams: Team[], client: PrismaLike = prisma) => {
   for (const team of teams) {
-    await client.volleyBallTeams.update({
+    await client.teams.update({
       where: { id: team.id },
       data: {
         wins: team.wins,
@@ -1415,7 +1415,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       (typeof team.divisionTypeName === 'string' && team.divisionTypeName.trim().length
         ? team.divisionTypeName.trim()
         : inferredTeamDivision.divisionTypeName);
-    await client.volleyBallTeams.upsert({
+    await client.teams.upsert({
       where: { id: teamId },
       create: {
         id: teamId,
@@ -1429,7 +1429,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         name: team.name ?? null,
         captainId: team.captainId ?? '',
         managerId: team.managerId ?? team.captainId ?? '',
-        coachIds: ensureArray(team.coachIds),
+        headCoachId: team.headCoachId ?? null,
+        coachIds: ensureArray((team as any).assistantCoachIds ?? team.coachIds),
         parentTeamId: team.parentTeamId ?? null,
         pending: ensureArray(team.pending),
         teamSize: team.teamSize ?? 0,
@@ -1449,7 +1450,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         name: team.name ?? null,
         captainId: team.captainId ?? '',
         managerId: team.managerId ?? team.captainId ?? '',
-        coachIds: ensureArray(team.coachIds),
+        headCoachId: team.headCoachId ?? null,
+        coachIds: ensureArray((team as any).assistantCoachIds ?? team.coachIds),
         parentTeamId: team.parentTeamId ?? null,
         pending: ensureArray(team.pending),
         teamSize: team.teamSize ?? 0,

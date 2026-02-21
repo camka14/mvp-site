@@ -90,6 +90,20 @@ async function updateFreeAgents(
   if (!targetUser) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
+  const targetUserAgeAtEvent = targetUser.dateOfBirth instanceof Date && event.start instanceof Date
+    ? calculateAgeOnDate(targetUser.dateOfBirth, event.start)
+    : Number.NaN;
+  const isMinorTargetUser = Number.isFinite(targetUserAgeAtEvent) && targetUserAgeAtEvent < 18;
+
+  if (mode === 'add' && isMinorTargetUser && !session.isAdmin && !managingLinkedChild) {
+    return NextResponse.json(
+      {
+        error: 'A parent/guardian must approve free-agent registration for child accounts.',
+        requiresParentApproval: true,
+      },
+      { status: 403 },
+    );
+  }
 
   const currentFreeAgentIds = Array.isArray(event.freeAgentIds)
     ? event.freeAgentIds.filter((id): id is string => typeof id === 'string' && Boolean(id))
@@ -113,8 +127,7 @@ async function updateFreeAgents(
       select: { email: true },
     });
     const childEmail = normalizeUserId(childSensitive?.email ?? null);
-    const childAgeAtEvent = calculateAgeOnDate(targetUser.dateOfBirth, event.start);
-    if (!childEmail && Number.isFinite(childAgeAtEvent) && childAgeAtEvent < 13) {
+    if (!childEmail && Number.isFinite(targetUserAgeAtEvent) && targetUserAgeAtEvent < 13) {
       const childName = `${(targetUser.firstName ?? '').trim()} ${(targetUser.lastName ?? '').trim()}`.trim() || targetUserId;
       warnings = [
         `Under-13 child ${childName} is missing an email and cannot complete child signature steps until an email is added.`,

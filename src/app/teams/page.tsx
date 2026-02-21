@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
-import { Team, UserData, Event } from '@/types';
+import { Team, UserData, Event, Invite, InviteType } from '@/types';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 import { eventService } from '@/lib/eventService';
@@ -20,6 +20,13 @@ type ManageTeamsProps = {
   showNavigation?: boolean;
   withContainer?: boolean;
 };
+
+const TEAM_INVITE_TYPES: InviteType[] = [
+  'player',
+  'team_manager',
+  'team_head_coach',
+  'team_assistant_coach',
+];
 
 export default function TeamsPage() {
   return (
@@ -51,7 +58,7 @@ export function ManageTeams({ showNavigation = true, withContainer = true }: Man
 function TeamsPageContent() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
   const [teams, setTeams] = useState<Team[]>([]);
-  const [teamInvitations, setTeamInvitations] = useState<Team[]>([]);
+  const [teamInvitations, setTeamInvitations] = useState<Array<{ invite: Invite; team: Team | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'my-teams' | 'invitations'>('my-teams');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -89,6 +96,19 @@ function TeamsPageContent() {
       ? division
       : division?.name || division?.skillLevel || 'Division';
 
+  const getInviteRoleLabel = (type: string): string => {
+    switch (type) {
+      case 'team_manager':
+        return 'Manager';
+      case 'team_head_coach':
+        return 'Head Coach';
+      case 'team_assistant_coach':
+        return 'Assistant Coach';
+      default:
+        return 'Player';
+    }
+  };
+
   const loadTeamsData = useCallback(async () => {
     if (!user) return;
 
@@ -99,13 +119,19 @@ function TeamsPageContent() {
       const detailedTeams = await teamService.getTeamsByIds(userTeams.map(t => t.$id), true);
       setTeams(detailedTeams);
 
-      const invites = await userService.listInvites({ userId: user.$id, type: 'player' });
+      const invites = await userService.listInvites({ userId: user.$id, types: TEAM_INVITE_TYPES });
       const invitationPromises = invites
         .map(invite => invite.teamId)
         .filter((teamId): teamId is string => typeof teamId === 'string' && !!teamId)
         .map(teamId => teamService.getTeamById(teamId, true));
-      const invitations = await Promise.all(invitationPromises);
-      setTeamInvitations(invitations.filter(team => team !== undefined) as Team[]);
+      const invitationTeams = (await Promise.all(invitationPromises)).filter((team): team is Team => Boolean(team));
+      const invitationTeamMap = new Map(invitationTeams.map((team) => [team.$id, team]));
+      setTeamInvitations(
+        invites.map((invite) => ({
+          invite,
+          team: invite.teamId ? invitationTeamMap.get(invite.teamId) ?? null : null,
+        })),
+      );
     } catch (error) {
       console.error('Failed to load teams data:', error);
     } finally {
@@ -159,11 +185,11 @@ function TeamsPageContent() {
     return;
   };
 
-  const handleAcceptInvitation = async (teamId: string) => {
+  const handleAcceptInvitation = async (inviteId: string) => {
     if (!user) return;
 
     try {
-      const success = await teamService.acceptTeamInvitation(teamId, user.$id);
+      const success = await userService.acceptInvite(inviteId);
       if (success) {
         loadTeamsData();
       }
@@ -172,13 +198,13 @@ function TeamsPageContent() {
     }
   };
 
-  const handleRejectInvitation = async (teamId: string) => {
+  const handleRejectInvitation = async (inviteId: string) => {
     if (!user) return;
 
     try {
-      const success = await teamService.removeTeamInvitation(teamId, user.$id);
+      const success = await userService.deleteInviteById(inviteId);
       if (success) {
-        setTeamInvitations(prev => prev.filter(team => team.$id !== teamId));
+        setTeamInvitations(prev => prev.filter((entry) => entry.invite.$id !== inviteId));
       }
     } catch (error) {
       console.error('Failed to reject invitation:', error);
@@ -301,22 +327,25 @@ function TeamsPageContent() {
             <div className="space-y-4">
               <Title order={4} mb="md">Pending Team Invitations</Title>
               <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
-                {teamInvitations.map((team) => (
-                  <Paper key={team.$id} withBorder radius="md" p="md">
+                {teamInvitations.map(({ invite, team }) => (
+                  <Paper key={invite.$id} withBorder radius="md" p="md">
                     <Group justify="space-between" mb="sm">
                       <div>
-                        <Text fw={600}>{team.name || 'Unnamed Team'}</Text>
-                        <Text size="sm" c="dimmed">{getDivisionLabel(team.division)} Division</Text>
+                        <Text fw={600}>{team?.name || 'Team Invitation'}</Text>
+                        {team && (
+                          <Text size="sm" c="dimmed">{getDivisionLabel(team.division)} Division</Text>
+                        )}
+                        <Text size="sm" c="dimmed">Role: {getInviteRoleLabel(invite.type)}</Text>
                       </div>
                       <Badge color="orange" variant="light">Invited</Badge>
                     </Group>
                     <Group justify="space-between" c="dimmed" mb="md">
-                      <Text size="sm">{team.teamSize} members</Text>
-                      <Text size="sm">{team.winRate}% win rate</Text>
+                      <Text size="sm">{team ? `${team.teamSize} members` : 'Pending invite'}</Text>
+                      <Text size="sm">{team ? `${team.winRate}% win rate` : 'Team loading unavailable'}</Text>
                     </Group>
                     <Group>
-                      <Button onClick={() => handleAcceptInvitation(team.$id)} fullWidth>Accept</Button>
-                      <Button variant="default" onClick={() => handleRejectInvitation(team.$id)} fullWidth>Decline</Button>
+                      <Button onClick={() => handleAcceptInvitation(invite.$id)} fullWidth>Accept</Button>
+                      <Button variant="default" onClick={() => handleRejectInvitation(invite.$id)} fullWidth>Decline</Button>
                     </Group>
                   </Paper>
                 ))}

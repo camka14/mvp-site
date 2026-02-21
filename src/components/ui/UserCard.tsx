@@ -34,6 +34,7 @@ export default function UserCard({
             '';
         return titleCase(raw);
     })();
+    const userHandle = user.userName?.trim() || 'user';
 
     return (
         <Card p="md" onClick={onClick} className={className} style={{ cursor: onClick ? 'pointer' : 'default' }}>
@@ -43,7 +44,7 @@ export default function UserCard({
                     <Text fw={500} size="sm" truncate>
                         {displayName}
                     </Text>
-                    <Text size="sm" c="dimmed" truncate>@{titleCase(user.userName)}</Text>
+                    <Text size="sm" c="dimmed" truncate>@{userHandle}</Text>
                     {showRole && role && (
                         <Text size="xs" c="blue" fw={600} mt={4}>{titleCase(role)}</Text>
                     )}

@@ -49,7 +49,7 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
       })
       : Promise.resolve([]),
     teamIds.size
-      ? prisma.volleyBallTeams.findMany({
+      ? prisma.teams.findMany({
         where: { id: { in: Array.from(teamIds) } },
         select: { id: true, name: true },
       })

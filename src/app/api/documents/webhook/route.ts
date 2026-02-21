@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { syncChildRegistrationConsentStatus } from '@/lib/childConsentProgress';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,27 @@ export async function POST(req: NextRequest) {
         where: { signedDocumentId: documentId },
         data: { status: 'SIGNED', signedAt: now.toISOString(), updatedAt: now },
       });
+
+      const signedRows = await prisma.signedDocuments.findMany({
+        where: { signedDocumentId: documentId },
+        select: {
+          eventId: true,
+          hostId: true,
+          signerRole: true,
+        },
+      });
+      for (const row of signedRows) {
+        if (!row.eventId || !row.hostId) {
+          continue;
+        }
+        if (row.signerRole !== 'parent_guardian' && row.signerRole !== 'child') {
+          continue;
+        }
+        await syncChildRegistrationConsentStatus({
+          eventId: row.eventId,
+          childUserId: row.hostId,
+        });
+      }
     }
 
     const registrationUpdate: Record<string, any> = {

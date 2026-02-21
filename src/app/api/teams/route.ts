@@ -23,6 +23,8 @@ const createSchema = z.object({
   playerIds: z.array(z.string()).optional(),
   captainId: z.string().optional(),
   managerId: z.string().optional(),
+  headCoachId: z.string().nullable().optional(),
+  assistantCoachIds: z.array(z.string()).optional(),
   coachIds: z.array(z.string()).optional(),
   parentTeamId: z.string().optional(),
   pending: z.array(z.string()).optional(),
@@ -48,6 +50,62 @@ const uniqueStrings = (values: unknown[] | null | undefined): string[] => (
   )
 );
 
+const withTeamRoleAliases = (team: Record<string, any>) => {
+  const formatted = withLegacyFields(team);
+  const assistantCoachIds = uniqueStrings(
+    Array.isArray((formatted as any).assistantCoachIds)
+      ? (formatted as any).assistantCoachIds
+      : (formatted as any).coachIds,
+  );
+  return {
+    ...formatted,
+    assistantCoachIds,
+    coachIds: assistantCoachIds,
+  };
+};
+
+const withTeamRoleAliasesList = (teams: Record<string, any>[]) => (
+  withLegacyList(teams).map((team) => withTeamRoleAliases(team))
+);
+
+const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const UNKNOWN_ARGUMENT_REGEX = /Unknown argument `([^`]+)`/i;
+
+const extractUnknownArgument = (error: unknown): string | null => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const match = message.match(UNKNOWN_ARGUMENT_REGEX);
+  return match?.[1] ?? null;
+};
+
+const omitKeys = (data: Record<string, unknown>, keys: Set<string>): Record<string, unknown> => {
+  if (!keys.size) return data;
+  return Object.fromEntries(Object.entries(data).filter(([key]) => !keys.has(key)));
+};
+
+const createTeamWithCompatibility = async (
+  teamsDelegate: any,
+  data: Record<string, unknown>,
+): Promise<Record<string, unknown>> => {
+  const omittedKeys = new Set<string>();
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return await teamsDelegate.create({
+        data: omitKeys(data, omittedKeys),
+      });
+    } catch (error) {
+      lastError = error;
+      const unknownArgument = extractUnknownArgument(error);
+      if (!unknownArgument || omittedKeys.has(unknownArgument) || !Object.prototype.hasOwnProperty.call(data, unknownArgument)) {
+        throw error;
+      }
+      omittedKeys.add(unknownArgument);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to create team with compatible schema.');
+};
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
@@ -61,13 +119,18 @@ export async function GET(req: NextRequest) {
   if (playerId) where.playerIds = { has: playerId };
   if (!ids?.length) where.parentTeamId = null;
 
-  const teams = await prisma.volleyBallTeams.findMany({
+  const teamsDelegate = getTeamsDelegate(prisma);
+  if (!teamsDelegate?.findMany) {
+    return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });
+  }
+
+  const teams = await teamsDelegate.findMany({
     where,
     take: Number.isFinite(limit) ? limit : 100,
     orderBy: { name: 'asc' },
   });
 
-  return NextResponse.json({ teams: withLegacyList(teams) }, { status: 200 });
+  return NextResponse.json({ teams: withTeamRoleAliasesList(teams as any[]) }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
@@ -82,7 +145,8 @@ export async function POST(req: NextRequest) {
   const captainId = session.userId;
   const managerId = session.userId;
   const playerIds = uniqueStrings([captainId, ...uniqueStrings(data.playerIds)]);
-  const coachIds = uniqueStrings(data.coachIds);
+  const assistantCoachIds = uniqueStrings(data.assistantCoachIds ?? data.coachIds);
+  const headCoachId = normalizeText(data.headCoachId);
   const pending = uniqueStrings(data.pending).filter((userId) => !playerIds.includes(userId));
   const normalizedDivision = normalizeText(data.division) ?? 'Open';
   const sportInput = normalizeText(data.sport) ?? null;
@@ -94,29 +158,33 @@ export async function POST(req: NextRequest) {
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
   const divisionTypeName = normalizeText(data.divisionTypeName) ?? inferredDivision.divisionTypeName;
 
-  const team = await prisma.volleyBallTeams.create({
-    data: {
-      id: data.id,
-      name: data.name ?? null,
-      seed: data.seed ?? 0,
-      division: normalizedDivision,
-      divisionTypeId,
-      divisionTypeName,
-      sport: sportInput,
-      wins: data.wins ?? 0,
-      losses: data.losses ?? 0,
-      playerIds,
-      captainId,
-      managerId,
-      coachIds,
-      parentTeamId: normalizeText(data.parentTeamId),
-      pending,
-      teamSize: data.teamSize ?? 0,
-      profileImageId: data.profileImageId ?? null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+  const teamsDelegate = getTeamsDelegate(prisma);
+  if (!teamsDelegate?.create) {
+    return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });
+  }
+
+  const team = await createTeamWithCompatibility(teamsDelegate, {
+    id: data.id,
+    name: data.name ?? null,
+    seed: data.seed ?? 0,
+    division: normalizedDivision,
+    divisionTypeId,
+    divisionTypeName,
+    sport: sportInput,
+    wins: data.wins ?? 0,
+    losses: data.losses ?? 0,
+    playerIds,
+    captainId,
+    managerId,
+    headCoachId,
+    coachIds: assistantCoachIds,
+    parentTeamId: normalizeText(data.parentTeamId),
+    pending,
+    teamSize: data.teamSize ?? 0,
+    profileImageId: data.profileImageId ?? null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
   });
 
-  return NextResponse.json(withLegacyFields(team), { status: 201 });
+  return NextResponse.json(withTeamRoleAliases(team as any), { status: 201 });
 }

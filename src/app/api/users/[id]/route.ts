@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession, assertUserAccess } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import {
+  findUserNameConflictUserId,
+  isPrismaUserNameUniqueError,
+  normalizeUserName,
+} from '@/server/userNames';
 
 const publicUserSelect = {
   id: true,
@@ -49,9 +54,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const updated = await prisma.userData.update({
-    where: { id },
-    data: { ...parsed.data.data, updatedAt: new Date() },
-  });
-  return NextResponse.json({ user: withLegacyFields(updated) }, { status: 200 });
+  const nextData: Record<string, unknown> = { ...parsed.data.data };
+  if (Object.prototype.hasOwnProperty.call(nextData, 'userName')) {
+    const normalizedUserName = normalizeUserName(nextData.userName);
+    if (!normalizedUserName) {
+      return NextResponse.json({ error: 'Username is required.' }, { status: 400 });
+    }
+    const conflictUserId = await findUserNameConflictUserId(prisma, normalizedUserName, id);
+    if (conflictUserId) {
+      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
+    }
+    nextData.userName = normalizedUserName;
+  }
+
+  try {
+    const updated = await prisma.userData.update({
+      where: { id },
+      data: { ...nextData, updatedAt: new Date() },
+    });
+    return NextResponse.json({ user: withLegacyFields(updated) }, { status: 200 });
+  } catch (error) {
+    if (isPrismaUserNameUniqueError(error)) {
+      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
+    }
+    throw error;
+  }
 }

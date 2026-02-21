@@ -742,7 +742,18 @@ class EventService {
                                 ? (row.captain as { $id?: string }).$id ?? undefined
                                 : undefined
                     ),
-            coachIds: Array.isArray(row.coachIds)
+            headCoachId:
+                typeof row.headCoachId === 'string' && row.headCoachId.trim().length > 0
+                    ? row.headCoachId
+                    : null,
+            assistantCoachIds: Array.isArray(row.assistantCoachIds)
+                ? row.assistantCoachIds.map(String)
+                : Array.isArray(row.coachIds)
+                ? row.coachIds.map(String)
+                : [],
+            coachIds: Array.isArray(row.assistantCoachIds)
+                ? row.assistantCoachIds.map(String)
+                : Array.isArray(row.coachIds)
                 ? row.coachIds.map(String)
                 : [],
             parentTeamId:
@@ -1413,6 +1424,23 @@ class EventService {
     ): Promise<Event> {
         const response = await apiRequest<any>(`/api/events/${eventId}/waitlist`, {
             method: 'POST',
+            body: participantType === 'team'
+                ? { teamId: participantId }
+                : { userId: participantId },
+        });
+        const payload = response?.event ?? response;
+        await this.ensureSportRelationship(payload);
+        await this.ensureLeagueScoringConfig(payload);
+        return this.mapRowToEvent(payload);
+    }
+
+    async removeFromWaitlist(
+        eventId: string,
+        participantId: string,
+        participantType: 'user' | 'team' = 'user',
+    ): Promise<Event> {
+        const response = await apiRequest<any>(`/api/events/${eventId}/waitlist`, {
+            method: 'DELETE',
             body: participantType === 'team'
                 ? { teamId: participantId }
                 : { userId: participantId },

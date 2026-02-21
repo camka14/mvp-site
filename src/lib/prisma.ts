@@ -88,7 +88,15 @@ const getPrisma = (): PrismaClient => {
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop, receiver) {
     const client = getPrisma();
-    const value = Reflect.get(client as unknown as object, prop, receiver);
+    const readProp = (name: string | symbol) => Reflect.get(client as unknown as object, name, receiver);
+    let value = readProp(prop);
+    // Backward compatibility while team model delegate naming transitions between
+    // `volleyBallTeams` and `teams` across local environments.
+    if (value === undefined && prop === 'teams') {
+      value = readProp('volleyBallTeams');
+    } else if (value === undefined && prop === 'volleyBallTeams') {
+      value = readProp('teams');
+    }
     return typeof value === 'function' ? value.bind(client) : value;
   },
 }) as PrismaClient;

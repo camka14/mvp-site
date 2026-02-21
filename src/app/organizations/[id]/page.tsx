@@ -11,13 +11,14 @@ import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { Event, Organization, Product, UserData, PaymentIntent, TemplateDocument } from '@/types';
+import type { Event, Organization, Product, Team, UserData, PaymentIntent, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { eventService } from '@/lib/eventService';
 import { createId } from '@/lib/id';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
+import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { paymentService } from '@/lib/paymentService';
@@ -206,6 +207,8 @@ function OrganizationDetailContent() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<OrganizationTab>('overview');
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [showTeamDetailModal, setShowTeamDetailModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [showEventDetailSheet, setShowEventDetailSheet] = useState(false);
@@ -1615,7 +1618,14 @@ function OrganizationDetailContent() {
                 {org.teams && org.teams.length > 0 ? (
                   <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                     {org.teams.map((t) => (
-                      <TeamCard key={t.$id} team={t} />
+                      <TeamCard
+                        key={t.$id}
+                        team={t}
+                        onClick={() => {
+                          setSelectedTeam(t);
+                          setShowTeamDetailModal(true);
+                        }}
+                      />
                     ))}
                   </SimpleGrid>
                 ) : (
@@ -2113,6 +2123,37 @@ function OrganizationDetailContent() {
           }
         }}
       />
+      {selectedTeam && (
+        <TeamDetailModal
+          currentTeam={selectedTeam}
+          isOpen={showTeamDetailModal}
+          onClose={() => {
+            setShowTeamDetailModal(false);
+            setSelectedTeam(null);
+          }}
+          canManage={isOwner}
+          onTeamUpdated={(updatedTeam) => {
+            setSelectedTeam(updatedTeam);
+            setOrg((prev) => {
+              if (!prev) return prev;
+              const teams = (prev.teams ?? []).map((team) => (
+                team.$id === updatedTeam.$id ? updatedTeam : team
+              ));
+              return { ...prev, teams };
+            });
+          }}
+          onTeamDeleted={(teamId) => {
+            setOrg((prev) => {
+              if (!prev) return prev;
+              const nextTeamIds = (prev.teamIds ?? []).filter((candidateId) => candidateId !== teamId);
+              const nextTeams = (prev.teams ?? []).filter((team) => team.$id !== teamId);
+              return { ...prev, teamIds: nextTeamIds, teams: nextTeams };
+            });
+            setShowTeamDetailModal(false);
+            setSelectedTeam(null);
+          }}
+        />
+      )}
       <CreateOrganizationModal
         isOpen={showEditOrganizationModal}
         onClose={() => setShowEditOrganizationModal(false)}

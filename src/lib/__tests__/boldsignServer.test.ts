@@ -178,6 +178,56 @@ describe('boldsignServer', () => {
         SignerName: 'Child User',
       }),
     ]);
+    expect(requestBody.EnableSigningOrder).toBeUndefined();
+  });
+
+  it('includes signing order when requested for duplicate signer emails', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ documentId: 'doc_ordered' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await sendDocumentFromTemplate({
+      templateId: 'tmpl_multi',
+      signerEmail: 'shared@example.com',
+      signerName: 'Shared User',
+      roleIndex: 1,
+      signerRole: 'Parent/Guardian',
+      enableSigningOrder: true,
+      roles: [
+        {
+          roleIndex: 1,
+          signerRole: 'Parent/Guardian',
+          signerEmail: 'shared@example.com',
+          signerName: 'Shared User',
+          signerOrder: 1,
+        },
+        {
+          roleIndex: 2,
+          signerRole: 'Child',
+          signerEmail: 'shared@example.com',
+          signerName: 'Shared User',
+          signerOrder: 2,
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    const requestBody = JSON.parse(String(init?.body ?? '{}'));
+    expect(requestBody.EnableSigningOrder).toBe(true);
+    expect(requestBody.Roles).toEqual([
+      expect.objectContaining({
+        RoleIndex: 1,
+        SignerOrder: 1,
+      }),
+      expect.objectContaining({
+        RoleIndex: 2,
+        SignerOrder: 2,
+      }),
+    ]);
   });
 
   it('fetches embedded template edit url', async () => {

@@ -13,7 +13,7 @@ const prismaMock = {
   parentChildLinks: {
     findFirst: jest.fn(),
   },
-  volleyBallTeams: {
+  teams: {
     findUnique: jest.fn(),
   },
 };
@@ -102,7 +102,7 @@ describe('event waitlist route', () => {
   });
 
   it('adds a team when session user is on that team', async () => {
-    prismaMock.volleyBallTeams.findUnique.mockResolvedValueOnce({
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
       id: 'team_1',
       captainId: 'captain_1',
       managerId: 'manager_1',

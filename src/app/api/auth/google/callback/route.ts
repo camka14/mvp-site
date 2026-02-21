@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { reserveGeneratedUserName } from '@/server/userNames';
 
 const STATE_COOKIE = 'google_oauth_state';
 const VERIFIER_COOKIE = 'google_oauth_verifier';
@@ -183,7 +184,11 @@ export async function GET(req: NextRequest) {
             updatedAt: now,
             firstName,
             lastName,
-            userName: normalizedEmail.split('@')[0] ?? 'user',
+            userName: await reserveGeneratedUserName(
+              tx,
+              normalizedEmail.split('@')[0] ?? 'user',
+              { excludeUserId: createdAuth.id, suffixSeed: createdAuth.id },
+            ),
             dateOfBirth: new Date('2000-01-01'),
             teamIds: [],
             friendIds: [],

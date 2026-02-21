@@ -138,6 +138,53 @@ describe('family join requests routes', () => {
     expect(prismaMock.events.update).toHaveBeenCalled();
   });
 
+  it('approves a team-signup request into free agents', async () => {
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue({
+      id: 'reg_team_1',
+      eventId: 'event_team_1',
+      registrantId: 'child_2',
+      parentId: 'parent_1',
+      registrantType: 'CHILD',
+      status: 'PENDINGCONSENT',
+      consentStatus: 'guardian_approval_required',
+    });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_team_1',
+      teamSignup: true,
+      userIds: ['adult_1'],
+      freeAgentIds: ['adult_2'],
+      requiredTemplateIds: [],
+      start: new Date('2026-03-01T12:00:00.000Z'),
+    });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('2012-05-20T00:00:00.000Z'),
+    });
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'child2@example.com' });
+    prismaMock.eventRegistrations.update.mockResolvedValue({
+      id: 'reg_team_1',
+      eventId: 'event_team_1',
+      registrantId: 'child_2',
+      parentId: 'parent_1',
+      registrantType: 'CHILD',
+      status: 'ACTIVE',
+      consentStatus: null,
+    });
+    prismaMock.events.update.mockResolvedValue({ id: 'event_team_1' });
+
+    const response = await PATCH(
+      jsonPatch('http://localhost/api/family/join-requests/reg_team_1', { action: 'approve' }),
+      { params: Promise.resolve({ registrationId: 'reg_team_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'event_team_1' },
+      data: expect.objectContaining({
+        freeAgentIds: expect.arrayContaining(['adult_2', 'child_2']),
+      }),
+    }));
+  });
+
   it('declines a pending request', async () => {
     prismaMock.eventRegistrations.findFirst.mockResolvedValue({
       id: 'reg_2',

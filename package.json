@@ -6,7 +6,8 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev-with-ngrok.mjs",
+    "dev:plain": "next dev",
     "build": "next build",
     "start": "(prisma migrate deploy || echo 'Prisma migrations skipped due to DB permissions') && next start",
     "lint": "eslint",

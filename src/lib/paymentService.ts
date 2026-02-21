@@ -130,6 +130,7 @@ class PaymentService {
     team?: Team,
     timeSlot?: TimeSlot,
     organization?: PaymentOrganizationContext,
+    targetUserId?: string,
   ): Promise<void> {
     try {
       if (!event?.$id) {
@@ -139,6 +140,7 @@ class PaymentService {
 
       const payload = {
         user,
+        userId: targetUserId ?? user?.$id,
         event: payloadEvent,
         team,
         timeSlot,
@@ -159,7 +161,7 @@ class PaymentService {
     }
   }
 
-  async requestRefund(event: Event, user: UserData, reason?: string): Promise<{
+  async requestRefund(event: Event, user: UserData, reason?: string, targetUserId?: string): Promise<{
     success: boolean;
     message?: string;
     emailSent?: boolean;
@@ -171,11 +173,12 @@ class PaymentService {
         '/api/billing/refund',
         {
           method: 'POST',
-          body: {
-            payloadEvent,
-            user,
-            reason: reason || 'requested_by_customer',
-          },
+              body: {
+                payloadEvent,
+                user,
+                userId: targetUserId ?? user.$id,
+                reason: reason || 'requested_by_customer',
+              },
         },
       );
 

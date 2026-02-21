@@ -81,11 +81,71 @@ const getDisplayOrganizationName = (params: {
   return { organizationName: 'Independent Event' };
 };
 
+const normalizeSignerContextValue = (value: unknown): SignerContext | undefined => {
+  const normalized = normalizeText(value)?.toLowerCase();
+  if (normalized === 'participant') return 'participant';
+  if (normalized === 'parent_guardian' || normalized === 'parentguardian') return 'parent_guardian';
+  if (normalized === 'child') return 'child';
+  return undefined;
+};
+
+const buildTemplateScopeKey = (params: {
+  templateId: string;
+  signerContext: SignerContext;
+  childUserId?: string;
+}): string => {
+  return `${params.templateId}::${params.signerContext}::${params.childUserId ?? 'self'}`;
+};
+
+const buildEventScopeKey = (params: {
+  eventId: string;
+  templateId: string;
+  signerContext: SignerContext;
+  childUserId?: string;
+}): string => {
+  return `${params.eventId}::${buildTemplateScopeKey({
+    templateId: params.templateId,
+    signerContext: params.signerContext,
+    childUserId: params.childUserId,
+  })}`;
+};
+
+const isSignerContextVisibleForViewer = (params: {
+  viewerUserId: string;
+  signerContext: SignerContext;
+  childUserId?: string;
+  signerUserId?: string;
+}): boolean => {
+  const childUserId = normalizeText(params.childUserId);
+  const signerUserId = normalizeText(params.signerUserId);
+
+  if (params.signerContext === 'participant') {
+    return signerUserId ? signerUserId === params.viewerUserId : true;
+  }
+
+  if (!childUserId) {
+    return false;
+  }
+
+  if (params.signerContext === 'child') {
+    return childUserId === params.viewerUserId;
+  }
+
+  if (params.signerContext === 'parent_guardian') {
+    if (childUserId === params.viewerUserId) {
+      return false;
+    }
+    return signerUserId ? signerUserId === params.viewerUserId : true;
+  }
+
+  return false;
+};
+
 export async function GET(_req: NextRequest) {
   const session = await requireSession(_req);
   const userId = session.userId;
 
-  const [profile, registrations, signedDocuments, linkedChildren, parentLinksForSelf, selfSensitive] = await Promise.all([
+  const [profile, registrations, linkedChildren, parentLinksForSelf, selfSensitive] = await Promise.all([
     prisma.userData.findUnique({
       where: { id: userId },
       select: { teamIds: true },
@@ -105,20 +165,6 @@ export async function GET(_req: NextRequest) {
         registrantType: true,
         status: true,
         consentStatus: true,
-      },
-    }),
-    prisma.signedDocuments.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-      select: {
-        id: true,
-        signedDocumentId: true,
-        templateId: true,
-        eventId: true,
-        status: true,
-        signedAt: true,
-        createdAt: true,
       },
     }),
     prisma.parentChildLinks.findMany({
@@ -174,6 +220,37 @@ export async function GET(_req: NextRequest) {
   ));
   const selfEmail = normalizeText(selfSensitive?.email);
   const userIsLinkedChild = parentLinksForSelf.length > 0;
+  const registrationChildIds = registrations
+    .filter((registration) =>
+      normalizeText(registration.parentId) === userId
+      && normalizeText(registration.registrantType)?.toUpperCase() === 'CHILD',
+    )
+    .map((registration) => normalizeText(registration.registrantId))
+    .filter((value): value is string => Boolean(value));
+  const signatureUserIds = Array.from(new Set(
+    [userId, ...linkedChildIds, ...registrationChildIds]
+      .map((value) => normalizeText(value))
+      .filter((value): value is string => Boolean(value)),
+  ));
+  const signedDocuments = signatureUserIds.length
+    ? await prisma.signedDocuments.findMany({
+      where: { userId: { in: signatureUserIds } },
+      orderBy: { createdAt: 'desc' },
+      take: 1_000,
+      select: {
+        id: true,
+        signedDocumentId: true,
+        templateId: true,
+        eventId: true,
+        userId: true,
+        hostId: true,
+        signerRole: true,
+        status: true,
+        signedAt: true,
+        createdAt: true,
+      },
+    })
+    : [];
 
   const registrationEventIds = Array.from(new Set(
     registrations
@@ -407,9 +484,12 @@ export async function GET(_req: NextRequest) {
   const organizationsById = new Map(
     organizations.map((organization) => [organization.id, normalizeText(organization.name) ?? 'Organization']),
   );
+  const discoverableEventsSorted = [...discoverableEvents].sort(
+    (left, right) => toTimestamp(right.start) - toTimestamp(left.start),
+  );
 
-  const signedByTemplateId = new Map<string, { id: string; signedAt?: string; createdAt?: Date; status?: string | null }>();
-  const signedByEventAndTemplate = new Map<string, { id: string; signedAt?: string; createdAt?: Date; status?: string | null }>();
+  const signedByTemplateScope = new Map<string, { id: string; signedAt?: string; createdAt?: Date; status?: string | null }>();
+  const signedByEventScope = new Map<string, { id: string; signedAt?: string; createdAt?: Date; status?: string | null }>();
 
   signedDocuments.forEach((document) => {
     if (!isSignedStatus(document.status)) {
@@ -419,11 +499,29 @@ export async function GET(_req: NextRequest) {
     if (!templateId) {
       return;
     }
-    const existingByTemplate = signedByTemplateId.get(templateId);
-    const existingByTemplateTime = toTimestamp(existingByTemplate?.signedAt ?? existingByTemplate?.createdAt ?? null);
+
+    const signerContext = normalizeSignerContextValue(document.signerRole)
+      ?? ((document.userId === userId && document.hostId) ? 'parent_guardian' : 'participant');
+    const childUserId = signerContext === 'participant' ? undefined : normalizeText(document.hostId);
+    const signerUserId = normalizeText(document.userId);
+    if (!isSignerContextVisibleForViewer({
+      viewerUserId: userId,
+      signerContext,
+      childUserId,
+      signerUserId,
+    })) {
+      return;
+    }
     const currentTime = toTimestamp(document.signedAt ?? document.createdAt ?? null);
+    const templateScopeKey = buildTemplateScopeKey({
+      templateId,
+      signerContext,
+      childUserId,
+    });
+    const existingByTemplate = signedByTemplateScope.get(templateScopeKey);
+    const existingByTemplateTime = toTimestamp(existingByTemplate?.signedAt ?? existingByTemplate?.createdAt ?? null);
     if (!existingByTemplate || currentTime > existingByTemplateTime) {
-      signedByTemplateId.set(templateId, {
+      signedByTemplateScope.set(templateScopeKey, {
         id: document.id,
         signedAt: normalizeText(document.signedAt) ?? undefined,
         createdAt: document.createdAt ?? undefined,
@@ -435,11 +533,16 @@ export async function GET(_req: NextRequest) {
     if (!eventId) {
       return;
     }
-    const compositeKey = `${eventId}::${templateId}`;
-    const existingByEventTemplate = signedByEventAndTemplate.get(compositeKey);
-    const existingByEventTemplateTime = toTimestamp(existingByEventTemplate?.signedAt ?? existingByEventTemplate?.createdAt ?? null);
-    if (!existingByEventTemplate || currentTime > existingByEventTemplateTime) {
-      signedByEventAndTemplate.set(compositeKey, {
+    const eventScopeKey = buildEventScopeKey({
+      eventId,
+      templateId,
+      signerContext,
+      childUserId,
+    });
+    const existingByEvent = signedByEventScope.get(eventScopeKey);
+    const existingByEventTime = toTimestamp(existingByEvent?.signedAt ?? existingByEvent?.createdAt ?? null);
+    if (!existingByEvent || currentTime > existingByEventTime) {
+      signedByEventScope.set(eventScopeKey, {
         id: document.id,
         signedAt: normalizeText(document.signedAt) ?? undefined,
         createdAt: document.createdAt ?? undefined,
@@ -450,8 +553,9 @@ export async function GET(_req: NextRequest) {
 
   const unsignedCards: ProfileDocumentCard[] = [];
   const unsignedCardKeys = new Set<string>();
+  const signOnceUnsignedScopeKeys = new Set<string>();
 
-  discoverableEvents.forEach((event) => {
+  discoverableEventsSorted.forEach((event) => {
     const templateIds = Array.isArray(event.requiredTemplateIds)
       ? event.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
       : [];
@@ -505,14 +609,40 @@ export async function GET(_req: NextRequest) {
       }
 
       signerContexts.forEach((context) => {
+        const scopedChildUserId = context.signerContext === 'participant' ? undefined : context.childUserId;
+        if (!isSignerContextVisibleForViewer({
+          viewerUserId: userId,
+          signerContext: context.signerContext,
+          childUserId: scopedChildUserId,
+        })) {
+          return;
+        }
+        const templateScopeKey = buildTemplateScopeKey({
+          templateId: template.id,
+          signerContext: context.signerContext,
+          childUserId: scopedChildUserId,
+        });
+        if (template.signOnce) {
+          if (signOnceUnsignedScopeKeys.has(templateScopeKey)) {
+            return;
+          }
+          signOnceUnsignedScopeKeys.add(templateScopeKey);
+        }
         const signed = template.signOnce
-          ? signedByTemplateId.get(template.id)
-          : signedByEventAndTemplate.get(`${event.id}::${template.id}`);
+          ? signedByTemplateScope.get(templateScopeKey)
+          : signedByEventScope.get(buildEventScopeKey({
+            eventId: event.id,
+            templateId: template.id,
+            signerContext: context.signerContext,
+            childUserId: scopedChildUserId,
+          }));
         if (signed) {
           return;
         }
 
-        const cardId = `${event.id}:${template.id}:${context.signerContext}:${context.childUserId ?? 'self'}`;
+        const cardId = template.signOnce
+          ? `once:${templateScopeKey}`
+          : `${event.id}:${template.id}:${context.signerContext}:${context.childUserId ?? 'self'}`;
         if (unsignedCardKeys.has(cardId)) {
           return;
         }
@@ -523,6 +653,16 @@ export async function GET(_req: NextRequest) {
           templateOrganizationId: template.organizationId,
           organizationsById,
         });
+        const childMustSignFromOwnAccount = Boolean(
+          context.signerContext === 'child'
+          && context.childUserId
+          && context.childUserId !== userId,
+        );
+        const statusNotes = [
+          context.statusNote,
+          childMustSignFromOwnAccount ? 'Waiting on child signature from the child account.' : undefined,
+        ].filter((value): value is string => Boolean(value && value.trim()));
+        const statusNote = statusNotes.length ? statusNotes.join(' ') : undefined;
 
         unsignedCards.push({
           id: cardId,
@@ -542,7 +682,7 @@ export async function GET(_req: NextRequest) {
           childEmail: context.childEmail,
           consentStatus: context.consentStatus,
           requiresChildEmail: context.requiresChildEmail,
-          statusNote: context.statusNote,
+          statusNote,
           content: normalizeTemplateType(template.type) === 'TEXT' ? normalizeText(template.content) : undefined,
         });
       });
@@ -558,17 +698,30 @@ export async function GET(_req: NextRequest) {
     return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
   });
 
-  const signedCards: ProfileDocumentCard[] = signedDocuments
+  const signedCards: ProfileDocumentCard[] = [];
+  signedDocuments
     .filter((document) => isSignedStatus(document.status))
-    .map((document) => {
+    .forEach((document) => {
       const event = normalizeText(document.eventId) ? eventById.get(normalizeText(document.eventId) as string) : undefined;
       const template = templateById.get(document.templateId);
       const requiredSignerType = normalizeRequiredSignerType(template?.requiredSignerType);
-      const signerContext: SignerContext = requiredSignerType === 'PARENT_GUARDIAN' || requiredSignerType === 'PARENT_GUARDIAN_CHILD'
-        ? 'parent_guardian'
-        : requiredSignerType === 'CHILD'
-          ? 'child'
-          : 'participant';
+      const signerContext = normalizeSignerContextValue(document.signerRole) ?? (
+        requiredSignerType === 'PARENT_GUARDIAN' || requiredSignerType === 'PARENT_GUARDIAN_CHILD'
+          ? 'parent_guardian'
+          : requiredSignerType === 'CHILD'
+            ? 'child'
+            : 'participant'
+      );
+      const childUserId = signerContext === 'participant' ? undefined : normalizeText(document.hostId);
+      const signerUserId = normalizeText(document.userId);
+      if (!isSignerContextVisibleForViewer({
+        viewerUserId: userId,
+        signerContext,
+        childUserId,
+        signerUserId,
+      })) {
+        return;
+      }
       const organizationDisplay = getDisplayOrganizationName({
         eventOrganizationId: event?.organizationId,
         templateOrganizationId: template?.organizationId,
@@ -576,7 +729,7 @@ export async function GET(_req: NextRequest) {
       });
       const type = normalizeTemplateType(template?.type);
 
-      return {
+      signedCards.push({
         id: document.id,
         status: 'SIGNED',
         eventId: event?.id ?? normalizeText(document.eventId),
@@ -590,11 +743,12 @@ export async function GET(_req: NextRequest) {
         requiredSignerLabel: getRequiredSignerTypeLabel(requiredSignerType),
         signerContext,
         signerContextLabel: getSignerContextLabel(signerContext),
+        childUserId,
         signedAt: normalizeText(document.signedAt) ?? (document.createdAt ? document.createdAt.toISOString() : undefined),
         signedDocumentRecordId: document.id,
         viewUrl: type === 'PDF' ? `/api/documents/signed/${document.id}/file` : undefined,
         content: type === 'TEXT' ? normalizeText(template?.content) : undefined,
-      };
+      });
     });
 
   signedCards.sort((left, right) => toTimestamp(right.signedAt) - toTimestamp(left.signedAt));

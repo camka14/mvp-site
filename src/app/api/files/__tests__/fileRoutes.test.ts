@@ -14,7 +14,7 @@ const prismaMock = {
     findMany: jest.fn(),
     update: jest.fn(),
   },
-  volleyBallTeams: {
+  teams: {
     findMany: jest.fn(),
   },
   events: {
@@ -192,7 +192,7 @@ describe('file routes', () => {
         uploaderId: 'user_1',
       });
       prismaMock.userData.findMany.mockResolvedValueOnce([{ id: 'user_1' }]);
-      prismaMock.volleyBallTeams.findMany.mockResolvedValueOnce([]);
+      prismaMock.teams.findMany.mockResolvedValueOnce([]);
       prismaMock.events.findMany.mockResolvedValueOnce([{ id: 'event_1' }]);
       prismaMock.organizations.findMany.mockResolvedValueOnce([]);
 
@@ -221,7 +221,7 @@ describe('file routes', () => {
         .mockResolvedValueOnce([
           { id: 'user_1', uploadedImages: ['file_4', 'other'] },
         ]);
-      prismaMock.volleyBallTeams.findMany.mockResolvedValueOnce([]);
+      prismaMock.teams.findMany.mockResolvedValueOnce([]);
       prismaMock.events.findMany.mockResolvedValueOnce([]);
       prismaMock.organizations.findMany.mockResolvedValueOnce([]);
       prismaMock.file.delete.mockResolvedValueOnce({ id: 'file_4' });

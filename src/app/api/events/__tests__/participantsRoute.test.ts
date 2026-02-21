@@ -24,7 +24,7 @@ const prismaMock = {
     findMany: jest.fn(),
     findFirst: jest.fn(),
   },
-  volleyBallTeams: {
+  teams: {
     findUnique: jest.fn(),
   },
   eventRegistrations: {
@@ -40,11 +40,18 @@ const requireSessionMock = jest.fn();
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 
-import { POST } from '@/app/api/events/[eventId]/participants/route';
+import { DELETE, POST } from '@/app/api/events/[eventId]/participants/route';
 
 const jsonPost = (url: string, body: unknown) =>
   new NextRequest(url, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+const jsonDelete = (url: string, body: unknown) =>
+  new NextRequest(url, {
+    method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
@@ -91,7 +98,7 @@ describe('POST /api/events/[eventId]/participants', () => {
   });
 
   it('rejects team registration when team division type does not match selection', async () => {
-    prismaMock.volleyBallTeams.findUnique.mockResolvedValue({
+    prismaMock.teams.findUnique.mockResolvedValue({
       id: 'team_1',
       division: 'Advanced',
       divisionTypeId: 'advanced',
@@ -115,7 +122,7 @@ describe('POST /api/events/[eventId]/participants', () => {
   });
 
   it('rejects team registration when team has no resolvable division type', async () => {
-    prismaMock.volleyBallTeams.findUnique.mockResolvedValue({
+    prismaMock.teams.findUnique.mockResolvedValue({
       id: 'team_1',
       division: null,
       divisionTypeId: null,
@@ -139,7 +146,7 @@ describe('POST /api/events/[eventId]/participants', () => {
   });
 
   it('adds team and stores division registration metadata when division type matches', async () => {
-    prismaMock.volleyBallTeams.findUnique.mockResolvedValue({
+    prismaMock.teams.findUnique.mockResolvedValue({
       id: 'team_1',
       division: 'Open',
       divisionTypeId: 'open',
@@ -197,7 +204,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       minAge: null,
       maxAge: null,
     });
-    prismaMock.volleyBallTeams.findUnique.mockResolvedValueOnce({
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
       id: 'team_1',
       division: 'Open',
       divisionTypeId: 'open',
@@ -280,5 +287,97 @@ describe('POST /api/events/[eventId]/participants', () => {
       parentId: 'parent_1',
       consentStatus: 'guardian_approval_required',
     }));
+  });
+});
+
+describe('DELETE /api/events/[eventId]/participants', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: [],
+      userIds: ['user_1'],
+      teamIds: [],
+      waitListIds: ['user_1'],
+      freeAgentIds: ['user_1'],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.events.update.mockResolvedValue({
+      id: 'event_1',
+      userIds: [],
+      teamIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+  });
+
+  it('allows a parent to remove a linked child participant', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'parent_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      requiredTemplateIds: [],
+      userIds: ['child_1'],
+      teamIds: [],
+      waitListIds: ['child_1'],
+      freeAgentIds: ['child_1'],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValueOnce({ id: 'link_1' });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      userIds: [],
+      teamIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+
+    const response = await DELETE(
+      jsonDelete('http://localhost/api/events/event_1/participants', { userId: 'child_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.parentChildLinks.findFirst).toHaveBeenCalledWith({
+      where: {
+        parentId: 'parent_1',
+        childId: 'child_1',
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    expect(prismaMock.events.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userIds: [],
+          waitListIds: [],
+          freeAgentIds: [],
+        }),
+      }),
+    );
+  });
+
+  it('forbids removing an unrelated participant', async () => {
+    prismaMock.parentChildLinks.findFirst.mockResolvedValueOnce(null);
+
+    const response = await DELETE(
+      jsonDelete('http://localhost/api/events/event_1/participants', { userId: 'child_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Forbidden');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 });

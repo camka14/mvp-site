@@ -824,6 +824,10 @@ export default function ProfilePage() {
             setDocumentsError('Cannot sign this document because the event is missing.');
             return;
         }
+        if (document.signerContext === 'child' && document.childUserId && document.childUserId !== user.$id) {
+            setDocumentsError('This signature must be completed from the child account.');
+            return;
+        }
         if (document.requiresChildEmail) {
             setDocumentsError(document.statusNote || 'Add child email before starting this child-signature document.');
             return;
@@ -866,13 +870,11 @@ export default function ProfilePage() {
                 throw new Error(result?.error || 'Password confirmation failed.');
             }
 
-            const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
             const links = await boldsignService.createSignLinks({
                 eventId: activeSigningDocument.eventId,
                 user,
                 userEmail: authUser.email,
                 templateId: activeSigningDocument.templateId,
-                redirectUrl,
                 signerContext: activeSigningDocument.signerContext,
                 childUserId: activeSigningDocument.childUserId,
                 childEmail: activeSigningDocument.childEmail,
@@ -906,6 +908,9 @@ export default function ProfilePage() {
         if (!activeSigningDocument?.eventId || !user) {
             throw new Error('Event and user are required to record signatures.');
         }
+        const signingUserId = activeSigningDocument.signerContext === 'child' && activeSigningDocument.childUserId
+            ? activeSigningDocument.childUserId
+            : user.$id;
         const response = await fetch('/api/documents/record-signature', {
             method: 'POST',
             headers: {
@@ -916,7 +921,9 @@ export default function ProfilePage() {
                 documentId: payload.documentId,
                 eventId: activeSigningDocument.eventId,
                 type: payload.type,
-                userId: user.$id,
+                userId: signingUserId,
+                childUserId: activeSigningDocument.childUserId,
+                signerContext: activeSigningDocument.signerContext,
                 user,
             }),
         });
@@ -924,7 +931,7 @@ export default function ProfilePage() {
         if (!response.ok || result?.error) {
             throw new Error(result?.error || 'Failed to record signature.');
         }
-    }, [activeSigningDocument?.eventId, user]);
+    }, [activeSigningDocument, user]);
 
     const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
         const currentLink = signLinks[currentSignIndex];
@@ -968,9 +975,11 @@ export default function ProfilePage() {
             return;
         }
 
-        const documentId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const documentId = currentLink.documentId || (
+            typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+        );
         setRecordingSignature(true);
         try {
             await recordSignature({
@@ -1034,7 +1043,10 @@ export default function ProfilePage() {
         let cancelled = false;
         const poll = async () => {
             try {
-                const signed = await signedDocumentService.isDocumentSigned(pendingSignedDocumentId);
+                const signingUserId = activeSigningDocument?.signerContext === 'child' && activeSigningDocument?.childUserId
+                    ? activeSigningDocument.childUserId
+                    : user?.$id;
+                const signed = await signedDocumentService.isDocumentSigned(pendingSignedDocumentId, signingUserId);
                 if (!signed || cancelled) {
                     return;
                 }
@@ -1065,7 +1077,7 @@ export default function ProfilePage() {
             cancelled = true;
             window.clearInterval(interval);
         };
-    }, [currentSignIndex, loadDocuments, pendingSignedDocumentId, resetSigningState, signLinks]);
+    }, [activeSigningDocument, currentSignIndex, loadDocuments, pendingSignedDocumentId, resetSigningState, signLinks, user?.$id]);
 
     useEffect(() => {
         if (user) {
@@ -1736,6 +1748,7 @@ export default function ProfilePage() {
                                 >
                                     {children.map((child) => {
                                         const name = `${child.firstName || ''} ${child.lastName || ''}`.trim();
+                                        const childHandle = (child.userName || '').trim();
                                         const hasEmail = typeof child.hasEmail === 'boolean'
                                             ? child.hasEmail
                                             : Boolean(child.email);
@@ -1753,6 +1766,7 @@ export default function ProfilePage() {
                                             >
                                                 <div>
                                                     <Text fw={600}>{name || 'Child'}</Text>
+                                                    <Text size="sm" c="dimmed">@{childHandle || 'user'}</Text>
                                                     <Text size="sm" c="dimmed">
                                                         Age: {typeof child.age === 'number' ? child.age : 'Unknown'}
                                                     </Text>
@@ -1806,7 +1820,13 @@ export default function ProfilePage() {
                                             <Text c="dimmed">No unsigned document requests.</Text>
                                         ) : (
                                             <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
-                                                {unsignedDocuments.map((document) => (
+                                                {unsignedDocuments.map((document) => {
+                                                    const childMustSignFromOwnAccount = Boolean(
+                                                        document.signerContext === 'child'
+                                                        && document.childUserId
+                                                        && document.childUserId !== user?.$id,
+                                                    );
+                                                    return (
                                                     <Paper
                                                         key={document.id}
                                                         withBorder
@@ -1843,13 +1863,18 @@ export default function ProfilePage() {
                                                             size="xs"
                                                             variant="light"
                                                             mt="md"
-                                                            disabled={Boolean(document.requiresChildEmail)}
+                                                            disabled={Boolean(document.requiresChildEmail) || childMustSignFromOwnAccount}
                                                             onClick={() => handleStartSigningDocument(document)}
                                                         >
-                                                            {document.requiresChildEmail ? 'Add child email first' : 'Sign document'}
+                                                            {document.requiresChildEmail
+                                                                ? 'Add child email first'
+                                                                : childMustSignFromOwnAccount
+                                                                    ? 'Child must sign'
+                                                                    : 'Sign document'}
                                                         </Button>
                                                     </Paper>
-                                                ))}
+                                                    );
+                                                })}
                                             </SimpleGrid>
                                         )}
                                     </div>
@@ -2341,11 +2366,27 @@ export default function ProfilePage() {
                                     </Group>
                                 </Stack>
                             ) : (
-                                <iframe
-                                    src={signLinks[currentSignIndex]?.url}
-                                    title="BoldSign Signing"
-                                    style={{ width: '100%', height: 520, border: '1px solid #E5E7EB', borderRadius: 8 }}
-                                />
+                                <Stack gap="sm">
+                                    <iframe
+                                        src={signLinks[currentSignIndex]?.url}
+                                        title="BoldSign Signing"
+                                        style={{ width: '100%', height: 520, border: '1px solid #E5E7EB', borderRadius: 8 }}
+                                    />
+                                    <Group justify="flex-end">
+                                        <Button variant="default" onClick={resetSigningState}>
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            onClick={() => {
+                                                void handleSignedDocument();
+                                            }}
+                                            loading={recordingSignature}
+                                            disabled={recordingSignature}
+                                        >
+                                            I finished signing
+                                        </Button>
+                                    </Group>
+                                </Stack>
                             )}
                         </Stack>
                     )}

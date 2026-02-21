@@ -390,7 +390,7 @@ export const ModelName = {
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
   Invites: 'Invites',
-  VolleyBallTeams: 'VolleyBallTeams',
+  Teams: 'Teams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
   PushDeviceTarget: 'PushDeviceTarget',
@@ -428,7 +428,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "volleyBallTeams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -876,77 +876,77 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
-    VolleyBallTeams: {
-      payload: Prisma.$VolleyBallTeamsPayload<ExtArgs>
-      fields: Prisma.VolleyBallTeamsFieldRefs
+    Teams: {
+      payload: Prisma.$TeamsPayload<ExtArgs>
+      fields: Prisma.TeamsFieldRefs
       operations: {
         findUnique: {
-          args: Prisma.VolleyBallTeamsFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload> | null
+          args: Prisma.TeamsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload> | null
         }
         findUniqueOrThrow: {
-          args: Prisma.VolleyBallTeamsFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>
+          args: Prisma.TeamsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>
         }
         findFirst: {
-          args: Prisma.VolleyBallTeamsFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload> | null
+          args: Prisma.TeamsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload> | null
         }
         findFirstOrThrow: {
-          args: Prisma.VolleyBallTeamsFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>
+          args: Prisma.TeamsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>
         }
         findMany: {
-          args: Prisma.VolleyBallTeamsFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>[]
+          args: Prisma.TeamsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>[]
         }
         create: {
-          args: Prisma.VolleyBallTeamsCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>
+          args: Prisma.TeamsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>
         }
         createMany: {
-          args: Prisma.VolleyBallTeamsCreateManyArgs<ExtArgs>
+          args: Prisma.TeamsCreateManyArgs<ExtArgs>
           result: BatchPayload
         }
         createManyAndReturn: {
-          args: Prisma.VolleyBallTeamsCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>[]
+          args: Prisma.TeamsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>[]
         }
         delete: {
-          args: Prisma.VolleyBallTeamsDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>
+          args: Prisma.TeamsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>
         }
         update: {
-          args: Prisma.VolleyBallTeamsUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>
+          args: Prisma.TeamsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>
         }
         deleteMany: {
-          args: Prisma.VolleyBallTeamsDeleteManyArgs<ExtArgs>
+          args: Prisma.TeamsDeleteManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateMany: {
-          args: Prisma.VolleyBallTeamsUpdateManyArgs<ExtArgs>
+          args: Prisma.TeamsUpdateManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateManyAndReturn: {
-          args: Prisma.VolleyBallTeamsUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>[]
+          args: Prisma.TeamsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>[]
         }
         upsert: {
-          args: Prisma.VolleyBallTeamsUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$VolleyBallTeamsPayload>
+          args: Prisma.TeamsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamsPayload>
         }
         aggregate: {
-          args: Prisma.VolleyBallTeamsAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateVolleyBallTeams>
+          args: Prisma.TeamsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTeams>
         }
         groupBy: {
-          args: Prisma.VolleyBallTeamsGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.VolleyBallTeamsGroupByOutputType>[]
+          args: Prisma.TeamsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamsGroupByOutputType>[]
         }
         count: {
-          args: Prisma.VolleyBallTeamsCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.VolleyBallTeamsCountAggregateOutputType> | number
+          args: Prisma.TeamsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamsCountAggregateOutputType> | number
         }
       }
     }
@@ -2743,7 +2743,7 @@ export const InvitesScalarFieldEnum = {
 export type InvitesScalarFieldEnum = (typeof InvitesScalarFieldEnum)[keyof typeof InvitesScalarFieldEnum]
 
 
-export const VolleyBallTeamsScalarFieldEnum = {
+export const TeamsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
@@ -2757,6 +2757,7 @@ export const VolleyBallTeamsScalarFieldEnum = {
   name: 'name',
   captainId: 'captainId',
   managerId: 'managerId',
+  headCoachId: 'headCoachId',
   coachIds: 'coachIds',
   parentTeamId: 'parentTeamId',
   pending: 'pending',
@@ -2765,7 +2766,7 @@ export const VolleyBallTeamsScalarFieldEnum = {
   sport: 'sport'
 } as const
 
-export type VolleyBallTeamsScalarFieldEnum = (typeof VolleyBallTeamsScalarFieldEnum)[keyof typeof VolleyBallTeamsScalarFieldEnum]
+export type TeamsScalarFieldEnum = (typeof TeamsScalarFieldEnum)[keyof typeof TeamsScalarFieldEnum]
 
 
 export const MessagesScalarFieldEnum = {
@@ -3675,7 +3676,7 @@ export type GlobalOmitConfig = {
   userData?: Prisma.UserDataOmit
   sensitiveUserData?: Prisma.SensitiveUserDataOmit
   invites?: Prisma.InvitesOmit
-  volleyBallTeams?: Prisma.VolleyBallTeamsOmit
+  teams?: Prisma.TeamsOmit
   messages?: Prisma.MessagesOmit
   chatGroup?: Prisma.ChatGroupOmit
   pushDeviceTarget?: Prisma.PushDeviceTargetOmit

@@ -1,10 +1,14 @@
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
-import { Team, UserData, getTeamWinRate, getTeamAvatarUrl } from '@/types';
+import { InviteType, Team, UserData, getTeamWinRate, getTeamAvatarUrl } from '@/types';
 import { userService } from './userService';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
+export type TeamInviteRoleType = Extract<
+    InviteType,
+    'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach'
+>;
 
 class TeamService {
     async getTeamById(id: string, includeRelations: boolean = false): Promise<Team | undefined> {
@@ -66,17 +70,29 @@ class TeamService {
             team.manager = undefined;
         }
 
-        const coachIds = Array.isArray(team.coachIds) ? team.coachIds : [];
-        if (coachIds.length > 0) {
-            const missingCoachIds = coachIds.filter((coachId) => !resolveKnownUser(coachId));
+        if (team.headCoachId) {
+            team.headCoach = resolveKnownUser(team.headCoachId)
+                ?? await userService.getUserById(team.headCoachId)
+                ?? undefined;
+        } else {
+            team.headCoach = undefined;
+        }
+
+        const assistantCoachIds = Array.isArray(team.assistantCoachIds)
+            ? team.assistantCoachIds
+            : (Array.isArray(team.coachIds) ? team.coachIds : []);
+        if (assistantCoachIds.length > 0) {
+            const missingCoachIds = assistantCoachIds.filter((coachId) => !resolveKnownUser(coachId));
             const fetchedCoaches = missingCoachIds.length > 0
                 ? await userService.getUsersByIds(missingCoachIds)
                 : [];
             const fetchedCoachMap = new Map(fetchedCoaches.map((coach) => [coach.$id, coach]));
-            team.coaches = coachIds
+            team.assistantCoaches = assistantCoachIds
                 .map((coachId) => resolveKnownUser(coachId) ?? fetchedCoachMap.get(coachId))
                 .filter(isDefined);
+            team.coaches = team.assistantCoaches;
         } else {
+            team.assistantCoaches = [];
             team.coaches = [];
         }
 
@@ -115,7 +131,8 @@ class TeamService {
                 playerIds: [captainId],
                 captainId,
                 managerId: captainId,
-                coachIds: [],
+                headCoachId: null,
+                assistantCoachIds: [],
                 pending: [],
                 teamSize: maxPlayers,
                 profileImageId: profileImageId || ''
@@ -140,29 +157,52 @@ class TeamService {
     }
 
     async invitePlayerToTeam(team: Team, user: UserData): Promise<boolean> {
+        return this.inviteUserToTeamRole(team, user, 'player');
+    }
+
+    async inviteUserToTeamRole(team: Team, user: UserData, inviteType: TeamInviteRoleType): Promise<boolean> {
         try {
-            if (team.playerIds.includes(user.$id)) {
-                // Player already on team; nothing to do
-                return false;
+            if (inviteType === 'player') {
+                if (team.playerIds.includes(user.$id)) {
+                    // Player already on team; nothing to do
+                    return false;
+                }
+                if (team.pending.includes(user.$id)) {
+                    // Invite already pending; avoid duplicate invite rows and emails.
+                    return false;
+                }
+
+                const pendingSet = new Set(team.pending ?? []);
+                pendingSet.add(user.$id);
+                const updatedPending = Array.from(pendingSet);
+
+                await apiRequest(`/api/teams/${team.$id}`, {
+                    method: 'PATCH',
+                    body: { team: { pending: updatedPending } },
+                });
+            } else if (inviteType === 'team_manager') {
+                if (team.managerId === user.$id) {
+                    return false;
+                }
+            } else if (inviteType === 'team_head_coach') {
+                if (team.headCoachId === user.$id) {
+                    return false;
+                }
+            } else if (inviteType === 'team_assistant_coach') {
+                const assistantCoachIds = team.assistantCoachIds ?? team.coachIds ?? [];
+                if (assistantCoachIds.includes(user.$id)) {
+                    return false;
+                }
             }
-            if (team.pending.includes(user.$id)) {
-                // Invite already pending; avoid duplicate invite rows and emails.
-                return false;
+
+            if (inviteType === 'player') {
+                await userService.addTeamInvitation(user.$id, team.$id);
+            } else {
+                await userService.addTeamInvitation(user.$id, team.$id, inviteType);
             }
-
-            const pendingSet = new Set(team.pending ?? []);
-            pendingSet.add(user.$id);
-            const updatedPending = Array.from(pendingSet);
-
-            await apiRequest(`/api/teams/${team.$id}`, {
-                method: 'PATCH',
-                body: { team: { pending: updatedPending } },
-            });
-
-            await userService.addTeamInvitation(user.$id, team.$id);
             return true;
         } catch (error) {
-            console.error('Failed to invite player to team:', error);
+            console.error('Failed to invite user to team:', error);
             return false;
         }
     }
@@ -199,7 +239,18 @@ class TeamService {
             managerId: typeof row.managerId === 'string' && row.managerId.trim().length > 0
                 ? row.managerId
                 : row.captainId,
-            coachIds: Array.isArray(row.coachIds)
+            headCoachId:
+                typeof row.headCoachId === 'string' && row.headCoachId.trim().length > 0
+                    ? row.headCoachId
+                    : null,
+            assistantCoachIds: Array.isArray(row.assistantCoachIds)
+                ? row.assistantCoachIds.filter((value: any): value is string => typeof value === 'string')
+                : Array.isArray(row.coachIds)
+                ? row.coachIds.filter((value: any): value is string => typeof value === 'string')
+                : [],
+            coachIds: Array.isArray(row.assistantCoachIds)
+                ? row.assistantCoachIds.filter((value: any): value is string => typeof value === 'string')
+                : Array.isArray(row.coachIds)
                 ? row.coachIds.filter((value: any): value is string => typeof value === 'string')
                 : [],
             parentTeamId: typeof row.parentTeamId === 'string' && row.parentTeamId.trim().length > 0
@@ -285,6 +336,22 @@ class TeamService {
         }
     }
 
+    async updateTeamDetails(
+        teamId: string,
+        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize' | 'seed' | 'wins' | 'losses'>>,
+    ): Promise<Team | undefined> {
+        try {
+            const response = await apiRequest<any>(`/api/teams/${teamId}`, {
+                method: 'PATCH',
+                body: { team: updates },
+            });
+            return this.mapRowToTeam(response);
+        } catch (error) {
+            console.error('Failed to update team details:', error);
+            return undefined;
+        }
+    }
+
     async acceptTeamInvitation(teamId: string, userId: string): Promise<boolean> {
         try {
             const team = await this.getTeamById(teamId);
@@ -314,21 +381,23 @@ class TeamService {
         }
     }
 
-    async removeTeamInvitation(teamId: string, userId: string): Promise<boolean> {
+    async removeTeamInvitation(teamId: string, userId: string, inviteType: TeamInviteRoleType = 'player'): Promise<boolean> {
         try {
             const team = await this.getTeamById(teamId);
             if (!team) {
                 return false;
             }
 
-            const nextPending = team.pending.filter(id => id !== userId);
+            if (inviteType === 'player') {
+                const nextPending = team.pending.filter(id => id !== userId);
 
-            await apiRequest(`/api/teams/${teamId}`, {
-                method: 'PATCH',
-                body: { team: { pending: nextPending } },
-            });
+                await apiRequest(`/api/teams/${teamId}`, {
+                    method: 'PATCH',
+                    body: { team: { pending: nextPending } },
+                });
+            }
 
-            await userService.removeTeamInvitation(userId, teamId);
+            await userService.removeTeamInvitation(userId, teamId, inviteType);
             return true;
         } catch (error) {
             console.error('Failed to remove team invitation:', error);

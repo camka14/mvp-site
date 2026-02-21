@@ -30,6 +30,12 @@ const createSchema = z.object({
 }).passthrough();
 
 const emailSchema = z.string().email();
+const TEAM_MEMBERSHIP_INVITE_TYPES = new Set(['player', 'team_manager', 'team_head_coach', 'team_assistant_coach']);
+const SINGLE_OCCUPANT_TEAM_ROLE_INVITE_TYPES = new Set(['team_manager', 'team_head_coach']);
+const TEAM_REQUIRED_SCOPE_INVITE_TYPES = new Set(['team_manager', 'team_head_coach', 'team_assistant_coach']);
+
+const normalizeInviteType = (value: string): string => value.trim().toLowerCase();
+const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
@@ -79,6 +85,12 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date();
+    const inviteType = normalizeInviteType(parsedInvite.data.type);
+    if (!inviteType) {
+      return NextResponse.json({ error: 'Invalid invite type' }, { status: 400 });
+    }
+
+    const inviteTeamId = parsedInvite.data.teamId ? String(parsedInvite.data.teamId) : '';
     const inviteUserId = parsedInvite.data.userId ? String(parsedInvite.data.userId) : '';
     let email = typeof parsedInvite.data.email === 'string' ? parsedInvite.data.email.trim().toLowerCase() : '';
 
@@ -129,15 +141,65 @@ export async function POST(req: NextRequest) {
       shouldSendEmail = !ensured.authUserExisted;
     }
 
+    if (TEAM_REQUIRED_SCOPE_INVITE_TYPES.has(inviteType) && !inviteTeamId) {
+      return NextResponse.json({ error: 'Team invite requires teamId' }, { status: 400 });
+    }
+
+    const teamsDelegate = getTeamsDelegate(prisma);
+    if (TEAM_MEMBERSHIP_INVITE_TYPES.has(inviteType) && inviteTeamId && teamsDelegate?.findUnique) {
+      const team = await teamsDelegate.findUnique({
+        where: { id: inviteTeamId },
+      });
+      if (!team) {
+        return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+      }
+
+      const isAlreadyAssigned = (
+        (inviteType === 'player' && Array.isArray(team.playerIds) && team.playerIds.includes(ensuredUserId))
+        || (inviteType === 'team_manager' && team.managerId === ensuredUserId)
+        || (inviteType === 'team_head_coach' && team.headCoachId === ensuredUserId)
+        || (inviteType === 'team_assistant_coach' && Array.isArray(team.coachIds) && team.coachIds.includes(ensuredUserId))
+      );
+      if (isAlreadyAssigned) {
+        return NextResponse.json({ error: 'User is already assigned to this team role' }, { status: 409 });
+      }
+
+      const existingPending = await prisma.invites.findFirst({
+        where: {
+          type: inviteType,
+          teamId: inviteTeamId,
+          userId: ensuredUserId,
+          status: 'pending',
+        },
+      });
+      if (existingPending) {
+        created.push(existingPending);
+        continue;
+      }
+    }
+
+    if (SINGLE_OCCUPANT_TEAM_ROLE_INVITE_TYPES.has(inviteType)) {
+      const existingRoleInvite = await prisma.invites.findFirst({
+        where: {
+          type: inviteType,
+          teamId: inviteTeamId,
+          status: 'pending',
+        },
+      });
+      if (existingRoleInvite) {
+        return NextResponse.json({ error: 'A pending invite already exists for this role' }, { status: 409 });
+      }
+    }
+
     const record = await prisma.invites.create({
       data: {
         id: crypto.randomUUID(),
-        type: parsedInvite.data.type,
+        type: inviteType,
         email,
         status: parsedInvite.data.status ?? 'pending',
         eventId: parsedInvite.data.eventId ?? null,
         organizationId: parsedInvite.data.organizationId ?? null,
-        teamId: parsedInvite.data.teamId ?? null,
+        teamId: inviteTeamId || null,
         userId: ensuredUserId,
         createdBy: parsedInvite.data.createdBy ?? session.userId,
         firstName: parsedInvite.data.firstName ?? null,
@@ -182,13 +244,13 @@ export async function DELETE(req: NextRequest) {
 
     let isTeamCaptain = false;
     if (teamId) {
-      const team = await prisma.volleyBallTeams.findUnique({
+      const teamsDelegate = getTeamsDelegate(prisma);
+      const team = await teamsDelegate?.findUnique({
         where: { id: teamId },
-        select: { captainId: true, managerId: true },
       });
       isTeamCaptain = Boolean(
         team
-        && (team.captainId === session.userId || team.managerId === session.userId),
+        && ((team as any).captainId === session.userId || (team as any).managerId === session.userId),
       );
     }
 

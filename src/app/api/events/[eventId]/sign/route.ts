@@ -15,6 +15,7 @@ import {
   templateMatchesSignerContext,
   type SignerContext,
 } from '@/lib/templateSignerTypes';
+import { resolveBoldSignRedirectUrl } from '@/lib/signRedirect';
 
 export const dynamic = 'force-dynamic';
 
@@ -166,6 +167,36 @@ const verifyActiveParentLink = async (params: {
   return Boolean(link);
 };
 
+const resolveLinkedParentUserId = async (params: {
+  eventId: string;
+  childId: string;
+}): Promise<string | null> => {
+  const registration = await prisma.eventRegistrations.findFirst({
+    where: {
+      eventId: params.eventId,
+      registrantId: params.childId,
+      registrantType: 'CHILD',
+      status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
+      parentId: { not: null },
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: { parentId: true },
+  });
+  if (registration?.parentId) {
+    return registration.parentId;
+  }
+
+  const link = await prisma.parentChildLinks.findFirst({
+    where: {
+      childId: params.childId,
+      status: 'ACTIVE',
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: { parentId: true },
+  });
+  return link?.parentId ?? null;
+};
+
 const normalizeRoleToken = (value: string | undefined): string => {
   return (value ?? '').trim().toLowerCase().replace(/[^a-z]/g, '');
 };
@@ -183,6 +214,15 @@ const roleMatchesSignerContext = (signerRole: string | undefined, signerContext:
     return token.includes('parent') || token.includes('guardian');
   }
   return token.includes('participant') || token.includes('player') || token.includes('self');
+};
+
+const normalizeSignedDocumentStatus = (value: unknown): string => {
+  return (typeof value === 'string' ? value : '').trim().toLowerCase();
+};
+
+const isSignedDocumentStatus = (value: unknown): boolean => {
+  const normalized = normalizeSignedDocumentStatus(value);
+  return normalized === 'signed' || normalized === 'completed';
 };
 
 const pickRoleForSignerContext = (
@@ -209,6 +249,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   }
 
   const signerContext = resolveSignerContext(parsed.data.signerContext);
+  const redirectUrl = resolveBoldSignRedirectUrl(parsed.data.redirectUrl);
   const requestedUserId = pickString(parsed.data.userId, parsed.data.targetUserId);
   const childUserId = pickString(parsed.data.childUserId, parsed.data.targetUserId);
   const isChildRegistration = Boolean(childUserId);
@@ -237,12 +278,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   }
 
   if (!session.isAdmin && isChildRegistration && childUserId) {
-    const hasActiveLink = await verifyActiveParentLink({
-      parentId: session.userId,
-      childId: childUserId,
-    });
-    if (!hasActiveLink) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const isChildSigningSelf = signerContext === 'child' && session.userId === childUserId;
+    if (!isChildSigningSelf) {
+      const hasActiveLink = await verifyActiveParentLink({
+        parentId: session.userId,
+        childId: childUserId,
+      });
+      if (!hasActiveLink) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
   }
 
@@ -288,16 +332,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     return NextResponse.json({ error: 'Template is not available for this signer context.' }, { status: 400 });
   }
 
-  const signed = await prisma.signedDocuments.findMany({
-    where: {
-      userId: signerUserId,
-      templateId: { in: eligibleTemplateIds },
-      status: { in: ['SIGNED', 'signed'] },
-    },
-    select: { templateId: true },
-  });
-
-  const signedIds = new Set(signed.map((doc) => doc.templateId));
   const providedEmail = signerContext === 'child'
     ? pickString(parsed.data.childEmail, parsed.data.targetUserEmail, parsed.data.userEmail)
     : pickString(parsed.data.userEmail, parsed.data.targetUserEmail);
@@ -306,26 +340,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     providedEmail,
     userPayload,
   });
-  if (!signerIdentity.email && signerContext === 'child' && childUserId && !session.isAdmin) {
-    const actingAsLinkedChildSigner = await verifyActiveParentLink({
-      parentId: session.userId,
-      childId: childUserId,
-    });
-    if (actingAsLinkedChildSigner) {
-      const fallbackEmail = await resolveSignerEmail({
-        providedEmail: pickString(parsed.data.userEmail, parsed.data.targetUserEmail),
-        userPayload,
-        userId: session.userId,
-      });
-      signerIdentity = {
-        ...signerIdentity,
-        email: fallbackEmail,
-      };
-    }
-  }
+
+  const linkedParentUserId = isChildRegistration && childUserId
+    ? await resolveLinkedParentUserId({ eventId, childId: childUserId })
+    : null;
 
   const parentSignerUserId = isChildRegistration
-    ? (session.isAdmin ? (requestedUserId ?? session.userId) : session.userId)
+    ? (
+      signerContext === 'parent_guardian'
+        ? (session.isAdmin ? (requestedUserId ?? linkedParentUserId ?? session.userId) : session.userId)
+        : (linkedParentUserId ?? (session.userId !== signerUserId ? session.userId : undefined))
+    )
     : undefined;
   const parentProvidedEmail = pickString(parsed.data.userEmail, parsed.data.targetUserEmail);
   const childProvidedEmail = pickString(parsed.data.childEmail, parsed.data.targetUserEmail, parsed.data.userEmail);
@@ -346,6 +371,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       : Promise.resolve<ResolvedSignerIdentity | null>(null),
   ]);
 
+  if (!session.isAdmin && signerContext === 'child' && signerUserId !== session.userId) {
+    const sessionSignerIdentity = await resolveSignerIdentity({
+      userId: session.userId,
+      providedEmail: pickString(parsed.data.userEmail, parsed.data.targetUserEmail),
+      userPayload,
+    });
+    const sessionEmail = normalizeEmail(sessionSignerIdentity.email);
+    const childEmail = normalizeEmail(childSignerIdentity?.email ?? signerIdentity.email);
+    if (!sessionEmail || !childEmail || sessionEmail !== childEmail) {
+      return NextResponse.json(
+        { error: 'Child signatures must be completed by the child account unless parent and child share the same email.' },
+        { status: 403 },
+      );
+    }
+  }
+
   const signLinks: Array<{
     templateId: string;
     type: 'PDF' | 'TEXT';
@@ -356,31 +397,119 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     url?: string;
     requiredSignerType: string;
     requiredSignerLabel: string;
+    signerContext: SignerContext;
   }> = [];
 
   try {
+    const scopedChildUserId = isChildRegistration ? (childUserId ?? null) : null;
     for (const requiredTemplateId of templateIdsToSign) {
       const template = templatesById.get(requiredTemplateId);
       if (!template) {
         continue;
       }
-      if (template.signOnce && signedIds.has(template.id)) {
-        continue;
-      }
 
       const requiredSignerType = normalizeRequiredSignerType(template.requiredSignerType);
       const requiredSignerLabel = getRequiredSignerTypeLabel(requiredSignerType);
+      const sharedScopeWhere = {
+        templateId: template.id,
+        hostId: scopedChildUserId,
+        ...(template.signOnce ? {} : { eventId }),
+      };
+      const [existingSignerRows, existingSharedRows] = await Promise.all([
+        prisma.signedDocuments.findMany({
+          where: {
+            ...sharedScopeWhere,
+            userId: signerUserId,
+            signerRole: signerContext,
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: 20,
+          select: {
+            id: true,
+            signedDocumentId: true,
+            status: true,
+          },
+        }),
+        isChildRegistration && scopedChildUserId
+          ? prisma.signedDocuments.findMany({
+            where: sharedScopeWhere,
+            orderBy: { updatedAt: 'desc' },
+            take: 20,
+            select: {
+              id: true,
+              signedDocumentId: true,
+              status: true,
+            },
+          })
+          : Promise.resolve([]),
+      ]);
+      const signedRow = existingSignerRows.find((row) => isSignedDocumentStatus(row.status));
+      if (signedRow) {
+        continue;
+      }
+      const signerRowWithDocument = existingSignerRows.find((row) => Boolean(pickString(row.signedDocumentId)));
+      const signerRowToReuse = existingSignerRows[0];
+      const sharedRowWithDocument = existingSharedRows.find((row) => Boolean(pickString(row.signedDocumentId)));
+      const pendingDocumentId = pickString(
+        signerRowWithDocument?.signedDocumentId,
+        sharedRowWithDocument?.signedDocumentId,
+      );
+
       const templateType = template.type === 'TEXT' ? 'TEXT' : 'PDF';
       if (templateType === 'TEXT') {
+        const textDocumentId = pendingDocumentId ?? `text-${crypto.randomUUID()}`;
+        const now = new Date();
+        if (!signerRowToReuse) {
+          await prisma.signedDocuments.create({
+            data: {
+              id: crypto.randomUUID(),
+              createdAt: now,
+              updatedAt: now,
+              signedDocumentId: textDocumentId,
+              templateId: template.id,
+              userId: signerUserId,
+              documentName: template.title ?? 'Text Waiver',
+              hostId: scopedChildUserId,
+              organizationId: event.organizationId ?? null,
+              eventId,
+              status: 'UNSIGNED',
+              signedAt: null,
+              signerEmail: signerIdentity.email ?? null,
+              roleIndex: null,
+              signerRole: signerContext,
+              ipAddress: null,
+              requestId: null,
+            },
+          });
+        } else {
+          await prisma.signedDocuments.update({
+            where: { id: signerRowToReuse.id },
+            data: {
+              updatedAt: now,
+              signedDocumentId: textDocumentId,
+              status: 'UNSIGNED',
+              userId: signerUserId,
+              hostId: scopedChildUserId,
+              organizationId: event.organizationId ?? null,
+              eventId,
+              signerEmail: signerIdentity.email ?? null,
+              roleIndex: null,
+              signerRole: signerContext,
+            },
+          });
+        }
+
         const content = template.content ?? `Please acknowledge ${template.title ?? 'this document'}.`;
         signLinks.push({
           templateId: template.id,
           type: 'TEXT',
           title: template.title,
           signOnce: template.signOnce ?? false,
+          documentId: textDocumentId,
           content,
           requiredSignerType,
           requiredSignerLabel,
+          signerContext,
         });
         continue;
       }
@@ -424,6 +553,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         signerRole: string;
         signerEmail: string;
         signerName: string;
+        signerOrder?: number;
       };
       const buildRoleAssignment = (role: { roleIndex: number; signerRole: string }): RoleAssignment => {
         let signerEmailForRole: string | undefined = signerIdentity.email;
@@ -435,15 +565,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
 
         if (isChildRegistration) {
           if (roleMatchesSignerContext(role.signerRole, 'parent_guardian')) {
-            signerEmailForRole = parentSignerIdentity?.email ?? signerIdentity.email ?? childSignerIdentity?.email;
-            signerNameForRole = parentSignerIdentity?.name ?? signerIdentity.name;
+            signerEmailForRole = parentSignerIdentity?.email
+              ?? (signerContext === 'parent_guardian' ? signerIdentity.email : undefined);
+            signerNameForRole = parentSignerIdentity?.name
+              ?? (signerContext === 'parent_guardian' ? signerIdentity.name : 'Parent/Guardian');
           } else if (roleMatchesSignerContext(role.signerRole, 'child')) {
-            signerEmailForRole = childSignerIdentity?.email ?? signerIdentity.email ?? parentSignerIdentity?.email;
-            signerNameForRole = childSignerIdentity?.name ?? signerIdentity.name;
+            signerEmailForRole = childSignerIdentity?.email
+              ?? (signerContext === 'child' ? signerIdentity.email : undefined);
+            signerNameForRole = childSignerIdentity?.name
+              ?? (signerContext === 'child' ? signerIdentity.name : 'Child');
           }
         }
 
         if (!signerEmailForRole) {
+          if (isChildRegistration && roleMatchesSignerContext(role.signerRole, 'parent_guardian')) {
+            throw new Error('Parent/guardian signer email is required for this document.');
+          }
+          if (isChildRegistration && roleMatchesSignerContext(role.signerRole, 'child')) {
+            throw new Error('Child signer email is required for this document.');
+          }
           throw new Error('A signer email is required for PDF signing.');
         }
 
@@ -453,7 +593,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           signerName: signerNameForRole,
         };
       };
-      const roleAssignments: RoleAssignment[] = (templateRoles.length > 0 ? templateRoles : [selectedRole]).map(buildRoleAssignment);
+      const rolesToAssign = requiredSignerType === 'PARENT_GUARDIAN_CHILD' && !pendingDocumentId
+        ? (templateRoles.length > 0 ? templateRoles : [selectedRole])
+        : [selectedRole];
+      const roleAssignments: RoleAssignment[] = rolesToAssign.map(buildRoleAssignment);
       const selectedRoleAssignment: RoleAssignment | undefined = roleAssignments.find(
         (role) => role.roleIndex === selectedRole.roleIndex && role.signerRole === selectedRole.signerRole,
       ) ?? roleAssignments[0];
@@ -461,21 +604,78 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         throw new Error('Unable to resolve signer role assignment.');
       }
 
-      const sent = await sendDocumentFromTemplate({
-        templateId: template.templateId,
-        signerEmail: selectedRoleAssignment.signerEmail,
-        signerName: selectedRoleAssignment.signerName,
-        roleIndex: selectedRole.roleIndex,
-        signerRole: selectedRole.signerRole,
-        roles: roleAssignments,
-        title: template.title,
-        message: template.description ?? undefined,
-      });
+      let documentId = pendingDocumentId;
+      if (!documentId) {
+        const signerEmails = roleAssignments.map((role) => role.signerEmail.trim().toLowerCase());
+        const hasDuplicateSignerEmails = new Set(signerEmails).size !== signerEmails.length;
+        const roleAssignmentsForSend = hasDuplicateSignerEmails
+          ? roleAssignments.map((role, index) => ({
+            ...role,
+            signerOrder: roleMatchesSignerContext(role.signerRole, 'parent_guardian')
+              ? 1
+              : roleMatchesSignerContext(role.signerRole, 'child')
+                ? 2
+                : index + 1,
+          }))
+          : roleAssignments;
+        const sent = await sendDocumentFromTemplate({
+          templateId: template.templateId,
+          signerEmail: selectedRoleAssignment.signerEmail,
+          signerName: selectedRoleAssignment.signerName,
+          roleIndex: selectedRole.roleIndex,
+          signerRole: selectedRole.signerRole,
+          roles: roleAssignmentsForSend,
+          enableSigningOrder: hasDuplicateSignerEmails,
+          title: template.title,
+          message: template.description ?? undefined,
+        });
+        documentId = sent.documentId;
+      }
+      const now = new Date();
+      if (signerRowToReuse) {
+        await prisma.signedDocuments.update({
+          where: { id: signerRowToReuse.id },
+          data: {
+            updatedAt: now,
+            signedDocumentId: documentId,
+            status: 'UNSIGNED',
+            userId: signerUserId,
+            hostId: scopedChildUserId,
+            organizationId: event.organizationId ?? null,
+            eventId,
+            signerEmail: selectedRoleAssignment.signerEmail,
+            roleIndex: selectedRole.roleIndex,
+            signerRole: signerContext,
+          },
+        });
+      } else {
+        await prisma.signedDocuments.create({
+          data: {
+            id: crypto.randomUUID(),
+            createdAt: now,
+            updatedAt: now,
+            signedDocumentId: documentId,
+            templateId: template.id,
+            userId: signerUserId,
+            documentName: template.title ?? 'Signed Document',
+            hostId: scopedChildUserId,
+            organizationId: event.organizationId ?? null,
+            eventId,
+            status: 'UNSIGNED',
+            signedAt: null,
+            signerEmail: selectedRoleAssignment.signerEmail,
+            roleIndex: selectedRole.roleIndex,
+            signerRole: signerContext,
+            ipAddress: null,
+            requestId: null,
+          },
+        });
+      }
 
       const embedded = await getEmbeddedSignLink({
-        documentId: sent.documentId,
+        documentId,
         signerEmail: selectedRoleAssignment.signerEmail,
-        redirectUrl: parsed.data.redirectUrl,
+        redirectUrl,
       });
 
       signLinks.push({
@@ -483,10 +683,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         type: 'PDF',
         title: template.title,
         signOnce: template.signOnce ?? false,
-        documentId: sent.documentId,
+        documentId,
         url: embedded.signLink,
         requiredSignerType,
         requiredSignerLabel,
+        signerContext,
       });
     }
   } catch (error) {

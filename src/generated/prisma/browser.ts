@@ -48,10 +48,10 @@ export type SensitiveUserData = Prisma.SensitiveUserDataModel
  */
 export type Invites = Prisma.InvitesModel
 /**
- * Model VolleyBallTeams
+ * Model Teams
  * 
  */
-export type VolleyBallTeams = Prisma.VolleyBallTeamsModel
+export type Teams = Prisma.TeamsModel
 /**
  * Model Messages
  * 

@@ -271,7 +271,13 @@ export interface UserData {
   avatarUrl: string;
 }
 
-export type InviteType = 'referee' | 'player' | 'host';
+export type InviteType =
+  | 'referee'
+  | 'player'
+  | 'host'
+  | 'team_manager'
+  | 'team_head_coach'
+  | 'team_assistant_coach';
 export type InviteStatus = 'pending' | 'sent' | 'accepted' | 'rejected';
 
 export interface Invite {
@@ -343,6 +349,9 @@ export interface Team {
   playerIds: string[];
   captainId: string;
   managerId?: string;
+  headCoachId?: string | null;
+  assistantCoachIds?: string[];
+  // Legacy alias used by older clients; mirrors assistantCoachIds.
   coachIds?: string[];
   parentTeamId?: string | null;
   pending: string[];
@@ -354,6 +363,9 @@ export interface Team {
   players?: UserData[];
   captain?: UserData;
   manager?: UserData;
+  headCoach?: UserData;
+  assistantCoaches?: UserData[];
+  // Legacy alias used by older clients; mirrors assistantCoaches.
   coaches?: UserData[];
   pendingPlayers?: UserData[];
   matches?: Match[]; // Tournament matches this team participates in

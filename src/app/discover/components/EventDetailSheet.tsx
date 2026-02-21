@@ -46,7 +46,7 @@ const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX 
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 
 type JoinIntent = {
-    mode: 'user' | 'team' | 'child';
+    mode: 'user' | 'team' | 'child' | 'child_free_agent';
     team?: Team | null;
     childId?: string;
     childEmail?: string | null;
@@ -74,6 +74,14 @@ const collectUniqueUserIds = (value: unknown): string[] => {
         .map((entry) => normalizeUserId(entry))
         .filter((entry): entry is string => Boolean(entry));
     return Array.from(new Set(ids));
+};
+
+const normalizeEmailValue = (value?: string | null): string | null => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const normalized = value.trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
 };
 
 type DivisionSelectionPayload = {
@@ -700,12 +708,19 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setChildRegistrationChildId(childId);
             const notices: string[] = [];
             const registrationStatus = (result.registration?.status ?? '').toLowerCase();
+            const consentStatus = (result.consent?.status ?? '').toLowerCase();
             if (registrationStatus === 'active') {
                 notices.push('Child registration completed.');
             } else if (result.requiresParentApproval) {
                 notices.push('Child request sent. A parent/guardian must approve before registration can continue.');
             } else if (result.consent?.requiresChildEmail) {
                 notices.push('Child registration started. Add child email to continue child-signature document steps.');
+            } else if (consentStatus === 'parentsigned') {
+                notices.push('Parent signature completed. Registration is pending child signature.');
+            } else if (consentStatus === 'childsigned') {
+                notices.push('Child signature completed. Registration is pending parent/guardian signature.');
+            } else if (consentStatus === 'completed') {
+                notices.push('All signatures are complete. Finalizing registration.');
             } else if (result.consent?.status) {
                 notices.push(`Child registration is pending. Consent status: ${result.consent.status}.`);
             } else if (registrationStatus) {
@@ -748,7 +763,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const finalizeJoin = useCallback(async (intent: JoinIntent) => {
         if (!user || !currentEvent) return;
-        if (isDivisionSelectionMissing) {
+        const requiresDivisionSelection = intent.mode !== 'child_free_agent';
+        if (requiresDivisionSelection && isDivisionSelectionMissing) {
             throw new Error(
                 registrationByDivisionType
                     ? 'Select a division type before joining.'
@@ -762,6 +778,15 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 throw new Error('Select a child to register.');
             }
             await registerChildForEvent(intent.childId, selection);
+            return;
+        }
+        if (intent.mode === 'child_free_agent') {
+            if (!intent.childId) {
+                throw new Error('Select a child to add as a free agent.');
+            }
+            await eventService.addFreeAgent(currentEvent.$id, intent.childId);
+            setJoinNotice('Child added to free agent list.');
+            await loadEventDetails();
             return;
         }
 
@@ -865,17 +890,46 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 throw new Error(result?.error || 'Password confirmation failed.');
             }
 
-            const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
-            const signerContext = pendingJoin.mode === 'child' ? 'parent_guardian' : 'participant';
-            const links = await boldsignService.createSignLinks({
+            const signerContext =
+                pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent'
+                    ? 'parent_guardian'
+                    : 'participant';
+            const parentLinks = await boldsignService.createSignLinks({
                 eventId: currentEvent.$id,
                 user,
                 userEmail: authUser.email,
-                redirectUrl,
                 signerContext,
                 childUserId: pendingJoin.childId,
                 childEmail: pendingJoin.childEmail ?? undefined,
             });
+            const shouldCollectChildSignatureInSameSession = (
+                pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent'
+            ) && Boolean(
+                pendingJoin.childId
+                && normalizeEmailValue(authUser.email)
+                && normalizeEmailValue(pendingJoin.childEmail ?? null)
+                && normalizeEmailValue(authUser.email) === normalizeEmailValue(pendingJoin.childEmail ?? null),
+            );
+            let links = parentLinks;
+            if (shouldCollectChildSignatureInSameSession && pendingJoin.childId) {
+                const childLinks = await boldsignService.createSignLinks({
+                    eventId: currentEvent.$id,
+                    user,
+                    userEmail: authUser.email,
+                    signerContext: 'child',
+                    childUserId: pendingJoin.childId,
+                    childEmail: pendingJoin.childEmail ?? undefined,
+                });
+                const seen = new Set<string>();
+                links = [...parentLinks, ...childLinks].filter((link) => {
+                    const key = `${link.signerContext ?? signerContext}:${link.templateId}:${link.documentId ?? ''}:${link.type}`;
+                    if (seen.has(key)) {
+                        return false;
+                    }
+                    seen.add(key);
+                    return true;
+                });
+            }
 
             if (!links.length) {
                 setShowPasswordModal(false);
@@ -904,10 +958,19 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         templateId: string;
         documentId: string;
         type: SignStep['type'];
+        signerContext?: SignStep['signerContext'];
     }) => {
         if (!user || !currentEvent) {
             throw new Error('User and event are required to sign documents.');
         }
+        const fallbackSignerContext =
+            pendingJoin?.mode === 'child' || pendingJoin?.mode === 'child_free_agent'
+                ? 'parent_guardian'
+                : 'participant';
+        const signerContext = payload.signerContext ?? fallbackSignerContext;
+        const signingUserId = signerContext === 'child' && pendingJoin?.childId
+            ? pendingJoin.childId
+            : user.$id;
         const response = await fetch('/api/documents/record-signature', {
             method: 'POST',
             headers: {
@@ -918,7 +981,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 documentId: payload.documentId,
                 eventId: currentEvent.$id,
                 type: payload.type,
-                userId: user.$id,
+                userId: signingUserId,
+                childUserId: pendingJoin?.childId,
+                signerContext,
                 user,
             }),
         });
@@ -926,7 +991,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!response.ok || result?.error) {
             throw new Error(result?.error || 'Failed to record signature.');
         }
-    }, [currentEvent, user]);
+    }, [currentEvent, pendingJoin?.childId, pendingJoin?.mode, user]);
 
     const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
         const currentLink = signLinks[currentSignIndex];
@@ -951,6 +1016,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 templateId: currentLink.templateId,
                 documentId: currentLink.documentId,
                 type: currentLink.type,
+                signerContext: currentLink.signerContext,
             });
             setShowSignModal(false);
             setPendingSignedDocumentId(currentLink.documentId);
@@ -975,7 +1041,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return;
         }
 
-        const documentId = createId();
+        const documentId = currentLink.documentId || createId();
         setRecordingSignature(true);
         setJoinNotice('Confirming signature...');
         try {
@@ -983,6 +1049,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 templateId: currentLink.templateId,
                 documentId,
                 type: currentLink.type,
+                signerContext: currentLink.signerContext,
             });
             setShowSignModal(false);
             setPendingSignedDocumentId(documentId);
@@ -1044,7 +1111,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         let cancelled = false;
         const poll = async () => {
             try {
-                const signed = await signedDocumentService.isDocumentSigned(pendingSignedDocumentId);
+                const pendingLink = signLinks[currentSignIndex];
+                const pendingSignerUserId = pendingLink?.signerContext === 'child' && pendingJoin?.childId
+                    ? pendingJoin.childId
+                    : user.$id;
+                const signed = await signedDocumentService.isDocumentSigned(pendingSignedDocumentId, pendingSignerUserId);
                 if (!signed || cancelled) {
                     return;
                 }
@@ -1069,6 +1140,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     await finalizeJoin(intent);
                 }
                 setJoining(false);
+                setJoiningChildFreeAgent(false);
             } catch (error) {
                 if (cancelled) {
                     return;
@@ -1080,6 +1152,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 setCurrentSignIndex(0);
                 setPendingJoin(null);
                 setJoining(false);
+                setJoiningChildFreeAgent(false);
             }
         };
 
@@ -1110,8 +1183,20 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     await eventService.removeFreeAgent(currentEvent.$id, selectedChildId);
                     setJoinNotice('Child removed from free agent list.');
                 } else {
-                    await eventService.addFreeAgent(currentEvent.$id, selectedChildId);
-                    setJoinNotice('Child added to free agent list.');
+                    const signingStarted = await beginSigningFlow({
+                        mode: 'child_free_agent',
+                        childId: selectedChildId,
+                        childEmail: selectedChild?.email ?? null,
+                    });
+                    if (signingStarted) {
+                        return;
+                    }
+                    await finalizeJoin({
+                        mode: 'child_free_agent',
+                        childId: selectedChildId,
+                        childEmail: selectedChild?.email ?? null,
+                    });
+                    return;
                 }
                 await loadEventDetails();
             } catch (error) {
@@ -1423,6 +1508,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             : null;
     const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
     const selfWaitlistDisabled = Boolean(selfRegistrationBlockedReason) || joining;
+    const freeAgentJoinBlockedReason = selfRegistrationBlockedReason;
     const childJoinDisabled = !canRegisterChild
         || !selectedChildId
         || !selectedChildEligible
@@ -1924,7 +2010,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                             : joining
                                                                 ? 'Submitting…'
                                                                 : isMinor
-                                                                    ? 'Request to Join'
+                                                                    ? 'Send'
                                                                     : currentEvent.price > 0
                                                                     ? `Join Event - ${formatPrice(currentEvent.price)}`
                                                                     : 'Join Event'}
@@ -2053,9 +2139,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     </Paper>
 
                                                 )}
-
-
-
+                                                {!selfRegistrationBlockedReason && isMinor && (
+                                                    <Alert color="blue" variant="light">
+                                                        Tap Send to request parent/guardian approval before joining as a free agent.
+                                                    </Alert>
+                                                )}
                                                 {isUserFreeAgent ? (
                                                     <div className="space-y-2">
                                                         <div className="w-full py-2 px-4 rounded-lg bg-purple-50 text-purple-700 text-center font-medium">
@@ -2085,9 +2173,26 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     <button
                                                         onClick={async () => {
                                                             if (!user) return;
+                                                            if (freeAgentJoinBlockedReason) {
+                                                                setJoinError(freeAgentJoinBlockedReason);
+                                                                return;
+                                                            }
                                                             setJoining(true);
                                                             setJoinError(null);
                                                             try {
+                                                                if (isMinor) {
+                                                                    const result = await registrationService.registerSelfForEvent(
+                                                                        currentEvent.$id,
+                                                                        divisionSelectionPayload,
+                                                                    );
+                                                                    if (result.requiresParentApproval) {
+                                                                        setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
+                                                                    } else {
+                                                                        setJoinNotice(`Registration status: ${result.registration?.status ?? 'pendingConsent'}`);
+                                                                    }
+                                                                    await loadEventDetails();
+                                                                    return;
+                                                                }
                                                                 // Free Agent listing is free; no payment
                                                                 await eventService.addFreeAgent(currentEvent.$id, user.$id);
                                                                 await loadEventDetails();
@@ -2097,10 +2202,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 setJoining(false);
                                                             }
                                                         }}
-                                                        disabled={joining}
-                                                        className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${joining ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                                                        disabled={joining || Boolean(freeAgentJoinBlockedReason)}
+                                                        className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${(joining || freeAgentJoinBlockedReason) ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
                                                     >
-                                                        {joining ? 'Adding…' : 'Join as Free Agent (Free)'}
+                                                        {joining
+                                                            ? (isMinor ? 'Sending…' : 'Adding…')
+                                                            : freeAgentJoinBlockedReason
+                                                                ? 'Unavailable'
+                                                                : isMinor
+                                                                    ? 'Send'
+                                                                    : 'Join as Free Agent (Free)'}
                                                     </button>
                                                 )}
 
@@ -2136,6 +2247,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             <RefundSection
                                 event={currentEvent}
                                 userRegistered={!!isUserRegistered}
+                                linkedChildren={activeChildren}
                                 onRefundSuccess={loadEventDetails}
                             />
                         </div>
@@ -2401,13 +2513,25 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                 </Group>
                             </Stack>
                         ) : (
-                            <div style={{ height: 600 }}>
-                                <iframe
-                                    src={signLinks[currentSignIndex]?.url}
-                                    title="BoldSign Signing"
-                                    style={{ width: '100%', height: '100%', border: 'none' }}
-                                />
-                            </div>
+                            <Stack gap="xs">
+                                <div style={{ height: 600 }}>
+                                    <iframe
+                                        src={signLinks[currentSignIndex]?.url}
+                                        title="BoldSign Signing"
+                                        style={{ width: '100%', height: '100%', border: 'none' }}
+                                    />
+                                </div>
+                                <Group justify="flex-end">
+                                    <Button
+                                        variant="default"
+                                        onClick={() => void handleSignedDocument()}
+                                        loading={recordingSignature}
+                                        disabled={recordingSignature}
+                                    >
+                                        I finished signing
+                                    </Button>
+                                </Group>
+                            </Stack>
                         )}
                     </div>
                 ) : (

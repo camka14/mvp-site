@@ -4,6 +4,13 @@ import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
+import {
+  findUserNameConflictUserId,
+  isPrismaUserNameUniqueError,
+  isSameUserName,
+  normalizeUserName,
+  reserveGeneratedUserName,
+} from '@/server/userNames';
 
 const profileSelectionSchema = z.object({
   firstName: z.string().optional(),
@@ -215,81 +222,107 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid dateOfBirth' }, { status: 400 });
   }
 
+  const existingUserName = normalizeUserName(existingProfile?.userName);
+  const selectedUserName = normalizeUserName(resolvedSnapshot.userName);
+  const shouldAutoGenerateUserName = !selectedUserName && !existingUserName;
+  const baseUserName = selectedUserName
+    ?? existingUserName
+    ?? normalizedEmail.split('@')[0]
+    ?? 'user';
+
+  const finalUserName = shouldAutoGenerateUserName
+    ? await reserveGeneratedUserName(prisma, baseUserName, { excludeUserId: userId, suffixSeed: userId })
+    : baseUserName;
+
+  const userNameConflictUserId = await findUserNameConflictUserId(prisma, finalUserName, userId);
+  if (userNameConflictUserId && !isSameUserName(existingUserName, finalUserName)) {
+    return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
+  }
+
   const passwordHash = await hashPassword(password);
 
   const now = new Date();
 
-  const [authUser, profile] = await prisma.$transaction(async (tx) => {
-    const createdAuth = existingAuth
-      ? await tx.authUser.update({
-          where: { id: existingAuth.id },
-          data: {
-            passwordHash,
-            name: name ?? existingAuth.name,
-            updatedAt: now,
-            lastLogin: now,
-          },
-        })
-      : await tx.authUser.create({
-          data: {
-            id: userId,
-            email: normalizedEmail,
-            passwordHash,
-            name: name ?? null,
-            createdAt: now,
-            updatedAt: now,
-            lastLogin: now,
-          },
-        });
+  let authUser: Awaited<ReturnType<typeof prisma.authUser.create>>;
+  let profile: Awaited<ReturnType<typeof prisma.userData.create>>;
+  try {
+    [authUser, profile] = await prisma.$transaction(async (tx) => {
+      const createdAuth = existingAuth
+        ? await tx.authUser.update({
+            where: { id: existingAuth.id },
+            data: {
+              passwordHash,
+              name: name ?? existingAuth.name,
+              updatedAt: now,
+              lastLogin: now,
+            },
+          })
+        : await tx.authUser.create({
+            data: {
+              id: userId,
+              email: normalizedEmail,
+              passwordHash,
+              name: name ?? null,
+              createdAt: now,
+              updatedAt: now,
+              lastLogin: now,
+            },
+          });
 
-    const profileRow = existingProfile
-      ? await tx.userData.update({
-          where: { id: createdAuth.id },
-          data: {
-            firstName: resolvedSnapshot.firstName ?? existingProfile.firstName,
-            lastName: resolvedSnapshot.lastName ?? existingProfile.lastName,
-            userName: resolvedSnapshot.userName ?? existingProfile.userName,
-            dateOfBirth: parsedDateOfBirth ?? existingProfile.dateOfBirth,
-            updatedAt: now,
-          },
-        })
-      : await tx.userData.create({
-          data: {
-            id: createdAuth.id,
-            createdAt: now,
-            updatedAt: now,
-            firstName: resolvedSnapshot.firstName,
-            lastName: resolvedSnapshot.lastName,
-            userName: resolvedSnapshot.userName ?? normalizedEmail.split('@')[0] ?? 'user',
-            dateOfBirth: parsedDateOfBirth ?? new Date('2000-01-01'),
-            teamIds: [],
-            friendIds: [],
-            friendRequestIds: [],
-            friendRequestSentIds: [],
-            followingIds: [],
-            uploadedImages: [],
-            profileImageId: null,
-          },
-        });
+      const profileRow = existingProfile
+        ? await tx.userData.update({
+            where: { id: createdAuth.id },
+            data: {
+              firstName: resolvedSnapshot.firstName ?? existingProfile.firstName,
+              lastName: resolvedSnapshot.lastName ?? existingProfile.lastName,
+              userName: finalUserName,
+              dateOfBirth: parsedDateOfBirth ?? existingProfile.dateOfBirth,
+              updatedAt: now,
+            },
+          })
+        : await tx.userData.create({
+            data: {
+              id: createdAuth.id,
+              createdAt: now,
+              updatedAt: now,
+              firstName: resolvedSnapshot.firstName,
+              lastName: resolvedSnapshot.lastName,
+              userName: finalUserName,
+              dateOfBirth: parsedDateOfBirth ?? new Date('2000-01-01'),
+              teamIds: [],
+              friendIds: [],
+              friendRequestIds: [],
+              friendRequestSentIds: [],
+              followingIds: [],
+              uploadedImages: [],
+              profileImageId: null,
+            },
+          });
 
-    await tx.sensitiveUserData.upsert({
-      where: { id: existingSensitive?.id ?? createdAuth.id },
-      update: {
-        email: normalizedEmail,
-        userId: createdAuth.id,
-        updatedAt: now,
-      },
-      create: {
-        id: createdAuth.id,
-        email: normalizedEmail,
-        userId: createdAuth.id,
-        createdAt: now,
-        updatedAt: now,
-      },
+      await tx.sensitiveUserData.upsert({
+        where: { id: existingSensitive?.id ?? createdAuth.id },
+        update: {
+          email: normalizedEmail,
+          userId: createdAuth.id,
+          updatedAt: now,
+        },
+        create: {
+          id: createdAuth.id,
+          email: normalizedEmail,
+          userId: createdAuth.id,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+
+      return [createdAuth, profileRow] as const;
     });
-
-    return [createdAuth, profileRow] as const;
-  });
+  } catch (error) {
+    if (isPrismaUserNameUniqueError(error)) {
+      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
+    }
+    throw error;
+  }
 
   const session: SessionToken = { userId: authUser.id, isAdmin: false };
   const token = signSessionToken(session);

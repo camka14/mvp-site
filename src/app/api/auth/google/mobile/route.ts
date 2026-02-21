@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { reserveGeneratedUserName } from '@/server/userNames';
 
 const mobileGoogleSchema = z.object({
   idToken: z.string().min(1),
@@ -180,7 +181,11 @@ export async function POST(req: NextRequest) {
             updatedAt: now,
             firstName,
             lastName,
-            userName: normalizedEmail.split('@')[0] ?? 'user',
+            userName: await reserveGeneratedUserName(
+              tx,
+              normalizedEmail.split('@')[0] ?? 'user',
+              { excludeUserId: createdAuth.id, suffixSeed: createdAuth.id },
+            ),
             dateOfBirth: new Date('2000-01-01'),
             teamIds: [],
             friendIds: [],

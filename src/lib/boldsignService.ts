@@ -12,6 +12,7 @@ export type SignStep = {
   content?: string;
   requiredSignerType?: TemplateRequiredSignerType;
   requiredSignerLabel?: string;
+  signerContext?: 'participant' | 'parent_guardian' | 'child';
 };
 
 type CreateTemplateResponse = {

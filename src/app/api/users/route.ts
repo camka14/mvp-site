@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
+import {
+  findUserNameConflictUserId,
+  isPrismaUserNameUniqueError,
+  normalizeUserName,
+  reserveGeneratedUserName,
+} from '@/server/userNames';
 
 const publicUserSelect = {
   id: true,
@@ -104,7 +110,9 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const existing = await prisma.userData.findUnique({ where: { id } });
   if (!existing) {
-    const userName = typeof normalizedData.userName === 'string' ? normalizedData.userName : id;
+    const providedUserName = normalizeUserName(normalizedData.userName);
+    const userName = providedUserName
+      ?? await reserveGeneratedUserName(prisma, id, { excludeUserId: id, suffixSeed: id });
     const dateOfBirth = normalizedData.dateOfBirth instanceof Date
       ? normalizedData.dateOfBirth
       : new Date(0);
@@ -113,14 +121,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required user fields' }, { status: 400 });
     }
 
-    const record = await prisma.userData.create({
-      data: { id, createdAt: now, updatedAt: now, ...normalizedData, userName, dateOfBirth },
-    });
-    return NextResponse.json({ user: withLegacyFields(record) }, { status: 201 });
-  }
-  const record = existing
-    ? await prisma.userData.update({ where: { id }, data: { ...normalizedData, updatedAt: now } })
-    : null;
+    const conflictUserId = await findUserNameConflictUserId(prisma, userName, id);
+    if (conflictUserId) {
+      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
+    }
 
-  return NextResponse.json({ user: record ? withLegacyFields(record) : record }, { status: 201 });
+    try {
+      const record = await prisma.userData.create({
+        data: { id, createdAt: now, updatedAt: now, ...normalizedData, userName, dateOfBirth },
+      });
+      return NextResponse.json({ user: withLegacyFields(record) }, { status: 201 });
+    } catch (error) {
+      if (isPrismaUserNameUniqueError(error)) {
+        return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(normalizedData, 'userName')) {
+    const normalizedUserName = normalizeUserName(normalizedData.userName);
+    if (!normalizedUserName) {
+      return NextResponse.json({ error: 'Username is required.' }, { status: 400 });
+    }
+    const conflictUserId = await findUserNameConflictUserId(prisma, normalizedUserName, id);
+    if (conflictUserId) {
+      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
+    }
+    normalizedData.userName = normalizedUserName;
+  }
+  try {
+    const record = existing
+      ? await prisma.userData.update({ where: { id }, data: { ...normalizedData, updatedAt: now } })
+      : null;
+
+    return NextResponse.json({ user: record ? withLegacyFields(record) : record }, { status: 201 });
+  } catch (error) {
+    if (isPrismaUserNameUniqueError(error)) {
+      return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
+    }
+    throw error;
+  }
 }

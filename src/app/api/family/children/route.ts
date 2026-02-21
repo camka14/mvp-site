@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
       userId: link.childId,
       firstName: child?.firstName ?? '',
       lastName: child?.lastName ?? '',
+      userName: child?.userName?.trim() || null,
       dateOfBirth: child?.dateOfBirth ? child.dateOfBirth.toISOString() : null,
       age,
       linkStatus: link.status.toLowerCase(),

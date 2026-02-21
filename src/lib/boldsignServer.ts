@@ -331,7 +331,9 @@ export const sendDocumentFromTemplate = async (params: {
     signerEmail: string;
     signerName: string;
     signerRole?: string;
+    signerOrder?: number;
   }>;
+  enableSigningOrder?: boolean;
   title?: string;
   message?: string;
 }) => {
@@ -341,6 +343,9 @@ export const sendDocumentFromTemplate = async (params: {
       SignerEmail: role.signerEmail,
       SignerName: role.signerName,
       ...(role.signerRole ? { SignerRole: role.signerRole } : {}),
+      ...(typeof role.signerOrder === 'number' && Number.isFinite(role.signerOrder)
+        ? { SignerOrder: role.signerOrder }
+        : {}),
     }))
     : [
       {
@@ -361,6 +366,7 @@ export const sendDocumentFromTemplate = async (params: {
       DisableEmails: true,
       DisableSMS: true,
       HideDocumentId: true,
+      ...(params.enableSigningOrder ? { EnableSigningOrder: true } : {}),
       Roles: rolesPayload,
     },
   });

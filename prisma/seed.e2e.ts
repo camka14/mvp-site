@@ -264,7 +264,7 @@ const seed = async (): Promise<void> => {
       ],
     });
 
-    await prisma.volleyBallTeams.createMany({
+    await prisma.teams.createMany({
       data: SEED_TEAM_IDS.map((id, index) => ({
         id,
         seed: index + 1,

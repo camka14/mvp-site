@@ -2,8 +2,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea } from '@mantine/core';
-import { Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput } from '@mantine/core';
+import { Invite, InviteType, Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
@@ -13,6 +13,7 @@ interface TeamDetailModalProps {
     currentTeam: Team;
     isOpen: boolean;
     onClose: () => void;
+    canManage?: boolean;
     onTeamUpdated?: (team: Team) => void;
     onTeamDeleted?: (teamId: string) => void;
     eventContext?: Event;
@@ -20,11 +21,18 @@ interface TeamDetailModalProps {
 }
 
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+type TeamInviteRoleType = Extract<InviteType, 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach'>;
+const TEAM_ROLE_INVITE_TYPES: TeamInviteRoleType[] = ['team_manager', 'team_head_coach', 'team_assistant_coach'];
+const getUserHandle = (candidate?: Pick<UserData, 'userName'> | null): string => {
+    const normalized = candidate?.userName?.trim();
+    return `@${normalized && normalized.length ? normalized : 'user'}`;
+};
 
 export default function TeamDetailModal({
     currentTeam,
     isOpen,
     onClose,
+    canManage,
     onTeamUpdated,
     onTeamDeleted,
     eventContext,
@@ -43,15 +51,92 @@ export default function TeamDetailModal({
     const [localFreeAgents, setLocalFreeAgents] = useState<UserData[]>(eventFreeAgents);
     const [editingName, setEditingName] = useState(false);
     const [newName, setNewName] = useState(currentTeam.name || '');
+    const [editingDetails, setEditingDetails] = useState(false);
+    const [draftSport, setDraftSport] = useState(currentTeam.sport || '');
+    const [draftDivision, setDraftDivision] = useState(
+        typeof currentTeam.division === 'string'
+            ? currentTeam.division
+            : (currentTeam.division?.name || currentTeam.division?.skillLevel || 'Open'),
+    );
+    const [draftTeamSize, setDraftTeamSize] = useState(currentTeam.teamSize || 0);
+    const [draftSeed, setDraftSeed] = useState(currentTeam.seed || 0);
+    const [draftWins, setDraftWins] = useState(currentTeam.wins || 0);
+    const [draftLosses, setDraftLosses] = useState(currentTeam.losses || 0);
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
     const [inviteMode, setInviteMode] = useState<'search' | 'email'>('search');
     const [emailInviteInput, setEmailInviteInput] = useState('');
     const [invitingByEmail, setInvitingByEmail] = useState(false);
+    const [selectedInviteRole, setSelectedInviteRole] = useState<TeamInviteRoleType>('player');
     const [cancellingInviteIds, setCancellingInviteIds] = useState<Set<string>>(new Set());
+    const [pendingRoleInvites, setPendingRoleInvites] = useState<Array<{ invite: Invite; invitedUser?: UserData }>>([]);
+    const [cancellingRoleInviteIds, setCancellingRoleInviteIds] = useState<Set<string>>(new Set());
+    const [managerUser, setManagerUser] = useState<UserData | null>(null);
+    const [headCoachUser, setHeadCoachUser] = useState<UserData | null>(null);
+    const [assistantCoachUsers, setAssistantCoachUsers] = useState<UserData[]>([]);
 
     const isTeamCaptain = currentTeam.captainId === user?.$id || currentTeam.managerId === user?.$id;
+    const canManageTeam = canManage ?? isTeamCaptain;
     const normalizedInviteEmail = emailInviteInput.trim().toLowerCase();
     const inviteEmailValid = EMAIL_REGEX.test(normalizedInviteEmail);
+    const assistantCoachIds = Array.isArray(currentTeam.assistantCoachIds)
+        ? currentTeam.assistantCoachIds
+        : (Array.isArray(currentTeam.coachIds) ? currentTeam.coachIds : []);
+    const selectedRoleLabel = (() => {
+        switch (selectedInviteRole) {
+            case 'team_manager':
+                return 'Manager';
+            case 'team_head_coach':
+                return 'Head Coach';
+            case 'team_assistant_coach':
+                return 'Assistant Coach';
+            default:
+                return 'Player';
+        }
+    })();
+
+    const fetchRoleInvites = useCallback(async () => {
+        const invites = await userService.listInvites({
+            teamId: currentTeam.$id,
+            types: TEAM_ROLE_INVITE_TYPES,
+        });
+        const pendingInvites = invites.filter((invite) => invite.status === 'pending');
+        const inviteUserIds = pendingInvites
+            .map((invite) => invite.userId)
+            .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+        const invitedUsers = inviteUserIds.length > 0 ? await userService.getUsersByIds(inviteUserIds) : [];
+        const invitedUserMap = new Map(invitedUsers.map((invitedUser) => [invitedUser.$id, invitedUser]));
+        setPendingRoleInvites(
+            pendingInvites.map((invite) => ({
+                invite,
+                invitedUser: invite.userId ? invitedUserMap.get(invite.userId) : undefined,
+            })),
+        );
+    }, [currentTeam.$id]);
+
+    const isRoleInvitePending = useCallback((userId: string, roleType: TeamInviteRoleType): boolean => {
+        if (roleType === 'player') {
+            return currentTeam.pending.includes(userId);
+        }
+        return pendingRoleInvites.some(
+            (entry) => entry.invite.type === roleType && entry.invite.userId === userId && entry.invite.status === 'pending',
+        );
+    }, [currentTeam.pending, pendingRoleInvites]);
+
+    const canInviteUserForRole = useCallback((userId: string, roleType: TeamInviteRoleType): boolean => {
+        if (roleType === 'player') {
+            return !currentTeam.playerIds.includes(userId) && !currentTeam.pending.includes(userId);
+        }
+        if (roleType === 'team_manager') {
+            return currentTeam.managerId !== userId && !isRoleInvitePending(userId, roleType);
+        }
+        if (roleType === 'team_head_coach') {
+            return currentTeam.headCoachId !== userId && !isRoleInvitePending(userId, roleType);
+        }
+        if (roleType === 'team_assistant_coach') {
+            return !assistantCoachIds.includes(userId) && !isRoleInvitePending(userId, roleType);
+        }
+        return false;
+    }, [assistantCoachIds, currentTeam.headCoachId, currentTeam.managerId, currentTeam.pending, currentTeam.playerIds, isRoleInvitePending]);
 
     const fetchTeamDetails = useCallback(async () => {
         try {
@@ -70,29 +155,41 @@ export default function TeamDetailModal({
             } else {
                 setPendingPlayers([]);
             }
+
+            const managerId = currentTeam.managerId ?? currentTeam.captainId;
+            const roleUserIds = [managerId, currentTeam.headCoachId, ...assistantCoachIds]
+                .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+            const roleUsers = roleUserIds.length > 0 ? await userService.getUsersByIds(roleUserIds) : [];
+            const roleUserMap = new Map(roleUsers.map((roleUser) => [roleUser.$id, roleUser]));
+            setManagerUser(managerId ? roleUserMap.get(managerId) ?? null : null);
+            setHeadCoachUser(currentTeam.headCoachId ? roleUserMap.get(currentTeam.headCoachId) ?? null : null);
+            setAssistantCoachUsers(
+                assistantCoachIds
+                    .map((assistantCoachId) => roleUserMap.get(assistantCoachId))
+                    .filter((roleUser): roleUser is UserData => Boolean(roleUser)),
+            );
+
+            await fetchRoleInvites();
         } catch (error) {
             console.error('Failed to fetch team details:', error);
             setError('Failed to load team details');
         } finally {
             setLoading(false);
         }
-    }, [currentTeam.playerIds, currentTeam.pending]);
+    }, [assistantCoachIds, currentTeam.captainId, currentTeam.headCoachId, currentTeam.managerId, currentTeam.pending, currentTeam.playerIds, fetchRoleInvites]);
 
     const performSearch = useCallback(async () => {
         setSearching(true);
         try {
             const results = await userService.searchUsers(searchQuery);
-            const filteredResults = results.filter(result =>
-                !currentTeam.playerIds.includes(result.$id) &&
-                !currentTeam.pending.includes(result.$id)
-            );
+            const filteredResults = results.filter((result) => canInviteUserForRole(result.$id, selectedInviteRole));
             setSearchResults(filteredResults);
         } catch (error) {
             console.error('Search failed:', error);
         } finally {
             setSearching(false);
         }
-    }, [currentTeam.pending, currentTeam.playerIds, searchQuery]);
+    }, [canInviteUserForRole, searchQuery, selectedInviteRole]);
 
     useEffect(() => {
         if (isOpen) {
@@ -107,6 +204,19 @@ export default function TeamDetailModal({
     useEffect(() => {
         setNewName(currentTeam.name || '');
     }, [currentTeam.$id, currentTeam.name]);
+
+    useEffect(() => {
+        setDraftSport(currentTeam.sport || '');
+        setDraftDivision(
+            typeof currentTeam.division === 'string'
+                ? currentTeam.division
+                : (currentTeam.division?.name || currentTeam.division?.skillLevel || 'Open'),
+        );
+        setDraftTeamSize(currentTeam.teamSize || 0);
+        setDraftSeed(currentTeam.seed || 0);
+        setDraftWins(currentTeam.wins || 0);
+        setDraftLosses(currentTeam.losses || 0);
+    }, [currentTeam.$id, currentTeam.division, currentTeam.losses, currentTeam.seed, currentTeam.sport, currentTeam.teamSize, currentTeam.wins]);
 
     useEffect(() => {
         if (inviteMode !== 'search') {
@@ -158,10 +268,54 @@ export default function TeamDetailModal({
         }
     };
 
+    const handleSaveDetails = async () => {
+        const nextSport = draftSport.trim();
+        const nextDivision = draftDivision.trim();
+        const nextTeamSize = Number(draftTeamSize) || 0;
+        const nextSeed = Number(draftSeed) || 0;
+        const nextWins = Number(draftWins) || 0;
+        const nextLosses = Number(draftLosses) || 0;
+
+        if (!nextSport) {
+            setError('Sport is required.');
+            return;
+        }
+        if (!nextDivision) {
+            setError('Division is required.');
+            return;
+        }
+        if (nextTeamSize < 1) {
+            setError('Team size must be at least 1.');
+            return;
+        }
+        if (nextWins < 0 || nextLosses < 0 || nextSeed < 0) {
+            setError('Wins, losses, and seed cannot be negative.');
+            return;
+        }
+
+        const updated = await teamService.updateTeamDetails(currentTeam.$id, {
+            sport: nextSport,
+            division: nextDivision,
+            teamSize: nextTeamSize,
+            seed: nextSeed,
+            wins: nextWins,
+            losses: nextLosses,
+        });
+        if (!updated) {
+            setError('Failed to update team details');
+            return;
+        }
+
+        onTeamUpdated?.(updated);
+        setEditingDetails(false);
+    };
+
     const getFilteredFreeAgents = () => {
+        if (selectedInviteRole !== 'player') {
+            return [];
+        }
         return localFreeAgents.filter(agent =>
-            !currentTeam.playerIds.includes(agent.$id) &&
-            !currentTeam.pending.includes(agent.$id)
+            canInviteUserForRole(agent.$id, 'player')
         );
     };
 
@@ -169,7 +323,7 @@ export default function TeamDetailModal({
         let users = [...searchResults];
         const filteredFreeAgents = getFilteredFreeAgents();
 
-        if (eventContext && filteredFreeAgents.length > 0) {
+        if (selectedInviteRole === 'player' && eventContext && filteredFreeAgents.length > 0) {
             const freeAgentsNotInResults = filteredFreeAgents.filter(
                 agent => !users.some(user => user.$id === agent.$id)
             );
@@ -183,22 +337,29 @@ export default function TeamDetailModal({
         try {
             const user = await userService.getUserById(userId);
             if (!user) throw new Error('User not found');
-            const success = await teamService.invitePlayerToTeam(currentTeam, user);
+            if (!canInviteUserForRole(user.$id, selectedInviteRole)) {
+                notifications.show({ color: 'yellow', message: `${selectedRoleLabel} already assigned or invited.` });
+                return;
+            }
+            const success = await teamService.inviteUserToTeamRole(currentTeam, user, selectedInviteRole);
 
             if (success) {
-                const invitedUser = await userService.getUserById(userId);
-                if (invitedUser) {
-                    setPendingPlayers(prev => (
-                        prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
-                    ));
-                    setSearchResults(prev => prev.filter(user => user.$id !== userId));
-
-                    const updatedTeam = {
-                        ...currentTeam,
-                        pending: Array.from(new Set([...currentTeam.pending, userId]))
-                    };
-                    onTeamUpdated?.(updatedTeam);
+                if (selectedInviteRole === 'player') {
+                    const invitedUser = await userService.getUserById(userId);
+                    if (invitedUser) {
+                        setPendingPlayers(prev => (
+                            prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
+                        ));
+                        const updatedTeam = {
+                            ...currentTeam,
+                            pending: Array.from(new Set([...currentTeam.pending, userId]))
+                        };
+                        onTeamUpdated?.(updatedTeam);
+                    }
+                } else {
+                    await fetchRoleInvites();
                 }
+                setSearchResults(prev => prev.filter(searchUser => searchUser.$id !== userId));
             }
         } catch (error) {
             console.error('Failed to invite user:', error);
@@ -235,43 +396,56 @@ export default function TeamDetailModal({
 
         try {
             const ensuredUser = await userService.ensureUserByEmail(normalizedInviteEmail);
-            const alreadyOnTeam = currentTeam.playerIds.includes(ensuredUser.$id);
-            const alreadyPending =
-                currentTeam.pending.includes(ensuredUser.$id) ||
-                pendingPlayers.some((player) => player.$id === ensuredUser.$id);
-            if (alreadyOnTeam) {
-                notifications.show({ color: 'yellow', message: 'This player is already on the team.' });
-                return;
-            }
-            if (alreadyPending) {
-                notifications.show({ color: 'yellow', message: 'This player already has a pending invite.' });
+            if (!canInviteUserForRole(ensuredUser.$id, selectedInviteRole)) {
+                notifications.show({ color: 'yellow', message: `${selectedRoleLabel} already assigned or invited.` });
                 return;
             }
 
-            const success = await teamService.invitePlayerToTeam(currentTeam, ensuredUser);
+            const success = await teamService.inviteUserToTeamRole(currentTeam, ensuredUser, selectedInviteRole);
             if (!success) {
                 notifications.show({ color: 'red', message: 'Failed to send invite.' });
                 return;
             }
 
-            const invitedUser = await userService.getUserById(ensuredUser.$id);
-            if (invitedUser) {
-                setPendingPlayers(prev => (
-                    prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
-                ));
+            if (selectedInviteRole === 'player') {
+                const invitedUser = await userService.getUserById(ensuredUser.$id);
+                if (invitedUser) {
+                    setPendingPlayers(prev => (
+                        prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
+                    ));
+                }
+                onTeamUpdated?.({
+                    ...currentTeam,
+                    pending: Array.from(new Set([...currentTeam.pending, ensuredUser.$id])),
+                });
+            } else {
+                await fetchRoleInvites();
             }
-            onTeamUpdated?.({
-                ...currentTeam,
-                pending: Array.from(new Set([...currentTeam.pending, ensuredUser.$id])),
-            });
 
-            notifications.show({ color: 'green', message: `Invite sent to ${normalizedInviteEmail}.` });
+            notifications.show({ color: 'green', message: `${selectedRoleLabel} invite sent to ${normalizedInviteEmail}.` });
             setEmailInviteInput('');
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to send invite';
             notifications.show({ color: 'red', message });
         } finally {
             setInvitingByEmail(false);
+        }
+    };
+
+    const handleCancelRoleInvite = async (inviteId: string) => {
+        setCancellingRoleInviteIds((previous) => new Set(previous).add(inviteId));
+        try {
+            await userService.deleteInviteById(inviteId);
+            setPendingRoleInvites((previous) => previous.filter((entry) => entry.invite.$id !== inviteId));
+        } catch (cancelError) {
+            console.error('Failed to cancel role invite:', cancelError);
+            setError('Failed to cancel role invite');
+        } finally {
+            setCancellingRoleInviteIds((previous) => {
+                const next = new Set(previous);
+                next.delete(inviteId);
+                return next;
+            });
         }
     };
 
@@ -358,11 +532,18 @@ export default function TeamDetailModal({
                                 <Text c="dimmed">{typeof currentTeam.division === 'string' ? currentTeam.division : currentTeam.division?.name || currentTeam.division?.skillLevel || 'Division'} Division • {currentTeam.sport}</Text>
                             </div>
                         </Group>
-                        {isTeamCaptain && (
+                        {canManageTeam && (
                             <Group gap="xs">
                                 {!editingName && (
                                     <Button variant="subtle" size="xs" onClick={() => setEditingName(true)}>Edit Name</Button>
                                 )}
+                                <Button
+                                    variant="subtle"
+                                    size="xs"
+                                    onClick={() => setEditingDetails((value) => !value)}
+                                >
+                                    {editingDetails ? 'Close Team Details' : 'Edit Team Details'}
+                                </Button>
                                 <Button variant="default" size="xs" onClick={() => setImagePickerOpen(true)}>Change Image</Button>
                             </Group>
                         )}
@@ -382,6 +563,52 @@ export default function TeamDetailModal({
                     {/* Error Display */}
                     {error && (
                         <Alert color="red" variant="light" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>
+                    )}
+
+                    {editingDetails && canManageTeam && (
+                        <Paper withBorder radius="md" p="md" mb="md">
+                            <Title order={5} mb="sm">Edit Team Details</Title>
+                            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+                                <TextInput
+                                    label="Sport"
+                                    value={draftSport}
+                                    onChange={(event) => setDraftSport(event.currentTarget.value)}
+                                />
+                                <TextInput
+                                    label="Division"
+                                    value={draftDivision}
+                                    onChange={(event) => setDraftDivision(event.currentTarget.value)}
+                                />
+                                <NumberInput
+                                    label="Team Size"
+                                    min={1}
+                                    value={draftTeamSize}
+                                    onChange={(value) => setDraftTeamSize(Number(value) || 1)}
+                                />
+                                <NumberInput
+                                    label="Seed"
+                                    min={0}
+                                    value={draftSeed}
+                                    onChange={(value) => setDraftSeed(Number(value) || 0)}
+                                />
+                                <NumberInput
+                                    label="Wins"
+                                    min={0}
+                                    value={draftWins}
+                                    onChange={(value) => setDraftWins(Number(value) || 0)}
+                                />
+                                <NumberInput
+                                    label="Losses"
+                                    min={0}
+                                    value={draftLosses}
+                                    onChange={(value) => setDraftLosses(Number(value) || 0)}
+                                />
+                            </SimpleGrid>
+                            <Group justify="flex-end" mt="sm">
+                                <Button variant="default" onClick={() => setEditingDetails(false)}>Cancel</Button>
+                                <Button onClick={() => { void handleSaveDetails(); }}>Save Team Details</Button>
+                            </Group>
+                        </Paper>
                     )}
 
                     {/* Team Stats */}
@@ -417,12 +644,13 @@ export default function TeamDetailModal({
                                                     <Avatar src={getUserAvatarUrl(player, 40)} alt={getUserFullName(player)} size={40} radius="xl" />
                                                     <div>
                                                         <Text fw={500}>{getUserFullName(player)}</Text>
+                                                        <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>
                                                         {player.$id === currentTeam.captainId && (
                                                             <Badge color="blue" variant="light" size="xs">Captain</Badge>
                                                         )}
                                                     </div>
                                                 </Group>
-                                                {isTeamCaptain && player.$id !== currentTeam.captainId && (
+                                                {canManageTeam && player.$id !== currentTeam.captainId && (
                                                     <Button color="red" variant="subtle" size="xs" onClick={() => handleRemovePlayer(player.$id)}>Remove</Button>
                                                 )}
                                             </Group>
@@ -432,7 +660,7 @@ export default function TeamDetailModal({
                             </ScrollArea.Autosize>
                         ) : (
                             <Text c="dimmed" ta="center" py={8}>
-                                {isTeamCaptain ? 'Invite some players to build your team!' : 'This team is just getting started.'}
+                                {canManageTeam ? 'Invite some players to build your team!' : 'This team is just getting started.'}
                             </Text>
                         )}
                     </div>
@@ -465,13 +693,14 @@ export default function TeamDetailModal({
                                                 />
                                                 <div>
                                                     <p className="font-medium">{getUserFullName(player)}</p>
+                                                    <p className="text-xs text-gray-500">{getUserHandle(player)}</p>
                                                     <span className={`text-xs font-medium ${isFromEvent ? 'text-blue-600' : 'text-yellow-600'
                                                         }`}>
                                                         {isFromEvent ? 'Free Agent - Invitation pending' : 'Invitation pending'}
                                                     </span>
                                                 </div>
                                             </div>
-                                            {isTeamCaptain && (
+                                            {canManageTeam && (
                                                 <button
                                                     onClick={() => handleCancelInvite(player.$id)}
                                                     disabled={isCancelling}
@@ -516,21 +745,105 @@ export default function TeamDetailModal({
                         </div>
                     )}
 
-                    {/* Add Players Section */}
-                    {isTeamCaptain && (
+                    {/* Team Staff Roles */}
+                    <div className="mb-6">
+                        <Title order={5} mb="sm">Team Staff</Title>
+                        <Paper withBorder radius="md" p="md">
+                            <Group justify="space-between" mb="xs">
+                                <Text fw={500}>Manager</Text>
+                                <Text c="dimmed" size="sm">
+                                    {managerUser ? getUserFullName(managerUser) : 'Unassigned'}
+                                </Text>
+                            </Group>
+                            <Group justify="space-between" mb="xs">
+                                <Text fw={500}>Head Coach</Text>
+                                <Text c="dimmed" size="sm">
+                                    {headCoachUser ? getUserFullName(headCoachUser) : 'Unassigned'}
+                                </Text>
+                            </Group>
+                            <Group justify="space-between">
+                                <Text fw={500}>Assistant Coaches</Text>
+                                <Text c="dimmed" size="sm">
+                                    {assistantCoachUsers.length
+                                        ? assistantCoachUsers.map((assistantCoach) => getUserFullName(assistantCoach)).join(', ')
+                                        : 'Unassigned'}
+                                </Text>
+                            </Group>
+                        </Paper>
+                    </div>
+
+                    {/* Pending Staff Invitations */}
+                    {pendingRoleInvites.length > 0 && (
+                        <div className="mb-6">
+                            <Title order={5} mb="sm">Pending Staff Invitations ({pendingRoleInvites.length})</Title>
+                            <div className="space-y-3">
+                                {pendingRoleInvites.map(({ invite, invitedUser }) => {
+                                    const inviteRoleLabel = invite.type === 'team_manager'
+                                        ? 'Manager'
+                                        : invite.type === 'team_head_coach'
+                                        ? 'Head Coach'
+                                        : 'Assistant Coach';
+                                    const isCancellingInvite = cancellingRoleInviteIds.has(invite.$id);
+                                    return (
+                                        <Paper key={invite.$id} withBorder radius="md" p="sm" bg="yellow.0">
+                                            <Group justify="space-between">
+                                                <div>
+                                                    <Text fw={500}>{invitedUser ? getUserFullName(invitedUser) : invite.email ?? 'Unknown user'}</Text>
+                                                    {invitedUser && (
+                                                        <Text size="xs" c="dimmed">{getUserHandle(invitedUser)}</Text>
+                                                    )}
+                                                    <Text size="xs" c="dimmed">Role: {inviteRoleLabel}</Text>
+                                                </div>
+                                                {canManageTeam && (
+                                                    <Button
+                                                        color="red"
+                                                        variant="subtle"
+                                                        size="xs"
+                                                        onClick={() => handleCancelRoleInvite(invite.$id)}
+                                                        loading={isCancellingInvite}
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                )}
+                                            </Group>
+                                        </Paper>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Add Team Role Invites Section */}
+                    {canManageTeam && (
                         <div className="mb-6">
                             <Button onClick={() => setShowAddPlayers(!showAddPlayers)} mb="sm">
-                                {showAddPlayers ? 'Close' : 'Add Players'}
+                                {showAddPlayers ? 'Close' : 'Invite Team Members'}
                             </Button>
                             {showAddPlayers && (
                                 <Paper withBorder radius="md" p="md">
-                                    <Title order={6} mb="sm">Add players to {currentTeam.name}</Title>
+                                    <Title order={6} mb="sm">Invite to {currentTeam.name}</Title>
+                                    <SegmentedControl
+                                        mb="sm"
+                                        value={selectedInviteRole}
+                                        onChange={(value) => {
+                                            setSelectedInviteRole(value as TeamInviteRoleType);
+                                            setSearchQuery('');
+                                            setSearchResults([]);
+                                        }}
+                                        data={[
+                                            { label: 'Player', value: 'player' },
+                                            { label: 'Manager', value: 'team_manager' },
+                                            { label: 'Head Coach', value: 'team_head_coach' },
+                                            { label: 'Assistant Coach', value: 'team_assistant_coach' },
+                                        ]}
+                                        fullWidth
+                                    />
                                     <Group align="flex-end" wrap="nowrap" mb="sm">
                                         <TextInput
                                             style={{ flex: 1 }}
                                             placeholder={
                                                 inviteMode === 'search'
-                                                    ? 'Search players (min 2 characters)'
+                                                    ? `Search ${selectedRoleLabel.toLowerCase()} (min 2 characters)`
                                                     : 'name@example.com'
                                             }
                                             value={inviteMode === 'search' ? searchQuery : emailInviteInput}
@@ -559,10 +872,10 @@ export default function TeamDetailModal({
                                     )}
                                     {inviteMode === 'search' && !searching && searchQuery.length >= 2 && getAvailableUsers().length === 0 && (
                                         <Text c="dimmed" ta="center" py={8}>
-                                            {`No players found matching "${searchQuery}"`}
+                                            {`No ${selectedRoleLabel.toLowerCase()} found matching "${searchQuery}"`}
                                         </Text>
                                     )}
-                                    {inviteMode === 'search' && !searching && (searchQuery.length < 2 && getFilteredFreeAgents().length > 0) && (
+                                    {selectedInviteRole === 'player' && inviteMode === 'search' && !searching && (searchQuery.length < 2 && getFilteredFreeAgents().length > 0) && (
                                         <div className="mb-4">
                                             <Text fw={500} size="sm" c="blue" mb={4}>Available Free Agents from Event:</Text>
                                             <div className="space-y-2">
@@ -573,6 +886,7 @@ export default function TeamDetailModal({
                                                                 <Avatar src={getUserAvatarUrl(agent, 40)} alt={getUserFullName(agent)} size={40} radius="xl" />
                                                                 <div>
                                                                     <Text fw={500}>{getUserFullName(agent)}</Text>
+                                                                    <Text size="xs" c="dimmed">{getUserHandle(agent)}</Text>
                                                                     <Text size="xs" c="blue">Free Agent from Event</Text>
                                                                 </div>
                                                             </Group>
@@ -595,6 +909,7 @@ export default function TeamDetailModal({
                                                                     <Avatar src={getUserAvatarUrl(user, 40)} alt={getUserFullName(user)} size={40} radius="xl" />
                                                                     <div>
                                                                         <Text fw={500}>{getUserFullName(user)}</Text>
+                                                                        <Text size="xs" c="dimmed">{getUserHandle(user)}</Text>
                                                                         {isFreeAgent && <Text size="xs" c="blue">Free Agent from Event</Text>}
                                                                     </div>
                                                                 </Group>
@@ -610,8 +925,7 @@ export default function TeamDetailModal({
                                     {inviteMode === 'email' && (
                                         <Paper withBorder radius="md" p="md" mt="sm">
                                             <Text size="sm" c="dimmed" mb="sm">
-                                                Invite by email will ensure the player account exists, add them to team pending,
-                                                and send an invite email for invite-created accounts.
+                                                Invite by email will ensure the account exists and send a {selectedRoleLabel.toLowerCase()} invite.
                                             </Text>
                                             <Group justify="flex-end">
                                                 <Button
@@ -619,7 +933,7 @@ export default function TeamDetailModal({
                                                     loading={invitingByEmail}
                                                     disabled={!inviteEmailValid}
                                                 >
-                                                    Send Email Invite
+                                                    Send {selectedRoleLabel} Invite
                                                 </Button>
                                             </Group>
                                         </Paper>
@@ -630,7 +944,7 @@ export default function TeamDetailModal({
                     )}
 
                     {/* Delete Team Section */}
-                    {isTeamCaptain && (
+                    {canManageTeam && (
                         <div className="border-t pt-6">
                             <Paper withBorder radius="md" p="md" bg={'red.0'}>
                                 <Title order={5} c="red" mb={4}>Danger Zone</Title>

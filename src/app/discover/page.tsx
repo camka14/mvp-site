@@ -28,7 +28,6 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
-import EventDetailSheet from './components/EventDetailSheet';
 import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
@@ -125,8 +124,6 @@ function DiscoverPageContent() {
   const searchQuery = searchParams.get('q') || '';
   const [searchTerm, setSearchTerm] = useState(searchQuery);
   const debouncedSearch = useDebounce(searchTerm, 500);
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [showEventSheet, setShowEventSheet] = useState(false);
 
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
@@ -445,6 +442,13 @@ function DiscoverPageContent() {
     [router],
   );
 
+  const handleSelectEvent = useCallback(
+    (event: Event) => {
+      router.push(`/events/${event.$id}/schedule?tab=details`);
+    },
+    [router],
+  );
+
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!sentinelRef.current) return;
@@ -677,10 +681,7 @@ function DiscoverPageContent() {
               hasMoreEvents={hasMoreEvents}
               sentinelRef={sentinelRef}
               eventsError={eventsError}
-              onEventClick={(event) => {
-                setSelectedEvent(event);
-                setShowEventSheet(true);
-              }}
+              onEventClick={handleSelectEvent}
               onCreateEvent={handleCreateEventNavigation}
             />
           </Tabs.Panel>
@@ -729,16 +730,6 @@ function DiscoverPageContent() {
           </Tabs.Panel>
         </Tabs>
       </Container>
-
-      {selectedEvent && (
-        <EventDetailSheet
-          event={selectedEvent}
-          isOpen={showEventSheet}
-          onClose={() => {
-            setShowEventSheet(false);
-          }}
-        />
-      )}
     </>
   );
 }
