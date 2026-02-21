@@ -185,4 +185,48 @@ describe('tournament scheduling (referees)', () => {
     expect((final as any).start.getTime()).toBeGreaterThanOrEqual(lastSemi.end.getTime());
     expect((final as any).start.getTime()).toBeGreaterThan(originalFinalStart);
   });
+
+  it('does not reschedule locked downstream matches when a prior match runs long', () => {
+    const division = buildDivision();
+    const teams = buildTeams(4, division);
+
+    const tournament = buildTournament({
+      id: 'tournament_reschedule_locked',
+      teams,
+      divisions: [division],
+      referees: [],
+      doTeamsRef: true,
+      doubleElimination: false,
+      restTimeMinutes: 0,
+    });
+
+    scheduleEvent({ event: tournament }, context);
+    const matches = Object.values(tournament.matches);
+
+    const final = matches.find(
+      (match) =>
+        !match.losersBracket &&
+        !match.winnerNextMatch &&
+        Boolean(match.previousLeftMatch || match.previousRightMatch),
+    );
+    expect(final).toBeTruthy();
+    if (!final) return;
+
+    final.locked = true;
+
+    const semis = matches.filter((match) => match.winnerNextMatch && match.winnerNextMatch === final);
+    expect(semis).toHaveLength(2);
+
+    const lastSemi = [...semis].sort((a, b) => b.end.getTime() - a.end.getTime())[0];
+    const originalFinalStart = final.start.getTime();
+
+    lastSemi.end = new Date(lastSemi.end.getTime() + 30 * 60 * 1000);
+    lastSemi.setResults = [1, 1];
+    lastSemi.team1Points = [21, 21];
+    lastSemi.team2Points = [10, 10];
+
+    finalizeMatch(tournament, lastSemi, context, new Date(lastSemi.end));
+
+    expect(final.start.getTime()).toBe(originalFinalStart);
+  });
 });

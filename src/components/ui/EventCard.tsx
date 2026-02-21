@@ -214,6 +214,9 @@ export default function EventCard({
               {event.sport.name}
             </span>
           )}
+          <span className="discover-muted-pill">
+            {event.teamSignup ? 'Team Registration' : 'Individual Registration'}
+          </span>
           {distance && (
             <span className="discover-muted-pill">
               {distance} away

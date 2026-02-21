@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
 const bulkMatchUpdateSchema = z.object({
   id: z.string().optional(),
   $id: z.string().optional(),
+  locked: z.boolean().optional(),
   matchId: z.number().int().nullable().optional(),
   team1Points: z.array(z.number()).optional(),
   team2Points: z.array(z.number()).optional(),
@@ -97,6 +98,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         }
 
         applyMatchUpdates(event, target, {
+          locked: entry.locked,
           team1Points: entry.team1Points,
           team2Points: entry.team2Points,
           setResults: entry.setResults,

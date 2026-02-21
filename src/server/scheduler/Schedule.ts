@@ -10,6 +10,10 @@ const overlaps = (startA: Date, endA: Date, startB: Date, endB: Date): boolean =
   return !(startA >= endB && endA > endB) && !(startA < startB && endA <= startB);
 };
 
+const isLockedEvent = (event: SchedulableEvent): boolean => {
+  return (event as { locked?: boolean }).locked === true;
+};
+
 export class Schedule<E extends SchedulableEvent, R extends Resource, P extends Participant, G extends Group> {
   resources: Map<G, R[]>;
   participants: Map<G, P[]>;
@@ -88,20 +92,21 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     }
     if (nextEvent) {
       const desiredStart = new Date(event.end.getTime() + bufferMs);
-      if (nextEvent.start.getTime() !== desiredStart.getTime()) {
+      if (!isLockedEvent(nextEvent) && nextEvent.start.getTime() !== desiredStart.getTime()) {
         this.shiftTimes(nextEvent, desiredStart.getTime() - nextEvent.start.getTime());
       }
     }
     for (const dependant of eventDependants) {
       if (nextEvent && dependant === nextEvent) continue;
       const desiredStart = new Date(event.end.getTime() + event.bufferMs);
-      if (dependant.start.getTime() !== desiredStart.getTime()) {
+      if (!isLockedEvent(dependant) && dependant.start.getTime() !== desiredStart.getTime()) {
         this.shiftTimes(dependant, desiredStart.getTime() - dependant.start.getTime());
       }
     }
   }
 
   shiftTimes(event: E, shiftMs: number): void {
+    if (isLockedEvent(event)) return;
     const resource = event.getResource();
     if (!resource) return;
     const resourceEvents = resource.getEvents() as E[];

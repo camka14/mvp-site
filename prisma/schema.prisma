@@ -111,6 +111,7 @@ model Matches {
   updatedAt DateTime?
   start DateTime?
   end DateTime?
+  locked Boolean @default(false)
   division String?
   team1Points Int[]
   team2Points Int[]

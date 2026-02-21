@@ -17,6 +17,7 @@ import { tournamentService } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
+import { familyService } from '@/lib/familyService';
 import { apiRequest } from '@/lib/apiClient';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
@@ -427,6 +428,7 @@ function EventScheduleContent() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [selectedTemplateStartDate, setSelectedTemplateStartDate] = useState<Date | null>(null);
   const [templateSeedKey, setTemplateSeedKey] = useState(0);
+  const [childUserIds, setChildUserIds] = useState<string[]>([]);
   const templatePromptResolvedRef = useRef(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const isMobile = useMediaQuery('(max-width: 36em)');
@@ -768,6 +770,41 @@ function EventScheduleContent() {
     [templateSummaries],
   );
   const defaultSport = DEFAULT_SPORT;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!user?.$id) {
+      setChildUserIds([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    familyService
+      .listChildren()
+      .then((children) => {
+        if (cancelled) return;
+        const ids = Array.from(
+          new Set(
+            (children ?? [])
+              .filter((child) => (child.linkStatus ?? 'active').toLowerCase() === 'active')
+              .map((child) => child.userId?.trim())
+              .filter((id): id is string => Boolean(id && id.length > 0)),
+          ),
+        );
+        setChildUserIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setChildUserIds([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.$id]);
 
   const closeTemplatePrompt = useCallback(() => {
     templatePromptResolvedRef.current = true;
@@ -2555,6 +2592,23 @@ function EventScheduleContent() {
     setMatchBeingEdited(null);
   }, [matches]);
 
+  const handleToggleLockAllMatches = useCallback((locked: boolean, matchIds: string[]) => {
+    if (!canEditMatches || matchIds.length === 0) return;
+    const matchIdSet = new Set(matchIds);
+    const lockLabel = locked ? 'Locked' : 'Unlocked';
+
+    setChangesMatches((prev) => {
+      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
+      return base.map((match) => (
+        matchIdSet.has(match.$id)
+          ? ({ ...match, locked } as Match)
+          : match
+      ));
+    });
+
+    setInfoMessage(`${lockLabel} ${matchIdSet.size} match${matchIdSet.size === 1 ? '' : 'es'}.`);
+  }, [canEditMatches, matches]);
+
   const applyMatchUpdate = useCallback((updated: Match) => {
     const cloned = cloneValue(updated) as Match;
     const replaceInList = (list?: Match[]) => {
@@ -3163,6 +3217,8 @@ function EventScheduleContent() {
                       onMatchClick={handleMatchClick}
                       canManage={canEditMatches}
                       currentUser={user}
+                      childUserIds={childUserIds}
+                      onToggleLockAllMatches={handleToggleLockAllMatches}
                     />
                   )}
                 </Stack>

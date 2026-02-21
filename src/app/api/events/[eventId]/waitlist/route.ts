@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { calculateAgeOnDate } from '@/lib/age';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,6 +77,16 @@ async function updateWaitlist(
     return NextResponse.json({ error: 'userId or teamId is required.' }, { status: 400 });
   }
 
+  const targetUser = userId
+    ? await prisma.userData.findUnique({
+      where: { id: userId },
+      select: { id: true, dateOfBirth: true },
+    })
+    : null;
+  if (userId && !targetUser) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
   if (userId) {
     if (!session.isAdmin && userId !== session.userId) {
       const canManageChild = await canManageLinkedChildWaitlist({
@@ -85,14 +96,6 @@ async function updateWaitlist(
       if (!canManageChild) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-    }
-
-    const targetUser = await prisma.userData.findUnique({
-      where: { id: userId },
-      select: { id: true },
-    });
-    if (!targetUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
   }
 
@@ -116,10 +119,54 @@ async function updateWaitlist(
 
   const event = await prisma.events.findUnique({
     where: { id: eventId },
-    select: { id: true, waitListIds: true },
+    select: {
+      id: true,
+      start: true,
+      teamSignup: true,
+      waitListIds: true,
+    },
   });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  }
+  if (teamId && !event.teamSignup) {
+    return NextResponse.json(
+      { error: 'Team waitlist is only available for team registration events.' },
+      { status: 403 },
+    );
+  }
+  if (mode === 'add' && userId && targetUser && !session.isAdmin) {
+    const ageAtEvent = calculateAgeOnDate(targetUser.dateOfBirth, event.start);
+    if (!Number.isFinite(ageAtEvent)) {
+      return NextResponse.json({ error: 'Invalid date of birth' }, { status: 400 });
+    }
+    if (ageAtEvent < 18 && userId === session.userId) {
+      const parentLink = await prisma.parentChildLinks.findFirst({
+        where: {
+          childId: userId,
+          status: 'ACTIVE',
+        },
+        orderBy: {
+          updatedAt: 'desc',
+        },
+        select: {
+          parentId: true,
+        },
+      });
+      if (!parentLink?.parentId) {
+        return NextResponse.json(
+          { error: 'No linked parent/guardian found. Ask a parent to add you first.' },
+          { status: 403 },
+        );
+      }
+      return NextResponse.json(
+        {
+          event: withLegacyFields(event),
+          requiresParentApproval: true,
+        },
+        { status: 200 },
+      );
+    }
   }
 
   const waitListIds = Array.isArray(event.waitListIds)

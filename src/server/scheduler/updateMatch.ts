@@ -14,6 +14,7 @@ import {
 } from './types';
 
 export type MatchUpdate = {
+  locked?: boolean;
   team1Points?: number[];
   team2Points?: number[];
   setResults?: number[];
@@ -79,6 +80,9 @@ const detachMatch = (participant: { matches?: Match[] } | null | undefined, matc
 export const applyMatchUpdates = (event: Tournament | League, match: Match, update: MatchUpdate) => {
   if (update.matchId !== undefined) {
     match.matchId = update.matchId ?? null;
+  }
+  if (update.locked !== undefined) {
+    match.locked = Boolean(update.locked);
   }
   if (update.team1Points) {
     match.team1Points = [...update.team1Points];
@@ -546,6 +550,7 @@ const unscheduleMatchesOnField = (match: Match, useTeamRefs: boolean): void => {
   if (!match.field) return;
   const matchesOnField = match.field.matches as Match[];
   for (const matchOnField of matchesOnField) {
+    if (matchOnField.locked) continue;
     if (matchOnField.start > match.start || (useTeamRefs && !matchOnField.teamReferee)) {
       matchOnField.unschedule();
     }
@@ -562,6 +567,7 @@ const processMatches = (
   unscheduleMatchesOnField(updatedMatch, useTeamRefs);
   for (const field of Object.values(tournament.fields)) {
     for (const match of field.matches) {
+      if (match.locked) continue;
       if (
         (field === updatedMatch.field && match.start > updatedMatch.start) ||
         (useTeamRefs && !match.teamReferee)
@@ -575,7 +581,7 @@ const processMatches = (
   }
 
   for (const match of [...matches].reverse()) {
-    if (!match.field) {
+    if (!match.locked && !match.field) {
       bracketSchedule.scheduleEvent(match, match.team1Points.length * TIMES.SET);
       attachMatchToParticipants(match);
     }

@@ -1127,6 +1127,7 @@ class EventService {
             $id: (input?.$id ?? input?.id) as string,
             start: input.start,
             end: input.end,
+            locked: Boolean(input.locked),
             team1Seed: input.team1Seed,
             team2Seed: input.team2Seed,
             losersBracket: input.losersBracket,

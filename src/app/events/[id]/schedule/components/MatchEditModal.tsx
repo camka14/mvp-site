@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider } from '@mantine/core';
+import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider, Checkbox } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
@@ -141,6 +141,7 @@ export default function MatchEditModal({
   const [team1Points, setTeam1Points] = useState<number[]>([0]);
   const [team2Points, setTeam2Points] = useState<number[]>([0]);
   const [setResults, setSetResults] = useState<number[]>([0]);
+  const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -156,6 +157,7 @@ export default function MatchEditModal({
       setTeam1Points([0]);
       setTeam2Points([0]);
       setSetResults([0]);
+      setLocked(false);
       setError(null);
       return;
     }
@@ -177,6 +179,7 @@ export default function MatchEditModal({
     setTeam1Points(aligned.team1);
     setTeam2Points(aligned.team2);
     setSetResults(aligned.results);
+    setLocked(Boolean(match.locked));
     setError(null);
   }, [match, opened]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -377,6 +380,7 @@ export default function MatchEditModal({
       ...match,
       start: formatLocalDateTime(startValue),
       end: formatLocalDateTime(endValue),
+      locked,
       team1Points: sanitizePoints(team1Points),
       team2Points: sanitizePoints(team2Points),
       setResults: sanitizeResults(setResults),
@@ -444,6 +448,12 @@ export default function MatchEditModal({
             </Text>
           </div>
         </Group>
+
+        <Checkbox
+          label="Lock match (prevent auto-rescheduling)"
+          checked={locked}
+          onChange={(event) => setLocked(event.currentTarget.checked)}
+        />
 
         <Select
           label="Team 1"

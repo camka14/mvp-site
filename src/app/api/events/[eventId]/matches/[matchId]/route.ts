@@ -18,6 +18,7 @@ import { sendPushToUsers } from '@/server/pushNotifications';
 export const dynamic = 'force-dynamic';
 
 const updateSchema = z.object({
+  locked: z.boolean().optional(),
   team1Points: z.array(z.number()).optional(),
   team2Points: z.array(z.number()).optional(),
   setResults: z.array(z.number()).optional(),

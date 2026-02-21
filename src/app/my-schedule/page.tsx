@@ -243,6 +243,11 @@ function MySchedulePageContent() {
     return [...eventEntries, ...matchEntries].sort((a, b) => a.start.getTime() - b.start.getTime());
   }, [events, fields, matches, teams]);
 
+  const upcomingEntries = useMemo<ScheduleCalendarEvent[]>(() => {
+    const now = Date.now();
+    return scheduleEntries.filter((entry) => entry.end.getTime() >= now);
+  }, [scheduleEntries]);
+
   const EventTile = ({ event }: EventProps<ScheduleCalendarEvent>) => (
     <div className="leading-tight text-xs">
       <div className="font-medium truncate">{event.title}</div>
@@ -295,28 +300,38 @@ function MySchedulePageContent() {
             <Group justify="space-between" mb="md">
               <SegmentedControl
                 value={calendarView}
-                onChange={(value) => setCalendarView(value as View)}
+                onChange={(value) => {
+                  const nextView = value as View;
+                  setCalendarView(nextView);
+                  if (nextView === 'agenda') {
+                    setCalendarDate(new Date());
+                  }
+                }}
                 data={[
                   { value: 'month', label: 'Month' },
                   { value: 'week', label: 'Week' },
                   { value: 'day', label: 'Day' },
+                  { value: 'agenda', label: 'Agenda' },
                 ]}
               />
-              {scheduleEntries.length === 0 ? (
-                <Text c="dimmed" size="sm">No schedule entries found.</Text>
+              {(calendarView === 'agenda' ? upcomingEntries.length : scheduleEntries.length) === 0 ? (
+                <Text c="dimmed" size="sm">
+                  {calendarView === 'agenda' ? 'No upcoming schedule entries found.' : 'No schedule entries found.'}
+                </Text>
               ) : null}
             </Group>
 
             <BigCalendar
               localizer={localizer}
-              events={scheduleEntries}
+              events={calendarView === 'agenda' ? upcomingEntries : scheduleEntries}
               date={calendarDate}
               view={calendarView}
-              views={['month', 'week', 'day']}
+              views={['month', 'week', 'day', 'agenda']}
               onView={(view) => setCalendarView(view)}
               onNavigate={(date) => setCalendarDate(date instanceof Date ? date : new Date(date))}
               startAccessor="start"
               endAccessor="end"
+              length={120}
               onSelectEvent={(selectedEvent) => {
                 router.push(`/events/${selectedEvent.resource.eventId}/schedule?tab=details`);
               }}

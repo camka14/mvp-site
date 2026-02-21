@@ -54,6 +54,7 @@ export const normalizeApiMatch = (input: Match): Match => {
 
   return {
     ...match,
+    locked: Boolean((match as any).locked),
     field: withLegacyId(match.field as Field | null) ?? match.field,
     team1: withLegacyId(match.team1 as Team | null) ?? match.team1,
     team2: withLegacyId(match.team2 as Team | null) ?? match.team2,

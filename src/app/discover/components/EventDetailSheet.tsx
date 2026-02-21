@@ -29,6 +29,7 @@ import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
 import PaymentModal from '@/components/ui/PaymentModal';
 import RefundSection from '@/components/ui/RefundSection';
+import UserCard from '@/components/ui/UserCard';
 // Replaced shadcn Select with Mantine Select
 
 interface EventDetailSheetProps {
@@ -46,7 +47,7 @@ const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX 
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 
 type JoinIntent = {
-    mode: 'user' | 'team' | 'child' | 'child_free_agent';
+    mode: 'user' | 'team' | 'child' | 'child_free_agent' | 'user_waitlist' | 'team_waitlist' | 'child_waitlist';
     team?: Team | null;
     childId?: string;
     childEmail?: string | null;
@@ -240,6 +241,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [showPlayersDropdown, setShowPlayersDropdown] = useState(false);
     const [showTeamsDropdown, setShowTeamsDropdown] = useState(false);
     const [showFreeAgentsDropdown, setShowFreeAgentsDropdown] = useState(false);
+    const [selectedFreeAgentActionUser, setSelectedFreeAgentActionUser] = useState<UserData | null>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
@@ -584,7 +586,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setTeams(eventTeams);
 
             const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
-            const shouldLoadFreeAgents = freeAgentIds.length > 0;
+            const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
 
             if (shouldLoadFreeAgents) {
                 try {
@@ -789,9 +791,18 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             await loadEventDetails();
             return;
         }
+        if (intent.mode === 'child_waitlist') {
+            if (!intent.childId) {
+                throw new Error('Select a child to add to waitlist.');
+            }
+            await eventService.addToWaitlist(currentEvent.$id, intent.childId, 'user');
+            setJoinNotice('Child added to waitlist.');
+            await loadEventDetails();
+            return;
+        }
 
         const resolvedTeam = (() => {
-            if (intent.mode !== 'team') {
+            if (intent.mode !== 'team' && intent.mode !== 'team_waitlist') {
                 return undefined;
             }
             if (intent.team) {
@@ -812,6 +823,23 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             if (registrationResult?.status && registrationResult.status !== 'active') {
                 setJoinNotice(`Registration status: ${registrationResult.status}`);
             }
+        }
+
+        if (intent.mode === 'user_waitlist') {
+            await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user');
+            setJoinNotice('Added to waitlist.');
+            await loadEventDetails();
+            return;
+        }
+
+        if (intent.mode === 'team_waitlist') {
+            if (!resolvedTeam?.$id) {
+                throw new Error('Team is required to join the waitlist.');
+            }
+            await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team');
+            setJoinNotice('Team added to waitlist.');
+            await loadEventDetails();
+            return;
         }
 
         if (currentEvent.allowPaymentPlans) {
@@ -891,7 +919,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             }
 
             const signerContext =
-                pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent'
+                pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent' || pendingJoin.mode === 'child_waitlist'
                     ? 'parent_guardian'
                     : 'participant';
             const parentLinks = await boldsignService.createSignLinks({
@@ -903,7 +931,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 childEmail: pendingJoin.childEmail ?? undefined,
             });
             const shouldCollectChildSignatureInSameSession = (
-                pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent'
+                pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent' || pendingJoin.mode === 'child_waitlist'
             ) && Boolean(
                 pendingJoin.childId
                 && normalizeEmailValue(authUser.email)
@@ -964,7 +992,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             throw new Error('User and event are required to sign documents.');
         }
         const fallbackSignerContext =
-            pendingJoin?.mode === 'child' || pendingJoin?.mode === 'child_free_agent'
+            pendingJoin?.mode === 'child' || pendingJoin?.mode === 'child_free_agent' || pendingJoin?.mode === 'child_waitlist'
                 ? 'parent_guardian'
                 : 'participant';
         const signerContext = payload.signerContext ?? fallbackSignerContext;
@@ -1170,7 +1198,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setJoinError(isTeamSignup ? 'Select a child to add as a free agent.' : 'Select a child to register.');
             return;
         }
-        if (!selectedChildEligible) {
+        const bypassEligibilityCheck = (isTeamSignup && selectedChildIsFreeAgent) || (!isTeamSignup && selectedChildIsWaitlisted);
+        if (!selectedChildEligible && !bypassEligibilityCheck) {
             setJoinError('Selected child is not eligible for this event.');
             return;
         }
@@ -1206,6 +1235,42 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             }
             return;
         }
+        const eventWaitlistMode = players.length >= currentEvent.maxParticipants || selectedChildIsWaitlisted;
+        if (eventWaitlistMode) {
+            setJoinError(null);
+            setJoinNotice(null);
+            try {
+                if (selectedChildIsWaitlisted) {
+                    setRegisteringChild(true);
+                    await eventService.removeFromWaitlist(currentEvent.$id, selectedChildId, 'user');
+                    setJoinNotice('Child removed from waitlist.');
+                    await loadEventDetails();
+                    return;
+                }
+                if (selectedChildIsRegistered) {
+                    setJoinNotice('Child is already registered for this event.');
+                    return;
+                }
+                const signingStarted = await beginSigningFlow({
+                    mode: 'child_waitlist',
+                    childId: selectedChildId,
+                    childEmail: selectedChild?.email ?? null,
+                });
+                if (signingStarted) {
+                    return;
+                }
+                await finalizeJoin({
+                    mode: 'child_waitlist',
+                    childId: selectedChildId,
+                    childEmail: selectedChild?.email ?? null,
+                });
+            } catch (error) {
+                setJoinError(error instanceof Error ? error.message : 'Failed to update child waitlist status.');
+            } finally {
+                setRegisteringChild(false);
+            }
+            return;
+        }
         if (isDivisionSelectionMissing) {
             setJoinError(
                 registrationByDivisionType
@@ -1232,6 +1297,23 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setJoinError(error instanceof Error ? error.message : 'Failed to register child.');
         }
     };
+
+    const openFreeAgentActions = useCallback((agent: UserData) => {
+        setSelectedFreeAgentActionUser(agent);
+    }, []);
+
+    const handleInviteFreeAgentToTeam = useCallback(() => {
+        if (!selectedFreeAgentActionUser || !currentEvent?.$id) {
+            return;
+        }
+        const params = new URLSearchParams({
+            event: currentEvent.$id,
+            freeAgent: selectedFreeAgentActionUser.$id,
+        });
+        setShowFreeAgentsDropdown(false);
+        setSelectedFreeAgentActionUser(null);
+        router.push(`/teams?${params.toString()}`);
+    }, [currentEvent?.$id, router, selectedFreeAgentActionUser]);
 
     // Update the join event handlers
     const handleJoinEvent = async (selection?: 'self' | 'child') => {
@@ -1282,6 +1364,93 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             await finalizeJoin({ mode: 'user' });
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to join event');
+        } finally {
+            if (!signingStarted) {
+                setJoining(false);
+            }
+        }
+    };
+
+    const handleJoinWaitlist = async () => {
+        if (!user || !currentEvent) return;
+        if (selfRegistrationBlockedReason) {
+            setJoinError(selfRegistrationBlockedReason);
+            return;
+        }
+        if (isDivisionSelectionMissing) {
+            setJoinError(
+                registrationByDivisionType
+                    ? 'Select a division type before joining the waitlist.'
+                    : 'Select a division before joining the waitlist.',
+            );
+            return;
+        }
+
+        setJoining(true);
+        setJoinError(null);
+        setJoinNotice(null);
+
+        let signingStarted = false;
+        try {
+            if (isMinor) {
+                const result = await registrationService.registerSelfForEvent(currentEvent.$id, divisionSelectionPayload);
+                if (result.requiresParentApproval) {
+                    setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
+                } else {
+                    setJoinNotice(`Registration status: ${result.registration?.status ?? 'pendingConsent'}`);
+                }
+                await loadEventDetails();
+                return;
+            }
+            signingStarted = await beginSigningFlow({ mode: 'user_waitlist' });
+            if (signingStarted) {
+                return;
+            }
+            await finalizeJoin({ mode: 'user_waitlist' });
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to join waitlist');
+        } finally {
+            if (!signingStarted) {
+                setJoining(false);
+            }
+        }
+    };
+
+    const handleJoinTeamWaitlist = async () => {
+        if (!user || !currentEvent || !selectedTeamId) return;
+        if (!selectedTeamIsWaitlisted && (teamDivisionTypeMissing || teamDivisionMismatch)) {
+            setJoinError(teamDivisionErrorMessage ?? 'Selected team is not eligible for that division type.');
+            return;
+        }
+        if (!selectedTeamIsWaitlisted && isDivisionSelectionMissing) {
+            setJoinError(
+                registrationByDivisionType
+                    ? 'Select a division type before joining the waitlist.'
+                    : 'Select a division before joining the waitlist.',
+            );
+            return;
+        }
+
+        setJoining(true);
+        setJoinError(null);
+        setJoinNotice(null);
+
+        const team = userTeams.find((t) => t.$id === selectedTeamId) || ({ $id: selectedTeamId } as Team);
+        let signingStarted = false;
+        try {
+            if (selectedTeamIsWaitlisted) {
+                await eventService.removeFromWaitlist(currentEvent.$id, selectedTeamId, 'team');
+                setJoinNotice('Team removed from waitlist.');
+                await loadEventDetails();
+                return;
+            }
+            signingStarted = await beginSigningFlow({ mode: 'team_waitlist', team });
+            if (signingStarted) {
+                return;
+            }
+            await finalizeJoin({ mode: 'team_waitlist', team });
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to update team waitlist status');
         } finally {
             if (!signingStarted) {
                 setJoining(false);
@@ -1388,6 +1557,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const { date, time } = getEventDateTime(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
     const totalParticipants = isTeamSignup ? teams.length : players.length;
+    const eventAtCapacity = totalParticipants >= currentEvent.maxParticipants;
     const normalizedFreeAgentIds = (() => {
         const fromEvent = collectUniqueUserIds(currentEvent.freeAgentIds);
         const additionalFromProfiles = freeAgents
@@ -1395,12 +1565,19 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             .filter((entry): entry is string => Boolean(entry));
         return Array.from(new Set([...fromEvent, ...additionalFromProfiles]));
     })();
+    const normalizedWaitlistIds = (() => {
+        const fromEvent = collectUniqueUserIds(currentEvent.waitListIds);
+        const fromLegacy = collectUniqueUserIds(currentEvent.waitList);
+        return Array.from(new Set([...fromEvent, ...fromLegacy]));
+    })();
     const normalizedFreeAgentIdSet = new Set(normalizedFreeAgentIds);
+    const normalizedWaitlistIdSet = new Set(normalizedWaitlistIds);
     // Use expanded relations for registration state
     const isUserRegistered = !!user && (
         (!isTeamSignup && players.some(p => p.$id === user.$id)) ||
         (isTeamSignup && teams.some(t => (t.playerIds || []).includes(user.$id)))
     );
+    const isUserWaitlisted = !!user && normalizedWaitlistIdSet.has(user.$id);
     const isUserFreeAgent = !!user && normalizedFreeAgentIdSet.has(user.$id);
     const isChildEligible = (child: FamilyChild): boolean => {
         const childDob = parseDateValue(child.dateOfBirth ?? null);
@@ -1455,6 +1632,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         selectedChildId
         && normalizedFreeAgentIdSet.has(selectedChildId),
     );
+    const selectedChildIsWaitlisted = Boolean(
+        selectedChildId
+        && normalizedWaitlistIdSet.has(selectedChildId),
+    );
+    const selectedChildIsRegistered = Boolean(
+        selectedChildId
+        && players.some((participant) => participant.$id === selectedChildId),
+    );
     const showChildRegistrationStatus = Boolean(selectedChildId && childRegistrationChildId === selectedChildId);
     const hasCoordinates = Array.isArray(currentEvent.coordinates) && currentEvent.coordinates.length >= 2;
     const mapLat = hasCoordinates ? Number(currentEvent.coordinates[1]) : undefined;
@@ -1506,17 +1691,37 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         : teamDivisionMismatch
             ? `Selected team division type (${selectedTeamDivisionTypeId?.toUpperCase()}) does not match ${selectedDivisionOption?.divisionTypeName ?? 'the selected division type'}.`
             : null;
+    const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
+    const showSelfWaitlistActions = eventAtCapacity || isUserWaitlisted;
+    const childWaitlistMode = !isTeamSignup && (eventAtCapacity || selectedChildIsWaitlisted);
+    const showTeamWaitlistActions = eventAtCapacity || selectedTeamIsWaitlisted;
     const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
-    const selfWaitlistDisabled = Boolean(selfRegistrationBlockedReason) || joining;
+    const selfWaitlistJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
+    const selfWaitlistLeaveDisabled = joining;
     const freeAgentJoinBlockedReason = selfRegistrationBlockedReason;
+    const childPrimaryActionLabel = isTeamSignup
+        ? (joiningChildFreeAgent
+            ? 'Updating…'
+            : (selectedChildIsFreeAgent ? 'Remove child from free agents' : 'Add child as free agent'))
+        : childWaitlistMode
+            ? (registeringChild
+                ? 'Updating…'
+                : (selectedChildIsWaitlisted ? 'Remove child from waitlist' : 'Add child to waitlist'))
+            : (registeringChild ? 'Registering…' : 'Register child');
     const childJoinDisabled = !canRegisterChild
         || !selectedChildId
-        || !selectedChildEligible
-        || (isTeamSignup ? joiningChildFreeAgent : (registeringChild || isDivisionSelectionMissing));
+        || (isTeamSignup
+            ? (!selectedChildEligible || joiningChildFreeAgent)
+            : childWaitlistMode
+                ? (
+                    registeringChild
+                    || (!selectedChildIsWaitlisted && (!selectedChildEligible || isDivisionSelectionMissing || selectedChildIsRegistered))
+                )
+                : (!selectedChildEligible || registeringChild || isDivisionSelectionMissing));
     const childRegistrationPanel = canRegisterChild ? (
         <Paper withBorder p="sm" radius="md" className="space-y-3">
             <Text size="sm" fw={600}>
-                {isTeamSignup ? 'Child Free Agent' : 'Register a child'}
+                {isTeamSignup ? 'Child Free Agent' : (childWaitlistMode ? 'Child Waitlist' : 'Register a child')}
             </Text>
             {childrenError && (
                 <Alert color="red" variant="light">
@@ -1544,9 +1749,24 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     Team registration is only for teams. Child profiles can join as free agents.
                 </Text>
             )}
+            {!isTeamSignup && childWaitlistMode && (
+                <Text size="xs" c="dimmed">
+                    Manage the selected child&apos;s waitlist status.
+                </Text>
+            )}
             {selectedChild && !selectedChildHasEmail && !isTeamSignup && (
                 <Alert color="yellow" variant="light">
                     The selected child can register now, but child-signature steps remain pending until an email is added.
+                </Alert>
+            )}
+            {!isTeamSignup && childWaitlistMode && selectedChildIsRegistered && (
+                <Alert color="green" variant="light">
+                    The selected child is already registered for this event.
+                </Alert>
+            )}
+            {!isTeamSignup && childWaitlistMode && selectedChildIsWaitlisted && (
+                <Alert color="blue" variant="light">
+                    The selected child is currently on the waitlist.
                 </Alert>
             )}
             <Button
@@ -1555,11 +1775,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 onClick={handleRegisterChild}
                 disabled={childJoinDisabled}
             >
-                {isTeamSignup
-                    ? (joiningChildFreeAgent
-                        ? 'Updating…'
-                        : (selectedChildIsFreeAgent ? 'Remove child from free agents' : 'Add child as free agent'))
-                    : (registeringChild ? 'Registering…' : 'Register child')}
+                {childPrimaryActionLabel}
             </Button>
             {hasAgeLimits && (
                 <Text size="xs" c="dimmed">
@@ -1683,6 +1899,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                         <div>
                                             <span className="text-sm text-gray-600">Type</span>
                                             <p className="font-medium capitalize">{currentEvent.eventType}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-sm text-gray-600">Registration</span>
+                                            <p className="font-medium">{isTeamSignup ? 'Team registration' : 'Individual registration'}</p>
                                         </div>
                                         <div>
                                             <span className="text-sm text-gray-600">Price</span>
@@ -1839,7 +2059,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             </div>
 
                             {/* Teams Section */}
-                            {event.teamSignup && (
+                            {isTeamSignup && (
                                 <div className="mb-4">
                                     <ParticipantsPreview
                                         title="Teams"
@@ -1854,17 +2074,19 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             )}
 
                             {/* Free Agents Section */}
-                            <div className="mb-4">
-                                <ParticipantsPreview
-                                    title="Free Agents"
-                                    participants={freeAgents}
-                                    totalCount={normalizedFreeAgentIds.length}
-                                    isLoading={isLoadingEvent}
-                                    onClick={() => setShowFreeAgentsDropdown(true)}
-                                    getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
-                                    emptyMessage="No free agents yet"
-                                />
-                            </div>
+                            {isTeamSignup && (
+                                <div className="mb-4">
+                                    <ParticipantsPreview
+                                        title="Free Agents"
+                                        participants={freeAgents}
+                                        totalCount={normalizedFreeAgentIds.length}
+                                        isLoading={isLoadingEvent}
+                                        onClick={() => setShowFreeAgentsDropdown(true)}
+                                        getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
+                                        emptyMessage="No free agents yet"
+                                    />
+                                </div>
+                            )}
 
                             {/* Join Options (includes total participants) */}
                             <Paper withBorder p="md" radius="md">
@@ -1977,27 +2199,47 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     </Alert>
                                                 )}
 
-                                                {totalParticipants >= currentEvent.maxParticipants ? (
-                                                    <Button
-                                                        fullWidth
-                                                        color="orange"
-                                                        onClick={async () => {
-                                                            if (!user) return;
-                                                            setJoining(true);
-                                                            setJoinError(null);
-                                                            try {
-                                                                await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user');
-                                                                await loadEventDetails();
-                                                            } catch (e) {
-                                                                setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');
-                                                            } finally {
-                                                                setJoining(false);
-                                                            }
-                                                        }}
-                                                        disabled={selfWaitlistDisabled}
-                                                    >
-                                                        {joining ? 'Adding…' : 'Join Waitlist'}
-                                                    </Button>
+                                                {showSelfWaitlistActions ? (
+                                                    isUserWaitlisted ? (
+                                                        <div className="space-y-2">
+                                                            <Text size="sm" c="blue" fw={500} ta="center">
+                                                                {"✓ You're on the waitlist"}
+                                                            </Text>
+                                                            <Button
+                                                                fullWidth
+                                                                color="red"
+                                                                variant="light"
+                                                                onClick={async () => {
+                                                                    if (!user) return;
+                                                                    setJoining(true);
+                                                                    setJoinError(null);
+                                                                    try {
+                                                                        await eventService.removeFromWaitlist(currentEvent.$id, user.$id, 'user');
+                                                                        setJoinNotice('Removed from waitlist.');
+                                                                        await loadEventDetails();
+                                                                    } catch (e) {
+                                                                        setJoinError(e instanceof Error ? e.message : 'Failed to leave waitlist');
+                                                                    } finally {
+                                                                        setJoining(false);
+                                                                    }
+                                                                }}
+                                                                disabled={selfWaitlistLeaveDisabled}
+                                                            >
+                                                                {joining ? 'Updating…' : 'Leave Waitlist'}
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <Button
+                                                            fullWidth
+                                                            color="orange"
+                                                            onClick={() => { void handleJoinWaitlist(); }}
+                                                            disabled={selfWaitlistJoinDisabled}
+                                                        >
+                                                            {joining
+                                                                ? (isMinor ? 'Sending…' : 'Adding…')
+                                                                : (isMinor ? 'Send' : 'Join Waitlist')}
+                                                        </Button>
+                                                    )
                                                 ) : (
                                                     <Button
                                                         fullWidth
@@ -2078,25 +2320,19 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
                                                                 {/* Join/Waitlist Button Section - Matching Hide/Show button height */}
                                                                 <div className="flex justify-center pt-2">
-                                                                    {totalParticipants >= currentEvent.maxParticipants ? (
+                                                                    {showTeamWaitlistActions ? (
                                                                         <Button
-                                                                            onClick={async () => {
-                                                                                if (!selectedTeamId) return;
-                                                                                setJoining(true);
-                                                                                setJoinError(null);
-                                                                                try {
-                                                                                    await eventService.addToWaitlist(currentEvent.$id, selectedTeamId, 'team');
-                                                                                    await loadEventDetails();
-                                                                                } catch (e: any) {
-                                                                                    setJoinError(e instanceof Error ? e.message : 'Failed to join waitlist');
-                                                                                } finally {
-                                                                                    setJoining(false);
-                                                                                }
-                                                                            }}
-                                                                            disabled={joining || !selectedTeamId || teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing}
+                                                                            onClick={() => { void handleJoinTeamWaitlist(); }}
+                                                                            disabled={
+                                                                                joining
+                                                                                || !selectedTeamId
+                                                                                || (!selectedTeamIsWaitlisted && (teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing))
+                                                                            }
                                                                             color="orange"
                                                                         >
-                                                                            {joining ? 'Adding...' : 'Join Waitlist'}
+                                                                            {joining
+                                                                                ? 'Updating...'
+                                                                                : (selectedTeamIsWaitlisted ? 'Leave Waitlist' : 'Join Waitlist')}
                                                                         </Button>
                                                                     ) : (
                                                                         <Button
@@ -2375,30 +2611,50 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             />
 
             {/* Free Agents Dropdown */}
-            <ParticipantsDropdown
-                isOpen={showFreeAgentsDropdown}
-                onClose={() => setShowFreeAgentsDropdown(false)}
-                title="Free Agents"
-                participants={freeAgents}
-                isLoading={isLoadingEvent}
-                renderParticipant={(agent) => (
-                    <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                        <Image
-                            src={getUserAvatarUrl(agent as UserData, 40)}
-                            alt={(agent as UserData).fullName}
-                            width={40}
-                            height={40}
-                            unoptimized
-                            className="w-10 h-10 rounded-full object-cover"
-                        />
-                        <div>
-                            <div className="font-medium text-gray-900">{(agent as UserData).fullName}</div>
-                            <div className="text-sm text-gray-500">@{(agent as UserData).userName}</div>
+            {isTeamSignup && (
+                <ParticipantsDropdown
+                    isOpen={showFreeAgentsDropdown}
+                    onClose={() => setShowFreeAgentsDropdown(false)}
+                    title="Free Agents"
+                    participants={freeAgents}
+                    isLoading={isLoadingEvent}
+                    renderParticipant={(agent) => (
+                        <div className="p-1">
+                            <UserCard
+                                user={agent as UserData}
+                                onClick={() => openFreeAgentActions(agent as UserData)}
+                            />
                         </div>
-                    </div>
-                )}
-                emptyMessage="No free agents have listed for this event yet."
-            />
+                    )}
+                    emptyMessage="No free agents have listed for this event yet."
+                />
+            )}
+
+            <Modal
+                opened={Boolean(selectedFreeAgentActionUser)}
+                onClose={() => setSelectedFreeAgentActionUser(null)}
+                centered
+                title={selectedFreeAgentActionUser ? `${selectedFreeAgentActionUser.fullName}` : 'Free Agent Actions'}
+                zIndex={SIGN_MODAL_Z_INDEX}
+            >
+                <Stack gap="sm">
+                    <Text size="sm" c="dimmed">
+                        @{selectedFreeAgentActionUser?.userName || 'user'}
+                    </Text>
+                    <Button
+                        onClick={handleInviteFreeAgentToTeam}
+                        disabled={!selectedFreeAgentActionUser || !currentEvent?.$id}
+                    >
+                        Invite to Team
+                    </Button>
+                    <Button
+                        variant="default"
+                        onClick={() => setSelectedFreeAgentActionUser(null)}
+                    >
+                        Close
+                    </Button>
+                </Stack>
+            </Modal>
 
             <Modal
                 opened={showJoinChoiceModal}

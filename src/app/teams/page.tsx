@@ -71,6 +71,8 @@ function TeamsPageContent() {
   const searchParams = useSearchParams();
   const [eventContext, setEventContext] = useState<Event | null>(null);
   const [eventFreeAgents, setEventFreeAgents] = useState<UserData[]>([]);
+  const [selectedFreeAgentId, setSelectedFreeAgentId] = useState<string | null>(null);
+  const [selectedFreeAgent, setSelectedFreeAgent] = useState<UserData | null>(null);
 
   // Local UI state for extracted modals
   const [creating, setCreating] = useState(false);
@@ -152,10 +154,22 @@ function TeamsPageContent() {
   // Load event context (free agents) if arriving from EventJoinModal
   useEffect(() => {
     const eventId = searchParams?.get('event');
+    const focusedFreeAgent = searchParams?.get('freeAgent');
+    const normalizedFocusedFreeAgent =
+      typeof focusedFreeAgent === 'string' && focusedFreeAgent.trim().length > 0
+        ? focusedFreeAgent.trim()
+        : null;
     const loadEvent = async () => {
+      setSelectedFreeAgentId(normalizedFocusedFreeAgent);
       if (!eventId) {
         setEventContext(null);
         setEventFreeAgents([]);
+        if (normalizedFocusedFreeAgent) {
+          const focusedUser = await userService.getUserById(normalizedFocusedFreeAgent);
+          setSelectedFreeAgent(focusedUser ?? null);
+        } else {
+          setSelectedFreeAgent(null);
+        }
         return;
       }
       try {
@@ -165,14 +179,34 @@ function TeamsPageContent() {
           if (evt.freeAgentIds && evt.freeAgentIds.length > 0) {
             const agents = await userService.getUsersByIds(evt.freeAgentIds);
             setEventFreeAgents(agents);
+            if (normalizedFocusedFreeAgent) {
+              const focusedFromEvent = agents.find((agent) => agent.$id === normalizedFocusedFreeAgent);
+              if (focusedFromEvent) {
+                setSelectedFreeAgent(focusedFromEvent);
+              } else {
+                const fallbackUser = await userService.getUserById(normalizedFocusedFreeAgent);
+                setSelectedFreeAgent(fallbackUser ?? null);
+              }
+            } else {
+              setSelectedFreeAgent(null);
+            }
           } else {
             setEventFreeAgents([]);
+            if (normalizedFocusedFreeAgent) {
+              const fallbackUser = await userService.getUserById(normalizedFocusedFreeAgent);
+              setSelectedFreeAgent(fallbackUser ?? null);
+            } else {
+              setSelectedFreeAgent(null);
+            }
           }
+        } else {
+          setSelectedFreeAgent(null);
         }
       } catch (e) {
         console.error('Failed to load event context:', e);
         setEventContext(null);
         setEventFreeAgents([]);
+        setSelectedFreeAgent(null);
       }
     };
     loadEvent();
@@ -243,6 +277,20 @@ function TeamsPageContent() {
         </div>
         <Button onClick={() => setShowCreateModal(true)}>+ Create Team</Button>
       </Group>
+
+      {selectedFreeAgent && (
+        <Paper withBorder radius="md" p="md" mb="lg">
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Text fw={600} mb={4}>Suggested free agent from event</Text>
+              <UserCard user={selectedFreeAgent} />
+              <Text size="sm" c="dimmed" mt="xs">
+                Open a team and invite this player from the event free-agent suggestions.
+              </Text>
+            </div>
+          </Group>
+        </Paper>
+      )}
 
       {/* Tabs */}
       <Group mb="lg">
@@ -407,6 +455,8 @@ function TeamsPageContent() {
           }}
           eventContext={eventContext ?? undefined}
           eventFreeAgents={eventFreeAgents}
+          selectedFreeAgentId={selectedFreeAgentId ?? undefined}
+          selectedFreeAgentUser={selectedFreeAgent ?? undefined}
         />
       )}
     </div>

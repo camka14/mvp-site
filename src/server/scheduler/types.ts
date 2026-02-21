@@ -285,6 +285,7 @@ export class UserData implements Participant {
 export class Match implements SchedulableEvent {
   id: string;
   matchId: number | null;
+  locked: boolean;
   team1Points: number[];
   team2Points: number[];
   start: Date;
@@ -311,6 +312,7 @@ export class Match implements SchedulableEvent {
   constructor(params: {
     id: string;
     matchId?: number | null;
+    locked?: boolean;
     team1Points?: number[];
     team2Points?: number[];
     start: Date;
@@ -336,6 +338,7 @@ export class Match implements SchedulableEvent {
   }) {
     this.id = params.id;
     this.matchId = params.matchId ?? null;
+    this.locked = params.locked ?? false;
     this.team1Points = params.team1Points ?? [];
     this.team2Points = params.team2Points ?? [];
     this.start = params.start;

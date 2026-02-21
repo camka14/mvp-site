@@ -24,6 +24,9 @@ interface LeagueCalendarViewProps {
   canManage?: boolean;
   matchCardPaddingY?: string;
   currentUser?: UserData | null;
+  childUserIds?: string[];
+  onToggleLockAllMatches?: (locked: boolean, matchIds: string[]) => void | Promise<void>;
+  lockingAllMatches?: boolean;
 }
 
 type CalendarLayoutMode = 'calendar' | 'resource';
@@ -222,8 +225,24 @@ export function LeagueCalendarView({
   canManage = false,
   matchCardPaddingY = 'my-2',
   currentUser,
+  childUserIds = [],
+  onToggleLockAllMatches,
+  lockingAllMatches = false,
 }: LeagueCalendarViewProps) {
   const userTeamIds = useMemo(() => new Set(currentUser?.teamIds ?? []), [currentUser?.teamIds]);
+  const trackedUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (typeof currentUser?.$id === 'string' && currentUser.$id.trim().length > 0) {
+      ids.add(currentUser.$id);
+    }
+    for (const childId of childUserIds) {
+      if (typeof childId === 'string' && childId.trim().length > 0) {
+        ids.add(childId.trim());
+      }
+    }
+    return ids;
+  }, [childUserIds, currentUser?.$id]);
+  const hasTrackedUsers = trackedUserIds.size > 0;
   const [layoutMode, setLayoutMode] = useState<CalendarLayoutMode>('calendar');
 
   const fieldLookup = useMemo(() => {
@@ -238,7 +257,7 @@ export function LeagueCalendarView({
 
   const teamHasUser = useCallback(
     (team: Match['team1'], fallbackId?: string | null) => {
-      if (!currentUser?.$id) return false;
+      if (!hasTrackedUsers) return false;
       const teamId =
         (team && typeof team === 'object' && '$id' in team && typeof (team as any).$id === 'string'
           ? (team as any).$id
@@ -249,36 +268,39 @@ export function LeagueCalendarView({
       }
 
       const players = (team as any)?.players;
-      if (Array.isArray(players) && players.some((player) => player?.$id === currentUser.$id)) {
+      if (Array.isArray(players) && players.some((player) => typeof player?.$id === 'string' && trackedUserIds.has(player.$id))) {
         return true;
       }
 
       const playerIds = (team as any)?.playerIds;
-      if (Array.isArray(playerIds) && playerIds.includes(currentUser.$id)) {
+      if (Array.isArray(playerIds) && playerIds.some((playerId) => typeof playerId === 'string' && trackedUserIds.has(playerId))) {
         return true;
       }
 
       const captainId = (team as any)?.captainId ?? (team as any)?.captain?.$id;
-      if (typeof captainId === 'string' && captainId === currentUser.$id) {
+      if (typeof captainId === 'string' && trackedUserIds.has(captainId)) {
         return true;
       }
 
       return false;
     },
-    [currentUser?.$id, userTeamIds],
+    [hasTrackedUsers, trackedUserIds, userTeamIds],
   );
 
   const matchInvolvesCurrentUser = useCallback(
     (match: Match) => {
-      if (!currentUser?.$id) return false;
+      if (!hasTrackedUsers) return false;
 
-      if (match.refereeId === currentUser.$id || match.referee?.$id === currentUser.$id) {
+      if (
+        (typeof match.refereeId === 'string' && trackedUserIds.has(match.refereeId))
+        || (typeof match.referee?.$id === 'string' && trackedUserIds.has(match.referee.$id))
+      ) {
         return true;
       }
 
       return teamHasUser(match.team1, match.team1Id) || teamHasUser(match.team2, match.team2Id);
     },
-    [currentUser?.$id, teamHasUser],
+    [hasTrackedUsers, teamHasUser, trackedUserIds],
   );
 
   const [showMyMatchesOnly, setShowMyMatchesOnly] = useState(false);
@@ -293,15 +315,27 @@ export function LeagueCalendarView({
 
   const userInvolvedMatchIds = useMemo(
     () =>
-      currentUser
+      hasTrackedUsers
         ? new Set(
             matches
               .filter((match) => matchInvolvesCurrentUser(match))
               .map((match) => match.$id),
           )
         : new Set<string>(),
-    [currentUser, matchInvolvesCurrentUser, matches],
+    [hasTrackedUsers, matchInvolvesCurrentUser, matches],
   );
+  const canShowMyMatchesControl = userInvolvedMatchIds.size > 0;
+  const allDisplayedLocked = matchesToDisplay.length > 0 && matchesToDisplay.every((match) => Boolean(match.locked));
+  const displayedMatchIds = useMemo(
+    () => matchesToDisplay.map((match) => match.$id).filter((id) => typeof id === 'string' && id.length > 0),
+    [matchesToDisplay],
+  );
+
+  useEffect(() => {
+    if (!canShowMyMatchesControl && showMyMatchesOnly) {
+      setShowMyMatchesOnly(false);
+    }
+  }, [canShowMyMatchesControl, showMyMatchesOnly]);
 
   const calendarEvents = useMemo(() => {
     return matchesToDisplay
@@ -563,16 +597,31 @@ export function LeagueCalendarView({
               { value: 'resource', label: 'By Field' },
             ]}
           />
-          {currentUser && (
-            <Button
-              size="sm"
-              variant={showMyMatchesOnly ? 'filled' : 'light'}
-              color="green"
-              onClick={() => setShowMyMatchesOnly((prev) => !prev)}
-            >
-              {showMyMatchesOnly ? 'Showing My Matches' : 'Show Only My Matches'}
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {canShowMyMatchesControl && (
+              <Button
+                size="sm"
+                variant={showMyMatchesOnly ? 'filled' : 'light'}
+                color="green"
+                onClick={() => setShowMyMatchesOnly((prev) => !prev)}
+              >
+                {showMyMatchesOnly ? 'Showing My Matches' : 'Show Only My Matches'}
+              </Button>
+            )}
+            {canManage && onToggleLockAllMatches && displayedMatchIds.length > 0 && (
+              <Button
+                size="sm"
+                variant={allDisplayedLocked ? 'filled' : 'light'}
+                color={allDisplayedLocked ? 'red' : 'yellow'}
+                loading={lockingAllMatches}
+                onClick={() => {
+                  void onToggleLockAllMatches(!allDisplayedLocked, displayedMatchIds);
+                }}
+              >
+                {allDisplayedLocked ? 'Unlock All Matches' : 'Lock All Matches'}
+              </Button>
+            )}
+          </div>
         </div>
         {showRange && (
           <div className="mb-6">

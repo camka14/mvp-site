@@ -652,6 +652,7 @@ const buildMatches = (
     const match = new Match({
       id: row.id,
       matchId: row.matchId ?? null,
+      locked: Boolean(row.locked),
       team1Points: ensureArray(row.team1Points),
       team2Points: ensureArray(row.team2Points),
       start: row.start instanceof Date ? row.start : new Date(row.start),
@@ -839,6 +840,7 @@ export const saveMatches = async (
       matchId: match.matchId ?? 0,
       start: match.start,
       end: match.end,
+      locked: Boolean(match.locked),
       division: match.division?.id ?? null,
       team1Points: match.team1Points ?? [],
       team2Points: match.team2Points ?? [],

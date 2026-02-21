@@ -9,6 +9,7 @@ class TournamentService {
         return {
             id: match.$id,
             matchId: match.matchId,
+            locked: Boolean(match.locked),
             team1Points: match.team1Points,
             team2Points: match.team2Points,
             setResults: match.setResults,

@@ -249,13 +249,18 @@ describe('schedule routes', () => {
     serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
 
     const res = await matchPatch(
-      patchRequest('http://localhost/api/events/event_1/matches/match_1', { teamRefereeId: 'team_1' }),
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', { teamRefereeId: 'team_1', locked: true }),
       { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
     );
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(applyMatchUpdatesMock).toHaveBeenCalled();
+    expect(applyMatchUpdatesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ locked: true }),
+    );
     expect(saveMatchesMock).toHaveBeenCalled();
     expect(json.match.$id).toBe('match_1');
   });
@@ -283,7 +288,7 @@ describe('schedule routes', () => {
     const res = await matchesPatch(
       patchRequest('http://localhost/api/events/event_1/matches', {
         matches: [
-          { id: 'match_1', teamRefereeId: 'team_1' },
+          { id: 'match_1', teamRefereeId: 'team_1', locked: true },
           { id: 'match_2', fieldId: 'field_2' },
         ],
       }),
@@ -293,6 +298,7 @@ describe('schedule routes', () => {
 
     expect(res.status).toBe(200);
     expect(applyMatchUpdatesMock).toHaveBeenCalledTimes(2);
+    expect(applyMatchUpdatesMock.mock.calls.some((call) => call[2]?.locked === true)).toBe(true);
     expect(saveMatchesMock).toHaveBeenCalledTimes(1);
     expect(json.matches).toHaveLength(2);
   });

@@ -38,13 +38,18 @@ describe('event waitlist route', () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
+      start: new Date('2026-03-01T00:00:00.000Z'),
+      teamSignup: true,
       waitListIds: [],
     });
     prismaMock.events.update.mockResolvedValue({
       id: 'event_1',
       waitListIds: ['user_1'],
     });
-    prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      id: 'user_1',
+      dateOfBirth: new Date('1995-01-01T00:00:00.000Z'),
+    });
   });
 
   it('adds the current user to waitlist by default', async () => {
@@ -65,7 +70,10 @@ describe('event waitlist route', () => {
   it('allows a parent to add a linked child to waitlist', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'parent_1', isAdmin: false });
     prismaMock.parentChildLinks.findFirst.mockResolvedValueOnce({ id: 'link_1' });
-    prismaMock.userData.findUnique.mockResolvedValueOnce({ id: 'child_1' });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      id: 'child_1',
+      dateOfBirth: new Date('2014-01-01T00:00:00.000Z'),
+    });
     prismaMock.events.update.mockResolvedValueOnce({
       id: 'event_1',
       waitListIds: ['child_1'],
@@ -126,9 +134,55 @@ describe('event waitlist route', () => {
     );
   });
 
+  it('blocks team waitlist joins for non-team events', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      start: new Date('2026-03-01T00:00:00.000Z'),
+      teamSignup: false,
+      waitListIds: [],
+    });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      captainId: 'captain_1',
+      managerId: 'manager_1',
+      playerIds: ['user_1'],
+    });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/waitlist', { teamId: 'team_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Team waitlist is only available for team registration events.');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('returns parent-approval response when a child self-joins waitlist', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'child_1', isAdmin: false });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      id: 'child_1',
+      dateOfBirth: new Date('2014-01-01T00:00:00.000Z'),
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValueOnce({ parentId: 'parent_1' });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/waitlist', { userId: 'child_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.requiresParentApproval).toBe(true);
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
   it('removes current user from waitlist', async () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({
       id: 'event_1',
+      start: new Date('2026-03-01T00:00:00.000Z'),
+      teamSignup: true,
       waitListIds: ['user_1'],
     });
     prismaMock.events.update.mockResolvedValueOnce({

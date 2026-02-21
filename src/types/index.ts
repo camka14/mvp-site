@@ -170,6 +170,7 @@ export interface Match {
   matchId?: number;
   eventId?: string;
   fieldId?: string | null;
+  locked?: boolean;
   team1Id?: string | null;
   team2Id?: string | null;
   refereeId?: string | null;

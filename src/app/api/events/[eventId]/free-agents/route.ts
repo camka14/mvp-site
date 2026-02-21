@@ -68,6 +68,7 @@ async function updateFreeAgents(
       where: { id: eventId },
       select: {
         id: true,
+        teamSignup: true,
         freeAgentIds: true,
         requiredTemplateIds: true,
         start: true,
@@ -86,6 +87,12 @@ async function updateFreeAgents(
 
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  }
+  if (mode === 'add' && !event.teamSignup) {
+    return NextResponse.json(
+      { error: 'Free-agent signup is only available for team registration events.' },
+      { status: 403 },
+    );
   }
   if (!targetUser) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });

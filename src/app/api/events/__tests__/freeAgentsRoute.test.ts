@@ -35,6 +35,7 @@ describe('event free-agent route', () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
+      teamSignup: true,
       freeAgentIds: [],
       requiredTemplateIds: [],
       start: new Date('2026-03-01T00:00:00.000Z'),
@@ -65,6 +66,26 @@ describe('event free-agent route', () => {
         }),
       }),
     );
+  });
+
+  it('rejects free-agent add for non-team events', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: false,
+      freeAgentIds: [],
+      requiredTemplateIds: [],
+      start: new Date('2026-03-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/free-agents', { userId: 'user_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Free-agent signup is only available for team registration events.');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
   it('removes the current user from free agents', async () => {
