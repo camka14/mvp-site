@@ -104,52 +104,13 @@ const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
   return fallback;
 };
 const DEFAULT_DIVISION_KEY = 'open';
-const LEAGUE_SCORING_BOOLEAN_FIELDS = [
-  'applyShutoutOnlyIfWin',
-  'overtimeEnabled',
-  'goalDifferenceTiebreaker',
-  'headToHeadTiebreaker',
-  'totalGoalsTiebreaker',
-  'enableBonusForComebackWin',
-  'enableBonusForHighScoringMatch',
-  'enablePenaltyForUnsportingBehavior',
-] as const;
+const LEAGUE_SCORING_BOOLEAN_FIELDS: readonly string[] = [];
 const LEAGUE_SCORING_NUMBER_FIELDS = [
   'pointsForWin',
   'pointsForDraw',
   'pointsForLoss',
-  'pointsForForfeitWin',
-  'pointsForForfeitLoss',
-  'pointsPerSetWin',
-  'pointsPerSetLoss',
-  'pointsPerGameWin',
-  'pointsPerGameLoss',
   'pointsPerGoalScored',
   'pointsPerGoalConceded',
-  'maxGoalBonusPoints',
-  'minGoalBonusThreshold',
-  'pointsForShutout',
-  'pointsForCleanSheet',
-  'pointsPerGoalDifference',
-  'maxGoalDifferencePoints',
-  'pointsPenaltyPerGoalDifference',
-  'pointsForParticipation',
-  'pointsForNoShow',
-  'pointsForWinStreakBonus',
-  'winStreakThreshold',
-  'pointsForOvertimeWin',
-  'pointsForOvertimeLoss',
-  'pointsPerRedCard',
-  'pointsPerYellowCard',
-  'pointsPerPenalty',
-  'maxPenaltyDeductions',
-  'maxPointsPerMatch',
-  'minPointsPerMatch',
-  'bonusPointsForComebackWin',
-  'highScoringThreshold',
-  'bonusPointsForHighScoringMatch',
-  'penaltyPointsForUnsportingBehavior',
-  'pointPrecision',
 ] as const;
 
 const normalizeDivisionKey = (value: unknown): string | null => {

@@ -25,6 +25,7 @@ const BEST_OF_OPTIONS = [
   { value: '3', label: 'Best of 3' },
   { value: '5', label: 'Best of 5' },
 ];
+const MAX_STANDARD_NUMBER = 99_999;
 
 const syncArrayLength = (arr: number[], len: number, fill = 21) => {
   const next = arr.slice(0, len);
@@ -140,6 +141,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
               { value: 'double', label: 'Double Elimination' },
             ]}
             comboboxProps={comboboxProps}
+            maw={320}
           />
         </Grid.Col>
 
@@ -147,6 +149,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
           <NumberInput
             label="Rest Time Between Matches (minutes)"
             min={0}
+            max={MAX_STANDARD_NUMBER}
             step={5}
             value={tournamentData.restTimeMinutes}
             onChange={(value) =>
@@ -155,6 +158,8 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                 restTimeMinutes: Number(value) >= 0 ? Number(value) : 0,
               }))
             }
+            clampBehavior="strict"
+            maw={220}
           />
         </Grid.Col>
 
@@ -178,6 +183,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
               }
               data={BEST_OF_OPTIONS}
               comboboxProps={comboboxProps}
+              maw={220}
             />
           </Grid.Col>
         )}
@@ -202,6 +208,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
               }
               data={BEST_OF_OPTIONS}
               comboboxProps={comboboxProps}
+              maw={220}
             />
           </Grid.Col>
         )}
@@ -219,6 +226,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                   <NumberInput
                     label={`Set ${idx + 1}`}
                     min={1}
+                    max={MAX_STANDARD_NUMBER}
                     value={tournamentData.winnerBracketPointsToVictory[idx] ?? 21}
                     onChange={(value) =>
                       setTournamentData((prev) => {
@@ -233,6 +241,8 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                         };
                       })
                     }
+                    clampBehavior="strict"
+                    maw={160}
                   />
                 </Grid.Col>
               ))}
@@ -253,6 +263,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                       <NumberInput
                         label={`Set ${idx + 1}`}
                         min={1}
+                        max={MAX_STANDARD_NUMBER}
                         value={tournamentData.loserBracketPointsToVictory[idx] ?? 21}
                         onChange={(value) =>
                           setTournamentData((prev) => {
@@ -267,6 +278,8 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                             };
                           })
                         }
+                        clampBehavior="strict"
+                        maw={160}
                       />
                     </Grid.Col>
                   ))}
@@ -288,6 +301,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
             }))
           }
           placeholder="Enter tournament prize"
+          maw={420}
         />
       </Stack>
     </Paper>

@@ -404,6 +404,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
     const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
     const eventStartDate = parseDateValue(currentEvent?.start ?? null);
+    const eventHasStarted = Boolean(eventStartDate && new Date() >= eventStartDate);
     const userDob = parseDateValue(user?.dateOfBirth ?? null);
     const userAge = userDob ? calculateAgeOnDate(userDob, eventStartDate ?? new Date()) : undefined;
     const hasValidUserAge = typeof userAge === 'number' && Number.isFinite(userAge);
@@ -424,6 +425,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     }, [eventStartDate, hasAgeLimits, selectedDivisionOption, userDob]);
     const selfRegistrationBlockedReason = (() => {
         if (!user) return null;
+        if (eventHasStarted) {
+            return 'This event has already started. Joining is closed.';
+        }
         if (!hasValidUserAge) {
             return 'Add your date of birth to your profile to register for events.';
         }
@@ -441,7 +445,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
         return null;
     })();
-    const canRegisterChild = isAdult;
+    const canRegisterChild = isAdult && !eventHasStarted;
 
     const isEventHost = !!user && currentEvent && user.$id === currentEvent.hostId;
     const isFreeEvent = currentEvent && currentEvent.price === 0;
@@ -1194,6 +1198,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;
+        if (eventHasStarted) {
+            setJoinError('This event has already started. Joining is closed.');
+            return;
+        }
         if (!selectedChildId) {
             setJoinError(isTeamSignup ? 'Select a child to add as a free agent.' : 'Select a child to register.');
             return;
@@ -1318,6 +1326,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     // Update the join event handlers
     const handleJoinEvent = async (selection?: 'self' | 'child') => {
         if (!user || !currentEvent) return;
+        if (eventHasStarted) {
+            setJoinError('This event has already started. Joining is closed.');
+            return;
+        }
         if (!selection && canRegisterChild && activeChildren.length > 0) {
             setShowJoinChoiceModal(true);
             return;
@@ -1373,6 +1385,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const handleJoinWaitlist = async () => {
         if (!user || !currentEvent) return;
+        if (eventHasStarted) {
+            setJoinError('This event has already started. Joining is closed.');
+            return;
+        }
         if (selfRegistrationBlockedReason) {
             setJoinError(selfRegistrationBlockedReason);
             return;
@@ -1418,6 +1434,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const handleJoinTeamWaitlist = async () => {
         if (!user || !currentEvent || !selectedTeamId) return;
+        if (eventHasStarted) {
+            setJoinError('This event has already started. Joining is closed.');
+            return;
+        }
         if (!selectedTeamIsWaitlisted && (teamDivisionTypeMissing || teamDivisionMismatch)) {
             setJoinError(teamDivisionErrorMessage ?? 'Selected team is not eligible for that division type.');
             return;
@@ -1461,6 +1481,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     // Team-signup: join as team or free agent
     const handleJoinAsTeam = async () => {
         if (!user || !currentEvent || !selectedTeamId) return;
+        if (eventHasStarted) {
+            setJoinError('This event has already started. Joining is closed.');
+            return;
+        }
         if (teamDivisionTypeMissing || teamDivisionMismatch) {
             setJoinError(teamDivisionErrorMessage ?? 'Selected team is not eligible for that division type.');
             return;
@@ -1697,7 +1721,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const showTeamWaitlistActions = eventAtCapacity || selectedTeamIsWaitlisted;
     const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
     const selfWaitlistJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
-    const selfWaitlistLeaveDisabled = joining;
+    const selfWaitlistLeaveDisabled = joining || eventHasStarted;
     const freeAgentJoinBlockedReason = selfRegistrationBlockedReason;
     const childPrimaryActionLabel = isTeamSignup
         ? (joiningChildFreeAgent
@@ -2225,7 +2249,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 }}
                                                                 disabled={selfWaitlistLeaveDisabled}
                                                             >
-                                                                {joining ? 'Updating…' : 'Leave Waitlist'}
+                                                                {eventHasStarted ? 'Unavailable' : (joining ? 'Updating…' : 'Leave Waitlist')}
                                                             </Button>
                                                         </div>
                                                     ) : (
@@ -2235,7 +2259,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                             onClick={() => { void handleJoinWaitlist(); }}
                                                             disabled={selfWaitlistJoinDisabled}
                                                         >
-                                                            {joining
+                                                            {eventHasStarted
+                                                                ? 'Unavailable'
+                                                                : joining
                                                                 ? (isMinor ? 'Sending…' : 'Adding…')
                                                                 : (isMinor ? 'Send' : 'Join Waitlist')}
                                                         </Button>
@@ -2244,10 +2270,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     <Button
                                                         fullWidth
                                                         color="blue"
-                                                        onClick={() => { void handleJoinEvent(); }}
-                                                        disabled={selfJoinDisabled}
-                                                    >
-                                                        {confirmingPurchase
+                                                            onClick={() => { void handleJoinEvent(); }}
+                                                            disabled={selfJoinDisabled}
+                                                        >
+                                                            {eventHasStarted
+                                                                ? 'Unavailable'
+                                                                : confirmingPurchase
                                                             ? 'Confirming purchase…'
                                                             : joining
                                                                 ? 'Submitting…'
@@ -2274,7 +2302,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                             </div>
                                         ) : (
                                             <div className="space-y-6">
-                                                <Button fullWidth onClick={() => setShowTeamJoinOptions(prev => !prev)}>
+                                                {eventHasStarted && (
+                                                    <Alert color="yellow" variant="light">
+                                                        This event has already started. Joining and leaving are no longer available.
+                                                    </Alert>
+                                                )}
+                                                <Button fullWidth disabled={eventHasStarted} onClick={() => setShowTeamJoinOptions(prev => !prev)}>
                                                     {showTeamJoinOptions ? 'Hide Team Options' : 'Join as Team'}
                                                 </Button>
 
@@ -2325,22 +2358,27 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                             onClick={() => { void handleJoinTeamWaitlist(); }}
                                                                             disabled={
                                                                                 joining
+                                                                                || eventHasStarted
                                                                                 || !selectedTeamId
                                                                                 || (!selectedTeamIsWaitlisted && (teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing))
                                                                             }
                                                                             color="orange"
                                                                         >
-                                                                            {joining
+                                                                            {eventHasStarted
+                                                                                ? 'Unavailable'
+                                                                                : joining
                                                                                 ? 'Updating...'
                                                                                 : (selectedTeamIsWaitlisted ? 'Leave Waitlist' : 'Join Waitlist')}
                                                                         </Button>
                                                                     ) : (
                                                                         <Button
                                                                             onClick={handleJoinAsTeam}
-                                                                            disabled={joining || !selectedTeamId || confirmingPurchase || teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing}
+                                                                            disabled={joining || eventHasStarted || !selectedTeamId || confirmingPurchase || teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing}
                                                                             color="green"
                                                                         >
-                                                                            {confirmingPurchase
+                                                                            {eventHasStarted
+                                                                                ? 'Unavailable'
+                                                                                : confirmingPurchase
                                                                                 ? 'Confirming purchase...'
                                                                                 : joining
                                                                                     ? 'Joining...'
@@ -2399,10 +2437,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                     setJoining(false);
                                                                 }
                                                             }}
-                                                            disabled={joining}
-                                                            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${joining ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                                                            disabled={joining || eventHasStarted}
+                                                            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${(joining || eventHasStarted) ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
                                                         >
-                                                            {joining ? 'Updating…' : 'Leave Free Agent List'}
+                                                            {eventHasStarted ? 'Unavailable' : (joining ? 'Updating…' : 'Leave Free Agent List')}
                                                         </button>
                                                     </div>
                                                 ) : (

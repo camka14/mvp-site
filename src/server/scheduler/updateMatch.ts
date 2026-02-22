@@ -295,19 +295,12 @@ const computeLeagueStandings = (
   const pointsForLoss = scoring.pointsForLoss ?? 0;
   const pointsPerGoal = scoring.pointsPerGoalScored ?? 0;
   const pointsPerGoalAgainst = scoring.pointsPerGoalConceded ?? 0;
-  let precision = Number(scoring.pointPrecision ?? 0);
-  precision = precision > 0 ? precision : 0;
-  const multiplier = precision > 0 ? 10 ** precision : 1;
 
   for (const row of standings.values()) {
     row.goalDifference = row.goalsFor - row.goalsAgainst;
     const basePoints = row.wins * pointsForWin + row.draws * pointsForDraw + row.losses * pointsForLoss;
     const goalPoints = row.goalsFor * pointsPerGoal + row.goalsAgainst * pointsPerGoalAgainst;
-    let totalPoints = basePoints + goalPoints;
-    if (precision > 0) {
-      totalPoints = Math.round(totalPoints * multiplier) / multiplier;
-    }
-    row.points = totalPoints;
+    row.points = basePoints + goalPoints;
   }
 
   return Array.from(standings.values()).sort((a, b) => {

@@ -245,11 +245,6 @@ export default function RefundSection({
   };
 
   const handleRefund = async () => {
-    if (eventHasStarted) {
-      setError('Event has already started. Refunds are no longer available.');
-      return;
-    }
-
     if (!canAutoRefund && !refundReason.trim()) {
       setError('Please provide a reason for the refund request');
       return;
@@ -279,11 +274,6 @@ export default function RefundSection({
   };
 
   const handleRequestRefund = () => {
-    if (eventHasStarted) {
-      setError('Event has already started. Refunds are no longer available.');
-      return;
-    }
-
     if (canAutoRefund) {
       void handleRefund();
     } else {
@@ -336,30 +326,48 @@ export default function RefundSection({
 
       {selectedTarget.state === 'free_agent' ? (
         <div className="space-y-2">
-          <Text size="sm" c="dimmed">Remove this profile from the free agent list.</Text>
-          <Button fullWidth color="red" onClick={() => { void handleLeaveAction(); }} loading={loading}>
-            Leave Free Agent List
-          </Button>
+          {eventHasStarted ? (
+            <Text size="sm" c="dimmed">
+              Event has already started. Leaving is no longer available.
+            </Text>
+          ) : (
+            <>
+              <Text size="sm" c="dimmed">Remove this profile from the free agent list.</Text>
+              <Button fullWidth color="red" onClick={() => { void handleLeaveAction(); }} loading={loading}>
+                Leave Free Agent List
+              </Button>
+            </>
+          )}
         </div>
       ) : selectedTarget.state === 'waitlist' ? (
         <div className="space-y-2">
-          <Text size="sm" c="dimmed">Remove this profile from the waitlist.</Text>
-          <Button fullWidth color="red" onClick={() => { void handleLeaveAction(); }} loading={loading}>
-            Leave Waitlist
-          </Button>
+          {eventHasStarted ? (
+            <Text size="sm" c="dimmed">
+              Event has already started. Leaving is no longer available.
+            </Text>
+          ) : (
+            <>
+              <Text size="sm" c="dimmed">Remove this profile from the waitlist.</Text>
+              <Button fullWidth color="red" onClick={() => { void handleLeaveAction(); }} loading={loading}>
+                Leave Waitlist
+              </Button>
+            </>
+          )}
         </div>
       ) : isFreeForTarget ? (
         <div className="space-y-2">
-          <Text size="sm" c="dimmed">Leave this event registration.</Text>
-          <Button fullWidth color="red" onClick={() => { void handleLeaveAction(); }} loading={loading}>
-            Leave Event
-          </Button>
-        </div>
-      ) : eventHasStarted ? (
-        <div className="space-y-2">
-          <Text size="sm" c="dimmed">
-            Event has already started. Refunds are no longer available.
-          </Text>
+          {eventHasStarted ? (
+            <Text size="sm" c="dimmed">
+              Event has already started. Leaving is no longer available.
+            </Text>
+          ) : (
+            <>
+              <Text size="sm" c="dimmed">Leave this event registration.</Text>
+              <Button fullWidth color="red" onClick={() => { void handleLeaveAction(); }} loading={loading}>
+                Leave Event
+              </Button>
+            </>
+          )}
         </div>
       ) : canAutoRefund ? (
         <div className="space-y-2">
@@ -371,7 +379,9 @@ export default function RefundSection({
       ) : (
         <div className="space-y-3">
           <Text size="sm" c="dimmed">
-            Automatic refund period has expired. You can request a refund from the host.
+            {eventHasStarted
+              ? 'Event has already started. You can still request a refund from the host.'
+              : 'Automatic refund period has expired. You can request a refund from the host.'}
           </Text>
 
           {!showReasonInput ? (

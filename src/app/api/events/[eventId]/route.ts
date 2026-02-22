@@ -86,53 +86,14 @@ const EVENT_UPDATE_FIELDS = new Set([
   'requiredTemplateIds',
 ]);
 
-const LEAGUE_SCORING_BOOLEAN_FIELDS = [
-  'applyShutoutOnlyIfWin',
-  'overtimeEnabled',
-  'goalDifferenceTiebreaker',
-  'headToHeadTiebreaker',
-  'totalGoalsTiebreaker',
-  'enableBonusForComebackWin',
-  'enableBonusForHighScoringMatch',
-  'enablePenaltyForUnsportingBehavior',
-] as const;
+const LEAGUE_SCORING_BOOLEAN_FIELDS: readonly string[] = [];
 
 const LEAGUE_SCORING_NUMBER_FIELDS = [
   'pointsForWin',
   'pointsForDraw',
   'pointsForLoss',
-  'pointsForForfeitWin',
-  'pointsForForfeitLoss',
-  'pointsPerSetWin',
-  'pointsPerSetLoss',
-  'pointsPerGameWin',
-  'pointsPerGameLoss',
   'pointsPerGoalScored',
   'pointsPerGoalConceded',
-  'maxGoalBonusPoints',
-  'minGoalBonusThreshold',
-  'pointsForShutout',
-  'pointsForCleanSheet',
-  'pointsPerGoalDifference',
-  'maxGoalDifferencePoints',
-  'pointsPenaltyPerGoalDifference',
-  'pointsForParticipation',
-  'pointsForNoShow',
-  'pointsForWinStreakBonus',
-  'winStreakThreshold',
-  'pointsForOvertimeWin',
-  'pointsForOvertimeLoss',
-  'pointsPerRedCard',
-  'pointsPerYellowCard',
-  'pointsPerPenalty',
-  'maxPenaltyDeductions',
-  'maxPointsPerMatch',
-  'minPointsPerMatch',
-  'bonusPointsForComebackWin',
-  'highScoringThreshold',
-  'bonusPointsForHighScoringMatch',
-  'penaltyPointsForUnsportingBehavior',
-  'pointPrecision',
 ] as const;
 
 const updateSchema = z.object({

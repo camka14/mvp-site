@@ -71,7 +71,7 @@ describe('RefundSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /Get Refund/i }));
 
     await waitFor(() =>
-      expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith(event, user, undefined),
+      expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith(event, user, undefined, user.$id),
     );
     await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
   });
@@ -95,7 +95,7 @@ describe('RefundSection', () => {
       <RefundSection event={event} userRegistered onRefundSuccess={onRefundSuccess} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Leave and Request Refund/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Withdraw and Request Refund/i }));
 
     const reasonInput = await screen.findByLabelText(/Reason for refund/i);
     fireEvent.change(reasonInput, { target: { value: 'Can no longer attend' } });
@@ -106,12 +106,13 @@ describe('RefundSection', () => {
         event,
         user,
         'Can no longer attend',
+        user.$id,
       ),
     );
     await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
   });
 
-  it('blocks refund requests once the event has started', () => {
+  it('allows refund requests once the event has started for paid events', async () => {
     const user = { $id: 'user_1' };
     useAppMock.mockReturnValue({ user });
     const start = formatLocalDateTime(new Date(Date.now() - 60 * 60 * 1000));
@@ -123,12 +124,29 @@ describe('RefundSection', () => {
       start,
     });
 
+    paymentServiceMock.requestRefund.mockResolvedValue({ success: true });
+    const onRefundSuccess = jest.fn();
+
     renderWithMantine(
-      <RefundSection event={event} userRegistered onRefundSuccess={jest.fn()} />,
+      <RefundSection event={event} userRegistered onRefundSuccess={onRefundSuccess} />,
     );
 
-    expect(screen.getByText(/Refunds are no longer available/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Get Refund/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Leave and Request Refund/i })).toBeNull();
+    expect(screen.getByText(/You can still request a refund from the host/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Withdraw and Request Refund/i }));
+
+    const reasonInput = await screen.findByLabelText(/Reason for refund/i);
+    fireEvent.change(reasonInput, { target: { value: 'Needs late refund' } });
+    fireEvent.click(screen.getByRole('button', { name: /Send Request/i }));
+
+    await waitFor(() =>
+      expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith(
+        event,
+        user,
+        'Needs late refund',
+        user.$id,
+      ),
+    );
+    await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
   });
 });

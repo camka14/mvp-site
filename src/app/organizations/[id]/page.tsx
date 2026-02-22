@@ -856,8 +856,21 @@ function OrganizationDetailContent() {
   }, []);
 
   const openOrganizationEvent = useCallback((eventId: string) => {
-    router.push(`/events/${eventId}/schedule`);
-  }, [router]);
+    const params = new URLSearchParams({ tab: 'details' });
+    if (isOwner) {
+      params.set('mode', 'edit');
+    }
+    router.push(`/events/${eventId}/schedule?${params.toString()}`);
+  }, [isOwner, router]);
+
+  const handleOrganizationEventClick = useCallback((event: Event) => {
+    if (isOwner) {
+      openOrganizationEvent(event.$id);
+      return;
+    }
+    setSelectedEvent(event);
+    setShowEventDetailSheet(true);
+  }, [isOwner, openOrganizationEvent]);
 
   const openSignedDocumentPreview = useCallback((document: OrganizationUserDocumentSummary) => {
     if (document.type === 'PDF') {
@@ -1446,7 +1459,7 @@ function OrganizationDetailContent() {
                           <EventCard
                             key={e.$id}
                             event={e}
-                            onClick={() => { setSelectedEvent(e); setShowEventDetailSheet(true); }}
+                            onClick={() => handleOrganizationEventClick(e)}
                             hostOptions={isOwner ? eventHostOptions : undefined}
                             selectedHostId={e.hostId}
                             hostChangeDisabled={updatingEventHostId === e.$id}
@@ -1561,7 +1574,13 @@ function OrganizationDetailContent() {
                     popup
                     selectable
                     components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
-                    onSelectEvent={(evt: any) => { setSelectedEvent(evt.resource); setShowEventDetailSheet(true); }}
+                    onSelectEvent={(evt: any) => {
+                      const selected = evt?.resource as Event | undefined;
+                      if (!selected?.$id) {
+                        return;
+                      }
+                      handleOrganizationEventClick(selected);
+                    }}
                     onSelectSlot={handleCreateEvent}
                     formats={ORGANIZATION_CALENDAR_FORMATS}
                   />

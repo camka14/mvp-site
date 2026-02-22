@@ -385,6 +385,7 @@ function EventScheduleContent() {
   const [changesEvent, setChangesEvent] = useState<Event | null>(null);
   const [changesMatches, setChangesMatches] = useState<Match[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [formHasUnsavedChanges, setFormHasUnsavedChanges] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -653,6 +654,7 @@ function EventScheduleContent() {
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
+  const hasPendingUnsavedChanges = hasUnsavedChanges || formHasUnsavedChanges;
   const isTemplateEvent = (activeEvent?.state ?? '').toUpperCase() === 'TEMPLATE';
   const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
   const isEditingEvent = isTemplateEvent || isPreview || isEditParam || isUnpublished;
@@ -773,6 +775,12 @@ function EventScheduleContent() {
   const defaultSport = DEFAULT_SPORT;
 
   useEffect(() => {
+    if (!isCreateMode && !isEditingEvent) {
+      setFormHasUnsavedChanges(false);
+    }
+  }, [isCreateMode, isEditingEvent]);
+
+  useEffect(() => {
     let cancelled = false;
 
     if (!user?.$id) {
@@ -850,6 +858,7 @@ function EventScheduleContent() {
 
       setChangesEvent(seeded);
       setHasUnsavedChanges(false);
+      setFormHasUnsavedChanges(false);
       setTemplateSeedKey((prev) => prev + 1);
       closeTemplatePrompt();
     } catch (error) {
@@ -1299,11 +1308,11 @@ function EventScheduleContent() {
     [resolveTeam, teamsById, user?.$id, userOnTeam],
   );
 
-  const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+  const hasUnsavedChangesRef = useRef(hasPendingUnsavedChanges);
   const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
   useEffect(() => {
-    hasUnsavedChangesRef.current = hasUnsavedChanges;
-  }, [hasUnsavedChanges]);
+    hasUnsavedChangesRef.current = hasPendingUnsavedChanges;
+  }, [hasPendingUnsavedChanges]);
 
   useEffect(() => {
     if (!isCreateMode || !user) return;
@@ -1428,10 +1437,10 @@ function EventScheduleContent() {
     if (!changesEvent) {
       return;
     }
-    if (!hasUnsavedChanges) {
+    if (!hasPendingUnsavedChanges) {
       setFormSeedEvent(changesEvent);
     }
-  }, [changesEvent, hasUnsavedChanges, isCreateMode]);
+  }, [changesEvent, hasPendingUnsavedChanges, isCreateMode]);
 
   useEffect(() => {
     if (!isCreateMode) {
@@ -1536,10 +1545,10 @@ function EventScheduleContent() {
 
   const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
-    if (isCreateMode) return 'Discard';
+    if (isCreateMode) return hasPendingUnsavedChanges ? 'Discard Changes' : 'Cancel';
     if (isUnpublished) return `Delete ${entityLabel}`;
     if (isPreview) return `Cancel ${entityLabel} Preview`;
-    if (isEditingEvent) return `Discard ${entityLabel} Changes`;
+    if (isEditingEvent) return hasPendingUnsavedChanges ? 'Discard Changes' : 'Cancel';
     return `Cancel ${entityLabel}`;
   })();
 
@@ -1727,6 +1736,7 @@ function EventScheduleContent() {
       hydrateEvent(fetchedEvent);
       if (!hasUnsavedChangesRef.current) {
         setHasUnsavedChanges(false);
+        setFormHasUnsavedChanges(false);
       }
     } catch (err) {
       console.error('Failed to load league schedule:', err);
@@ -2004,9 +2014,6 @@ function EventScheduleContent() {
       }
     });
 
-    const precision = Math.max(0, leagueScoring.pointPrecision ?? 0);
-    const multiplier = precision > 0 ? 10 ** precision : 1;
-
     rows.forEach((row) => {
       row.matchesPlayed = row.wins + row.losses + row.draws;
       row.goalDifference = row.goalsFor - row.goalsAgainst;
@@ -2017,8 +2024,7 @@ function EventScheduleContent() {
       const goalPoints =
         row.goalsFor * leagueScoring.pointsPerGoalScored +
         row.goalsAgainst * leagueScoring.pointsPerGoalConceded;
-      const totalPoints = basePoints + goalPoints;
-      row.points = precision > 0 ? Math.round(totalPoints * multiplier) / multiplier : totalPoints;
+      row.points = basePoints + goalPoints;
     });
 
     return Array.from(rows.values()).map((row) => ({ ...row }));
@@ -2082,8 +2088,6 @@ function EventScheduleContent() {
   }, [baseStandings, standingsSort]);
 
   const hasRecordedMatches = standings.some((row) => row.matchesPlayed > 0);
-  const pointsDisplayPrecision = Math.max(0, leagueScoring.pointPrecision ?? 0);
-
   const bracketData = useMemo<TournamentBracket | null>(() => {
     if (!activeEvent || !bracketMatchesMap) {
       return null;
@@ -2175,6 +2179,10 @@ function EventScheduleContent() {
     setActiveTab(defaultTab);
   }, [defaultTab]);
 
+  const handleEventFormDirtyStateChange = useCallback((hasChanges: boolean) => {
+    setFormHasUnsavedChanges(hasChanges);
+  }, []);
+
   const getDraftFromForm = useCallback(
     async ({ allowCurrentEventFallback = false }: { allowCurrentEventFallback?: boolean } = {}): Promise<Partial<Event> | null> => {
       if (allowCurrentEventFallback && activeTab !== 'details' && activeEvent) {
@@ -2213,6 +2221,7 @@ function EventScheduleContent() {
     setChangesEvent(previewClone);
     setChangesMatches(nextMatches);
     setHasUnsavedChanges(false);
+    setFormHasUnsavedChanges(false);
   }, []);
 
   const buildSchedulePayload = useCallback(
@@ -2398,6 +2407,7 @@ function EventScheduleContent() {
 
         hydrateEvent(updatedEvent);
         setHasUnsavedChanges(false);
+        setFormHasUnsavedChanges(false);
         setSelectedLifecycleStatus(null);
 
         if (pathname) {
@@ -2603,6 +2613,7 @@ function EventScheduleContent() {
     setChangesEvent(cloneValue(event) as Event);
     setChangesMatches(cloneValue(matches) as Match[]);
     setHasUnsavedChanges(false);
+    setFormHasUnsavedChanges(false);
     setSelectedLifecycleStatus(null);
     setError(null);
     setInfoMessage(`${entityLabel} changes cleared.`);
@@ -2644,6 +2655,7 @@ function EventScheduleContent() {
       }
       return next;
     });
+    setHasUnsavedChanges(true);
     setIsMatchEditorOpen(false);
     setMatchBeingEdited(null);
   }, [matches]);
@@ -2661,6 +2673,7 @@ function EventScheduleContent() {
           : match
       ));
     });
+    setHasUnsavedChanges(true);
 
     setInfoMessage(`${lockLabel} ${matchIdSet.size} match${matchIdSet.size === 1 ? '' : 'es'}.`);
   }, [canEditMatches, matches]);
@@ -2833,7 +2846,7 @@ function EventScheduleContent() {
     [canEditMatches, handleMakeUserTeamReferee, handleMatchEditRequest, resolveTeam, user, userOnTeam],
   );
 
-  const canClearChanges = Boolean(event && changesEvent && hasUnsavedChanges);
+  const canClearChanges = Boolean(event && changesEvent && hasPendingUnsavedChanges);
 
   const activeLocationDefaults = useMemo(
     () => buildLocationDefaults(activeOrganization),
@@ -2867,9 +2880,6 @@ function EventScheduleContent() {
   };
 
   const formatPoints = (value: number): string => {
-    if (pointsDisplayPrecision > 0) {
-      return value.toFixed(pointsDisplayPrecision);
-    }
     return Number.isInteger(value) ? value.toString() : value.toFixed(2);
   };
 
@@ -2981,6 +2991,7 @@ function EventScheduleContent() {
                 ref={eventFormRef}
                 isOpen
                 onClose={() => router.push('/events')}
+                onDirtyStateChange={handleEventFormDirtyStateChange}
                 currentUser={user}
                 organization={organizationForCreate}
                 defaultLocation={createLocationDefaults}
@@ -3078,6 +3089,7 @@ function EventScheduleContent() {
                       <Button
                         color="green"
                         onClick={isCreateMode ? handlePublish : handleSaveEvent}
+                        disabled={!hasPendingUnsavedChanges}
                       >
                         {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
                       </Button>
@@ -3154,6 +3166,7 @@ function EventScheduleContent() {
                   ref={eventFormRef}
                   isOpen={activeTab === 'details'}
                   onClose={handleDetailsClose}
+                  onDirtyStateChange={handleEventFormDirtyStateChange}
                   currentUser={user}
                   event={activeEvent ?? undefined}
                   organization={activeOrganization}
