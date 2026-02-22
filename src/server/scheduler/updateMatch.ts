@@ -194,11 +194,18 @@ type LeagueStanding = {
   points: number;
 };
 
-const computeLeagueStandings = (league: League, matches: Iterable<Match>): LeagueStanding[] => {
+const computeLeagueStandings = (
+  league: League,
+  matches: Iterable<Match>,
+  includedTeamIds?: Set<string>,
+): LeagueStanding[] => {
   const standings = new Map<string, LeagueStanding>();
 
   const ensureRow = (teamObj: Team | null): LeagueStanding | null => {
     if (!teamObj) return null;
+    if (includedTeamIds && !includedTeamIds.has(teamObj.id)) {
+      return null;
+    }
     if (!standings.has(teamObj.id)) {
       standings.set(teamObj.id, {
         teamId: teamObj.id,
@@ -217,6 +224,9 @@ const computeLeagueStandings = (league: League, matches: Iterable<Match>): Leagu
   };
 
   for (const team of Object.values(league.teams)) {
+    if (includedTeamIds && !includedTeamIds.has(team.id)) {
+      continue;
+    }
     ensureRow(team);
   }
 
@@ -226,6 +236,11 @@ const computeLeagueStandings = (league: League, matches: Iterable<Match>): Leagu
     if (!isMatchScored(match)) continue;
     const team1 = match.team1;
     const team2 = match.team2;
+    if (includedTeamIds) {
+      if (!team1 || !team2 || !includedTeamIds.has(team1.id) || !includedTeamIds.has(team2.id)) {
+        continue;
+      }
+    }
     const row1 = ensureRow(team1 ?? null);
     const row2 = ensureRow(team2 ?? null);
     if (!row1 || !row2) continue;
@@ -438,18 +453,79 @@ const seedLeaguePlayoffs = (league: League, updatedMatch: Match, context: Schedu
   if (!regularMatches.length) return [];
   if (!regularMatches.every((match) => isMatchScored(match))) return [];
 
-  const standings = computeLeagueStandings(league, regularMatches);
-  const playoffTeamCount = Math.min(league.playoffTeamCount ?? 0, standings.length);
-  if (playoffTeamCount < 2) return [];
-
   const seededTeamIds: string[] = [];
-  let seedValue = playoffTeamCount;
-  for (const row of standings.slice(0, playoffTeamCount)) {
-    const team = league.teams[row.teamId];
-    if (!team) continue;
-    team.seed = seedValue;
-    seededTeamIds.push(team.id);
-    seedValue -= 1;
+  if (league.singleDivision) {
+    const standings = computeLeagueStandings(league, regularMatches);
+    const configuredCount = typeof league.playoffTeamCount === 'number' ? Math.max(0, league.playoffTeamCount) : 0;
+    const playoffTeamCount = Math.min(configuredCount || standings.length, standings.length);
+    if (playoffTeamCount < 2) {
+      return [];
+    }
+
+    let seedValue = playoffTeamCount;
+    for (const row of standings.slice(0, playoffTeamCount)) {
+      const team = league.teams[row.teamId];
+      if (!team) continue;
+      team.seed = seedValue;
+      seededTeamIds.push(team.id);
+      seedValue -= 1;
+    }
+  } else {
+    const divisionLookup = new Map<string, Division>();
+    for (const division of league.divisions) {
+      divisionLookup.set(division.id, division);
+    }
+    const teamsByDivision = new Map<string, Team[]>();
+    for (const team of Object.values(league.teams)) {
+      const divisionId = team.division?.id ?? league.divisions[0]?.id ?? 'default';
+      const existing = teamsByDivision.get(divisionId) ?? [];
+      existing.push(team);
+      teamsByDivision.set(divisionId, existing);
+      if (team.division && !divisionLookup.has(divisionId)) {
+        divisionLookup.set(divisionId, team.division);
+      }
+    }
+
+    const matchesByDivision = new Map<string, Match[]>();
+    for (const match of regularMatches) {
+      const divisionId = match.division?.id ?? league.divisions[0]?.id ?? 'default';
+      const existing = matchesByDivision.get(divisionId) ?? [];
+      existing.push(match);
+      matchesByDivision.set(divisionId, existing);
+    }
+
+    for (const [divisionId, divisionTeams] of teamsByDivision.entries()) {
+      if (divisionTeams.length < 2) {
+        continue;
+      }
+      const includedTeamIds = new Set(divisionTeams.map((team) => team.id));
+      const standings = computeLeagueStandings(
+        league,
+        matchesByDivision.get(divisionId) ?? [],
+        includedTeamIds,
+      );
+      const division = divisionLookup.get(divisionId);
+      const divisionConfiguredCount = typeof division?.playoffTeamCount === 'number'
+        ? Math.max(0, division.playoffTeamCount)
+        : null;
+      const leagueConfiguredCount = typeof league.playoffTeamCount === 'number'
+        ? Math.max(0, league.playoffTeamCount)
+        : 0;
+      const configuredCount = divisionConfiguredCount ?? leagueConfiguredCount;
+      const playoffTeamCount = Math.min(configuredCount || standings.length, standings.length);
+      if (playoffTeamCount < 2) {
+        continue;
+      }
+
+      let seedValue = playoffTeamCount;
+      for (const row of standings.slice(0, playoffTeamCount)) {
+        const team = league.teams[row.teamId];
+        if (!team) continue;
+        team.seed = seedValue;
+        seededTeamIds.push(team.id);
+        seedValue -= 1;
+      }
+    }
   }
 
   if (seededTeamIds.length) {

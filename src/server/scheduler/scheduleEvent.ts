@@ -151,22 +151,64 @@ const latestMatchEnd = (matches: Match[]): Date | null => {
   return latest;
 };
 
+const projectedDivisionTeamCounts = (event: League, fallbackTotal: number = 0): Map<string, number> => {
+  const participantsByDivision = new Map<string, number>();
+  for (const team of Object.values(event.teams)) {
+    const divisionId = team.division?.id ?? event.divisions[0]?.id ?? 'default';
+    participantsByDivision.set(divisionId, (participantsByDivision.get(divisionId) ?? 0) + 1);
+  }
+
+  const configuredDivisions = event.divisions.length ? event.divisions : [new Division('default', 'Default')];
+  const divisionFallbackCapacity = event.maxParticipants && event.maxParticipants > 0
+    ? Math.ceil(event.maxParticipants / Math.max(configuredDivisions.length, 1))
+    : 0;
+
+  const byDivision = new Map<string, number>();
+  for (const division of configuredDivisions) {
+    const currentCount = participantsByDivision.get(division.id) ?? 0;
+    const configuredCapacity = typeof division.maxParticipants === 'number' && Number.isFinite(division.maxParticipants)
+      ? Math.max(0, Math.trunc(division.maxParticipants))
+      : divisionFallbackCapacity;
+    byDivision.set(division.id, Math.max(currentCount, configuredCapacity));
+    participantsByDivision.delete(division.id);
+  }
+
+  for (const [divisionId, count] of participantsByDivision.entries()) {
+    byDivision.set(divisionId, Math.max(0, Math.trunc(count)));
+  }
+
+  if (!byDivision.size && fallbackTotal > 0) {
+    byDivision.set(configuredDivisions[0].id, Math.max(0, Math.trunc(fallbackTotal)));
+  }
+
+  return byDivision;
+};
+
+const resolveDivisionPlayoffTeamCount = (
+  event: League,
+  division: Division | undefined,
+  teamCount: number,
+): number => {
+  if (teamCount < 2) {
+    return 0;
+  }
+  const configuredDivisionCount = typeof division?.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
+    ? Math.max(0, Math.trunc(division.playoffTeamCount))
+    : null;
+  const configuredEventCount = typeof event.playoffTeamCount === 'number' && Number.isFinite(event.playoffTeamCount)
+    ? Math.max(0, Math.trunc(event.playoffTeamCount))
+    : 0;
+  const configured = configuredDivisionCount ?? configuredEventCount;
+  const fallback = configured > 0 ? configured : teamCount;
+  return Math.min(fallback, teamCount);
+};
+
 const describeScheduleFailure = (event: League, placeholderCount?: number): string => {
   let teamCount = Object.keys(event.teams).length;
   if (teamCount < 2 && placeholderCount) {
     teamCount = placeholderCount;
   }
-  const gamesPerOpponent = event.gamesPerOpponent || 1;
-  let regularMatches = 0;
-  if (teamCount > 1) {
-    regularMatches = Math.floor((teamCount * (teamCount - 1) / 2) * gamesPerOpponent);
-  }
-  const playoffCount = event.includePlayoffs ? Math.min(event.playoffTeamCount || 0, teamCount) : 0;
-  let playoffMatches = Math.max(playoffCount - 1, 0);
-  if (playoffCount >= 2 && event.doubleElimination) {
-    playoffMatches = Math.max(2 * playoffCount - 1, 0);
-  }
-  const totalMatches = regularMatches + playoffMatches;
+  const totalMatches = estimateLeagueMatches(event, teamCount);
 
   let matchMinutes = 60;
   let bufferMinutes = 5;
@@ -238,6 +280,11 @@ const prepareScheduleWindow = (event: Tournament | League, allowExtension: boole
 };
 
 const projectedTeamCount = (event: Tournament | League): number => {
+  if (isLeague(event) && !event.singleDivision && event.divisions.length > 0) {
+    const projectedByDivision = projectedDivisionTeamCounts(event, event.maxParticipants || 0);
+    const total = Array.from(projectedByDivision.values()).reduce((sum, count) => sum + Math.max(0, count), 0);
+    return Math.max(total, 2);
+  }
   let teamCount = Object.keys(event.teams).length;
   const maxParticipants = event.maxParticipants || 0;
   if (maxParticipants > teamCount) teamCount = maxParticipants;
@@ -270,12 +317,37 @@ const estimateTotalMatches = (event: Tournament | League, teamCount: number): nu
 
 const estimateLeagueMatches = (event: League, teamCount: number): number => {
   const gamesPerOpponent = event.gamesPerOpponent || 1;
-  let regularMatches = 0;
-  if (teamCount > 1) {
-    regularMatches = Math.floor((teamCount * (teamCount - 1) / 2) * gamesPerOpponent);
+  if (event.singleDivision || event.divisions.length === 0) {
+    let regularMatches = 0;
+    if (teamCount > 1) {
+      regularMatches = Math.floor((teamCount * (teamCount - 1) / 2) * gamesPerOpponent);
+    }
+    const playoffCount = event.includePlayoffs ? resolveDivisionPlayoffTeamCount(event, undefined, teamCount) : 0;
+    const playoffMatches = playoffCount >= 2 ? tournamentMatchCount(playoffCount, Boolean(event.doubleElimination)) : 0;
+    return regularMatches + playoffMatches;
   }
-  const playoffCount = event.includePlayoffs ? Math.min(event.playoffTeamCount || 0, teamCount) : 0;
-  const playoffMatches = playoffCount >= 2 ? tournamentMatchCount(playoffCount, Boolean(event.doubleElimination)) : 0;
+
+  const projectedByDivision = projectedDivisionTeamCounts(event, teamCount);
+  const divisionLookup = new Map(event.divisions.map((division) => [division.id, division]));
+  let regularMatches = 0;
+  let playoffMatches = 0;
+  for (const [divisionId, divisionTeamCount] of projectedByDivision.entries()) {
+    if (divisionTeamCount < 2) {
+      continue;
+    }
+    regularMatches += Math.floor((divisionTeamCount * (divisionTeamCount - 1) / 2) * gamesPerOpponent);
+    if (!event.includePlayoffs) {
+      continue;
+    }
+    const playoffCount = resolveDivisionPlayoffTeamCount(
+      event,
+      divisionLookup.get(divisionId),
+      divisionTeamCount,
+    );
+    if (playoffCount >= 2) {
+      playoffMatches += tournamentMatchCount(playoffCount, Boolean(event.doubleElimination));
+    }
+  }
   return regularMatches + playoffMatches;
 };
 

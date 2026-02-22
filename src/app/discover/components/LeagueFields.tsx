@@ -142,6 +142,7 @@ interface LeagueFieldsProps {
   lockSlotDivisions?: boolean;
   lockedDivisionKeys?: string[];
   readOnly?: boolean;
+  showPlayoffSettings?: boolean;
 }
 
 const LeagueFields: React.FC<LeagueFieldsProps> = ({
@@ -160,6 +161,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   lockSlotDivisions = false,
   lockedDivisionKeys = [],
   readOnly = false,
+  showPlayoffSettings = true,
 }) => {
   const fieldLookup = useMemo(
     () => new Map(fields.map((field) => [field.$id, field])),
@@ -337,33 +339,37 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          <Switch
-            label="Include Playoffs"
-            checked={leagueData.includePlayoffs}
-            onChange={(event) => handleIncludePlayoffsChange(event.currentTarget.checked)}
-          />
-        </div>
+        {showPlayoffSettings && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <Switch
+                label="Include Playoffs"
+                checked={leagueData.includePlayoffs}
+                onChange={(event) => handleIncludePlayoffsChange(event.currentTarget.checked)}
+              />
+            </div>
 
-        {leagueData.includePlayoffs && (
-          <NumberInput
-            className="mt-4"
-            label="Playoff Team Count"
-            min={2}
-            value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-            onChange={(value) => {
-              const numeric = typeof value === 'number' ? value : Number(value);
-              onLeagueDataChange({
-                playoffTeamCount: Number.isFinite(numeric) ? numeric : undefined,
-              });
-            }}
-            error={
-              leagueData.includePlayoffs &&
-              !(typeof leagueData.playoffTeamCount === 'number' && leagueData.playoffTeamCount >= 2)
-                ? 'Playoff team count is required'
-                : undefined
-            }
-          />
+            {leagueData.includePlayoffs && (
+              <NumberInput
+                className="mt-4"
+                label="Playoff Team Count"
+                min={2}
+                value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                onChange={(value) => {
+                  const numeric = typeof value === 'number' ? value : Number(value);
+                  onLeagueDataChange({
+                    playoffTeamCount: Number.isFinite(numeric) ? numeric : undefined,
+                  });
+                }}
+                error={
+                  leagueData.includePlayoffs &&
+                  !(typeof leagueData.playoffTeamCount === 'number' && leagueData.playoffTeamCount >= 2)
+                    ? 'Playoff team count is required'
+                    : undefined
+                }
+              />
+            )}
+          </>
         )}
 
         {requiresSets && (
