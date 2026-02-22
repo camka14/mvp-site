@@ -149,6 +149,9 @@ model Divisions {
   eventId String?
   organizationId String?
   sportId String?
+  price Int?
+  maxParticipants Int?
+  playoffTeamCount Int?
   minRating Float?
   maxRating Float?
   divisionTypeId String?

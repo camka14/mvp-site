@@ -91,4 +91,67 @@ describe('eventService', () => {
     expect(apiRequestMock).toHaveBeenCalledWith('/api/events', expect.objectContaining({ method: 'POST' }));
     expect(created.$id).toBe('evt_1');
   });
+
+  it('sends division pricing and league scoring updates when updating an event', async () => {
+    apiRequestMock
+      .mockResolvedValueOnce({ ...baseEventRow })
+      .mockResolvedValueOnce({
+        ...baseEventRow,
+        eventType: 'LEAGUE',
+        leagueScoringConfigId: 'cfg_1',
+      });
+
+    await eventService.updateEvent('evt_1', {
+      ...baseEventRow,
+      eventType: 'LEAGUE',
+      divisions: ['evt_1__division__open'],
+      divisionDetails: [
+        {
+          id: 'evt_1__division__open',
+          key: 'open',
+          name: 'Open',
+          price: 2500,
+          maxParticipants: 14,
+          playoffTeamCount: 8,
+          fieldIds: [],
+        } as any,
+      ],
+      leagueScoringConfigId: 'cfg_1',
+      leagueScoringConfig: {
+        $id: 'cfg_1',
+        pointsForWin: 3,
+        pointsForDraw: 1,
+        pointsForLoss: 0,
+      } as any,
+    } as any);
+
+    expect(apiRequestMock).toHaveBeenCalledTimes(3);
+
+    const [url, options] = apiRequestMock.mock.calls[0];
+    expect(url).toBe('/api/events/evt_1');
+    expect(options?.method).toBe('PATCH');
+    expect(options?.body).toEqual(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          eventType: 'LEAGUE',
+          leagueScoringConfigId: 'cfg_1',
+          leagueScoringConfig: expect.objectContaining({
+            pointsForWin: 3,
+            pointsForDraw: 1,
+            pointsForLoss: 0,
+          }),
+          divisionDetails: [
+            expect.objectContaining({
+              id: 'evt_1__division__open',
+              price: 2500,
+              maxParticipants: 14,
+              playoffTeamCount: 8,
+            }),
+          ],
+        }),
+      }),
+    );
+    expect(apiRequestMock.mock.calls[1][0]).toBe('/api/events/evt_1');
+    expect(apiRequestMock.mock.calls[2][0]).toBe('/api/league-scoring-configs/cfg_1');
+  });
 });

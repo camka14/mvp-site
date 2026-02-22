@@ -27,6 +27,10 @@ const divisionsMock = {
   upsert: jest.fn(),
 };
 
+const leagueScoringConfigsMock = {
+  upsert: jest.fn(),
+};
+
 const executeRawMock = jest.fn();
 
 const prismaMock = {
@@ -39,6 +43,7 @@ const prismaMock = {
     fields: fieldsMock,
     matches: matchesMock,
     divisions: divisionsMock,
+    leagueScoringConfigs: leagueScoringConfigsMock,
     $executeRaw: executeRawMock,
   })),
 };
@@ -393,5 +398,129 @@ describe('event PATCH route', () => {
 
     expect(res.status).toBe(200);
     expect(scheduleEventMock).not.toHaveBeenCalled();
+  });
+
+  it('persists league scoring config values and links the event config id', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        leagueScoringConfigId: null,
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: [],
+        start: new Date('2026-01-01T00:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        leagueScoringConfigId: 'cfg_new',
+        divisions: ['open'],
+      });
+    leagueScoringConfigsMock.upsert.mockImplementation(({ create }: any) => Promise.resolve(create));
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      leagueScoringConfigId: 'cfg_new',
+      divisions: ['open'],
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          leagueScoringConfig: {
+            id: 'cfg_new',
+            pointsForWin: 3,
+            pointsForDraw: 1,
+            pointsForLoss: 0,
+          },
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(leagueScoringConfigsMock.upsert).toHaveBeenCalledTimes(1);
+    expect(leagueScoringConfigsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cfg_new' },
+        update: expect.objectContaining({
+          pointsForWin: 3,
+          pointsForDraw: 1,
+          pointsForLoss: 0,
+        }),
+      }),
+    );
+
+    const updateArg = prismaMock.events.update.mock.calls[0][0];
+    expect(updateArg.data.leagueScoringConfigId).toBe('cfg_new');
+    expect(updateArg.data.leagueScoringConfig).toBeUndefined();
+  });
+
+  it('creates a league scoring config id when saving a league missing config data', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    const randomUUIDSpy = jest.spyOn(crypto, 'randomUUID').mockReturnValue('cfg_auto');
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        leagueScoringConfigId: null,
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: [],
+        start: new Date('2026-01-01T00:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        leagueScoringConfigId: 'cfg_auto',
+        divisions: ['open'],
+      });
+    leagueScoringConfigsMock.upsert.mockImplementation(({ create }: any) => Promise.resolve(create));
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      leagueScoringConfigId: 'cfg_auto',
+      divisions: ['open'],
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+
+    try {
+      const res = await eventPatch(
+        patchRequest('http://localhost/api/events/event_1', {
+          event: {
+            name: 'Renamed League',
+          },
+        }),
+        { params: Promise.resolve({ eventId: 'event_1' }) },
+      );
+
+      expect(res.status).toBe(200);
+      expect(leagueScoringConfigsMock.upsert).toHaveBeenCalledTimes(1);
+      expect(leagueScoringConfigsMock.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'cfg_auto' },
+          create: expect.objectContaining({ id: 'cfg_auto' }),
+          update: expect.objectContaining({
+            updatedAt: expect.any(Date),
+          }),
+        }),
+      );
+
+      const updateArg = prismaMock.events.update.mock.calls[0][0];
+      expect(updateArg.data.leagueScoringConfigId).toBe('cfg_auto');
+    } finally {
+      randomUUIDSpy.mockRestore();
+    }
   });
 });

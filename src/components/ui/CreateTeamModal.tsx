@@ -19,15 +19,19 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
   const [form, setForm] = useState({
     name: '',
     division: 'Open',
-    sport: 'Volleyball',
+    sport: 'Indoor Volleyball',
     playerCount: 6,
     profileImageId: ''
   });
 
   const sportPlayerCounts: Record<string, number> = {
-    Volleyball: 6,
+    'Indoor Volleyball': 6,
+    'Beach Volleyball': 2,
+    'Grass Volleyball': 6,
     Basketball: 5,
-    Soccer: 11,
+    'Indoor Soccer': 6,
+    'Grass Soccer': 11,
+    'Beach Soccer': 5,
     Football: 11,
     Hockey: 11,
     Baseball: 9,
@@ -58,7 +62,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
       if (newTeam) {
         onTeamCreated?.(newTeam);
         // reset
-        setForm({ name: '', division: 'Open', sport: 'Volleyball', playerCount: 6, profileImageId: '' });
+        setForm({ name: '', division: 'Open', sport: 'Indoor Volleyball', playerCount: 6, profileImageId: '' });
         setSelectedTeamImageUrl('');
         onClose();
       }

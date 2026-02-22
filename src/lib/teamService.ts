@@ -106,7 +106,7 @@ class TeamService {
         name: string,
         captainId: string,
         division: string = 'Open',
-        sport: string = 'Volleyball',
+        sport: string = 'Indoor Volleyball',
         maxPlayers: number = 6,
         profileImageId?: string,
         options?: {
@@ -231,7 +231,7 @@ class TeamService {
                 typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
                     ? row.divisionTypeName
                     : undefined,
-            sport: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? 'Volleyball'),
+            sport: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? 'Indoor Volleyball'),
             wins,
             losses,
             playerIds,

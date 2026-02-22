@@ -514,6 +514,205 @@ describe('league scheduling (time slots)', () => {
     expect(divisionCounts.get('advanced')).toBe(1);
   });
 
+  it('uses division max participants for placeholder capacity in multi-division leagues', () => {
+    const beginner = new Division('beginner', 'Beginner', [], null, 4);
+    const advanced = new Division('advanced', 'Advanced', [], null, 2);
+
+    const fieldBeginner = buildFieldById('field_beginner_targeted', beginner);
+    const fieldAdvanced = buildFieldById('field_advanced_targeted', advanced);
+
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 2, 31, 21, 0, 0);
+
+    const league = new League({
+      id: 'league_multi_division_capacity_targets',
+      name: 'Division Capacity Targets League',
+      start,
+      end,
+      maxParticipants: 40,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams: {},
+      divisions: [beginner, advanced],
+      referees: [],
+      fields: {
+        [fieldBeginner.id]: fieldBeginner,
+        [fieldAdvanced.id]: fieldAdvanced,
+      },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_beginner_targeted',
+          dayOfWeek: 5,
+          startDate: new Date(2026, 0, 3),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 13 * 60,
+          field: fieldBeginner.id,
+          divisions: [beginner],
+        }),
+        new TimeSlot({
+          id: 'slot_advanced_targeted',
+          dayOfWeek: 5,
+          startDate: new Date(2026, 0, 3),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 13 * 60,
+          field: fieldAdvanced.id,
+          divisions: [advanced],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(7);
+
+    const divisionCounts = new Map<string, number>();
+    for (const match of scheduled.matches) {
+      divisionCounts.set(match.division.id, (divisionCounts.get(match.division.id) ?? 0) + 1);
+    }
+
+    expect(divisionCounts.get('beginner')).toBe(6);
+    expect(divisionCounts.get('advanced')).toBe(1);
+  });
+
+  it('uses per-division playoff team count when divisions are separate', () => {
+    const rec = new Division('rec', 'Rec', [], null, 4, 3);
+    const open = new Division('open', 'Open', [], null, 4, 4);
+    const fieldRec = buildFieldById('field_rec_playoff_counts', rec);
+    const fieldOpen = buildFieldById('field_open_playoff_counts', open);
+
+    const start = new Date(2026, 0, 5, 8, 0, 0); // Monday
+    const end = new Date(2026, 0, 26, 22, 0, 0);
+
+    const league = new League({
+      id: 'league_per_division_playoff_count',
+      name: 'Per Division Playoff Count',
+      start,
+      end,
+      noFixedEndDateTime: false,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams: {},
+      divisions: [rec, open],
+      referees: [],
+      fields: { [fieldRec.id]: fieldRec, [fieldOpen.id]: fieldOpen },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_rec_playoff_counts',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldRec.id,
+          divisions: [rec],
+        }),
+        new TimeSlot({
+          id: 'slot_open_playoff_counts',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldOpen.id,
+          divisions: [open],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 10,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(17);
+
+    const divisionCounts = new Map<string, number>();
+    for (const match of scheduled.matches) {
+      divisionCounts.set(match.division.id, (divisionCounts.get(match.division.id) ?? 0) + 1);
+    }
+
+    expect(divisionCounts.get('rec')).toBe(8);
+    expect(divisionCounts.get('open')).toBe(9);
+  });
+
+  it('schedules playoffs for odd per-division team counts derived from placeholder capacity', () => {
+    const rec = new Division('rec', 'Rec');
+    const open = new Division('open', 'Open');
+    const fieldRec = buildFieldById('field_rec', rec);
+    const fieldOpen = buildFieldById('field_open', open);
+
+    const start = new Date(2026, 0, 5, 8, 0, 0); // Monday
+    const end = new Date(2026, 0, 26, 22, 0, 0);
+
+    const league = new League({
+      id: 'league_odd_division_playoffs',
+      name: 'Odd Division Playoffs',
+      start,
+      end,
+      noFixedEndDateTime: false,
+      maxParticipants: 10,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams: {},
+      divisions: [rec, open],
+      referees: [],
+      fields: { [fieldRec.id]: fieldRec, [fieldOpen.id]: fieldOpen },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_rec',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldRec.id,
+          divisions: [rec],
+        }),
+        new TimeSlot({
+          id: 'slot_open',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldOpen.id,
+          divisions: [open],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 10,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(28);
+    expect(scheduled.matches.every((match) => match.division.id === 'rec' || match.division.id === 'open')).toBe(true);
+  });
+
   it('surfaces a configuration error when selected divisions have no available fields', () => {
     const openDivision = new Division('OPEN', 'Open');
     const advancedDivision = new Division('ADVANCED', 'Advanced');
@@ -557,7 +756,7 @@ describe('league scheduling (time slots)', () => {
     );
   });
 
-  it('does not inflate placeholder team counts in failure messages after retries', () => {
+  it('schedules placeholder-backed multi-division leagues without leaking synthetic teams', () => {
     const rec = new Division('rec', 'Rec');
     const open = new Division('open', 'Open');
     const fieldRec = buildFieldById('field_rec', rec);
@@ -611,8 +810,10 @@ describe('league scheduling (time slots)', () => {
       leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
     });
 
-    expect(() => scheduleEvent({ event: league }, context)).toThrow(
-      /Approximate matches needed: 54\./,
-    );
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(28);
+    expect(Object.keys((scheduled.event as League).teams)).toHaveLength(0);
+    expect(scheduled.matches.every((match) => !match.team1 || !match.team1.id.startsWith('placeholder-'))).toBe(true);
+    expect(scheduled.matches.every((match) => !match.team2 || !match.team2.id.startsWith('placeholder-'))).toBe(true);
   });
 });

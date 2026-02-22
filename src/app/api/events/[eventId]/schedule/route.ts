@@ -11,6 +11,7 @@ import {
 } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
+import { rescheduleEventMatchesPreservingLocks } from '@/server/scheduler/reschedulePreservingLocks';
 import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
@@ -78,14 +79,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       }
 
       if (!['LEAGUE', 'TOURNAMENT'].includes(event.eventType)) {
-        return { preview: false, event, matches: Object.values(event.matches) };
+        return { preview: false, event, matches: Object.values(event.matches), warnings: [] };
+      }
+
+      const hasLockedMatches = Object.values(event.matches).some((match) => Boolean(match.locked));
+      if (hasLockedMatches) {
+        let scheduled;
+        try {
+          scheduled = rescheduleEventMatchesPreservingLocks(event);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unable to reschedule while preserving locked matches.';
+          throw new ScheduleError(message);
+        }
+        await saveMatches(eventId, scheduled.matches, tx);
+        await saveEventSchedule(scheduled.event, tx);
+        return { preview: false, ...scheduled };
       }
 
       const scheduled = scheduleEvent({ event, participantCount: parsed.data.participantCount }, context);
       await deleteMatchesByEvent(eventId, tx);
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);
-      return scheduled;
+      return { ...scheduled, warnings: [] };
     });
 
     return NextResponse.json(
@@ -93,6 +108,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         preview: typeof result.preview === 'boolean' ? result.preview : false,
         event: serializeEventLegacy(result.event),
         matches: serializeMatchesLegacy(result.matches),
+        warnings: Array.isArray((result as { warnings?: unknown[] }).warnings)
+          ? (result as { warnings: unknown[] }).warnings
+          : [],
       },
       { status: 200 },
     );

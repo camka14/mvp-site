@@ -64,11 +64,28 @@ export class Division implements Group {
   id: string;
   name: string;
   fieldIds: string[];
+  price: number | null;
+  maxParticipants: number | null;
+  playoffTeamCount: number | null;
 
-  constructor(id: string, name?: string, fieldIds?: string[]) {
+  constructor(
+    id: string,
+    name?: string,
+    fieldIds?: string[],
+    price?: number | null,
+    maxParticipants?: number | null,
+    playoffTeamCount?: number | null,
+  ) {
     this.id = id;
     this.name = name ?? id;
     this.fieldIds = Array.isArray(fieldIds) ? fieldIds : [];
+    this.price = typeof price === 'number' && Number.isFinite(price) ? price : null;
+    this.maxParticipants = typeof maxParticipants === 'number' && Number.isFinite(maxParticipants)
+      ? Math.max(0, Math.trunc(maxParticipants))
+      : null;
+    this.playoffTeamCount = typeof playoffTeamCount === 'number' && Number.isFinite(playoffTeamCount)
+      ? Math.max(0, Math.trunc(playoffTeamCount))
+      : null;
   }
 }
 

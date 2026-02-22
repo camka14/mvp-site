@@ -47,8 +47,8 @@ export class EventBuilder {
     this.resetState();
     this.ensureFieldsAvailable();
 
-    const participantCapacity = this.desiredParticipantCapacity();
-    const participants = this.prepareParticipants(participantCapacity);
+    const participantTargets = this.desiredParticipantCapacity();
+    const participants = this.prepareParticipants(participantTargets);
     if (Object.keys(participants).length < 2) {
       throw new Error('Event requires at least two participants to schedule');
     }
@@ -145,12 +145,14 @@ export class EventBuilder {
     return new Division('OPEN', 'OPEN');
   }
 
-  private prepareParticipants(placeholderCount?: number): Record<string, Team> {
+  private prepareParticipants(
+    placeholderTargets?: { total: number; byDivision: Map<string, number> | null },
+  ): Record<string, Team> {
     for (const team of Object.values(this.event.teams)) {
       team.matches = [];
     }
-    if (placeholderCount) {
-      this.ensurePlaceholderCapacity(placeholderCount);
+    if (placeholderTargets) {
+      this.ensurePlaceholderCapacity(placeholderTargets.total, placeholderTargets.byDivision);
     }
     return this.event.teams;
   }
@@ -175,7 +177,10 @@ export class EventBuilder {
     }
   }
 
-  private ensurePlaceholderCapacity(targetCount: number): void {
+  private ensurePlaceholderCapacity(
+    targetCount: number,
+    divisionTargets: Map<string, number> | null = null,
+  ): void {
     if (targetCount < 2) targetCount = 2;
     if (Object.keys(this.event.teams).length >= targetCount) return;
     const divisions = this.event.singleDivision || this.event.divisions.length === 0
@@ -188,6 +193,20 @@ export class EventBuilder {
     for (const team of Object.values(this.event.teams)) {
       const divisionId = team.division?.id ?? this.defaultDivision().id;
       placeholderCounts.set(divisionId, (placeholderCounts.get(divisionId) ?? 0) + 1);
+    }
+
+    if (divisionTargets && divisionTargets.size && !this.event.singleDivision) {
+      for (const [divisionId, target] of divisionTargets.entries()) {
+        if (!Number.isFinite(target)) continue;
+        const normalizedTarget = Math.max(0, Math.trunc(target));
+        if (normalizedTarget < 1) continue;
+        const division = divisions.find((entry) => entry.id === divisionId) ?? this.defaultDivision();
+        const currentCount = placeholderCounts.get(division.id) ?? 0;
+        const missing = Math.max(0, normalizedTarget - currentCount);
+        for (let index = 0; index < missing; index += 1) {
+          this.addPlaceholderTeam(division, placeholderCounts);
+        }
+      }
     }
 
     const pickDivisionForPlaceholder = (): Division => {
@@ -206,24 +225,27 @@ export class EventBuilder {
     };
 
     while (Object.keys(this.event.teams).length < targetCount) {
-      const division = pickDivisionForPlaceholder();
-      const safeDivisionId = division.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      const placeholderId = this.generatePlaceholderId(`placeholder-${safeDivisionId}`);
-      const placeholder = new Team({
-        id: placeholderId,
-        seed: 0,
-        captainId: '',
-        division,
-        matches: [],
-        wins: 0,
-        losses: 0,
-        playerIds: [],
-        name: '',
-      });
-      this.event.teams[placeholderId] = placeholder;
-      this.placeholderIds.add(placeholderId);
-      placeholderCounts.set(division.id, (placeholderCounts.get(division.id) ?? 0) + 1);
+      this.addPlaceholderTeam(pickDivisionForPlaceholder(), placeholderCounts);
     }
+  }
+
+  private addPlaceholderTeam(division: Division, placeholderCounts: Map<string, number>): void {
+    const safeDivisionId = division.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const placeholderId = this.generatePlaceholderId(`placeholder-${safeDivisionId}`);
+    const placeholder = new Team({
+      id: placeholderId,
+      seed: 0,
+      captainId: '',
+      division,
+      matches: [],
+      wins: 0,
+      losses: 0,
+      playerIds: [],
+      name: '',
+    });
+    this.event.teams[placeholderId] = placeholder;
+    this.placeholderIds.add(placeholderId);
+    placeholderCounts.set(division.id, (placeholderCounts.get(division.id) ?? 0) + 1);
   }
 
   private generatePlaceholderId(prefix: string): string {
@@ -299,10 +321,46 @@ export class EventBuilder {
     return placeholders;
   }
 
-  private desiredParticipantCapacity(): number {
+  private desiredParticipantCapacity(): { total: number; byDivision: Map<string, number> | null } {
     const maxParticipants = this.event.maxParticipants ?? 0;
     const teamCount = Object.keys(this.event.teams).length;
-    return Math.max(teamCount, maxParticipants, 2);
+    if (this.event.singleDivision || this.event.divisions.length === 0) {
+      return {
+        total: Math.max(teamCount, maxParticipants, 2),
+        byDivision: null,
+      };
+    }
+
+    const participantsByDivision = new Map<string, number>();
+    for (const team of Object.values(this.event.teams)) {
+      const divisionId = team.division?.id ?? this.defaultDivision().id;
+      participantsByDivision.set(divisionId, (participantsByDivision.get(divisionId) ?? 0) + 1);
+    }
+
+    const configuredDivisions = this.event.divisions.length ? this.event.divisions : [this.defaultDivision()];
+    const divisionFallbackCapacity = maxParticipants > 0
+      ? Math.ceil(maxParticipants / Math.max(configuredDivisions.length, 1))
+      : 0;
+
+    const byDivision = new Map<string, number>();
+    for (const division of configuredDivisions) {
+      const currentCount = participantsByDivision.get(division.id) ?? 0;
+      const configuredCapacity = typeof division.maxParticipants === 'number' && Number.isFinite(division.maxParticipants)
+        ? Math.max(0, Math.trunc(division.maxParticipants))
+        : divisionFallbackCapacity;
+      byDivision.set(division.id, Math.max(currentCount, configuredCapacity));
+      participantsByDivision.delete(division.id);
+    }
+
+    for (const [divisionId, count] of participantsByDivision.entries()) {
+      byDivision.set(divisionId, count);
+    }
+
+    const divisionCapacityTotal = Array.from(byDivision.values()).reduce((sum, count) => sum + Math.max(0, count), 0);
+    return {
+      total: Math.max(teamCount, divisionCapacityTotal, 2),
+      byDivision,
+    };
   }
 
   private matchDuration(): number {
@@ -448,6 +506,19 @@ export class EventBuilder {
     }
 
     const league = this.event as League;
+    const resolveDivisionPlayoffCount = (division: Division, teamCount: number): number => {
+      if (teamCount < 2) {
+        return 0;
+      }
+      const divisionCount = typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
+        ? Math.max(0, Math.trunc(division.playoffTeamCount))
+        : null;
+      const configured = divisionCount !== null
+        ? divisionCount
+        : Math.max(0, Math.trunc(league.playoffTeamCount || 0));
+      const fallback = configured > 0 ? configured : teamCount;
+      return Math.min(fallback, teamCount);
+    };
     const seeded: Team[] = [];
     if (this.event.singleDivision) {
       const playoffCount = Math.min(league.playoffTeamCount || participants.length, participants.length);
@@ -456,7 +527,7 @@ export class EventBuilder {
     } else {
       const groupedByDivision = this.groupsByDivision(participants);
       for (const { division, teams } of groupedByDivision) {
-        const divisionPlayoffCount = Math.min(league.playoffTeamCount || teams.length, teams.length);
+        const divisionPlayoffCount = resolveDivisionPlayoffCount(division, teams.length);
         if (divisionPlayoffCount < 2) {
           continue;
         }

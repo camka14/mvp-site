@@ -388,6 +388,7 @@ function EventScheduleContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -878,6 +879,7 @@ function EventScheduleContent() {
     setCreatingTemplate(true);
     setActionError(null);
     setInfoMessage(null);
+    setWarningMessage(null);
 
     try {
       const full = await eventService.getEventWithRelations(activeEvent.$id);
@@ -1569,6 +1571,7 @@ function EventScheduleContent() {
     setHasUnsavedChanges(true);
     setSubmitError(null);
     setInfoMessage(null);
+    setWarningMessage(null);
   }, [activeEvent]);
 
   const rentalPaymentEventSummary: PaymentEventSummary = useMemo(() => {
@@ -1595,6 +1598,7 @@ function EventScheduleContent() {
     setLoading(true);
     setError(null);
     setInfoMessage(null);
+    setWarningMessage(null);
 
     try {
       const response = await apiRequest<any>(`/api/events/${eventId}`);
@@ -1604,6 +1608,35 @@ function EventScheduleContent() {
       if (!fetchedEvent) {
         setError('League not found.');
         return;
+      }
+
+      if (fetchedEvent.eventType === 'LEAGUE') {
+        const leagueConfigId = typeof fetchedEvent.leagueScoringConfigId === 'string'
+          && fetchedEvent.leagueScoringConfigId.trim().length > 0
+          ? fetchedEvent.leagueScoringConfigId.trim()
+          : null;
+        if (
+          leagueConfigId
+          && (!fetchedEvent.leagueScoringConfig || typeof fetchedEvent.leagueScoringConfig !== 'object')
+        ) {
+          try {
+            const leagueConfigResponse = await apiRequest<any>(`/api/league-scoring-configs/${leagueConfigId}`);
+            const leagueConfig = leagueConfigResponse?.leagueScoringConfig ?? leagueConfigResponse;
+            if (leagueConfig && typeof leagueConfig === 'object') {
+              const normalizedLeagueConfig = {
+                ...leagueConfig,
+                $id: typeof leagueConfig.$id === 'string'
+                  ? leagueConfig.$id
+                  : typeof leagueConfig.id === 'string'
+                    ? leagueConfig.id
+                    : undefined,
+              };
+              fetchedEvent.leagueScoringConfig = normalizedLeagueConfig;
+            }
+          } catch (leagueConfigError) {
+            console.error('Failed to load league scoring config for event:', leagueConfigError);
+          }
+        }
       }
 
       if (Array.isArray(response?.matches)) {
@@ -2142,21 +2175,31 @@ function EventScheduleContent() {
     setActiveTab(defaultTab);
   }, [defaultTab]);
 
-  const getDraftFromForm = useCallback(async (): Promise<Partial<Event> | null> => {
-    const formApi = eventFormRef.current;
-    if (!formApi) {
-      setSubmitError('Form is not ready to submit.');
-      return null;
-    }
+  const getDraftFromForm = useCallback(
+    async ({ allowCurrentEventFallback = false }: { allowCurrentEventFallback?: boolean } = {}): Promise<Partial<Event> | null> => {
+      if (allowCurrentEventFallback && activeTab !== 'details' && activeEvent) {
+        return cloneValue(activeEvent) as Event;
+      }
 
-    const isValid = await formApi.validate();
-    if (!isValid) {
-      setSubmitError('Please fix the highlighted fields before submitting.');
-      return null;
-    }
+      const formApi = eventFormRef.current;
+      if (!formApi) {
+        if (allowCurrentEventFallback && activeEvent) {
+          return cloneValue(activeEvent) as Event;
+        }
+        setSubmitError('Form is not ready to submit.');
+        return null;
+      }
 
-    return formApi.getDraft();
-  }, [setSubmitError]);
+      const isValid = await formApi.validate();
+      if (!isValid) {
+        setSubmitError('Please fix the highlighted fields before submitting.');
+        return null;
+      }
+
+      return formApi.getDraft();
+    },
+    [activeEvent, activeTab, setSubmitError],
+  );
 
   const handlePreviewEventUpdate = useCallback((preview: Event) => {
     const normalizedPreview = normalizeApiEvent(preview) ?? preview;
@@ -2192,6 +2235,7 @@ function EventScheduleContent() {
       setPublishing(true);
       setError(null);
       setInfoMessage(null);
+      setWarningMessage(null);
 
       try {
         const payload = buildSchedulePayload(draft);
@@ -2230,6 +2274,7 @@ function EventScheduleContent() {
       setPublishing(true);
       setError(null);
       setInfoMessage(null);
+      setWarningMessage(null);
 
       try {
         const payload = buildSchedulePayload(draft);
@@ -2284,7 +2329,7 @@ function EventScheduleContent() {
         return;
       }
 
-      const draft = await getDraftFromForm();
+      const draft = await getDraftFromForm({ allowCurrentEventFallback: rescheduleAfterSave });
       if (!draft) {
         return;
       }
@@ -2292,6 +2337,7 @@ function EventScheduleContent() {
       const mergedDraft = { ...activeEvent, ...(draft as Event) } as Event;
       setError(null);
       setInfoMessage(null);
+      setWarningMessage(null);
       if (rescheduleAfterSave) {
         setReschedulingMatches(true);
       } else {
@@ -2330,11 +2376,18 @@ function EventScheduleContent() {
           }
         }
 
+        let rescheduleWarningText: string | null = null;
         if (rescheduleAfterSave && updatedEvent.$id) {
           const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
           const scheduled = await eventService.scheduleEvent(schedulePayload, { eventId: updatedEvent.$id });
           if (!scheduled?.event) {
             throw new Error('Failed to reschedule matches.');
+          }
+          if (Array.isArray(scheduled.warnings) && scheduled.warnings.length) {
+            rescheduleWarningText = scheduled.warnings
+              .map((warning) => warning.message)
+              .filter((message) => typeof message === 'string' && message.trim().length > 0)
+              .join(' ');
           }
           updatedEvent = scheduled.event;
         }
@@ -2358,6 +2411,9 @@ function EventScheduleContent() {
         await loadSchedule();
         if (rescheduleAfterSave) {
           setInfoMessage(`${entityLabel} settings saved and matches rescheduled.`);
+          if (rescheduleWarningText) {
+            setWarningMessage(rescheduleWarningText);
+          }
         } else {
           setInfoMessage(`${entityLabel} changes saved.`);
         }
@@ -3068,6 +3124,12 @@ function EventScheduleContent() {
           {infoMessage && (
             <Alert color="green" radius="md" onClose={() => setInfoMessage(null)} withCloseButton>
               {infoMessage}
+            </Alert>
+          )}
+
+          {warningMessage && (
+            <Alert color="yellow" radius="md" onClose={() => setWarningMessage(null)} withCloseButton>
+              {warningMessage}
             </Alert>
           )}
 

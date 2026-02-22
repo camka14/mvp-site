@@ -4,6 +4,7 @@ import { memo } from 'react';
 import Image from 'next/image';
 import { getTeamAvatarUrl, getUserAvatarUrl, Match } from '@/types';
 import { formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
+import { inferDivisionDetails } from '@/lib/divisionTypes';
 
 interface MatchCardProps {
     match: Match;
@@ -45,6 +46,45 @@ function MatchCard({
         return 'TBD';
     };
 
+    const getDivisionLabel = () => {
+        const rawDivision = match.division;
+        if (rawDivision && typeof rawDivision === 'object' && 'name' in rawDivision) {
+            const name = String(rawDivision.name ?? '').trim();
+            if (name.length > 0) return name;
+            const id = String((rawDivision as any).id ?? '').trim();
+            if (id.length > 0) {
+                const inferred = inferDivisionDetails({ identifier: id });
+                const inferredName = String(inferred.defaultName ?? '').trim();
+                if (inferredName.length > 0) return inferredName;
+            }
+        }
+        if (typeof rawDivision === 'string') {
+            const cleaned = rawDivision.trim();
+            if (cleaned.length > 0) {
+                const inferred = inferDivisionDetails({ identifier: cleaned });
+                const inferredName = String(inferred.defaultName ?? '').trim();
+                if (inferredName.length > 0) return inferredName;
+            }
+        }
+        return 'TBD';
+    };
+
+    const getBracketPlaceholder = (previousMatch?: Match | null) => {
+        if (!previousMatch || typeof previousMatch.matchId !== 'number') {
+            return 'TBD';
+        }
+        const isCrossBracketLoser = Boolean(match.losersBracket && previousMatch.losersBracket === false);
+        const prefix = isCrossBracketLoser ? 'Loser' : 'Winner';
+        return `${prefix} of match #${previousMatch.matchId}`;
+    };
+
+    const getTeamLabel = (teamData: Match['team1'], previousMatch?: Match | null) => {
+        if (teamData) {
+            return getTeamName(teamData);
+        }
+        return getBracketPlaceholder(previousMatch);
+    };
+
     const getUserName = (userData: any) => {
         if (!userData) return 'Referee';
         const name = [userData.firstName, userData.lastName].filter(Boolean).join(' ').trim();
@@ -63,6 +103,7 @@ function MatchCard({
     const result = getMatchResult();
     const isCompleted = result && result.winner !== null;
     const isInProgress = match.setResults.some((r) => r === 0) && match.setResults.some((r) => r !== 0);
+    const divisionLabel = getDivisionLabel();
 
     const formatTime = (timeString: string) => {
         const date = new Date(timeString);
@@ -96,11 +137,13 @@ function MatchCard({
         team,
         points,
         winner,
+        previousMatch,
         reverseScore = false,
     }: {
         team: Match['team1'];
         points: number[];
         winner: boolean;
+        previousMatch?: Match | null;
         reverseScore?: boolean;
     }) => (
         <div className={`flex items-center justify-between ${isCompactHorizontal ? 'p-1.5' : 'p-2'} rounded ${winner ? 'bg-green-50 border border-green-200' : 'bg-gray-100'}`}>
@@ -121,14 +164,14 @@ function MatchCard({
                         {team && (
                             <Image
                                 src={getTeamAvatarUrl(team, 24)}
-                                alt={getTeamName(team)}
+                                alt={getTeamLabel(team, previousMatch)}
                                 width={24}
                                 height={24}
                                 unoptimized
                                 className="w-6 h-6 rounded-full"
                             />
                         )}
-                        <span className="text-sm font-medium truncate text-right">{getTeamName(team)}</span>
+                        <span className="text-sm font-medium truncate text-right">{getTeamLabel(team, previousMatch)}</span>
                     </div>
                 </>
             ) : (
@@ -137,14 +180,14 @@ function MatchCard({
                         {team && (
                             <Image
                                 src={getTeamAvatarUrl(team, 24)}
-                                alt={getTeamName(team)}
+                                alt={getTeamLabel(team, previousMatch)}
                                 width={24}
                                 height={24}
                                 unoptimized
                                 className="w-6 h-6 rounded-full"
                             />
                         )}
-                        <span className="text-sm font-medium truncate">{getTeamName(team)}</span>
+                        <span className="text-sm font-medium truncate">{getTeamLabel(team, previousMatch)}</span>
                     </div>
                     <div className="flex items-center gap-1 text-sm font-mono ml-2">
                         {points.length > 0 ? (
@@ -165,18 +208,24 @@ function MatchCard({
     const renderVerticalLayout = () => (
         <>
             <div className="space-y-2">
-                {renderTeamRow({ team: match.team1, points: match.team1Points, winner: result?.winner === 1 })}
-                {renderTeamRow({ team: match.team2, points: match.team2Points, winner: result?.winner === 2 })}
+                {renderTeamRow({
+                    team: match.team1,
+                    points: match.team1Points,
+                    winner: result?.winner === 1,
+                    previousMatch: match.previousLeftMatch,
+                })}
+                {renderTeamRow({
+                    team: match.team2,
+                    points: match.team2Points,
+                    winner: result?.winner === 2,
+                    previousMatch: match.previousRightMatch,
+                })}
             </div>
             <div className="mt-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    {isCompleted ? (
-                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Completed</span>
-                    ) : isInProgress ? (
-                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">In Progress</span>
-                    ) : (
-                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">Scheduled</span>
-                    )}
+                    <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                        Division: {divisionLabel}
+                    </span>
                 </div>
                 {canManage && <div className="text-xs text-blue-600 font-medium">Click to manage</div>}
             </div>
@@ -187,20 +236,26 @@ function MatchCard({
         <div className={isCompactHorizontal ? 'space-y-2' : 'space-y-3'}>
             <div className={`grid grid-cols-2 items-stretch ${isCompactHorizontal ? 'gap-2' : 'gap-3'}`}>
                 <div className="h-full">
-                    {renderTeamRow({ team: match.team1, points: match.team1Points, winner: result?.winner === 1 })}
+                    {renderTeamRow({
+                        team: match.team1,
+                        points: match.team1Points,
+                        winner: result?.winner === 1,
+                        previousMatch: match.previousLeftMatch,
+                    })}
                 </div>
                 <div className="h-full">
                     {renderTeamRow({
                         team: match.team2,
                         points: match.team2Points,
                         winner: result?.winner === 2,
+                        previousMatch: match.previousRightMatch,
                         reverseScore: true,
                     })}
                 </div>
             </div>
             <div className="flex items-center justify-between gap-3">
-                <div className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full shrink-0">
-                    {isCompleted ? 'Completed' : isInProgress ? 'In Progress' : 'Scheduled'}
+                <div className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full shrink-0">
+                    Division: {divisionLabel}
                 </div>
                 {canManage && <div className="text-xs text-blue-600 font-medium">Click to manage</div>}
             </div>
@@ -215,7 +270,7 @@ function MatchCard({
         >
             {!hideTimeBadge && (
                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <div className={`px-3 py-1 rounded-full text-xs font-medium text-white ${match.losersBracket ? 'bg-orange-500' : 'bg-blue-500'}`}>
+                    <div className={`inline-flex whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium text-white ${match.losersBracket ? 'bg-orange-500' : 'bg-blue-500'}`}>
                         {formatTime(match.start)}
                     </div>
                 </div>

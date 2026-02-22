@@ -34,6 +34,7 @@ const acquireEventLockMock = jest.fn();
 const scheduleEventMock = jest.fn();
 const serializeEventLegacyMock = jest.fn();
 const serializeMatchesLegacyMock = jest.fn();
+const rescheduleEventMatchesPreservingLocksMock = jest.fn();
 const applyMatchUpdatesMock = jest.fn();
 const finalizeMatchMock = jest.fn();
 const isScheduleWindowExceededErrorMock = jest.fn();
@@ -65,6 +66,10 @@ jest.mock('@/server/scheduler/scheduleEvent', () => ({
 jest.mock('@/server/scheduler/serialize', () => ({
   serializeEventLegacy: (...args: any[]) => serializeEventLegacyMock(...args),
   serializeMatchesLegacy: (...args: any[]) => serializeMatchesLegacyMock(...args),
+}));
+
+jest.mock('@/server/scheduler/reschedulePreservingLocks', () => ({
+  rescheduleEventMatchesPreservingLocks: (...args: any[]) => rescheduleEventMatchesPreservingLocksMock(...args),
 }));
 
 jest.mock('@/server/scheduler/updateMatch', () => ({
@@ -205,6 +210,56 @@ describe('schedule routes', () => {
     expect(saveMatchesMock).toHaveBeenCalled();
     expect(json.event.$id).toBe('event_1');
     expect(json.matches[0].$id).toBe('match_1');
+  });
+
+  it('preserves locked matches during event reschedule and returns warnings', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      matches: {
+        match_locked: { id: 'match_locked', locked: true },
+      },
+    });
+    rescheduleEventMatchesPreservingLocksMock.mockReturnValue({
+      event: { id: 'event_1' },
+      matches: [{ id: 'match_locked', locked: true }],
+      warnings: [
+        {
+          code: 'LOCKED_MATCH_OUTSIDE_WINDOW',
+          message: 'Locked match is outside the updated start/time-slot window and was preserved.',
+          matchIds: ['match_locked'],
+        },
+      ],
+    });
+    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_locked', locked: true }]);
+
+    const res = await scheduleByIdPost(
+      jsonRequest('http://localhost/api/events/event_1/schedule', {}),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(rescheduleEventMatchesPreservingLocksMock).toHaveBeenCalled();
+    expect(scheduleEventMock).not.toHaveBeenCalled();
+    expect(deleteMatchesByEventMock).not.toHaveBeenCalled();
+    expect(saveMatchesMock).toHaveBeenCalledWith('event_1', [{ id: 'match_locked', locked: true }], prismaMock);
+    expect(json.warnings).toEqual([
+      {
+        code: 'LOCKED_MATCH_OUTSIDE_WINDOW',
+        message: 'Locked match is outside the updated start/time-slot window and was preserved.',
+        matchIds: ['match_locked'],
+      },
+    ]);
   });
 
   it('rejects match updates when user is not host', async () => {

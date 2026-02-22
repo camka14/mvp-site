@@ -29,6 +29,9 @@ export interface Division {
   eventId?: string;
   organizationId?: string;
   sportId?: string;
+  price?: number;
+  maxParticipants?: number;
+  playoffTeamCount?: number;
   fieldIds?: string[];
   skillLevel?: string;
   minRating?: number;
@@ -580,11 +583,9 @@ export interface RefundRequest {
 }
 
 export enum Sports {
-  Volleyball = 'Volleyball',
   IndoorVolleyball = 'Indoor Volleyball',
   BeachVolleyball = 'Beach Volleyball',
   GrassVolleyball = 'Grass Volleyball',
-  Soccer = 'Soccer',
   IndoorSoccer = 'Indoor Soccer',
   BeachSoccer = 'Beach Soccer',
   GrassSoccer = 'Grass Soccer',
@@ -925,6 +926,24 @@ export function toEventPayload(event: Event): EventPayload {
           ageCutoffDate: typeof division.ageCutoffDate === 'string' ? division.ageCutoffDate : undefined,
           ageCutoffLabel: typeof division.ageCutoffLabel === 'string' ? division.ageCutoffLabel : undefined,
           ageCutoffSource: typeof division.ageCutoffSource === 'string' ? division.ageCutoffSource : undefined,
+          price:
+            typeof division.price === 'number'
+              ? division.price
+              : Number.isFinite(Number(division.price))
+                ? Number(division.price)
+                : undefined,
+          maxParticipants:
+            typeof division.maxParticipants === 'number'
+              ? division.maxParticipants
+              : Number.isFinite(Number(division.maxParticipants))
+                ? Number(division.maxParticipants)
+                : undefined,
+          playoffTeamCount:
+            typeof division.playoffTeamCount === 'number'
+              ? division.playoffTeamCount
+              : Number.isFinite(Number(division.playoffTeamCount))
+                ? Number(division.playoffTeamCount)
+                : undefined,
         };
       })
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));

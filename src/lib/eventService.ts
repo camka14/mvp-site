@@ -230,6 +230,11 @@ class EventService {
           preview?: boolean;
           event?: Event;
           matches?: Match[];
+          warnings?: Array<{
+            code?: string;
+            message?: string;
+            matchIds?: string[];
+          }>;
         }>(path, {
           method: 'POST',
           body: payload,
@@ -247,6 +252,17 @@ class EventService {
         return {
           preview: typeof result?.preview === 'boolean' ? result.preview : false,
           event: normalizedEvent,
+          warnings: Array.isArray(result?.warnings)
+            ? result.warnings
+              .filter((warning): warning is { code: string; message: string; matchIds?: string[] } =>
+                Boolean(warning && typeof warning.code === 'string' && typeof warning.message === 'string'),
+              )
+              .map((warning) => ({
+                code: warning.code,
+                message: warning.message,
+                matchIds: Array.isArray(warning.matchIds) ? warning.matchIds : undefined,
+              }))
+            : [],
         };
       }
 
@@ -444,6 +460,16 @@ class EventService {
                             ? entry.gender
                             : undefined,
                     sportId: typeof entry?.sportId === 'string' ? entry.sportId : undefined,
+                    price: typeof entry?.price === 'number'
+                        ? entry.price
+                        : Number.isFinite(Number(entry?.price))
+                            ? Number(entry.price)
+                            : undefined,
+                    maxParticipants: typeof entry?.maxParticipants === 'number'
+                        ? entry.maxParticipants
+                        : Number.isFinite(Number(entry?.maxParticipants))
+                            ? Number(entry.maxParticipants)
+                            : undefined,
                     fieldIds: Array.isArray(entry?.fieldIds)
                         ? entry.fieldIds.map((fieldId: unknown) => String(fieldId)).filter(Boolean)
                         : [],

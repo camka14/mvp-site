@@ -46,6 +46,7 @@ export type MatchesMinAggregateOutputType = {
   updatedAt: Date | null
   start: Date | null
   end: Date | null
+  locked: boolean | null
   division: string | null
   side: string | null
   matchId: number | null
@@ -69,6 +70,7 @@ export type MatchesMaxAggregateOutputType = {
   updatedAt: Date | null
   start: Date | null
   end: Date | null
+  locked: boolean | null
   division: string | null
   side: string | null
   matchId: number | null
@@ -92,6 +94,7 @@ export type MatchesCountAggregateOutputType = {
   updatedAt: number
   start: number
   end: number
+  locked: number
   division: number
   team1Points: number
   team2Points: number
@@ -134,6 +137,7 @@ export type MatchesMinAggregateInputType = {
   updatedAt?: true
   start?: true
   end?: true
+  locked?: true
   division?: true
   side?: true
   matchId?: true
@@ -157,6 +161,7 @@ export type MatchesMaxAggregateInputType = {
   updatedAt?: true
   start?: true
   end?: true
+  locked?: true
   division?: true
   side?: true
   matchId?: true
@@ -180,6 +185,7 @@ export type MatchesCountAggregateInputType = {
   updatedAt?: true
   start?: true
   end?: true
+  locked?: true
   division?: true
   team1Points?: true
   team2Points?: true
@@ -293,6 +299,7 @@ export type MatchesGroupByOutputType = {
   updatedAt: Date | null
   start: Date | null
   end: Date | null
+  locked: boolean
   division: string | null
   team1Points: number[]
   team2Points: number[]
@@ -342,6 +349,7 @@ export type MatchesWhereInput = {
   updatedAt?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
   start?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
   end?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
+  locked?: Prisma.BoolFilter<"Matches"> | boolean
   division?: Prisma.StringNullableFilter<"Matches"> | string | null
   team1Points?: Prisma.IntNullableListFilter<"Matches">
   team2Points?: Prisma.IntNullableListFilter<"Matches">
@@ -368,6 +376,7 @@ export type MatchesOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   start?: Prisma.SortOrderInput | Prisma.SortOrder
   end?: Prisma.SortOrderInput | Prisma.SortOrder
+  locked?: Prisma.SortOrder
   division?: Prisma.SortOrderInput | Prisma.SortOrder
   team1Points?: Prisma.SortOrder
   team2Points?: Prisma.SortOrder
@@ -397,6 +406,7 @@ export type MatchesWhereUniqueInput = Prisma.AtLeast<{
   updatedAt?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
   start?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
   end?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
+  locked?: Prisma.BoolFilter<"Matches"> | boolean
   division?: Prisma.StringNullableFilter<"Matches"> | string | null
   team1Points?: Prisma.IntNullableListFilter<"Matches">
   team2Points?: Prisma.IntNullableListFilter<"Matches">
@@ -423,6 +433,7 @@ export type MatchesOrderByWithAggregationInput = {
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   start?: Prisma.SortOrderInput | Prisma.SortOrder
   end?: Prisma.SortOrderInput | Prisma.SortOrder
+  locked?: Prisma.SortOrder
   division?: Prisma.SortOrderInput | Prisma.SortOrder
   team1Points?: Prisma.SortOrder
   team2Points?: Prisma.SortOrder
@@ -457,6 +468,7 @@ export type MatchesScalarWhereWithAggregatesInput = {
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Matches"> | Date | string | null
   start?: Prisma.DateTimeNullableWithAggregatesFilter<"Matches"> | Date | string | null
   end?: Prisma.DateTimeNullableWithAggregatesFilter<"Matches"> | Date | string | null
+  locked?: Prisma.BoolWithAggregatesFilter<"Matches"> | boolean
   division?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   team1Points?: Prisma.IntNullableListFilter<"Matches">
   team2Points?: Prisma.IntNullableListFilter<"Matches">
@@ -483,6 +495,7 @@ export type MatchesCreateInput = {
   updatedAt?: Date | string | null
   start?: Date | string | null
   end?: Date | string | null
+  locked?: boolean
   division?: string | null
   team1Points?: Prisma.MatchesCreateteam1PointsInput | number[]
   team2Points?: Prisma.MatchesCreateteam2PointsInput | number[]
@@ -509,6 +522,7 @@ export type MatchesUncheckedCreateInput = {
   updatedAt?: Date | string | null
   start?: Date | string | null
   end?: Date | string | null
+  locked?: boolean
   division?: string | null
   team1Points?: Prisma.MatchesCreateteam1PointsInput | number[]
   team2Points?: Prisma.MatchesCreateteam2PointsInput | number[]
@@ -535,6 +549,7 @@ export type MatchesUpdateInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   start?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  locked?: Prisma.BoolFieldUpdateOperationsInput | boolean
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Points?: Prisma.MatchesUpdateteam1PointsInput | number[]
   team2Points?: Prisma.MatchesUpdateteam2PointsInput | number[]
@@ -561,6 +576,7 @@ export type MatchesUncheckedUpdateInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   start?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  locked?: Prisma.BoolFieldUpdateOperationsInput | boolean
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Points?: Prisma.MatchesUpdateteam1PointsInput | number[]
   team2Points?: Prisma.MatchesUpdateteam2PointsInput | number[]
@@ -587,6 +603,7 @@ export type MatchesCreateManyInput = {
   updatedAt?: Date | string | null
   start?: Date | string | null
   end?: Date | string | null
+  locked?: boolean
   division?: string | null
   team1Points?: Prisma.MatchesCreateteam1PointsInput | number[]
   team2Points?: Prisma.MatchesCreateteam2PointsInput | number[]
@@ -613,6 +630,7 @@ export type MatchesUpdateManyMutationInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   start?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  locked?: Prisma.BoolFieldUpdateOperationsInput | boolean
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Points?: Prisma.MatchesUpdateteam1PointsInput | number[]
   team2Points?: Prisma.MatchesUpdateteam2PointsInput | number[]
@@ -639,6 +657,7 @@ export type MatchesUncheckedUpdateManyInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   start?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  locked?: Prisma.BoolFieldUpdateOperationsInput | boolean
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Points?: Prisma.MatchesUpdateteam1PointsInput | number[]
   team2Points?: Prisma.MatchesUpdateteam2PointsInput | number[]
@@ -673,6 +692,7 @@ export type MatchesCountOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   start?: Prisma.SortOrder
   end?: Prisma.SortOrder
+  locked?: Prisma.SortOrder
   division?: Prisma.SortOrder
   team1Points?: Prisma.SortOrder
   team2Points?: Prisma.SortOrder
@@ -706,6 +726,7 @@ export type MatchesMaxOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   start?: Prisma.SortOrder
   end?: Prisma.SortOrder
+  locked?: Prisma.SortOrder
   division?: Prisma.SortOrder
   side?: Prisma.SortOrder
   matchId?: Prisma.SortOrder
@@ -729,6 +750,7 @@ export type MatchesMinOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   start?: Prisma.SortOrder
   end?: Prisma.SortOrder
+  locked?: Prisma.SortOrder
   division?: Prisma.SortOrder
   side?: Prisma.SortOrder
   matchId?: Prisma.SortOrder
@@ -765,6 +787,10 @@ export type MatchesCreatesetResultsInput = {
   set: number[]
 }
 
+export type BoolFieldUpdateOperationsInput = {
+  set?: boolean
+}
+
 export type MatchesUpdateteam1PointsInput = {
   set?: number[]
   push?: number | number[]
@@ -788,6 +814,7 @@ export type MatchesSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   updatedAt?: boolean
   start?: boolean
   end?: boolean
+  locked?: boolean
   division?: boolean
   team1Points?: boolean
   team2Points?: boolean
@@ -814,6 +841,7 @@ export type MatchesSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   updatedAt?: boolean
   start?: boolean
   end?: boolean
+  locked?: boolean
   division?: boolean
   team1Points?: boolean
   team2Points?: boolean
@@ -840,6 +868,7 @@ export type MatchesSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   updatedAt?: boolean
   start?: boolean
   end?: boolean
+  locked?: boolean
   division?: boolean
   team1Points?: boolean
   team2Points?: boolean
@@ -866,6 +895,7 @@ export type MatchesSelectScalar = {
   updatedAt?: boolean
   start?: boolean
   end?: boolean
+  locked?: boolean
   division?: boolean
   team1Points?: boolean
   team2Points?: boolean
@@ -886,7 +916,7 @@ export type MatchesSelectScalar = {
   teamRefereeId?: boolean
 }
 
-export type MatchesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "start" | "end" | "division" | "team1Points" | "team2Points" | "setResults" | "side" | "matchId" | "losersBracket" | "winnerNextMatchId" | "loserNextMatchId" | "previousRightId" | "previousLeftId" | "refereeCheckedIn" | "refereeId" | "team1Id" | "team2Id" | "eventId" | "fieldId" | "teamRefereeId", ExtArgs["result"]["matches"]>
+export type MatchesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "start" | "end" | "locked" | "division" | "team1Points" | "team2Points" | "setResults" | "side" | "matchId" | "losersBracket" | "winnerNextMatchId" | "loserNextMatchId" | "previousRightId" | "previousLeftId" | "refereeCheckedIn" | "refereeId" | "team1Id" | "team2Id" | "eventId" | "fieldId" | "teamRefereeId", ExtArgs["result"]["matches"]>
 
 export type $MatchesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Matches"
@@ -897,6 +927,7 @@ export type $MatchesPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     updatedAt: Date | null
     start: Date | null
     end: Date | null
+    locked: boolean
     division: string | null
     team1Points: number[]
     team2Points: number[]
@@ -1343,6 +1374,7 @@ export interface MatchesFieldRefs {
   readonly updatedAt: Prisma.FieldRef<"Matches", 'DateTime'>
   readonly start: Prisma.FieldRef<"Matches", 'DateTime'>
   readonly end: Prisma.FieldRef<"Matches", 'DateTime'>
+  readonly locked: Prisma.FieldRef<"Matches", 'Boolean'>
   readonly division: Prisma.FieldRef<"Matches", 'String'>
   readonly team1Points: Prisma.FieldRef<"Matches", 'Int[]'>
   readonly team2Points: Prisma.FieldRef<"Matches", 'Int[]'>

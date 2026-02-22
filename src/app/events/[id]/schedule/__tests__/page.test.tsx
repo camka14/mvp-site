@@ -205,6 +205,48 @@ describe('League schedule page', () => {
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
   });
 
+  it('hydrates league scoring config details from leagueScoringConfigId on load', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = buildApiEvent({
+          eventType: 'LEAGUE',
+          leagueScoringConfigId: 'cfg_1',
+        });
+        delete (event as any).leagueScoringConfig;
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/league-scoring-configs/cfg_1') {
+        return Promise.resolve({
+          $id: 'cfg_1',
+          pointsForWin: 5,
+          pointsForDraw: 2,
+          pointsForLoss: 0,
+        });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: buildApiEvent().matches });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(capturedEventFormProps?.event?.leagueScoringConfig?.$id).toBe('cfg_1');
+    });
+    expect(capturedEventFormProps?.event?.leagueScoringConfig?.pointsForWin).toBe(5);
+    expect(apiRequestMock).toHaveBeenCalledWith('/api/league-scoring-configs/cfg_1');
+  });
+
   it('uses template wording for template events in edit mode', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
@@ -379,6 +421,57 @@ describe('League schedule page', () => {
     expect(payload.fields?.[0]?.rentalSlotIds).toBeUndefined();
     expect(payload).not.toHaveProperty('attendees');
     expect(eventService.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('reschedules from non-details tabs and surfaces backend warnings', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    mockEventFormValidateResult = false;
+    (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
+      Promise.resolve({
+        ...payload,
+        $id: 'event_1',
+        state: payload?.state ?? 'UNPUBLISHED',
+      }),
+    );
+    (eventService.scheduleEvent as jest.Mock).mockResolvedValue({
+      event: buildApiEvent({
+        id: 'event_1',
+        $id: 'event_1',
+      }),
+      preview: false,
+      warnings: [
+        {
+          code: 'LOCKED_MATCH_OUTSIDE_WINDOW',
+          message: 'Locked match is outside the updated start/time-slot window and was preserved.',
+          matchIds: ['match_1'],
+        },
+      ],
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    expect(await screen.findByText(/Summer League/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /schedule/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /reschedule matches/i }));
+
+    await waitFor(() => {
+      expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);
+    });
+    expect(eventService.scheduleEvent).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ eventId: 'event_1' }),
+    );
+    expect(
+      await screen.findByText(/Locked match is outside the updated start\/time-slot window and was preserved\./i),
+    ).toBeInTheDocument();
   });
 
   it('blocks create publish when form validation fails (for example missing playoff team count)', async () => {

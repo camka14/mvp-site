@@ -86,6 +86,55 @@ const EVENT_UPDATE_FIELDS = new Set([
   'requiredTemplateIds',
 ]);
 
+const LEAGUE_SCORING_BOOLEAN_FIELDS = [
+  'applyShutoutOnlyIfWin',
+  'overtimeEnabled',
+  'goalDifferenceTiebreaker',
+  'headToHeadTiebreaker',
+  'totalGoalsTiebreaker',
+  'enableBonusForComebackWin',
+  'enableBonusForHighScoringMatch',
+  'enablePenaltyForUnsportingBehavior',
+] as const;
+
+const LEAGUE_SCORING_NUMBER_FIELDS = [
+  'pointsForWin',
+  'pointsForDraw',
+  'pointsForLoss',
+  'pointsForForfeitWin',
+  'pointsForForfeitLoss',
+  'pointsPerSetWin',
+  'pointsPerSetLoss',
+  'pointsPerGameWin',
+  'pointsPerGameLoss',
+  'pointsPerGoalScored',
+  'pointsPerGoalConceded',
+  'maxGoalBonusPoints',
+  'minGoalBonusThreshold',
+  'pointsForShutout',
+  'pointsForCleanSheet',
+  'pointsPerGoalDifference',
+  'maxGoalDifferencePoints',
+  'pointsPenaltyPerGoalDifference',
+  'pointsForParticipation',
+  'pointsForNoShow',
+  'pointsForWinStreakBonus',
+  'winStreakThreshold',
+  'pointsForOvertimeWin',
+  'pointsForOvertimeLoss',
+  'pointsPerRedCard',
+  'pointsPerYellowCard',
+  'pointsPerPenalty',
+  'maxPenaltyDeductions',
+  'maxPointsPerMatch',
+  'minPointsPerMatch',
+  'bonusPointsForComebackWin',
+  'highScoringThreshold',
+  'bonusPointsForHighScoringMatch',
+  'penaltyPointsForUnsportingBehavior',
+  'pointPrecision',
+] as const;
+
 const updateSchema = z.object({
   event: z.record(z.string(), z.any()).optional(),
   reschedule: z.boolean().optional(),
@@ -250,6 +299,40 @@ const normalizeOptionalBoolean = (value: unknown): boolean | null => {
   return null;
 };
 
+const normalizeLeagueScoringConfigUpdate = (
+  value: unknown,
+): { id?: string; data: Record<string, number | boolean | null> } | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  const configuredId = [row.id, row.$id]
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .find((entry) => entry.length > 0);
+  const data: Record<string, number | boolean | null> = {};
+
+  for (const key of LEAGUE_SCORING_NUMBER_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+    const rawValue = row[key];
+    const normalized = normalizeNullableNumber(rawValue);
+    if (normalized !== null || rawValue === null || rawValue === '') {
+      data[key] = normalized;
+    }
+  }
+
+  for (const key of LEAGUE_SCORING_BOOLEAN_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+    const rawValue = row[key];
+    const normalized = normalizeOptionalBoolean(rawValue);
+    if (normalized !== null || rawValue === null) {
+      data[key] = normalized;
+    }
+  }
+
+  return { id: configuredId, data };
+};
+
 const coerceDivisionFieldMap = (value: unknown): Record<string, string[]> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
@@ -313,6 +396,21 @@ const normalizeDivisionDetailsInput = (
       ratingType: inferred.ratingType,
       gender: inferred.gender,
       sportId: typeof row.sportId === 'string' ? row.sportId : sportId ?? null,
+      price: normalizeNullableNumber(row.price),
+      maxParticipants: (() => {
+        const parsed = normalizeNullableNumber(row.maxParticipants);
+        if (typeof parsed === 'number') {
+          return Math.max(0, Math.trunc(parsed));
+        }
+        return parsed;
+      })(),
+      playoffTeamCount: (() => {
+        const parsed = normalizeNullableNumber(row.playoffTeamCount);
+        if (typeof parsed === 'number') {
+          return Math.max(0, Math.trunc(parsed));
+        }
+        return parsed;
+      })(),
       ageCutoffDate: ageEligibility.applies ? ageEligibility.cutoffDate.toISOString() : null,
       ageCutoffLabel: ageEligibility.message ?? null,
       ageCutoffSource: ageEligibility.applies ? ageEligibility.cutoffRule.source : null,
@@ -474,6 +572,9 @@ const getDivisionDetailsForEvent = async (
       key: true,
       name: true,
       sportId: true,
+      price: true,
+      maxParticipants: true,
+      playoffTeamCount: true,
       divisionTypeId: true,
       divisionTypeName: true,
       ratingType: true,
@@ -532,6 +633,9 @@ const getDivisionDetailsForEvent = async (
       ratingType: row?.ratingType ?? inferred.ratingType,
       gender: row?.gender ?? inferred.gender,
       sportId: row?.sportId ?? null,
+      price: typeof row?.price === 'number' ? row.price : null,
+      maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
+      playoffTeamCount: typeof row?.playoffTeamCount === 'number' ? row.playoffTeamCount : null,
       ageCutoffDate,
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
@@ -874,6 +978,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       delete payload.divisionFieldIds;
       delete payload.divisionDetails;
       delete payload.leagueConfig;
+      const incomingLeagueScoringConfig = payload.leagueScoringConfig;
+      delete payload.leagueScoringConfig;
 
       if (payload.installmentDueDates) {
         payload.installmentDueDates = Array.isArray(payload.installmentDueDates)
@@ -904,6 +1010,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       for (const [key, value] of Object.entries(payload)) {
         if (!EVENT_UPDATE_FIELDS.has(key)) continue;
         data[key] = value;
+      }
+
+      const targetEventTypeRaw = (data.eventType ?? existing.eventType ?? null) as string | null;
+      const targetEventType = typeof targetEventTypeRaw === 'string'
+        ? targetEventTypeRaw.toUpperCase()
+        : targetEventTypeRaw;
+      if (targetEventType === 'LEAGUE') {
+        const normalizedLeagueConfig = normalizeLeagueScoringConfigUpdate(incomingLeagueScoringConfig);
+        const payloadLeagueConfigId = typeof payload.leagueScoringConfigId === 'string'
+          && payload.leagueScoringConfigId.trim().length > 0
+          ? payload.leagueScoringConfigId.trim()
+          : null;
+        const existingLeagueConfigId = typeof existing.leagueScoringConfigId === 'string'
+          && existing.leagueScoringConfigId.trim().length > 0
+          ? existing.leagueScoringConfigId.trim()
+          : null;
+        const leagueScoringConfigId = normalizedLeagueConfig?.id
+          ?? payloadLeagueConfigId
+          ?? existingLeagueConfigId
+          ?? crypto.randomUUID();
+        const leagueScoringData = normalizedLeagueConfig?.data ?? {};
+        const now = new Date();
+        await tx.leagueScoringConfigs.upsert({
+          where: { id: leagueScoringConfigId },
+          create: {
+            id: leagueScoringConfigId,
+            ...leagueScoringData,
+            createdAt: now,
+            updatedAt: now,
+          },
+          update: {
+            ...leagueScoringData,
+            updatedAt: now,
+          },
+        });
+        data.leagueScoringConfigId = leagueScoringConfigId;
       }
 
       const existingDivisionKeys = normalizeDivisionKeys(existing.divisions);

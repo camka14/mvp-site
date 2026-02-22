@@ -45,6 +45,10 @@ export default function TournamentBracketView({
     const matchRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const contentRef = useRef<HTMLDivElement>(null);
     const [connections, setConnections] = useState<{ fromId: string; toId: string; x1: number; y1: number; x2: number; y2: number }[]>([]);
+    const matchesById = useMemo<Record<string, Match>>(
+        () => Object.fromEntries(Object.values(bracket.matches).map((match) => [match.$id, match])),
+        [bracket.matches],
+    );
 
     // Compute positions based on rounds (x) and yCenterById (y)
     const CARD_W = 288; // w-72
@@ -53,18 +57,17 @@ export default function TournamentBracketView({
     const GAP_Y = 12;   // per-level extra spacing
     const LEVEL_STEP = Math.round(CARD_H / 2 + GAP_Y);
     // Padding inside the scroll canvas. Top padding prevents the time badge (-top-3)
-    // from being clipped, while right/bottom are kept tight to avoid extra whitespace.
+    // from being clipped, and bottom padding keeps the last match card from touching the edge.
     const PAD_LEFT = 0;
     const PAD_RIGHT = 0;
     const PAD_TOP = 16;
-    const PAD_BOTTOM = 0;
+    const PAD_BOTTOM = 48;
 
     // Map if needed in future: const matchesById = useMemo(() => Object.fromEntries(bracket.matches.map(m => [m.$id, m])), [bracket.matches]);
 
     // Subset of matches for current view, plus one-hop children from the opposite bracket
     const viewById = useMemo(() => {
         const map: Record<string, Match> = {};
-        const idToMatch: Record<string, Match> = Object.fromEntries(Object.values(bracket.matches).map(m => [m.$id, m]));
 
         // include all matches in current bracket
         Object.values(bracket.matches).forEach(m => {
@@ -75,8 +78,8 @@ export default function TournamentBracketView({
 
         // include one-hop children even if from opposite bracket
         Object.values(map).forEach(parent => {
-            const left = parent.previousLeftMatch ?? (parent.previousLeftId ? idToMatch[parent.previousLeftId] : undefined);
-            const right = parent.previousRightMatch ?? (parent.previousRightId ? idToMatch[parent.previousRightId] : undefined);
+            const left = parent.previousLeftMatch ?? (parent.previousLeftId ? matchesById[parent.previousLeftId] : undefined);
+            const right = parent.previousRightMatch ?? (parent.previousRightId ? matchesById[parent.previousRightId] : undefined);
             if (left) map[left.$id] = left;
             if (right) map[right.$id] = right;
         });
@@ -85,20 +88,20 @@ export default function TournamentBracketView({
             const hasPrevious =
                 Boolean(match.previousLeftMatch) ||
                 Boolean(match.previousRightMatch) ||
-                Boolean(match.previousLeftId && idToMatch[match.previousLeftId]) ||
-                Boolean(match.previousRightId && idToMatch[match.previousRightId]);
+                Boolean(match.previousLeftId && matchesById[match.previousLeftId]) ||
+                Boolean(match.previousRightId && matchesById[match.previousRightId]);
 
             const hasNext =
                 Boolean(match.winnerNextMatch) ||
-                Boolean(match.winnerNextMatchId && idToMatch[match.winnerNextMatchId]) ||
+                Boolean(match.winnerNextMatchId && matchesById[match.winnerNextMatchId]) ||
                 Boolean(match.loserNextMatch) ||
-                Boolean(match.loserNextMatchId && idToMatch[match.loserNextMatchId]);
+                Boolean(match.loserNextMatchId && matchesById[match.loserNextMatchId]);
 
             return hasPrevious || hasNext;
         });
 
         return Object.fromEntries(filteredEntries);
-    }, [bracket.matches, isLosersBracket]);
+    }, [bracket.matches, isLosersBracket, matchesById]);
 
     const hasLoserMatches = useMemo(
         () => Object.values(bracket.matches).some(match => match.losersBracket),
@@ -486,7 +489,16 @@ export default function TournamentBracketView({
 	                            {Object.values(viewById).map((m) => {
 	                                const pos = positionById.get(m.$id);
 	                                if (!pos) return null;
-	                                const canInternalManage = canManageMatch(m);
+                                    const resolvedMatch: Match = {
+                                        ...m,
+                                        previousLeftMatch:
+                                            m.previousLeftMatch ??
+                                            (m.previousLeftId ? matchesById[m.previousLeftId] : undefined),
+                                        previousRightMatch:
+                                            m.previousRightMatch ??
+                                            (m.previousRightId ? matchesById[m.previousRightId] : undefined),
+                                    };
+	                                const canInternalManage = canManageMatch(resolvedMatch);
 	                                const clickable = hasExternalMatchClick || canInternalManage;
 	                                const manageHint = allowEditing || (!hasExternalMatchClick && canInternalManage);
 	                                return (
@@ -497,8 +509,8 @@ export default function TournamentBracketView({
                                         style={{ left: PAD_LEFT + pos.x, top: PAD_TOP + pos.y }}
                                     >
 	                                        <MatchCard
-	                                            match={m}
-	                                            onClick={clickable ? () => handleMatchClick(m) : undefined}
+	                                            match={resolvedMatch}
+	                                            onClick={clickable ? () => handleMatchClick(resolvedMatch) : undefined}
 	                                            canManage={manageHint}
 	                                            className="w-full h-full"
 	                                            showDate={showDateOnMatches}

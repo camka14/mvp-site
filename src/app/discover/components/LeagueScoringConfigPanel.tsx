@@ -163,7 +163,7 @@ const LeagueScoringConfigPanel: React.FC<LeagueScoringConfigPanelProps> = ({ val
       </SimpleGrid>
 
       <Text size="xs" c="dimmed">
-        Config ID: {value.$id || 'Not set'} • Last updated: {value.$updatedAt || 'n/a'}
+        Last updated: {value.$updatedAt || 'n/a'}
       </Text>
     </Stack>
   </Paper>

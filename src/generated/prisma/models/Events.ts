@@ -1737,10 +1737,6 @@ export type EventsUpdateassistantHostIdsInput = {
   push?: string | string[]
 }
 
-export type BoolFieldUpdateOperationsInput = {
-  set?: boolean
-}
-
 export type EventsUpdatewaitListIdsInput = {
   set?: string[]
   push?: string | string[]

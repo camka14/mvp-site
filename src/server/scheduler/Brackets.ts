@@ -184,7 +184,7 @@ export class Brackets {
   private getByes(teams: Team[]): number {
     const [remainder, power] = this.remainderPowerOfTwo(teams.length);
     this.numberOfRounds = power + (remainder > 0 ? 1 : 0);
-    const subtractor = remainder % (2 ** power - 1) > 0 ? remainder % (2 ** power - 1) : 0;
+    const subtractor = remainder > (2 ** power - 1) ? remainder % (2 ** power - 1) : 0;
     return remainder - subtractor;
   }
 
@@ -565,4 +565,5 @@ export class Brackets {
     const remainder = n - largest;
     return [remainder, x];
   }
+
 }

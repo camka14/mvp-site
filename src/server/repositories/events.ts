@@ -104,6 +104,53 @@ const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
   return fallback;
 };
 const DEFAULT_DIVISION_KEY = 'open';
+const LEAGUE_SCORING_BOOLEAN_FIELDS = [
+  'applyShutoutOnlyIfWin',
+  'overtimeEnabled',
+  'goalDifferenceTiebreaker',
+  'headToHeadTiebreaker',
+  'totalGoalsTiebreaker',
+  'enableBonusForComebackWin',
+  'enableBonusForHighScoringMatch',
+  'enablePenaltyForUnsportingBehavior',
+] as const;
+const LEAGUE_SCORING_NUMBER_FIELDS = [
+  'pointsForWin',
+  'pointsForDraw',
+  'pointsForLoss',
+  'pointsForForfeitWin',
+  'pointsForForfeitLoss',
+  'pointsPerSetWin',
+  'pointsPerSetLoss',
+  'pointsPerGameWin',
+  'pointsPerGameLoss',
+  'pointsPerGoalScored',
+  'pointsPerGoalConceded',
+  'maxGoalBonusPoints',
+  'minGoalBonusThreshold',
+  'pointsForShutout',
+  'pointsForCleanSheet',
+  'pointsPerGoalDifference',
+  'maxGoalDifferencePoints',
+  'pointsPenaltyPerGoalDifference',
+  'pointsForParticipation',
+  'pointsForNoShow',
+  'pointsForWinStreakBonus',
+  'winStreakThreshold',
+  'pointsForOvertimeWin',
+  'pointsForOvertimeLoss',
+  'pointsPerRedCard',
+  'pointsPerYellowCard',
+  'pointsPerPenalty',
+  'maxPenaltyDeductions',
+  'maxPointsPerMatch',
+  'minPointsPerMatch',
+  'bonusPointsForComebackWin',
+  'highScoringThreshold',
+  'bonusPointsForHighScoringMatch',
+  'penaltyPointsForUnsportingBehavior',
+  'pointPrecision',
+] as const;
 
 const normalizeDivisionKey = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -201,6 +248,9 @@ type DivisionDetailPayload = {
   divisionTypeName: string;
   ratingType: DivisionRatingType;
   gender: DivisionGender;
+  price?: number | null;
+  maxParticipants?: number | null;
+  playoffTeamCount?: number | null;
   ageCutoffDate: string | null;
   ageCutoffLabel: string | null;
   ageCutoffSource: string | null;
@@ -249,8 +299,11 @@ const normalizeDivisionDetailsPayload = (
         gender,
         divisionTypeName,
       });
+      const rawPrice = coerceNullableNumber(row.price);
+      const rawMaxParticipants = coerceNullableNumber(row.maxParticipants);
+      const rawPlayoffTeamCount = coerceNullableNumber(row.playoffTeamCount);
 
-      return {
+      const detail: DivisionDetailPayload = {
         id,
         key,
         name: typeof row.name === 'string' && row.name.trim().length ? row.name.trim() : defaultName,
@@ -258,13 +311,25 @@ const normalizeDivisionDetailsPayload = (
         divisionTypeName,
         ratingType,
         gender,
+        price: rawPrice === undefined ? undefined : rawPrice === null ? null : Math.max(0, Math.round(rawPrice)),
+        maxParticipants: rawMaxParticipants === undefined
+          ? undefined
+          : rawMaxParticipants === null
+            ? null
+            : Math.max(0, Math.trunc(rawMaxParticipants)),
+        playoffTeamCount: rawPlayoffTeamCount === undefined
+          ? undefined
+          : rawPlayoffTeamCount === null
+            ? null
+            : Math.max(0, Math.trunc(rawPlayoffTeamCount)),
         ageCutoffDate: normalizeIsoDateString(row.ageCutoffDate),
         ageCutoffLabel: typeof row.ageCutoffLabel === 'string' ? row.ageCutoffLabel : null,
         ageCutoffSource: typeof row.ageCutoffSource === 'string' ? row.ageCutoffSource : null,
         fieldIds: normalizeFieldIds(row.fieldIds),
-      } satisfies DivisionDetailPayload;
+      };
+      return detail;
     })
-    .filter((entry): entry is DivisionDetailPayload => Boolean(entry));
+    .filter((entry): entry is DivisionDetailPayload => entry !== null);
 
   const seen = new Set<string>();
   const unique: DivisionDetailPayload[] = [];
@@ -434,6 +499,65 @@ const coerceDate = (value: unknown): Date | null => {
   return null;
 };
 
+const coerceNullableNumber = (value: unknown): number | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
+const coerceNullableBoolean = (value: unknown): boolean | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return undefined;
+};
+
+const normalizeLeagueScoringConfigPayload = (
+  value: unknown,
+): { id?: string; data: Record<string, number | boolean | null> } | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  const configuredId = [row.id, row.$id]
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .find((entry) => entry.length > 0);
+  const data: Record<string, number | boolean | null> = {};
+
+  for (const key of LEAGUE_SCORING_NUMBER_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+    const normalized = coerceNullableNumber(row[key]);
+    if (normalized !== undefined) {
+      data[key] = normalized;
+    }
+  }
+
+  for (const key of LEAGUE_SCORING_BOOLEAN_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+    const normalized = coerceNullableBoolean(row[key]);
+    if (normalized !== undefined) {
+      data[key] = normalized;
+    }
+  }
+
+  return { id: configuredId, data };
+};
+
 const normalizeIsoDateString = (value: unknown): string | null => {
   const parsed = coerceDate(value);
   return parsed ? parsed.toISOString() : null;
@@ -454,6 +578,9 @@ const buildDivisions = (
     key?: string | null;
     fieldIds?: string[] | null;
     sportId?: string | null;
+    price?: number | null;
+    maxParticipants?: number | null;
+    playoffTeamCount?: number | null;
   }>,
   sportId?: string | null,
 ) => {
@@ -499,7 +626,14 @@ const buildDivisions = (
       ?? inferred.defaultName
       ?? buildDivisionDisplayName(divisionId, sportId);
     const fieldIds = ensureStringArray(matchedRow?.fieldIds);
-    const division = new Division(divisionId, divisionName, fieldIds);
+    const division = new Division(
+      divisionId,
+      divisionName,
+      fieldIds,
+      matchedRow?.price ?? null,
+      matchedRow?.maxParticipants ?? null,
+      matchedRow?.playoffTeamCount ?? null,
+    );
     result.push(division);
 
     addAliases(
@@ -947,6 +1081,9 @@ export const syncEventDivisions = async (
       key: true,
       name: true,
       sportId: true,
+      price: true,
+      maxParticipants: true,
+      playoffTeamCount: true,
       divisionTypeId: true,
       divisionTypeName: true,
       ratingType: true,
@@ -1053,6 +1190,15 @@ export const syncEventDivisions = async (
     const ageCutoffSource = detail?.ageCutoffSource
       ?? existing?.ageCutoffSource
       ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null);
+    const price = detail?.price
+      ?? existing?.price
+      ?? null;
+    const maxParticipants = detail?.maxParticipants
+      ?? existing?.maxParticipants
+      ?? null;
+    const playoffTeamCount = detail?.playoffTeamCount
+      ?? existing?.playoffTeamCount
+      ?? null;
 
     return {
       id: persistedId,
@@ -1065,6 +1211,9 @@ export const syncEventDivisions = async (
       ageCutoffDate,
       ageCutoffLabel,
       ageCutoffSource,
+      price,
+      maxParticipants,
+      playoffTeamCount,
       minRating: ratings.minRating,
       maxRating: ratings.maxRating,
       fieldIds: mappedFieldIds,
@@ -1098,6 +1247,9 @@ export const syncEventDivisions = async (
         eventId: params.eventId,
         organizationId: params.organizationId ?? null,
         sportId: params.sportId ?? null,
+        price: entry.price,
+        maxParticipants: entry.maxParticipants,
+        playoffTeamCount: entry.playoffTeamCount,
         divisionTypeId: entry.divisionTypeId,
         divisionTypeName: entry.divisionTypeName,
         ratingType: entry.ratingType,
@@ -1117,6 +1269,9 @@ export const syncEventDivisions = async (
         eventId: params.eventId,
         organizationId: params.organizationId ?? null,
         sportId: params.sportId ?? null,
+        price: entry.price,
+        maxParticipants: entry.maxParticipants,
+        playoffTeamCount: entry.playoffTeamCount,
         divisionTypeId: entry.divisionTypeId,
         divisionTypeName: entry.divisionTypeName,
         ratingType: entry.ratingType,
@@ -1140,7 +1295,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   }
   const existingEvent = await client.events.findUnique({
     where: { id },
-    select: { fieldIds: true, timeSlotIds: true },
+    select: { fieldIds: true, timeSlotIds: true, eventType: true, leagueScoringConfigId: true },
   });
   const existingFieldIds = normalizeFieldIds(existingEvent?.fieldIds ?? []);
   const existingTimeSlotIds = normalizeFieldIds(existingEvent?.timeSlotIds ?? []);
@@ -1252,6 +1407,42 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     throw new Error('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
   }
 
+  const normalizedLeagueScoringConfig = normalizeLeagueScoringConfigPayload(payload.leagueScoringConfig);
+  const existingEventType = typeof existingEvent?.eventType === 'string'
+    ? existingEvent.eventType.toUpperCase()
+    : null;
+  const nextEventType = payloadEventType ?? existingEventType;
+  const payloadLeagueScoringConfigId = typeof payload.leagueScoringConfigId === 'string' && payload.leagueScoringConfigId.trim().length > 0
+    ? payload.leagueScoringConfigId.trim()
+    : null;
+  const existingLeagueScoringConfigId = typeof existingEvent?.leagueScoringConfigId === 'string'
+    && existingEvent.leagueScoringConfigId.trim().length > 0
+    ? existingEvent.leagueScoringConfigId.trim()
+    : null;
+  let resolvedLeagueScoringConfigId = payloadLeagueScoringConfigId ?? existingLeagueScoringConfigId ?? null;
+  if (nextEventType === 'LEAGUE') {
+    const leagueScoringConfigId = normalizedLeagueScoringConfig?.id
+      ?? payloadLeagueScoringConfigId
+      ?? existingLeagueScoringConfigId
+      ?? crypto.randomUUID();
+    const leagueScoringData = normalizedLeagueScoringConfig?.data ?? {};
+    const now = new Date();
+    await client.leagueScoringConfigs.upsert({
+      where: { id: leagueScoringConfigId },
+      create: {
+        id: leagueScoringConfigId,
+        ...leagueScoringData,
+        createdAt: now,
+        updatedAt: now,
+      },
+      update: {
+        ...leagueScoringData,
+        updatedAt: now,
+      },
+    });
+    resolvedLeagueScoringConfigId = leagueScoringConfigId;
+  }
+
   const eventData = {
     id,
     name: payload.name ?? 'Untitled Event',
@@ -1304,7 +1495,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     teamIds,
     userIds: ensureStringArray(payload.userIds),
     registrationIds: ensureStringArray(payload.registrationIds),
-    leagueScoringConfigId: payload.leagueScoringConfigId ?? null,
+    leagueScoringConfigId: resolvedLeagueScoringConfigId,
     organizationId: payload.organizationId ?? null,
     autoCancellation: payload.autoCancellation ?? null,
     eventType: payload.eventType ?? null,

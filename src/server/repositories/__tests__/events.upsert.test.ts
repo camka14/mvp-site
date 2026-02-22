@@ -10,6 +10,7 @@ import { buildEventDivisionId } from '@/lib/divisionTypes';
 type MockClient = {
   $executeRaw: jest.Mock;
   events: { findUnique: jest.Mock; upsert: jest.Mock };
+  leagueScoringConfigs: { upsert: jest.Mock };
   fields: { findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
   matches: { deleteMany: jest.Mock };
   divisions: { findMany: jest.Mock; deleteMany: jest.Mock; upsert: jest.Mock };
@@ -21,6 +22,9 @@ const createMockClient = (): MockClient => ({
   $executeRaw: jest.fn().mockResolvedValue(1),
   events: {
     findUnique: jest.fn().mockResolvedValue(null),
+    upsert: jest.fn().mockResolvedValue(undefined),
+  },
+  leagueScoringConfigs: {
     upsert: jest.fn().mockResolvedValue(undefined),
   },
   fields: {
@@ -274,6 +278,48 @@ describe('upsertEventFromPayload', () => {
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
 
+  it('persists division price, max participants, and playoff team count from division details', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          price: 2500,
+          maxParticipants: 12,
+          playoffTeamCount: 8,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.divisions.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: openDivisionId },
+        create: expect.objectContaining({
+          price: 2500,
+          maxParticipants: 12,
+          playoffTeamCount: 8,
+        }),
+        update: expect.objectContaining({
+          price: 2500,
+          maxParticipants: 12,
+          playoffTeamCount: 8,
+        }),
+      }),
+    );
+  });
+
   it('retries event upsert without unknown Prisma arguments', async () => {
     const client = createMockClient();
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -300,5 +346,66 @@ describe('upsertEventFromPayload', () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  it('persists league scoring config values and links the resulting config id on event upsert', async () => {
+    const client = createMockClient();
+    client.leagueScoringConfigs.upsert.mockResolvedValue({
+      id: 'cfg_1',
+      pointsForWin: 3,
+      pointsForDraw: 1,
+      pointsForLoss: 0,
+    });
+
+    const payload = {
+      ...baseEventPayload(),
+      leagueScoringConfig: {
+        id: 'cfg_1',
+        pointsForWin: 3,
+        pointsForDraw: 1,
+        pointsForLoss: 0,
+      },
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.leagueScoringConfigs.upsert).toHaveBeenCalledTimes(1);
+    expect(client.leagueScoringConfigs.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cfg_1' },
+        update: expect.objectContaining({
+          pointsForWin: 3,
+          pointsForDraw: 1,
+          pointsForLoss: 0,
+        }),
+      }),
+    );
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create.leagueScoringConfigId).toBe('cfg_1');
+    expect(eventUpsertArgs.update.leagueScoringConfigId).toBe('cfg_1');
+  });
+
+  it('creates a league scoring config when a league is saved without one', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      leagueScoringConfig: undefined,
+      leagueScoringConfigId: undefined,
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.leagueScoringConfigs.upsert).toHaveBeenCalledTimes(1);
+    const configUpsertArgs = client.leagueScoringConfigs.upsert.mock.calls[0][0];
+    expect(configUpsertArgs.where.id).toEqual(expect.any(String));
+    expect(configUpsertArgs.create.id).toBe(configUpsertArgs.where.id);
+    expect(configUpsertArgs.create.createdAt).toBeInstanceOf(Date);
+    expect(configUpsertArgs.create.updatedAt).toBeInstanceOf(Date);
+    expect(configUpsertArgs.update.updatedAt).toBeInstanceOf(Date);
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
+    expect(eventUpsertArgs.update.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
   });
 });

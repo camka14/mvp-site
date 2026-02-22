@@ -17,6 +17,11 @@ export interface WeeklySlotConflict {
 export interface LeagueScheduleResponse {
   preview?: boolean;
   event?: Event;
+  warnings?: Array<{
+    code: string;
+    message: string;
+    matchIds?: string[];
+  }>;
 }
 
 export interface LeagueFieldTemplateInput {

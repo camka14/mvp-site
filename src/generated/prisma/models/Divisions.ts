@@ -27,11 +27,17 @@ export type AggregateDivisions = {
 }
 
 export type DivisionsAvgAggregateOutputType = {
+  price: number | null
+  maxParticipants: number | null
+  playoffTeamCount: number | null
   minRating: number | null
   maxRating: number | null
 }
 
 export type DivisionsSumAggregateOutputType = {
+  price: number | null
+  maxParticipants: number | null
+  playoffTeamCount: number | null
   minRating: number | null
   maxRating: number | null
 }
@@ -45,6 +51,9 @@ export type DivisionsMinAggregateOutputType = {
   eventId: string | null
   organizationId: string | null
   sportId: string | null
+  price: number | null
+  maxParticipants: number | null
+  playoffTeamCount: number | null
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
@@ -65,6 +74,9 @@ export type DivisionsMaxAggregateOutputType = {
   eventId: string | null
   organizationId: string | null
   sportId: string | null
+  price: number | null
+  maxParticipants: number | null
+  playoffTeamCount: number | null
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
@@ -85,6 +97,9 @@ export type DivisionsCountAggregateOutputType = {
   eventId: number
   organizationId: number
   sportId: number
+  price: number
+  maxParticipants: number
+  playoffTeamCount: number
   minRating: number
   maxRating: number
   divisionTypeId: number
@@ -100,11 +115,17 @@ export type DivisionsCountAggregateOutputType = {
 
 
 export type DivisionsAvgAggregateInputType = {
+  price?: true
+  maxParticipants?: true
+  playoffTeamCount?: true
   minRating?: true
   maxRating?: true
 }
 
 export type DivisionsSumAggregateInputType = {
+  price?: true
+  maxParticipants?: true
+  playoffTeamCount?: true
   minRating?: true
   maxRating?: true
 }
@@ -118,6 +139,9 @@ export type DivisionsMinAggregateInputType = {
   eventId?: true
   organizationId?: true
   sportId?: true
+  price?: true
+  maxParticipants?: true
+  playoffTeamCount?: true
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
@@ -138,6 +162,9 @@ export type DivisionsMaxAggregateInputType = {
   eventId?: true
   organizationId?: true
   sportId?: true
+  price?: true
+  maxParticipants?: true
+  playoffTeamCount?: true
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
@@ -158,6 +185,9 @@ export type DivisionsCountAggregateInputType = {
   eventId?: true
   organizationId?: true
   sportId?: true
+  price?: true
+  maxParticipants?: true
+  playoffTeamCount?: true
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
@@ -266,6 +296,9 @@ export type DivisionsGroupByOutputType = {
   eventId: string | null
   organizationId: string | null
   sportId: string | null
+  price: number | null
+  maxParticipants: number | null
+  playoffTeamCount: number | null
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
@@ -310,6 +343,9 @@ export type DivisionsWhereInput = {
   eventId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  price?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  maxParticipants?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffTeamCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
@@ -331,6 +367,9 @@ export type DivisionsOrderByWithRelationInput = {
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   sportId?: Prisma.SortOrderInput | Prisma.SortOrder
+  price?: Prisma.SortOrderInput | Prisma.SortOrder
+  maxParticipants?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffTeamCount?: Prisma.SortOrderInput | Prisma.SortOrder
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -355,6 +394,9 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   eventId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  price?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  maxParticipants?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffTeamCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
@@ -376,6 +418,9 @@ export type DivisionsOrderByWithAggregationInput = {
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   sportId?: Prisma.SortOrderInput | Prisma.SortOrder
+  price?: Prisma.SortOrderInput | Prisma.SortOrder
+  maxParticipants?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffTeamCount?: Prisma.SortOrderInput | Prisma.SortOrder
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -405,6 +450,9 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   eventId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  price?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  maxParticipants?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  playoffTeamCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   minRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
@@ -426,6 +474,9 @@ export type DivisionsCreateInput = {
   eventId?: string | null
   organizationId?: string | null
   sportId?: string | null
+  price?: number | null
+  maxParticipants?: number | null
+  playoffTeamCount?: number | null
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
@@ -447,6 +498,9 @@ export type DivisionsUncheckedCreateInput = {
   eventId?: string | null
   organizationId?: string | null
   sportId?: string | null
+  price?: number | null
+  maxParticipants?: number | null
+  playoffTeamCount?: number | null
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
@@ -468,6 +522,9 @@ export type DivisionsUpdateInput = {
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -489,6 +546,9 @@ export type DivisionsUncheckedUpdateInput = {
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -510,6 +570,9 @@ export type DivisionsCreateManyInput = {
   eventId?: string | null
   organizationId?: string | null
   sportId?: string | null
+  price?: number | null
+  maxParticipants?: number | null
+  playoffTeamCount?: number | null
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
@@ -531,6 +594,9 @@ export type DivisionsUpdateManyMutationInput = {
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -552,6 +618,9 @@ export type DivisionsUncheckedUpdateManyInput = {
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -573,6 +642,9 @@ export type DivisionsCountOrderByAggregateInput = {
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
+  price?: Prisma.SortOrder
+  maxParticipants?: Prisma.SortOrder
+  playoffTeamCount?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -586,6 +658,9 @@ export type DivisionsCountOrderByAggregateInput = {
 }
 
 export type DivisionsAvgOrderByAggregateInput = {
+  price?: Prisma.SortOrder
+  maxParticipants?: Prisma.SortOrder
+  playoffTeamCount?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
 }
@@ -599,6 +674,9 @@ export type DivisionsMaxOrderByAggregateInput = {
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
+  price?: Prisma.SortOrder
+  maxParticipants?: Prisma.SortOrder
+  playoffTeamCount?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -619,6 +697,9 @@ export type DivisionsMinOrderByAggregateInput = {
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
+  price?: Prisma.SortOrder
+  maxParticipants?: Prisma.SortOrder
+  playoffTeamCount?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -631,12 +712,23 @@ export type DivisionsMinOrderByAggregateInput = {
 }
 
 export type DivisionsSumOrderByAggregateInput = {
+  price?: Prisma.SortOrder
+  maxParticipants?: Prisma.SortOrder
+  playoffTeamCount?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
 }
 
 export type DivisionsCreatefieldIdsInput = {
   set: string[]
+}
+
+export type NullableIntFieldUpdateOperationsInput = {
+  set?: number | null
+  increment?: number
+  decrement?: number
+  multiply?: number
+  divide?: number
 }
 
 export type DivisionsUpdatefieldIdsInput = {
@@ -655,6 +747,9 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   eventId?: boolean
   organizationId?: boolean
   sportId?: boolean
+  price?: boolean
+  maxParticipants?: boolean
+  playoffTeamCount?: boolean
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
@@ -676,6 +771,9 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   eventId?: boolean
   organizationId?: boolean
   sportId?: boolean
+  price?: boolean
+  maxParticipants?: boolean
+  playoffTeamCount?: boolean
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
@@ -697,6 +795,9 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   eventId?: boolean
   organizationId?: boolean
   sportId?: boolean
+  price?: boolean
+  maxParticipants?: boolean
+  playoffTeamCount?: boolean
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
@@ -718,6 +819,9 @@ export type DivisionsSelectScalar = {
   eventId?: boolean
   organizationId?: boolean
   sportId?: boolean
+  price?: boolean
+  maxParticipants?: boolean
+  playoffTeamCount?: boolean
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
@@ -730,7 +834,7 @@ export type DivisionsSelectScalar = {
   fieldIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "eventId" | "organizationId" | "sportId" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -744,6 +848,9 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     eventId: string | null
     organizationId: string | null
     sportId: string | null
+    price: number | null
+    maxParticipants: number | null
+    playoffTeamCount: number | null
     minRating: number | null
     maxRating: number | null
     divisionTypeId: string | null
@@ -1185,6 +1292,9 @@ export interface DivisionsFieldRefs {
   readonly eventId: Prisma.FieldRef<"Divisions", 'String'>
   readonly organizationId: Prisma.FieldRef<"Divisions", 'String'>
   readonly sportId: Prisma.FieldRef<"Divisions", 'String'>
+  readonly price: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly maxParticipants: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly playoffTeamCount: Prisma.FieldRef<"Divisions", 'Int'>
   readonly minRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly maxRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly divisionTypeId: Prisma.FieldRef<"Divisions", 'String'>

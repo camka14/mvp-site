@@ -81,9 +81,13 @@ function TeamsPageContent() {
 
   // Sport-specific player count suggestions
   const sportPlayerCounts: Record<string, number> = {
-    'Volleyball': 6,
+    'Indoor Volleyball': 6,
+    'Beach Volleyball': 2,
+    'Grass Volleyball': 6,
     'Basketball': 5,
-    'Soccer': 11,
+    'Indoor Soccer': 6,
+    'Grass Soccer': 11,
+    'Beach Soccer': 5,
     'Football': 11,
     'Hockey': 11,
     'Baseball': 9,
