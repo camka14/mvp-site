@@ -14,8 +14,8 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerSetWin: true,
     usePointsPerSetLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -25,8 +25,8 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerSetWin: true,
     usePointsPerSetLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -36,8 +36,8 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerSetWin: true,
     usePointsPerSetLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -45,8 +45,8 @@ const DEFAULT_SPORTS = [
     name: 'Basketball',
     usePointsForWin: true,
     usePointsForLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -55,8 +55,8 @@ const DEFAULT_SPORTS = [
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -65,8 +65,8 @@ const DEFAULT_SPORTS = [
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -75,8 +75,8 @@ const DEFAULT_SPORTS = [
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -88,8 +88,8 @@ const DEFAULT_SPORTS = [
     usePointsPerSetLoss: true,
     usePointsPerGameWin: true,
     usePointsPerGameLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -99,8 +99,8 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerSetWin: true,
     usePointsPerSetLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -109,8 +109,8 @@ const DEFAULT_SPORTS = [
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -119,8 +119,8 @@ const DEFAULT_SPORTS = [
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     useOvertimeEnabled: true,
     usePointsForOvertimeWin: true,
     usePointsForOvertimeLoss: true,
@@ -131,8 +131,8 @@ const DEFAULT_SPORTS = [
     name: 'Baseball',
     usePointsForWin: true,
     usePointsForLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
   {
@@ -141,8 +141,8 @@ const DEFAULT_SPORTS = [
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
-    usePointsPerGoalScored: true,
-    usePointsPerGoalConceded: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
     usePointPrecision: true,
   },
 ];
@@ -170,7 +170,8 @@ export async function GET(_req: NextRequest) {
     await prisma.sports.createMany({ data: DEFAULT_SPORTS, skipDuplicates: true });
     sports = await prisma.sports.findMany({ orderBy: { name: 'asc' } });
   } else {
-    // Existing installs may have seeded default sports without scoring flags.
+    // Existing installs may have null scoring flags from older seeds.
+    // Backfill only missing values and avoid overriding explicit DB values.
     const existingById = new Map(sports.map((sport) => [sport.id, sport]));
     const existingByNameLower = new Map(
       sports
@@ -191,13 +192,13 @@ export async function GET(_req: NextRequest) {
         existingById.get(spec.id) ?? existingByNameLower.get(String(spec.name).toLowerCase());
       if (!existing) return [];
 
-      // Ensure key scoring flags are set for default sports so the UI can render scoring inputs.
+      // Backfill only null/undefined flags to preserve DB-owned values.
       const patch: Record<string, boolean> = {};
       Object.entries(spec).forEach(([key, value]) => {
         if (key === 'id' || key === 'name') return;
         if (typeof value !== 'boolean') return;
         const current = (existing as any)[key];
-        if (current !== value) {
+        if (current == null) {
           patch[key] = value;
         }
       });

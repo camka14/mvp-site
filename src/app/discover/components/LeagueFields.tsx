@@ -143,6 +143,7 @@ interface LeagueFieldsProps {
   lockSlotDivisions?: boolean;
   lockedDivisionKeys?: string[];
   readOnly?: boolean;
+  showLeagueConfiguration?: boolean;
   showPlayoffSettings?: boolean;
 }
 
@@ -162,6 +163,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   lockSlotDivisions = false,
   lockedDivisionKeys = [],
   readOnly = false,
+  showLeagueConfiguration = true,
   showPlayoffSettings = true,
 }) => {
   const fieldLookup = useMemo(
@@ -304,149 +306,151 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   return (
     <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
       <Stack gap="lg">
-        <div>
-          <Title order={4} mb="md">
-            League Configuration
-          </Title>
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            <div className="md:col-span-4">
-              <NumberInput
-                label="Games per Opponent"
-                min={1}
-                max={MAX_STANDARD_NUMBER}
-                value={leagueData.gamesPerOpponent}
-                onChange={(value) => onLeagueDataChange({ gamesPerOpponent: Number(value) || 1 })}
-                clampBehavior="strict"
-                maw={180}
-              />
-            </div>
-
-            {!requiresSets && (
+        {showLeagueConfiguration && (
+          <div>
+            <Title order={4} mb="md">
+              League Configuration
+            </Title>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
               <div className="md:col-span-4">
                 <NumberInput
-                  label="Match Duration (minutes)"
-                  min={15}
+                  label="Games per Opponent"
+                  min={1}
+                  max={MAX_STANDARD_NUMBER}
+                  value={leagueData.gamesPerOpponent}
+                  onChange={(value) => onLeagueDataChange({ gamesPerOpponent: Number(value) || 1 })}
+                  clampBehavior="strict"
+                  maw={180}
+                />
+              </div>
+
+              {!requiresSets && (
+                <div className="md:col-span-4">
+                  <NumberInput
+                    label="Match Duration (minutes)"
+                    min={15}
+                    max={MAX_STANDARD_NUMBER}
+                    step={5}
+                    value={leagueData.matchDurationMinutes}
+                    onChange={(value) => onLeagueDataChange({ matchDurationMinutes: Number(value) || 60 })}
+                    clampBehavior="strict"
+                    maw={220}
+                  />
+                </div>
+              )}
+
+              <div className="md:col-span-4">
+                <NumberInput
+                  label="Rest Time Between Matches (minutes)"
+                  min={0}
                   max={MAX_STANDARD_NUMBER}
                   step={5}
-                  value={leagueData.matchDurationMinutes}
-                  onChange={(value) => onLeagueDataChange({ matchDurationMinutes: Number(value) || 60 })}
+                  value={leagueData.restTimeMinutes ?? 0}
+                  onChange={(value) => {
+                    const numeric = typeof value === 'number' ? value : Number(value);
+                    onLeagueDataChange({
+                      restTimeMinutes: Number.isFinite(numeric) && numeric >= 0 ? numeric : 0,
+                    });
+                  }}
                   clampBehavior="strict"
                   maw={220}
                 />
               </div>
-            )}
-
-            <div className="md:col-span-4">
-              <NumberInput
-                label="Rest Time Between Matches (minutes)"
-                min={0}
-                max={MAX_STANDARD_NUMBER}
-                step={5}
-                value={leagueData.restTimeMinutes ?? 0}
-                onChange={(value) => {
-                  const numeric = typeof value === 'number' ? value : Number(value);
-                  onLeagueDataChange({
-                    restTimeMinutes: Number.isFinite(numeric) && numeric >= 0 ? numeric : 0,
-                  });
-                }}
-                clampBehavior="strict"
-                maw={220}
-              />
-            </div>
-          </div>
-
-        {showPlayoffSettings && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <Switch
-                label="Include Playoffs"
-                checked={leagueData.includePlayoffs}
-                onChange={(event) => handleIncludePlayoffsChange(event.currentTarget.checked)}
-              />
             </div>
 
-            {leagueData.includePlayoffs && (
-              <NumberInput
-                className="mt-4"
-                label="Playoff Team Count"
-                min={2}
-                max={MAX_STANDARD_NUMBER}
-                value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-                onChange={(value) => {
-                  const numeric = typeof value === 'number' ? value : Number(value);
-                  onLeagueDataChange({
-                    playoffTeamCount: Number.isFinite(numeric) ? numeric : undefined,
-                  });
-                }}
-                clampBehavior="strict"
-                maw={220}
-                error={
-                  leagueData.includePlayoffs &&
-                  !(typeof leagueData.playoffTeamCount === 'number' && leagueData.playoffTeamCount >= 2)
-                    ? 'Playoff team count is required'
-                    : undefined
-                }
-              />
-            )}
-          </>
-        )}
-
-        {requiresSets && (
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4">
-            <div className="md:col-span-6">
-              <MantineSelect
-                label="Sets per Match"
-                value={String(setsPerMatch)}
-                onChange={handleSetsPerMatchChange}
-                data={[
-                  { value: '1', label: 'Best of 1' },
-                  { value: '3', label: 'Best of 3' },
-                  { value: '5', label: 'Best of 5' },
-                ]}
-                comboboxProps={DROPDOWN_PROPS}
-                maw={220}
-              />
-            </div>
-            <div className="md:col-span-6">
-              <NumberInput
-                label="Set Duration (minutes)"
-                min={5}
-                max={MAX_STANDARD_NUMBER}
-                step={5}
-                value={leagueData.setDurationMinutes || undefined}
-                onChange={(value) => onLeagueDataChange({ setDurationMinutes: Number(value) || undefined })}
-                clampBehavior="strict"
-                maw={220}
-              />
-            </div>
-          </div>
-        )}
-
-        {requiresSets && (
-          <div className="mt-6">
-            <Text fw={600} mb="xs">
-              Points to Victory
-            </Text>
-            <Text size="sm" c="dimmed" mb="sm">
-              Configure the points required to win each set.
-            </Text>
-            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
-              {Array.from({ length: setsPerMatch }).map((_, idx) => (
-                <NumberInput
-                  key={`points-set-${idx}`}
-                  label={`Set ${idx + 1}`}
-                  min={1}
-                  max={MAX_STANDARD_NUMBER}
-                  value={pointsToVictory[idx] ?? 21}
-                  onChange={(value) => handlePointChange(idx, value)}
-                  clampBehavior="strict"
-                  maw={160}
+          {showPlayoffSettings && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <Switch
+                  label="Include Playoffs"
+                  checked={leagueData.includePlayoffs}
+                  onChange={(event) => handleIncludePlayoffsChange(event.currentTarget.checked)}
                 />
-              ))}
-            </SimpleGrid>
-          </div>
-        )}
-      </div>
+              </div>
+
+              {leagueData.includePlayoffs && (
+                <NumberInput
+                  className="mt-4"
+                  label="Playoff Team Count"
+                  min={2}
+                  max={MAX_STANDARD_NUMBER}
+                  value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                  onChange={(value) => {
+                    const numeric = typeof value === 'number' ? value : Number(value);
+                    onLeagueDataChange({
+                      playoffTeamCount: Number.isFinite(numeric) ? numeric : undefined,
+                    });
+                  }}
+                  clampBehavior="strict"
+                  maw={220}
+                  error={
+                    leagueData.includePlayoffs &&
+                    !(typeof leagueData.playoffTeamCount === 'number' && leagueData.playoffTeamCount >= 2)
+                      ? 'Playoff team count is required'
+                      : undefined
+                  }
+                />
+              )}
+            </>
+          )}
+
+          {requiresSets && (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4">
+              <div className="md:col-span-6">
+                <MantineSelect
+                  label="Sets per Match"
+                  value={String(setsPerMatch)}
+                  onChange={handleSetsPerMatchChange}
+                  data={[
+                    { value: '1', label: 'Best of 1' },
+                    { value: '3', label: 'Best of 3' },
+                    { value: '5', label: 'Best of 5' },
+                  ]}
+                  comboboxProps={DROPDOWN_PROPS}
+                  maw={220}
+                />
+              </div>
+              <div className="md:col-span-6">
+                <NumberInput
+                  label="Set Duration (minutes)"
+                  min={5}
+                  max={MAX_STANDARD_NUMBER}
+                  step={5}
+                  value={leagueData.setDurationMinutes || undefined}
+                  onChange={(value) => onLeagueDataChange({ setDurationMinutes: Number(value) || undefined })}
+                  clampBehavior="strict"
+                  maw={220}
+                />
+              </div>
+            </div>
+          )}
+
+          {requiresSets && (
+            <div className="mt-6">
+              <Text fw={600} mb="xs">
+                Points to Victory
+              </Text>
+              <Text size="sm" c="dimmed" mb="sm">
+                Configure the points required to win each set.
+              </Text>
+              <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
+                {Array.from({ length: setsPerMatch }).map((_, idx) => (
+                  <NumberInput
+                    key={`points-set-${idx}`}
+                    label={`Set ${idx + 1}`}
+                    min={1}
+                    max={MAX_STANDARD_NUMBER}
+                    value={pointsToVictory[idx] ?? 21}
+                    onChange={(value) => handlePointChange(idx, value)}
+                    clampBehavior="strict"
+                    maw={160}
+                  />
+                ))}
+              </SimpleGrid>
+            </div>
+          )}
+        </div>
+      )}
 
         <div>
           <div className="flex items-center justify-between mb-4 gap-3">

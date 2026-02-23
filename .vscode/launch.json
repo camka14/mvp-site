@@ -1,0 +1,41 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "MVP: Full Stack (Next + Chrome)",
+      "type": "node-terminal",
+      "request": "launch",
+      "preLaunchTask": "mvp: stop stale dev servers",
+      "command": "npm run dev:plain",
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "action": "debugWithChrome",
+        "pattern": "- Local:.+(https?://.+)",
+        "uriFormat": "%s",
+        "webRoot": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "MVP: Full Stack (Next + Chrome + ngrok/stripe)",
+      "type": "node-terminal",
+      "request": "launch",
+      "preLaunchTask": "mvp: stop stale dev servers",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "action": "debugWithChrome",
+        "pattern": "- Local:.+(https?://.+)",
+        "uriFormat": "%s",
+        "webRoot": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "MVP: Backend Only (Next dev)",
+      "type": "node-terminal",
+      "request": "launch",
+      "preLaunchTask": "mvp: stop stale dev servers",
+      "command": "npm run dev:plain",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

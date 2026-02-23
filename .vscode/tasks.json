@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "mvp: stop stale dev servers",
+      "type": "shell",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/stop-stale-dev.sh"],
+      "problemMatcher": []
+    }
+  ]
+}

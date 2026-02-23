@@ -63,8 +63,13 @@ describe('GET /api/sports', () => {
     const createdNames = Array.isArray(createPayload?.data)
       ? createPayload.data.map((row: any) => row.name)
       : [];
+    const basketball = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Basketball')
+      : null;
     expect(createdNames).not.toContain('Soccer');
     expect(createdNames).not.toContain('Volleyball');
+    expect(basketball?.usePointsPerGoalScored).toBe(false);
+    expect(basketball?.usePointsPerGoalConceded).toBe(false);
     expect(payload.sports.map((sport: any) => sport.name)).toEqual(
       expect.arrayContaining(['Indoor Soccer', 'Indoor Volleyball']),
     );
@@ -108,5 +113,67 @@ describe('GET /api/sports', () => {
       'Indoor Soccer',
       'Indoor Volleyball',
     ]);
+  });
+
+  it('does not overwrite explicit scoring flags from the database', async () => {
+    const seededSports = [
+      {
+        id: 'Basketball',
+        name: 'Basketball',
+        usePointsForWin: true,
+        usePointsForLoss: true,
+        usePointsPerGoalScored: true,
+        usePointsPerGoalConceded: true,
+        usePointPrecision: true,
+      },
+    ];
+    prismaMock.sports.findMany
+      .mockResolvedValueOnce(seededSports)
+      .mockResolvedValueOnce(seededSports);
+
+    const response = await GET(new NextRequest('http://localhost/api/sports'));
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.sports.update).not.toHaveBeenCalled();
+  });
+
+  it('backfills null scoring flags using default sport settings', async () => {
+    const seededSports = [
+      {
+        id: 'Basketball',
+        name: 'Basketball',
+        usePointsForWin: null,
+        usePointsForLoss: null,
+        usePointsPerGoalScored: null,
+        usePointsPerGoalConceded: null,
+        usePointPrecision: null,
+      },
+    ];
+    prismaMock.sports.findMany
+      .mockResolvedValueOnce(seededSports)
+      .mockResolvedValueOnce([
+        {
+          ...seededSports[0],
+          usePointsForWin: true,
+          usePointsForLoss: true,
+          usePointsPerGoalScored: false,
+          usePointsPerGoalConceded: false,
+          usePointPrecision: true,
+        },
+      ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/sports'));
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.sports.update).toHaveBeenCalledWith({
+      where: { id: 'Basketball' },
+      data: {
+        usePointsForWin: true,
+        usePointsForLoss: true,
+        usePointsPerGoalScored: false,
+        usePointsPerGoalConceded: false,
+        usePointPrecision: true,
+      },
+    });
   });
 });

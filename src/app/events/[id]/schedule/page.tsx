@@ -1694,22 +1694,103 @@ function EventScheduleContent() {
         }
       }
 
+      const timeSlotIds = Array.isArray(fetchedEvent.timeSlotIds)
+        ? Array.from(
+          new Set(
+            fetchedEvent.timeSlotIds
+              .map((slotId) => String(slotId).trim())
+              .filter((slotId) => slotId.length > 0),
+          ),
+        )
+        : [];
       if (
-        (!Array.isArray(fetchedEvent.fields) || fetchedEvent.fields.length === 0)
-        && Array.isArray(fetchedEvent.fieldIds)
-        && fetchedEvent.fieldIds.length > 0
+        (!Array.isArray(fetchedEvent.timeSlots) || fetchedEvent.timeSlots.length === 0)
+        && timeSlotIds.length > 0
       ) {
         try {
-          const fieldIds = Array.from(
-            new Set(
-              fetchedEvent.fieldIds
-                .map((fieldId) => String(fieldId).trim())
-                .filter((fieldId) => fieldId.length > 0),
-            ),
+          const timeSlotsResponse = await apiRequest<{ timeSlots?: Array<Record<string, unknown>> }>(
+            `/api/time-slots?ids=${timeSlotIds.join(',')}`,
           );
-          if (fieldIds.length > 0) {
-            fetchedEvent.fields = await fieldService.listFields({ fieldIds });
+          if (Array.isArray(timeSlotsResponse?.timeSlots)) {
+            fetchedEvent.timeSlots = timeSlotsResponse.timeSlots.map((row) => {
+              const slot = row as Record<string, unknown>;
+              const slotId = normalizeIdToken(slot.$id ?? slot.id) ?? createClientId();
+              const rawFieldIds = Array.isArray(slot.scheduledFieldIds)
+                ? slot.scheduledFieldIds
+                : typeof slot.scheduledFieldId === 'string'
+                  ? [slot.scheduledFieldId]
+                  : [];
+              const scheduledFieldIds = Array.from(
+                new Set(
+                  rawFieldIds
+                    .map((fieldId) => String(fieldId).trim())
+                    .filter((fieldId) => fieldId.length > 0),
+                ),
+              );
+              const rawDays = Array.isArray(slot.daysOfWeek)
+                ? slot.daysOfWeek
+                : typeof slot.dayOfWeek === 'number'
+                  ? [slot.dayOfWeek]
+                  : [];
+              const daysOfWeek = Array.from(
+                new Set(
+                  rawDays
+                    .map((day) => Number(day))
+                    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+                ),
+              ) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+
+              return {
+                ...(slot as unknown as TimeSlot),
+                $id: slotId,
+                dayOfWeek: daysOfWeek[0] ?? (typeof slot.dayOfWeek === 'number' ? slot.dayOfWeek as TimeSlot['dayOfWeek'] : undefined),
+                daysOfWeek,
+                scheduledFieldId:
+                  scheduledFieldIds[0]
+                  ?? (typeof slot.scheduledFieldId === 'string' ? slot.scheduledFieldId : undefined),
+                scheduledFieldIds,
+                divisions: Array.isArray(slot.divisions)
+                  ? Array.from(
+                    new Set(
+                      slot.divisions
+                        .map((division) => String(division).trim().toLowerCase())
+                        .filter((division) => division.length > 0),
+                    ),
+                  )
+                  : [],
+                repeating: slot.repeating === undefined ? true : Boolean(slot.repeating),
+              } as TimeSlot;
+            });
           }
+        } catch (timeSlotsError) {
+          console.error('Failed to load time slots for event:', timeSlotsError);
+        }
+      }
+
+      const fieldIdsFromEvent = Array.isArray(fetchedEvent.fieldIds)
+        ? fetchedEvent.fieldIds.map((fieldId) => String(fieldId).trim()).filter((fieldId) => fieldId.length > 0)
+        : [];
+      const fieldIdsFromSlots = Array.isArray(fetchedEvent.timeSlots)
+        ? fetchedEvent.timeSlots.flatMap((slot) => {
+          const fromList = Array.isArray(slot.scheduledFieldIds)
+            ? slot.scheduledFieldIds
+            : [];
+          if (fromList.length > 0) {
+            return fromList.map((fieldId) => String(fieldId).trim()).filter((fieldId) => fieldId.length > 0);
+          }
+          return typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.trim().length > 0
+            ? [slot.scheduledFieldId.trim()]
+            : [];
+        })
+        : [];
+      const fieldIdsToHydrate = Array.from(new Set([...fieldIdsFromEvent, ...fieldIdsFromSlots]));
+
+      if (
+        (!Array.isArray(fetchedEvent.fields) || fetchedEvent.fields.length === 0)
+        && fieldIdsToHydrate.length > 0
+      ) {
+        try {
+          fetchedEvent.fields = await fieldService.listFields({ fieldIds: fieldIdsToHydrate });
         } catch (fieldsError) {
           console.error('Failed to load fields for event:', fieldsError);
         }

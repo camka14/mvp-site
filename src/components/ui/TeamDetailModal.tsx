@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect } from '@mantine/core';
-import { Invite, InviteType, Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import { Invite, InviteType, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
@@ -36,6 +36,8 @@ const DIVISION_GENDER_OPTIONS = [
     { value: 'F', label: 'Womens' },
     { value: 'C', label: 'CoEd' },
 ] as const;
+const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
+const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
 
 const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
     .trim()
@@ -45,7 +47,7 @@ const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
 
 const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTypeId: string): string => {
     const normalizedSkill = normalizeDivisionToken(skillDivisionTypeId) || 'open';
-    const normalizedAge = normalizeDivisionToken(ageDivisionTypeId) || 'u18';
+    const normalizedAge = normalizeDivisionToken(ageDivisionTypeId) || DEFAULT_AGE_DIVISION_FALLBACK;
     return `skill_${normalizedSkill}_age_${normalizedAge}`;
 };
 
@@ -79,7 +81,7 @@ const resolveDivisionTypeName = (
 ): string => {
     const normalizedId = normalizeDivisionToken(divisionTypeId);
     if (!normalizedId.length) {
-        return ratingType === 'SKILL' ? 'Open' : 'U18';
+        return ratingType === 'SKILL' ? 'Open' : '18+';
     }
     return getDivisionTypeById(sportInput ?? null, normalizedId, ratingType)?.name ?? humanizeDivisionTypeId(normalizedId);
 };
@@ -91,11 +93,17 @@ const getDefaultDivisionTypeSelections = (sportInput: string | null | undefined)
     const options = getDivisionTypeOptionsForSport(sportInput);
     const skill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
         ?? options.find((option) => option.ratingType === 'SKILL');
-    const age = options.find((option) => option.ratingType === 'AGE' && option.id === 'u18')
-        ?? options.find((option) => option.ratingType === 'AGE');
+    let age: (typeof options)[number] | undefined;
+    for (const preferredAgeId of PREFERRED_AGE_DIVISION_IDS) {
+        age = options.find((option) => option.ratingType === 'AGE' && option.id === preferredAgeId);
+        if (age) break;
+    }
+    if (!age) {
+        age = options.find((option) => option.ratingType === 'AGE');
+    }
     return {
         skillDivisionTypeId: skill?.id ?? 'open',
-        ageDivisionTypeId: age?.id ?? 'u18',
+        ageDivisionTypeId: age?.id ?? DEFAULT_AGE_DIVISION_FALLBACK,
     };
 };
 const getUserHandle = (candidate?: Pick<UserData, 'userName'> | null): string => {
@@ -133,7 +141,7 @@ export default function TeamDetailModal({
     const [draftDivision, setDraftDivision] = useState('');
     const [draftDivisionGender, setDraftDivisionGender] = useState<'M' | 'F' | 'C'>('C');
     const [draftSkillDivisionTypeId, setDraftSkillDivisionTypeId] = useState('open');
-    const [draftAgeDivisionTypeId, setDraftAgeDivisionTypeId] = useState('u18');
+    const [draftAgeDivisionTypeId, setDraftAgeDivisionTypeId] = useState(DEFAULT_AGE_DIVISION_FALLBACK);
     const [draftTeamSize, setDraftTeamSize] = useState(currentTeam.teamSize || 0);
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
     const [inviteMode, setInviteMode] = useState<'search' | 'email'>('search');
@@ -189,6 +197,16 @@ export default function TeamDetailModal({
             .filter((option) => option.ratingType === 'SKILL')
             .map((option) => ({ value: option.id, label: option.name })),
         [divisionTypeOptions],
+    );
+    const sportOptions = useMemo(
+        () => Array.from(
+            new Set(
+                [...SPORTS_LIST, draftSport, currentTeam.sport]
+                    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+                    .filter((value) => value.length > 0),
+            ),
+        ).map((value) => ({ value, label: value })),
+        [currentTeam.sport, draftSport],
     );
     const ageDivisionOptions = useMemo(
         () => divisionTypeOptions
@@ -793,10 +811,14 @@ export default function TeamDetailModal({
                         <Paper withBorder radius="md" p="md" mb="md">
                             <Title order={5} mb="sm">Edit Team Details</Title>
                             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                                <TextInput
+                                <MantineSelect
                                     label="Sport"
-                                    value={draftSport}
-                                    onChange={(event) => setDraftSport(event.currentTarget.value)}
+                                    data={sportOptions}
+                                    value={draftSport || null}
+                                    onChange={(value) => setDraftSport(value || '')}
+                                    searchable
+                                    allowDeselect={false}
+                                    nothingFoundMessage="No sports found"
                                 />
                                 <MantineSelect
                                     label="Division Gender"
@@ -817,7 +839,7 @@ export default function TeamDetailModal({
                                     label="Age Division"
                                     data={ageDivisionOptions}
                                     value={draftAgeDivisionTypeId}
-                                    onChange={(value) => setDraftAgeDivisionTypeId(value || 'u18')}
+                                    onChange={(value) => setDraftAgeDivisionTypeId(value || DEFAULT_AGE_DIVISION_FALLBACK)}
                                     searchable
                                     allowDeselect={false}
                                 />

@@ -68,12 +68,17 @@ jest.mock('@/lib/organizationService', () => ({
 let capturedEventFormProps: any = null;
 let mockEventFormDraft: any = null;
 let mockEventFormValidateResult = true;
+let mockEventFormDirtyState = false;
 jest.mock('../components/EventForm', () => {
   const React = require('react');
   const { forwardRef, useEffect, useImperativeHandle } = React;
   const MockEventForm = forwardRef(function MockEventForm(props: any, ref: any) {
     useEffect(() => {
       capturedEventFormProps = props;
+      props.onDirtyStateChange?.(mockEventFormDirtyState);
+      return () => {
+        props.onDirtyStateChange?.(false);
+      };
     }, [props]);
 
     useImperativeHandle(ref, () => ({
@@ -149,6 +154,7 @@ describe('League schedule page', () => {
     capturedEventFormProps = null;
     mockEventFormDraft = null;
     mockEventFormValidateResult = true;
+    mockEventFormDirtyState = false;
     useAppMock.mockReturnValue({
       user: { $id: 'host_1' },
       isAuthenticated: true,
@@ -245,6 +251,71 @@ describe('League schedule page', () => {
     });
     expect(capturedEventFormProps?.event?.leagueScoringConfig?.pointsForWin).toBe(5);
     expect(apiRequestMock).toHaveBeenCalledWith('/api/league-scoring-configs/cfg_1');
+  });
+
+  it('hydrates time slots (and slot-derived fields) when event payload only includes timeSlotIds', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = buildApiEvent({
+          timeSlots: [],
+          timeSlotIds: ['slot_1'],
+          fields: [],
+          fieldIds: [],
+        });
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/time-slots?ids=slot_1') {
+        return Promise.resolve({
+          timeSlots: [
+            {
+              id: 'slot_1',
+              dayOfWeek: 2,
+              daysOfWeek: [2],
+              startTimeMinutes: 540,
+              endTimeMinutes: 600,
+              repeating: true,
+              scheduledFieldId: 'field_slot_1',
+              divisions: ['open'],
+            },
+          ],
+        });
+      }
+      if (path === '/api/fields?ids=field_slot_1') {
+        return Promise.resolve({
+          fields: [
+            {
+              id: 'field_slot_1',
+              name: 'Court A',
+              fieldNumber: 1,
+              location: '',
+              lat: 0,
+              long: 0,
+            },
+          ],
+        });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: buildApiEvent().matches });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(capturedEventFormProps?.event?.timeSlots?.[0]?.$id).toBe('slot_1');
+    });
+    expect(capturedEventFormProps?.event?.timeSlots?.[0]?.scheduledFieldIds).toEqual(['field_slot_1']);
+    expect(capturedEventFormProps?.event?.fields?.[0]?.$id).toBe('field_slot_1');
   });
 
   it('uses template wording for template events in edit mode', async () => {
@@ -396,6 +467,7 @@ describe('League schedule page', () => {
     });
 
     apiRequestMock.mockResolvedValue({ event: baseEvent });
+    mockEventFormDirtyState = true;
 
     (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
       Promise.resolve({
@@ -408,6 +480,9 @@ describe('League schedule page', () => {
     renderWithMantine(<LeagueSchedulePage />);
 
     const publishButton = await screen.findByRole('button', { name: /save league/i });
+    await waitFor(() => {
+      expect(publishButton).toBeEnabled();
+    });
     fireEvent.click(publishButton);
 
     await waitFor(() => {
@@ -569,10 +644,14 @@ describe('League schedule page', () => {
       }),
       preview: false,
     });
+    mockEventFormDirtyState = true;
 
     renderWithMantine(<LeagueSchedulePage />);
 
     const publishButton = await screen.findByRole('button', { name: /create event/i });
+    await waitFor(() => {
+      expect(publishButton).toBeEnabled();
+    });
     fireEvent.click(publishButton);
 
     await waitFor(() => {
@@ -585,6 +664,103 @@ describe('League schedule page', () => {
       daysOfWeek: [1, 3],
       divisions: ['open'],
       scheduledFieldId: 'field_local_1',
+    });
+  });
+
+  it('normalizes tournament create payload with weekly timeslots before schedule preview', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return 'edit';
+        return null;
+      },
+    });
+
+    mockEventFormDraft = {
+      $id: 'event_create_tournament',
+      name: 'Create Tournament',
+      description: '',
+      location: 'Main Gym',
+      coordinates: [-83.0, 42.0],
+      start: '2026-01-06T09:00:00.000',
+      end: '2026-01-06T09:00:00.000',
+      eventType: 'TOURNAMENT',
+      sportId: 'volleyball',
+      price: 0,
+      maxParticipants: 16,
+      teamSizeLimit: 2,
+      teamSignup: true,
+      singleDivision: true,
+      divisions: ['open'],
+      cancellationRefundHours: 24,
+      registrationCutoffHours: 2,
+      requiredTemplateIds: [],
+      imageId: 'image_1',
+      seedColor: 0,
+      waitListIds: [],
+      freeAgentIds: [],
+      refereeIds: [],
+      fields: [
+        {
+          $id: 'field_tournament_1',
+          name: 'Court A',
+          fieldNumber: 1,
+          location: '',
+          lat: 0,
+          long: 0,
+          divisions: ['open'],
+        },
+      ],
+      timeSlots: [
+        {
+          $id: 'slot_tournament_multi',
+          dayOfWeek: 2,
+          daysOfWeek: [2, 4],
+          divisions: ['open'],
+          startTimeMinutes: 600,
+          endTimeMinutes: 720,
+          repeating: true,
+          scheduledFieldId: 'field_tournament_1',
+        },
+      ],
+      doubleElimination: false,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      winnerBracketPointsToVictory: [21],
+      loserBracketPointsToVictory: [21],
+      fieldCount: 1,
+      restTimeMinutes: 0,
+    };
+
+    (eventService.scheduleEvent as jest.Mock).mockResolvedValue({
+      event: buildApiEvent({
+        id: 'event_create_tournament',
+        $id: 'event_create_tournament',
+        eventType: 'TOURNAMENT',
+      }),
+      preview: false,
+    });
+    mockEventFormDirtyState = true;
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const publishButton = await screen.findByRole('button', { name: /create event/i });
+    await waitFor(() => {
+      expect(publishButton).toBeEnabled();
+    });
+    fireEvent.click(publishButton);
+
+    await waitFor(() => {
+      expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);
+    });
+
+    const [payload] = (eventService.scheduleEvent as jest.Mock).mock.calls[0];
+    expect(payload?.eventType).toBe('TOURNAMENT');
+    expect(payload?.timeSlots?.[0]).toMatchObject({
+      dayOfWeek: 2,
+      daysOfWeek: [2, 4],
+      divisions: ['open'],
+      scheduledFieldId: 'field_tournament_1',
     });
   });
 

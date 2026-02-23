@@ -94,6 +94,8 @@ const MAX_SHORT_TEXT_LENGTH = 80;
 const MAX_MEDIUM_TEXT_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 1000;
 const DEFAULT_DIVISION_KEY = 'open';
+const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
+const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
 const DIVISION_GENDER_OPTIONS = [
     { value: 'M', label: 'Mens' },
     { value: 'F', label: 'Womens' },
@@ -108,7 +110,7 @@ const normalizeDivisionTokenPart = (value: unknown): string => String(value ?? '
 
 const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTypeId: string): string => {
     const normalizedSkill = normalizeDivisionTokenPart(skillDivisionTypeId) || 'open';
-    const normalizedAge = normalizeDivisionTokenPart(ageDivisionTypeId) || 'u18';
+    const normalizedAge = normalizeDivisionTokenPart(ageDivisionTypeId) || DEFAULT_AGE_DIVISION_FALLBACK;
     return `skill_${normalizedSkill}_age_${normalizedAge}`;
 };
 
@@ -206,9 +208,16 @@ const getDefaultDivisionTypeSelectionsForSport = (sportInput?: string | null): {
     const fallbackSkill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
         ?? options.find((option) => option.ratingType === 'SKILL')
         ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
-    const fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === 'u18')
+    let fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === '18plus');
+    if (!fallbackAge) {
+        for (const preferredAgeId of PREFERRED_AGE_DIVISION_IDS) {
+            fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === preferredAgeId);
+            if (fallbackAge) break;
+        }
+    }
+    fallbackAge = fallbackAge
         ?? options.find((option) => option.ratingType === 'AGE')
-        ?? { id: 'u18', name: 'U18', ratingType: 'AGE', sportKey: 'generic' };
+        ?? { id: '18plus', name: '18+', ratingType: 'AGE', sportKey: 'generic' };
     return {
         skillDivisionTypeId: fallbackSkill.id,
         skillDivisionTypeName: fallbackSkill.name,
@@ -222,6 +231,9 @@ const parseDateValue = (value?: string | null): Date | null => {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
+
+const supportsScheduleSlots = (eventType: EventType): boolean =>
+    eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
 
 type DivisionDetailForm = {
     id: string;
@@ -373,9 +385,16 @@ const buildDefaultDivisionDetailsForSport = (
     const fallbackSkill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
         ?? options.find((option) => option.ratingType === 'SKILL')
         ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
-    const fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === 'u18')
+    let fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === '18plus');
+    if (!fallbackAge) {
+        for (const preferredAgeId of PREFERRED_AGE_DIVISION_IDS) {
+            fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === preferredAgeId);
+            if (fallbackAge) break;
+        }
+    }
+    fallbackAge = fallbackAge
         ?? options.find((option) => option.ratingType === 'AGE')
-        ?? { id: 'u18', name: 'U18', ratingType: 'AGE', sportKey: 'generic' };
+        ?? { id: '18plus', name: '18+', ratingType: 'AGE', sportKey: 'generic' };
     const compositeDivisionTypeId = buildCompositeDivisionTypeId(fallbackSkill.id, fallbackAge.id);
     const token = buildDivisionToken({
         gender: 'C',
@@ -628,13 +647,13 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
 const slotsOverlap = (startA: number, endA: number, startB: number, endB: number): boolean =>
     Math.max(startA, startB) < Math.min(endA, endB);
 
-// Evaluates the current slot against other form slots to surface inline validation errors for leagues.
+// Evaluates the current slot against other form slots to surface inline validation errors for schedulable event types.
 const computeSlotError = (
     slots: LeagueSlotForm[],
     index: number,
     eventType: EventType
 ): string | undefined => {
-    if (eventType !== 'LEAGUE') {
+    if (!supportsScheduleSlots(eventType)) {
         return undefined;
     }
 
@@ -1666,10 +1685,10 @@ const eventFormSchema = z
             }
         }
 
-        if (values.eventType === 'LEAGUE') {
+        if (supportsScheduleSlots(values.eventType)) {
             const slotDivisionLookup = buildSlotDivisionLookup(values.divisionDetails);
             const selectedDivisionKeys = slotDivisionLookup.keys;
-            if (values.leagueData.includePlayoffs) {
+            if (values.eventType === 'LEAGUE' && values.leagueData.includePlayoffs) {
                 if (values.singleDivision) {
                     if (!(typeof values.leagueData.playoffTeamCount === 'number' && values.leagueData.playoffTeamCount >= 2)) {
                         ctx.addIssue({
@@ -2036,7 +2055,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
 
-        if (incomingEvent.eventType !== 'LEAGUE') {
+        if (!supportsScheduleSlots(incomingEvent.eventType)) {
             setHydratedEditingEvent(null);
             return;
         }
@@ -2219,7 +2238,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
             }
 
-            if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE' && activeEditingEvent.timeSlots?.length) {
+            if (activeEditingEvent && supportsScheduleSlots(activeEditingEvent.eventType) && activeEditingEvent.timeSlots?.length) {
                 return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
                     .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
             }
@@ -3784,6 +3803,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     // Clear slot field references that point to fields no longer selected/available.
     useEffect(() => {
         const availableFieldIds = toFieldIdList(fields);
+        if (!availableFieldIds.length) {
+            return;
+        }
         const validIds = new Set(availableFieldIds);
 
         const hasInvalidSlots = leagueSlots.some((slot) => {
@@ -3879,32 +3901,45 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
     }, [hasImmutableFields, setFields, shouldManageLocalFields]);
 
-    // Hydrate league-specific state and slots when opening the modal for an existing event.
+    // Hydrate schedule state and slots when opening the modal for an existing event.
     useEffect(() => {
         if (hasImmutableTimeSlots) {
             return;
         }
-        if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE') {
-            const source = activeEditingEvent.leagueConfig || activeEditingEvent;
-            setLeagueData({
-                gamesPerOpponent: source?.gamesPerOpponent ?? 1,
-                includePlayoffs: source?.includePlayoffs ?? false,
-                playoffTeamCount: source?.playoffTeamCount ?? undefined,
-                usesSets: source?.usesSets ?? false,
-                matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
-                setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
-                setsPerMatch: normalizeNumber(source?.setsPerMatch),
-                pointsToVictory: Array.isArray(source?.pointsToVictory) ? source.pointsToVictory as number[] : undefined,
-            });
+        if (activeEditingEvent && supportsScheduleSlots(activeEditingEvent.eventType)) {
+            if (activeEditingEvent.eventType === 'LEAGUE') {
+                const source = activeEditingEvent.leagueConfig || activeEditingEvent;
+                setLeagueData({
+                    gamesPerOpponent: source?.gamesPerOpponent ?? 1,
+                    includePlayoffs: source?.includePlayoffs ?? false,
+                    playoffTeamCount: source?.playoffTeamCount ?? undefined,
+                    usesSets: source?.usesSets ?? false,
+                    matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
+                    setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
+                    setsPerMatch: normalizeNumber(source?.setsPerMatch),
+                    pointsToVictory: Array.isArray(source?.pointsToVictory) ? source.pointsToVictory as number[] : undefined,
+                });
 
-            if (activeEditingEvent.includePlayoffs) {
-                const extractedPlayoff = extractTournamentConfigFromEvent(activeEditingEvent);
-                if (extractedPlayoff) {
-                    setPlayoffData(extractedPlayoff);
+                if (activeEditingEvent.includePlayoffs) {
+                    const extractedPlayoff = extractTournamentConfigFromEvent(activeEditingEvent);
+                    if (extractedPlayoff) {
+                        setPlayoffData(extractedPlayoff);
+                    } else {
+                        setPlayoffData(buildTournamentConfig());
+                    }
                 } else {
                     setPlayoffData(buildTournamentConfig());
                 }
             } else {
+                setLeagueData({
+                    gamesPerOpponent: 1,
+                    includePlayoffs: false,
+                    playoffTeamCount: undefined,
+                    usesSets: false,
+                    matchDurationMinutes: 60,
+                    setDurationMinutes: undefined,
+                    setsPerMatch: undefined,
+                });
                 setPlayoffData(buildTournamentConfig());
             }
 
@@ -4203,7 +4238,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
     }, [eventData.eventType, eventData.noFixedEndDateTime, hasExternalRentalField, setValue]);
 
-    const leagueError = errors.leagueSlots ? 'Please resolve league timeslot issues before submitting.' : null;
+    const leagueError = errors.leagueSlots ? 'Please resolve schedule timeslot issues before submitting.' : null;
 
     useEffect(() => {
         if (isEditMode || !organization) {
@@ -4646,6 +4681,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 draft.loserBracketPointsToVictory = source.playoffData.loserBracketPointsToVictory;
             }
 
+        }
+
+        if (source.eventType === 'TOURNAMENT') {
+            draft.doubleElimination = source.tournamentData.doubleElimination;
+            draft.winnerSetCount = source.tournamentData.winnerSetCount;
+            draft.loserSetCount = source.tournamentData.loserSetCount;
+            draft.winnerBracketPointsToVictory = source.tournamentData.winnerBracketPointsToVictory;
+            draft.loserBracketPointsToVictory = source.tournamentData.loserBracketPointsToVictory;
+            draft.prize = source.tournamentData.prize;
+            draft.fieldCount = source.tournamentData.fieldCount;
+            draft.restTimeMinutes = normalizeNumber(source.tournamentData.restTimeMinutes, 0) ?? 0;
+        }
+
+        if (supportsScheduleSlots(source.eventType)) {
             const slotDocuments = source.leagueSlots
                 .filter((slot) =>
                     normalizeSlotFieldIds(slot).length > 0 &&
@@ -4702,17 +4751,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     draft.fieldIds = slotFieldIds;
                 }
             }
-        }
-
-        if (source.eventType === 'TOURNAMENT') {
-            draft.doubleElimination = source.tournamentData.doubleElimination;
-            draft.winnerSetCount = source.tournamentData.winnerSetCount;
-            draft.loserSetCount = source.tournamentData.loserSetCount;
-            draft.winnerBracketPointsToVictory = source.tournamentData.winnerBracketPointsToVictory;
-            draft.loserBracketPointsToVictory = source.tournamentData.loserBracketPointsToVictory;
-            draft.prize = source.tournamentData.prize;
-            draft.fieldCount = source.tournamentData.fieldCount;
-            draft.restTimeMinutes = normalizeNumber(source.tournamentData.restTimeMinutes, 0) ?? 0;
         }
 
         return draft;
@@ -6415,7 +6453,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         </div>
                                     )}
 
-                                    {eventData.eventType === 'LEAGUE' && (
+                                    {isSchedulableEventType && (
                                     <div className="space-y-4">
                                         {isOrganizationManagedEvent && (
                                             <Text size="xs" c="dimmed">
@@ -6447,9 +6485,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             lockedDivisionKeys={slotDivisionKeys}
                                             readOnly={hasImmutableTimeSlots}
                                             showPlayoffSettings={false}
+                                            showLeagueConfiguration={eventData.eventType === 'LEAGUE'}
                                         />
 
-                                        {leagueData.includePlayoffs && (
+                                        {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && (
                                             <TournamentFields
                                                 title="Playoffs Configuration"
                                                 tournamentData={playoffData}
