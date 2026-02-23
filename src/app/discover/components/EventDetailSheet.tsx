@@ -460,7 +460,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return;
         }
 
-        const targetEvent = event;
+        const targetEvent = currentEvent ?? event;
         if (!targetEvent || !targetEvent.teamSignup) {
             setUserTeams([]);
             setIsLoadingTeams(false);
@@ -479,10 +479,28 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         const loadTeams = async () => {
             try {
                 const userTeamsAll = await teamService.getTeamsByIds(teamIds, true);
-                const targetSport = (targetEvent.sport?.name || '').toLowerCase();
-                const relevantTeams = userTeamsAll.filter(
-                    (team) => (team.sport || '').toLowerCase() === targetSport
-                );
+                const targetSportName = (() => {
+                    if (typeof targetEvent.sport === 'string' && targetEvent.sport.trim().length > 0) {
+                        return targetEvent.sport.trim();
+                    }
+                    if (
+                        targetEvent.sport
+                        && typeof targetEvent.sport === 'object'
+                        && typeof (targetEvent.sport as { name?: unknown }).name === 'string'
+                    ) {
+                        return ((targetEvent.sport as { name?: string }).name ?? '').trim();
+                    }
+                    if (typeof targetEvent.sportId === 'string' && targetEvent.sportId.trim().length > 0) {
+                        return targetEvent.sportId.trim();
+                    }
+                    return '';
+                })();
+                const normalizedTargetSport = targetSportName.toLowerCase();
+                const relevantTeams = normalizedTargetSport.length > 0
+                    ? userTeamsAll.filter(
+                        (team) => (team.sport || '').trim().toLowerCase() === normalizedTargetSport
+                    )
+                    : userTeamsAll;
                 if (!cancelled) {
                     setUserTeams(relevantTeams);
                 }
@@ -504,7 +522,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             cancelled = true;
             setIsLoadingTeams(false);
         };
-    }, [isActive, event, user]);
+    }, [isActive, currentEvent, event, user]);
 
     useEffect(() => {
         if (!isActive || !user) {
@@ -1438,10 +1456,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setJoinError('This event has already started. Joining is closed.');
             return;
         }
-        if (!selectedTeamIsWaitlisted && (teamDivisionTypeMissing || teamDivisionMismatch)) {
-            setJoinError(teamDivisionErrorMessage ?? 'Selected team is not eligible for that division type.');
-            return;
-        }
         if (!selectedTeamIsWaitlisted && isDivisionSelectionMissing) {
             setJoinError(
                 registrationByDivisionType
@@ -1483,10 +1497,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!user || !currentEvent || !selectedTeamId) return;
         if (eventHasStarted) {
             setJoinError('This event has already started. Joining is closed.');
-            return;
-        }
-        if (teamDivisionTypeMissing || teamDivisionMismatch) {
-            setJoinError(teamDivisionErrorMessage ?? 'Selected team is not eligible for that division type.');
             return;
         }
         if (isDivisionSelectionMissing) {
@@ -1684,37 +1694,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const selectedTeam = selectedTeamId
         ? userTeams.find((team) => team.$id === selectedTeamId) ?? null
         : null;
-    const selectedTeamDivisionTypeId = (() => {
-        if (!selectedTeam) {
-            return null;
-        }
-        if (typeof selectedTeam.divisionTypeId === 'string' && selectedTeam.divisionTypeId.trim().length > 0) {
-            return selectedTeam.divisionTypeId.trim().toLowerCase();
-        }
-        if (typeof selectedTeam.division === 'string' && selectedTeam.division.trim().length > 0) {
-            return inferDivisionDetails({
-                identifier: selectedTeam.division,
-                sportInput: selectedTeam.sport,
-            }).divisionTypeId;
-        }
-        return null;
-    })();
-    const teamDivisionMismatch = Boolean(
-        selectedTeam
-        && selectedDivisionOption?.divisionTypeId
-        && selectedTeamDivisionTypeId
-        && selectedDivisionOption.divisionTypeId !== selectedTeamDivisionTypeId,
-    );
-    const teamDivisionTypeMissing = Boolean(
-        selectedTeam
-        && selectedDivisionOption?.divisionTypeId
-        && !selectedTeamDivisionTypeId,
-    );
-    const teamDivisionErrorMessage = teamDivisionTypeMissing
-        ? 'Selected team must have a division type before it can register.'
-        : teamDivisionMismatch
-            ? `Selected team division type (${selectedTeamDivisionTypeId?.toUpperCase()}) does not match ${selectedDivisionOption?.divisionTypeName ?? 'the selected division type'}.`
-            : null;
     const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
     const showSelfWaitlistActions = eventAtCapacity || isUserWaitlisted;
     const childWaitlistMode = !isTeamSignup && (eventAtCapacity || selectedChildIsWaitlisted);
@@ -2333,11 +2312,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                         comboboxProps={sharedComboboxProps}
                                                                     />
                                                                 </div>
-                                                                {teamDivisionErrorMessage && (
-                                                                    <Alert color="yellow" variant="light">
-                                                                        {teamDivisionErrorMessage}
-                                                                    </Alert>
-                                                                )}
 
                                                                 {/* Manage Teams Button Section - Matching Hide/Show button height */}
                                                                 <div className="flex justify-center">
@@ -2360,7 +2334,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                                 joining
                                                                                 || eventHasStarted
                                                                                 || !selectedTeamId
-                                                                                || (!selectedTeamIsWaitlisted && (teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing))
+                                                                                || (!selectedTeamIsWaitlisted && isDivisionSelectionMissing)
                                                                             }
                                                                             color="orange"
                                                                         >
@@ -2373,7 +2347,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                     ) : (
                                                                         <Button
                                                                             onClick={handleJoinAsTeam}
-                                                                            disabled={joining || eventHasStarted || !selectedTeamId || confirmingPurchase || teamDivisionTypeMissing || teamDivisionMismatch || isDivisionSelectionMissing}
+                                                                            disabled={joining || eventHasStarted || !selectedTeamId || confirmingPurchase || isDivisionSelectionMissing}
                                                                             color="green"
                                                                         >
                                                                             {eventHasStarted

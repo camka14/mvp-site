@@ -9,6 +9,21 @@ const nextCli = require.resolve('next/dist/bin/next');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const stripAnsi = (value) =>
+  value.replace(
+    /\u001b\[[0-9;?]*[ -/]*[@-~]/g,
+    '',
+  );
+
+const maskStripeWebhookSecrets = (value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  return value.replace(/whsec_[A-Za-z0-9]+/g, (secret) =>
+    secret.length > 12 ? `${secret.slice(0, 12)}...${secret.slice(-4)}` : secret,
+  );
+};
+
 const parsePort = (args) => {
   const portFromEquals = args.find((arg) => arg.startsWith('--port='));
   if (portFromEquals) {
@@ -201,6 +216,35 @@ const terminateProcess = (proc) => {
   }, 3000);
 };
 
+const findNextDevLockHolders = () => {
+  const result = spawnSync('lsof', ['-t', '.next/dev/lock'], {
+    encoding: 'utf8',
+    timeout: 3000,
+  });
+  if (result.error || result.status !== 0 || !result.stdout) {
+    return [];
+  }
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => Number(line.trim()))
+    .filter((pid) => Number.isFinite(pid) && pid > 0);
+};
+
+const findRunningNextDevProcesses = () => {
+  const result = spawnSync('pgrep', ['-af', 'next dev'], {
+    encoding: 'utf8',
+    timeout: 3000,
+  });
+  if (result.error || result.status !== 0 || !result.stdout) {
+    return [];
+  }
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.includes(` ${process.pid} `));
+};
+
 const findTunnelUrl = (tunnels, port) => {
   const candidates = Array.isArray(tunnels) ? tunnels : [];
   const httpsByPort = candidates.find((tunnel) => {
@@ -233,6 +277,146 @@ const normalizeTunnelUrl = (value) => {
     return null;
   }
   return trimmed;
+};
+
+const parseDotEnvFile = (filePath) => {
+  if (!existsSync(filePath)) {
+    return {};
+  }
+  const content = readFileSync(filePath, 'utf8');
+  const entries = {};
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+    const equalsIndex = line.indexOf('=');
+    if (equalsIndex <= 0) {
+      continue;
+    }
+    const key = line.slice(0, equalsIndex).trim();
+    const value = line.slice(equalsIndex + 1).trim();
+    if (!key) {
+      continue;
+    }
+    entries[key] = value.replace(/^['"]|['"]$/g, '');
+  }
+  return entries;
+};
+
+const loadStripeSecretKey = () => {
+  const fromEnv = process.env.STRIPE_SECRET_KEY?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+
+  const env = parseDotEnvFile('.env');
+  const envLocal = parseDotEnvFile('.env.local');
+  const merged = { ...env, ...envLocal };
+  const fromFiles = merged.STRIPE_SECRET_KEY?.trim();
+  return fromFiles || null;
+};
+
+const resolveStripeBinary = () => {
+  const explicit = process.env.STRIPE_CLI_BIN?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  if (commandRuns('stripe', ['version'])) {
+    return 'stripe';
+  }
+  return null;
+};
+
+const waitForStripeWebhookSecret = (stripeProc, timeoutMs) =>
+  new Promise((resolve) => {
+    let settled = false;
+    let secret = null;
+    const finish = (value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(value);
+    };
+    const timeoutId = setTimeout(() => finish(null), timeoutMs);
+
+    const consume = (chunk) => {
+      const text = chunk.toString();
+      process.stdout.write(`[stripe] ${maskStripeWebhookSecrets(text)}`);
+      const cleaned = stripAnsi(text);
+      const match = cleaned.match(/whsec_[A-Za-z0-9]+/);
+      if (match?.[0]) {
+        secret = match[0];
+        clearTimeout(timeoutId);
+        finish(secret);
+      }
+    };
+
+    stripeProc.stdout?.on('data', consume);
+    stripeProc.stderr?.on('data', consume);
+    stripeProc.once('exit', () => {
+      clearTimeout(timeoutId);
+      finish(secret);
+    });
+  });
+
+const startStripeListener = async (port) => {
+  const stripeBin = resolveStripeBinary();
+  if (!stripeBin) {
+    return {
+      stripeProc: null,
+      webhookSecret: null,
+      error: new Error('Stripe CLI not found. Install Stripe CLI or set STRIPE_CLI_BIN.'),
+    };
+  }
+
+  const secretKey = loadStripeSecretKey();
+  const stripeArgs = [
+    'listen',
+    '--forward-to',
+    `http://localhost:${port}/api/billing/webhook`,
+    '--events',
+    'payment_intent.succeeded',
+  ];
+  if (secretKey) {
+    stripeArgs.push('--api-key', secretKey);
+  }
+
+  let spawnError = null;
+  const stripeProc = spawn(stripeBin, stripeArgs, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: process.env,
+  });
+  stripeProc.once('error', (error) => {
+    spawnError = error;
+  });
+
+  await sleep(250);
+  if (spawnError) {
+    return { stripeProc: null, webhookSecret: null, error: spawnError };
+  }
+
+  const webhookSecret = await waitForStripeWebhookSecret(stripeProc, 20_000);
+  if (!webhookSecret) {
+    terminateProcess(stripeProc);
+    return {
+      stripeProc: null,
+      webhookSecret: null,
+      error: new Error('Timed out waiting for Stripe listener webhook secret.'),
+    };
+  }
+
+  await sleep(200);
+  if (stripeProc.exitCode !== null) {
+    return {
+      stripeProc: null,
+      webhookSecret: null,
+      error: new Error('Stripe listener exited before becoming ready.'),
+    };
+  }
+
+  return { stripeProc, webhookSecret, error: null };
 };
 
 const waitForNgrokUrl = async (port, timeoutMs) => {
@@ -383,9 +567,12 @@ const run = async () => {
   const args = process.argv.slice(2);
   const port = parsePort(args);
   const enableNgrok = isFlagEnabled(process.env.MVP_DEV_ENABLE_NGROK, true);
+  const enableStripeListen = isFlagEnabled(process.env.MVP_DEV_ENABLE_STRIPE_LISTEN, true);
 
   let ngrokProc = null;
   let publicUrl = null;
+  let stripeProc = null;
+  let stripeWebhookSecret = null;
 
   if (enableNgrok) {
     const ngrokResult = await startNgrok(port);
@@ -396,8 +583,10 @@ const run = async () => {
       publicUrl = ngrokResult.publicUrl;
       console.log(`[dev] ngrok tunnel ready: ${publicUrl}`);
       try {
-        const webhookUrl = new URL('/api/documents/webhook', publicUrl).toString();
-        console.log(`[dev] BoldSign webhook URL: ${webhookUrl}`);
+        const boldSignWebhookUrl = new URL('/api/documents/webhook', publicUrl).toString();
+        const billingWebhookUrl = new URL('/api/billing/webhook', publicUrl).toString();
+        console.log(`[dev] BoldSign webhook URL: ${boldSignWebhookUrl}`);
+        console.log(`[dev] Stripe billing webhook URL: ${billingWebhookUrl}`);
       } catch {
         // Ignore malformed URL edge cases and continue startup.
       }
@@ -411,6 +600,33 @@ const run = async () => {
     nextEnv.MVP_DEV_NGROK_URL = publicUrl;
   }
 
+  if (enableStripeListen) {
+    const stripeResult = await startStripeListener(port);
+    if (stripeResult.error) {
+      console.warn(`[dev] stripe listen unavailable; continuing without local webhook forward (${stripeResult.error.message})`);
+      console.warn(
+        `[dev] run manually: stripe listen --events payment_intent.succeeded --forward-to http://localhost:${port}/api/billing/webhook`,
+      );
+    } else {
+      stripeProc = stripeResult.stripeProc;
+      stripeWebhookSecret = stripeResult.webhookSecret;
+      const maskedSecret =
+        stripeWebhookSecret.length > 12
+          ? `${stripeWebhookSecret.slice(0, 12)}...${stripeWebhookSecret.slice(-4)}`
+          : stripeWebhookSecret;
+      console.log(`[dev] stripe listener ready: forwarding to http://localhost:${port}/api/billing/webhook`);
+      console.log(`[dev] stripe webhook secret (session): ${maskedSecret}`);
+
+      const existingSecrets = (nextEnv.STRIPE_WEBHOOK_SECRETS ?? '')
+        .split(/[,\n]/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const combinedSecrets = Array.from(new Set([stripeWebhookSecret, ...existingSecrets])).join(',');
+      nextEnv.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;
+      nextEnv.STRIPE_WEBHOOK_SECRETS = combinedSecrets;
+    }
+  }
+
   const nextProc = spawn(process.execPath, [nextCli, 'dev', ...args], {
     stdio: 'inherit',
     env: nextEnv,
@@ -418,6 +634,7 @@ const run = async () => {
 
   const shutdown = () => {
     terminateProcess(nextProc);
+    terminateProcess(stripeProc);
     terminateProcess(ngrokProc);
   };
 
@@ -426,7 +643,26 @@ const run = async () => {
   process.on('SIGHUP', shutdown);
 
   nextProc.on('exit', (code, signal) => {
+    terminateProcess(stripeProc);
     terminateProcess(ngrokProc);
+    if (typeof code === 'number' && code !== 0) {
+      const lockHolders = findNextDevLockHolders();
+      if (lockHolders.length > 0) {
+        console.error(
+          `[dev] next dev lock is held by PID(s): ${lockHolders.join(', ')}. ` +
+            'Stop the existing next process and restart with `npm run dev` so webhook forwarding runs in the same session.',
+        );
+      } else {
+        const existingNextDev = findRunningNextDevProcesses();
+        if (existingNextDev.length > 0) {
+          console.error('[dev] another next dev process appears to be running:');
+          existingNextDev.forEach((line) => console.error(`  ${line}`));
+          console.error(
+            '[dev] stop that process and restart with `npm run dev` so webhook forwarding runs in the same session.',
+          );
+        }
+      }
+    }
     if (typeof code === 'number') {
       process.exit(code);
       return;

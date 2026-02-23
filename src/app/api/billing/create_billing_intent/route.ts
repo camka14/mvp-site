@@ -34,6 +34,12 @@ export async function POST(req: NextRequest) {
   if (!payment) {
     return NextResponse.json({ error: 'Bill payment not found' }, { status: 404 });
   }
+  if (payment.billId !== bill.id) {
+    return NextResponse.json({ error: 'Bill payment does not belong to the bill' }, { status: 400 });
+  }
+  if (payment.status && payment.status !== 'PENDING') {
+    return NextResponse.json({ error: 'Bill payment is not pending' }, { status: 400 });
+  }
 
   const amountCents = payment.amountCents;
   const appFeePercentage = 0.01;
@@ -66,13 +72,16 @@ export async function POST(req: NextRequest) {
 
   const stripe = new Stripe(secretKey);
   try {
+    const userId = parsed.data.user?.$id ?? parsed.data.user?.id ?? null;
     const intent = await stripe.paymentIntents.create({
       amount: totalCharge,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
       metadata: {
+        purchase_type: 'bill',
         bill_id: bill.id,
         bill_payment_id: payment.id,
+        ...(userId ? { user_id: String(userId) } : {}),
       },
     });
 

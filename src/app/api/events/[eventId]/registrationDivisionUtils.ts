@@ -62,6 +62,23 @@ const normalizeKey = (value: unknown): string | null => {
   return normalized.length ? normalized : null;
 };
 
+const parseCompositeDivisionTypeId = (
+  divisionTypeId: string | null | undefined,
+): { skillDivisionTypeId: string; ageDivisionTypeId: string } | null => {
+  const normalizedDivisionTypeId = normalizeKey(divisionTypeId);
+  if (!normalizedDivisionTypeId) {
+    return null;
+  }
+  const match = normalizedDivisionTypeId.match(/^skill_([a-z0-9_]+)_age_([a-z0-9_]+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    skillDivisionTypeId: match[1],
+    ageDivisionTypeId: match[2],
+  };
+};
+
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
 );
@@ -91,6 +108,46 @@ const pickPreferredOption = (options: EventDivisionOption[]): EventDivisionOptio
     return null;
   }
   return [...options].sort((left, right) => left.name.localeCompare(right.name))[0] ?? null;
+};
+
+export const divisionTypeIdsEquivalent = (
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean => {
+  const normalizedLeft = normalizeKey(left);
+  const normalizedRight = normalizeKey(right);
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+
+  const leftComposite = parseCompositeDivisionTypeId(normalizedLeft);
+  const rightComposite = parseCompositeDivisionTypeId(normalizedRight);
+
+  if (leftComposite && rightComposite) {
+    return (
+      leftComposite.skillDivisionTypeId === rightComposite.skillDivisionTypeId
+      && leftComposite.ageDivisionTypeId === rightComposite.ageDivisionTypeId
+    );
+  }
+
+  if (leftComposite) {
+    return (
+      leftComposite.skillDivisionTypeId === normalizedRight
+      || leftComposite.ageDivisionTypeId === normalizedRight
+    );
+  }
+
+  if (rightComposite) {
+    return (
+      rightComposite.skillDivisionTypeId === normalizedLeft
+      || rightComposite.ageDivisionTypeId === normalizedLeft
+    );
+  }
+
+  return false;
 };
 
 const toResolvedSelection = (option: EventDivisionOption | null): ResolvedDivisionSelection => {
@@ -309,7 +366,10 @@ export const resolveEventDivisionSelection = async (params: {
 
   let candidates = options.filter((option) => (
     (requestedTypeKey && option.divisionTypeKey === requestedTypeKey)
-    || (requestedTypeId && option.divisionTypeId === requestedTypeId)
+    || (
+      requestedTypeId
+      && divisionTypeIdsEquivalent(option.divisionTypeId, requestedTypeId)
+    )
   ));
 
   if (!candidates.length) {

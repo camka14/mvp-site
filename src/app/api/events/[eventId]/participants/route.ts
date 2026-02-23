@@ -5,7 +5,6 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import {
-  inferTeamDivisionTypeId,
   resolveEventDivisionSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 
@@ -64,6 +63,12 @@ const normalizeEmail = (value: unknown): string | null => {
   const normalized = value.trim().toLowerCase();
   return normalized.length ? normalized : null;
 };
+const normalizeSportKey = (value: unknown): string => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim().toLowerCase();
+};
 
 const canManageLinkedChildParticipant = async (params: {
   parentId: string;
@@ -102,6 +107,13 @@ async function updateParticipants(
 
   const userId = parsed.data.userId ?? extractId(parsed.data.user);
   const teamId = parsed.data.teamId ?? extractId(parsed.data.team);
+
+  if (mode === 'add' && userId && !teamId && event.teamSignup) {
+    return NextResponse.json(
+      { error: 'Individual joins for team events must use the free-agent route.' },
+      { status: 403 },
+    );
+  }
 
   if (userId && !session.isAdmin && session.userId !== userId) {
     const canManageChild = mode === 'remove'
@@ -239,27 +251,11 @@ async function updateParticipants(
 
   if (teamForRegistration && mode === 'add') {
     const team = teamForRegistration;
-
-    const teamDivisionTypeId = inferTeamDivisionTypeId({
-      divisionTypeId: team.divisionTypeId,
-      division: team.division,
-      sport: team.sport,
-    });
-
-    if (divisionSelection.divisionTypeId && !teamDivisionTypeId) {
+    const normalizedEventSport = normalizeSportKey(event.sportId);
+    const normalizedTeamSport = normalizeSportKey(team.sport);
+    if (normalizedEventSport && normalizedTeamSport !== normalizedEventSport) {
       return NextResponse.json(
-        { error: 'This team must be assigned a division type before registering.' },
-        { status: 403 },
-      );
-    }
-
-    if (
-      divisionSelection.divisionTypeId
-      && teamDivisionTypeId
-      && divisionSelection.divisionTypeId !== teamDivisionTypeId
-    ) {
-      return NextResponse.json(
-        { error: 'This team cannot register for the selected division type.' },
+        { error: 'This team does not match the event sport.' },
         { status: 403 },
       );
     }
@@ -318,6 +314,19 @@ async function updateParticipants(
   let nextTeamIds = normalizeUserIdList(event.teamIds);
   let nextWaitListIds = normalizeUserIdList(event.waitListIds);
   let nextFreeAgentIds = normalizeUserIdList(event.freeAgentIds);
+
+  if (mode === 'add' && teamId && nextTeamIds.includes(teamId)) {
+    return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
+  }
+  if (mode === 'add' && userId && nextUserIds.includes(userId)) {
+    return NextResponse.json({ error: 'User is already registered for this event.' }, { status: 409 });
+  }
+  if (mode === 'add' && userId && nextFreeAgentIds.includes(userId)) {
+    return NextResponse.json(
+      { error: 'User is already registered as a free agent for this event.' },
+      { status: 409 },
+    );
+  }
 
   if (teamId) {
     if (mode === 'add') {

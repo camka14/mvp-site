@@ -82,6 +82,25 @@ When running in WSL, the dev wrapper also attempts to resolve Windows-installed 
 - `npm run test` — Jest suite
 - `npm run lint` — Next.js lint
 
+## Local Stripe Webhooks
+- Preferred local run: `npm run dev`
+  - This wrapper starts `stripe listen` automatically and forwards `payment_intent.succeeded` to `http://localhost:3000/api/billing/webhook`.
+  - It also injects the session webhook secret into `STRIPE_WEBHOOK_SECRET` for that dev process.
+- Manual listener (if using `npm run dev:plain`):
+```bash
+stripe listen \
+  --events payment_intent.succeeded \
+  --forward-to http://localhost:3000/api/billing/webhook
+```
+- Manual trigger test:
+```bash
+stripe trigger payment_intent.succeeded
+```
+- If webhook signature checks fail in local-only debugging, you can temporarily allow unverified payloads:
+```bash
+STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV=true
+```
+
 ## Architecture
 - `src/app` — routes (App Router) and metadata; OG image at `opengraph-image.tsx`
 - `src/components` — UI components (Mantine, chat widgets)

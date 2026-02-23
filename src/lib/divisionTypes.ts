@@ -704,6 +704,63 @@ export const buildDivisionToken = (params: {
   return `${params.gender.toLowerCase()}_${params.ratingType.toLowerCase()}_${divisionTypeId}`;
 };
 
+const parseCompositeDivisionTypeId = (
+  divisionTypeId: unknown,
+): { skillDivisionTypeId: string; ageDivisionTypeId: string } | null => {
+  const normalizedDivisionTypeId = normalizeDivisionIdToken(divisionTypeId);
+  if (!normalizedDivisionTypeId) {
+    return null;
+  }
+  const match = normalizedDivisionTypeId.match(/^skill_([a-z0-9_]+)_age_([a-z0-9_]+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    skillDivisionTypeId: match[1],
+    ageDivisionTypeId: match[2],
+  };
+};
+
+export const divisionTypeIdsEquivalent = (
+  left: unknown,
+  right: unknown,
+): boolean => {
+  const normalizedLeft = normalizeDivisionIdToken(left);
+  const normalizedRight = normalizeDivisionIdToken(right);
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+
+  const leftComposite = parseCompositeDivisionTypeId(normalizedLeft);
+  const rightComposite = parseCompositeDivisionTypeId(normalizedRight);
+
+  if (leftComposite && rightComposite) {
+    return (
+      leftComposite.skillDivisionTypeId === rightComposite.skillDivisionTypeId
+      && leftComposite.ageDivisionTypeId === rightComposite.ageDivisionTypeId
+    );
+  }
+
+  if (leftComposite) {
+    return (
+      leftComposite.skillDivisionTypeId === normalizedRight
+      || leftComposite.ageDivisionTypeId === normalizedRight
+    );
+  }
+
+  if (rightComposite) {
+    return (
+      rightComposite.skillDivisionTypeId === normalizedLeft
+      || rightComposite.ageDivisionTypeId === normalizedLeft
+    );
+  }
+
+  return false;
+};
+
 export const parseDivisionToken = (
   token: unknown,
 ): { gender: DivisionGender; ratingType: DivisionRatingType; divisionTypeId: string } | null => {

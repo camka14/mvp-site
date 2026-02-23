@@ -36,6 +36,8 @@ describe('event free-agent route', () => {
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       teamSignup: true,
+      userIds: [],
+      waitListIds: [],
       freeAgentIds: [],
       requiredTemplateIds: [],
       start: new Date('2026-03-01T00:00:00.000Z'),
@@ -49,6 +51,8 @@ describe('event free-agent route', () => {
   it('adds the current user as a free agent', async () => {
     prismaMock.events.update.mockResolvedValue({
       id: 'event_1',
+      userIds: [],
+      waitListIds: [],
       freeAgentIds: ['user_1'],
     });
 
@@ -62,10 +66,69 @@ describe('event free-agent route', () => {
       expect.objectContaining({
         where: { id: 'event_1' },
         data: expect.objectContaining({
+          userIds: [],
+          waitListIds: [],
           freeAgentIds: ['user_1'],
         }),
       }),
     );
+  });
+
+  it('moves user from participants and waitlist when adding as free agent', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: true,
+      userIds: ['user_1'],
+      waitListIds: ['user_1'],
+      freeAgentIds: [],
+      requiredTemplateIds: [],
+      start: new Date('2026-03-01T00:00:00.000Z'),
+    });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: ['user_1'],
+    });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/free-agents', { userId: 'user_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1' },
+        data: expect.objectContaining({
+          userIds: [],
+          waitListIds: [],
+          freeAgentIds: ['user_1'],
+        }),
+      }),
+    );
+  });
+
+  it('rejects duplicate free-agent joins', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: true,
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: ['user_1'],
+      requiredTemplateIds: [],
+      start: new Date('2026-03-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/free-agents', { userId: 'user_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toBe('User is already registered as a free agent for this event.');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
   it('rejects free-agent add for non-team events', async () => {

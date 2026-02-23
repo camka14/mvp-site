@@ -2,11 +2,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput } from '@mantine/core';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect } from '@mantine/core';
 import { Invite, InviteType, Team, UserData, Event, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
+import {
+    buildDivisionName,
+    getDivisionTypeById,
+    getDivisionTypeOptionsForSport,
+    inferDivisionDetails,
+} from '@/lib/divisionTypes';
 import { ImageSelectionModal } from './ImageSelectionModal';
 
 interface TeamDetailModalProps {
@@ -25,6 +31,73 @@ interface TeamDetailModalProps {
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 type TeamInviteRoleType = Extract<InviteType, 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach'>;
 const TEAM_ROLE_INVITE_TYPES: TeamInviteRoleType[] = ['team_manager', 'team_head_coach', 'team_assistant_coach'];
+const DIVISION_GENDER_OPTIONS = [
+    { value: 'M', label: 'Mens' },
+    { value: 'F', label: 'Womens' },
+    { value: 'C', label: 'CoEd' },
+] as const;
+
+const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTypeId: string): string => {
+    const normalizedSkill = normalizeDivisionToken(skillDivisionTypeId) || 'open';
+    const normalizedAge = normalizeDivisionToken(ageDivisionTypeId) || 'u18';
+    return `skill_${normalizedSkill}_age_${normalizedAge}`;
+};
+
+const parseCompositeDivisionTypeId = (
+    value: unknown,
+): { skillDivisionTypeId: string; ageDivisionTypeId: string } | null => {
+    const normalized = normalizeDivisionToken(value);
+    if (!normalized.length) {
+        return null;
+    }
+    const match = normalized.match(/^skill_([a-z0-9_]+)_age_([a-z0-9_]+)$/);
+    if (!match) {
+        return null;
+    }
+    return {
+        skillDivisionTypeId: match[1],
+        ageDivisionTypeId: match[2],
+    };
+};
+
+const humanizeDivisionTypeId = (value: string): string => value
+    .split('_')
+    .filter(Boolean)
+    .map((chunk) => (chunk.length <= 3 ? chunk.toUpperCase() : `${chunk.charAt(0).toUpperCase()}${chunk.slice(1)}`))
+    .join(' ');
+
+const resolveDivisionTypeName = (
+    sportInput: string | null | undefined,
+    divisionTypeId: string,
+    ratingType: 'AGE' | 'SKILL',
+): string => {
+    const normalizedId = normalizeDivisionToken(divisionTypeId);
+    if (!normalizedId.length) {
+        return ratingType === 'SKILL' ? 'Open' : 'U18';
+    }
+    return getDivisionTypeById(sportInput ?? null, normalizedId, ratingType)?.name ?? humanizeDivisionTypeId(normalizedId);
+};
+
+const getDefaultDivisionTypeSelections = (sportInput: string | null | undefined): {
+    skillDivisionTypeId: string;
+    ageDivisionTypeId: string;
+} => {
+    const options = getDivisionTypeOptionsForSport(sportInput);
+    const skill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
+        ?? options.find((option) => option.ratingType === 'SKILL');
+    const age = options.find((option) => option.ratingType === 'AGE' && option.id === 'u18')
+        ?? options.find((option) => option.ratingType === 'AGE');
+    return {
+        skillDivisionTypeId: skill?.id ?? 'open',
+        ageDivisionTypeId: age?.id ?? 'u18',
+    };
+};
 const getUserHandle = (candidate?: Pick<UserData, 'userName'> | null): string => {
     const normalized = candidate?.userName?.trim();
     return `@${normalized && normalized.length ? normalized : 'user'}`;
@@ -57,15 +130,11 @@ export default function TeamDetailModal({
     const [newName, setNewName] = useState(currentTeam.name || '');
     const [editingDetails, setEditingDetails] = useState(false);
     const [draftSport, setDraftSport] = useState(currentTeam.sport || '');
-    const [draftDivision, setDraftDivision] = useState(
-        typeof currentTeam.division === 'string'
-            ? currentTeam.division
-            : (currentTeam.division?.name || currentTeam.division?.skillLevel || 'Open'),
-    );
+    const [draftDivision, setDraftDivision] = useState('');
+    const [draftDivisionGender, setDraftDivisionGender] = useState<'M' | 'F' | 'C'>('C');
+    const [draftSkillDivisionTypeId, setDraftSkillDivisionTypeId] = useState('open');
+    const [draftAgeDivisionTypeId, setDraftAgeDivisionTypeId] = useState('u18');
     const [draftTeamSize, setDraftTeamSize] = useState(currentTeam.teamSize || 0);
-    const [draftSeed, setDraftSeed] = useState(currentTeam.seed || 0);
-    const [draftWins, setDraftWins] = useState(currentTeam.wins || 0);
-    const [draftLosses, setDraftLosses] = useState(currentTeam.losses || 0);
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
     const [inviteMode, setInviteMode] = useState<'search' | 'email'>('search');
     const [emailInviteInput, setEmailInviteInput] = useState('');
@@ -111,6 +180,55 @@ export default function TeamDetailModal({
             ?? selectedFreeAgentUser
             ?? null;
     })();
+    const divisionTypeOptions = useMemo(
+        () => getDivisionTypeOptionsForSport(draftSport || currentTeam.sport || ''),
+        [currentTeam.sport, draftSport],
+    );
+    const skillDivisionOptions = useMemo(
+        () => divisionTypeOptions
+            .filter((option) => option.ratingType === 'SKILL')
+            .map((option) => ({ value: option.id, label: option.name })),
+        [divisionTypeOptions],
+    );
+    const ageDivisionOptions = useMemo(
+        () => divisionTypeOptions
+            .filter((option) => option.ratingType === 'AGE')
+            .map((option) => ({ value: option.id, label: option.name })),
+        [divisionTypeOptions],
+    );
+    const resolveDraftDivisionDisplayName = useCallback((
+        gender: 'M' | 'F' | 'C',
+        skillDivisionTypeId: string,
+        ageDivisionTypeId: string,
+        sportInput: string | null | undefined,
+    ): string => {
+        const skillName = resolveDivisionTypeName(sportInput, skillDivisionTypeId, 'SKILL');
+        const ageName = resolveDivisionTypeName(sportInput, ageDivisionTypeId, 'AGE');
+        return buildDivisionName({
+            gender,
+            divisionTypeName: `${skillName} • ${ageName}`,
+        });
+    }, []);
+    const teamDivisionLabel = useMemo(() => {
+        if (typeof currentTeam.division === 'string' && currentTeam.division.trim().length > 0) {
+            return currentTeam.division.trim();
+        }
+        if (currentTeam.division && typeof currentTeam.division === 'object') {
+            if (typeof currentTeam.division.name === 'string' && currentTeam.division.name.trim().length > 0) {
+                return currentTeam.division.name.trim();
+            }
+            if (typeof currentTeam.division.skillLevel === 'string' && currentTeam.division.skillLevel.trim().length > 0) {
+                return currentTeam.division.skillLevel.trim();
+            }
+        }
+        if (typeof currentTeam.divisionTypeName === 'string' && currentTeam.divisionTypeName.trim().length > 0) {
+            return currentTeam.divisionTypeName.trim();
+        }
+        if (typeof currentTeam.divisionTypeId === 'string' && currentTeam.divisionTypeId.trim().length > 0) {
+            return currentTeam.divisionTypeId.trim();
+        }
+        return 'Division';
+    }, [currentTeam.division, currentTeam.divisionTypeId, currentTeam.divisionTypeName]);
 
     const fetchRoleInvites = useCallback(async () => {
         const invites = await userService.listInvites({
@@ -236,16 +354,79 @@ export default function TeamDetailModal({
 
     useEffect(() => {
         setDraftSport(currentTeam.sport || '');
-        setDraftDivision(
-            typeof currentTeam.division === 'string'
-                ? currentTeam.division
-                : (currentTeam.division?.name || currentTeam.division?.skillLevel || 'Open'),
-        );
+        const sportInput = currentTeam.sport || '';
+        const inferred = inferDivisionDetails({
+            identifier: (
+                (typeof currentTeam.divisionTypeId === 'string' && currentTeam.divisionTypeId.trim().length > 0
+                    ? currentTeam.divisionTypeId
+                    : null)
+                ?? (typeof currentTeam.division === 'string'
+                    ? currentTeam.division
+                    : (currentTeam.division?.name || currentTeam.division?.skillLevel || 'open'))
+            ),
+            sportInput,
+        });
+        const defaults = getDefaultDivisionTypeSelections(sportInput);
+        const composite = parseCompositeDivisionTypeId(currentTeam.divisionTypeId ?? inferred.divisionTypeId);
+        const skillDivisionTypeId = composite?.skillDivisionTypeId
+            ?? (inferred.ratingType === 'SKILL' ? inferred.divisionTypeId : defaults.skillDivisionTypeId);
+        const ageDivisionTypeId = composite?.ageDivisionTypeId
+            ?? (inferred.ratingType === 'AGE' ? inferred.divisionTypeId : defaults.ageDivisionTypeId);
+        const gender = inferred.gender;
+        setDraftDivisionGender(gender);
+        setDraftSkillDivisionTypeId(skillDivisionTypeId);
+        setDraftAgeDivisionTypeId(ageDivisionTypeId);
+        setDraftDivision(resolveDraftDivisionDisplayName(gender, skillDivisionTypeId, ageDivisionTypeId, sportInput));
         setDraftTeamSize(currentTeam.teamSize || 0);
-        setDraftSeed(currentTeam.seed || 0);
-        setDraftWins(currentTeam.wins || 0);
-        setDraftLosses(currentTeam.losses || 0);
-    }, [currentTeam.$id, currentTeam.division, currentTeam.losses, currentTeam.seed, currentTeam.sport, currentTeam.teamSize, currentTeam.wins]);
+    }, [
+        currentTeam.$id,
+        currentTeam.division,
+        currentTeam.divisionTypeId,
+        currentTeam.sport,
+        currentTeam.teamSize,
+        resolveDraftDivisionDisplayName,
+    ]);
+
+    useEffect(() => {
+        const fallback = getDefaultDivisionTypeSelections(draftSport || currentTeam.sport || '');
+        const normalizedSkill = normalizeDivisionToken(draftSkillDivisionTypeId);
+        const normalizedAge = normalizeDivisionToken(draftAgeDivisionTypeId);
+        const hasSkill = skillDivisionOptions.some((option) => option.value === normalizedSkill);
+        const hasAge = ageDivisionOptions.some((option) => option.value === normalizedAge);
+        const nextSkill = hasSkill ? normalizedSkill : fallback.skillDivisionTypeId;
+        const nextAge = hasAge ? normalizedAge : fallback.ageDivisionTypeId;
+        if (nextSkill !== draftSkillDivisionTypeId) {
+            setDraftSkillDivisionTypeId(nextSkill);
+        }
+        if (nextAge !== draftAgeDivisionTypeId) {
+            setDraftAgeDivisionTypeId(nextAge);
+        }
+    }, [
+        ageDivisionOptions,
+        currentTeam.sport,
+        draftAgeDivisionTypeId,
+        draftSkillDivisionTypeId,
+        draftSport,
+        skillDivisionOptions,
+    ]);
+
+    useEffect(() => {
+        setDraftDivision(
+            resolveDraftDivisionDisplayName(
+                draftDivisionGender,
+                draftSkillDivisionTypeId,
+                draftAgeDivisionTypeId,
+                draftSport || currentTeam.sport || '',
+            ),
+        );
+    }, [
+        currentTeam.sport,
+        draftAgeDivisionTypeId,
+        draftDivisionGender,
+        draftSkillDivisionTypeId,
+        draftSport,
+        resolveDraftDivisionDisplayName,
+    ]);
 
     useEffect(() => {
         if (inviteMode !== 'search') {
@@ -299,11 +480,18 @@ export default function TeamDetailModal({
 
     const handleSaveDetails = async () => {
         const nextSport = draftSport.trim();
-        const nextDivision = draftDivision.trim();
+        const nextDivisionGender = draftDivisionGender;
+        const nextSkillDivisionTypeId = normalizeDivisionToken(draftSkillDivisionTypeId);
+        const nextAgeDivisionTypeId = normalizeDivisionToken(draftAgeDivisionTypeId);
+        const nextDivisionTypeId = buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId);
+        const nextSkillDivisionTypeName = resolveDivisionTypeName(nextSport, nextSkillDivisionTypeId, 'SKILL');
+        const nextAgeDivisionTypeName = resolveDivisionTypeName(nextSport, nextAgeDivisionTypeId, 'AGE');
+        const nextDivisionTypeName = `${nextSkillDivisionTypeName} • ${nextAgeDivisionTypeName}`;
+        const nextDivision = buildDivisionName({
+            gender: nextDivisionGender,
+            divisionTypeName: nextDivisionTypeName,
+        });
         const nextTeamSize = Number(draftTeamSize) || 0;
-        const nextSeed = Number(draftSeed) || 0;
-        const nextWins = Number(draftWins) || 0;
-        const nextLosses = Number(draftLosses) || 0;
 
         if (!nextSport) {
             setError('Sport is required.');
@@ -313,22 +501,21 @@ export default function TeamDetailModal({
             setError('Division is required.');
             return;
         }
-        if (nextTeamSize < 1) {
-            setError('Team size must be at least 1.');
+        if (!nextSkillDivisionTypeId || !nextAgeDivisionTypeId) {
+            setError('Select both skill and age divisions.');
             return;
         }
-        if (nextWins < 0 || nextLosses < 0 || nextSeed < 0) {
-            setError('Wins, losses, and seed cannot be negative.');
+        if (nextTeamSize < 1) {
+            setError('Team size must be at least 1.');
             return;
         }
 
         const updated = await teamService.updateTeamDetails(currentTeam.$id, {
             sport: nextSport,
             division: nextDivision,
+            divisionTypeId: nextDivisionTypeId,
+            divisionTypeName: nextDivisionTypeName,
             teamSize: nextTeamSize,
-            seed: nextSeed,
-            wins: nextWins,
-            losses: nextLosses,
         });
         if (!updated) {
             setError('Failed to update team details');
@@ -566,7 +753,7 @@ export default function TeamDetailModal({
                                 ) : (
                                     <Title order={3}>{currentTeam.name}</Title>
                                 )}
-                                <Text c="dimmed">{typeof currentTeam.division === 'string' ? currentTeam.division : currentTeam.division?.name || currentTeam.division?.skillLevel || 'Division'} Division • {currentTeam.sport}</Text>
+                                <Text c="dimmed">{currentTeam.sport ? `${teamDivisionLabel} • ${currentTeam.sport}` : teamDivisionLabel}</Text>
                             </div>
                         </Group>
                         {canManageTeam && (
@@ -611,34 +798,39 @@ export default function TeamDetailModal({
                                     value={draftSport}
                                     onChange={(event) => setDraftSport(event.currentTarget.value)}
                                 />
+                                <MantineSelect
+                                    label="Division Gender"
+                                    data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
+                                    value={draftDivisionGender}
+                                    onChange={(value) => setDraftDivisionGender((value as 'M' | 'F' | 'C') || 'C')}
+                                    allowDeselect={false}
+                                />
+                                <MantineSelect
+                                    label="Skill Division"
+                                    data={skillDivisionOptions}
+                                    value={draftSkillDivisionTypeId}
+                                    onChange={(value) => setDraftSkillDivisionTypeId(value || 'open')}
+                                    searchable
+                                    allowDeselect={false}
+                                />
+                                <MantineSelect
+                                    label="Age Division"
+                                    data={ageDivisionOptions}
+                                    value={draftAgeDivisionTypeId}
+                                    onChange={(value) => setDraftAgeDivisionTypeId(value || 'u18')}
+                                    searchable
+                                    allowDeselect={false}
+                                />
                                 <TextInput
-                                    label="Division"
+                                    label="Division Preview"
                                     value={draftDivision}
-                                    onChange={(event) => setDraftDivision(event.currentTarget.value)}
+                                    readOnly
                                 />
                                 <NumberInput
                                     label="Team Size"
                                     min={1}
                                     value={draftTeamSize}
                                     onChange={(value) => setDraftTeamSize(Number(value) || 1)}
-                                />
-                                <NumberInput
-                                    label="Seed"
-                                    min={0}
-                                    value={draftSeed}
-                                    onChange={(value) => setDraftSeed(Number(value) || 0)}
-                                />
-                                <NumberInput
-                                    label="Wins"
-                                    min={0}
-                                    value={draftWins}
-                                    onChange={(value) => setDraftWins(Number(value) || 0)}
-                                />
-                                <NumberInput
-                                    label="Losses"
-                                    min={0}
-                                    value={draftLosses}
-                                    onChange={(value) => setDraftLosses(Number(value) || 0)}
                                 />
                             </SimpleGrid>
                             <Group justify="flex-end" mt="sm">

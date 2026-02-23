@@ -657,7 +657,7 @@ function EventScheduleContent() {
   const hasPendingUnsavedChanges = hasUnsavedChanges || formHasUnsavedChanges;
   const isTemplateEvent = (activeEvent?.state ?? '').toUpperCase() === 'TEMPLATE';
   const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
-  const isEditingEvent = isTemplateEvent || isPreview || isEditParam || isUnpublished;
+  const isEditingEvent = isTemplateEvent || isPreview || isEditParam;
   const activeMatches = usingChangeCopies ? changesMatches : matches;
   const divisionLabelsByKey = useMemo(() => {
     const labels = new Map<string, string>();
@@ -1548,7 +1548,7 @@ function EventScheduleContent() {
     if (isCreateMode) return hasPendingUnsavedChanges ? 'Discard Changes' : 'Cancel';
     if (isUnpublished) return `Delete ${entityLabel}`;
     if (isPreview) return `Cancel ${entityLabel} Preview`;
-    if (isEditingEvent) return hasPendingUnsavedChanges ? 'Discard Changes' : 'Cancel';
+    if (isEditingEvent) return 'Cancel Edit';
     return `Cancel ${entityLabel}`;
   })();
 
@@ -1560,6 +1560,36 @@ function EventScheduleContent() {
     const query = params.toString();
     router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
   }, [pathname, router, searchParams]);
+
+  const handleCancelEdit = useCallback(() => {
+    if (isCreateMode || cancelling) return;
+
+    hasUnsavedChangesRef.current = false;
+    setHasUnsavedChanges(false);
+    setFormHasUnsavedChanges(false);
+    setSelectedLifecycleStatus(null);
+    setSubmitError(null);
+    setWarningMessage(null);
+    setActionError(null);
+
+    if (event) {
+      const resetEvent = cloneValue(event) as Event;
+      const resetMatches = Array.isArray(resetEvent.matches)
+        ? (cloneValue(resetEvent.matches) as Match[])
+        : [];
+      setChangesEvent(resetEvent);
+      setChangesMatches(resetMatches);
+    }
+
+    if (pathname) {
+      const params = new URLSearchParams(searchParams?.toString() ?? '');
+      params.delete('mode');
+      const query = params.toString();
+      router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+    }
+
+    setInfoMessage(`${entityLabel} edit cancelled.`);
+  }, [cancelling, entityLabel, event, isCreateMode, pathname, router, searchParams]);
 
   const handleLifecycleStatusChange = useCallback((value: string | null) => {
     if (!value) return;
@@ -3040,6 +3070,8 @@ function EventScheduleContent() {
   const showEditActionButton = !isTemplateEvent && !isEditingEvent && !isSavingOrRescheduling && !cancelling;
   const showSaveActionButton = isEditingEvent && !publishing && !reschedulingMatches;
   const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament) && !publishing && !reschedulingMatches;
+  const showCancelEditActionButton =
+    isEditingEvent && isUnpublished && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
   const showCancelActionButton = !isTemplateEvent && !cancelling;
   const showCreateTemplateButton = !creatingTemplate && !publishing && !reschedulingMatches && !cancelling && !isTemplateEvent;
   const showLifecycleStatusSelect = isEditingEvent && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
@@ -3085,6 +3117,14 @@ function EventScheduleContent() {
                         onClick={handleRescheduleMatches}
                       >
                         Reschedule Matches
+                      </Button>
+                    )}
+                    {showCancelEditActionButton && (
+                      <Button
+                        variant="default"
+                        onClick={handleCancelEdit}
+                      >
+                        Cancel Edit
                       </Button>
                     )}
                   </>

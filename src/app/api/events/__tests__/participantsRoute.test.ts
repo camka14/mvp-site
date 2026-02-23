@@ -62,6 +62,7 @@ describe('POST /api/events/[eventId]/participants', () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
+      teamSignup: false,
       requiredTemplateIds: [],
       userIds: [],
       teamIds: [],
@@ -97,7 +98,70 @@ describe('POST /api/events/[eventId]/participants', () => {
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
   });
 
-  it('rejects team registration when team division type does not match selection', async () => {
+  it('rejects direct user participant joins for team-signup events', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        userId: 'user_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Individual joins for team events must use the free-agent route.');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate team registration attempts', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['team_1'],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        teamId: 'team_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toBe('Team is already registered for this event.');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('allows team registration when team division type does not match selection', async () => {
     prismaMock.teams.findUnique.mockResolvedValue({
       id: 'team_1',
       division: 'Advanced',
@@ -105,6 +169,14 @@ describe('POST /api/events/[eventId]/participants', () => {
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
     });
+    prismaMock.events.update.mockResolvedValue({
+      id: 'event_1',
+      userIds: [],
+      teamIds: ['team_1'],
+    });
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({
+      id: 'event_1__team__team_1',
+    });
 
     const response = await POST(
       jsonPost('http://localhost/api/events/event_1/participants', {
@@ -116,17 +188,49 @@ describe('POST /api/events/[eventId]/participants', () => {
     );
     const payload = await response.json();
 
-    expect(response.status).toBe(403);
-    expect(payload.error).toContain('cannot register');
-    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(payload.error).toBeUndefined();
+    expect(prismaMock.events.update).toHaveBeenCalled();
   });
 
-  it('rejects team registration when team has no resolvable division type', async () => {
+  it('allows team registration when team has no resolvable division type', async () => {
     prismaMock.teams.findUnique.mockResolvedValue({
       id: 'team_1',
       division: null,
       divisionTypeId: null,
       sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+    });
+    prismaMock.events.update.mockResolvedValue({
+      id: 'event_1',
+      userIds: [],
+      teamIds: ['team_1'],
+    });
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({
+      id: 'event_1__team__team_1',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        userId: 'user_1',
+        teamId: 'team_1',
+        divisionTypeKey: 'c_skill_open',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.error).toBeUndefined();
+    expect(prismaMock.events.update).toHaveBeenCalled();
+  });
+
+  it('rejects team registration when team sport does not match the event sport', async () => {
+    prismaMock.teams.findUnique.mockResolvedValue({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'soccer',
       playerIds: ['user_1', 'user_2'],
     });
 
@@ -141,7 +245,7 @@ describe('POST /api/events/[eventId]/participants', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(403);
-    expect(payload.error).toContain('must be assigned a division type');
+    expect(payload.error).toContain('does not match the event sport');
     expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 

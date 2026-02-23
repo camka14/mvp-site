@@ -69,6 +69,8 @@ async function updateFreeAgents(
       select: {
         id: true,
         teamSignup: true,
+        userIds: true,
+        waitListIds: true,
         freeAgentIds: true,
         requiredTemplateIds: true,
         start: true,
@@ -115,13 +117,32 @@ async function updateFreeAgents(
   const currentFreeAgentIds = Array.isArray(event.freeAgentIds)
     ? event.freeAgentIds.filter((id): id is string => typeof id === 'string' && Boolean(id))
     : [];
+  const currentUserIds = Array.isArray(event.userIds)
+    ? event.userIds.filter((id): id is string => typeof id === 'string' && Boolean(id))
+    : [];
+  const currentWaitListIds = Array.isArray(event.waitListIds)
+    ? event.waitListIds.filter((id): id is string => typeof id === 'string' && Boolean(id))
+    : [];
+
+  if (mode === 'add' && currentFreeAgentIds.includes(targetUserId)) {
+    return NextResponse.json({ error: 'User is already registered as a free agent for this event.' }, { status: 409 });
+  }
+
   const nextFreeAgentIds = mode === 'add'
     ? ensureUnique([...currentFreeAgentIds, targetUserId])
     : currentFreeAgentIds.filter((id) => id !== targetUserId);
+  const nextUserIds = mode === 'add'
+    ? currentUserIds.filter((id) => id !== targetUserId)
+    : currentUserIds;
+  const nextWaitListIds = mode === 'add'
+    ? currentWaitListIds.filter((id) => id !== targetUserId)
+    : currentWaitListIds;
 
   const updated = await prisma.events.update({
     where: { id: eventId },
     data: {
+      userIds: nextUserIds,
+      waitListIds: nextWaitListIds,
       freeAgentIds: nextFreeAgentIds,
       updatedAt: new Date(),
     },

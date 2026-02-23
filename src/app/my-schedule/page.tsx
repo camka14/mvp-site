@@ -106,11 +106,7 @@ const getTeamName = (
     }
   }
 
-  const seed = side === 'team1' ? match.team1Seed : match.team2Seed;
-  if (typeof seed === 'number') {
-    return `Seed ${seed}`;
-  }
-  return 'TBD';
+  return 'TBD Team';
 };
 
 export default function MySchedulePage() {

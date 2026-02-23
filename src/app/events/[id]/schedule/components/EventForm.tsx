@@ -99,10 +99,39 @@ const DIVISION_GENDER_OPTIONS = [
     { value: 'F', label: 'Womens' },
     { value: 'C', label: 'CoEd' },
 ] as const;
-const DIVISION_RATING_TYPE_OPTIONS = [
-    { value: 'AGE', label: 'Age Based' },
-    { value: 'SKILL', label: 'Skill Based' },
-] as const;
+
+const normalizeDivisionTokenPart = (value: unknown): string => String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTypeId: string): string => {
+    const normalizedSkill = normalizeDivisionTokenPart(skillDivisionTypeId) || 'open';
+    const normalizedAge = normalizeDivisionTokenPart(ageDivisionTypeId) || 'u18';
+    return `skill_${normalizedSkill}_age_${normalizedAge}`;
+};
+
+const parseCompositeDivisionTypeId = (
+    divisionTypeId: unknown,
+): { skillDivisionTypeId: string; ageDivisionTypeId: string } | null => {
+    const normalized = normalizeDivisionTokenPart(divisionTypeId);
+    if (!normalized.length) {
+        return null;
+    }
+    const match = normalized.match(/^skill_([a-z0-9_]+)_age_([a-z0-9_]+)$/);
+    if (!match) {
+        return null;
+    }
+    return {
+        skillDivisionTypeId: match[1],
+        ageDivisionTypeId: match[2],
+    };
+};
+
+const buildDivisionTypeCompositeName = (skillDivisionTypeName: string, ageDivisionTypeName: string): string => (
+    `${skillDivisionTypeName} • ${ageDivisionTypeName}`.trim()
+);
 
 const normalizeWeekdays = (slot: { dayOfWeek?: number; daysOfWeek?: number[] }): number[] => {
     const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
@@ -167,6 +196,27 @@ const resolveSportInput = (sportInput?: Sport | string | null): string => {
     return sportName.toLowerCase();
 };
 
+const getDefaultDivisionTypeSelectionsForSport = (sportInput?: string | null): {
+    skillDivisionTypeId: string;
+    skillDivisionTypeName: string;
+    ageDivisionTypeId: string;
+    ageDivisionTypeName: string;
+} => {
+    const options = getDivisionTypeOptionsForSport(sportInput ?? '');
+    const fallbackSkill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
+        ?? options.find((option) => option.ratingType === 'SKILL')
+        ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
+    const fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === 'u18')
+        ?? options.find((option) => option.ratingType === 'AGE')
+        ?? { id: 'u18', name: 'U18', ratingType: 'AGE', sportKey: 'generic' };
+    return {
+        skillDivisionTypeId: fallbackSkill.id,
+        skillDivisionTypeName: fallbackSkill.name,
+        ageDivisionTypeId: fallbackAge.id,
+        ageDivisionTypeName: fallbackAge.name,
+    };
+};
+
 const parseDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
     const parsed = new Date(value);
@@ -181,6 +231,10 @@ type DivisionDetailForm = {
     divisionTypeName: string;
     ratingType: 'AGE' | 'SKILL';
     gender: 'M' | 'F' | 'C';
+    skillDivisionTypeId: string;
+    skillDivisionTypeName: string;
+    ageDivisionTypeId: string;
+    ageDivisionTypeName: string;
     // Stored as dollars in the form; converted to cents in API payloads.
     price: number;
     maxParticipants: number;
@@ -285,7 +339,7 @@ const applyDivisionAgeCutoff = (
     referenceDate?: Date | null,
 ): DivisionDetailForm => {
     const eligibility = evaluateDivisionAgeEligibility({
-        divisionTypeId: detail.divisionTypeId,
+        divisionTypeId: detail.ageDivisionTypeId || detail.divisionTypeId,
         sportInput: sportInput ?? detail.sportId ?? undefined,
         referenceDate: referenceDate ?? null,
     });
@@ -312,26 +366,34 @@ const buildDefaultDivisionDetailsForSport = (
 ): DivisionDetailForm[] => {
     const sport = resolveSportInput(sportInput);
     const options = getDivisionTypeOptionsForSport(sport);
-    const fallback = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
+    const fallbackSkill = options.find((option) => option.ratingType === 'SKILL' && option.id === 'open')
         ?? options.find((option) => option.ratingType === 'SKILL')
-        ?? options[0]
         ?? { id: 'open', name: 'Open', ratingType: 'SKILL', sportKey: 'generic' };
+    const fallbackAge = options.find((option) => option.ratingType === 'AGE' && option.id === 'u18')
+        ?? options.find((option) => option.ratingType === 'AGE')
+        ?? { id: 'u18', name: 'U18', ratingType: 'AGE', sportKey: 'generic' };
+    const compositeDivisionTypeId = buildCompositeDivisionTypeId(fallbackSkill.id, fallbackAge.id);
     const token = buildDivisionToken({
         gender: 'C',
-        ratingType: fallback.ratingType,
-        divisionTypeId: fallback.id,
+        ratingType: 'SKILL',
+        divisionTypeId: compositeDivisionTypeId,
     });
+    const divisionTypeName = buildDivisionTypeCompositeName(fallbackSkill.name, fallbackAge.name);
     const detail: DivisionDetailForm = {
         id: buildEventDivisionId(eventId, token),
         key: token,
         name: buildDivisionName({
             gender: 'C',
-            divisionTypeName: fallback.name,
+            divisionTypeName,
         }),
-        divisionTypeId: fallback.id,
-        divisionTypeName: fallback.name,
-        ratingType: fallback.ratingType,
+        divisionTypeId: compositeDivisionTypeId,
+        divisionTypeName,
+        ratingType: 'SKILL',
         gender: 'C',
+        skillDivisionTypeId: fallbackSkill.id,
+        skillDivisionTypeName: fallbackSkill.name,
+        ageDivisionTypeId: fallbackAge.id,
+        ageDivisionTypeName: fallbackAge.name,
         price: 0,
         maxParticipants: 10,
         playoffTeamCount: 10,
@@ -837,14 +899,43 @@ const normalizeDivisionDetailEntry = (
         sportInput: sportInput ?? undefined,
         fallbackName: typeof row.name === 'string' ? row.name : undefined,
     });
-    const id = rawId || buildEventDivisionId(eventId, inferred.token);
-    const key = normalizeDivisionKeys([row.key])[0] || inferred.token;
-    const ratingType = normalizeDivisionRatingType(row.ratingType) ?? inferred.ratingType;
+    const defaults = getDefaultDivisionTypeSelectionsForSport(sportInput ?? undefined);
+    const rawDivisionTypeId = normalizeDivisionKeys([row.divisionTypeId])[0] || inferred.divisionTypeId;
+    const parsedComposite = parseCompositeDivisionTypeId(row.divisionTypeId ?? rawDivisionTypeId);
+    const rawSkillDivisionTypeId = normalizeDivisionKeys([row.skillDivisionTypeId])[0];
+    const rawAgeDivisionTypeId = normalizeDivisionKeys([row.ageDivisionTypeId])[0];
+    const ratingType = parsedComposite || rawSkillDivisionTypeId || rawAgeDivisionTypeId
+        ? 'SKILL'
+        : (normalizeDivisionRatingType(row.ratingType) ?? inferred.ratingType);
     const gender = normalizeDivisionGender(row.gender) ?? inferred.gender;
-    const divisionTypeId = normalizeDivisionKeys([row.divisionTypeId])[0] || inferred.divisionTypeId;
+    const skillDivisionTypeId = rawSkillDivisionTypeId
+        ?? parsedComposite?.skillDivisionTypeId
+        ?? (ratingType === 'SKILL' ? rawDivisionTypeId : defaults.skillDivisionTypeId);
+    const ageDivisionTypeId = rawAgeDivisionTypeId
+        ?? parsedComposite?.ageDivisionTypeId
+        ?? (ratingType === 'AGE' ? rawDivisionTypeId : defaults.ageDivisionTypeId);
+    const skillDivisionTypeName = typeof row.skillDivisionTypeName === 'string' && row.skillDivisionTypeName.trim().length > 0
+        ? row.skillDivisionTypeName.trim()
+        : (
+            getDivisionTypeById(sportInput ?? null, skillDivisionTypeId, 'SKILL')?.name
+            ?? defaults.skillDivisionTypeName
+        );
+    const ageDivisionTypeName = typeof row.ageDivisionTypeName === 'string' && row.ageDivisionTypeName.trim().length > 0
+        ? row.ageDivisionTypeName.trim()
+        : (
+            getDivisionTypeById(sportInput ?? null, ageDivisionTypeId, 'AGE')?.name
+            ?? defaults.ageDivisionTypeName
+        );
+    const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
     const divisionTypeName = typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length > 0
         ? row.divisionTypeName.trim()
-        : (getDivisionTypeById(sportInput ?? null, divisionTypeId, ratingType)?.name ?? inferred.divisionTypeName);
+        : buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
+    const key = normalizeDivisionKeys([row.key])[0] || buildDivisionToken({
+        gender,
+        ratingType: 'SKILL',
+        divisionTypeId,
+    });
+    const id = rawId || buildEventDivisionId(eventId, key);
     const name = typeof row.name === 'string' && row.name.trim().length > 0
         ? row.name.trim()
         : buildDivisionName({ gender, divisionTypeName });
@@ -872,6 +963,10 @@ const normalizeDivisionDetailEntry = (
         divisionTypeName,
         ratingType,
         gender,
+        skillDivisionTypeId,
+        skillDivisionTypeName,
+        ageDivisionTypeId,
+        ageDivisionTypeName,
         price: priceStoredInCents
             ? Math.max(0, rawDivisionPriceCents) / 100
             : Math.max(0, rawDivisionPriceCents),
@@ -1240,6 +1335,10 @@ const eventFormSchema = z
                 divisionTypeName: z.string().trim().min(1),
                 ratingType: z.enum(['AGE', 'SKILL']),
                 gender: z.enum(['M', 'F', 'C']),
+                skillDivisionTypeId: z.string().trim().min(1),
+                skillDivisionTypeName: z.string().trim().min(1),
+                ageDivisionTypeId: z.string().trim().min(1),
+                ageDivisionTypeName: z.string().trim().min(1),
                 price: z.number().min(0),
                 maxParticipants: z.number().int().min(2),
                 playoffTeamCount: z.number().optional(),
@@ -1651,14 +1750,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     identifier: divisionId,
                     sportInput: resolveSportInput(next.sportConfig ?? next.sportId),
                 });
+                const defaultsForSport = getDefaultDivisionTypeSelectionsForSport(
+                    resolveSportInput(next.sportConfig ?? next.sportId),
+                );
+                const composite = parseCompositeDivisionTypeId(inferred.divisionTypeId);
+                const skillDivisionTypeId = composite?.skillDivisionTypeId
+                    ?? (inferred.ratingType === 'SKILL' ? inferred.divisionTypeId : defaultsForSport.skillDivisionTypeId);
+                const ageDivisionTypeId = composite?.ageDivisionTypeId
+                    ?? (inferred.ratingType === 'AGE' ? inferred.divisionTypeId : defaultsForSport.ageDivisionTypeId);
+                const skillDivisionTypeName = getDivisionTypeById(
+                    resolveSportInput(next.sportConfig ?? next.sportId),
+                    skillDivisionTypeId,
+                    'SKILL',
+                )?.name ?? defaultsForSport.skillDivisionTypeName;
+                const ageDivisionTypeName = getDivisionTypeById(
+                    resolveSportInput(next.sportConfig ?? next.sportId),
+                    ageDivisionTypeId,
+                    'AGE',
+                )?.name ?? defaultsForSport.ageDivisionTypeName;
+                const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
+                const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
+                const token = buildDivisionToken({
+                    gender: inferred.gender,
+                    ratingType: 'SKILL',
+                    divisionTypeId,
+                });
                 return applyDivisionAgeCutoff({
                     id: divisionId,
-                    key: inferred.token,
-                    name: inferred.defaultName,
-                    divisionTypeId: inferred.divisionTypeId,
-                    divisionTypeName: inferred.divisionTypeName,
-                    ratingType: inferred.ratingType,
+                    key: token,
+                    name: buildDivisionName({ gender: inferred.gender, divisionTypeName }),
+                    divisionTypeId,
+                    divisionTypeName,
+                    ratingType: 'SKILL',
                     gender: inferred.gender,
+                    skillDivisionTypeId,
+                    skillDivisionTypeName,
+                    ageDivisionTypeId,
+                    ageDivisionTypeName,
                     price: Math.max(0, next.price || 0),
                     maxParticipants: Math.max(2, Math.trunc(next.maxParticipants || 2)),
                     playoffTeamCount: Number.isFinite((defaults as any).playoffTeamCount)
@@ -2406,13 +2534,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const divisionTypeOptions = useMemo(() => {
         const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
         const catalogOptions = getDivisionTypeOptionsForSport(sportInput);
-        const detailOptions = (eventData.divisionDetails || []).map((detail) => ({
-            id: detail.divisionTypeId,
-            name: detail.divisionTypeName,
-            ratingType: detail.ratingType,
+        const detailSkillOptions = (eventData.divisionDetails || []).map((detail) => ({
+            id: detail.skillDivisionTypeId || detail.divisionTypeId,
+            name: detail.skillDivisionTypeName || detail.divisionTypeName,
+            ratingType: 'SKILL' as const,
             sportKey: sportInput || 'event',
         }));
-        const merged = [...catalogOptions, ...detailOptions];
+        const detailAgeOptions = (eventData.divisionDetails || []).map((detail) => ({
+            id: detail.ageDivisionTypeId || detail.divisionTypeId,
+            name: detail.ageDivisionTypeName || detail.divisionTypeName,
+            ratingType: 'AGE' as const,
+            sportKey: sportInput || 'event',
+        }));
+        const merged = [...catalogOptions, ...detailSkillOptions, ...detailAgeOptions];
         const seen = new Set<string>();
         return merged.filter((option) => {
             const key = `${option.ratingType}:${option.id}`;
@@ -2423,12 +2557,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return true;
         });
     }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportId]);
+    const skillDivisionTypeSelectOptions = useMemo(
+        () => divisionTypeOptions
+            .filter((option) => option.ratingType === 'SKILL')
+            .map((option) => ({ value: option.id, label: option.name })),
+        [divisionTypeOptions],
+    );
+    const ageDivisionTypeSelectOptions = useMemo(
+        () => divisionTypeOptions
+            .filter((option) => option.ratingType === 'AGE')
+            .map((option) => ({ value: option.id, label: option.name })),
+        [divisionTypeOptions],
+    );
+    const defaultDivisionTypeSelections = useMemo(
+        () => getDefaultDivisionTypeSelectionsForSport(resolveSportInput(eventData.sportConfig ?? eventData.sportId)),
+        [eventData.sportConfig, eventData.sportId],
+    );
 
     const [divisionEditor, setDivisionEditor] = useState<{
         editingId: string | null;
         gender: '' | 'M' | 'F' | 'C';
-        ratingType: '' | 'AGE' | 'SKILL';
-        divisionTypeId: string;
+        skillDivisionTypeId: string;
+        ageDivisionTypeId: string;
         name: string;
         price: number;
         maxParticipants: number;
@@ -2438,8 +2588,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }>({
         editingId: null,
         gender: '',
-        ratingType: '',
-        divisionTypeId: '',
+        skillDivisionTypeId: '',
+        ageDivisionTypeId: '',
         name: '',
         price: 0,
         maxParticipants: 10,
@@ -2624,8 +2774,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setDivisionEditor({
             editingId: null,
             gender: '',
-            ratingType: '',
-            divisionTypeId: '',
+            skillDivisionTypeId: defaultDivisionTypeSelections.skillDivisionTypeId,
+            ageDivisionTypeId: defaultDivisionTypeSelections.ageDivisionTypeId,
             name: '',
             price: Math.max(0, eventData.price || 0),
             maxParticipants: Math.max(2, Math.trunc(eventData.maxParticipants || 2)),
@@ -2640,25 +2790,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             nameTouched: false,
             error: null,
         });
-    }, [eventData.maxParticipants, eventData.price, leagueData.playoffTeamCount]);
-
-    const divisionTypeSelectOptions = useMemo(
-        () => divisionTypeOptions
-            .filter((option) => !divisionEditor.ratingType || option.ratingType === divisionEditor.ratingType)
-            .map((option) => ({
-                value: option.id,
-                label: option.name,
-            })),
-        [divisionEditor.ratingType, divisionTypeOptions],
-    );
+    }, [defaultDivisionTypeSelections.ageDivisionTypeId, defaultDivisionTypeSelections.skillDivisionTypeId, eventData.maxParticipants, eventData.price, leagueData.playoffTeamCount]);
 
     const getDivisionTypeNameForEditor = useCallback(
-        (ratingType: '' | 'AGE' | 'SKILL', divisionTypeId: string): string => {
+        (ratingType: 'AGE' | 'SKILL', divisionTypeId: string): string => {
             if (!divisionTypeId) {
                 return '';
             }
             const fromCatalog = divisionTypeOptions.find((option) =>
-                option.id === divisionTypeId && (!ratingType || option.ratingType === ratingType),
+                option.id === divisionTypeId && option.ratingType === ratingType,
             );
             if (fromCatalog) {
                 return fromCatalog.name;
@@ -2666,32 +2806,34 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return getDivisionTypeById(
                 resolveSportInput(eventData.sportConfig ?? eventData.sportId),
                 divisionTypeId,
-                ratingType || undefined,
+                ratingType,
             )?.name ?? divisionTypeId.toUpperCase();
         },
         [divisionTypeOptions, eventData.sportConfig, eventData.sportId],
     );
 
     const updateDivisionEditorSelection = useCallback((
-        updates: Partial<Pick<typeof divisionEditor, 'gender' | 'ratingType' | 'divisionTypeId'>>,
+        updates: Partial<Pick<typeof divisionEditor, 'gender' | 'skillDivisionTypeId' | 'ageDivisionTypeId'>>,
     ) => {
         setDivisionEditor((prev) => {
             const next = { ...prev, ...updates, error: null };
-            if (updates.ratingType && updates.ratingType !== prev.ratingType) {
-                next.divisionTypeId = '';
+            if (Object.prototype.hasOwnProperty.call(updates, 'skillDivisionTypeId') && !updates.skillDivisionTypeId) {
+                next.skillDivisionTypeId = '';
             }
-            if (Object.prototype.hasOwnProperty.call(updates, 'divisionTypeId') && !updates.divisionTypeId) {
-                next.divisionTypeId = '';
+            if (Object.prototype.hasOwnProperty.call(updates, 'ageDivisionTypeId') && !updates.ageDivisionTypeId) {
+                next.ageDivisionTypeId = '';
             }
 
-            const hasRequiredFields = Boolean(next.gender && next.ratingType && next.divisionTypeId);
+            const hasRequiredFields = Boolean(next.gender && next.skillDivisionTypeId && next.ageDivisionTypeId);
             if (!hasRequiredFields) {
                 next.name = '';
                 next.nameTouched = false;
                 return next;
             }
 
-            const divisionTypeName = getDivisionTypeNameForEditor(next.ratingType, next.divisionTypeId);
+            const skillDivisionTypeName = getDivisionTypeNameForEditor('SKILL', next.skillDivisionTypeId);
+            const ageDivisionTypeName = getDivisionTypeNameForEditor('AGE', next.ageDivisionTypeId);
+            const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
             next.name = buildDivisionName({
                 gender: next.gender as 'M' | 'F' | 'C',
                 divisionTypeName,
@@ -2706,11 +2848,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!detail) {
             return;
         }
+        const composite = parseCompositeDivisionTypeId(detail.divisionTypeId);
+        const fallbackSelections = getDefaultDivisionTypeSelectionsForSport(
+            resolveSportInput(eventData.sportConfig ?? eventData.sportId),
+        );
         setDivisionEditor({
             editingId: detail.id,
             gender: detail.gender,
-            ratingType: detail.ratingType,
-            divisionTypeId: detail.divisionTypeId,
+            skillDivisionTypeId: detail.skillDivisionTypeId
+                || composite?.skillDivisionTypeId
+                || (detail.ratingType === 'SKILL' ? detail.divisionTypeId : fallbackSelections.skillDivisionTypeId),
+            ageDivisionTypeId: detail.ageDivisionTypeId
+                || composite?.ageDivisionTypeId
+                || (detail.ratingType === 'AGE' ? detail.divisionTypeId : fallbackSelections.ageDivisionTypeId),
             name: detail.name,
             price: Math.max(0, detail.price || 0),
             maxParticipants: Math.max(2, Math.trunc(detail.maxParticipants || eventData.maxParticipants || 2)),
@@ -2726,7 +2876,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             nameTouched: true,
             error: null,
         });
-    }, [eventData.divisionDetails, eventData.maxParticipants]);
+    }, [eventData.divisionDetails, eventData.maxParticipants, eventData.sportConfig, eventData.sportId]);
 
     const handleRemoveDivisionDetail = useCallback((divisionId: string) => {
         const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
@@ -2754,8 +2904,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const handleSaveDivisionDetail = useCallback(() => {
         const gender = divisionEditor.gender;
-        const ratingType = divisionEditor.ratingType;
-        const divisionTypeId = divisionEditor.divisionTypeId;
+        const skillDivisionTypeId = normalizeDivisionTokenPart(divisionEditor.skillDivisionTypeId);
+        const ageDivisionTypeId = normalizeDivisionTokenPart(divisionEditor.ageDivisionTypeId);
+        const ratingType: 'SKILL' = 'SKILL';
+        const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
+        const skillDivisionTypeName = getDivisionTypeNameForEditor('SKILL', skillDivisionTypeId);
+        const ageDivisionTypeName = getDivisionTypeNameForEditor('AGE', ageDivisionTypeId);
+        const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
         const name = divisionEditor.name.trim();
         const normalizedDivisionPrice = eventData.singleDivision
             ? Math.max(0, eventData.price || 0)
@@ -2776,10 +2931,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return Math.max(2, Math.trunc(divisionEditor.playoffTeamCount || 0));
         })();
 
-        if (!gender || !ratingType || !divisionTypeId) {
+        if (!gender || !skillDivisionTypeId || !ageDivisionTypeId) {
             setDivisionEditor((prev) => ({
                 ...prev,
-                error: 'Select gender, rating type, and division before adding.',
+                error: 'Select gender, skill division, and age division before adding.',
             }));
             return;
         }
@@ -2808,7 +2963,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         const token = buildDivisionToken({ gender, ratingType, divisionTypeId });
         const nextId = buildEventDivisionId(eventData.$id, token);
-        const divisionTypeName = getDivisionTypeNameForEditor(ratingType, divisionTypeId);
         const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId) || undefined;
         const referenceDate = parseDateValue(eventData.start ?? null);
 
@@ -2832,6 +2986,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             divisionTypeName,
             ratingType,
             gender,
+            skillDivisionTypeId,
+            skillDivisionTypeName,
+            ageDivisionTypeId,
+            ageDivisionTypeName,
             price: normalizedDivisionPrice,
             maxParticipants: normalizedDivisionMaxParticipants,
             playoffTeamCount: normalizedDivisionPlayoffTeamCount,
@@ -2887,8 +3045,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const divisionEditorReady = Boolean(
         divisionEditor.gender
-        && divisionEditor.ratingType
-        && divisionEditor.divisionTypeId,
+        && divisionEditor.skillDivisionTypeId
+        && divisionEditor.ageDivisionTypeId,
     );
 
     useEffect(() => {
@@ -3728,14 +3886,41 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     identifier: divisionId,
                     sportInput,
                 });
+                const defaultsForSport = getDefaultDivisionTypeSelectionsForSport(sportInput);
+                const composite = parseCompositeDivisionTypeId(inferred.divisionTypeId);
+                const skillDivisionTypeId = composite?.skillDivisionTypeId
+                    ?? (inferred.ratingType === 'SKILL' ? inferred.divisionTypeId : defaultsForSport.skillDivisionTypeId);
+                const ageDivisionTypeId = composite?.ageDivisionTypeId
+                    ?? (inferred.ratingType === 'AGE' ? inferred.divisionTypeId : defaultsForSport.ageDivisionTypeId);
+                const skillDivisionTypeName = getDivisionTypeById(
+                    sportInput,
+                    skillDivisionTypeId,
+                    'SKILL',
+                )?.name ?? defaultsForSport.skillDivisionTypeName;
+                const ageDivisionTypeName = getDivisionTypeById(
+                    sportInput,
+                    ageDivisionTypeId,
+                    'AGE',
+                )?.name ?? defaultsForSport.ageDivisionTypeName;
+                const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
+                const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
+                const token = buildDivisionToken({
+                    gender: inferred.gender,
+                    ratingType: 'SKILL',
+                    divisionTypeId,
+                });
                 return applyDivisionAgeCutoff({
                     id: divisionId,
-                    key: inferred.token,
-                    name: inferred.defaultName,
-                    divisionTypeId: inferred.divisionTypeId,
-                    divisionTypeName: inferred.divisionTypeName,
-                    ratingType: inferred.ratingType,
+                    key: token,
+                    name: buildDivisionName({ gender: inferred.gender, divisionTypeName }),
+                    divisionTypeId,
+                    divisionTypeName,
+                    ratingType: 'SKILL',
                     gender: inferred.gender,
+                    skillDivisionTypeId,
+                    skillDivisionTypeName,
+                    ageDivisionTypeId,
+                    ageDivisionTypeName,
                     price: Math.max(0, source.price || 0),
                     maxParticipants: Math.max(2, Math.trunc(source.maxParticipants || 2)),
                     playoffTeamCount: Number.isFinite(source.leagueData?.playoffTeamCount)
@@ -5234,30 +5419,33 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         })}
                                     />
                                     <MantineSelect
-                                        label="Rating Type"
-                                        placeholder="Select age or skill"
-                                        data={DIVISION_RATING_TYPE_OPTIONS.map((option) => ({ ...option }))}
-                                        value={divisionEditor.ratingType || null}
+                                        label="Skill Division"
+                                        placeholder="Select skill division"
+                                        data={skillDivisionTypeSelectOptions}
+                                        value={divisionEditor.skillDivisionTypeId || null}
                                         className="md:col-span-4"
                                         maw={280}
                                         comboboxProps={sharedComboboxProps}
                                         disabled={isImmutableField('divisions')}
+                                        searchable
+                                        allowDeselect={false}
                                         onChange={(value) => updateDivisionEditorSelection({
-                                            ratingType: (value as '' | 'AGE' | 'SKILL') || '',
+                                            skillDivisionTypeId: value || '',
                                         })}
                                     />
                                     <MantineSelect
-                                        label="Division"
-                                        placeholder="Select division"
-                                        data={divisionTypeSelectOptions}
-                                        value={divisionEditor.divisionTypeId || null}
+                                        label="Age Division"
+                                        placeholder="Select age division"
+                                        data={ageDivisionTypeSelectOptions}
+                                        value={divisionEditor.ageDivisionTypeId || null}
                                         className="md:col-span-4"
                                         maw={320}
                                         comboboxProps={sharedComboboxProps}
-                                        disabled={isImmutableField('divisions') || !divisionEditor.ratingType}
+                                        disabled={isImmutableField('divisions')}
                                         searchable
+                                        allowDeselect={false}
                                         onChange={(value) => updateDivisionEditorSelection({
-                                            divisionTypeId: value || '',
+                                            ageDivisionTypeId: value || '',
                                         })}
                                     />
                                     <TextInput
@@ -5422,7 +5610,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     <div>
                                                         <Text fw={600}>{detail.name}</Text>
                                                         <Text size="xs" c="dimmed">
-                                                            {`${detail.gender} • ${detail.ratingType === 'AGE' ? 'Age Based' : 'Skill Based'} • ${detail.divisionTypeName}`}
+                                                            {`${detail.gender} • Skill: ${detail.skillDivisionTypeName || detail.divisionTypeName} • Age: ${detail.ageDivisionTypeName || detail.divisionTypeName}`}
                                                         </Text>
                                                         <Text size="xs" c="dimmed">
                                                             {`Price: $${effectiveDivisionPrice.toFixed(2)} • ${eventData.teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}
@@ -5432,7 +5620,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                 {`Playoff teams: ${effectiveDivisionPlayoffTeamCount ?? 'Not set'}`}
                                                             </Text>
                                                         )}
-                                                        {detail.ratingType === 'AGE' && detail.ageCutoffLabel && (
+                                                        {detail.ageCutoffLabel && (
                                                             <Text size="xs" c="dimmed">
                                                                 {detail.ageCutoffLabel}
                                                             </Text>

@@ -127,12 +127,7 @@ const resolveTeamLabel = (match: Match, key: 'team1' | 'team2') => {
     return relation.name as string;
   }
 
-  const seed = key === 'team1' ? match.team1Seed : match.team2Seed;
-  if (typeof seed === 'number') {
-    return `Seed ${seed}`;
-  }
-
-  return 'TBD';
+  return 'TBD Team';
 };
 
 const resolveFieldLabel = (field?: Field | null): string | null => {
