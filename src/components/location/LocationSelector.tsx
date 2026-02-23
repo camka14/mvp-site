@@ -13,6 +13,7 @@ interface LocationSelectorProps {
     label?: string;
     required?: boolean;
     errorMessage?: string;
+    showStreetViewControl?: boolean;
 }
 
 const LocationSelector: React.FC<LocationSelectorProps> = ({
@@ -24,6 +25,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     label = 'Location',
     required = false,
     errorMessage = 'Location is required',
+    showStreetViewControl = true,
 }) => {
     const [showMap, setShowMap] = useState(false);
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
@@ -196,6 +198,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                             clickableIcons: true,
                             disableDefaultUI: false,
                             mapTypeControl: false,
+                            streetViewControl: showStreetViewControl,
                         }}
                     >
                         {hasCoordinates && (

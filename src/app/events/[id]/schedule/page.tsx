@@ -2607,18 +2607,6 @@ function EventScheduleContent() {
     }
   };
 
-  const handleClearChanges = useCallback(() => {
-    if (!event) return;
-
-    setChangesEvent(cloneValue(event) as Event);
-    setChangesMatches(cloneValue(matches) as Match[]);
-    setHasUnsavedChanges(false);
-    setFormHasUnsavedChanges(false);
-    setSelectedLifecycleStatus(null);
-    setError(null);
-    setInfoMessage(`${entityLabel} changes cleared.`);
-  }, [entityLabel, event, matches]);
-
   useEffect(() => {
     if (!canEditMatches && isMatchEditorOpen) {
       setIsMatchEditorOpen(false);
@@ -2846,8 +2834,6 @@ function EventScheduleContent() {
     [canEditMatches, handleMakeUserTeamReferee, handleMatchEditRequest, resolveTeam, user, userOnTeam],
   );
 
-  const canClearChanges = Boolean(event && changesEvent && hasPendingUnsavedChanges);
-
   const activeLocationDefaults = useMemo(
     () => buildLocationDefaults(activeOrganization),
     [activeOrganization, buildLocationDefaults],
@@ -3056,7 +3042,6 @@ function EventScheduleContent() {
   const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament) && !publishing && !reschedulingMatches;
   const showCancelActionButton = !isTemplateEvent && !cancelling;
   const showCreateTemplateButton = !creatingTemplate && !publishing && !reschedulingMatches && !cancelling && !isTemplateEvent;
-  const showClearChangesButton = isEditingEvent && canClearChanges;
   const showLifecycleStatusSelect = isEditingEvent && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
 
   return (
@@ -3119,14 +3104,6 @@ function EventScheduleContent() {
                     onClick={handleCreateTemplateFromEvent}
                   >
                     Create Template
-                  </Button>
-                )}
-                {showClearChangesButton && (
-                  <Button
-                    variant="default"
-                    onClick={handleClearChanges}
-                  >
-                    Clear Changes
                   </Button>
                 )}
               </Group>

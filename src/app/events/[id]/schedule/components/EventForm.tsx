@@ -4431,6 +4431,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 label="Location"
                                                 required
                                                 errorMessage={fieldState.error?.message as string | undefined}
+                                                showStreetViewControl={false}
                                             />
                                         )}
                                     />

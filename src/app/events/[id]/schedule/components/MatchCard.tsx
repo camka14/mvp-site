@@ -18,6 +18,34 @@ interface MatchCardProps {
     fieldLabel?: string;
 }
 
+type MatchDivisionInput = Match['division'] | string | null | undefined;
+
+export const resolveDivisionLabel = (rawDivision: MatchDivisionInput): string => {
+    if (typeof rawDivision === 'string') {
+        const cleaned = rawDivision.trim();
+        if (cleaned.length > 0) {
+            const inferred = inferDivisionDetails({ identifier: cleaned });
+            const inferredName = String(inferred.defaultName ?? '').trim();
+            if (inferredName.length > 0) return inferredName;
+        }
+        return 'TBD';
+    }
+
+    if (rawDivision && typeof rawDivision === 'object') {
+        const divisionRecord = rawDivision as { name?: unknown; id?: unknown };
+        const name = String(divisionRecord.name ?? '').trim();
+        if (name.length > 0) return name;
+        const id = String(divisionRecord.id ?? '').trim();
+        if (id.length > 0) {
+            const inferred = inferDivisionDetails({ identifier: id });
+            const inferredName = String(inferred.defaultName ?? '').trim();
+            if (inferredName.length > 0) return inferredName;
+        }
+    }
+
+    return 'TBD';
+};
+
 function MatchCard({
     match,
     onClick,
@@ -42,29 +70,6 @@ function MatchCard({
         if (teamData?.name) return teamData.name;
         if (teamData?.players?.length > 0) {
             return teamData.players.map((p: any) => `${p.firstName}.${p.lastName.charAt(0)}`).join(' & ');
-        }
-        return 'TBD';
-    };
-
-    const getDivisionLabel = () => {
-        const rawDivision = match.division;
-        if (rawDivision && typeof rawDivision === 'object' && 'name' in rawDivision) {
-            const name = String(rawDivision.name ?? '').trim();
-            if (name.length > 0) return name;
-            const id = String((rawDivision as any).id ?? '').trim();
-            if (id.length > 0) {
-                const inferred = inferDivisionDetails({ identifier: id });
-                const inferredName = String(inferred.defaultName ?? '').trim();
-                if (inferredName.length > 0) return inferredName;
-            }
-        }
-        if (typeof rawDivision === 'string') {
-            const cleaned = rawDivision.trim();
-            if (cleaned.length > 0) {
-                const inferred = inferDivisionDetails({ identifier: cleaned });
-                const inferredName = String(inferred.defaultName ?? '').trim();
-                if (inferredName.length > 0) return inferredName;
-            }
         }
         return 'TBD';
     };
@@ -103,7 +108,7 @@ function MatchCard({
     const result = getMatchResult();
     const isCompleted = result && result.winner !== null;
     const isInProgress = match.setResults.some((r) => r === 0) && match.setResults.some((r) => r !== 0);
-    const divisionLabel = getDivisionLabel();
+    const divisionLabel = resolveDivisionLabel(match.division);
 
     const formatTime = (timeString: string) => {
         const date = new Date(timeString);
