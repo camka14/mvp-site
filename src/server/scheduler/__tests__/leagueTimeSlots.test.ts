@@ -1,7 +1,7 @@
 /** @jest-environment node */
 
 import { scheduleEvent } from '@/server/scheduler/scheduleEvent';
-import { Division, League, PlayingField, Team, TimeSlot } from '@/server/scheduler/types';
+import { Division, League, MINUTE_MS, PlayingField, Team, TimeSlot } from '@/server/scheduler/types';
 
 const context = {
   log: () => {},
@@ -69,6 +69,55 @@ const buildTeamsForDivision = (prefix: string, count: number, division: Division
 };
 
 describe('league scheduling (time slots)', () => {
+  it('uses zero rest time as-is without applying an implicit default gap', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(2, division);
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 0, 3, 14, 0, 0);
+    const timeSlots = [
+      new TimeSlot({
+        id: 'slot_no_default_rest',
+        dayOfWeek: 5, // Saturday
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 14 * 60,
+      }),
+    ];
+
+    const league = new League({
+      id: 'league_no_default_rest_gap',
+      name: 'No Default Rest Gap League',
+      start,
+      end,
+      maxParticipants: 2,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots,
+      doTeamsRef: false,
+      gamesPerOpponent: 2,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBe(2);
+
+    const matchesByStart = [...scheduled.matches]
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
+    const gapMs = matchesByStart[1].start.getTime() - matchesByStart[0].end.getTime();
+    expect(gapMs).toBe(0 * MINUTE_MS);
+  });
+
   it('rejects schedulable events with fixed end windows when end is not after start', () => {
     const division = buildDivision();
     const field = buildField(division);

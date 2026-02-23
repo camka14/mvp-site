@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Alert,
@@ -66,6 +66,13 @@ const FIELD_CALENDAR_FORMATS = {
   timeGutterFormat: (value: Date) => formatDisplayTime(value),
   eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
     `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
+};
+const CALENDAR_VIEW_LABELS: Record<string, string> = {
+  day: 'Day',
+  week: 'Week',
+  month: 'Month',
+  agenda: 'Agenda',
+  work_week: 'Work week',
 };
 
 const minutesToDate = (base: Date, minutes: number): Date => {
@@ -152,6 +159,7 @@ export default function FieldsTabContent({ organization, organizationId, current
   const [hostOptionsLoading, setHostOptionsLoading] = useState(false);
   const [hostSelection, setHostSelection] = useState<string>('self');
   const [fieldEventsLoading, setFieldEventsLoading] = useState(false);
+  const lastLoadedFieldEventsKeyRef = useRef<string | null>(null);
   const [createFieldOpen, setCreateFieldOpen] = useState(false);
   const [editField, setEditField] = useState<Field | null>(null);
   const [createRentalOpen, setCreateRentalOpen] = useState(false);
@@ -290,6 +298,12 @@ export default function FieldsTabContent({ organization, organizationId, current
   }, []);
 
   const calendarRange = useMemo(() => computeCalendarRange(calendarView, calendarDate), [computeCalendarRange, calendarView, calendarDate]);
+  const calendarRangeStartMs = calendarRange.start.getTime();
+  const calendarRangeEndMs = calendarRange.end.getTime();
+  const fieldEventsRequestKey = useMemo(
+    () => (selectedField ? `${selectedField.$id}:${calendarRangeStartMs}:${calendarRangeEndMs}` : null),
+    [selectedField, calendarRangeStartMs, calendarRangeEndMs],
+  );
 
   const handleCalendarRangeChange = useCallback((range: any, _view?: View) => {
     if (!range || Array.isArray(range)) {
@@ -389,15 +403,16 @@ export default function FieldsTabContent({ organization, organizationId, current
   }, [calendarEvents, selection, selectedField]);
 
   useEffect(() => {
-    if (!selectedField || !calendarRange) return;
+    if (!selectedField || !fieldEventsRequestKey) return;
+    if (lastLoadedFieldEventsKeyRef.current === fieldEventsRequestKey) return;
     let cancelled = false;
 
     (async () => {
       try {
         setFieldEventsLoading(true);
         const hydrated = await fieldService.getFieldEventsMatches(selectedField, {
-          start: calendarRange.start.toISOString(),
-          end: calendarRange.end ? calendarRange.end.toISOString() : undefined,
+          start: new Date(calendarRangeStartMs).toISOString(),
+          end: new Date(calendarRangeEndMs).toISOString(),
         });
         if (cancelled) return;
 
@@ -423,6 +438,7 @@ export default function FieldsTabContent({ organization, organizationId, current
           );
           return { ...prev, fields: nextFields };
         });
+        lastLoadedFieldEventsKeyRef.current = fieldEventsRequestKey;
       } catch (error) {
         console.error('Failed to load events/matches for field', error);
       } finally {
@@ -435,7 +451,7 @@ export default function FieldsTabContent({ organization, organizationId, current
     return () => {
       cancelled = true;
     };
-  }, [selectedField, calendarRange]);
+  }, [selectedField, fieldEventsRequestKey, calendarRangeStartMs, calendarRangeEndMs]);
 
   const matchingRentalSlot = useMemo(() => {
     if (!selectedField || !selection) return null;
@@ -676,6 +692,41 @@ export default function FieldsTabContent({ organization, organizationId, current
     );
   };
 
+  const CalendarToolbar: any = useCallback((toolbar: any) => {
+    const views = Array.isArray(toolbar.views)
+      ? toolbar.views
+      : Object.keys(toolbar.views || {}).filter((viewKey) => Boolean(toolbar.views?.[viewKey]));
+
+    return (
+      <div className="rbc-toolbar">
+        <span className="rbc-btn-group flex items-center gap-1">
+          <button type="button" onClick={() => toolbar.onNavigate('PREV')}>Back</button>
+          <button type="button" onClick={() => toolbar.onNavigate('TODAY')}>Today</button>
+          <button type="button" onClick={() => toolbar.onNavigate('NEXT')}>Next</button>
+          {fieldEventsLoading ? (
+            <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-500">
+              <Loader size={14} />
+              <span>Loading field…</span>
+            </span>
+          ) : null}
+        </span>
+        <span className="rbc-toolbar-label">{toolbar.label}</span>
+        <span className="rbc-btn-group">
+          {views.map((viewName: string) => (
+            <button
+              key={viewName}
+              type="button"
+              className={toolbar.view === viewName ? 'rbc-active' : ''}
+              onClick={() => toolbar.onView(viewName)}
+            >
+              {CALENDAR_VIEW_LABELS[viewName] ?? `${viewName.charAt(0).toUpperCase()}${viewName.slice(1)}`}
+            </button>
+          ))}
+        </span>
+      </div>
+    );
+  }, [fieldEventsLoading]);
+
   if (orgLoading) {
     return <Loading fullScreen={false} text="Loading fields..." />;
   }
@@ -800,15 +851,9 @@ export default function FieldsTabContent({ organization, organizationId, current
               ? 'Click a time slot to move the draft block, drag it to adjust, then add a rental slot. Rental slots are shown in green.'
               : 'Scroll the calendar to the hours you want, click a time slot to move the rental, or drag the bottom edge of the highlighted block to adjust the end time.'}
           </Text>
-          {fieldEventsLoading && (
-            <Group gap="xs">
-              <Loader size="xs" />
-              <Text size="xs" c="dimmed">Loading events and matches for this field…</Text>
-            </Group>
-          )}
 
           {selectedField && selection ? (
-            <Paper withBorder radius="md" style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}>
+            <div style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}>
               <DnDCalendar
                 localizer={localizer}
                 events={calendarEvents}
@@ -836,9 +881,9 @@ export default function FieldsTabContent({ organization, organizationId, current
                 onEventResize={handleEventResize}
                 onSelectSlot={handleSlotSelect}
                 onSelectEvent={handleSelectCalendarEvent}
-                components={{ event: CalendarEvent }}
+                components={{ event: CalendarEvent, toolbar: CalendarToolbar }}
               />
-            </Paper>
+            </div>
           ) : (
             <Paper
               withBorder

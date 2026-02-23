@@ -27,6 +27,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
 }) => {
     const [showMap, setShowMap] = useState(false);
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
+    const [mapSearchQuery, setMapSearchQuery] = useState('');
     const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
     const geolocationRequestedRef = useRef(false);
     const hasCoordinates = coordinates.lat !== 0 || coordinates.lng !== 0;
@@ -88,6 +89,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
             const result = await locationService.geocodeLocation(address);
             setCenter({ lat: result.lat, lng: result.lng });
             onChange(address, result.lat, result.lng);
+            setMapSearchQuery(address);
         } catch (error) {
             console.error('Location search failed:', error);
         }
@@ -105,6 +107,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
 
         setCenter({ lat, lng });
         onChange(address, lat, lng);
+        setMapSearchQuery(address);
     }, [autocomplete, onChange]);
 
     return (
@@ -126,7 +129,18 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                         style={{ flex: 1 }}
                     />
                     <div className="ml-auto">
-                        <Button type="button" onClick={() => !disabled && setShowMap(!showMap)} disabled={disabled}>
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                if (disabled) return;
+                                const nextShowMap = !showMap;
+                                if (nextShowMap) {
+                                    setMapSearchQuery('');
+                                }
+                                setShowMap(nextShowMap);
+                            }}
+                            disabled={disabled}
+                        >
                             {showMap ? 'Hide' : 'Show'} Map
                         </Button>
                     </div>
@@ -134,27 +148,42 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
             </div>
 
             {showMap && isLoaded && (
-                <Paper mt="md" withBorder radius="md" style={{ height: 256, overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', zIndex: 2, width: 'calc(100% - 24px)', padding: '12px' }}>
+                <Paper
+                    mt="md"
+                    withBorder
+                    radius="md"
+                    style={{ height: 256, overflow: 'hidden', position: 'relative' }}
+                >
+                    <div
+                        style={{
+                            position: 'absolute',
+                            zIndex: 2,
+                            left: 0,
+                            width: '50%',
+                            top: 0,
+                            padding: '12px',
+                            boxSizing: 'border-box',
+                        }}
+                    >
                         <Autocomplete
                             onLoad={setAutocomplete}
                             onPlaceChanged={handlePlaceChanged}
                         >
                             <TextInput
-                                value={value ?? ''}
+                                value={mapSearchQuery}
                                 onChange={(e) => {
                                     const next = e.currentTarget.value;
-                                    if (!disabled) {
-                                        onChange(next, coordinates.lat, coordinates.lng);
-                                    }
+                                    setMapSearchQuery(next);
                                 }}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
+                                        void searchLocation(mapSearchQuery);
                                     }
                                 }}
                                 placeholder="Search for an address or place"
                                 disabled={disabled}
+                                autoComplete="off"
                             />
                         </Autocomplete>
                     </div>
@@ -163,7 +192,11 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                         center={mapCenter}
                         zoom={15}
                         onClick={onMapClick}
-                        options={{ clickableIcons: true, disableDefaultUI: false }}
+                        options={{
+                            clickableIcons: true,
+                            disableDefaultUI: false,
+                            mapTypeControl: false,
+                        }}
                     >
                         {hasCoordinates && (
                             <Marker position={coordinates} />

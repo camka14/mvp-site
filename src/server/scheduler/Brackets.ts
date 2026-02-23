@@ -425,12 +425,9 @@ export class Brackets {
     return [Math.ceil(byes / 2), Math.floor(byes / 2)];
   }
 
-  private restBuffer(multiplier: number): number {
-    const restMinutes = this.tournament.restTimeMinutes || 0;
-    if (restMinutes > 0) {
-      return restMinutes * 60 * 1000;
-    }
-    return TIMES.REST * Math.max(multiplier, 1);
+  private restBuffer(): number {
+    const restMinutes = this.tournament.restTimeMinutes ?? 0;
+    return Math.max(restMinutes, 0) * 60 * 1000;
   }
 
   private createMatch(
@@ -458,7 +455,7 @@ export class Brackets {
       division: this.currentDivision,
       field: null,
       setResults: Array(multiplier).fill(0),
-      bufferMs: this.restBuffer(multiplier),
+      bufferMs: this.restBuffer(),
       side,
       refereeCheckedIn: false,
       team1,

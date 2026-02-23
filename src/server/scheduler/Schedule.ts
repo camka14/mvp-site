@@ -181,13 +181,13 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
           return;
         }
       }
-      earliestStart = new Date(earliestStart.getTime() + 5 * MINUTE_MS);
+      earliestStart = new Date(earliestStart.getTime() + MINUTE_MS);
     }
   }
 
   advanceTo(newTime: Date): void {
     if (newTime.getTime() <= this.currentTime.getTime()) return;
-    this.currentTime = this.roundToNextFiveMinutes(newTime);
+    this.currentTime = this.roundToNextMinute(newTime);
   }
 
   private getEarliestStartTime(event: E): Date {
@@ -198,7 +198,7 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
         earliest = end;
       }
     }
-    return this.roundToNextFiveMinutes(earliest);
+    return this.roundToNextMinute(earliest);
   }
 
   private checkAvailabilityOfParticipants(start: Date, end: Date, minParticipants: number): boolean {
@@ -460,14 +460,13 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
       .sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
-  private roundToNextFiveMinutes(date: Date): Date {
-    if (date.getMinutes() % 5 === 0 && date.getSeconds() === 0 && date.getMilliseconds() === 0) {
+  private roundToNextMinute(date: Date): Date {
+    if (date.getSeconds() === 0 && date.getMilliseconds() === 0) {
       return new Date(date);
     }
-    const minutesToAdd = 5 - (date.getMinutes() % 5);
     const rounded = new Date(date);
     rounded.setSeconds(0, 0);
-    rounded.setMinutes(rounded.getMinutes() + minutesToAdd);
+    rounded.setMinutes(rounded.getMinutes() + 1);
     return rounded;
   }
 }

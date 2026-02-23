@@ -9,7 +9,6 @@ import {
   Team,
   Tournament,
   UserData,
-  TIMES,
   MINUTE_MS,
   SchedulerContext,
 } from './types';
@@ -374,10 +373,8 @@ export class EventBuilder {
   }
 
   private matchBuffer(): number {
-    const restMinutes = this.event.restTimeMinutes || 0;
-    if (restMinutes > 0) return restMinutes * MINUTE_MS;
-    const multiplier = this.event.usesSets ? (this.event.setsPerMatch || 1) : 1;
-    return TIMES.REST * Math.max(multiplier, 1);
+    const restMinutes = this.event.restTimeMinutes ?? 0;
+    return Math.max(restMinutes, 0) * MINUTE_MS;
   }
 
   private resolveMatchDivision(team1: Team | null, team2: Team | null): Division {

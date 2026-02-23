@@ -23,7 +23,6 @@ import {
   UserData,
   sideFrom,
   MINUTE_MS,
-  TIMES,
 } from '@/server/scheduler/types';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
@@ -525,10 +524,8 @@ const normalizeIsoDateString = (value: unknown): string | null => {
 };
 
 const matchBufferMs = (event: Tournament | League): number => {
-  const restMinutes = event.restTimeMinutes || 0;
-  if (restMinutes > 0) return restMinutes * MINUTE_MS;
-  const multiplier = event.usesSets ? (event.setsPerMatch || 1) : 1;
-  return TIMES.REST * Math.max(multiplier, 1);
+  const restMinutes = event.restTimeMinutes ?? 0;
+  return Math.max(restMinutes, 0) * MINUTE_MS;
 };
 
 const buildDivisions = (
