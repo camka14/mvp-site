@@ -260,6 +260,56 @@ const normalizeOptionalBoolean = (value: unknown): boolean | null => {
   return null;
 };
 
+const normalizeInstallmentAmountList = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+    .filter((entry) => Number.isFinite(entry))
+    .map((entry) => Math.max(0, Math.round(entry)));
+};
+
+const normalizeInstallmentDateList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => parseDateInput(entry))
+    .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
+    .map((entry) => entry.toISOString());
+};
+
+const normalizeInputNullableNumber = (value: unknown): number | null | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || value === '') {
+    return null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+};
+
+const normalizeInputOptionalBoolean = (value: unknown): boolean | null | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const parsed = normalizeOptionalBoolean(value);
+  return parsed;
+};
+
 const normalizeLeagueScoringConfigUpdate = (
   value: unknown,
 ): { id?: string; data: Record<string, number | boolean | null> } | null => {
@@ -337,6 +387,17 @@ const normalizeDivisionDetailsInput = (
       sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
       referenceDate: eventStart ?? null,
     });
+    const parsedPrice = normalizeInputNullableNumber(row.price);
+    const parsedMaxParticipants = normalizeInputNullableNumber(row.maxParticipants);
+    const parsedPlayoffTeamCount = normalizeInputNullableNumber(row.playoffTeamCount);
+    const parsedAllowPaymentPlans = normalizeInputOptionalBoolean(row.allowPaymentPlans);
+    const parsedInstallmentCount = normalizeInputNullableNumber(row.installmentCount);
+    const parsedInstallmentDueDates = Object.prototype.hasOwnProperty.call(row, 'installmentDueDates')
+      ? normalizeInstallmentDateList(row.installmentDueDates)
+      : undefined;
+    const parsedInstallmentAmounts = Object.prototype.hasOwnProperty.call(row, 'installmentAmounts')
+      ? normalizeInstallmentAmountList(row.installmentAmounts)
+      : undefined;
     const id = normalizeDivisionKey(row.id)
       ?? buildEventDivisionId(eventId, inferred.token);
     if (seen.has(id)) {
@@ -357,21 +418,24 @@ const normalizeDivisionDetailsInput = (
       ratingType: inferred.ratingType,
       gender: inferred.gender,
       sportId: typeof row.sportId === 'string' ? row.sportId : sportId ?? null,
-      price: normalizeNullableNumber(row.price),
-      maxParticipants: (() => {
-        const parsed = normalizeNullableNumber(row.maxParticipants);
-        if (typeof parsed === 'number') {
-          return Math.max(0, Math.trunc(parsed));
+      price: typeof parsedPrice === 'number'
+        ? Math.max(0, Math.round(parsedPrice))
+        : parsedPrice,
+      maxParticipants: typeof parsedMaxParticipants === 'number'
+        ? Math.max(0, Math.trunc(parsedMaxParticipants))
+        : parsedMaxParticipants,
+      playoffTeamCount: typeof parsedPlayoffTeamCount === 'number'
+        ? Math.max(0, Math.trunc(parsedPlayoffTeamCount))
+        : parsedPlayoffTeamCount,
+      allowPaymentPlans: parsedAllowPaymentPlans,
+      installmentCount: (() => {
+        if (typeof parsedInstallmentCount === 'number') {
+          return Math.max(0, Math.trunc(parsedInstallmentCount));
         }
-        return parsed;
+        return parsedInstallmentCount;
       })(),
-      playoffTeamCount: (() => {
-        const parsed = normalizeNullableNumber(row.playoffTeamCount);
-        if (typeof parsed === 'number') {
-          return Math.max(0, Math.trunc(parsed));
-        }
-        return parsed;
-      })(),
+      installmentDueDates: parsedInstallmentDueDates,
+      installmentAmounts: parsedInstallmentAmounts,
       ageCutoffDate: ageEligibility.applies ? ageEligibility.cutoffDate.toISOString() : null,
       ageCutoffLabel: ageEligibility.message ?? null,
       ageCutoffSource: ageEligibility.applies ? ageEligibility.cutoffRule.source : null,
@@ -515,6 +579,15 @@ const getDivisionDetailsForEvent = async (
   eventId: string,
   divisionKeys: string[],
   eventStart?: Date | null,
+  eventDefaults?: {
+    price?: number | null;
+    maxParticipants?: number | null;
+    playoffTeamCount?: number | null;
+    allowPaymentPlans?: boolean | null;
+    installmentCount?: number | null;
+    installmentDueDates?: unknown;
+    installmentAmounts?: unknown;
+  },
 ): Promise<Array<Record<string, unknown>>> => {
   if (!divisionKeys.length) {
     return [];
@@ -536,6 +609,10 @@ const getDivisionDetailsForEvent = async (
       price: true,
       maxParticipants: true,
       playoffTeamCount: true,
+      allowPaymentPlans: true,
+      installmentCount: true,
+      installmentDueDates: true,
+      installmentAmounts: true,
       divisionTypeId: true,
       divisionTypeName: true,
       ratingType: true,
@@ -594,9 +671,30 @@ const getDivisionDetailsForEvent = async (
       ratingType: row?.ratingType ?? inferred.ratingType,
       gender: row?.gender ?? inferred.gender,
       sportId: row?.sportId ?? null,
-      price: typeof row?.price === 'number' ? row.price : null,
-      maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
-      playoffTeamCount: typeof row?.playoffTeamCount === 'number' ? row.playoffTeamCount : null,
+      price: typeof row?.price === 'number'
+        ? row.price
+        : (typeof eventDefaults?.price === 'number' ? eventDefaults.price : null),
+      maxParticipants: typeof row?.maxParticipants === 'number'
+        ? row.maxParticipants
+        : (typeof eventDefaults?.maxParticipants === 'number' ? eventDefaults.maxParticipants : null),
+      playoffTeamCount: typeof row?.playoffTeamCount === 'number'
+        ? row.playoffTeamCount
+        : (typeof eventDefaults?.playoffTeamCount === 'number' ? eventDefaults.playoffTeamCount : null),
+      allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
+        ? row.allowPaymentPlans
+        : (typeof eventDefaults?.allowPaymentPlans === 'boolean' ? eventDefaults.allowPaymentPlans : null),
+      installmentCount: typeof row?.installmentCount === 'number'
+        ? row.installmentCount
+        : (typeof eventDefaults?.installmentCount === 'number' ? eventDefaults.installmentCount : null),
+      installmentDueDates: Array.isArray(row?.installmentDueDates)
+        ? row.installmentDueDates
+          .map((entry) => parseDateInput(entry))
+          .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
+          .map((entry) => entry.toISOString())
+        : normalizeInstallmentDateList(eventDefaults?.installmentDueDates),
+      installmentAmounts: Array.isArray(row?.installmentAmounts)
+        ? normalizeInstallmentAmountList(row.installmentAmounts)
+        : normalizeInstallmentAmountList(eventDefaults?.installmentAmounts),
       ageCutoffDate,
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
@@ -854,7 +952,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
   const divisionKeys = normalizeDivisionKeys(event.divisions);
   const [divisionFieldIds, divisionDetails] = await Promise.all([
     getDivisionFieldMapForEvent(eventId, divisionKeys),
-    getDivisionDetailsForEvent(eventId, divisionKeys, event.start),
+    getDivisionDetailsForEvent(eventId, divisionKeys, event.start, {
+      price: event.price,
+      maxParticipants: event.maxParticipants,
+      playoffTeamCount: event.playoffTeamCount,
+      allowPaymentPlans: event.allowPaymentPlans,
+      installmentCount: event.installmentCount,
+      installmentDueDates: event.installmentDueDates,
+      installmentAmounts: event.installmentAmounts,
+    }),
   ]);
   return NextResponse.json(
     withLegacyEvent({ ...event, divisionFieldIds, divisionDetails }),
@@ -1271,6 +1377,54 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         },
       });
 
+      const defaultDivisionPrice = (() => {
+        const parsed = normalizeNullableNumber(data.price ?? existing.price);
+        if (typeof parsed === 'number') {
+          return Math.max(0, Math.round(parsed));
+        }
+        return parsed;
+      })();
+      const defaultDivisionMaxParticipants = (() => {
+        const parsed = normalizeNullableNumber(data.maxParticipants ?? existing.maxParticipants);
+        if (typeof parsed === 'number') {
+          return Math.max(0, Math.trunc(parsed));
+        }
+        return parsed;
+      })();
+      const defaultDivisionPlayoffTeamCount = (() => {
+        const parsed = normalizeNullableNumber(data.playoffTeamCount ?? existing.playoffTeamCount);
+        if (typeof parsed === 'number') {
+          return Math.max(0, Math.trunc(parsed));
+        }
+        return parsed;
+      })();
+      const defaultDivisionAllowPaymentPlans = normalizeOptionalBoolean(
+        Object.prototype.hasOwnProperty.call(data, 'allowPaymentPlans')
+          ? data.allowPaymentPlans
+          : existing.allowPaymentPlans,
+      );
+      const defaultDivisionInstallmentCount = (() => {
+        const parsed = normalizeNullableNumber(
+          Object.prototype.hasOwnProperty.call(data, 'installmentCount')
+            ? data.installmentCount
+            : existing.installmentCount,
+        );
+        if (typeof parsed === 'number') {
+          return Math.max(0, Math.trunc(parsed));
+        }
+        return parsed;
+      })();
+      const defaultDivisionInstallmentDueDates = normalizeInstallmentDateList(
+        Object.prototype.hasOwnProperty.call(data, 'installmentDueDates')
+          ? data.installmentDueDates
+          : existing.installmentDueDates,
+      );
+      const defaultDivisionInstallmentAmounts = normalizeInstallmentAmountList(
+        Object.prototype.hasOwnProperty.call(data, 'installmentAmounts')
+          ? data.installmentAmounts
+          : existing.installmentAmounts,
+      );
+
       if (shouldSyncDivisions) {
         await syncEventDivisions({
           eventId,
@@ -1281,6 +1435,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           organizationId: (data.organizationId ?? existing.organizationId ?? null) as string | null,
           divisionFieldMap: nextDivisionFieldMap,
           divisionDetails: incomingDivisionDetails,
+          defaultPrice: defaultDivisionPrice,
+          defaultMaxParticipants: defaultDivisionMaxParticipants,
+          defaultPlayoffTeamCount: defaultDivisionPlayoffTeamCount,
+          defaultAllowPaymentPlans: defaultDivisionAllowPaymentPlans,
+          defaultInstallmentCount: defaultDivisionInstallmentCount,
+          defaultInstallmentDueDates: defaultDivisionInstallmentDueDates,
+          defaultInstallmentAmounts: defaultDivisionInstallmentAmounts,
         }, tx as any);
       }
 
@@ -1305,7 +1466,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     const divisionKeys = normalizeDivisionKeys(updated.divisions);
     const [divisionFieldIds, divisionDetails] = await Promise.all([
       getDivisionFieldMapForEvent(eventId, divisionKeys),
-      getDivisionDetailsForEvent(eventId, divisionKeys, updated.start),
+      getDivisionDetailsForEvent(eventId, divisionKeys, updated.start, {
+        price: updated.price,
+        maxParticipants: updated.maxParticipants,
+        playoffTeamCount: updated.playoffTeamCount,
+        allowPaymentPlans: updated.allowPaymentPlans,
+        installmentCount: updated.installmentCount,
+        installmentDueDates: updated.installmentDueDates,
+        installmentAmounts: updated.installmentAmounts,
+      }),
     ]);
     return NextResponse.json(
       withLegacyEvent({ ...updated, divisionFieldIds, divisionDetails }),

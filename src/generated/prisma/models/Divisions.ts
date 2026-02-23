@@ -30,6 +30,8 @@ export type DivisionsAvgAggregateOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  installmentCount: number | null
+  installmentAmounts: number | null
   minRating: number | null
   maxRating: number | null
 }
@@ -38,6 +40,8 @@ export type DivisionsSumAggregateOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  installmentCount: number | null
+  installmentAmounts: number[]
   minRating: number | null
   maxRating: number | null
 }
@@ -54,6 +58,8 @@ export type DivisionsMinAggregateOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  allowPaymentPlans: boolean | null
+  installmentCount: number | null
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
@@ -77,6 +83,8 @@ export type DivisionsMaxAggregateOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  allowPaymentPlans: boolean | null
+  installmentCount: number | null
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
@@ -100,6 +108,10 @@ export type DivisionsCountAggregateOutputType = {
   price: number
   maxParticipants: number
   playoffTeamCount: number
+  allowPaymentPlans: number
+  installmentCount: number
+  installmentDueDates: number
+  installmentAmounts: number
   minRating: number
   maxRating: number
   divisionTypeId: number
@@ -118,6 +130,8 @@ export type DivisionsAvgAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  installmentCount?: true
+  installmentAmounts?: true
   minRating?: true
   maxRating?: true
 }
@@ -126,6 +140,8 @@ export type DivisionsSumAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  installmentCount?: true
+  installmentAmounts?: true
   minRating?: true
   maxRating?: true
 }
@@ -142,6 +158,8 @@ export type DivisionsMinAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  allowPaymentPlans?: true
+  installmentCount?: true
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
@@ -165,6 +183,8 @@ export type DivisionsMaxAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  allowPaymentPlans?: true
+  installmentCount?: true
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
@@ -188,6 +208,10 @@ export type DivisionsCountAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  allowPaymentPlans?: true
+  installmentCount?: true
+  installmentDueDates?: true
+  installmentAmounts?: true
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
@@ -299,6 +323,10 @@ export type DivisionsGroupByOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  allowPaymentPlans: boolean | null
+  installmentCount: number | null
+  installmentDueDates: Date[]
+  installmentAmounts: number[]
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
@@ -346,6 +374,10 @@ export type DivisionsWhereInput = {
   price?: Prisma.IntNullableFilter<"Divisions"> | number | null
   maxParticipants?: Prisma.IntNullableFilter<"Divisions"> | number | null
   playoffTeamCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  allowPaymentPlans?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
+  installmentCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  installmentDueDates?: Prisma.DateTimeNullableListFilter<"Divisions">
+  installmentAmounts?: Prisma.IntNullableListFilter<"Divisions">
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
@@ -370,6 +402,10 @@ export type DivisionsOrderByWithRelationInput = {
   price?: Prisma.SortOrderInput | Prisma.SortOrder
   maxParticipants?: Prisma.SortOrderInput | Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
+  installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  installmentDueDates?: Prisma.SortOrder
+  installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -397,6 +433,10 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   price?: Prisma.IntNullableFilter<"Divisions"> | number | null
   maxParticipants?: Prisma.IntNullableFilter<"Divisions"> | number | null
   playoffTeamCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  allowPaymentPlans?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
+  installmentCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  installmentDueDates?: Prisma.DateTimeNullableListFilter<"Divisions">
+  installmentAmounts?: Prisma.IntNullableListFilter<"Divisions">
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
@@ -421,6 +461,10 @@ export type DivisionsOrderByWithAggregationInput = {
   price?: Prisma.SortOrderInput | Prisma.SortOrder
   maxParticipants?: Prisma.SortOrderInput | Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
+  installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  installmentDueDates?: Prisma.SortOrder
+  installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -453,6 +497,10 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   price?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   maxParticipants?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   playoffTeamCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  allowPaymentPlans?: Prisma.BoolNullableWithAggregatesFilter<"Divisions"> | boolean | null
+  installmentCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  installmentDueDates?: Prisma.DateTimeNullableListFilter<"Divisions">
+  installmentAmounts?: Prisma.IntNullableListFilter<"Divisions">
   minRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
@@ -477,6 +525,10 @@ export type DivisionsCreateInput = {
   price?: number | null
   maxParticipants?: number | null
   playoffTeamCount?: number | null
+  allowPaymentPlans?: boolean | null
+  installmentCount?: number | null
+  installmentDueDates?: Prisma.DivisionsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentAmounts?: Prisma.DivisionsCreateinstallmentAmountsInput | number[]
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
@@ -501,6 +553,10 @@ export type DivisionsUncheckedCreateInput = {
   price?: number | null
   maxParticipants?: number | null
   playoffTeamCount?: number | null
+  allowPaymentPlans?: boolean | null
+  installmentCount?: number | null
+  installmentDueDates?: Prisma.DivisionsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentAmounts?: Prisma.DivisionsCreateinstallmentAmountsInput | number[]
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
@@ -525,6 +581,10 @@ export type DivisionsUpdateInput = {
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  installmentDueDates?: Prisma.DivisionsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentAmounts?: Prisma.DivisionsUpdateinstallmentAmountsInput | number[]
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -549,6 +609,10 @@ export type DivisionsUncheckedUpdateInput = {
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  installmentDueDates?: Prisma.DivisionsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentAmounts?: Prisma.DivisionsUpdateinstallmentAmountsInput | number[]
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -573,6 +637,10 @@ export type DivisionsCreateManyInput = {
   price?: number | null
   maxParticipants?: number | null
   playoffTeamCount?: number | null
+  allowPaymentPlans?: boolean | null
+  installmentCount?: number | null
+  installmentDueDates?: Prisma.DivisionsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentAmounts?: Prisma.DivisionsCreateinstallmentAmountsInput | number[]
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
@@ -597,6 +665,10 @@ export type DivisionsUpdateManyMutationInput = {
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  installmentDueDates?: Prisma.DivisionsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentAmounts?: Prisma.DivisionsUpdateinstallmentAmountsInput | number[]
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -621,6 +693,10 @@ export type DivisionsUncheckedUpdateManyInput = {
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  installmentDueDates?: Prisma.DivisionsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentAmounts?: Prisma.DivisionsUpdateinstallmentAmountsInput | number[]
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -631,6 +707,14 @@ export type DivisionsUncheckedUpdateManyInput = {
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
+}
+
+export type DateTimeNullableListFilter<$PrismaModel = never> = {
+  equals?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
+  has?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel> | null
+  hasEvery?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel>
+  hasSome?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel>
+  isEmpty?: boolean
 }
 
 export type DivisionsCountOrderByAggregateInput = {
@@ -645,6 +729,10 @@ export type DivisionsCountOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  allowPaymentPlans?: Prisma.SortOrder
+  installmentCount?: Prisma.SortOrder
+  installmentDueDates?: Prisma.SortOrder
+  installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -661,6 +749,8 @@ export type DivisionsAvgOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  installmentCount?: Prisma.SortOrder
+  installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
 }
@@ -677,6 +767,8 @@ export type DivisionsMaxOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  allowPaymentPlans?: Prisma.SortOrder
+  installmentCount?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -700,6 +792,8 @@ export type DivisionsMinOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  allowPaymentPlans?: Prisma.SortOrder
+  installmentCount?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -715,8 +809,18 @@ export type DivisionsSumOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  installmentCount?: Prisma.SortOrder
+  installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
+}
+
+export type DivisionsCreateinstallmentDueDatesInput = {
+  set: Date[] | string[]
+}
+
+export type DivisionsCreateinstallmentAmountsInput = {
+  set: number[]
 }
 
 export type DivisionsCreatefieldIdsInput = {
@@ -729,6 +833,16 @@ export type NullableIntFieldUpdateOperationsInput = {
   decrement?: number
   multiply?: number
   divide?: number
+}
+
+export type DivisionsUpdateinstallmentDueDatesInput = {
+  set?: Date[] | string[]
+  push?: Date | string | Date[] | string[]
+}
+
+export type DivisionsUpdateinstallmentAmountsInput = {
+  set?: number[]
+  push?: number | number[]
 }
 
 export type DivisionsUpdatefieldIdsInput = {
@@ -750,6 +864,10 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   price?: boolean
   maxParticipants?: boolean
   playoffTeamCount?: boolean
+  allowPaymentPlans?: boolean
+  installmentCount?: boolean
+  installmentDueDates?: boolean
+  installmentAmounts?: boolean
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
@@ -774,6 +892,10 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   price?: boolean
   maxParticipants?: boolean
   playoffTeamCount?: boolean
+  allowPaymentPlans?: boolean
+  installmentCount?: boolean
+  installmentDueDates?: boolean
+  installmentAmounts?: boolean
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
@@ -798,6 +920,10 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   price?: boolean
   maxParticipants?: boolean
   playoffTeamCount?: boolean
+  allowPaymentPlans?: boolean
+  installmentCount?: boolean
+  installmentDueDates?: boolean
+  installmentAmounts?: boolean
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
@@ -822,6 +948,10 @@ export type DivisionsSelectScalar = {
   price?: boolean
   maxParticipants?: boolean
   playoffTeamCount?: boolean
+  allowPaymentPlans?: boolean
+  installmentCount?: boolean
+  installmentDueDates?: boolean
+  installmentAmounts?: boolean
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
@@ -834,7 +964,7 @@ export type DivisionsSelectScalar = {
   fieldIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -851,6 +981,10 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     price: number | null
     maxParticipants: number | null
     playoffTeamCount: number | null
+    allowPaymentPlans: boolean | null
+    installmentCount: number | null
+    installmentDueDates: Date[]
+    installmentAmounts: number[]
     minRating: number | null
     maxRating: number | null
     divisionTypeId: string | null
@@ -1295,6 +1429,10 @@ export interface DivisionsFieldRefs {
   readonly price: Prisma.FieldRef<"Divisions", 'Int'>
   readonly maxParticipants: Prisma.FieldRef<"Divisions", 'Int'>
   readonly playoffTeamCount: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly allowPaymentPlans: Prisma.FieldRef<"Divisions", 'Boolean'>
+  readonly installmentCount: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly installmentDueDates: Prisma.FieldRef<"Divisions", 'DateTime[]'>
+  readonly installmentAmounts: Prisma.FieldRef<"Divisions", 'Int[]'>
   readonly minRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly maxRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly divisionTypeId: Prisma.FieldRef<"Divisions", 'String'>

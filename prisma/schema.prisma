@@ -152,6 +152,10 @@ model Divisions {
   price Int?
   maxParticipants Int?
   playoffTeamCount Int?
+  allowPaymentPlans Boolean?
+  installmentCount Int?
+  installmentDueDates DateTime[] @default([])
+  installmentAmounts Int[] @default([])
   minRating Float?
   maxRating Float?
   divisionTypeId String?

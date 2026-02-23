@@ -202,6 +202,115 @@ describe('event PATCH route', () => {
     expect(json.divisions).toEqual(['advanced']);
   });
 
+  it('persists division-level payment-plan fields from divisionDetails payload', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        divisions: ['event_1__division__open'],
+        fieldIds: ['field_1'],
+        eventType: 'EVENT',
+        sportId: 'sport_1',
+        organizationId: null,
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        allowPaymentPlans: true,
+        installmentCount: 3,
+        installmentDueDates: [
+          new Date('2026-01-08T09:00:00.000Z'),
+          new Date('2026-01-15T09:00:00.000Z'),
+          new Date('2026-01-22T09:00:00.000Z'),
+        ],
+        installmentAmounts: [1200, 800, 500],
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        divisions: ['event_1__division__open'],
+        fieldIds: ['field_1'],
+        eventType: 'EVENT',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        allowPaymentPlans: true,
+        installmentCount: 3,
+        installmentDueDates: [
+          new Date('2026-01-08T09:00:00.000Z'),
+          new Date('2026-01-15T09:00:00.000Z'),
+          new Date('2026-01-22T09:00:00.000Z'),
+        ],
+        installmentAmounts: [1200, 800, 500],
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      divisions: ['event_1__division__open'],
+      fieldIds: ['field_1'],
+      eventType: 'EVENT',
+      start: new Date('2026-01-01T00:00:00.000Z'),
+      allowPaymentPlans: true,
+      installmentCount: 3,
+      installmentDueDates: [
+        new Date('2026-01-08T09:00:00.000Z'),
+        new Date('2026-01-15T09:00:00.000Z'),
+        new Date('2026-01-22T09:00:00.000Z'),
+      ],
+      installmentAmounts: [1200, 800, 500],
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+    divisionsMock.deleteMany.mockResolvedValue({ count: 0 });
+    divisionsMock.upsert.mockResolvedValue({});
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          divisions: ['event_1__division__open'],
+          divisionDetails: [
+            {
+              id: 'event_1__division__open',
+              key: 'open',
+              name: 'Open',
+              divisionTypeId: 'open',
+              divisionTypeName: 'Open',
+              ratingType: 'SKILL',
+              gender: 'C',
+              price: 2500,
+              maxParticipants: 12,
+              allowPaymentPlans: true,
+              installmentCount: 2,
+              installmentAmounts: [1500, 1000],
+              installmentDueDates: ['2026-01-09T09:00:00.000Z', '2026-01-16T09:00:00.000Z'],
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(divisionsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1__division__open' },
+        create: expect.objectContaining({
+          allowPaymentPlans: true,
+          installmentCount: 2,
+          installmentAmounts: [1500, 1000],
+          installmentDueDates: [
+            new Date('2026-01-09T09:00:00.000Z'),
+            new Date('2026-01-16T09:00:00.000Z'),
+          ],
+        }),
+        update: expect.objectContaining({
+          allowPaymentPlans: true,
+          installmentCount: 2,
+          installmentAmounts: [1500, 1000],
+          installmentDueDates: [
+            new Date('2026-01-09T09:00:00.000Z'),
+            new Date('2026-01-16T09:00:00.000Z'),
+          ],
+        }),
+      }),
+    );
+  });
+
   it('forces slot divisions to all selected event divisions when singleDivision is enabled', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique

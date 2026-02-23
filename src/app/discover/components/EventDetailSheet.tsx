@@ -100,6 +100,11 @@ type EventDivisionOption = {
     divisionTypeKey: string;
     ratingType: 'AGE' | 'SKILL';
     gender: 'M' | 'F' | 'C';
+    priceCents?: number;
+    allowPaymentPlans?: boolean;
+    installmentCount?: number;
+    installmentDueDates?: string[];
+    installmentAmounts?: number[];
     sportId?: string;
     ageCutoffDate?: string;
     ageCutoffLabel?: string;
@@ -110,6 +115,33 @@ const normalizeDivisionKey = (value: unknown): string | null => {
     if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase();
     return normalized.length ? normalized : null;
+};
+
+const normalizePriceCents = (value: unknown): number => {
+    const parsed = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(parsed)) {
+        return 0;
+    }
+    return Math.max(0, Math.round(parsed));
+};
+
+const normalizeInstallmentAmountsCents = (value: unknown): number[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .map((entry) => normalizePriceCents(entry))
+        .filter((entry) => entry >= 0);
+};
+
+const normalizeInstallmentDueDateValues = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .map((entry) => parseDateValue(typeof entry === 'string' ? entry : String(entry ?? '')))
+        .filter((entry): entry is Date => Boolean(entry))
+        .map((entry) => entry.toISOString());
 };
 
 const getDivisionIdFromEventEntry = (entry: unknown): string | null => {
@@ -135,6 +167,13 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
         : event.sport?.name ?? event.sportId ?? '';
     const referenceDate = parseDateValue(event.start ?? null);
     const detailRows = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
+    const defaultPriceCents = normalizePriceCents(event.price);
+    const defaultAllowPaymentPlans = Boolean(event.allowPaymentPlans);
+    const defaultInstallmentAmounts = normalizeInstallmentAmountsCents(event.installmentAmounts);
+    const defaultInstallmentDueDates = normalizeInstallmentDueDateValues(event.installmentDueDates);
+    const defaultInstallmentCount = Number.isFinite(Number(event.installmentCount))
+        ? Math.max(0, Math.trunc(Number(event.installmentCount)))
+        : defaultInstallmentAmounts.length;
     const detailsById = new Map<string, NonNullable<Event['divisionDetails']>[number]>();
     const detailsByKey = new Map<string, NonNullable<Event['divisionDetails']>[number]>();
     detailRows.forEach((detail) => {
@@ -207,6 +246,32 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
             divisionTypeKey,
             ratingType,
             gender,
+            priceCents: typeof row?.price === 'number'
+                ? normalizePriceCents(row.price)
+                : defaultPriceCents,
+            allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
+                ? row.allowPaymentPlans
+                : defaultAllowPaymentPlans,
+            installmentCount: (() => {
+                if (typeof row?.installmentCount === 'number') {
+                    return Math.max(0, Math.trunc(row.installmentCount));
+                }
+                return defaultInstallmentCount;
+            })(),
+            installmentDueDates: (() => {
+                const normalized = normalizeInstallmentDueDateValues(row?.installmentDueDates);
+                if (normalized.length) {
+                    return normalized;
+                }
+                return [...defaultInstallmentDueDates];
+            })(),
+            installmentAmounts: (() => {
+                const normalized = normalizeInstallmentAmountsCents(row?.installmentAmounts);
+                if (normalized.length) {
+                    return normalized;
+                }
+                return [...defaultInstallmentAmounts];
+            })(),
             sportId: row?.sportId ?? (sportInput || undefined),
             ageCutoffDate: typeof row?.ageCutoffDate === 'string'
                 ? row.ageCutoffDate
@@ -400,6 +465,84 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         selectedDivisionOption,
         selectedDivisionTypeKey,
     ]);
+    const selectedDivisionBilling = React.useMemo(() => {
+        if (!currentEvent) {
+            return {
+                priceCents: 0,
+                allowPaymentPlans: false,
+                installmentCount: 0,
+                installmentAmounts: [] as number[],
+                installmentDueDates: [] as string[],
+            };
+        }
+
+        const eventPriceCents = normalizePriceCents(currentEvent.price);
+        const eventAllowPaymentPlans = Boolean(currentEvent.allowPaymentPlans);
+        const eventInstallmentAmounts = normalizeInstallmentAmountsCents(currentEvent.installmentAmounts);
+        const eventInstallmentDueDates = normalizeInstallmentDueDateValues(currentEvent.installmentDueDates);
+        const eventInstallmentCount = Number.isFinite(Number(currentEvent.installmentCount))
+            ? Math.max(0, Math.trunc(Number(currentEvent.installmentCount)))
+            : eventInstallmentAmounts.length;
+
+        if (currentEvent.singleDivision || !selectedDivisionOption) {
+            return {
+                priceCents: eventPriceCents,
+                allowPaymentPlans: eventAllowPaymentPlans,
+                installmentCount: eventAllowPaymentPlans ? (eventInstallmentCount || eventInstallmentAmounts.length || 0) : 0,
+                installmentAmounts: eventAllowPaymentPlans ? eventInstallmentAmounts : [],
+                installmentDueDates: eventAllowPaymentPlans ? eventInstallmentDueDates : [],
+            };
+        }
+
+        const divisionPriceCents = typeof selectedDivisionOption.priceCents === 'number'
+            ? normalizePriceCents(selectedDivisionOption.priceCents)
+            : eventPriceCents;
+        const divisionAllowPaymentPlans = typeof selectedDivisionOption.allowPaymentPlans === 'boolean'
+            ? selectedDivisionOption.allowPaymentPlans
+            : eventAllowPaymentPlans;
+        const divisionInstallmentAmounts = divisionAllowPaymentPlans
+            ? (
+                (selectedDivisionOption.installmentAmounts?.length
+                    ? selectedDivisionOption.installmentAmounts
+                    : eventInstallmentAmounts)
+            ).map((value) => normalizePriceCents(value))
+            : [];
+        const divisionInstallmentDueDates = divisionAllowPaymentPlans
+            ? (
+                selectedDivisionOption.installmentDueDates?.length
+                    ? selectedDivisionOption.installmentDueDates
+                    : eventInstallmentDueDates
+            )
+            : [];
+        const divisionInstallmentCount = divisionAllowPaymentPlans
+            ? (
+                typeof selectedDivisionOption.installmentCount === 'number'
+                    ? Math.max(0, Math.trunc(selectedDivisionOption.installmentCount))
+                    : (divisionInstallmentAmounts.length || eventInstallmentCount || 0)
+            )
+            : 0;
+
+        return {
+            priceCents: divisionPriceCents,
+            allowPaymentPlans: divisionAllowPaymentPlans,
+            installmentCount: divisionInstallmentCount,
+            installmentAmounts: divisionInstallmentAmounts,
+            installmentDueDates: divisionInstallmentDueDates,
+        };
+    }, [currentEvent, selectedDivisionOption]);
+    const checkoutEvent = React.useMemo(() => {
+        if (!currentEvent) {
+            return null;
+        }
+        return {
+            ...currentEvent,
+            price: selectedDivisionBilling.priceCents,
+            allowPaymentPlans: selectedDivisionBilling.allowPaymentPlans,
+            installmentCount: selectedDivisionBilling.installmentCount,
+            installmentAmounts: selectedDivisionBilling.installmentAmounts,
+            installmentDueDates: selectedDivisionBilling.installmentDueDates,
+        };
+    }, [currentEvent, selectedDivisionBilling]);
     const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
     const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
     const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
@@ -448,7 +591,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const canRegisterChild = isAdult && !eventHasStarted;
 
     const isEventHost = !!user && currentEvent && user.$id === currentEvent.hostId;
-    const isFreeEvent = currentEvent && currentEvent.price === 0;
+    const isFreeEvent = Boolean(currentEvent) && selectedDivisionBilling.priceCents === 0;
     const isFreeForUser = isFreeEvent || isEventHost;
 
     const isActive = renderInline ? Boolean(isOpen) : isOpen;
@@ -480,15 +623,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             try {
                 const userTeamsAll = await teamService.getTeamsByIds(teamIds, true);
                 const targetSportName = (() => {
-                    if (typeof targetEvent.sport === 'string' && targetEvent.sport.trim().length > 0) {
-                        return targetEvent.sport.trim();
+                    const rawSport = (targetEvent as { sport?: unknown }).sport;
+                    if (typeof rawSport === 'string' && rawSport.trim().length > 0) {
+                        return rawSport.trim();
                     }
                     if (
-                        targetEvent.sport
-                        && typeof targetEvent.sport === 'object'
-                        && typeof (targetEvent.sport as { name?: unknown }).name === 'string'
+                        rawSport
+                        && typeof rawSport === 'object'
+                        && typeof (rawSport as { name?: unknown }).name === 'string'
                     ) {
-                        return ((targetEvent.sport as { name?: string }).name ?? '').trim();
+                        return ((rawSport as { name?: string }).name ?? '').trim();
                     }
                     if (typeof targetEvent.sportId === 'string' && targetEvent.sportId.trim().length > 0) {
                         return targetEvent.sportId.trim();
@@ -686,16 +830,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             throw new Error('Event is not loaded.');
         }
 
-        const priceCents = Math.round(Number(currentEvent.price) || 0);
+        const priceCents = normalizePriceCents(selectedDivisionBilling.priceCents);
         if (priceCents <= 0) {
             throw new Error('This event does not have a price set for a payment plan.');
         }
 
-        const installmentAmounts = Array.isArray(currentEvent.installmentAmounts)
-            ? currentEvent.installmentAmounts.map((amt) => Math.round(Number(amt) || 0))
+        const installmentAmounts = selectedDivisionBilling.allowPaymentPlans
+            ? normalizeInstallmentAmountsCents(selectedDivisionBilling.installmentAmounts)
             : [];
-        const installmentDueDates = Array.isArray(currentEvent.installmentDueDates)
-            ? currentEvent.installmentDueDates as string[]
+        const installmentDueDates = selectedDivisionBilling.allowPaymentPlans
+            ? normalizeInstallmentDueDateValues(selectedDivisionBilling.installmentDueDates)
             : [];
 
         return billService.createBill({
@@ -717,7 +861,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             },
             user,
         });
-    }, [currentEvent, user]);
+    }, [currentEvent, selectedDivisionBilling, user]);
 
     const registerChildForEvent = useCallback(async (childId: string, selection: DivisionSelectionPayload = {}) => {
         if (!currentEvent) {
@@ -864,7 +1008,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return;
         }
 
-        if (currentEvent.allowPaymentPlans) {
+        if (selectedDivisionBilling.allowPaymentPlans) {
             if (intent.mode === 'team') {
                 if (!resolvedTeam?.$id) {
                     throw new Error('Team is required to start a payment plan.');
@@ -881,15 +1025,27 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
         if (isFreeForUser) {
             if (!shouldRegisterSelf) {
-                await paymentService.joinEvent(user, currentEvent, resolvedTeam, undefined, undefined, selection);
+                await paymentService.joinEvent(
+                    user,
+                    checkoutEvent ?? currentEvent,
+                    resolvedTeam,
+                    undefined,
+                    undefined,
+                    selection,
+                );
             }
             await loadEventDetails();
         } else {
-            const paymentIntent = await paymentService.createPaymentIntent(user, currentEvent, resolvedTeam);
+            const paymentIntent = await paymentService.createPaymentIntent(
+                user,
+                checkoutEvent ?? currentEvent,
+                resolvedTeam,
+            );
             setPaymentData(paymentIntent);
             setShowPaymentModal(true);
         }
     }, [
+        checkoutEvent,
         createBillForOwner,
         currentEvent,
         divisionSelectionPayload,
@@ -898,6 +1054,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         loadEventDetails,
         registrationByDivisionType,
         registerChildForEvent,
+        selectedDivisionBilling.allowPaymentPlans,
         selectedTeamId,
         user,
         userTeams,
@@ -1909,7 +2066,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                         </div>
                                         <div>
                                             <span className="text-sm text-gray-600">Price</span>
-                                            <p className="font-medium">{currentEvent.price === 0 ? 'Free' : `${formatPrice(currentEvent.price)}`}</p>
+                                            <p className="font-medium">
+                                                {selectedDivisionBilling.priceCents === 0
+                                                    ? 'Free'
+                                                    : `${formatPrice(selectedDivisionBilling.priceCents)}`}
+                                            </p>
                                         </div>
                                         <div>
                                             <span className="text-sm text-gray-600">Sport</span>
@@ -2256,12 +2417,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 ? 'Unavailable'
                                                                 : confirmingPurchase
                                                             ? 'Confirming purchase…'
-                                                            : joining
-                                                                ? 'Submitting…'
-                                                                : isMinor
-                                                                    ? 'Send'
-                                                                    : currentEvent.price > 0
-                                                                    ? `Join Event - ${formatPrice(currentEvent.price)}`
+                                                                    : joining
+                                                                        ? 'Submitting…'
+                                                                        : isMinor
+                                                                            ? 'Send'
+                                                                    : selectedDivisionBilling.priceCents > 0
+                                                                    ? `Join Event - ${formatPrice(selectedDivisionBilling.priceCents)}`
                                                                     : 'Join Event'}
                                                     </Button>
                                                 )}
@@ -2356,8 +2517,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                                 ? 'Confirming purchase...'
                                                                                 : joining
                                                                                     ? 'Joining...'
-                                                                                    : (!isFreeForUser && currentEvent.price > 0)
-                                                                                        ? `Join for ${formatPrice(currentEvent.price)}`
+                                                                                    : (!isFreeForUser && selectedDivisionBilling.priceCents > 0)
+                                                                                        ? `Join for ${formatPrice(selectedDivisionBilling.priceCents)}`
                                                                                         : 'Join Event'}
                                                                         </Button>
                                                                     )}
@@ -2813,7 +2974,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     setShowPaymentModal(false);
                     setPaymentData(null); // Clear payment data
                 }}
-                event={currentEvent}
+                event={checkoutEvent ?? currentEvent}
                 paymentData={paymentData} // Pass the already-created payment intent
                 onPaymentSuccess={async () => {
                     setPaymentData(null);

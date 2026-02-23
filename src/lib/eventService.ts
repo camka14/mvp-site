@@ -470,6 +470,31 @@ class EventService {
                         : Number.isFinite(Number(entry?.maxParticipants))
                             ? Number(entry.maxParticipants)
                             : undefined,
+                    playoffTeamCount: typeof entry?.playoffTeamCount === 'number'
+                        ? entry.playoffTeamCount
+                        : Number.isFinite(Number(entry?.playoffTeamCount))
+                            ? Number(entry.playoffTeamCount)
+                            : undefined,
+                    allowPaymentPlans: typeof entry?.allowPaymentPlans === 'boolean'
+                        ? entry.allowPaymentPlans
+                        : undefined,
+                    installmentCount: typeof entry?.installmentCount === 'number'
+                        ? entry.installmentCount
+                        : Number.isFinite(Number(entry?.installmentCount))
+                            ? Number(entry.installmentCount)
+                            : undefined,
+                    installmentDueDates: Array.isArray(entry?.installmentDueDates)
+                        ? entry.installmentDueDates
+                            .map((dueDate: unknown) => String(dueDate))
+                            .filter((dueDate: string) => dueDate.length > 0)
+                        : undefined,
+                    installmentAmounts: Array.isArray(entry?.installmentAmounts)
+                        ? entry.installmentAmounts
+                            .map((amount: unknown) => (
+                                typeof amount === 'number' ? amount : Number(amount)
+                            ))
+                            .filter((amount: number) => Number.isFinite(amount))
+                        : undefined,
                     fieldIds: Array.isArray(entry?.fieldIds)
                         ? entry.fieldIds.map((fieldId: unknown) => String(fieldId)).filter(Boolean)
                         : [],

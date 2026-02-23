@@ -32,6 +32,10 @@ export interface Division {
   price?: number;
   maxParticipants?: number;
   playoffTeamCount?: number;
+  allowPaymentPlans?: boolean;
+  installmentCount?: number;
+  installmentDueDates?: string[];
+  installmentAmounts?: number[];
   fieldIds?: string[];
   skillLevel?: string;
   minRating?: number;
@@ -944,6 +948,26 @@ export function toEventPayload(event: Event): EventPayload {
               : Number.isFinite(Number(division.playoffTeamCount))
                 ? Number(division.playoffTeamCount)
                 : undefined,
+          allowPaymentPlans:
+            typeof division.allowPaymentPlans === 'boolean'
+              ? division.allowPaymentPlans
+              : undefined,
+          installmentCount:
+            typeof division.installmentCount === 'number'
+              ? division.installmentCount
+              : Number.isFinite(Number(division.installmentCount))
+                ? Number(division.installmentCount)
+                : undefined,
+          installmentDueDates: Array.isArray(division.installmentDueDates)
+            ? division.installmentDueDates
+                .map((entry) => (typeof entry === 'string' ? entry : String(entry)))
+                .filter((entry) => entry.trim().length > 0)
+            : undefined,
+          installmentAmounts: Array.isArray(division.installmentAmounts)
+            ? division.installmentAmounts
+                .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+                .filter((entry) => Number.isFinite(entry))
+            : undefined,
         };
       })
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));

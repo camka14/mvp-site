@@ -239,6 +239,10 @@ type DivisionDetailForm = {
     price: number;
     maxParticipants: number;
     playoffTeamCount?: number;
+    allowPaymentPlans: boolean;
+    installmentCount?: number;
+    installmentDueDates: string[];
+    installmentAmounts: number[];
     sportId?: string;
     fieldIds?: string[];
     ageCutoffDate?: string;
@@ -397,6 +401,10 @@ const buildDefaultDivisionDetailsForSport = (
         price: 0,
         maxParticipants: 10,
         playoffTeamCount: 10,
+        allowPaymentPlans: false,
+        installmentCount: 0,
+        installmentDueDates: [],
+        installmentAmounts: [],
         sportId: sport || undefined,
         fieldIds: [],
     };
@@ -732,6 +740,22 @@ const normalizeNumber = (value: unknown, fallback?: number): number | undefined 
     return fallback;
 };
 
+const normalizeBoolean = (value: unknown): boolean | undefined => {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        if (value === 1) return true;
+        if (value === 0) return false;
+    }
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+        if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
+    }
+    return undefined;
+};
+
 // Helpers to move between UI dollars and API cents for installment amounts.
 const normalizeInstallmentDollars = (amounts: unknown): number[] => {
     if (!Array.isArray(amounts)) return [];
@@ -748,6 +772,14 @@ const normalizeInstallmentCents = (amounts: unknown): number[] => {
         const safe = Number.isFinite(parsed) ? parsed : 0;
         return Math.round(Math.max(0, safe) * 100);
     });
+};
+
+const normalizeInstallmentDates = (dates: unknown): string[] => {
+    if (!Array.isArray(dates)) return [];
+    return dates
+        .map((entry) => parseDateValue(typeof entry === 'string' ? entry : String(entry ?? '')))
+        .filter((value): value is Date => Boolean(value))
+        .map((value) => value.toISOString());
 };
 
 const formatLatLngLabel = (lat?: number, lng?: number): string => {
@@ -954,6 +986,22 @@ const normalizeDivisionDetailEntry = (
         : Number.isFinite(Number(row.playoffTeamCount))
             ? Number(row.playoffTeamCount)
             : undefined;
+    const rawAllowPaymentPlans = normalizeBoolean(row.allowPaymentPlans) ?? false;
+    const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
+        ? row.installmentAmounts.map((value) => {
+            const parsed = typeof value === 'number' ? value : Number(value);
+            if (!Number.isFinite(parsed)) {
+                return 0;
+            }
+            return priceStoredInCents
+                ? Math.max(0, parsed) / 100
+                : Math.max(0, parsed);
+        })
+        : [];
+    const rawInstallmentDueDates = normalizeInstallmentDates(row.installmentDueDates);
+    const rawInstallmentCount = Number.isFinite(Number(row.installmentCount))
+        ? Math.max(0, Math.trunc(Number(row.installmentCount)))
+        : rawInstallmentAmounts.length;
 
     const baseDetail: DivisionDetailForm = {
         id,
@@ -974,6 +1022,12 @@ const normalizeDivisionDetailEntry = (
         playoffTeamCount: Number.isFinite(rawDivisionPlayoffTeamCount)
             ? Math.max(2, Math.trunc(rawDivisionPlayoffTeamCount as number))
             : undefined,
+        allowPaymentPlans: rawAllowPaymentPlans,
+        installmentCount: rawAllowPaymentPlans
+            ? (rawInstallmentCount || rawInstallmentAmounts.length || 0)
+            : 0,
+        installmentDueDates: rawAllowPaymentPlans ? rawInstallmentDueDates : [],
+        installmentAmounts: rawAllowPaymentPlans ? rawInstallmentAmounts : [],
         sportId: typeof row.sportId === 'string' ? row.sportId : sportInput ?? undefined,
         fieldIds: Array.isArray(row.fieldIds)
             ? row.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
@@ -1087,6 +1141,14 @@ const mapEventToFormState = (event: Event): EventFormState => {
         ? ((event.sport as Sport).name || (event.sport as Sport).$id || '')
         : resolvedSportId) || '';
     const divisionReferenceDate = parseDateValue(event.start ?? null);
+    const defaultEventInstallmentAmounts = normalizeInstallmentDollars(event.installmentAmounts);
+    const defaultEventInstallmentDueDates = Array.isArray(event.installmentDueDates)
+        ? event.installmentDueDates.map((value) => String(value))
+        : [];
+    const defaultEventInstallmentCount = Number.isFinite(event.installmentCount)
+        ? Math.max(0, Math.trunc(event.installmentCount as number))
+        : defaultEventInstallmentAmounts.length;
+    const defaultEventAllowPaymentPlans = Boolean(event.allowPaymentPlans);
 
     const normalizedDivisionIds = Array.isArray(event.divisions)
         ? Array.from(
@@ -1114,19 +1176,55 @@ const mapEventToFormState = (event: Event): EventFormState => {
                 identifier: divisionId,
                 sportInput: resolvedSportInput,
             });
+            const defaultsForSport = getDefaultDivisionTypeSelectionsForSport(resolvedSportInput);
+            const parsedComposite = parseCompositeDivisionTypeId(inferred.divisionTypeId);
+            const skillDivisionTypeId = parsedComposite?.skillDivisionTypeId
+                ?? (inferred.ratingType === 'SKILL' ? inferred.divisionTypeId : defaultsForSport.skillDivisionTypeId);
+            const ageDivisionTypeId = parsedComposite?.ageDivisionTypeId
+                ?? (inferred.ratingType === 'AGE' ? inferred.divisionTypeId : defaultsForSport.ageDivisionTypeId);
+            const skillDivisionTypeName = getDivisionTypeById(
+                resolvedSportInput,
+                skillDivisionTypeId,
+                'SKILL',
+            )?.name ?? defaultsForSport.skillDivisionTypeName;
+            const ageDivisionTypeName = getDivisionTypeById(
+                resolvedSportInput,
+                ageDivisionTypeId,
+                'AGE',
+            )?.name ?? defaultsForSport.ageDivisionTypeName;
+            const compositeDivisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
+            const compositeDivisionTypeName = buildDivisionTypeCompositeName(
+                skillDivisionTypeName,
+                ageDivisionTypeName,
+            );
+            const inferredToken = buildDivisionToken({
+                gender: inferred.gender,
+                ratingType: 'SKILL',
+                divisionTypeId: compositeDivisionTypeId,
+            });
             detailsById.set(divisionId, applyDivisionAgeCutoff({
                 id: divisionId,
-                key: inferred.token,
-                name: inferred.defaultName,
-                divisionTypeId: inferred.divisionTypeId,
-                divisionTypeName: inferred.divisionTypeName,
-                ratingType: inferred.ratingType,
+                key: inferredToken,
+                name: buildDivisionName({ gender: inferred.gender, divisionTypeName: compositeDivisionTypeName }),
+                divisionTypeId: compositeDivisionTypeId,
+                divisionTypeName: compositeDivisionTypeName,
+                ratingType: 'SKILL',
                 gender: inferred.gender,
+                skillDivisionTypeId,
+                skillDivisionTypeName,
+                ageDivisionTypeId,
+                ageDivisionTypeName,
                 price: Number.isFinite(event.price) ? (event.price as number) / 100 : 0,
                 maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
                 playoffTeamCount: Number.isFinite(event.playoffTeamCount)
                     ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
                     : undefined,
+                allowPaymentPlans: defaultEventAllowPaymentPlans,
+                installmentCount: defaultEventAllowPaymentPlans
+                    ? (defaultEventInstallmentCount || defaultEventInstallmentAmounts.length || 0)
+                    : 0,
+                installmentDueDates: defaultEventAllowPaymentPlans ? [...defaultEventInstallmentDueDates] : [],
+                installmentAmounts: defaultEventAllowPaymentPlans ? [...defaultEventInstallmentAmounts] : [],
                 sportId: resolvedSportInput || undefined,
                 fieldIds: [],
             }, resolvedSportInput, divisionReferenceDate));
@@ -1170,6 +1268,50 @@ const mapEventToFormState = (event: Event): EventFormState => {
             : Number.isFinite(event.playoffTeamCount)
                 ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
                 : undefined,
+        allowPaymentPlans: typeof detail.allowPaymentPlans === 'boolean'
+            ? detail.allowPaymentPlans
+            : defaultEventAllowPaymentPlans,
+        installmentAmounts: (() => {
+            const divisionInstallments = Array.isArray(detail.installmentAmounts)
+                ? detail.installmentAmounts.map((value) => {
+                    const parsed = typeof value === 'number' ? value : Number(value);
+                    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+                })
+                : [];
+            if (detail.allowPaymentPlans) {
+                return divisionInstallments;
+            }
+            if (defaultEventAllowPaymentPlans) {
+                return [...defaultEventInstallmentAmounts];
+            }
+            return [];
+        })(),
+        installmentDueDates: (() => {
+            const divisionDueDates = Array.isArray(detail.installmentDueDates)
+                ? detail.installmentDueDates
+                    .map((value) => String(value))
+                    .filter((value) => value.trim().length > 0)
+                : [];
+            if (detail.allowPaymentPlans) {
+                return divisionDueDates;
+            }
+            if (defaultEventAllowPaymentPlans) {
+                return [...defaultEventInstallmentDueDates];
+            }
+            return [];
+        })(),
+        installmentCount: (() => {
+            if (detail.allowPaymentPlans) {
+                if (typeof detail.installmentCount === 'number' && Number.isFinite(detail.installmentCount)) {
+                    return Math.max(0, Math.trunc(detail.installmentCount));
+                }
+                return Array.isArray(detail.installmentAmounts) ? detail.installmentAmounts.length : 0;
+            }
+            if (defaultEventAllowPaymentPlans) {
+                return defaultEventInstallmentCount || defaultEventInstallmentAmounts.length || 0;
+            }
+            return 0;
+        })(),
     }));
     const finalDivisionIds = normalizedDivisionDetailsWithCapacity.map((detail) => detail.id);
 
@@ -1342,6 +1484,10 @@ const eventFormSchema = z
                 price: z.number().min(0),
                 maxParticipants: z.number().int().min(2),
                 playoffTeamCount: z.number().optional(),
+                allowPaymentPlans: z.boolean().default(false),
+                installmentCount: z.number().int().min(0).default(0),
+                installmentDueDates: z.array(z.string()).default([]),
+                installmentAmounts: z.array(z.number().min(0)).default([]),
                 sportId: z.string().optional(),
                 fieldIds: z.array(z.string()).optional(),
                 ageCutoffDate: z.string().optional(),
@@ -1468,6 +1614,46 @@ const eventFormSchema = z
                     path: ['installmentAmounts'],
                 });
             }
+        }
+
+        if (!values.singleDivision) {
+            values.divisionDetails.forEach((detail, index) => {
+                if (!detail.allowPaymentPlans) {
+                    return;
+                }
+                const amounts = Array.isArray(detail.installmentAmounts) ? detail.installmentAmounts : [];
+                const dueDates = Array.isArray(detail.installmentDueDates) ? detail.installmentDueDates : [];
+                const expectedCount = Number.isFinite(detail.installmentCount) ? detail.installmentCount : amounts.length;
+                if (expectedCount > 0 && amounts.length !== expectedCount) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        message: 'Division installment count must match number of installments',
+                        path: ['divisionDetails', index, 'installmentCount'],
+                    });
+                }
+                if (!amounts.length) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        message: 'Add at least one division installment amount',
+                        path: ['divisionDetails', index, 'installmentAmounts'],
+                    });
+                }
+                if (dueDates.length && dueDates.length !== amounts.length) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        message: 'Each division installment needs a due date',
+                        path: ['divisionDetails', index, 'installmentDueDates'],
+                    });
+                }
+                const total = amounts.reduce((sum, amount) => sum + (Number.isFinite(amount) ? Number(amount) : 0), 0);
+                if (detail.price > 0 && Math.round(total * 100) !== Math.round(detail.price * 100)) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        message: 'Division installment amounts must add up to the division price',
+                        path: ['divisionDetails', index, 'installmentAmounts'],
+                    });
+                }
+            });
         }
 
         if (typeof values.minAge === 'number' && typeof values.maxAge === 'number') {
@@ -1792,6 +1978,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     playoffTeamCount: Number.isFinite((defaults as any).playoffTeamCount)
                         ? Math.max(2, Math.trunc((defaults as any).playoffTeamCount))
                         : undefined,
+                    allowPaymentPlans: Boolean((defaults as any).allowPaymentPlans),
+                    installmentCount: Number.isFinite((defaults as any).installmentCount)
+                        ? Math.max(0, Math.trunc((defaults as any).installmentCount))
+                        : normalizeInstallmentDollars((defaults as any).installmentAmounts).length,
+                    installmentDueDates: Array.isArray((defaults as any).installmentDueDates)
+                        ? (defaults as any).installmentDueDates.map((value: unknown) => String(value))
+                        : [],
+                    installmentAmounts: normalizeInstallmentDollars((defaults as any).installmentAmounts),
                     sportId: resolveSportInput(next.sportConfig ?? next.sportId) || undefined,
                     fieldIds: [],
                 }, resolveSportInput(next.sportConfig ?? next.sportId), parseDateValue(next.start ?? null));
@@ -2371,6 +2565,88 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [getValues, setValue],
     );
 
+    const syncDivisionInstallmentCount = useCallback((count: number) => {
+        setDivisionEditor((prev) => {
+            const safeCount = Math.max(1, Math.floor(Number(count) || 0));
+            const amounts = [...(prev.installmentAmounts || [])];
+            const dueDates = [...(prev.installmentDueDates || [])];
+            const price = Math.max(0, Number(prev.price) || 0);
+            const fallbackDueDate = eventData.start;
+
+            while (amounts.length < safeCount) {
+                amounts.push(price);
+                dueDates.push(fallbackDueDate);
+            }
+            while (amounts.length > safeCount) {
+                amounts.pop();
+                dueDates.pop();
+            }
+
+            return {
+                ...prev,
+                installmentCount: safeCount,
+                installmentAmounts: amounts,
+                installmentDueDates: dueDates,
+                error: null,
+            };
+        });
+    }, [eventData.start]);
+
+    const setDivisionInstallmentAmount = useCallback((index: number, value: number) => {
+        setDivisionEditor((prev) => {
+            const amounts = [...(prev.installmentAmounts || [])];
+            if (index < 0 || index >= amounts.length) {
+                return prev;
+            }
+            amounts[index] = Number.isFinite(value) ? Math.max(0, value) : 0;
+            return {
+                ...prev,
+                installmentAmounts: amounts,
+                error: null,
+            };
+        });
+    }, []);
+
+    const setDivisionInstallmentDueDate = useCallback((index: number, value: Date | string | null) => {
+        setDivisionEditor((prev) => {
+            const dueDates = [...(prev.installmentDueDates || [])];
+            if (index < 0 || index >= dueDates.length) {
+                return prev;
+            }
+            if (value instanceof Date) {
+                dueDates[index] = value.toISOString();
+            } else if (typeof value === 'string') {
+                dueDates[index] = value;
+            } else {
+                dueDates[index] = '';
+            }
+            return {
+                ...prev,
+                installmentDueDates: dueDates,
+                error: null,
+            };
+        });
+    }, []);
+
+    const removeDivisionInstallment = useCallback((index: number) => {
+        setDivisionEditor((prev) => {
+            const amounts = [...(prev.installmentAmounts || [])];
+            const dueDates = [...(prev.installmentDueDates || [])];
+            if (amounts.length <= 1 || index < 0 || index >= amounts.length) {
+                return prev;
+            }
+            amounts.splice(index, 1);
+            dueDates.splice(index, 1);
+            return {
+                ...prev,
+                installmentAmounts: amounts,
+                installmentDueDates: dueDates,
+                installmentCount: amounts.length,
+                error: null,
+            };
+        });
+    }, []);
+
     useEffect(() => {
         const ids = eventData.refereeIds || [];
         const refs = eventData.referees || [];
@@ -2583,6 +2859,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         price: number;
         maxParticipants: number;
         playoffTeamCount: number;
+        allowPaymentPlans: boolean;
+        installmentCount: number;
+        installmentDueDates: string[];
+        installmentAmounts: number[];
         nameTouched: boolean;
         error: string | null;
     }>({
@@ -2594,6 +2874,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         price: 0,
         maxParticipants: 10,
         playoffTeamCount: 10,
+        allowPaymentPlans: false,
+        installmentCount: 0,
+        installmentDueDates: [],
+        installmentAmounts: [],
         nameTouched: false,
         error: null,
     });
@@ -2766,11 +3050,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setLeagueData((prev) => ({
             ...prev,
             includePlayoffs: true,
-            playoffTeamCount: undefined,
+            playoffTeamCount: typeof prev.playoffTeamCount === 'number'
+                ? Math.max(2, Math.trunc(prev.playoffTeamCount))
+                : Math.max(2, Math.trunc(eventData.maxParticipants || 2)),
         }));
     }, [eventData.maxParticipants, eventData.singleDivision, leagueData.playoffTeamCount, setLeagueData]);
 
     const resetDivisionEditor = useCallback(() => {
+        const defaultInstallmentAmounts = eventData.allowPaymentPlans
+            ? (eventData.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+            : [];
+        const defaultInstallmentDueDates = eventData.allowPaymentPlans
+            ? [...(eventData.installmentDueDates || [])]
+            : [];
         setDivisionEditor({
             editingId: null,
             gender: '',
@@ -2787,10 +3079,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         : eventData.maxParticipants || 2,
                 ),
             ),
+            allowPaymentPlans: Boolean(eventData.allowPaymentPlans),
+            installmentCount: eventData.allowPaymentPlans
+                ? (eventData.installmentCount || defaultInstallmentAmounts.length || 0)
+                : 0,
+            installmentDueDates: defaultInstallmentDueDates,
+            installmentAmounts: defaultInstallmentAmounts,
             nameTouched: false,
             error: null,
         });
-    }, [defaultDivisionTypeSelections.ageDivisionTypeId, defaultDivisionTypeSelections.skillDivisionTypeId, eventData.maxParticipants, eventData.price, leagueData.playoffTeamCount]);
+    }, [
+        defaultDivisionTypeSelections.ageDivisionTypeId,
+        defaultDivisionTypeSelections.skillDivisionTypeId,
+        eventData.allowPaymentPlans,
+        eventData.installmentAmounts,
+        eventData.installmentCount,
+        eventData.installmentDueDates,
+        eventData.maxParticipants,
+        eventData.price,
+        leagueData.playoffTeamCount,
+    ]);
 
     const getDivisionTypeNameForEditor = useCallback(
         (ratingType: 'AGE' | 'SKILL', divisionTypeId: string): string => {
@@ -2852,6 +3160,25 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const fallbackSelections = getDefaultDivisionTypeSelectionsForSport(
             resolveSportInput(eventData.sportConfig ?? eventData.sportId),
         );
+        const defaultInstallmentAmounts = eventData.allowPaymentPlans
+            ? (eventData.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+            : [];
+        const defaultInstallmentDueDates = eventData.allowPaymentPlans
+            ? [...(eventData.installmentDueDates || [])]
+            : [];
+        const detailAllowPaymentPlans = typeof detail.allowPaymentPlans === 'boolean'
+            ? detail.allowPaymentPlans
+            : Boolean(eventData.allowPaymentPlans);
+        const detailInstallmentAmounts = detailAllowPaymentPlans
+            ? ((detail.installmentAmounts?.length
+                ? detail.installmentAmounts
+                : defaultInstallmentAmounts).map((value) => Math.max(0, Number(value) || 0)))
+            : [];
+        const detailInstallmentDueDates = detailAllowPaymentPlans
+            ? (detail.installmentDueDates?.length
+                ? [...detail.installmentDueDates]
+                : defaultInstallmentDueDates)
+            : [];
         setDivisionEditor({
             editingId: detail.id,
             gender: detail.gender,
@@ -2873,10 +3200,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         || 2,
                 ),
             ),
+            allowPaymentPlans: detailAllowPaymentPlans,
+            installmentCount: detailAllowPaymentPlans
+                ? (detail.installmentCount || detailInstallmentAmounts.length || 0)
+                : 0,
+            installmentDueDates: detailInstallmentDueDates,
+            installmentAmounts: detailInstallmentAmounts,
             nameTouched: true,
             error: null,
         });
-    }, [eventData.divisionDetails, eventData.maxParticipants, eventData.sportConfig, eventData.sportId]);
+    }, [
+        eventData.allowPaymentPlans,
+        eventData.divisionDetails,
+        eventData.installmentAmounts,
+        eventData.installmentDueDates,
+        eventData.maxParticipants,
+        eventData.sportConfig,
+        eventData.sportId,
+    ]);
 
     const handleRemoveDivisionDetail = useCallback((divisionId: string) => {
         const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
@@ -2930,6 +3271,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return Math.max(2, Math.trunc(divisionEditor.playoffTeamCount || 0));
         })();
+        const normalizedDivisionAllowPaymentPlans = eventData.singleDivision
+            ? Boolean(eventData.allowPaymentPlans)
+            : Boolean(divisionEditor.allowPaymentPlans);
+        const normalizedDivisionInstallmentAmounts = normalizedDivisionAllowPaymentPlans
+            ? (eventData.singleDivision
+                ? (eventData.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+                : (divisionEditor.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0)))
+            : [];
+        const normalizedDivisionInstallmentDueDates = normalizedDivisionAllowPaymentPlans
+            ? (eventData.singleDivision
+                ? [...(eventData.installmentDueDates || [])]
+                : [...(divisionEditor.installmentDueDates || [])])
+            : [];
+        const normalizedDivisionInstallmentCount = normalizedDivisionAllowPaymentPlans
+            ? (eventData.singleDivision
+                ? (eventData.installmentCount || normalizedDivisionInstallmentAmounts.length || 0)
+                : (divisionEditor.installmentCount || normalizedDivisionInstallmentAmounts.length || 0))
+            : 0;
 
         if (!gender || !skillDivisionTypeId || !ageDivisionTypeId) {
             setDivisionEditor((prev) => ({
@@ -2959,6 +3318,49 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ) {
             setDivisionEditor((prev) => ({ ...prev, error: 'Division playoff team count must be at least 2.' }));
             return;
+        }
+        if (!eventData.singleDivision && normalizedDivisionAllowPaymentPlans) {
+            if (!normalizedDivisionInstallmentAmounts.length) {
+                setDivisionEditor((prev) => ({
+                    ...prev,
+                    error: 'Add at least one installment amount for this division.',
+                }));
+                return;
+            }
+            if (
+                normalizedDivisionInstallmentCount > 0
+                && normalizedDivisionInstallmentAmounts.length !== normalizedDivisionInstallmentCount
+            ) {
+                setDivisionEditor((prev) => ({
+                    ...prev,
+                    error: 'Division installment count must match number of installment rows.',
+                }));
+                return;
+            }
+            if (
+                normalizedDivisionInstallmentDueDates.length
+                && normalizedDivisionInstallmentDueDates.length !== normalizedDivisionInstallmentAmounts.length
+            ) {
+                setDivisionEditor((prev) => ({
+                    ...prev,
+                    error: 'Each division installment amount needs a due date.',
+                }));
+                return;
+            }
+            const total = normalizedDivisionInstallmentAmounts.reduce(
+                (sum, amount) => sum + (Number.isFinite(amount) ? amount : 0),
+                0,
+            );
+            if (
+                normalizedDivisionPrice > 0
+                && Math.round(total * 100) !== Math.round(normalizedDivisionPrice * 100)
+            ) {
+                setDivisionEditor((prev) => ({
+                    ...prev,
+                    error: 'Division installment amounts must add up to the division price.',
+                }));
+                return;
+            }
         }
 
         const token = buildDivisionToken({ gender, ratingType, divisionTypeId });
@@ -2993,6 +3395,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             price: normalizedDivisionPrice,
             maxParticipants: normalizedDivisionMaxParticipants,
             playoffTeamCount: normalizedDivisionPlayoffTeamCount,
+            allowPaymentPlans: normalizedDivisionAllowPaymentPlans,
+            installmentCount: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentCount : 0,
+            installmentDueDates: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueDates : [],
+            installmentAmounts: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentAmounts : [],
             sportId: sportInput,
             fieldIds: [],
         }, sportInput, referenceDate);
@@ -3033,6 +3439,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.singleDivision,
         eventData.teamSignup,
         eventData.eventType,
+        eventData.allowPaymentPlans,
+        eventData.installmentAmounts,
+        eventData.installmentCount,
+        eventData.installmentDueDates,
         eventData.price,
         eventData.maxParticipants,
         leagueData.includePlayoffs,
@@ -3926,6 +4336,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     playoffTeamCount: Number.isFinite(source.leagueData?.playoffTeamCount)
                         ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
                         : undefined,
+                    allowPaymentPlans: Boolean(source.allowPaymentPlans),
+                    installmentCount: source.allowPaymentPlans
+                        ? (source.installmentCount || source.installmentAmounts.length || 0)
+                        : 0,
+                    installmentDueDates: source.allowPaymentPlans ? [...(source.installmentDueDates || [])] : [],
+                    installmentAmounts: source.allowPaymentPlans
+                        ? (source.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+                        : [],
                     sportId: sportInput || undefined,
                     fieldIds: [],
                 } satisfies DivisionDetailForm, sportInput, divisionReferenceDate);
@@ -3965,6 +4383,40 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     : (Number.isFinite(detail.playoffTeamCount)
                         ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
                         : undefined),
+            allowPaymentPlans: singleDivisionEnabled
+                ? Boolean(source.allowPaymentPlans)
+                : Boolean(detail.allowPaymentPlans),
+            installmentCount: (() => {
+                if (singleDivisionEnabled) {
+                    return source.allowPaymentPlans
+                        ? (source.installmentCount || source.installmentAmounts.length || 0)
+                        : 0;
+                }
+                if (!detail.allowPaymentPlans) {
+                    return 0;
+                }
+                return detail.installmentCount || detail.installmentAmounts.length || 0;
+            })(),
+            installmentAmounts: (() => {
+                if (singleDivisionEnabled) {
+                    return source.allowPaymentPlans
+                        ? (source.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+                        : [];
+                }
+                if (!detail.allowPaymentPlans) {
+                    return [];
+                }
+                return (detail.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0));
+            })(),
+            installmentDueDates: (() => {
+                if (singleDivisionEnabled) {
+                    return source.allowPaymentPlans ? [...(source.installmentDueDates || [])] : [];
+                }
+                if (!detail.allowPaymentPlans) {
+                    return [];
+                }
+                return Array.isArray(detail.installmentDueDates) ? [...detail.installmentDueDates] : [];
+            })(),
         }));
 
         const draft: Partial<Event> = {
@@ -4006,6 +4458,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 playoffTeamCount: Number.isFinite(detail.playoffTeamCount)
                     ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
                     : undefined,
+                allowPaymentPlans: Boolean(detail.allowPaymentPlans),
+                installmentCount: detail.allowPaymentPlans
+                    ? (detail.installmentCount || detail.installmentAmounts.length || 0)
+                    : 0,
+                installmentAmounts: detail.allowPaymentPlans
+                    ? normalizeInstallmentCents(detail.installmentAmounts)
+                    : [],
+                installmentDueDates: detail.allowPaymentPlans
+                    ? (Array.isArray(detail.installmentDueDates)
+                        ? detail.installmentDueDates
+                        : [])
+                    : [],
             })),
             cancellationRefundHours: source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
@@ -4152,7 +4616,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             draft.gamesPerOpponent = source.leagueData.gamesPerOpponent;
             draft.includePlayoffs = source.leagueData.includePlayoffs;
-            draft.playoffTeamCount = source.leagueData.includePlayoffs && source.singleDivision
+            draft.playoffTeamCount = source.leagueData.includePlayoffs
                 ? (Number.isFinite(source.leagueData.playoffTeamCount)
                     ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
                     : undefined)
@@ -4785,7 +5249,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         control={control}
                                         render={({ field }) => (
                                             <NumberInput
-                                                label="Price ($)"
+                                                label={eventData.singleDivision ? 'Price ($)' : 'Default Price ($)'}
                                                 min={0}
                                                 max={MAX_PRICE_NUMBER}
                                                 step={0.01}
@@ -4793,10 +5257,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 maw={220}
                                                 clampBehavior="strict"
                                                 onChange={(val) => {
-                                                    if (isImmutableField('price') || !eventData.singleDivision) return;
+                                                    if (isImmutableField('price')) return;
                                                     field.onChange(Number(val) || 0);
                                                 }}
-                                                disabled={!hasStripeAccount || isImmutableField('price') || !eventData.singleDivision}
+                                                disabled={!hasStripeAccount || isImmutableField('price')}
                                                 decimalScale={2}
                                                 fixedDecimalScale
                                             />
@@ -4829,7 +5293,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
                                     <p className="text-sm text-gray-500">
                                         {!eventData.singleDivision
-                                            ? 'Using per-division pricing'
+                                            ? `Used as the default for new divisions (${eventData.price === 0 ? 'Free' : `$${eventData.price?.toFixed(2)}`})`
                                             : eventData.price === 0
                                                 ? 'Free'
                                                 : `$${eventData.price?.toFixed(2)}`}
@@ -4842,15 +5306,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         control={control}
                                         render={({ field, fieldState }) => (
                                             <NumberInput
-                                                label={eventData.teamSignup ? 'Max Teams' : 'Max Participants'}
+                                                label={eventData.singleDivision
+                                                    ? (eventData.teamSignup ? 'Max Teams' : 'Max Participants')
+                                                    : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
                                                 min={2}
                                                 max={MAX_STANDARD_NUMBER}
                                                 value={field.value}
                                                 maw={180}
                                                 clampBehavior="strict"
-                                                disabled={isImmutableField('maxParticipants') || !eventData.singleDivision}
+                                                disabled={isImmutableField('maxParticipants')}
                                                 onChange={(val) => {
-                                                    if (isImmutableField('maxParticipants') || !eventData.singleDivision) return;
+                                                    if (isImmutableField('maxParticipants')) return;
                                                     field.onChange(Number(val) || 10);
                                                 }}
                                                 error={fieldState.error?.message as string | undefined}
@@ -4904,28 +5370,27 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
                                     {leagueData.includePlayoffs && (
                                         <div className="mt-4 border-l-2 border-slate-200 pl-4">
-                                            {eventData.singleDivision ? (
-                                                <NumberInput
-                                                    label="Playoff Team Count"
-                                                    min={2}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    maw={180}
-                                                    value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-                                                    disabled={isImmutableField('playoffTeamCount')}
-                                                    clampBehavior="strict"
-                                                    onChange={(value) => {
-                                                        if (isImmutableField('playoffTeamCount')) return;
-                                                        const numeric = typeof value === 'number' ? value : Number(value);
-                                                        setLeagueData((prev) => ({
-                                                            ...prev,
-                                                            playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
-                                                        }));
-                                                    }}
-                                                    error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
-                                                />
-                                            ) : (
-                                                <Text size="sm" c="dimmed">
-                                                    Playoff team count is configured per division in Division Settings.
+                                            <NumberInput
+                                                label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
+                                                min={2}
+                                                max={MAX_STANDARD_NUMBER}
+                                                maw={220}
+                                                value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                                                disabled={isImmutableField('playoffTeamCount')}
+                                                clampBehavior="strict"
+                                                onChange={(value) => {
+                                                    if (isImmutableField('playoffTeamCount')) return;
+                                                    const numeric = typeof value === 'number' ? value : Number(value);
+                                                    setLeagueData((prev) => ({
+                                                        ...prev,
+                                                        playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
+                                                    }));
+                                                }}
+                                                error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
+                                            />
+                                            {!eventData.singleDivision && (
+                                                <Text size="xs" c="dimmed" mt="xs">
+                                                    Existing divisions keep their own playoff counts. This value is used as the default for new divisions.
                                                 </Text>
                                             )}
                                         </div>
@@ -5030,9 +5495,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
                                 <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
                                     <div>
-                                        <Title order={6}>Payment Plans</Title>
+                                        <Title order={6}>{eventData.singleDivision ? 'Payment Plans' : 'Default Payment Plan'}</Title>
                                         <Text size="sm" c="dimmed">
-                                            Offer installments. Total installment amount must equal event price.
+                                            {eventData.singleDivision
+                                                ? 'Offer installments. Total installment amount must equal event price.'
+                                                : 'Set payment-plan defaults for new divisions. Total installment amount must equal the default event price.'}
                                         </Text>
                                     </div>
                                     <Switch
@@ -5052,7 +5519,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
                                         <Group align="flex-start" gap="md">
                                             <NumberInput
-                                                label="Installments"
+                                                label={eventData.singleDivision ? 'Installments' : 'Default Installments'}
                                                 min={1}
                                                 max={MAX_STANDARD_NUMBER}
                                                 value={eventData.installmentCount || eventData.installmentAmounts.length || 1}
@@ -5553,11 +6020,122 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         />
                                     )}
                                 </div>
+                                {!eventData.singleDivision && (
+                                    <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                        <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
+                                            <div>
+                                                <Text fw={600} size="sm">Division Payment Plan</Text>
+                                                <Text size="xs" c="dimmed">
+                                                    Configure installments for this division only.
+                                                </Text>
+                                            </div>
+                                            <Switch
+                                                checked={divisionEditor.allowPaymentPlans}
+                                                disabled={isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount}
+                                                onChange={(event) => {
+                                                    if (isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount) {
+                                                        return;
+                                                    }
+                                                    const checked = event.currentTarget.checked;
+                                                    setDivisionEditor((prev) => ({
+                                                        ...prev,
+                                                        allowPaymentPlans: checked,
+                                                        installmentCount: checked
+                                                            ? (prev.installmentCount || prev.installmentAmounts.length || 1)
+                                                            : 0,
+                                                        installmentDueDates: checked ? prev.installmentDueDates : [],
+                                                        installmentAmounts: checked ? prev.installmentAmounts : [],
+                                                        error: null,
+                                                    }));
+                                                    if (checked && (!divisionEditor.installmentAmounts || divisionEditor.installmentAmounts.length === 0)) {
+                                                        syncDivisionInstallmentCount(divisionEditor.installmentCount || 1);
+                                                    }
+                                                }}
+                                            />
+                                        </Group>
+
+                                        {divisionEditor.allowPaymentPlans && (
+                                            <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
+                                                <NumberInput
+                                                    label="Installments"
+                                                    min={1}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={divisionEditor.installmentCount || divisionEditor.installmentAmounts.length || 1}
+                                                    onChange={(value) => syncDivisionInstallmentCount(Number(value) || 1)}
+                                                    clampBehavior="strict"
+                                                    maw={180}
+                                                />
+                                                <Stack gap="sm">
+                                                    {(divisionEditor.installmentAmounts || []).map((amount, idx) => {
+                                                        const dueDateValue = parseLocalDateTime(
+                                                            divisionEditor.installmentDueDates?.[idx] || eventData.start,
+                                                        );
+                                                        return (
+                                                            <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
+                                                                <DateTimePicker
+                                                                    label={`Installment ${idx + 1} due`}
+                                                                    value={dueDateValue}
+                                                                    onChange={(value) => setDivisionInstallmentDueDate(idx, value)}
+                                                                    valueFormat="MM/DD/YYYY hh:mm A"
+                                                                    timePickerProps={{
+                                                                        withDropdown: true,
+                                                                        format: '12h',
+                                                                    }}
+                                                                    style={{ flex: '1 1 260px', maxWidth: 280 }}
+                                                                />
+                                                                <NumberInput
+                                                                    label="Amount"
+                                                                    min={0}
+                                                                    max={MAX_PRICE_NUMBER}
+                                                                    step={0.01}
+                                                                    value={amount}
+                                                                    onChange={(value) => setDivisionInstallmentAmount(idx, Number(value) || 0)}
+                                                                    decimalScale={2}
+                                                                    fixedDecimalScale
+                                                                    clampBehavior="strict"
+                                                                    maw={180}
+                                                                />
+                                                                {divisionEditor.installmentAmounts.length > 1 && (
+                                                                    <ActionIcon
+                                                                        variant="light"
+                                                                        color="red"
+                                                                        aria-label="Remove division installment"
+                                                                        onClick={() => removeDivisionInstallment(idx)}
+                                                                    >
+                                                                        ×
+                                                                    </ActionIcon>
+                                                                )}
+                                                            </Group>
+                                                        );
+                                                    })}
+                                                    <Group justify="space-between" align="center">
+                                                        <Button
+                                                            variant="light"
+                                                            onClick={() => syncDivisionInstallmentCount((divisionEditor.installmentAmounts?.length || 0) + 1)}
+                                                        >
+                                                            Add installment
+                                                        </Button>
+                                                        <Text
+                                                            size="sm"
+                                                            c={Math.round(((divisionEditor.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) - divisionEditor.price) * 100) === 0
+                                                                ? 'dimmed'
+                                                                : 'red'}
+                                                        >
+                                                            Installment total: $
+                                                            {((divisionEditor.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0)).toFixed(2)} / $
+                                                            {(divisionEditor.price || 0).toFixed(2)}
+                                                        </Text>
+                                                    </Group>
+                                                </Stack>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 {eventData.singleDivision && (
                                     <Text size="xs" c="dimmed">
                                         {eventData.eventType === 'LEAGUE'
-                                            ? 'Division price, capacity, and playoff team count mirror event-level values while single division is enabled.'
-                                            : 'Division price and capacity mirror event-level values while single division is enabled.'}
+                                            ? 'Division price, capacity, payment plan, and playoff team count mirror event-level values while single division is enabled.'
+                                            : 'Division price, capacity, and payment plan mirror event-level values while single division is enabled.'}
                                     </Text>
                                 )}
                                 <Group justify="space-between" align="center">
@@ -5604,6 +6182,23 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             : (typeof detail.playoffTeamCount === 'number'
                                                 ? Math.max(2, Math.trunc(detail.playoffTeamCount))
                                                 : undefined);
+                                        const effectiveDivisionAllowPaymentPlans = eventData.singleDivision
+                                            ? Boolean(eventData.allowPaymentPlans)
+                                            : Boolean(detail.allowPaymentPlans);
+                                        const effectiveDivisionInstallmentAmounts = effectiveDivisionAllowPaymentPlans
+                                            ? (
+                                                eventData.singleDivision
+                                                    ? (eventData.installmentAmounts || [])
+                                                    : (detail.installmentAmounts || [])
+                                            ).map((value) => Math.max(0, Number(value) || 0))
+                                            : [];
+                                        const effectiveDivisionInstallmentCount = effectiveDivisionAllowPaymentPlans
+                                            ? (
+                                                eventData.singleDivision
+                                                    ? (eventData.installmentCount || effectiveDivisionInstallmentAmounts.length || 0)
+                                                    : (detail.installmentCount || effectiveDivisionInstallmentAmounts.length || 0)
+                                            )
+                                            : 0;
                                         return (
                                             <Paper key={detail.id} withBorder radius="md" p="sm">
                                                 <Group justify="space-between" align="center" gap="sm">
@@ -5614,6 +6209,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         </Text>
                                                         <Text size="xs" c="dimmed">
                                                             {`Price: $${effectiveDivisionPrice.toFixed(2)} • ${eventData.teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}
+                                                        </Text>
+                                                        <Text size="xs" c="dimmed">
+                                                            {effectiveDivisionAllowPaymentPlans
+                                                                ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling $${effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0).toFixed(2)}`
+                                                                : 'Payment plan: disabled'}
                                                         </Text>
                                                         {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && (
                                                             <Text size="xs" c="dimmed">

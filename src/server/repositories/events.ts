@@ -211,6 +211,10 @@ type DivisionDetailPayload = {
   price?: number | null;
   maxParticipants?: number | null;
   playoffTeamCount?: number | null;
+  allowPaymentPlans?: boolean | null;
+  installmentCount?: number | null;
+  installmentDueDates?: string[];
+  installmentAmounts?: number[];
   ageCutoffDate: string | null;
   ageCutoffLabel: string | null;
   ageCutoffSource: string | null;
@@ -262,6 +266,19 @@ const normalizeDivisionDetailsPayload = (
       const rawPrice = coerceNullableNumber(row.price);
       const rawMaxParticipants = coerceNullableNumber(row.maxParticipants);
       const rawPlayoffTeamCount = coerceNullableNumber(row.playoffTeamCount);
+      const rawAllowPaymentPlans = coerceNullableBoolean(row.allowPaymentPlans);
+      const rawInstallmentCount = coerceNullableNumber(row.installmentCount);
+      const rawInstallmentDueDates = Array.isArray(row.installmentDueDates)
+        ? row.installmentDueDates
+          .map((value) => normalizeIsoDateString(value))
+          .filter((value): value is string => Boolean(value))
+        : undefined;
+      const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
+        ? row.installmentAmounts
+          .map((value) => (typeof value === 'number' ? value : Number(value)))
+          .filter((value) => Number.isFinite(value))
+          .map((value) => Math.max(0, Math.round(value)))
+        : undefined;
 
       const detail: DivisionDetailPayload = {
         id,
@@ -282,6 +299,14 @@ const normalizeDivisionDetailsPayload = (
           : rawPlayoffTeamCount === null
             ? null
             : Math.max(0, Math.trunc(rawPlayoffTeamCount)),
+        allowPaymentPlans: rawAllowPaymentPlans,
+        installmentCount: rawInstallmentCount === undefined
+          ? undefined
+          : rawInstallmentCount === null
+            ? null
+            : Math.max(0, Math.trunc(rawInstallmentCount)),
+        installmentDueDates: rawInstallmentDueDates,
+        installmentAmounts: rawInstallmentAmounts,
         ageCutoffDate: normalizeIsoDateString(row.ageCutoffDate),
         ageCutoffLabel: typeof row.ageCutoffLabel === 'string' ? row.ageCutoffLabel : null,
         ageCutoffSource: typeof row.ageCutoffSource === 'string' ? row.ageCutoffSource : null,
@@ -516,6 +541,39 @@ const normalizeLeagueScoringConfigPayload = (
   }
 
   return { id: configuredId, data };
+};
+
+const normalizeInstallmentAmountList = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+    .filter((entry) => Number.isFinite(entry))
+    .map((entry) => Math.max(0, Math.round(entry)));
+};
+
+const normalizeInstallmentDateList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => normalizeIsoDateString(entry))
+    .filter((entry): entry is string => Boolean(entry));
+};
+
+const resolveDivisionValue = <T>(
+  incoming: T | undefined,
+  existing: T | undefined,
+  fallback: T | undefined,
+): T | undefined => {
+  if (incoming !== undefined) {
+    return incoming;
+  }
+  if (existing !== undefined) {
+    return existing;
+  }
+  return fallback;
 };
 
 const normalizeIsoDateString = (value: unknown): string | null => {
@@ -1001,6 +1059,13 @@ export const syncEventDivisions = async (
     organizationId?: string | null;
     divisionFieldMap?: Record<string, string[]>;
     divisionDetails?: unknown[];
+    defaultPrice?: number | null;
+    defaultMaxParticipants?: number | null;
+    defaultPlayoffTeamCount?: number | null;
+    defaultAllowPaymentPlans?: boolean | null;
+    defaultInstallmentCount?: number | null;
+    defaultInstallmentDueDates?: string[];
+    defaultInstallmentAmounts?: number[];
   },
   client: PrismaLike = prisma,
 ) => {
@@ -1042,6 +1107,10 @@ export const syncEventDivisions = async (
       price: true,
       maxParticipants: true,
       playoffTeamCount: true,
+      allowPaymentPlans: true,
+      installmentCount: true,
+      installmentDueDates: true,
+      installmentAmounts: true,
       divisionTypeId: true,
       divisionTypeName: true,
       ratingType: true,
@@ -1148,15 +1217,59 @@ export const syncEventDivisions = async (
     const ageCutoffSource = detail?.ageCutoffSource
       ?? existing?.ageCutoffSource
       ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null);
-    const price = detail?.price
-      ?? existing?.price
-      ?? null;
-    const maxParticipants = detail?.maxParticipants
-      ?? existing?.maxParticipants
-      ?? null;
-    const playoffTeamCount = detail?.playoffTeamCount
-      ?? existing?.playoffTeamCount
-      ?? null;
+    const price = resolveDivisionValue(
+      detail?.price,
+      existing?.price,
+      params.defaultPrice ?? undefined,
+    ) ?? null;
+    const maxParticipants = resolveDivisionValue(
+      detail?.maxParticipants,
+      existing?.maxParticipants,
+      params.defaultMaxParticipants ?? undefined,
+    ) ?? null;
+    const playoffTeamCount = resolveDivisionValue(
+      detail?.playoffTeamCount,
+      existing?.playoffTeamCount,
+      params.defaultPlayoffTeamCount ?? undefined,
+    ) ?? null;
+    const allowPaymentPlans = resolveDivisionValue(
+      detail?.allowPaymentPlans,
+      existing?.allowPaymentPlans ?? undefined,
+      params.defaultAllowPaymentPlans ?? undefined,
+    ) ?? null;
+
+    const fallbackInstallmentAmounts = normalizeInstallmentAmountList(params.defaultInstallmentAmounts ?? []);
+    const fallbackInstallmentDueDates = normalizeInstallmentDateList(params.defaultInstallmentDueDates ?? []);
+    const installmentAmounts = allowPaymentPlans
+      ? resolveDivisionValue(
+        detail?.installmentAmounts,
+        Array.isArray(existing?.installmentAmounts)
+          ? normalizeInstallmentAmountList(existing.installmentAmounts)
+          : undefined,
+        fallbackInstallmentAmounts,
+      ) ?? []
+      : [];
+    const installmentDueDates = allowPaymentPlans
+      ? resolveDivisionValue(
+        detail?.installmentDueDates,
+        Array.isArray(existing?.installmentDueDates)
+          ? normalizeInstallmentDateList(existing.installmentDueDates)
+          : undefined,
+        fallbackInstallmentDueDates,
+      ) ?? []
+      : [];
+    const resolvedInstallmentCount = allowPaymentPlans
+      ? resolveDivisionValue(
+        detail?.installmentCount,
+        existing?.installmentCount ?? undefined,
+        params.defaultInstallmentCount ?? undefined,
+      )
+      : null;
+    const installmentCount = allowPaymentPlans
+      ? (typeof resolvedInstallmentCount === 'number' && Number.isFinite(resolvedInstallmentCount)
+        ? Math.max(0, Math.trunc(resolvedInstallmentCount))
+        : installmentAmounts.length)
+      : null;
 
     return {
       id: persistedId,
@@ -1172,6 +1285,10 @@ export const syncEventDivisions = async (
       price,
       maxParticipants,
       playoffTeamCount,
+      allowPaymentPlans,
+      installmentCount,
+      installmentDueDates,
+      installmentAmounts,
       minRating: ratings.minRating,
       maxRating: ratings.maxRating,
       fieldIds: mappedFieldIds,
@@ -1208,6 +1325,12 @@ export const syncEventDivisions = async (
         price: entry.price,
         maxParticipants: entry.maxParticipants,
         playoffTeamCount: entry.playoffTeamCount,
+        allowPaymentPlans: entry.allowPaymentPlans,
+        installmentCount: entry.installmentCount,
+        installmentDueDates: entry.installmentDueDates
+          .map((value) => new Date(value))
+          .filter((value) => !Number.isNaN(value.getTime())),
+        installmentAmounts: entry.installmentAmounts,
         divisionTypeId: entry.divisionTypeId,
         divisionTypeName: entry.divisionTypeName,
         ratingType: entry.ratingType,
@@ -1230,6 +1353,12 @@ export const syncEventDivisions = async (
         price: entry.price,
         maxParticipants: entry.maxParticipants,
         playoffTeamCount: entry.playoffTeamCount,
+        allowPaymentPlans: entry.allowPaymentPlans,
+        installmentCount: entry.installmentCount,
+        installmentDueDates: entry.installmentDueDates
+          .map((value) => new Date(value))
+          .filter((value) => !Number.isNaN(value.getTime())),
+        installmentAmounts: entry.installmentAmounts,
         divisionTypeId: entry.divisionTypeId,
         divisionTypeName: entry.divisionTypeName,
         ratingType: entry.ratingType,
@@ -1468,6 +1597,47 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     updatedAt: new Date(),
   };
 
+  const defaultDivisionPrice = (() => {
+    const parsed = coerceNullableNumber(payload.price);
+    if (typeof parsed === 'number') {
+      return Math.max(0, Math.round(parsed));
+    }
+    if (parsed === null) {
+      return null;
+    }
+    return 0;
+  })();
+  const defaultDivisionMaxParticipants = (() => {
+    const parsed = coerceNullableNumber(payload.maxParticipants);
+    if (typeof parsed === 'number') {
+      return Math.max(0, Math.trunc(parsed));
+    }
+    return parsed ?? null;
+  })();
+  const defaultDivisionPlayoffTeamCount = (() => {
+    const parsed = coerceNullableNumber(payload.playoffTeamCount);
+    if (typeof parsed === 'number') {
+      return Math.max(0, Math.trunc(parsed));
+    }
+    return parsed ?? null;
+  })();
+  const defaultDivisionAllowPaymentPlans = (() => {
+    const parsed = coerceNullableBoolean(payload.allowPaymentPlans);
+    if (typeof parsed === 'boolean') {
+      return parsed;
+    }
+    return parsed ?? null;
+  })();
+  const defaultDivisionInstallmentCount = (() => {
+    const parsed = coerceNullableNumber(payload.installmentCount);
+    if (typeof parsed === 'number') {
+      return Math.max(0, Math.trunc(parsed));
+    }
+    return parsed ?? null;
+  })();
+  const defaultDivisionInstallmentDueDates = normalizeInstallmentDateList(payload.installmentDueDates);
+  const defaultDivisionInstallmentAmounts = normalizeInstallmentAmountList(payload.installmentAmounts);
+
   await upsertEventWithUnknownArgFallback(client, id, eventData as Record<string, unknown>);
 
   await syncEventDivisions({
@@ -1479,6 +1649,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     organizationId: payload.organizationId ?? null,
     divisionFieldMap,
     divisionDetails: normalizedDivisionDetails,
+    defaultPrice: defaultDivisionPrice,
+    defaultMaxParticipants: defaultDivisionMaxParticipants,
+    defaultPlayoffTeamCount: defaultDivisionPlayoffTeamCount,
+    defaultAllowPaymentPlans: defaultDivisionAllowPaymentPlans,
+    defaultInstallmentCount: defaultDivisionInstallmentCount,
+    defaultInstallmentDueDates: defaultDivisionInstallmentDueDates,
+    defaultInstallmentAmounts: defaultDivisionInstallmentAmounts,
   }, client);
 
   const removedFieldIds = existingFieldIds.filter((fieldId) => !allowedFieldIdSet.has(fieldId));

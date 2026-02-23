@@ -278,13 +278,21 @@ describe('upsertEventFromPayload', () => {
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
 
-  it('persists division price, max participants, and playoff team count from division details', async () => {
+  it('persists division pricing, capacity, playoffs, and payment-plan fields from division details', async () => {
     const client = createMockClient();
     const openDivisionId = divisionId('open');
 
     const payload = {
       ...baseEventPayload(),
       divisions: ['OPEN'],
+      allowPaymentPlans: true,
+      installmentCount: 3,
+      installmentAmounts: [1200, 800, 500],
+      installmentDueDates: [
+        '2026-01-08T09:00:00.000Z',
+        '2026-01-15T09:00:00.000Z',
+        '2026-01-22T09:00:00.000Z',
+      ],
       divisionDetails: [
         {
           id: openDivisionId,
@@ -297,6 +305,13 @@ describe('upsertEventFromPayload', () => {
           price: 2500,
           maxParticipants: 12,
           playoffTeamCount: 8,
+          allowPaymentPlans: true,
+          installmentCount: 2,
+          installmentAmounts: [1500, 1000],
+          installmentDueDates: [
+            '2026-01-09T09:00:00.000Z',
+            '2026-01-16T09:00:00.000Z',
+          ],
         },
       ],
     };
@@ -310,11 +325,84 @@ describe('upsertEventFromPayload', () => {
           price: 2500,
           maxParticipants: 12,
           playoffTeamCount: 8,
+          allowPaymentPlans: true,
+          installmentCount: 2,
+          installmentAmounts: [1500, 1000],
+          installmentDueDates: [
+            new Date('2026-01-09T09:00:00.000Z'),
+            new Date('2026-01-16T09:00:00.000Z'),
+          ],
         }),
         update: expect.objectContaining({
           price: 2500,
           maxParticipants: 12,
           playoffTeamCount: 8,
+          allowPaymentPlans: true,
+          installmentCount: 2,
+          installmentAmounts: [1500, 1000],
+          installmentDueDates: [
+            new Date('2026-01-09T09:00:00.000Z'),
+            new Date('2026-01-16T09:00:00.000Z'),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('falls back to event-level payment-plan defaults when division payment fields are omitted', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      allowPaymentPlans: true,
+      installmentCount: 3,
+      installmentAmounts: [1200, 800, 500],
+      installmentDueDates: [
+        '2026-01-08T09:00:00.000Z',
+        '2026-01-15T09:00:00.000Z',
+        '2026-01-22T09:00:00.000Z',
+      ],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          price: 2500,
+          maxParticipants: 12,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.divisions.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: openDivisionId },
+        create: expect.objectContaining({
+          allowPaymentPlans: true,
+          installmentCount: 3,
+          installmentAmounts: [1200, 800, 500],
+          installmentDueDates: [
+            new Date('2026-01-08T09:00:00.000Z'),
+            new Date('2026-01-15T09:00:00.000Z'),
+            new Date('2026-01-22T09:00:00.000Z'),
+          ],
+        }),
+        update: expect.objectContaining({
+          allowPaymentPlans: true,
+          installmentCount: 3,
+          installmentAmounts: [1200, 800, 500],
+          installmentDueDates: [
+            new Date('2026-01-08T09:00:00.000Z'),
+            new Date('2026-01-15T09:00:00.000Z'),
+            new Date('2026-01-22T09:00:00.000Z'),
+          ],
         }),
       }),
     );

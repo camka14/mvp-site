@@ -1439,14 +1439,6 @@ export type EventsUncheckedUpdateManyInput = {
   requiredTemplateIds?: Prisma.EventsUpdaterequiredTemplateIdsInput | string[]
 }
 
-export type DateTimeNullableListFilter<$PrismaModel = never> = {
-  equals?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel> | null
-  has?: Date | string | Prisma.DateTimeFieldRefInput<$PrismaModel> | null
-  hasEvery?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel>
-  hasSome?: Date[] | string[] | Prisma.ListDateTimeFieldRefInput<$PrismaModel>
-  isEmpty?: boolean
-}
-
 export type EventsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder

@@ -7,7 +7,7 @@ import { deleteMatchesByEvent, loadEventWithRelations, saveEventSchedule, saveMa
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
-import { withLegacyFields } from '@/server/legacyFormat';
+import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
 import { evaluateDivisionAgeEligibility, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { notifySocialAudienceOfEventCreation } from '@/server/eventCreationNotifications';
 
@@ -42,6 +42,46 @@ const normalizeDivisionKeys = (value: unknown): string[] => {
 const normalizeFieldIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
+};
+
+const normalizeOptionalBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
+};
+
+const normalizeInstallmentAmountList = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+    .filter((entry) => Number.isFinite(entry))
+    .map((entry) => Math.max(0, Math.round(entry)));
+};
+
+const normalizeInstallmentDateList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => parseDateInput(entry))
+    .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
+    .map((entry) => entry.toISOString());
 };
 
 const getDivisionFieldMapForEvent = async (
@@ -97,6 +137,15 @@ const getDivisionDetailsForEvent = async (
   eventId: string,
   divisionKeys: string[],
   eventStart?: Date | null,
+  eventDefaults?: {
+    price?: number | null;
+    maxParticipants?: number | null;
+    playoffTeamCount?: number | null;
+    allowPaymentPlans?: boolean | null;
+    installmentCount?: number | null;
+    installmentDueDates?: unknown;
+    installmentAmounts?: unknown;
+  },
 ): Promise<Array<Record<string, unknown>>> => {
   if (!divisionKeys.length) {
     return [];
@@ -118,6 +167,10 @@ const getDivisionDetailsForEvent = async (
       price: true,
       maxParticipants: true,
       playoffTeamCount: true,
+      allowPaymentPlans: true,
+      installmentCount: true,
+      installmentDueDates: true,
+      installmentAmounts: true,
       divisionTypeId: true,
       divisionTypeName: true,
       ratingType: true,
@@ -177,9 +230,34 @@ const getDivisionDetailsForEvent = async (
       ratingType: row?.ratingType ?? inferred.ratingType,
       gender: row?.gender ?? inferred.gender,
       sportId: row?.sportId ?? null,
-      price: typeof row?.price === 'number' ? row.price : null,
-      maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
-      playoffTeamCount: typeof row?.playoffTeamCount === 'number' ? row.playoffTeamCount : null,
+      price: typeof row?.price === 'number'
+        ? row.price
+        : (typeof eventDefaults?.price === 'number' ? eventDefaults.price : null),
+      maxParticipants: typeof row?.maxParticipants === 'number'
+        ? row.maxParticipants
+        : (typeof eventDefaults?.maxParticipants === 'number' ? eventDefaults.maxParticipants : null),
+      playoffTeamCount: typeof row?.playoffTeamCount === 'number'
+        ? row.playoffTeamCount
+        : (typeof eventDefaults?.playoffTeamCount === 'number' ? eventDefaults.playoffTeamCount : null),
+      allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
+        ? row.allowPaymentPlans
+        : normalizeOptionalBoolean(eventDefaults?.allowPaymentPlans),
+      installmentCount: typeof row?.installmentCount === 'number'
+        ? row.installmentCount
+        : (
+          typeof eventDefaults?.installmentCount === 'number'
+            ? Math.max(0, Math.trunc(eventDefaults.installmentCount))
+            : null
+        ),
+      installmentDueDates: Array.isArray(row?.installmentDueDates)
+        ? row.installmentDueDates
+            .map((entry) => parseDateInput(entry))
+            .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
+            .map((entry) => entry.toISOString())
+        : normalizeInstallmentDateList(eventDefaults?.installmentDueDates),
+      installmentAmounts: Array.isArray(row?.installmentAmounts)
+        ? normalizeInstallmentAmountList(row.installmentAmounts)
+        : normalizeInstallmentAmountList(eventDefaults?.installmentAmounts),
       ageCutoffDate,
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
@@ -358,7 +436,15 @@ export async function POST(req: NextRequest) {
     const divisionKeys = normalizeDivisionKeys(event.divisions);
     const [divisionFieldIds, divisionDetails] = await Promise.all([
       getDivisionFieldMapForEvent(event.id, divisionKeys),
-      getDivisionDetailsForEvent(event.id, divisionKeys, event.start),
+      getDivisionDetailsForEvent(event.id, divisionKeys, event.start, {
+        price: event.price,
+        maxParticipants: event.maxParticipants,
+        playoffTeamCount: event.playoffTeamCount,
+        allowPaymentPlans: event.allowPaymentPlans,
+        installmentCount: event.installmentCount,
+        installmentDueDates: event.installmentDueDates,
+        installmentAmounts: event.installmentAmounts,
+      }),
     ]);
     await notifySocialAudienceOfEventCreation({
       eventId: event.id,
