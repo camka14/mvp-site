@@ -19,6 +19,7 @@ const isLeague = (event: League | Tournament): event is League => {
 };
 
 const OPEN_ENDED_WEEKS = 52;
+const NO_FIELDS_MESSAGE_REGEX = /^Unable to schedule event because no fields are available(?: for divisions:\s*(.+))?\.$/i;
 
 const isOpenEndedSchedule = (event: League | Tournament): boolean => {
   if (typeof event.noFixedEndDateTime === 'boolean') {
@@ -88,7 +89,7 @@ const buildLeagueSchedule = (
       context.error(`schedule_event: scheduling failed (${errMsg}), attempt ${extensionAttempt + 1}`);
       if (errMsg.toLowerCase().includes('no fields')) {
         // Misconfiguration: surface this as a 4xx instead of a 500.
-        throw new ScheduleError(errMsg);
+        throw new ScheduleError(formatNoFieldsErrorForUser(errMsg, league));
       }
       if (openEndedSchedule && extensionAttempt < maxExtensions) {
         extensionAttempt += 1;
@@ -122,6 +123,67 @@ const buildLeagueSchedule = (
     event: updated,
     matches: Object.values(updated.matches),
   };
+};
+
+const collectDivisionNameById = (league: League): Map<string, string> => {
+  const names = new Map<string, string>();
+  const remember = (division: Division) => {
+    const divisionId = String(division.id || '').trim();
+    const divisionName = String(division.name || '').trim();
+    if (!divisionId || !divisionName) {
+      return;
+    }
+    names.set(divisionId, divisionName);
+  };
+  league.divisions.forEach(remember);
+  league.playoffDivisions.forEach(remember);
+  return names;
+};
+
+const titleCase = (value: string): string =>
+  value
+    .split(' ')
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(' ');
+
+const fallbackDivisionNameFromId = (divisionId: string): string => {
+  const normalized = String(divisionId || '').trim();
+  if (!normalized) {
+    return 'Unknown Division';
+  }
+  const token = normalized.includes('__division__')
+    ? normalized.split('__division__').pop() || normalized
+    : normalized;
+  const clean = token
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clean);
+  if (!clean || looksLikeUuid) {
+    return 'Unknown Division';
+  }
+  return titleCase(clean);
+};
+
+const formatNoFieldsErrorForUser = (message: string, league: League): string => {
+  const match = message.match(NO_FIELDS_MESSAGE_REGEX);
+  if (!match) {
+    return message;
+  }
+  const rawDivisionIds = String(match[1] || '')
+    .split(',')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (!rawDivisionIds.length) {
+    return 'Unable to schedule event because no fields are available.';
+  }
+  const nameById = collectDivisionNameById(league);
+  const labels = rawDivisionIds.map((divisionId) => nameById.get(divisionId) || fallbackDivisionNameFromId(divisionId));
+  const uniqueLabels = Array.from(new Set(labels.filter((label) => label.length > 0)));
+  if (!uniqueLabels.length) {
+    return 'Unable to schedule event because no fields are available.';
+  }
+  return `Unable to schedule event because no fields are available for divisions: ${uniqueLabels.join(', ')}.`;
 };
 
 const buildTournamentSchedule = (tournament: Tournament, context: SchedulerContext): ScheduleResult => {
@@ -255,21 +317,26 @@ const describeScheduleFailure = (event: League, placeholderCount?: number): stri
   const weeklySlotMinutesTotal = weeklySlotMinutes(event.timeSlots);
   const weeklyHoursAvailable = weeklySlotMinutesTotal / 60;
   const weeklyMatchesCapacity = minutesPerMatch ? Math.floor(weeklySlotMinutesTotal / minutesPerMatch) : 0;
+  const hasRecurringSlots = event.timeSlots.some((slot) => slot.repeating !== false);
 
   const totalSlotMinutes = calculateSlotMinutes(event);
   const totalHoursAvailable = totalSlotMinutes / 60;
   const totalMatchesCapacity = minutesPerMatch ? Math.floor(totalSlotMinutes / minutesPerMatch) : 0;
 
   if (!totalSlotMinutes) {
-    return 'Unable to schedule league because no recurring time slots are configured. Add weekly field availability to continue.';
+    return 'Unable to schedule league because no valid time-slot windows are configured. Add or extend time slots to continue.';
   }
 
+  const weeklyCapacityLine = hasRecurringSlots
+    ? `Approximate weekly capacity: ${weeklyMatchesCapacity} matches (~${weeklyHoursAvailable.toFixed(1)} hours/week).`
+    : 'Approximate weekly capacity: 0 matches (explicit non-repeating windows only).';
+
   return [
-    'Unable to schedule league with the provided weekly time slots.',
+    'Unable to schedule league with the provided time slots.',
     `Approximate matches needed: ${totalMatches}.`,
-    `Approximate weekly capacity: ${weeklyMatchesCapacity} matches (~${weeklyHoursAvailable.toFixed(1)} hours/week).`,
+    weeklyCapacityLine,
     `Approximate total capacity in schedule window: ${totalMatchesCapacity} matches (~${totalHoursAvailable.toFixed(1)} hours).`,
-    'Add more weekly slots, extend the season, or reduce games per opponent/playoff teams to create a schedule.',
+    'Add more slot availability, extend slot windows, or reduce games per opponent/playoff teams to create a schedule.',
   ].join(' ');
 };
 
@@ -280,10 +347,36 @@ const calculateSlotMinutes = (event: League): number => {
   if (start.getTime() >= end.getTime()) return 0;
 
   let totalMinutes = 0;
+  for (const slot of event.timeSlots) {
+    if (slot.repeating !== false) {
+      continue;
+    }
+    if (!(slot.startDate instanceof Date) || Number.isNaN(slot.startDate.getTime())) {
+      continue;
+    }
+    if (!(slot.endDate instanceof Date) || Number.isNaN(slot.endDate.getTime())) {
+      continue;
+    }
+    if (slot.endDate.getTime() <= slot.startDate.getTime()) {
+      continue;
+    }
+    const windowStart = slot.startDate.getTime() < start.getTime() ? start : slot.startDate;
+    const windowEnd = slot.endDate.getTime() > end.getTime() ? end : slot.endDate;
+    if (windowEnd.getTime() <= windowStart.getTime()) {
+      continue;
+    }
+    totalMinutes += Math.floor((windowEnd.getTime() - windowStart.getTime()) / MINUTE_MS);
+  }
+
+  const recurringSlots = event.timeSlots.filter((slot) => slot.repeating !== false);
+  if (!recurringSlots.length) {
+    return totalMinutes;
+  }
+
   let weekIndex = 0;
   while (start.getTime() + weekIndex * 7 * 24 * 60 * MINUTE_MS <= end.getTime()) {
     const reference = new Date(start.getTime() + weekIndex * 7 * 24 * 60 * MINUTE_MS);
-    for (const slot of event.timeSlots) {
+    for (const slot of recurringSlots) {
       const [slotStart, slotEnd] = slot.asDateRange(reference);
       if (slotEnd.getTime() <= start.getTime() || slotStart.getTime() >= end.getTime()) continue;
       const windowStart = slotStart.getTime() < start.getTime() ? start : slotStart;
@@ -323,9 +416,12 @@ const projectedTeamCount = (event: Tournament | League): number => {
   return Math.max(teamCount, 2);
 };
 
-const weeklySlotMinutes = (slots: { startTimeMinutes?: number; endTimeMinutes?: number }[]): number => {
+const weeklySlotMinutes = (slots: { repeating?: boolean; startTimeMinutes?: number; endTimeMinutes?: number }[]): number => {
   let total = 0;
   for (const slot of slots) {
+    if (slot.repeating === false) {
+      continue;
+    }
     const start = slot.startTimeMinutes ?? 0;
     const end = slot.endTimeMinutes ?? 0;
     if (end > start) total += end - start;

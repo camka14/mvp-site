@@ -1207,6 +1207,52 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
   return buildInitialsAvatarUrl(initials, size);
 }
 
+export function getOrganizationAvatarUrl(
+  organization?: Organization | string | null,
+  size: number = 64,
+): string {
+  if (organization && typeof organization === 'object') {
+    if (organization.logoId) {
+      return buildPreviewUrl(organization.logoId, size, size);
+    }
+    const label = organization.name?.trim() || 'Org';
+    return buildInitialsAvatarUrl(label, size);
+  }
+  return buildInitialsAvatarUrl('Org', size);
+}
+
+export function getEventImageFallbackUrl(params: {
+  event?: Pick<Event, 'organization' | 'hostId'> | null;
+  size?: number;
+  width?: number;
+  height?: number;
+  hostLabel?: string | null;
+  organization?: Organization | string | null;
+}): string {
+  const resolvedWidth = params.width ?? params.size;
+  const resolvedHeight = params.height ?? params.size;
+  const resolvedSize = Math.max(
+    resolvedWidth ?? 0,
+    resolvedHeight ?? 0,
+    params.size ?? 0,
+    64,
+  );
+
+  const organizationInput = params.organization ?? params.event?.organization;
+  if (organizationInput && typeof organizationInput === 'object') {
+    if (organizationInput.logoId) {
+      return buildPreviewUrl(organizationInput.logoId, resolvedWidth, resolvedHeight);
+    }
+    const orgLabel = organizationInput.name?.trim();
+    if (orgLabel) {
+      return buildInitialsAvatarUrl(orgLabel, resolvedSize);
+    }
+  }
+
+  const hostLabel = params.hostLabel?.trim() || params.event?.hostId?.trim() || 'Host';
+  return buildInitialsAvatarUrl(hostLabel, resolvedSize);
+}
+
 export function getEventImageUrl(params: {
   imageId?: string | null;
   size?: number;
@@ -1214,14 +1260,20 @@ export function getEventImageUrl(params: {
   height?: number;
   placeholderUrl?: string;
 }): string {
+  const resolvedWidth = params.width ?? params.size;
+  const resolvedHeight = params.height ?? params.size;
+  const fallbackSize = Math.max(
+    resolvedWidth ?? 0,
+    resolvedHeight ?? 0,
+    params.size ?? 0,
+    64,
+  );
   const fallback =
     params.placeholderUrl ??
-    'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=200&fit=crop';
+    buildInitialsAvatarUrl('Event', fallbackSize);
   if (!params.imageId) {
     return fallback;
   }
-  const resolvedWidth = params.width ?? params.size;
-  const resolvedHeight = params.height ?? params.size;
   return buildPreviewUrl(params.imageId, resolvedWidth, resolvedHeight);
 }
 

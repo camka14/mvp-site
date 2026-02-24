@@ -305,4 +305,31 @@ describe('LeagueFields', () => {
     const divisionsInput = getLabeledInput(/Divisions/i) as HTMLInputElement;
     expect(divisionsInput).toBeDisabled();
   });
+
+  it('shows selected division labels instead of raw ids', () => {
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[{ ...baseSlot, divisions: ['DIVISION_ABC_123'] }]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+        divisionOptions={[
+          { value: 'division_abc_123', label: 'Grass Volleyball - Beginner' },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText('Grass Volleyball - Beginner').length).toBeGreaterThan(0);
+    expect(screen.queryByText('DIVISION_ABC_123')).not.toBeInTheDocument();
+  });
 });

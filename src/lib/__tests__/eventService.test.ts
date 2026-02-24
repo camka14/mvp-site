@@ -162,4 +162,38 @@ describe('eventService', () => {
     expect(apiRequestMock.mock.calls[1][0]).toBe('/api/events/evt_1');
     expect(apiRequestMock.mock.calls[2][0]).toBe('/api/league-scoring-configs/cfg_1');
   });
+
+  it('maps template rows without sport data using a fallback sport object', async () => {
+    const rowWithoutSport = {
+      ...baseEventRow,
+      state: 'TEMPLATE',
+      sport: undefined,
+      sportId: undefined,
+    };
+
+    const event = await eventService.mapRowFromDatabase(rowWithoutSport, false);
+
+    expect(event.state).toBe('TEMPLATE');
+    expect(event.sport).toBeDefined();
+    expect(event.sport.$id).toBe('');
+    expect(event.sport.name).toBe('');
+    expect(sportsServiceMock.getAll).not.toHaveBeenCalled();
+  });
+
+  it('maps template rows when sport id cannot be resolved', async () => {
+    sportsServiceMock.getAll.mockResolvedValueOnce([] as any).mockResolvedValueOnce([] as any);
+
+    const rowWithUnknownSport = {
+      ...baseEventRow,
+      state: 'TEMPLATE',
+      sport: undefined,
+      sportId: 'unknown_sport',
+    };
+
+    const event = await eventService.mapRowFromDatabase(rowWithUnknownSport, false);
+
+    expect(event.state).toBe('TEMPLATE');
+    expect(event.sport.$id).toBe('unknown_sport');
+    expect(event.sport.name).toBe('unknown_sport');
+  });
 });

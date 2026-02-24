@@ -125,7 +125,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
         {title}
       </Title>
 
-      <Grid gutter="md">
+      <Grid gutter="md" align="flex-end">
         <Grid.Col span={{ base: 12, md: 6 }}>
           <Select
             label="Tournament Format"
@@ -220,7 +220,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
             <Title order={6} mb="xs">
               Winner Bracket Points to Victory
             </Title>
-            <Grid gutter="xs">
+            <Grid gutter="xs" align="flex-end">
               {Array.from({ length: tournamentData.winnerSetCount }).map((_, idx) => (
                 <Grid.Col span={{ base: 12, sm: 6 }} key={`win-set-${idx}`}>
                   <NumberInput
@@ -257,7 +257,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                 <Title order={6} mb="xs">
                   Loser Bracket Points to Victory
                 </Title>
-                <Grid gutter="xs">
+                <Grid gutter="xs" align="flex-end">
                   {Array.from({ length: tournamentData.loserSetCount }).map((_, idx) => (
                     <Grid.Col span={{ base: 12, sm: 6 }} key={`lose-set-${idx}`}>
                       <NumberInput

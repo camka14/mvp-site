@@ -371,6 +371,8 @@ function EventScheduleContent() {
   const isCreateMode = searchParams?.get('create') === '1';
   const orgIdParam = searchParams?.get('orgId') || undefined;
   const hostOrgIdParam = searchParams?.get('hostOrgId') || undefined;
+  const templateIdParam = searchParams?.get('templateId')?.trim() || undefined;
+  const skipTemplatePromptParam = searchParams?.get('skipTemplatePrompt') === '1';
   const rentalOrgIdParam = searchParams?.get('rentalOrgId') || undefined;
   const rentalStartParam = searchParams?.get('rentalStart') || undefined;
   const rentalEndParam = searchParams?.get('rentalEnd') || undefined;
@@ -461,6 +463,8 @@ function EventScheduleContent() {
   const [templateSeedKey, setTemplateSeedKey] = useState(0);
   const [childUserIds, setChildUserIds] = useState<string[]>([]);
   const templatePromptResolvedRef = useRef(false);
+  const templateIdSeedResolvedRef = useRef<string | null>(null);
+  const [failedTemplateSeedId, setFailedTemplateSeedId] = useState<string | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const isMobile = useMediaQuery('(max-width: 36em)');
   const eventFormRef = useRef<EventFormHandle>(null);
@@ -819,7 +823,7 @@ function EventScheduleContent() {
   const activeEventType = activeEvent?.eventType ?? null;
 
   useEffect(() => {
-    if (!activeEventId || activeEventType !== 'LEAGUE' || !selectedStandingsDivision) {
+    if (isCreateMode || !activeEventId || activeEventType !== 'LEAGUE' || !selectedStandingsDivision) {
       setStandingsDivisionData(null);
       setStandingsDraftOverrides({});
       setStandingsLoading(false);
@@ -857,7 +861,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEventId, activeEventType, selectedStandingsDivision]);
+  }, [activeEventId, activeEventType, isCreateMode, selectedStandingsDivision]);
 
   const activeOrganization = useMemo(() => {
     if (activeEvent && typeof activeEvent.organization === 'object') {
@@ -951,6 +955,92 @@ function EventScheduleContent() {
     setTemplatePromptOpen(false);
   }, []);
 
+  useEffect(() => {
+    if (!isCreateMode) {
+      return;
+    }
+    // Every new create flow should re-offer template selection.
+    templatePromptResolvedRef.current = false;
+    templateIdSeedResolvedRef.current = null;
+    setTemplatePromptOpen(false);
+    setTemplateSummaries([]);
+    setSelectedTemplateId(null);
+    setSelectedTemplateStartDate(null);
+    setTemplatesError(null);
+    setFailedTemplateSeedId(null);
+  }, [eventId, isCreateMode, resolvedHostOrgId, templateIdParam]);
+
+  useEffect(() => {
+    if (!isCreateMode || !eventId || !user?.$id || !templateIdParam) {
+      return;
+    }
+    if (templateIdSeedResolvedRef.current === templateIdParam) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setApplyingTemplate(true);
+      setTemplatesError(null);
+      setActionError(null);
+      setFailedTemplateSeedId(null);
+      let applied = false;
+      try {
+        const template = await eventService.getEventWithRelations(templateIdParam);
+        if (!template) {
+          throw new Error('Template not found.');
+        }
+
+        const base = changesEvent?.start ? parseLocalDateTime(changesEvent.start) : null;
+        const seed = base ?? new Date();
+        const startDate = new Date(seed);
+        startDate.setHours(0, 0, 0, 0);
+
+        const seeded = seedEventFromTemplate(template, {
+          newEventId: eventId,
+          newStartDate: startDate,
+          hostId: user.$id,
+          idFactory: createId,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        templatePromptResolvedRef.current = true;
+        setTemplatePromptOpen(false);
+        setSelectedTemplateId(templateIdParam);
+        setSelectedTemplateStartDate(startDate);
+        setChangesEvent(seeded);
+        setHasUnsavedChanges(false);
+        setFormHasUnsavedChanges(false);
+        setTemplateSeedKey((prev) => prev + 1);
+        applied = true;
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'Failed to apply template.';
+        templatePromptResolvedRef.current = false;
+        setTemplatePromptOpen(false);
+        setFailedTemplateSeedId(templateIdParam);
+        setTemplatesError(message);
+        setActionError(`Unable to apply template: ${message}`);
+      } finally {
+        if (!cancelled) {
+          if (applied) {
+            templateIdSeedResolvedRef.current = templateIdParam;
+          }
+          setApplyingTemplate(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [changesEvent?.start, eventId, isCreateMode, templateIdParam, user?.$id]);
+
   const handleApplyTemplate = useCallback(async () => {
     if (!isCreateMode || !user?.$id) {
       closeTemplatePrompt();
@@ -1000,6 +1090,32 @@ function EventScheduleContent() {
     }
   }, [closeTemplatePrompt, eventId, isCreateMode, selectedTemplateId, selectedTemplateStartDate, user?.$id]);
 
+  const buildTemplateSourceFromDraft = useCallback((): Event | null => {
+    if (!activeEvent) {
+      return null;
+    }
+
+    const formDraft = eventFormRef.current?.getDraft();
+    const merged = {
+      ...(cloneValue(activeEvent) as Event),
+      ...((formDraft ?? {}) as Partial<Event>),
+    } as Event;
+
+    if (!Array.isArray(merged.matches) || merged.matches.length === 0) {
+      merged.matches = Array.isArray(activeMatches)
+        ? (cloneValue(activeMatches) as Match[])
+        : [];
+    }
+    if (!Array.isArray(merged.timeSlots)) {
+      merged.timeSlots = [];
+    }
+    if (typeof merged.$id !== 'string' || merged.$id.trim().length === 0) {
+      merged.$id = activeEvent.$id;
+    }
+
+    return merged;
+  }, [activeEvent, activeMatches]);
+
   const handleCreateTemplateFromEvent = useCallback(async () => {
     if (!activeEvent || !user?.$id) {
       return;
@@ -1022,13 +1138,19 @@ function EventScheduleContent() {
     setWarningMessage(null);
 
     try {
-      const full = await eventService.getEventWithRelations(activeEvent.$id);
-      if (!full) {
+      let sourceEvent: Event | null = null;
+      if (!isCreateMode) {
+        sourceEvent = (await eventService.getEventWithRelations(activeEvent.$id)) ?? null;
+      }
+      if (!sourceEvent) {
+        sourceEvent = buildTemplateSourceFromDraft();
+      }
+      if (!sourceEvent) {
         throw new Error('Unable to load event details for templating.');
       }
 
       const templateId = createId();
-      const templateEvent = cloneEventAsTemplate(full, { templateId, idFactory: createId });
+      const templateEvent = cloneEventAsTemplate(sourceEvent, { templateId, idFactory: createId });
       const payload = toEventPayload(templateEvent);
       await apiRequest('/api/events', {
         method: 'POST',
@@ -1045,7 +1167,7 @@ function EventScheduleContent() {
     } finally {
       setCreatingTemplate(false);
     }
-  }, [activeEvent, canManageEvent, creatingTemplate, user?.$id]);
+  }, [activeEvent, buildTemplateSourceFromDraft, canManageEvent, creatingTemplate, isCreateMode, user?.$id]);
 
   const showDateOnMatches = useMemo(() => {
     if (!activeEvent?.start || !activeEvent?.end) return false;
@@ -1447,6 +1569,9 @@ function EventScheduleContent() {
 
   useEffect(() => {
     if (!isCreateMode || !user) return;
+    if (templateIdParam && failedTemplateSeedId !== templateIdParam) {
+      return;
+    }
     setChangesEvent((prev) => {
       if (prev) return prev;
       const start = rentalImmutableDefaults?.start ?? formatLocalDateTime(new Date());
@@ -1490,11 +1615,28 @@ function EventScheduleContent() {
         assistantHostIds: [],
       } as Event;
     });
-  }, [createLocationDefaults, defaultSport, eventId, isCreateMode, rentalImmutableDefaults, user]);
+  }, [
+    createLocationDefaults,
+    defaultSport,
+    eventId,
+    failedTemplateSeedId,
+    isCreateMode,
+    rentalImmutableDefaults,
+    templateIdParam,
+    user,
+  ]);
 
   // Create mode: if the host has event templates, prompt to start from one.
   useEffect(() => {
-    if (!isCreateMode || !user?.$id || isGuest || isRentalFlow) {
+    if (
+      !isCreateMode ||
+      !eventId ||
+      !user?.$id ||
+      isGuest ||
+      isRentalFlow ||
+      (Boolean(templateIdParam) && failedTemplateSeedId !== templateIdParam) ||
+      skipTemplatePromptParam
+    ) {
       setTemplateSummaries([]);
       setTemplatePromptOpen(false);
       setTemplatesError(null);
@@ -1558,7 +1700,18 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [changesEvent?.start, isCreateMode, isGuest, isRentalFlow, resolvedHostOrgId, user?.$id]);
+  }, [
+    changesEvent?.start,
+    eventId,
+    isCreateMode,
+    isGuest,
+    isRentalFlow,
+    resolvedHostOrgId,
+    failedTemplateSeedId,
+    skipTemplatePromptParam,
+    templateIdParam,
+    user?.$id,
+  ]);
 
   useEffect(() => {
     if (!isCreateMode) {
@@ -1624,16 +1777,26 @@ function EventScheduleContent() {
                 typeof resolvedHostOrg.coordinates[1] === 'number'
                 ? (resolvedHostOrg.coordinates as [number, number])
                 : undefined;
+            const baseLocation = (base.location ?? '').trim();
+            const hasBaseCoordinates =
+              Array.isArray(base.coordinates) &&
+                typeof base.coordinates[0] === 'number' &&
+                typeof base.coordinates[1] === 'number' &&
+                (base.coordinates[0] !== 0 || base.coordinates[1] !== 0);
             return {
               ...base,
               organization: resolvedHostOrg,
               organizationId: resolvedHostOrg.$id,
               hostId: base.hostId ?? resolvedHostOrg.ownerId ?? base.hostId,
-              fields: Array.isArray(resolvedHostOrg.fields) ? resolvedHostOrg.fields : base.fields,
+              fields: Array.isArray(base.fields) && base.fields.length > 0
+                ? base.fields
+                : Array.isArray(resolvedHostOrg.fields)
+                  ? resolvedHostOrg.fields
+                  : base.fields,
               refereeIds: Array.isArray(resolvedHostOrg.refIds) ? resolvedHostOrg.refIds : base.refereeIds,
               referees: Array.isArray(resolvedHostOrg.referees) ? resolvedHostOrg.referees : base.referees,
-              location: orgLocation || base.location || '',
-              coordinates: orgCoordinates ?? base.coordinates ?? [0, 0],
+              location: baseLocation || orgLocation || '',
+              coordinates: hasBaseCoordinates ? base.coordinates : orgCoordinates ?? base.coordinates ?? [0, 0],
             } as Event;
           });
         }
@@ -1676,7 +1839,7 @@ function EventScheduleContent() {
 
   const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
-    if (isCreateMode) return hasPendingUnsavedChanges ? 'Discard Changes' : 'Cancel';
+    if (isCreateMode) return 'Cancel';
     if (isUnpublished) return `Delete ${entityLabel}`;
     if (isPreview) return `Cancel ${entityLabel} Preview`;
     if (isEditingEvent) return 'Cancel Edit';
@@ -3344,7 +3507,7 @@ function EventScheduleContent() {
             >
               <Stack gap="sm">
                 <Text size="sm" c="dimmed">
-                  Pick a template to prefill this event. Teams and matches will not be copied.
+                  Pick a template to prefill this event. Matches are not copied; event settings and time slots are.
                 </Text>
                 {templatesError && (
                   <Alert color="red" radius="md">
@@ -3463,10 +3626,13 @@ function EventScheduleContent() {
   const showSaveActionButton = isEditingEvent && !publishing && !reschedulingMatches;
   const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament) && !publishing && !reschedulingMatches;
   const showCancelEditActionButton =
-    isEditingEvent && isUnpublished && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
+    !isCreateMode && isEditingEvent && isUnpublished && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
   const showCancelActionButton = !isTemplateEvent && !cancelling;
   const showCreateTemplateButton = !creatingTemplate && !publishing && !reschedulingMatches && !cancelling && !isTemplateEvent;
   const showLifecycleStatusSelect = isEditingEvent && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
+  const eventFormRenderKey = isCreateMode
+    ? `create:${activeEvent?.$id ?? eventId ?? 'event'}:${templateSeedKey}`
+    : `event:${activeEvent?.$id ?? eventId ?? 'event'}`;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -3572,6 +3738,7 @@ function EventScheduleContent() {
             <Tabs.Panel value="details" pt="md">
               {shouldShowCreationSheet && user ? (
                 <EventForm
+                  key={eventFormRenderKey}
                   ref={eventFormRef}
                   isOpen={activeTab === 'details'}
                   onClose={handleDetailsClose}
@@ -3580,6 +3747,7 @@ function EventScheduleContent() {
                   event={activeEvent ?? undefined}
                   organization={activeOrganization}
                   defaultLocation={activeLocationDefaults}
+                  isCreateMode={isCreateMode}
                   immutableDefaults={isCreateMode ? rentalImmutableDefaults : undefined}
                   rentalPurchase={isCreateMode ? rentalPurchaseContext : undefined}
                 />

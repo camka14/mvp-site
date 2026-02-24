@@ -26,6 +26,7 @@ import { normalizeEnumValue } from '@/lib/enumUtils';
 import { createId } from '@/lib/id';
 import { LeagueScheduleResponse } from './leagueService';
 import { normalizeApiEvent, normalizeApiMatch, normalizeOutgoingEventDocument } from './apiMappers';
+import { createSport } from '@/types/defaults';
 
 
 export interface LeagueGenerationOptions {
@@ -1361,11 +1362,17 @@ class EventService {
             return;
         }
 
+        const normalizedState = typeof row?.state === 'string' ? row.state.toUpperCase() : '';
+        const isTemplateEvent = normalizedState === 'TEMPLATE';
         const sportId =
             (row?.sport && typeof row.sport === 'string' ? row.sport : undefined) ??
             (typeof row?.sportId === 'string' ? row.sportId : undefined);
 
         if (!sportId) {
+            if (isTemplateEvent) {
+                row.sport = createSport();
+                return;
+            }
             throw new Error('Event record is missing sport relationship data.');
         }
 
@@ -1378,6 +1385,10 @@ class EventService {
         }
 
         if (!sport) {
+            if (isTemplateEvent) {
+                row.sport = createSport({ $id: sportId, name: sportId });
+                return;
+            }
             throw new Error(`Sport with id ${sportId} could not be resolved.`);
         }
 

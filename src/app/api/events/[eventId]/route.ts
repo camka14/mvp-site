@@ -979,27 +979,29 @@ const expandTimeSlotsForUpdate = (
         ? slot.id
         : `${eventId}__slot_${index + 1}`;
     const baseSlotId = normalizeSlotBaseId(sourceId);
+    const repeating = typeof slot.repeating === 'boolean' ? slot.repeating : true;
+    const startDate = parseDateInput(slot.startDate) ?? fallbackStartDate;
+    const parsedEndDate = slot.endDate === null ? null : parseDateInput(slot.endDate);
     const normalizedDays = normalizeSlotDays({
       dayOfWeek: slot.dayOfWeek,
       daysOfWeek: slot.daysOfWeek,
     });
-    if (!normalizedDays.length) {
-      return [];
-    }
-
-    const startDate = parseDateInput(slot.startDate) ?? fallbackStartDate;
-    const endDate = slot.endDate === null ? null : parseDateInput(slot.endDate);
-    const startTimeMinutes = typeof slot.startTimeMinutes === 'number'
+    const startTimeMinutesInput = typeof slot.startTimeMinutes === 'number'
       ? slot.startTimeMinutes
       : Number.isFinite(Number(slot.startTimeMinutes))
         ? Number(slot.startTimeMinutes)
         : null;
-    const endTimeMinutes = typeof slot.endTimeMinutes === 'number'
+    const endTimeMinutesInput = typeof slot.endTimeMinutes === 'number'
       ? slot.endTimeMinutes
       : Number.isFinite(Number(slot.endTimeMinutes))
         ? Number(slot.endTimeMinutes)
         : null;
-    const repeating = typeof slot.repeating === 'boolean' ? slot.repeating : true;
+    const derivedStartTimeMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+    const derivedEndTimeMinutes = parsedEndDate
+      ? parsedEndDate.getHours() * 60 + parsedEndDate.getMinutes()
+      : null;
+    const startTimeMinutes = startTimeMinutesInput ?? (repeating ? null : derivedStartTimeMinutes);
+    const endTimeMinutes = endTimeMinutesInput ?? (repeating ? null : derivedEndTimeMinutes);
     const normalizedFieldIds = normalizeSlotFieldIds(slot);
     const expandedFieldIds: Array<string | null> = normalizedFieldIds.length ? normalizedFieldIds : [null];
     const price = typeof slot.price === 'number'
@@ -1025,22 +1027,64 @@ const expandTimeSlotsForUpdate = (
       ? normalizedSlotDivisions
       : fallbackDivisionKeys;
 
-    return normalizedDays.flatMap((day) =>
-      expandedFieldIds.map((fieldId) => ({
+    if (!repeating) {
+      const explicitEndDate = parsedEndDate ?? (() => {
+        if (typeof startTimeMinutes === 'number' && typeof endTimeMinutes === 'number') {
+          const baseDay = new Date(startDate);
+          baseDay.setHours(0, 0, 0, 0);
+          const candidate = new Date(baseDay.getTime() + endTimeMinutes * 60 * 1000);
+          if (candidate.getTime() <= startDate.getTime()) {
+            candidate.setDate(candidate.getDate() + 1);
+          }
+          return candidate;
+        }
+        return null;
+      })();
+      if (!explicitEndDate || explicitEndDate.getTime() <= startDate.getTime()) {
+        return [];
+      }
+      const defaultDay = ((startDate.getDay() + 6) % 7);
+      const slotDay = normalizedDays[0] ?? defaultDay;
+      return expandedFieldIds.map((fieldId): ExpandedTimeSlotInput => ({
+        id: buildExpandedSlotId(
+          sourceId,
+          baseSlotId,
+          slotDay,
+          fieldId,
+          1,
+          expandedFieldIds.length,
+        ),
+        dayOfWeek: slotDay,
+        startTimeMinutes,
+        endTimeMinutes,
+        startDate,
+        endDate: explicitEndDate,
+        repeating: false,
+        scheduledFieldId: fieldId,
+        price,
+        divisions,
+        requiredTemplateIds,
+      }));
+    }
+
+    const days = normalizedDays.length ? normalizedDays : [((startDate.getDay() + 6) % 7)];
+
+    return days.flatMap((day) =>
+      expandedFieldIds.map((fieldId): ExpandedTimeSlotInput => ({
         id: buildExpandedSlotId(
           sourceId,
           baseSlotId,
           day,
           fieldId,
-          normalizedDays.length,
+          days.length,
           expandedFieldIds.length,
         ),
         dayOfWeek: day,
         startTimeMinutes,
         endTimeMinutes,
         startDate,
-        endDate: endDate ?? null,
-        repeating,
+        endDate: parsedEndDate ?? null,
+        repeating: true,
         scheduledFieldId: fieldId,
         price,
         divisions,

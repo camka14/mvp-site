@@ -1,6 +1,13 @@
 import { useMemo } from 'react';
 import Image from 'next/image';
-import { Event, LocationCoordinates, formatPrice, getEventDateTime, getEventImageUrl } from '@/types';
+import {
+  Event,
+  LocationCoordinates,
+  formatPrice,
+  getEventDateTime,
+  getEventImageFallbackUrl,
+  getEventImageUrl,
+} from '@/types';
 import { locationService } from '@/lib/locationService';
 import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 
@@ -86,9 +93,21 @@ export default function EventCard({
   };
 
   const distance = getDistance();
-  const imageUrl = getEventImageUrl({ imageId: event.imageId, width: 640, height: 320 });
   const canAssignHost = Array.isArray(hostOptions) && hostOptions.length > 0 && typeof onHostChange === 'function';
   const hostSelectValue = selectedHostId ?? event.hostId ?? (hostOptions?.[0]?.value ?? '');
+  const selectedHostLabel = hostOptions?.find((option) => option.value === hostSelectValue)?.label ?? null;
+  const imagePlaceholderUrl = getEventImageFallbackUrl({
+    event,
+    width: 640,
+    height: 320,
+    hostLabel: selectedHostLabel,
+  });
+  const imageUrl = getEventImageUrl({
+    imageId: event.imageId,
+    width: 640,
+    height: 320,
+    placeholderUrl: imagePlaceholderUrl,
+  });
 
   const fieldLabels = useMemo(() => {
     const names = new Set<string>();

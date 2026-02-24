@@ -141,6 +141,31 @@ const slotAllowsTime = (
   return startMinutes >= slot.startTimeMinutes && endMinutes <= slot.endTimeMinutes;
 };
 
+const slotAllowsDateTime = (
+  slot: {
+    repeating?: boolean;
+    startDate: Date;
+    endDate: Date | null;
+    dayOfWeek: number;
+    startTimeMinutes: number;
+    endTimeMinutes: number;
+  },
+  matchStart: Date,
+  matchEnd: Date,
+): boolean => {
+  if (slot.repeating === false) {
+    if (!(slot.startDate instanceof Date) || Number.isNaN(slot.startDate.getTime())) {
+      return false;
+    }
+    if (!(slot.endDate instanceof Date) || Number.isNaN(slot.endDate.getTime())) {
+      return false;
+    }
+    return matchStart.getTime() >= slot.startDate.getTime()
+      && matchEnd.getTime() <= slot.endDate.getTime();
+  }
+  return slotAllowsDate(slot, matchStart) && slotAllowsTime(slot, matchStart, matchEnd);
+};
+
 const lockedMatchFitsUpdatedWindow = (event: SchedulerEvent, match: Match): boolean => {
   if (match.start.getTime() < event.start.getTime() || match.end.getTime() > event.end.getTime()) {
     return false;
@@ -154,8 +179,7 @@ const lockedMatchFitsUpdatedWindow = (event: SchedulerEvent, match: Match): bool
   return event.timeSlots.some((slot) =>
     slotAllowsField(slot, match.field?.id ?? '')
     && slotAllowsDivision(slot, match.division?.id ?? '')
-    && slotAllowsDate(slot, match.start)
-    && slotAllowsTime(slot, match.start, match.end),
+    && slotAllowsDateTime(slot, match.start, match.end),
   );
 };
 

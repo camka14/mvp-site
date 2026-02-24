@@ -17,9 +17,10 @@ import {
   Title,
   TextInput,
 } from '@mantine/core';
+import { DatePickerInput, DateTimePicker } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
-import { formatDisplayDate } from '@/lib/dateUtils';
+import { formatDisplayDate, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 
 const DROPDOWN_PROPS = { withinPortal: true, zIndex: 1800 };
 const MAX_STANDARD_NUMBER = 99_999;
@@ -73,7 +74,7 @@ const normalizeDivisionKeys = (value: unknown): string[] => {
   return Array.from(
     new Set(
       value
-        .map((entry) => String(entry).trim().toLowerCase())
+        .map((entry) => String(entry).trim())
         .filter((entry) => entry.length > 0),
     ),
   );
@@ -119,6 +120,8 @@ export interface LeagueSlotForm {
   dayOfWeek?: number;
   daysOfWeek?: number[];
   divisions?: string[];
+  startDate?: string;
+  endDate?: string;
   startTimeMinutes?: number;
   endTimeMinutes?: number;
   repeating?: boolean;
@@ -140,6 +143,7 @@ interface LeagueFieldsProps {
   fieldsLoading: boolean;
   fieldOptions?: { value: string; label: string }[];
   divisionOptions?: { value: string; label: string }[];
+  eventStartDate?: string;
   lockSlotDivisions?: boolean;
   lockedDivisionKeys?: string[];
   readOnly?: boolean;
@@ -160,6 +164,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   fieldsLoading,
   fieldOptions,
   divisionOptions = [],
+  eventStartDate,
   lockSlotDivisions = false,
   lockedDivisionKeys = [],
   readOnly = false,
@@ -186,6 +191,13 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
     () => normalizeDivisionKeys(lockedDivisionKeys),
     [lockedDivisionKeys],
   );
+  const parsedEventStartDate = useMemo(() => {
+    const parsed = parseLocalDateTime(eventStartDate);
+    if (!parsed) {
+      return null;
+    }
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
+  }, [eventStartDate]);
   const [fieldSearchBySlot, setFieldSearchBySlot] = useState<Record<string, string>>({});
   const [fieldAnchorBySlot, setFieldAnchorBySlot] = useState<Record<string, string>>({});
   const fieldItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -311,7 +323,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             <Title order={4} mb="md">
               League Configuration
             </Title>
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
               <div className="md:col-span-4">
                 <NumberInput
                   label="Games per Opponent"
@@ -395,7 +407,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           )}
 
           {requiresSets && (
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4 md:items-end">
               <div className="md:col-span-6">
                 <MantineSelect
                   label="Sets per Match"
@@ -433,7 +445,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               <Text size="sm" c="dimmed" mb="sm">
                 Configure the points required to win each set.
               </Text>
-              <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
+              <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm" className="md:items-end">
                 {Array.from({ length: setsPerMatch }).map((_, idx) => (
                   <NumberInput
                     key={`points-set-${idx}`}
@@ -507,18 +519,56 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             const effectiveSlotDivisions = lockSlotDivisions && normalizedLockedDivisionKeys.length
               ? normalizedLockedDivisionKeys
               : slotDivisions;
-            const divisionOptionsForSlot = effectiveSlotDivisions.length
-              ? Array.from(
-                  new Map(
-                    [...divisionOptions, ...effectiveSlotDivisions.map((value) => ({ value, label: value }))]
-                      .map((option) => [option.value, option]),
-                  ).values(),
-                )
-              : divisionOptions;
+            const isRepeating = slot.repeating !== false;
+            const slotStartDate = parseLocalDateTime(slot.startDate);
+            const slotEndDate = parseLocalDateTime(slot.endDate);
+            const divisionOptionsByKey = new Map<string, { value: string; label: string }>();
+            divisionOptions.forEach((option) => {
+              const value = String(option.value ?? '').trim();
+              if (!value) return;
+              const key = value.toLowerCase();
+              if (!divisionOptionsByKey.has(key)) {
+                divisionOptionsByKey.set(key, {
+                  value,
+                  label: String(option.label ?? value),
+                });
+              }
+            });
+            const divisionOptionsForSlot = (() => {
+              const byKey = new Map<string, { value: string; label: string }>();
+              effectiveSlotDivisions.forEach((value) => {
+                const normalized = String(value ?? '').trim();
+                if (!normalized) return;
+                const key = normalized.toLowerCase();
+                const existing = divisionOptionsByKey.get(key);
+                byKey.set(key, {
+                  value: normalized,
+                  label: existing?.label ?? normalized,
+                });
+              });
+              divisionOptions.forEach((option) => {
+                const value = String(option.value ?? '').trim();
+                if (!value) return;
+                const key = value.toLowerCase();
+                if (byKey.has(key)) return;
+                byKey.set(key, {
+                  value,
+                  label: String(option.label ?? value),
+                });
+              });
+              return Array.from(byKey.values());
+            })();
             const fieldMissing = slotFieldIds.length === 0;
             const dayMissing = selectedDays.length === 0;
             const startMissing = !(typeof slot.startTimeMinutes === 'number' && Number.isFinite(slot.startTimeMinutes));
             const endMissing = !(typeof slot.endTimeMinutes === 'number' && Number.isFinite(slot.endTimeMinutes));
+            const explicitStartMissing = !slotStartDate;
+            const explicitEndMissing = !slotEndDate;
+            const explicitRangeInvalid = Boolean(
+              slotStartDate &&
+              slotEndDate &&
+              slotEndDate.getTime() <= slotStartDate.getTime(),
+            );
             const startTimeOptions = typeof slot.startTimeMinutes === 'number' &&
               !TIME_OPTIONS.some((option) => option.value === String(slot.startTimeMinutes))
               ? [...TIME_OPTIONS, { value: String(slot.startTimeMinutes), label: toAmPmLabel(slot.startTimeMinutes) }]
@@ -616,62 +666,118 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                         maw={360}
                       />
 
-                      <MantineMultiSelect
-                        label="Days of Week"
-                        withAsterisk
-                        placeholder="Select one or more days"
-                        data={DAYS_OF_WEEK}
-                        value={selectedDays.map((day) => String(day))}
-                        comboboxProps={DROPDOWN_PROPS}
-                        onChange={(values) => {
-                          const days = Array.from(
-                            new Set(
-                              values
-                                .map((value) => Number(value))
-                                .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
-                            ),
-                          ).sort((a, b) => a - b);
-                          onUpdateSlot(index, {
-                            dayOfWeek: days[0],
-                            daysOfWeek: days,
-                          });
-                        }}
-                        disabled={readOnly}
-                        error={dayMissing && !readOnly ? 'Select at least one day' : undefined}
-                        maw={320}
-                      />
+                      {isRepeating ? (
+                        <>
+                          <MantineMultiSelect
+                            label="Days of Week"
+                            withAsterisk
+                            placeholder="Select one or more days"
+                            data={DAYS_OF_WEEK}
+                            value={selectedDays.map((day) => String(day))}
+                            comboboxProps={DROPDOWN_PROPS}
+                            onChange={(values) => {
+                              const days = Array.from(
+                                new Set(
+                                  values
+                                    .map((value) => Number(value))
+                                    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+                                ),
+                              ).sort((a, b) => a - b);
+                              onUpdateSlot(index, {
+                                dayOfWeek: days[0],
+                                daysOfWeek: days,
+                              });
+                            }}
+                            disabled={readOnly}
+                            error={dayMissing && !readOnly ? 'Select at least one day' : undefined}
+                            maw={320}
+                          />
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <MantineSelect
-                          label="Start Time"
-                          withAsterisk
-                          placeholder="Select start time"
-                          data={startTimeOptions}
-                          value={typeof slot.startTimeMinutes === 'number' ? String(slot.startTimeMinutes) : null}
-                          onChange={(value) => onUpdateSlot(index, {
-                            startTimeMinutes: typeof value === 'string' ? Number(value) : undefined,
-                          })}
-                          comboboxProps={DROPDOWN_PROPS}
-                          disabled={readOnly}
-                          error={startMissing && !readOnly ? 'Select a start time' : undefined}
-                          maw={220}
-                        />
+                          <DatePickerInput
+                            label="Start Date Override"
+                            placeholder="Use event start date"
+                            description="Optional. Leave blank to use event start date."
+                            value={slotStartDate}
+                            onChange={(value) => onUpdateSlot(index, {
+                              startDate: value ? formatLocalDateTime(value) : undefined,
+                            })}
+                            valueFormat="MM/DD/YYYY"
+                            minDate={parsedEventStartDate ?? undefined}
+                            clearable
+                            disabled={readOnly}
+                            maw={320}
+                          />
 
-                        <MantineSelect
-                          label="End Time"
-                          withAsterisk
-                          placeholder="Select end time"
-                          data={endTimeOptions}
-                          value={typeof slot.endTimeMinutes === 'number' ? String(slot.endTimeMinutes) : null}
-                          onChange={(value) => onUpdateSlot(index, {
-                            endTimeMinutes: typeof value === 'string' ? Number(value) : undefined,
-                          })}
-                          comboboxProps={DROPDOWN_PROPS}
-                          disabled={readOnly}
-                          error={endMissing && !readOnly ? 'Select an end time' : undefined}
-                          maw={220}
-                        />
-                      </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:items-end">
+                            <MantineSelect
+                              label="Start Time"
+                              withAsterisk
+                              placeholder="Select start time"
+                              data={startTimeOptions}
+                              value={typeof slot.startTimeMinutes === 'number' ? String(slot.startTimeMinutes) : null}
+                              onChange={(value) => onUpdateSlot(index, {
+                                startTimeMinutes: typeof value === 'string' ? Number(value) : undefined,
+                              })}
+                              comboboxProps={DROPDOWN_PROPS}
+                              disabled={readOnly}
+                              error={startMissing && !readOnly ? 'Select a start time' : undefined}
+                              maw={220}
+                            />
+
+                            <MantineSelect
+                              label="End Time"
+                              withAsterisk
+                              placeholder="Select end time"
+                              data={endTimeOptions}
+                              value={typeof slot.endTimeMinutes === 'number' ? String(slot.endTimeMinutes) : null}
+                              onChange={(value) => onUpdateSlot(index, {
+                                endTimeMinutes: typeof value === 'string' ? Number(value) : undefined,
+                              })}
+                              comboboxProps={DROPDOWN_PROPS}
+                              disabled={readOnly}
+                              error={endMissing && !readOnly ? 'Select an end time' : undefined}
+                              maw={220}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:items-end">
+                          <DateTimePicker
+                            label="Start Date & Time"
+                            withAsterisk
+                            placeholder="Select start"
+                            value={slotStartDate}
+                            onChange={(value) => onUpdateSlot(index, {
+                              startDate: value ? formatLocalDateTime(value) : undefined,
+                            })}
+                            minDate={parsedEventStartDate ?? undefined}
+                            valueFormat="MM/DD/YYYY hh:mm A"
+                            clearable
+                            disabled={readOnly}
+                            error={explicitStartMissing && !readOnly ? 'Select a start date/time' : undefined}
+                            maw={260}
+                          />
+                          <DateTimePicker
+                            label="End Date & Time"
+                            withAsterisk
+                            placeholder="Select end"
+                            value={slotEndDate}
+                            onChange={(value) => onUpdateSlot(index, {
+                              endDate: value ? formatLocalDateTime(value) : undefined,
+                            })}
+                            minDate={slotStartDate ?? parsedEventStartDate ?? undefined}
+                            valueFormat="MM/DD/YYYY hh:mm A"
+                            clearable
+                            disabled={readOnly}
+                            error={
+                              explicitEndMissing && !readOnly
+                                ? 'Select an end date/time'
+                                : (explicitRangeInvalid && !readOnly ? 'End date/time must be after start date/time' : undefined)
+                            }
+                            maw={260}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
 

@@ -201,6 +201,102 @@ describe('league scheduling (time slots)', () => {
     expect(latestStart).toBeGreaterThan(end.getTime());
   });
 
+  it('schedules matches within explicit non-repeating start/end datetime slots', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(2, division);
+    const eventStart = new Date(2026, 0, 3, 8, 0, 0);
+    const eventEnd = new Date(2026, 0, 3, 20, 0, 0);
+    const slotStart = new Date(2026, 0, 3, 10, 0, 0);
+    const slotEnd = new Date(2026, 0, 3, 12, 0, 0);
+
+    const league = new League({
+      id: 'league_non_repeating_window_fit',
+      name: 'Non Repeating Window Fit',
+      start: eventStart,
+      end: eventEnd,
+      noFixedEndDateTime: false,
+      maxParticipants: 2,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_non_repeat_fit',
+          dayOfWeek: 5,
+          startDate: slotStart,
+          endDate: slotEnd,
+          repeating: false,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 12 * 60,
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches).toHaveLength(1);
+    const [match] = scheduled.matches;
+    expect(match.start.getTime()).toBeGreaterThanOrEqual(slotStart.getTime());
+    expect(match.end.getTime()).toBeLessThanOrEqual(slotEnd.getTime());
+  });
+
+  it('errors when matches cannot fit within a non-repeating slot hard end datetime', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const eventStart = new Date(2026, 0, 3, 8, 0, 0);
+    const eventEnd = new Date(2026, 0, 3, 20, 0, 0);
+    const slotStart = new Date(2026, 0, 3, 10, 0, 0);
+    const slotEnd = new Date(2026, 0, 3, 12, 0, 0);
+
+    const league = new League({
+      id: 'league_non_repeating_window_overflow',
+      name: 'Non Repeating Window Overflow',
+      start: eventStart,
+      end: eventEnd,
+      noFixedEndDateTime: false,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_non_repeat_overflow',
+          dayOfWeek: 5,
+          startDate: slotStart,
+          endDate: slotEnd,
+          repeating: false,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 12 * 60,
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    expect(() => scheduleEvent({ event: league }, context)).toThrow(/provided time slots/i);
+  });
+
   it('schedules weekend-only league matches across multiple weekends when weekend slots are limited', () => {
     const division = buildDivision();
     const field = buildField(division);
@@ -762,6 +858,72 @@ describe('league scheduling (time slots)', () => {
     expect(scheduled.matches.every((match) => match.division.id === 'rec' || match.division.id === 'open')).toBe(true);
   });
 
+  it('schedules split playoff divisions when playoff timeslots are provided', () => {
+    const mixedAge = new Division('mixed_age', 'Mixed Age', [], null, 4, 2, 'LEAGUE');
+    const mixedAgePlayoff = new Division('mixed_age_playoff', 'Mixed Age Playoff', [], null, 4, null, 'PLAYOFF');
+    const fieldRegular = buildFieldById('field_mixed_age_regular', mixedAge);
+    const fieldPlayoff = buildFieldById('field_mixed_age_playoff', mixedAgePlayoff);
+    const teams = buildTeams(4, mixedAge);
+
+    const league = new League({
+      id: 'league_split_playoff_division_timeslots',
+      name: 'Split Playoff Division Timeslots',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 2, 30, 22, 0, 0),
+      noFixedEndDateTime: false,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams,
+      divisions: [mixedAge],
+      playoffDivisions: [mixedAgePlayoff],
+      splitLeaguePlayoffDivisions: true,
+      referees: [],
+      fields: {
+        [fieldRegular.id]: fieldRegular,
+        [fieldPlayoff.id]: fieldPlayoff,
+      },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_mixed_age_regular',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldRegular.id,
+          divisions: [mixedAge],
+        }),
+        new TimeSlot({
+          id: 'slot_mixed_age_playoff',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldPlayoff.id,
+          divisions: [mixedAgePlayoff],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 2,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const playoffMatches = scheduled.matches.filter((match) => match.division.id === mixedAgePlayoff.id);
+
+    expect(playoffMatches.length).toBeGreaterThan(0);
+    expect(playoffMatches.every((match) => match.field?.id === fieldPlayoff.id)).toBe(true);
+  });
+
   it('surfaces a configuration error when selected divisions have no available fields', () => {
     const openDivision = new Division('OPEN', 'Open');
     const advancedDivision = new Division('ADVANCED', 'Advanced');
@@ -803,6 +965,55 @@ describe('league scheduling (time slots)', () => {
     expect(() => scheduleEvent({ event: league }, context)).toThrow(
       /no fields are available.*OPEN/i,
     );
+  });
+
+  it('surfaces division names (not ids) in no-field scheduling errors', () => {
+    const playoffDivisionId = '1bc2cc2d-0ef5-4b83-839b-dcce8e7e0bd3__division__playoff_1';
+    const playoffDivision = new Division(playoffDivisionId, 'Playoff Division 1');
+    const advancedDivision = new Division('ADVANCED', 'Advanced');
+    const field = buildField(advancedDivision);
+    const teams = buildTeams(4, playoffDivision);
+
+    const league = new League({
+      id: 'league_missing_fields_named',
+      name: 'Missing Fields Named League',
+      start: new Date(2026, 0, 3, 9, 0, 0),
+      end: new Date(2026, 0, 10, 13, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [playoffDivision],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_named',
+          dayOfWeek: 5,
+          startDate: new Date(2026, 0, 3),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 13 * 60,
+          divisions: [advancedDivision],
+        }),
+      ],
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    try {
+      scheduleEvent({ event: league }, context);
+      fail('Expected scheduleEvent to throw a no-field configuration error.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toContain('Playoff Division 1');
+      expect(message).not.toContain(playoffDivisionId);
+    }
   });
 
   it('schedules placeholder-backed multi-division leagues without leaking synthetic teams', () => {

@@ -259,52 +259,24 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
 
   private prepareTimeSlots(timeSlots: Iterable<any>): void {
     const reference = this.startTime;
+    const repeatingSlots: any[] = [];
+
+    for (const slot of timeSlots) {
+      if (slot?.repeating === false) {
+        for (const [slotStart, slotEnd] of this.slotRanges(slot, reference)) {
+          this.addSlotWindow(slot, slotStart, slotEnd);
+        }
+        continue;
+      }
+      repeatingSlots.push(slot);
+    }
+
     let weeks = 0;
     while (reference.getTime() + weeks * 7 * 24 * 60 * MINUTE_MS <= this.endTime.getTime()) {
       const weekReference = new Date(reference.getTime() + weeks * 7 * 24 * 60 * MINUTE_MS);
-      for (const slot of timeSlots) {
+      for (const slot of repeatingSlots) {
         for (const [slotStart, slotEnd] of this.slotRanges(slot, weekReference)) {
-          if (slotEnd.getTime() <= this.startTime.getTime() || slotStart.getTime() >= this.endTime.getTime()) {
-            continue;
-          }
-          const boundedStart = slotStart.getTime() < this.startTime.getTime() ? this.startTime : slotStart;
-          const boundedEnd = slotEnd.getTime() > this.endTime.getTime() ? this.endTime : slotEnd;
-          if (boundedEnd.getTime() <= boundedStart.getTime()) continue;
-          const fieldCandidates: unknown[] = Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
-            ? slot.scheduledFieldIds
-            : Array.isArray(slot.fieldIds) && slot.fieldIds.length
-              ? slot.fieldIds
-              : [slot.field ?? slot.scheduledFieldId];
-          const fieldIds: string[] = Array.from(
-            new Set(
-              fieldCandidates
-                .map((value): string | null => {
-                  if (typeof value === 'string' && value.length > 0) {
-                    return value;
-                  }
-                  if (typeof value === 'number' && Number.isFinite(value)) {
-                    return String(value);
-                  }
-                  return null;
-                })
-                .filter((value): value is string => value !== null),
-            ),
-          );
-          const groupIds = this.normalizeGroupIds(slot.divisions);
-          const window: SlotWindow = {
-            start: boundedStart,
-            end: boundedEnd,
-            groupIds: groupIds.size ? groupIds : null,
-          };
-          if (!fieldIds.length) {
-            this.globalSlots.push(window);
-            continue;
-          }
-          for (const fieldId of fieldIds) {
-            const existing = this.resourceSlots.get(fieldId) ?? [];
-            existing.push(window);
-            this.resourceSlots.set(fieldId, existing);
-          }
+          this.addSlotWindow(slot, slotStart, slotEnd);
         }
       }
       weeks += 1;
@@ -315,7 +287,90 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     this.globalSlots.sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
+  private addSlotWindow(slot: any, slotStart: Date, slotEnd: Date): void {
+    if (slotEnd.getTime() <= this.startTime.getTime() || slotStart.getTime() >= this.endTime.getTime()) {
+      return;
+    }
+    const boundedStart = slotStart.getTime() < this.startTime.getTime() ? this.startTime : slotStart;
+    const boundedEnd = slotEnd.getTime() > this.endTime.getTime() ? this.endTime : slotEnd;
+    if (boundedEnd.getTime() <= boundedStart.getTime()) {
+      return;
+    }
+    const fieldCandidates: unknown[] = Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+      ? slot.scheduledFieldIds
+      : Array.isArray(slot.fieldIds) && slot.fieldIds.length
+        ? slot.fieldIds
+        : [slot.field ?? slot.scheduledFieldId];
+    const fieldIds: string[] = Array.from(
+      new Set(
+        fieldCandidates
+          .map((value): string | null => {
+            if (typeof value === 'string' && value.length > 0) {
+              return value;
+            }
+            if (typeof value === 'number' && Number.isFinite(value)) {
+              return String(value);
+            }
+            return null;
+          })
+          .filter((value): value is string => value !== null),
+      ),
+    );
+    const groupIds = this.normalizeGroupIds(slot.divisions);
+    const window: SlotWindow = {
+      start: boundedStart,
+      end: boundedEnd,
+      groupIds: groupIds.size ? groupIds : null,
+    };
+    if (!fieldIds.length) {
+      this.globalSlots.push(window);
+      return;
+    }
+    for (const fieldId of fieldIds) {
+      const existing = this.resourceSlots.get(fieldId) ?? [];
+      existing.push(window);
+      this.resourceSlots.set(fieldId, existing);
+    }
+  }
+
   private slotRanges(slot: any, reference: Date): Array<[Date, Date]> {
+    const parseDate = (value: unknown): Date | null => {
+      if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+      }
+      if (typeof value === 'string' || typeof value === 'number') {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+      return null;
+    };
+
+    if (slot?.repeating === false) {
+      const explicitStart = parseDate(slot.startDate);
+      const explicitEnd = parseDate(slot.endDate);
+      if (explicitStart && explicitEnd && explicitEnd.getTime() > explicitStart.getTime()) {
+        return [[explicitStart, explicitEnd]];
+      }
+      if (!explicitStart) {
+        return [];
+      }
+      const startMinutesRaw = slot.startTimeMinutes ?? slot.start_time_minutes;
+      const endMinutesRaw = slot.endTimeMinutes ?? slot.end_time_minutes;
+      const startMinutes = Number(startMinutesRaw);
+      const endMinutes = Number(endMinutesRaw);
+      if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) {
+        return [];
+      }
+      const dayStart = new Date(explicitStart);
+      dayStart.setHours(0, 0, 0, 0);
+      const start = new Date(dayStart.getTime() + startMinutes * MINUTE_MS);
+      const end = new Date(dayStart.getTime() + endMinutes * MINUTE_MS);
+      if (end.getTime() <= start.getTime()) {
+        return [];
+      }
+      return [[start, end]];
+    }
+
     const normalizedDays: number[] = Array.from(
       new Set(
         (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length

@@ -2,7 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack } from '@mantine/core';
 import { useRouter } from 'next/navigation';
-import { Event, UserData, Team, getEventDateTime, getUserAvatarUrl, getTeamAvatarUrl, PaymentIntent, getEventImageUrl, formatPrice } from '@/types';
+import {
+    Event,
+    UserData,
+    Team,
+    getEventDateTime,
+    getUserAvatarUrl,
+    getTeamAvatarUrl,
+    PaymentIntent,
+    getEventImageFallbackUrl,
+    getEventImageUrl,
+    formatPrice,
+} from '@/types';
 import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
@@ -343,6 +354,18 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
 
     const currentEvent = detailedEvent || event;
+    const eventImageFallbackUrl = React.useMemo(
+        () => getEventImageFallbackUrl({ event: currentEvent, width: 800, height: 200 }),
+        [currentEvent],
+    );
+    const eventImageUrl = React.useMemo(
+        () => getEventImageUrl({
+            imageId: currentEvent?.imageId,
+            width: 800,
+            placeholderUrl: eventImageFallbackUrl,
+        }),
+        [currentEvent?.imageId, eventImageFallbackUrl],
+    );
     const registrationByDivisionType = Boolean(currentEvent?.registrationByDivisionType);
     const divisionOptions = React.useMemo(
         () => buildDivisionOptionsForEvent(currentEvent),
@@ -2013,14 +2036,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 {/* Optional hero banner */}
                 <div className="relative">
                     <Image
-                        src={getEventImageUrl({ imageId: currentEvent.imageId, width: 800 })}
+                        src={eventImageUrl}
                         alt={currentEvent.name}
                         fill
                         unoptimized
                         sizes="(max-width: 768px) 100vw, 800px"
                         className="w-full h-48 object-cover"
                         onError={(e) => {
-                            e.currentTarget.src = 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=200&fit=crop';
+                            e.currentTarget.src = eventImageFallbackUrl;
                         }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />

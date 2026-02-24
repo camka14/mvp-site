@@ -32,7 +32,7 @@ export class EventBuilder {
       this.event.start,
       this.event.fields,
       this.participants,
-      this.event.divisions,
+      this.schedulingDivisions(),
       undefined,
       { endTime: this.event.end, timeSlots: this.event.timeSlots },
     );
@@ -48,6 +48,22 @@ export class EventBuilder {
       return false;
     }
     return Boolean(this.event.splitLeaguePlayoffDivisions && this.event.playoffDivisions.length > 0);
+  }
+
+  private schedulingDivisions(): Division[] {
+    const divisions: Division[] = [...this.event.divisions];
+    if (!this.useSplitPlayoffDivisions) {
+      return divisions;
+    }
+    const seen = new Set(divisions.map((division) => division.id));
+    for (const playoffDivision of (this.event as League).playoffDivisions) {
+      if (seen.has(playoffDivision.id)) {
+        continue;
+      }
+      seen.add(playoffDivision.id);
+      divisions.push(playoffDivision);
+    }
+    return divisions;
   }
 
   buildSchedule(): League | Tournament {
@@ -66,7 +82,7 @@ export class EventBuilder {
       this.event.start,
       this.event.fields,
       scheduleParticipants,
-      this.event.divisions,
+      this.schedulingDivisions(),
       undefined,
       { endTime: this.event.end, timeSlots: this.event.timeSlots },
     );
@@ -132,6 +148,7 @@ export class EventBuilder {
 
   private resetState(): void {
     this.event.matches = {};
+    const refereeDivisions = this.schedulingDivisions();
     for (const field of Object.values(this.event.fields)) {
       field.matches = [];
     }
@@ -141,7 +158,7 @@ export class EventBuilder {
     for (const referee of this.event.referees) {
       referee.matches = [];
       if (!referee.divisions.length) {
-        referee.divisions = [...this.event.divisions];
+        referee.divisions = [...refereeDivisions];
       }
     }
     this.refereeCycle = [...this.event.referees];
@@ -173,8 +190,9 @@ export class EventBuilder {
 
   private participantsForSchedule(teams: Record<string, Team>): Record<string, Team | UserData> {
     const participants: Record<string, Team | UserData> = { ...teams };
+    const refereeDivisions = this.schedulingDivisions();
     for (const referee of this.event.referees) {
-      if (!referee.divisions.length) referee.divisions = [...this.event.divisions];
+      if (!referee.divisions.length) referee.divisions = [...refereeDivisions];
       referee.matches = [];
       participants[referee.id] = referee;
     }
@@ -758,11 +776,11 @@ export class EventBuilder {
     }
     const league = this.event as League;
     const explicitDivisionCount = (() => {
-      if (typeof division.maxParticipants === 'number' && Number.isFinite(division.maxParticipants)) {
-        return Math.max(0, Math.trunc(division.maxParticipants));
-      }
       if (typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)) {
         return Math.max(0, Math.trunc(division.playoffTeamCount));
+      }
+      if (typeof division.maxParticipants === 'number' && Number.isFinite(division.maxParticipants)) {
+        return Math.max(0, Math.trunc(division.maxParticipants));
       }
       return null;
     })();

@@ -39,7 +39,11 @@ const LeagueScoringConfigPanel: React.FC<LeagueScoringConfigPanelProps> = ({ val
       Goal-based points are not applied automatically to league standings.
     </Text>
 
-    <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 5 }} spacing="sm">
+    <SimpleGrid
+      cols={{ base: 1, sm: 2, md: 3, lg: 5 }}
+      spacing="sm"
+      className="md:items-end"
+    >
       {NUMERIC_FIELDS.map(({ key, label }) => (
         shouldShowField(sport, key) && (
           editable && onChange ? (

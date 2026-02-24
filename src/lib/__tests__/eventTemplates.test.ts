@@ -179,4 +179,69 @@ describe('eventTemplates', () => {
     expect(seeded.timeSlots?.[0].startDate).toBe('2026-02-01T10:30:00');
     expect(seeded.timeSlots?.[0].endDate).toBe('2026-02-08T10:30:00');
   });
+
+  it('preserves scheduling and league config while clearing matches when seeding from template', () => {
+    const template = buildBaseEvent({
+      $id: 'tmpl_cfg',
+      name: 'Configured League (TEMPLATE)',
+      state: 'TEMPLATE',
+      gamesPerOpponent: 2,
+      includePlayoffs: true,
+      playoffTeamCount: 8,
+      matchDurationMinutes: 55,
+      setDurationMinutes: 20,
+      setsPerMatch: 3,
+      pointsToVictory: [21, 21, 15],
+      allowPaymentPlans: true,
+      installmentCount: 2,
+      installmentAmounts: [25, 25],
+      installmentDueDates: ['2026-01-02T10:30:00', '2026-01-04T10:30:00'],
+      leagueScoringConfig: {
+        pointsForWin: 3,
+        pointsForDraw: 1,
+        pointsForLoss: 0,
+      } as any,
+      timeSlots: [
+        {
+          $id: 'tmpl_slot_cfg',
+          dayOfWeek: 1,
+          startTimeMinutes: 18 * 60,
+          endTimeMinutes: 20 * 60,
+          startDate: '2026-01-05T10:30:00',
+          endDate: '2026-01-12T10:30:00',
+          repeating: true,
+          scheduledFieldId: 'org_field_1',
+        },
+      ],
+      timeSlotIds: ['tmpl_slot_cfg'],
+      fieldIds: ['org_field_1'],
+      matches: [{ $id: 'match_cfg' } as any],
+    });
+
+    const seeded = seedEventFromTemplate(template, {
+      newEventId: 'evt_cfg',
+      newStartDate: new Date('2026-02-01T00:00:00'),
+      hostId: 'host_1',
+      idFactory: makeIdFactory('seed_cfg'),
+    });
+
+    expect(seeded.matches).toEqual([]);
+    expect(seeded.timeSlots).toHaveLength(1);
+    expect(seeded.gamesPerOpponent).toBe(2);
+    expect(seeded.includePlayoffs).toBe(true);
+    expect(seeded.playoffTeamCount).toBe(8);
+    expect(seeded.matchDurationMinutes).toBe(55);
+    expect(seeded.setDurationMinutes).toBe(20);
+    expect(seeded.setsPerMatch).toBe(3);
+    expect(seeded.pointsToVictory).toEqual([21, 21, 15]);
+    expect(seeded.allowPaymentPlans).toBe(true);
+    expect(seeded.installmentCount).toBe(2);
+    expect(seeded.installmentAmounts).toEqual([25, 25]);
+    expect(seeded.installmentDueDates).toEqual(['2026-01-02T10:30:00', '2026-01-04T10:30:00']);
+    expect(seeded.leagueScoringConfig).toEqual({
+      pointsForWin: 3,
+      pointsForDraw: 1,
+      pointsForLoss: 0,
+    });
+  });
 });

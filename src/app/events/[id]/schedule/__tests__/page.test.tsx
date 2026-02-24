@@ -348,6 +348,190 @@ describe('League schedule page', () => {
     expect(screen.queryByRole('button', { name: /save league/i })).not.toBeInTheDocument();
   });
 
+  it('creates a template from an unsaved create-mode draft', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return 'edit';
+        return null;
+      },
+    });
+
+    mockEventFormDraft = {
+      ...buildApiEvent({
+        id: 'event_unsaved',
+        $id: 'event_unsaved',
+        name: 'Unsaved League',
+        state: 'DRAFT',
+        eventType: 'LEAGUE',
+      }),
+    };
+
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path.startsWith('/api/events?state=TEMPLATE')) {
+        return Promise.resolve({ events: [] });
+      }
+      if (path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST') {
+        const payloadEvent = (
+          (options as { body?: { event?: Record<string, unknown> } } | undefined)
+            ?.body?.event
+        ) ?? {};
+        return Promise.resolve({ event: { ...payloadEvent } });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const createTemplateButton = await screen.findByRole('button', { name: /create template/i });
+    fireEvent.click(createTemplateButton);
+
+    await waitFor(() => {
+      const createCall = apiRequestMock.mock.calls.find(
+        ([path, options]) => path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST',
+      );
+      expect(createCall).toBeDefined();
+    });
+
+    const createCall = apiRequestMock.mock.calls.find(
+      ([path, options]) => path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST',
+    );
+    const requestBody = (createCall?.[1] as { body?: { id?: string; event?: Record<string, unknown> } } | undefined)?.body;
+
+    expect(requestBody?.id).toBeTruthy();
+    expect(requestBody?.event?.state).toBe('TEMPLATE');
+    expect(requestBody?.event?.name).toBe('Unsaved League (TEMPLATE)');
+    expect(eventService.getEventWithRelations).not.toHaveBeenCalled();
+  });
+
+  it('seeds create mode from templateId query and does not fetch standings for unsaved events', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return 'edit';
+        if (key === 'templateId') return 'template_1';
+        return null;
+      },
+    });
+
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(
+      buildApiEvent({
+        id: 'template_1',
+        $id: 'template_1',
+        name: 'Template League (TEMPLATE)',
+        state: 'TEMPLATE',
+        eventType: 'LEAGUE',
+        divisions: ['division_open'],
+        divisionDetails: [
+          {
+            id: 'division_open',
+            name: 'Open',
+            teams: [],
+            teamIds: [],
+          },
+        ],
+      }),
+    );
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path.startsWith('/api/events?state=TEMPLATE')) {
+        return Promise.resolve({ events: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(eventService.getEventWithRelations).toHaveBeenCalledWith('template_1');
+    });
+
+    await waitFor(() => {
+      expect(capturedEventFormProps?.event?.name).toBe('Template League');
+      expect(capturedEventFormProps?.event?.state).toBe('DRAFT');
+    });
+
+    const standingsCalls = apiRequestMock.mock.calls.filter(([path]) => (
+      typeof path === 'string' && path.includes('/standings')
+    ));
+    expect(standingsCalls).toHaveLength(0);
+  });
+
+  it('preserves template-seeded location values when org defaults hydrate create mode', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return 'edit';
+        if (key === 'templateId') return 'template_org_1';
+        if (key === 'orgId') return 'org_1';
+        return null;
+      },
+    });
+
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(
+      buildApiEvent({
+        id: 'template_org_1',
+        $id: 'template_org_1',
+        name: 'Template League (TEMPLATE)',
+        state: 'TEMPLATE',
+        eventType: 'LEAGUE',
+        location: 'Template Arena',
+        coordinates: [-121.9, 37.3],
+        fields: [
+          {
+            $id: 'field_template_1',
+            name: 'Template Court',
+            fieldNumber: 2,
+            location: 'Template Arena',
+            lat: 37.3,
+            long: -121.9,
+          },
+        ],
+      }),
+    );
+
+    (organizationService.getOrganizationById as jest.Mock).mockResolvedValue({
+      $id: 'org_1',
+      ownerId: 'owner_1',
+      location: 'Organization HQ',
+      coordinates: [-83.0, 42.0],
+      fields: [
+        {
+          $id: 'field_org_1',
+          name: 'Org Court',
+          fieldNumber: 1,
+          location: 'Organization HQ',
+          lat: 42.0,
+          long: -83.0,
+        },
+      ],
+      refIds: ['ref_org_1'],
+      referees: [{ $id: 'ref_org_1' }],
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path.startsWith('/api/events?state=TEMPLATE')) {
+        return Promise.resolve({ events: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(eventService.getEventWithRelations).toHaveBeenCalledWith('template_org_1');
+    });
+    await waitFor(() => {
+      expect(organizationService.getOrganizationById).toHaveBeenCalledWith('org_1', true);
+    });
+    await waitFor(() => {
+      expect(capturedEventFormProps?.event?.organizationId).toBe('org_1');
+      expect(capturedEventFormProps?.event?.location).toBe('Template Arena');
+      expect(capturedEventFormProps?.event?.coordinates).toEqual([-121.9, 37.3]);
+      expect(capturedEventFormProps?.event?.fields?.[0]?.name).toBe('Template Court');
+    });
+  });
+
   it('allows host to open match editor when in edit mode', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {

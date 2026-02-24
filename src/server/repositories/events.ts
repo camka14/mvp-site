@@ -102,6 +102,42 @@ const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
   }
   return fallback;
 };
+
+const normalizeEntityId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const resolveBillingOwnerHasStripeAccount = async (
+  client: PrismaLike,
+  params: {
+    organizationId?: unknown;
+    hostId?: unknown;
+  },
+): Promise<boolean> => {
+  const organizationId = normalizeEntityId(params.organizationId);
+  if (organizationId) {
+    const organization = await client.organizations.findUnique({
+      where: { id: organizationId },
+      select: { hasStripeAccount: true },
+    });
+    return Boolean(organization?.hasStripeAccount);
+  }
+
+  const hostId = normalizeEntityId(params.hostId);
+  if (!hostId) {
+    return false;
+  }
+  const hostProfile = await client.userData.findUnique({
+    where: { id: hostId },
+    select: { hasStripeAccount: true },
+  });
+  return Boolean(hostProfile?.hasStripeAccount);
+};
+
 const DEFAULT_DIVISION_KEY = 'open';
 const DEFAULT_DIVISION_KIND: 'LEAGUE' | 'PLAYOFF' = 'LEAGUE';
 const LEAGUE_SCORING_BOOLEAN_FIELDS: readonly string[] = [];
@@ -901,6 +937,15 @@ const buildTimeSlots = (
   fallbackDivisions: Division[],
 ) => {
   return rows.flatMap((row) => {
+    const repeating = Boolean(row.repeating);
+    const startDate = row.startDate instanceof Date ? row.startDate : new Date(row.startDate);
+    const endDate = row.endDate ? new Date(row.endDate) : null;
+    const startTimeMinutes = typeof row.startTimeMinutes === 'number'
+      ? row.startTimeMinutes
+      : (startDate.getHours() * 60 + startDate.getMinutes());
+    const endTimeMinutes = typeof row.endTimeMinutes === 'number'
+      ? row.endTimeMinutes
+      : (endDate ? endDate.getHours() * 60 + endDate.getMinutes() : 0);
     const normalizedDays = normalizeDayValues({
       dayOfWeek: row.dayOfWeek,
       daysOfWeek: (row as any).daysOfWeek,
@@ -909,15 +954,32 @@ const buildTimeSlots = (
     const slotDivisions = slotDivisionIds.length
       ? slotDivisionIds.map((id) => divisionMap.get(id) ?? new Division(id, buildDivisionDisplayName(id)))
       : fallbackDivisions;
+    if (!repeating) {
+      const day = normalizedDays.length
+        ? normalizedDays[0]
+        : ((startDate.getDay() + 6) % 7);
+      return [new TimeSlot({
+        id: row.id,
+        dayOfWeek: day,
+        startDate,
+        endDate,
+        repeating: false,
+        startTimeMinutes,
+        endTimeMinutes,
+        price: row.price ?? null,
+        field: row.scheduledFieldId ?? null,
+        divisions: [...slotDivisions],
+      })];
+    }
     const days = normalizedDays.length ? normalizedDays : [0];
     return days.map((day, index) => new TimeSlot({
       id: days.length === 1 ? row.id : `${row.id}__d${day}_${index}`,
       dayOfWeek: day,
-      startDate: row.startDate instanceof Date ? row.startDate : new Date(row.startDate),
-      endDate: row.endDate ? new Date(row.endDate) : null,
-      repeating: Boolean(row.repeating),
-      startTimeMinutes: row.startTimeMinutes ?? 0,
-      endTimeMinutes: row.endTimeMinutes ?? 0,
+      startDate,
+      endDate,
+      repeating: true,
+      startTimeMinutes,
+      endTimeMinutes,
       price: row.price ?? null,
       field: row.scheduledFieldId ?? null,
       divisions: [...slotDivisions],
@@ -1690,15 +1752,43 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   }
   const existingEvent = await client.events.findUnique({
     where: { id },
-    select: { fieldIds: true, timeSlotIds: true, eventType: true, leagueScoringConfigId: true },
+    select: {
+      fieldIds: true,
+      timeSlotIds: true,
+      eventType: true,
+      leagueScoringConfigId: true,
+      hostId: true,
+      organizationId: true,
+    },
+  });
+  const resolvedOrganizationId = normalizeEntityId(payload.organizationId) ?? normalizeEntityId(existingEvent?.organizationId);
+  const resolvedHostId = normalizeEntityId(payload.hostId) ?? normalizeEntityId(existingEvent?.hostId);
+  const billingOwnerHasStripeAccount = await resolveBillingOwnerHasStripeAccount(client, {
+    organizationId: resolvedOrganizationId,
+    hostId: resolvedHostId,
   });
   const existingFieldIds = normalizeFieldIds(existingEvent?.fieldIds ?? []);
   const existingTimeSlotIds = normalizeFieldIds(existingEvent?.timeSlotIds ?? []);
   const fields = Array.isArray(payload.fields) ? payload.fields : [];
   const teams = Array.isArray(payload.teams) ? payload.teams : [];
   const timeSlots = Array.isArray(payload.timeSlots) ? payload.timeSlots : [];
-  const normalizedDivisionDetails = normalizeDivisionDetailsPayload(payload.divisionDetails, id, payload.sportId, 'LEAGUE');
-  const normalizedPlayoffDivisionDetails = normalizeDivisionDetailsPayload(payload.playoffDivisionDetails, id, payload.sportId, 'PLAYOFF');
+  const normalizeDivisionBilling = (detail: DivisionDetailPayload): DivisionDetailPayload => {
+    if (billingOwnerHasStripeAccount) {
+      return detail;
+    }
+    return {
+      ...detail,
+      price: detail.kind === 'PLAYOFF' ? null : 0,
+      allowPaymentPlans: false,
+      installmentCount: 0,
+      installmentDueDates: [],
+      installmentAmounts: [],
+    };
+  };
+  const normalizedDivisionDetails = normalizeDivisionDetailsPayload(payload.divisionDetails, id, payload.sportId, 'LEAGUE')
+    .map(normalizeDivisionBilling);
+  const normalizedPlayoffDivisionDetails = normalizeDivisionDetailsPayload(payload.playoffDivisionDetails, id, payload.sportId, 'PLAYOFF')
+    .map(normalizeDivisionBilling);
   const payloadDivisionIds = normalizeDivisionIdentifierList(payload.divisions, id);
   const divisionIdsFromDetails = normalizedDivisionDetails.map((detail) => detail.id);
   const fallbackDivisionIds = defaultDivisionKeysForSport(payload.sportId)
@@ -1713,10 +1803,27 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const expandedTimeSlots = timeSlots.flatMap((slot: any, index: number) => {
     const sourceSlotId = slot.$id || slot.id || `${id}__slot_${index + 1}`;
     const baseSlotId = normalizeSlotBaseId(sourceSlotId);
+    const repeating = slot.repeating !== false;
+    const startDate = coerceDate(slot.startDate) ?? new Date();
+    const parsedEndDate = slot.endDate ? coerceDate(slot.endDate) : null;
     const normalizedDays = normalizeDayValues({
       dayOfWeek: slot.dayOfWeek,
       daysOfWeek: slot.daysOfWeek,
     });
+    const startTimeMinutesInput = typeof slot.startTimeMinutes === 'number'
+      ? slot.startTimeMinutes
+      : Number.isFinite(Number(slot.startTimeMinutes))
+        ? Number(slot.startTimeMinutes)
+        : null;
+    const endTimeMinutesInput = typeof slot.endTimeMinutes === 'number'
+      ? slot.endTimeMinutes
+      : Number.isFinite(Number(slot.endTimeMinutes))
+        ? Number(slot.endTimeMinutes)
+        : null;
+    const startTimeMinutes = startTimeMinutesInput ?? (repeating ? null : (startDate.getHours() * 60 + startDate.getMinutes()));
+    const endTimeMinutes = endTimeMinutesInput ?? (repeating
+      ? null
+      : (parsedEndDate ? parsedEndDate.getHours() * 60 + parsedEndDate.getMinutes() : null));
     const normalizedFieldIds = normalizeSlotFieldIds(slot);
     const expandedFieldIds: Array<string | null> = normalizedFieldIds.length ? normalizedFieldIds : [null];
     const normalizedSlotDivisions = normalizeDivisionIdentifierList(slot.divisions, id);
@@ -1725,16 +1832,49 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       : normalizedSlotDivisions.length
       ? normalizedSlotDivisions
       : normalizedEventDivisionIds;
-    if (!normalizedDays.length) {
-      return [{
+
+    if (!repeating) {
+      const explicitEndDate = parsedEndDate ?? (() => {
+        if (typeof startTimeMinutes === 'number' && typeof endTimeMinutes === 'number') {
+          const startOfDay = new Date(startDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          const candidate = new Date(startOfDay.getTime() + endTimeMinutes * 60 * 1000);
+          if (candidate.getTime() <= startDate.getTime()) {
+            candidate.setDate(candidate.getDate() + 1);
+          }
+          return candidate;
+        }
+        return null;
+      })();
+      if (!explicitEndDate || explicitEndDate.getTime() <= startDate.getTime()) {
+        return [];
+      }
+      const defaultDay = ((startDate.getDay() + 6) % 7);
+      const slotDay = normalizedDays[0] ?? defaultDay;
+      return expandedFieldIds.map((fieldId) => ({
         ...slot,
-        id: buildExpandedSlotId(sourceSlotId, baseSlotId, 0, expandedFieldIds[0], 1, expandedFieldIds.length),
-        dayOfWeek: null,
-        scheduledFieldId: expandedFieldIds[0],
+        id: buildExpandedSlotId(
+          sourceSlotId,
+          baseSlotId,
+          slotDay,
+          fieldId,
+          1,
+          expandedFieldIds.length,
+        ),
+        dayOfWeek: slotDay,
+        startDate,
+        endDate: explicitEndDate,
+        startTimeMinutes,
+        endTimeMinutes,
+        repeating: false,
+        scheduledFieldId: fieldId,
         divisions: slotDivisions,
-      }];
+      }));
     }
-    return normalizedDays.flatMap((day) =>
+
+    const days = normalizedDays.length ? normalizedDays : [((startDate.getDay() + 6) % 7)];
+
+    return days.flatMap((day) =>
       expandedFieldIds.map((fieldId) => ({
         ...slot,
         id: buildExpandedSlotId(
@@ -1742,10 +1882,15 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
           baseSlotId,
           day,
           fieldId,
-          normalizedDays.length,
+          days.length,
           expandedFieldIds.length,
         ),
         dayOfWeek: day,
+        startDate,
+        endDate: parsedEndDate,
+        startTimeMinutes,
+        endTimeMinutes,
+        repeating: true,
         scheduledFieldId: fieldId,
         divisions: slotDivisions,
       })),
@@ -1842,6 +1987,29 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     resolvedLeagueScoringConfigId = leagueScoringConfigId;
   }
 
+  const normalizedEventPrice = (() => {
+    if (!billingOwnerHasStripeAccount) {
+      return 0;
+    }
+    const parsed = coerceNullableNumber(payload.price);
+    if (typeof parsed === 'number') {
+      return Math.max(0, Math.round(parsed));
+    }
+    return 0;
+  })();
+  const normalizedEventAllowPaymentPlans = billingOwnerHasStripeAccount
+    ? (payload.allowPaymentPlans ?? null)
+    : false;
+  const normalizedEventInstallmentCount = billingOwnerHasStripeAccount
+    ? (payload.installmentCount ?? null)
+    : 0;
+  const normalizedEventInstallmentDueDates = billingOwnerHasStripeAccount
+    ? (ensureArray(payload.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[])
+    : [];
+  const normalizedEventInstallmentAmounts = billingOwnerHasStripeAccount
+    ? ensureNumberArray(payload.installmentAmounts)
+    : [];
+
   const eventData = {
     id,
     name: payload.name ?? 'Untitled Event',
@@ -1861,7 +2029,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     hostId: payload.hostId ?? '',
     assistantHostIds: ensureStringArray(payload.assistantHostIds),
     noFixedEndDateTime,
-    price: payload.price ?? 0,
+    price: normalizedEventPrice,
     singleDivision: payload.singleDivision ?? false,
     registrationByDivisionType: payload.registrationByDivisionType ?? false,
     waitListIds: ensureStringArray(payload.waitListIds),
@@ -1900,10 +2068,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     eventType: payload.eventType ?? null,
     doTeamsRef: payload.doTeamsRef ?? null,
     refereeIds: ensureStringArray(payload.refereeIds),
-    allowPaymentPlans: payload.allowPaymentPlans ?? null,
-    installmentCount: payload.installmentCount ?? null,
-    installmentDueDates: ensureArray(payload.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[],
-    installmentAmounts: ensureNumberArray(payload.installmentAmounts),
+    allowPaymentPlans: normalizedEventAllowPaymentPlans,
+    installmentCount: normalizedEventInstallmentCount,
+    installmentDueDates: normalizedEventInstallmentDueDates,
+    installmentAmounts: normalizedEventInstallmentAmounts,
     allowTeamSplitDefault: payload.allowTeamSplitDefault ?? null,
     splitLeaguePlayoffDivisions,
     requiredTemplateIds: ensureStringArray(payload.requiredTemplateIds),
@@ -1911,14 +2079,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   };
 
   const defaultDivisionPrice = (() => {
-    const parsed = coerceNullableNumber(payload.price);
-    if (typeof parsed === 'number') {
-      return Math.max(0, Math.round(parsed));
+    if (!billingOwnerHasStripeAccount) {
+      return 0;
     }
-    if (parsed === null) {
-      return null;
-    }
-    return 0;
+    return normalizedEventPrice;
   })();
   const defaultDivisionMaxParticipants = (() => {
     const parsed = coerceNullableNumber(payload.maxParticipants);
@@ -1935,6 +2099,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     return parsed ?? null;
   })();
   const defaultDivisionAllowPaymentPlans = (() => {
+    if (!billingOwnerHasStripeAccount) {
+      return false;
+    }
     const parsed = coerceNullableBoolean(payload.allowPaymentPlans);
     if (typeof parsed === 'boolean') {
       return parsed;
@@ -1942,14 +2109,21 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     return parsed ?? null;
   })();
   const defaultDivisionInstallmentCount = (() => {
+    if (!billingOwnerHasStripeAccount) {
+      return 0;
+    }
     const parsed = coerceNullableNumber(payload.installmentCount);
     if (typeof parsed === 'number') {
       return Math.max(0, Math.trunc(parsed));
     }
     return parsed ?? null;
   })();
-  const defaultDivisionInstallmentDueDates = normalizeInstallmentDateList(payload.installmentDueDates);
-  const defaultDivisionInstallmentAmounts = normalizeInstallmentAmountList(payload.installmentAmounts);
+  const defaultDivisionInstallmentDueDates = billingOwnerHasStripeAccount
+    ? normalizeInstallmentDateList(payload.installmentDueDates)
+    : [];
+  const defaultDivisionInstallmentAmounts = billingOwnerHasStripeAccount
+    ? normalizeInstallmentAmountList(payload.installmentAmounts)
+    : [];
 
   await upsertEventWithUnknownArgFallback(client, id, eventData as Record<string, unknown>);
 

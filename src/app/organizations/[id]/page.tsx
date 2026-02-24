@@ -16,6 +16,7 @@ import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { eventService } from '@/lib/eventService';
 import { createId } from '@/lib/id';
+import { buildOrganizationEventCreateUrl } from '@/lib/eventCreateNavigation';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
@@ -462,6 +463,8 @@ function OrganizationDetailContent() {
   const [eventTemplates, setEventTemplates] = useState<Event[]>([]);
   const [eventTemplatesLoading, setEventTemplatesLoading] = useState(false);
   const [eventTemplatesError, setEventTemplatesError] = useState<string | null>(null);
+  const [eventTemplateCreateModalOpen, setEventTemplateCreateModalOpen] = useState(false);
+  const [selectedCreateEventTemplateId, setSelectedCreateEventTemplateId] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
@@ -714,22 +717,70 @@ function OrganizationDetailContent() {
   }, [activeTab, availableTabs]);
 
   useEffect(() => {
+    if (!eventTemplateCreateModalOpen || selectedCreateEventTemplateId || eventTemplates.length === 0) {
+      return;
+    }
+    setSelectedCreateEventTemplateId(eventTemplates[0].$id);
+  }, [eventTemplateCreateModalOpen, eventTemplates, selectedCreateEventTemplateId]);
+
+  useEffect(() => {
     const tabParam = searchParams?.get('tab');
     if (tabParam && availableTabs.some((tab) => tab.value === tabParam)) {
       setActiveTab(tabParam as typeof activeTab);
     }
   }, [availableTabs, searchParams]);
 
-  const handleCreateEvent = useCallback(() => {
+  const eventTemplateOptions = useMemo(
+    () => eventTemplates
+      .filter((template) => typeof template.$id === 'string' && template.$id.length > 0)
+      .map((template) => ({
+        value: template.$id,
+        label: template.name?.trim() || 'Untitled Template',
+      })),
+    [eventTemplates],
+  );
+
+  const navigateToEventCreate = useCallback((templateId?: string | null) => {
     const newId = createId();
-    const params = new URLSearchParams({
-      create: '1',
-      mode: 'edit',
-      tab: 'details',
-      orgId: id ?? '',
-    });
-    router.push(`/events/${newId}/schedule?${params.toString()}`);
+    const normalizedTemplateId = templateId?.trim();
+    router.push(
+      buildOrganizationEventCreateUrl({
+        eventId: newId,
+        organizationId: id ?? '',
+        templateId: normalizedTemplateId || undefined,
+        skipTemplatePrompt: !normalizedTemplateId,
+      }),
+    );
   }, [id, router]);
+
+  const handleCreateEvent = useCallback(() => {
+    if (!isOwner) {
+      return;
+    }
+    setSelectedCreateEventTemplateId((previous) => {
+      if (previous && eventTemplates.some((template) => template.$id === previous)) {
+        return previous;
+      }
+      return eventTemplates[0]?.$id ?? null;
+    });
+    setEventTemplateCreateModalOpen(true);
+    if (org?.$id && !eventTemplatesLoading && eventTemplates.length === 0) {
+      void loadEventTemplates(org.$id);
+    }
+  }, [eventTemplates, eventTemplatesLoading, isOwner, loadEventTemplates, org?.$id]);
+
+  const handleCreateEventWithoutTemplate = useCallback(() => {
+    setEventTemplateCreateModalOpen(false);
+    navigateToEventCreate();
+  }, [navigateToEventCreate]);
+
+  const handleCreateEventWithTemplate = useCallback(() => {
+    if (!selectedCreateEventTemplateId) {
+      return;
+    }
+    setEventTemplateCreateModalOpen(false);
+    navigateToEventCreate(selectedCreateEventTemplateId);
+  }, [navigateToEventCreate, selectedCreateEventTemplateId]);
 
   const handleCreateTemplate = useCallback(async () => {
     if (!org || !user) return;
@@ -2185,6 +2236,50 @@ function OrganizationDetailContent() {
           }
         }}
       />
+      <Modal
+        opened={eventTemplateCreateModalOpen}
+        onClose={() => setEventTemplateCreateModalOpen(false)}
+        title="Create event"
+        centered
+      >
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">
+            Choose a template to prefill the new event or start with a blank event.
+          </Text>
+          <Select
+            label="Event template"
+            placeholder={eventTemplatesLoading ? 'Loading templates...' : 'Select a template'}
+            data={eventTemplateOptions}
+            value={selectedCreateEventTemplateId}
+            onChange={setSelectedCreateEventTemplateId}
+            searchable
+            clearable
+            disabled={eventTemplatesLoading || eventTemplateOptions.length === 0}
+            nothingFoundMessage="No templates found"
+          />
+          {eventTemplatesError && (
+            <Text size="sm" c="red">
+              {eventTemplatesError}
+            </Text>
+          )}
+          {!eventTemplatesLoading && eventTemplateOptions.length === 0 && (
+            <Text size="sm" c="dimmed">
+              No event templates yet. You can still create a blank event.
+            </Text>
+          )}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setEventTemplateCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="default" onClick={handleCreateEventWithoutTemplate}>
+              Start blank
+            </Button>
+            <Button onClick={handleCreateEventWithTemplate} disabled={!selectedCreateEventTemplateId}>
+              Use template
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Modal
         opened={templateBuilderOpen && Boolean(templateEmbedUrl)}
         onClose={closeTemplateBuilder}

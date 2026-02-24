@@ -10,6 +10,8 @@ import { buildEventDivisionId } from '@/lib/divisionTypes';
 type MockClient = {
   $executeRaw: jest.Mock;
   events: { findUnique: jest.Mock; upsert: jest.Mock };
+  organizations: { findUnique: jest.Mock };
+  userData: { findUnique: jest.Mock };
   leagueScoringConfigs: { upsert: jest.Mock };
   fields: { findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
   matches: { deleteMany: jest.Mock };
@@ -23,6 +25,12 @@ const createMockClient = (): MockClient => ({
   events: {
     findUnique: jest.fn().mockResolvedValue(null),
     upsert: jest.fn().mockResolvedValue(undefined),
+  },
+  organizations: {
+    findUnique: jest.fn().mockResolvedValue(null),
+  },
+  userData: {
+    findUnique: jest.fn().mockResolvedValue(null),
   },
   leagueScoringConfigs: {
     upsert: jest.fn().mockResolvedValue(undefined),
@@ -281,6 +289,7 @@ describe('upsertEventFromPayload', () => {
   it('persists division pricing, capacity, playoffs, and payment-plan fields from division details', async () => {
     const client = createMockClient();
     const openDivisionId = divisionId('open');
+    client.userData.findUnique.mockResolvedValue({ hasStripeAccount: true });
 
     const payload = {
       ...baseEventPayload(),
@@ -352,6 +361,7 @@ describe('upsertEventFromPayload', () => {
   it('falls back to event-level payment-plan defaults when division payment fields are omitted', async () => {
     const client = createMockClient();
     const openDivisionId = divisionId('open');
+    client.userData.findUnique.mockResolvedValue({ hasStripeAccount: true });
 
     const payload = {
       ...baseEventPayload(),
@@ -406,6 +416,107 @@ describe('upsertEventFromPayload', () => {
         }),
       }),
     );
+  });
+
+  it('forces event and division pricing to free when the billing owner has no Stripe account', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    client.userData.findUnique.mockResolvedValue({ hasStripeAccount: false });
+
+    const payload = {
+      ...baseEventPayload(),
+      price: 2500,
+      allowPaymentPlans: true,
+      installmentCount: 2,
+      installmentAmounts: [1500, 1000],
+      installmentDueDates: [
+        '2026-01-09T09:00:00.000Z',
+        '2026-01-16T09:00:00.000Z',
+      ],
+      divisions: ['OPEN'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          price: 2500,
+          allowPaymentPlans: true,
+          installmentCount: 2,
+          installmentAmounts: [1500, 1000],
+          installmentDueDates: [
+            '2026-01-09T09:00:00.000Z',
+            '2026-01-16T09:00:00.000Z',
+          ],
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.userData.findUnique).toHaveBeenCalledWith({
+      where: { id: 'host_1' },
+      select: { hasStripeAccount: true },
+    });
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create.price).toBe(0);
+    expect(eventUpsertArgs.update.price).toBe(0);
+    expect(eventUpsertArgs.create.allowPaymentPlans).toBe(false);
+    expect(eventUpsertArgs.update.allowPaymentPlans).toBe(false);
+    expect(eventUpsertArgs.create.installmentCount).toBe(0);
+    expect(eventUpsertArgs.update.installmentCount).toBe(0);
+    expect(eventUpsertArgs.create.installmentAmounts).toEqual([]);
+    expect(eventUpsertArgs.update.installmentAmounts).toEqual([]);
+    expect(eventUpsertArgs.create.installmentDueDates).toEqual([]);
+    expect(eventUpsertArgs.update.installmentDueDates).toEqual([]);
+
+    expect(client.divisions.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: openDivisionId },
+        create: expect.objectContaining({
+          price: 0,
+          allowPaymentPlans: false,
+          installmentCount: null,
+          installmentAmounts: [],
+          installmentDueDates: [],
+        }),
+        update: expect.objectContaining({
+          price: 0,
+          allowPaymentPlans: false,
+          installmentCount: null,
+          installmentAmounts: [],
+          installmentDueDates: [],
+        }),
+      }),
+    );
+  });
+
+  it('uses organization Stripe status for organization events', async () => {
+    const client = createMockClient();
+    client.organizations.findUnique.mockResolvedValue({ hasStripeAccount: false });
+    client.userData.findUnique.mockResolvedValue({ hasStripeAccount: true });
+
+    const payload = {
+      ...baseEventPayload(),
+      organizationId: 'org_1',
+      price: 3000,
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.organizations.findUnique).toHaveBeenCalledWith({
+      where: { id: 'org_1' },
+      select: { hasStripeAccount: true },
+    });
+    expect(client.userData.findUnique).not.toHaveBeenCalled();
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create.price).toBe(0);
+    expect(eventUpsertArgs.update.price).toBe(0);
   });
 
   it('retries event upsert without unknown Prisma arguments', async () => {

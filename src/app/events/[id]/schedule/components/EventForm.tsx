@@ -12,7 +12,7 @@ import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid, Collapse } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
@@ -28,6 +28,7 @@ import {
     resolveOrganizationEventFieldIds,
 } from './eventFieldSelection';
 import { applyLeagueScoringConfigFieldChange } from './leagueScoringConfigForm';
+import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import UserCard from '@/components/ui/UserCard';
 import {
     buildDivisionName,
@@ -89,6 +90,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STANDARD_NUMBER = 99_999;
 const MAX_PRICE_NUMBER = 9_999_999;
 const SECTION_SCROLL_OFFSET = 140;
+const SECTION_ANIMATION_DURATION_MS = 220;
 const MAX_EVENT_NAME_LENGTH = 120;
 const MAX_SHORT_TEXT_LENGTH = 80;
 const MAX_MEDIUM_TEXT_LENGTH = 160;
@@ -101,6 +103,28 @@ const DIVISION_GENDER_OPTIONS = [
     { value: 'F', label: 'Womens' },
     { value: 'C', label: 'CoEd' },
 ] as const;
+
+const AnimatedSection = ({
+    in: inProp,
+    children,
+    className,
+    collapseClassName,
+}: {
+    in: boolean;
+    children: React.ReactNode;
+    className?: string;
+    collapseClassName?: string;
+}) => (
+    <Collapse
+        in={inProp}
+        transitionDuration={SECTION_ANIMATION_DURATION_MS}
+        transitionTimingFunction="ease"
+        animateOpacity
+        className={collapseClassName}
+    >
+        {className ? <div className={className}>{children}</div> : children}
+    </Collapse>
+);
 
 const normalizeDivisionTokenPart = (value: unknown): string => String(value ?? '')
     .trim()
@@ -298,8 +322,7 @@ type PlayoffDivisionDetailForm = {
 type SlotDivisionLookup = {
     options: Array<{ value: string; label: string }>;
     keys: string[];
-    idToName: Map<string, string>;
-    nameToId: Map<string, string>;
+    valueToId: Map<string, string>;
 };
 
 type SlotDivisionLookupDetail = {
@@ -337,69 +360,70 @@ const buildSlotDivisionLookup = (
     const optionByValue = new Map<string, { value: string; label: string }>();
     const orderedKeys: string[] = [];
     const seenKeys = new Set<string>();
-    const idToName = new Map<string, string>();
-    const nameToId = new Map<string, string>();
+    const valueToId = new Map<string, string>();
 
     allDetails.forEach((detail) => {
         const normalizedId = normalizeDivisionKeys([detail.id])[0];
         const label = getDivisionDetailLabel(detail);
-        const normalizedName = normalizeDivisionKeys([label])[0] ?? normalizedId;
-        if (!normalizedName) {
+        if (!normalizedId) {
             return;
         }
 
-        if (!optionByValue.has(normalizedName)) {
-            optionByValue.set(normalizedName, {
-                value: normalizedName,
+        if (!optionByValue.has(normalizedId)) {
+            optionByValue.set(normalizedId, {
+                value: normalizedId,
                 label,
             });
         }
-        if (!seenKeys.has(normalizedName)) {
-            seenKeys.add(normalizedName);
-            orderedKeys.push(normalizedName);
+        if (!seenKeys.has(normalizedId)) {
+            seenKeys.add(normalizedId);
+            orderedKeys.push(normalizedId);
         }
 
-        if (normalizedId) {
-            idToName.set(normalizedId, normalizedName);
-            if (!nameToId.has(normalizedName)) {
-                nameToId.set(normalizedName, normalizedId);
-            }
+        const normalizedName = normalizeDivisionNameKey(label);
+        valueToId.set(normalizedId, normalizedId);
+        valueToId.set(normalizeDivisionNameKey(detail.id), normalizedId);
+        if (normalizedName.length > 0 && !valueToId.has(normalizedName)) {
+            valueToId.set(normalizedName, normalizedId);
         }
     });
 
     return {
         options: Array.from(optionByValue.values()).sort((left, right) => left.label.localeCompare(right.label)),
         keys: orderedKeys,
-        idToName,
-        nameToId,
+        valueToId,
     };
 };
 
-const normalizeSlotDivisionKeysWithLookup = (
+const normalizeSlotDivisionIdsWithLookup = (
     values: unknown,
-    lookup: Pick<SlotDivisionLookup, 'idToName'>,
+    lookup: Pick<SlotDivisionLookup, 'valueToId'>,
 ): string[] => (
     Array.from(
         new Set(
-            normalizeDivisionKeys(values)
-                .map((value) => lookup.idToName.get(value) ?? value)
+            (Array.isArray(values) ? values : [])
+                .map((value) => String(value).trim())
+                .filter((value) => value.length > 0)
+                .map((value) => {
+                    const normalizedId = normalizeDivisionKeys([value])[0];
+                    if (normalizedId) {
+                        const byId = lookup.valueToId.get(normalizedId);
+                        if (byId) {
+                            return byId;
+                        }
+                    }
+                    const byLabel = lookup.valueToId.get(normalizeDivisionNameKey(value));
+                    return byLabel ?? normalizedId ?? '';
+                })
                 .filter((value) => value.length > 0),
         ),
     )
 );
 
-const normalizeSlotDivisionIdsWithLookup = (
+const normalizeSlotDivisionKeysWithLookup = (
     values: unknown,
-    lookup: Pick<SlotDivisionLookup, 'nameToId'>,
-): string[] => (
-    Array.from(
-        new Set(
-            normalizeDivisionKeys(values)
-                .map((value) => lookup.nameToId.get(value) ?? value)
-                .filter((value) => value.length > 0),
-        ),
-    )
-);
+    lookup: Pick<SlotDivisionLookup, 'valueToId'>,
+): string[] => normalizeSlotDivisionIdsWithLookup(values, lookup);
 
 const applyDivisionAgeCutoff = (
     detail: DivisionDetailForm,
@@ -578,6 +602,23 @@ const stringSetsEqual = (left: string[], right: string[]): boolean => {
     return stringArraysEqual(normalizedLeft, normalizedRight);
 };
 
+const tournamentConfigEqual = (left: TournamentConfig, right: TournamentConfig): boolean => (
+    left.doubleElimination === right.doubleElimination
+    && left.winnerSetCount === right.winnerSetCount
+    && left.loserSetCount === right.loserSetCount
+    && left.prize === right.prize
+    && left.fieldCount === right.fieldCount
+    && left.restTimeMinutes === right.restTimeMinutes
+    && stringArraysEqual(
+        (left.winnerBracketPointsToVictory || []).map((value) => String(value)),
+        (right.winnerBracketPointsToVictory || []).map((value) => String(value)),
+    )
+    && stringArraysEqual(
+        (left.loserBracketPointsToVictory || []).map((value) => String(value)),
+        (right.loserBracketPointsToVictory || []).map((value) => String(value)),
+    )
+);
+
 const mergeSlotPayloadsForForm = (
     slots: TimeSlot[],
     fallbackFieldId?: string,
@@ -701,6 +742,9 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
 const slotsOverlap = (startA: number, endA: number, startB: number, endB: number): boolean =>
     Math.max(startA, startB) < Math.min(endA, endB);
 
+const slotDateTimeRangesOverlap = (startA: Date, endA: Date, startB: Date, endB: Date): boolean =>
+    startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime();
+
 // Evaluates the current slot against other form slots to surface inline validation errors for schedulable event types.
 const computeSlotError = (
     slots: LeagueSlotForm[],
@@ -717,10 +761,42 @@ const computeSlotError = (
     }
 
     const slotFieldIds = normalizeSlotFieldIds(slot);
-    const slotDays = normalizeWeekdays(slot);
+    if (!slotFieldIds.length) {
+        return undefined;
+    }
 
+    const isRepeating = slot.repeating !== false;
+    if (!isRepeating) {
+        const slotStart = parseLocalDateTime(slot.startDate ?? null);
+        const slotEnd = parseLocalDateTime(slot.endDate ?? null);
+        if (!slotStart || !slotEnd) {
+            return undefined;
+        }
+        if (slotEnd.getTime() <= slotStart.getTime()) {
+            return 'Timeslot must end after it starts.';
+        }
+
+        const hasOverlap = slots.some((other, otherIndex) => {
+            if (otherIndex === index || other.repeating !== false) {
+                return false;
+            }
+            const otherFieldIds = normalizeSlotFieldIds(other);
+            if (!otherFieldIds.length || !otherFieldIds.some((fieldId) => slotFieldIds.includes(fieldId))) {
+                return false;
+            }
+            const otherStart = parseLocalDateTime(other.startDate ?? null);
+            const otherEnd = parseLocalDateTime(other.endDate ?? null);
+            if (!otherStart || !otherEnd) {
+                return false;
+            }
+            return slotDateTimeRangesOverlap(slotStart, slotEnd, otherStart, otherEnd);
+        });
+
+        return hasOverlap ? 'Overlaps with another timeslot in this form.' : undefined;
+    }
+
+    const slotDays = normalizeWeekdays(slot);
     if (
-        slotFieldIds.length === 0 ||
         slotDays.length === 0 ||
         typeof slot.startTimeMinutes !== 'number' ||
         typeof slot.endTimeMinutes !== 'number'
@@ -730,48 +806,32 @@ const computeSlotError = (
 
     const slotStartTime = slot.startTimeMinutes;
     const slotEndTime = slot.endTimeMinutes;
-
     if (slotEndTime <= slotStartTime) {
         return 'Timeslot must end after it starts.';
     }
 
     const hasOverlap = slots.some((other, otherIndex) => {
-        if (otherIndex === index) {
+        if (otherIndex === index || other.repeating === false) {
             return false;
         }
-
         const otherFieldIds = normalizeSlotFieldIds(other);
-        if (!otherFieldIds.length) {
+        if (!otherFieldIds.length || !otherFieldIds.some((fieldId) => slotFieldIds.includes(fieldId))) {
             return false;
         }
-
-        if (!otherFieldIds.some((fieldId) => slotFieldIds.includes(fieldId))) {
-            return false;
-        }
-
         const otherDays = normalizeWeekdays(other);
         if (otherDays.length === 0 || !otherDays.some((day) => slotDays.includes(day))) {
             return false;
         }
-
         if (
             typeof other.startTimeMinutes !== 'number' ||
             typeof other.endTimeMinutes !== 'number'
         ) {
             return false;
         }
-
-        const otherStartTime = other.startTimeMinutes;
-        const otherEndTime = other.endTimeMinutes;
-
-        return slotsOverlap(slotStartTime, slotEndTime, otherStartTime, otherEndTime);
+        return slotsOverlap(slotStartTime, slotEndTime, other.startTimeMinutes, other.endTimeMinutes);
     });
 
-    if (hasOverlap) {
-        return 'Overlaps with another timeslot in this form.';
-    }
-
-    return undefined;
+    return hasOverlap ? 'Overlaps with another timeslot in this form.' : undefined;
 };
 
 // Resets conflict bookkeeping and assigns slot errors so UI can block submission when overlaps exist.
@@ -1549,6 +1609,8 @@ const leagueSlotSchema: z.ZodType<LeagueSlotForm> = z.object({
     dayOfWeek: z.number().int().min(0).max(6).optional(),
     daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
     divisions: z.array(z.string()).default([]),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
     startTimeMinutes: z.number().int().nonnegative().optional(),
     endTimeMinutes: z.number().int().positive().optional(),
     repeating: z.boolean().optional(),
@@ -1930,26 +1992,52 @@ const eventFormSchema = z
                         path: ['leagueSlots', index, 'scheduledFieldIds'],
                     });
                 }
-                if (!normalizeWeekdays(slot).length) {
-                    ctx.addIssue({
-                        code: "custom",
-                        message: 'Select at least one day',
-                        path: ['leagueSlots', index, 'daysOfWeek'],
-                    });
-                }
-                if (!Number.isFinite(slot.startTimeMinutes)) {
-                    ctx.addIssue({
-                        code: "custom",
-                        message: 'Select a start time',
-                        path: ['leagueSlots', index, 'startTimeMinutes'],
-                    });
-                }
-                if (!Number.isFinite(slot.endTimeMinutes)) {
-                    ctx.addIssue({
-                        code: "custom",
-                        message: 'Select an end time',
-                        path: ['leagueSlots', index, 'endTimeMinutes'],
-                    });
+                if (slot.repeating === false) {
+                    const slotStart = parseLocalDateTime(slot.startDate ?? null);
+                    const slotEnd = parseLocalDateTime(slot.endDate ?? null);
+                    if (!slotStart) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Select a start date/time',
+                            path: ['leagueSlots', index, 'startDate'],
+                        });
+                    }
+                    if (!slotEnd) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Select an end date/time',
+                            path: ['leagueSlots', index, 'endDate'],
+                        });
+                    }
+                    if (slotStart && slotEnd && slotEnd.getTime() <= slotStart.getTime()) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'End date/time must be after start date/time',
+                            path: ['leagueSlots', index, 'endDate'],
+                        });
+                    }
+                } else {
+                    if (!normalizeWeekdays(slot).length) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Select at least one day',
+                            path: ['leagueSlots', index, 'daysOfWeek'],
+                        });
+                    }
+                    if (!Number.isFinite(slot.startTimeMinutes)) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Select a start time',
+                            path: ['leagueSlots', index, 'startTimeMinutes'],
+                        });
+                    }
+                    if (!Number.isFinite(slot.endTimeMinutes)) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Select an end time',
+                            path: ['leagueSlots', index, 'endTimeMinutes'],
+                        });
+                    }
                 }
                 if (
                     values.singleDivision &&
@@ -2003,6 +2091,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             scheduledFieldId: slot?.scheduledFieldId,
             scheduledFieldIds: slot?.scheduledFieldIds,
         });
+        const normalizedStartDate = formatLocalDateTime(slot?.startDate ?? null);
+        const normalizedEndDate = formatLocalDateTime(slot?.endDate ?? null);
         return {
             key: slot?.$id ?? createClientId(),
             $id: slot?.$id,
@@ -2011,6 +2101,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             dayOfWeek: normalizedDays[0],
             daysOfWeek: normalizedDays,
             divisions: normalizedDivisions.length ? normalizedDivisions : fallbackDivisions,
+            startDate: normalizedStartDate || undefined,
+            endDate: normalizedEndDate || undefined,
             startTimeMinutes: slot?.startTimeMinutes,
             endTimeMinutes: slot?.endTimeMinutes,
             repeating: slot?.repeating ?? true,
@@ -2021,9 +2113,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, []);
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);
-    // Cached Stripe onboarding state pulled from the current user so paid inputs can be enabled/disabled.
-    const [hasStripeAccount, setHasStripeAccount] = useState(
-        Boolean(organization?.hasStripeAccount || currentUser?.hasStripeAccount),
+    // Organization events must use org billing; personal events use the current user billing account.
+    const hasStripeAccount = Boolean(
+        organization ? organization.hasStripeAccount : currentUser?.hasStripeAccount,
     );
     const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -2620,6 +2712,90 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
     const joinAsParticipant = formValues.joinAsParticipant;
     const organizationId = organization?.$id ?? eventData.organizationId;
+
+    useEffect(() => {
+        if (!isCreateMode || hasStripeAccount) {
+            return;
+        }
+
+        const currentPrice = Number.isFinite(Number(eventData.price))
+            ? Number(eventData.price)
+            : 0;
+        if (currentPrice !== 0) {
+            setValue('price', 0, { shouldDirty: false, shouldValidate: true });
+        }
+
+        if (eventData.allowPaymentPlans) {
+            setValue('allowPaymentPlans', false, { shouldDirty: false, shouldValidate: true });
+        }
+
+        const currentInstallmentCount = Number.isFinite(Number(eventData.installmentCount))
+            ? Number(eventData.installmentCount)
+            : 0;
+        if (currentInstallmentCount !== 0) {
+            setValue('installmentCount', 0, { shouldDirty: false, shouldValidate: true });
+        }
+
+        const hasInstallmentAmounts = Array.isArray(eventData.installmentAmounts)
+            && eventData.installmentAmounts.length > 0;
+        if (hasInstallmentAmounts) {
+            setValue('installmentAmounts', [], { shouldDirty: false, shouldValidate: true });
+        }
+
+        const hasInstallmentDueDates = Array.isArray(eventData.installmentDueDates)
+            && eventData.installmentDueDates.length > 0;
+        if (hasInstallmentDueDates) {
+            setValue('installmentDueDates', [], { shouldDirty: false, shouldValidate: true });
+        }
+
+        const currentDivisionDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        const nextDivisionDetails = currentDivisionDetails.map((detail) => {
+            const detailPrice = Number.isFinite(Number(detail.price))
+                ? Number(detail.price)
+                : 0;
+            const detailInstallmentCount = Number.isFinite(Number(detail.installmentCount))
+                ? Number(detail.installmentCount)
+                : 0;
+            const hasDetailInstallmentAmounts = Array.isArray(detail.installmentAmounts)
+                && detail.installmentAmounts.length > 0;
+            const hasDetailInstallmentDueDates = Array.isArray(detail.installmentDueDates)
+                && detail.installmentDueDates.length > 0;
+            const hasPaidSettings = detailPrice !== 0
+                || Boolean(detail.allowPaymentPlans)
+                || detailInstallmentCount !== 0
+                || hasDetailInstallmentAmounts
+                || hasDetailInstallmentDueDates;
+            if (!hasPaidSettings) {
+                return detail;
+            }
+            return {
+                ...detail,
+                price: 0,
+                allowPaymentPlans: false,
+                installmentCount: 0,
+                installmentAmounts: [],
+                installmentDueDates: [],
+            };
+        });
+        const divisionPricingChanged = nextDivisionDetails.some(
+            (detail, index) => detail !== currentDivisionDetails[index],
+        );
+        if (divisionPricingChanged) {
+            setValue('divisionDetails', nextDivisionDetails, { shouldDirty: false, shouldValidate: true });
+        }
+
+    }, [
+        eventData.allowPaymentPlans,
+        eventData.divisionDetails,
+        eventData.installmentAmounts,
+        eventData.installmentCount,
+        eventData.installmentDueDates,
+        eventData.price,
+        hasStripeAccount,
+        isCreateMode,
+        setValue,
+    ]);
+
     const templateOptions = useMemo(
         () => templateDocuments.map((template) => {
             const templateType = template.type ?? 'PDF';
@@ -3101,6 +3277,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ],
     );
     const slotDivisionKeys = slotDivisionLookup.keys;
+    const slotDivisionKeysRef = useRef<string[]>(slotDivisionKeys);
+    useEffect(() => {
+        slotDivisionKeysRef.current = slotDivisionKeys;
+    }, [slotDivisionKeys]);
     const divisionOptions = useMemo(
         () => slotDivisionLookup.options,
         [slotDivisionLookup],
@@ -3179,6 +3359,32 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         nameTouched: false,
         error: null,
     });
+    const previousSingleDivisionRef = useRef<boolean | null>(null);
+
+    useEffect(() => {
+        if (!isCreateMode || hasStripeAccount) {
+            return;
+        }
+        setDivisionEditor((prev) => {
+            const hasEditorPaidSettings = prev.price !== 0
+                || prev.allowPaymentPlans
+                || (prev.installmentCount || 0) !== 0
+                || (prev.installmentAmounts?.length || 0) > 0
+                || (prev.installmentDueDates?.length || 0) > 0;
+            if (!hasEditorPaidSettings) {
+                return prev;
+            }
+            return {
+                ...prev,
+                price: 0,
+                allowPaymentPlans: false,
+                installmentCount: 0,
+                installmentAmounts: [],
+                installmentDueDates: [],
+                error: null,
+            };
+        });
+    }, [hasStripeAccount, isCreateMode]);
 
     const createNextPlayoffDivision = useCallback((
         existing: PlayoffDivisionDetailForm[],
@@ -3242,6 +3448,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         updater: React.SetStateAction<TournamentConfig>,
     ) => {
         const current = Array.isArray(eventData.playoffDivisionDetails) ? eventData.playoffDivisionDetails : [];
+        let changed = false;
         const next = current.map((division) => {
             if (division.id !== playoffDivisionId) {
                 return division;
@@ -3250,12 +3457,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const resolved = typeof updater === 'function'
                 ? (updater as (prev: TournamentConfig) => TournamentConfig)(previousConfig)
                 : updater;
+            const normalizedConfig = buildTournamentConfig(resolved);
+            if (tournamentConfigEqual(previousConfig, normalizedConfig)) {
+                return division;
+            }
+            changed = true;
             return {
                 ...division,
-                playoffConfig: buildTournamentConfig(resolved),
+                playoffConfig: normalizedConfig,
             };
         });
-        setValue('playoffDivisionDetails', next, { shouldDirty: true, shouldValidate: true });
+        if (changed) {
+            setValue('playoffDivisionDetails', next, { shouldDirty: true, shouldValidate: true });
+        }
     }, [eventData.playoffDivisionDetails, setValue]);
 
     const handleSetDivisionPlayoffMapping = useCallback((
@@ -3595,6 +3809,49 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.maxParticipants,
         eventData.price,
         leagueData.playoffTeamCount,
+    ]);
+
+    useEffect(() => {
+        const isSingleDivision = Boolean(eventData.singleDivision);
+        if (previousSingleDivisionRef.current === null) {
+            previousSingleDivisionRef.current = isSingleDivision;
+            return;
+        }
+        const wasSingleDivision = previousSingleDivisionRef.current;
+        previousSingleDivisionRef.current = isSingleDivision;
+        if (!wasSingleDivision || isSingleDivision) {
+            return;
+        }
+
+        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        if (!currentDetails.length) {
+            resetDivisionEditor();
+            return;
+        }
+
+        const { details: nextDetails, changed } = applyEventDefaultsToDivisionDetails({
+            details: currentDetails,
+            defaultPrice: Number(eventData.price) || 0,
+            defaultMaxParticipants: Number(eventData.maxParticipants) || 2,
+            includePlayoffs: eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs,
+            defaultPlayoffTeamCount: typeof leagueData.playoffTeamCount === 'number'
+                ? leagueData.playoffTeamCount
+                : eventData.maxParticipants,
+        });
+        if (changed) {
+            setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+        }
+        resetDivisionEditor();
+    }, [
+        eventData.divisionDetails,
+        eventData.eventType,
+        eventData.maxParticipants,
+        eventData.price,
+        eventData.singleDivision,
+        leagueData.includePlayoffs,
+        leagueData.playoffTeamCount,
+        resetDivisionEditor,
+        setValue,
     ]);
 
     const getDivisionTypeNameForEditor = useCallback(
@@ -4142,26 +4399,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? Math.max(0, Math.trunc(detail.playoffTeamCount as number))
                 : 0;
             if (playoffTeamCount <= 0) {
-                return detail;
-            }
-            const mapping = Array.isArray(detail.playoffPlacementDivisionIds)
-                ? [...detail.playoffPlacementDivisionIds]
-                : [];
-            if (mapping.length < playoffTeamCount) {
-                changed = true;
-                while (mapping.length < playoffTeamCount) {
-                    mapping.push('');
+                if (!Array.isArray(detail.playoffPlacementDivisionIds) || detail.playoffPlacementDivisionIds.length === 0) {
+                    return detail;
                 }
-            } else if (mapping.length > playoffTeamCount) {
                 changed = true;
-                mapping.splice(playoffTeamCount);
+                return {
+                    ...detail,
+                    playoffPlacementDivisionIds: [],
+                };
             }
-            if (!changed && stringArraysEqual(mapping, detail.playoffPlacementDivisionIds ?? [])) {
+            const currentMapping = Array.isArray(detail.playoffPlacementDivisionIds)
+                ? detail.playoffPlacementDivisionIds
+                : [];
+            const nextMapping = currentMapping.slice(0, playoffTeamCount);
+            while (nextMapping.length < playoffTeamCount) {
+                nextMapping.push('');
+            }
+            if (stringArraysEqual(currentMapping, nextMapping)) {
                 return detail;
             }
+            changed = true;
             return {
                 ...detail,
-                playoffPlacementDivisionIds: mapping,
+                playoffPlacementDivisionIds: nextMapping,
             };
         });
         if (changed) {
@@ -4415,10 +4675,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }));
     }, [fields, leagueSlots, updateLeagueSlots]);
 
-    useEffect(() => {
-        setHasStripeAccount(Boolean(organization?.hasStripeAccount || currentUser?.hasStripeAccount));
-    }, [organization?.hasStripeAccount, currentUser?.hasStripeAccount]);
-
     // Adds a blank slot row in the LeagueFields list when the user taps "Add Timeslot".
     const handleAddSlot = () => {
         if (hasImmutableTimeSlots) {
@@ -4455,13 +4711,83 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const normalizedFieldIds = normalizeSlotFieldIds(updated);
         const selectedDivisionKeys = slotDivisionKeys;
         const normalizedDivisions = normalizeSlotDivisionKeysWithLookup(updated.divisions, slotDivisionLookup);
+        const normalizedStartDate = formatLocalDateTime(updated.startDate ?? null);
+        const normalizedEndDate = formatLocalDateTime(updated.endDate ?? null);
         updated.scheduledFieldId = normalizedFieldIds[0];
         updated.scheduledFieldIds = normalizedFieldIds;
-        updated.dayOfWeek = normalizedDays[0] as LeagueSlotForm['dayOfWeek'];
-        updated.daysOfWeek = normalizedDays as LeagueSlotForm['daysOfWeek'];
         updated.divisions = eventData.singleDivision
             ? selectedDivisionKeys
             : (normalizedDivisions.length ? normalizedDivisions : selectedDivisionKeys);
+        updated.startDate = normalizedStartDate || undefined;
+        updated.endDate = normalizedEndDate || undefined;
+
+        const repeating = updated.repeating !== false;
+        if (repeating) {
+            const parsedStart = parseLocalDateTime(updated.startDate ?? null);
+            const parsedEnd = parseLocalDateTime(updated.endDate ?? null);
+            const nextDays = normalizedDays.length
+                ? normalizedDays
+                : parsedStart
+                    ? [((parsedStart.getDay() + 6) % 7)]
+                    : [];
+            if (nextDays.length) {
+                updated.dayOfWeek = nextDays[0] as LeagueSlotForm['dayOfWeek'];
+                updated.daysOfWeek = nextDays as LeagueSlotForm['daysOfWeek'];
+            } else {
+                updated.dayOfWeek = undefined;
+                updated.daysOfWeek = [];
+            }
+
+            if (!Number.isFinite(updated.startTimeMinutes) && parsedStart) {
+                updated.startTimeMinutes = parsedStart.getHours() * 60 + parsedStart.getMinutes();
+            }
+            if (!Number.isFinite(updated.endTimeMinutes) && parsedEnd) {
+                updated.endTimeMinutes = parsedEnd.getHours() * 60 + parsedEnd.getMinutes();
+            }
+        } else {
+            let slotStart = parseLocalDateTime(updated.startDate ?? null);
+            let slotEnd = parseLocalDateTime(updated.endDate ?? null);
+            if (!slotStart) {
+                const fallbackEventStart = parseLocalDateTime(eventData.start ?? null);
+                if (fallbackEventStart) {
+                    slotStart = fallbackEventStart;
+                }
+            }
+            if (!slotEnd && slotStart) {
+                const fallbackEventEnd = parseLocalDateTime(eventData.end ?? null);
+                if (fallbackEventEnd && fallbackEventEnd.getTime() > slotStart.getTime()) {
+                    slotEnd = fallbackEventEnd;
+                } else {
+                    const startMinutes = Number.isFinite(updated.startTimeMinutes) ? Number(updated.startTimeMinutes) : null;
+                    const endMinutes = Number.isFinite(updated.endTimeMinutes) ? Number(updated.endTimeMinutes) : null;
+                    const durationMinutes = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes
+                        ? endMinutes - startMinutes
+                        : 60;
+                    slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
+                }
+            }
+
+            if (slotStart) {
+                const dayOfWeek = ((slotStart.getDay() + 6) % 7);
+                updated.dayOfWeek = dayOfWeek as LeagueSlotForm['dayOfWeek'];
+                updated.daysOfWeek = [dayOfWeek] as LeagueSlotForm['daysOfWeek'];
+                updated.startDate = formatLocalDateTime(slotStart);
+                updated.startTimeMinutes = slotStart.getHours() * 60 + slotStart.getMinutes();
+            } else {
+                updated.dayOfWeek = undefined;
+                updated.daysOfWeek = [];
+                updated.startDate = undefined;
+                updated.startTimeMinutes = undefined;
+            }
+
+            if (slotEnd) {
+                updated.endDate = formatLocalDateTime(slotEnd);
+                updated.endTimeMinutes = slotEnd.getHours() * 60 + slotEnd.getMinutes();
+            } else {
+                updated.endDate = undefined;
+                updated.endTimeMinutes = undefined;
+            }
+        }
 
         updateLeagueSlots(prev => {
             const next = [...prev];
@@ -4530,11 +4856,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
             const slots = mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [], fallbackFieldId)
-                .map((slot) => createSlotForm(slot, slotDivisionKeys));
+                .map((slot) => createSlotForm(slot, slotDivisionKeysRef.current));
 
             const initialSlots = slots.length > 0
                 ? slots
-                : [createSlotForm(undefined, slotDivisionKeys)];
+                : [createSlotForm(undefined, slotDivisionKeysRef.current)];
             setLeagueSlots(normalizeSlotState(initialSlots, activeEditingEvent.eventType));
         } else if (!activeEditingEvent) {
             setLeagueData({
@@ -4543,13 +4869,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 playoffTeamCount: undefined,
                 usesSets: false,
                 matchDurationMinutes: 60,
-                setDurationMinutes: undefined,
-                setsPerMatch: undefined,
-            });
-            setLeagueSlots(normalizeSlotState([createSlotForm(undefined, slotDivisionKeys)], 'EVENT'));
+                    setDurationMinutes: undefined,
+                    setsPerMatch: undefined,
+                });
+            setLeagueSlots(normalizeSlotState([createSlotForm(undefined, slotDivisionKeysRef.current)], 'EVENT'));
             setPlayoffData(buildTournamentConfig());
         }
-    }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots, setLeagueData, setLeagueSlots, setPlayoffData, slotDivisionKeys]);
+    }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots, setLeagueData, setLeagueSlots, setPlayoffData]);
 
     useEffect(() => {
         if (!hasImmutableTimeSlots) {
@@ -4557,9 +4883,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         const fallbackFieldId = immutableFields[0]?.$id;
         const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
-            .map((slot) => createSlotForm(slot, slotDivisionKeys));
+            .map((slot) => createSlotForm(slot, slotDivisionKeysRef.current));
         setLeagueSlots(normalizeSlotState(slotForms, eventData.eventType));
-    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, setLeagueSlots, slotDivisionKeys]);
+    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, setLeagueSlots]);
 
     // Pull the organization's full field list so timeslot field options are complete in edit/create mode.
     useEffect(() => {
@@ -4889,7 +5215,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 .filter((id): id is string => id.length > 0);
         };
 
-        const installmentAmountsCents = source.allowPaymentPlans
+        const pricingEnabled = hasStripeAccount;
+        const eventPriceDollars = pricingEnabled ? Math.max(0, source.price || 0) : 0;
+        const eventAllowPaymentPlans = pricingEnabled ? Boolean(source.allowPaymentPlans) : false;
+        const installmentAmountsCents = eventAllowPaymentPlans
             ? normalizeInstallmentCents(source.installmentAmounts)
             : [];
         const minAge = normalizeNumber(source.minAge);
@@ -4952,18 +5281,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     skillDivisionTypeName,
                     ageDivisionTypeId,
                     ageDivisionTypeName,
-                    price: Math.max(0, source.price || 0),
+                    price: eventPriceDollars,
                     maxParticipants: Math.max(2, Math.trunc(source.maxParticipants || 2)),
                     playoffTeamCount: Number.isFinite(source.leagueData?.playoffTeamCount)
                         ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
                         : undefined,
                     playoffPlacementDivisionIds: [],
-                    allowPaymentPlans: Boolean(source.allowPaymentPlans),
-                    installmentCount: source.allowPaymentPlans
+                    allowPaymentPlans: eventAllowPaymentPlans,
+                    installmentCount: eventAllowPaymentPlans
                         ? (source.installmentCount || source.installmentAmounts.length || 0)
                         : 0,
-                    installmentDueDates: source.allowPaymentPlans ? [...(source.installmentDueDates || [])] : [],
-                    installmentAmounts: source.allowPaymentPlans
+                    installmentDueDates: eventAllowPaymentPlans ? [...(source.installmentDueDates || [])] : [],
+                    installmentAmounts: eventAllowPaymentPlans
                         ? (source.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
                         : [],
                     sportId: sportInput || undefined,
@@ -5004,9 +5333,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const normalizedDivisionDetailsForPayload = normalizedDivisionDetails.map((detail) => ({
             ...detail,
             kind: 'LEAGUE' as const,
-            price: singleDivisionEnabled
-                ? Math.max(0, source.price || 0)
-                : Math.max(0, detail.price || 0),
+            price: pricingEnabled
+                ? (
+                    singleDivisionEnabled
+                        ? eventPriceDollars
+                        : Math.max(0, detail.price || 0)
+                )
+                : 0,
             maxParticipants: singleDivisionEnabled
                 ? Math.max(2, Math.trunc(source.maxParticipants || 2))
                 : Math.max(2, Math.trunc(detail.maxParticipants || source.maxParticipants || 2)),
@@ -5040,12 +5373,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
                 return mapping.slice(0, playoffTeamCount);
             })(),
-            allowPaymentPlans: singleDivisionEnabled
-                ? Boolean(source.allowPaymentPlans)
-                : Boolean(detail.allowPaymentPlans),
+            allowPaymentPlans: pricingEnabled
+                ? (
+                    singleDivisionEnabled
+                        ? eventAllowPaymentPlans
+                        : Boolean(detail.allowPaymentPlans)
+                )
+                : false,
             installmentCount: (() => {
+                if (!pricingEnabled) {
+                    return 0;
+                }
                 if (singleDivisionEnabled) {
-                    return source.allowPaymentPlans
+                    return eventAllowPaymentPlans
                         ? (source.installmentCount || source.installmentAmounts.length || 0)
                         : 0;
                 }
@@ -5055,8 +5395,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return detail.installmentCount || detail.installmentAmounts.length || 0;
             })(),
             installmentAmounts: (() => {
+                if (!pricingEnabled) {
+                    return [];
+                }
                 if (singleDivisionEnabled) {
-                    return source.allowPaymentPlans
+                    return eventAllowPaymentPlans
                         ? (source.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
                         : [];
                 }
@@ -5066,8 +5409,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return (detail.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0));
             })(),
             installmentDueDates: (() => {
+                if (!pricingEnabled) {
+                    return [];
+                }
                 if (singleDivisionEnabled) {
-                    return source.allowPaymentPlans ? [...(source.installmentDueDates || [])] : [];
+                    return eventAllowPaymentPlans ? [...(source.installmentDueDates || [])] : [];
                 }
                 if (!detail.allowPaymentPlans) {
                     return [];
@@ -5091,15 +5437,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
             // Backend stores price in cents; convert dollars from the form to cents before saving.
-            price: Math.round(Math.max(0, source.price || 0) * 100),
+            price: Math.round(eventPriceDollars * 100),
             minAge,
             maxAge,
-            allowPaymentPlans: source.allowPaymentPlans,
-            installmentCount: source.allowPaymentPlans
+            allowPaymentPlans: eventAllowPaymentPlans,
+            installmentCount: eventAllowPaymentPlans
                 ? source.installmentCount || installmentAmountsCents.length || 0
                 : undefined,
-            installmentAmounts: source.allowPaymentPlans ? installmentAmountsCents : [],
-            installmentDueDates: source.allowPaymentPlans ? source.installmentDueDates : [],
+            installmentAmounts: eventAllowPaymentPlans ? installmentAmountsCents : [],
+            installmentDueDates: eventAllowPaymentPlans ? source.installmentDueDates : [],
             allowTeamSplitDefault: source.allowTeamSplitDefault,
             maxParticipants: source.maxParticipants,
             teamSizeLimit: source.teamSizeLimit,
@@ -5327,20 +5673,48 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         if (supportsScheduleSlots(source.eventType)) {
             const slotDocuments = source.leagueSlots
-                .filter((slot) =>
-                    normalizeSlotFieldIds(slot).length > 0 &&
-                    normalizeWeekdays(slot).length > 0 &&
-                    typeof slot.startTimeMinutes === 'number' &&
-                    typeof slot.endTimeMinutes === 'number',
-                )
+                .filter((slot) => {
+                    if (!normalizeSlotFieldIds(slot).length) {
+                        return false;
+                    }
+                    if (slot.repeating === false) {
+                        const slotStart = parseLocalDateTime(slot.startDate ?? null);
+                        const slotEnd = parseLocalDateTime(slot.endDate ?? null);
+                        return Boolean(slotStart && slotEnd && slotEnd.getTime() > slotStart.getTime());
+                    }
+                    return normalizeWeekdays(slot).length > 0
+                        && typeof slot.startTimeMinutes === 'number'
+                        && typeof slot.endTimeMinutes === 'number';
+                })
                 .map((slot) => {
                     const slotId = slot.$id || slot.key;
-                    const normalizedDays = normalizeWeekdays(slot);
+                    const repeating = slot.repeating !== false;
                     const slotFieldIds = normalizeSlotFieldIds(slot);
                     const slotDivisionKeys = normalizeSlotDivisionIdsWithLookup(
                         slot.divisions,
                         slotDivisionLookupForDraft,
                     );
+                    const explicitStart = parseLocalDateTime(slot.startDate ?? null);
+                    const explicitEnd = parseLocalDateTime(slot.endDate ?? null);
+                    const fallbackStart = parseLocalDateTime(source.start ?? null);
+                    const nonRepeatingDay = explicitStart
+                        ? ((explicitStart.getDay() + 6) % 7)
+                        : fallbackStart
+                            ? ((fallbackStart.getDay() + 6) % 7)
+                            : 0;
+                    const normalizedDays = repeating
+                        ? normalizeWeekdays(slot)
+                        : [nonRepeatingDay];
+                    const startTimeMinutes = repeating
+                        ? Number(slot.startTimeMinutes)
+                        : (explicitStart
+                            ? explicitStart.getHours() * 60 + explicitStart.getMinutes()
+                            : Number(slot.startTimeMinutes));
+                    const endTimeMinutes = repeating
+                        ? Number(slot.endTimeMinutes)
+                        : (explicitEnd
+                            ? explicitEnd.getHours() * 60 + explicitEnd.getMinutes()
+                            : Number(slot.endTimeMinutes));
                     const serialized: TimeSlot = {
                         $id: slotId,
                         dayOfWeek: normalizedDays[0] as TimeSlot['dayOfWeek'],
@@ -5350,16 +5724,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         divisions: singleDivisionEnabled
                             ? normalizedDivisionKeys
                             : (slotDivisionKeys.length ? slotDivisionKeys : normalizedDivisionKeys),
-                        startTimeMinutes: Number(slot.startTimeMinutes),
-                        endTimeMinutes: Number(slot.endTimeMinutes),
-                        repeating: slot.repeating !== false,
+                        startTimeMinutes,
+                        endTimeMinutes,
+                        repeating,
                     };
 
-                    if (source.start) {
-                        serialized.startDate = source.start;
-                    }
-                    if (source.end) {
-                        serialized.endDate = source.end;
+                    if (!repeating) {
+                        if (explicitStart) {
+                            serialized.startDate = formatLocalDateTime(explicitStart);
+                        }
+                        if (explicitEnd) {
+                            serialized.endDate = formatLocalDateTime(explicitEnd);
+                        }
+                    } else {
+                        const slotStartDateOverride = formatLocalDateTime(slot.startDate ?? null);
+                        if (slotStartDateOverride) {
+                            serialized.startDate = slotStartDateOverride;
+                        } else if (source.start) {
+                            serialized.startDate = source.start;
+                        }
+                        if (source.end) {
+                            serialized.endDate = source.end;
+                        }
                     }
 
                     return serialized;
@@ -5393,6 +5779,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         fieldsReferencedInSlots,
         hasImmutableFields,
         hasImmutableTimeSlots,
+        hasStripeAccount,
         immutableFields,
         immutableTimeSlots,
         isEditMode,
@@ -5611,7 +5998,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     <p className="text-red-600 text-sm mt-1">{errors.imageId.message as string}</p>
                                 )}
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
                                 <TextInput
                                     label="Event Name"
                                     withAsterisk
@@ -5687,8 +6074,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         >
                             <h3 className="text-lg font-semibold mb-4">Event Details</h3>
 
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4">
-                                <div className="md:col-span-4">
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-end">
+                                <div className="md:col-span-3">
                                     <Controller
                                         name="eventType"
                                         control={control}
@@ -5726,6 +6113,97 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         )}
                                     />
                                 </div>
+                                <div className="md:col-span-3">
+                                    <Controller
+                                        name="maxParticipants"
+                                        control={control}
+                                        render={({ field, fieldState }) => (
+                                            <NumberInput
+                                                label={eventData.singleDivision
+                                                    ? (eventData.teamSignup ? 'Max Teams' : 'Max Participants')
+                                                    : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
+                                                min={2}
+                                                max={MAX_STANDARD_NUMBER}
+                                                value={field.value}
+                                                maw={220}
+                                                clampBehavior="strict"
+                                                disabled={isImmutableField('maxParticipants')}
+                                                onChange={(val) => {
+                                                    if (isImmutableField('maxParticipants')) return;
+                                                    field.onChange(Number(val) || 10);
+                                                }}
+                                                error={fieldState.error?.message as string | undefined}
+                                            />
+                                        )}
+                                    />
+                                </div>
+                                <div className="md:col-span-3">
+                                    <Controller
+                                        name="teamSizeLimit"
+                                        control={control}
+                                        render={({ field, fieldState }) => (
+                                            <NumberInput
+                                                label="Team Size Limit"
+                                                min={1}
+                                                max={MAX_STANDARD_NUMBER}
+                                                value={field.value}
+                                                maw={220}
+                                                clampBehavior="strict"
+                                                disabled={isImmutableField('teamSizeLimit')}
+                                                onChange={(val) => {
+                                                    if (isImmutableField('teamSizeLimit')) return;
+                                                    field.onChange(Number(val) || 2);
+                                                }}
+                                                error={fieldState.error?.message as string | undefined}
+                                            />
+                                        )}
+                                    />
+                                </div>
+                                <div className="md:col-span-3">
+                                    <AnimatedSection in={eventData.eventType === 'LEAGUE'} className="rounded-lg border border-gray-200 bg-white p-3 transition-all duration-200">
+                                        <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
+                                            <div>
+                                                <Text fw={600} size="sm">Include Playoffs</Text>
+                                                <Text size="xs" c="dimmed">
+                                                    Enable a playoff bracket for league standings.
+                                                </Text>
+                                            </div>
+                                            <Switch
+                                                checked={leagueData.includePlayoffs}
+                                                disabled={isImmutableField('includePlayoffs')}
+                                                onChange={(event) => {
+                                                    if (isImmutableField('includePlayoffs')) return;
+                                                    handleIncludePlayoffsToggle(event.currentTarget.checked);
+                                                }}
+                                            />
+                                        </Group>
+                                        <AnimatedSection in={leagueData.includePlayoffs} className="mt-3 border-l-2 border-slate-200 pl-3">
+                                            <NumberInput
+                                                label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
+                                                min={2}
+                                                max={MAX_STANDARD_NUMBER}
+                                                maw={220}
+                                                value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                                                disabled={isImmutableField('playoffTeamCount')}
+                                                clampBehavior="strict"
+                                                onChange={(value) => {
+                                                    if (isImmutableField('playoffTeamCount')) return;
+                                                    const numeric = typeof value === 'number' ? value : Number(value);
+                                                    setLeagueData((prev) => ({
+                                                        ...prev,
+                                                        playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
+                                                    }));
+                                                }}
+                                                error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
+                                            />
+                                            <AnimatedSection in={!eventData.singleDivision}>
+                                                <Text size="xs" c="dimmed" mt="xs">
+                                                    Existing divisions keep their own playoff counts. This value is used as the default for new divisions.
+                                                </Text>
+                                            </AnimatedSection>
+                                        </AnimatedSection>
+                                    </AnimatedSection>
+                                </div>
                             </div>
 
                             <div className="space-y-6 mb-4">
@@ -5756,7 +6234,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:items-end">
                                     <div className="md:col-span-6">
                                         <Controller
                                             name="start"
@@ -5785,7 +6263,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         />
                                     </div>
                                     <div className="md:col-span-6">
-                                        {(eventData.eventType === 'EVENT' || supportsNoFixedEndDateTime) && (
+                                        <AnimatedSection in={eventData.eventType === 'EVENT' || supportsNoFixedEndDateTime}>
                                             <Controller
                                                 name="end"
                                                 control={control}
@@ -5845,14 +6323,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     />
                                                 )}
                                             />
-                                        )}
+                                        </AnimatedSection>
                                     </div>
                                 </div>
                             </div>
 
-                            {isOrganizationHostedEvent && (
+                            <AnimatedSection in={isOrganizationHostedEvent}>
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
                                         <div className="md:col-span-6">
                                             <Controller
                                                 name="hostId"
@@ -5903,17 +6381,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         </div>
                                     </div>
-                                    {organizationHostSelectData.length === 0 && (
+                                    <AnimatedSection in={organizationHostSelectData.length === 0}>
                                         <Text size="xs" c="dimmed">
                                             Add organization hosts first to assign event hosts.
                                         </Text>
-                                    )}
+                                    </AnimatedSection>
                                 </div>
-                            )}
+                            </AnimatedSection>
 
                             {/* Pricing and Participant Details */}
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                                <div className="md:col-span-4">
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
+                                <div className="md:col-span-12 lg:col-span-6">
                                     <Controller
                                         name="price"
                                         control={control}
@@ -5938,7 +6416,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     />
 
                                     {/* Always show connect Stripe when no account */}
-                                    {!hasStripeAccount && (
+                                    <AnimatedSection in={!hasStripeAccount}>
                                         <div className="mt-2">
                                             <button
                                                 type="button"
@@ -5959,7 +6437,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 Connect your Stripe account to enable paid events and set a price.
                                             </p>
                                         </div>
-                                    )}
+                                    </AnimatedSection>
 
                                     <p className="text-sm text-gray-500">
                                         {!eventData.singleDivision
@@ -5969,104 +6447,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 : `$${eventData.price?.toFixed(2)}`}
                                     </p>
                                 </div>
-
-                                <div className="md:col-span-4">
-                                    <Controller
-                                        name="maxParticipants"
-                                        control={control}
-                                        render={({ field, fieldState }) => (
-                                            <NumberInput
-                                                label={eventData.singleDivision
-                                                    ? (eventData.teamSignup ? 'Max Teams' : 'Max Participants')
-                                                    : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
-                                                min={2}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value}
-                                                maw={180}
-                                                clampBehavior="strict"
-                                                disabled={isImmutableField('maxParticipants')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('maxParticipants')) return;
-                                                    field.onChange(Number(val) || 10);
-                                                }}
-                                                error={fieldState.error?.message as string | undefined}
-                                            />
-                                        )}
-                                    />
-                                </div>
-
-                                <div className="md:col-span-4">
-                                    <Controller
-                                        name="teamSizeLimit"
-                                        control={control}
-                                        render={({ field, fieldState }) => (
-                                            <NumberInput
-                                                label="Team Size Limit"
-                                                min={1}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value}
-                                                maw={160}
-                                                clampBehavior="strict"
-                                                disabled={isImmutableField('teamSizeLimit')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('teamSizeLimit')) return;
-                                                    field.onChange(Number(val) || 2);
-                                                }}
-                                                error={fieldState.error?.message as string | undefined}
-                                            />
-                                        )}
-                                    />
-                                </div>
                             </div>
-
-                            {eventData.eventType === 'LEAGUE' && (
-                                <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-                                    <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
-                                        <div>
-                                            <Text fw={600} size="sm">Include Playoffs</Text>
-                                            <Text size="sm" c="dimmed">
-                                                Enable a playoff bracket for league standings.
-                                            </Text>
-                                        </div>
-                                        <Switch
-                                            checked={leagueData.includePlayoffs}
-                                            disabled={isImmutableField('includePlayoffs')}
-                                            onChange={(event) => {
-                                                if (isImmutableField('includePlayoffs')) return;
-                                                handleIncludePlayoffsToggle(event.currentTarget.checked);
-                                            }}
-                                        />
-                                    </Group>
-
-                                    {leagueData.includePlayoffs && (
-                                        <div className="mt-4 border-l-2 border-slate-200 pl-4">
-                                            <NumberInput
-                                                label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
-                                                min={2}
-                                                max={MAX_STANDARD_NUMBER}
-                                                maw={220}
-                                                value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-                                                disabled={isImmutableField('playoffTeamCount')}
-                                                clampBehavior="strict"
-                                                onChange={(value) => {
-                                                    if (isImmutableField('playoffTeamCount')) return;
-                                                    const numeric = typeof value === 'number' ? value : Number(value);
-                                                    setLeagueData((prev) => ({
-                                                        ...prev,
-                                                        playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
-                                                    }));
-                                                }}
-                                                error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
-                                            />
-                                            {!eventData.singleDivision && (
-                                                <Text size="xs" c="dimmed" mt="xs">
-                                                    Existing divisions keep their own playoff counts. This value is used as the default for new divisions.
-                                                </Text>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
 
                             <Controller
                                 name="requiredTemplateIds"
@@ -6089,18 +6470,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     />
                                 )}
                             />
-                            {templatesError && (
+                            <AnimatedSection in={Boolean(templatesError)}>
                                 <Text size="sm" c="red">
                                     {templatesError}
                                 </Text>
-                            )}
-                            {!templatesLoading && organizationId && templateOptions.length === 0 && (
+                            </AnimatedSection>
+                            <AnimatedSection in={!templatesLoading && Boolean(organizationId) && templateOptions.length === 0}>
                                 <Text size="sm" c="dimmed">
                                     No templates yet. Create one in your organization Document Templates tab.
                                 </Text>
-                            )}
+                            </AnimatedSection>
 
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4">
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
                                 <div className="md:col-span-4">
                                     <Controller
                                         name="minAge"
@@ -6150,8 +6531,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 <Text size="xs" c="dimmed" className="md:col-span-12">
                                     Leave age limits blank if anyone can register.
                                 </Text>
-                                {(typeof eventData.minAge === 'number' || typeof eventData.maxAge === 'number') && (
-                                    <Alert color="yellow" variant="light" className="md:col-span-12">
+                                <AnimatedSection
+                                    in={typeof eventData.minAge === 'number' || typeof eventData.maxAge === 'number'}
+                                    collapseClassName="md:col-span-12"
+                                >
+                                    <Alert color="yellow" variant="light">
                                         <Text fw={600} size="sm">
                                             Age-restricted event
                                         </Text>
@@ -6159,7 +6543,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             We only check age using the date of birth users enter in their profile. If your event requires an age check (for example, 18+ or 21+), you are responsible for verifying attendees&apos; age at check-in.
                                         </Text>
                                     </Alert>
-                                )}
+                                </AnimatedSection>
                             </div>
 
                             <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
@@ -6185,7 +6569,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     />
                                 </Group>
 
-                                {eventData.allowPaymentPlans && (
+                                <AnimatedSection in={eventData.allowPaymentPlans}>
                                     <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
                                         <Group align="flex-start" gap="md">
                                             <NumberInput
@@ -6266,11 +6650,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             </Group>
                                         </Stack>
                                     </div>
-                                )}
+                                </AnimatedSection>
                             </div>
 
                             {/* Policy Settings */}
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4 md:items-end">
                                 <div className="md:col-span-6">
                                     <Controller
                                         name="cancellationRefundHours"
@@ -6543,7 +6927,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         ? 'League Divisions'
                                         : 'Divisions'}
                                 </Text>
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
                                     <MantineSelect
                                         label="Gender"
                                         placeholder="Select gender"
@@ -6658,42 +7042,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             }));
                                         }}
                                     />
-                                    {eventData.eventType === 'LEAGUE' && (
-                                        <NumberInput
-                                            label="Division Playoff Team Count"
-                                            min={2}
-                                            max={MAX_STANDARD_NUMBER}
-                                            className="md:col-span-3"
-                                            maw={220}
-                                            value={eventData.singleDivision
-                                                ? (typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined)
-                                                : divisionEditor.playoffTeamCount}
-                                            clampBehavior="strict"
-                                            disabled={
-                                                isImmutableField('divisions')
-                                                || !divisionEditorReady
-                                                || eventData.singleDivision
-                                                || !leagueData.includePlayoffs
-                                            }
-                                            onChange={(val) => {
-                                                if (
+                                    <div className="md:col-span-3">
+                                        <AnimatedSection in={eventData.eventType === 'LEAGUE'}>
+                                            <NumberInput
+                                                label="Division Playoff Team Count"
+                                                min={2}
+                                                max={MAX_STANDARD_NUMBER}
+                                                maw={220}
+                                                value={eventData.singleDivision
+                                                    ? (typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined)
+                                                    : divisionEditor.playoffTeamCount}
+                                                clampBehavior="strict"
+                                                disabled={
                                                     isImmutableField('divisions')
                                                     || !divisionEditorReady
                                                     || eventData.singleDivision
                                                     || !leagueData.includePlayoffs
-                                                ) {
-                                                    return;
                                                 }
-                                                setDivisionEditor((prev) => ({
-                                                    ...prev,
-                                                    playoffTeamCount: Math.max(2, Math.trunc(Number(val) || 0)),
-                                                    error: null,
-                                                }));
-                                            }}
-                                        />
-                                    )}
+                                                onChange={(val) => {
+                                                    if (
+                                                        isImmutableField('divisions')
+                                                        || !divisionEditorReady
+                                                        || eventData.singleDivision
+                                                        || !leagueData.includePlayoffs
+                                                    ) {
+                                                        return;
+                                                    }
+                                                    setDivisionEditor((prev) => ({
+                                                        ...prev,
+                                                        playoffTeamCount: Math.max(2, Math.trunc(Number(val) || 0)),
+                                                        error: null,
+                                                    }));
+                                                }}
+                                            />
+                                        </AnimatedSection>
+                                    </div>
                                 </div>
-                                {!eventData.singleDivision && (
+                                <AnimatedSection in={!eventData.singleDivision}>
                                     <div className="rounded-lg border border-gray-200 bg-white p-4">
                                         <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
                                             <div>
@@ -6727,7 +7112,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         </Group>
 
-                                        {divisionEditor.allowPaymentPlans && (
+                                        <AnimatedSection in={divisionEditor.allowPaymentPlans}>
                                             <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
                                                 <NumberInput
                                                     label="Installments"
@@ -6801,16 +7186,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     </Group>
                                                 </Stack>
                                             </div>
-                                        )}
+                                        </AnimatedSection>
                                     </div>
-                                )}
-                                {eventData.singleDivision && (
+                                </AnimatedSection>
+                                <AnimatedSection in={eventData.singleDivision}>
                                     <Text size="xs" c="dimmed">
                                         {eventData.eventType === 'LEAGUE'
                                             ? 'Division price, capacity, payment plan, and playoff team count mirror event-level values while single division is enabled.'
                                             : 'Division price, capacity, and payment plan mirror event-level values while single division is enabled.'}
                                     </Text>
-                                )}
+                                </AnimatedSection>
                                 <Group justify="space-between" align="center">
                                     <Button
                                         variant="light"
@@ -6961,7 +7346,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     })}
                                 </div>
 
-                                {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && eventData.splitLeaguePlayoffDivisions && (
+                                <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && eventData.splitLeaguePlayoffDivisions}>
                                     <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
                                         <Group justify="space-between" align="center">
                                             <div>
@@ -7047,11 +7432,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             </Alert>
                                         )}
                                     </div>
-                                )}
+                                </AnimatedSection>
                             </div>
 
                             {/* Team Settings */}
-                            {eventData.eventType === 'EVENT' ? (
+                            <AnimatedSection in={eventData.eventType === 'EVENT'}>
                                 <div className="mt-6 space-y-3">
                                     <Controller
                                         name="teamSignup"
@@ -7099,7 +7484,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
-                                    {isOrganizationManagedEvent && (
+                                    <AnimatedSection in={isOrganizationManagedEvent}>
                                         <Controller
                                             name="selectedFieldIds"
                                             control={control}
@@ -7122,9 +7507,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 />
                                             )}
                                         />
-                                    )}
+                                    </AnimatedSection>
                                 </div>
-                            ) : (
+                            </AnimatedSection>
+                            <AnimatedSection in={eventData.eventType !== 'EVENT'}>
                                 <div className="mt-6 space-y-2">
                                     <Switch
                                         label="Team Event (teams compete rather than individuals)"
@@ -7162,7 +7548,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
-                                    {eventData.eventType === 'LEAGUE' && (
+                                    <AnimatedSection in={eventData.eventType === 'LEAGUE'}>
                                         <Controller
                                             name="splitLeaguePlayoffDivisions"
                                             control={control}
@@ -7189,16 +7575,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 />
                                             )}
                                         />
-                                    )}
+                                    </AnimatedSection>
                                     <Text size="sm" c="dimmed">
                                         Leagues and tournaments are always team events. When single division is enabled,
                                         each timeslot is automatically assigned all selected divisions.
                                     </Text>
                                 </div>
-                            )}
+                            </AnimatedSection>
                         </Paper>
 
-                        {eventData.eventType === 'LEAGUE' && (
+                        <AnimatedSection in={eventData.eventType === 'LEAGUE'}>
                             <Paper
                                 id="section-league-scoring-config"
                                 shadow="xs"
@@ -7215,9 +7601,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     onChange={handleLeagueScoringConfigChange}
                                 />
                             </Paper>
-                        )}
+                        </AnimatedSection>
 
-                        {showScheduleConfig && (
+                        <AnimatedSection in={showScheduleConfig}>
                             <Paper
                                 id="section-schedule-config"
                                 shadow="xs"
@@ -7229,7 +7615,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 <h3 className="text-lg font-semibold mb-4">Schedule Config</h3>
 
                                 <div className="space-y-6">
-                                    {!isSchedulableEventType && usesRentalSlots && (
+                                    <AnimatedSection in={!isSchedulableEventType && usesRentalSlots}>
                                         <div className="rounded-lg border border-gray-200 bg-white p-4">
                                             <Text fw={600} size="sm">Rental Slot Schedule</Text>
                                             <Text size="sm" c="dimmed">
@@ -7239,15 +7625,23 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 Linked slots: {immutableTimeSlots.length}
                                             </Text>
                                         </div>
-                                    )}
+                                    </AnimatedSection>
 
-                                    {isSchedulableEventType && (
+                                    <AnimatedSection in={isSchedulableEventType}>
                                     <div className="space-y-4">
-                                        {isOrganizationManagedEvent && (
+                                        <AnimatedSection in={eventData.eventType === 'TOURNAMENT'}>
+                                            <TournamentFields
+                                                tournamentData={tournamentData}
+                                                setTournamentData={setTournamentData}
+                                                sport={eventData.sportConfig ?? undefined}
+                                            />
+                                        </AnimatedSection>
+
+                                        <AnimatedSection in={isOrganizationManagedEvent}>
                                             <Text size="xs" c="dimmed">
                                                 Select event fields directly inside each timeslot.
                                             </Text>
-                                        )}
+                                        </AnimatedSection>
 
                                         <LeagueFields
                                             leagueData={leagueData}
@@ -7269,6 +7663,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             fieldsLoading={fieldsLoading}
                                             fieldOptions={leagueFieldOptions}
                                             divisionOptions={divisionOptions}
+                                            eventStartDate={eventData.start}
                                             lockSlotDivisions={Boolean(eventData.singleDivision)}
                                             lockedDivisionKeys={slotDivisionKeys}
                                             readOnly={hasImmutableTimeSlots}
@@ -7276,27 +7671,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             showLeagueConfiguration={eventData.eventType === 'LEAGUE'}
                                         />
 
-                                        {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions && (
+                                        <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions}>
                                             <TournamentFields
                                                 title="Playoffs Configuration"
                                                 tournamentData={playoffData}
                                                 setTournamentData={setPlayoffData}
                                                 sport={eventData.sportConfig ?? undefined}
                                             />
-                                        )}
+                                        </AnimatedSection>
                                     </div>
-                                )}
-
-                                    {eventData.eventType === 'TOURNAMENT' && (
-                                    <TournamentFields
-                                        tournamentData={tournamentData}
-                                        setTournamentData={setTournamentData}
-                                        sport={eventData.sportConfig ?? undefined}
-                                    />
-                                    )}
+                                    </AnimatedSection>
                                 </div>
                             </Paper>
-                        )}
+                        </AnimatedSection>
                     </form>
                 </div>
 
