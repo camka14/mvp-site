@@ -174,8 +174,10 @@ describe('event PATCH route', () => {
     });
     divisionsMock.findMany
       .mockResolvedValueOnce([]) // currentDivisionFieldMap lookup
-      .mockResolvedValueOnce([]) // stale divisions lookup in syncEventDivisions
-      .mockResolvedValueOnce([{ key: 'advanced', fieldIds: ['field_2'] }]); // response divisionFieldIds
+      .mockResolvedValueOnce([]) // existing divisions lookup in syncEventDivisions
+      .mockResolvedValueOnce([]) // playoff division ids lookup (kind=PLAYOFF)
+      .mockResolvedValueOnce([{ id: 'event_1__division__advanced', key: 'advanced', fieldIds: ['field_2'] }]) // response divisionFieldIds
+      .mockResolvedValueOnce([{ id: 'event_1__division__advanced', key: 'advanced', fieldIds: ['field_2'] }]); // response divisionDetails
     divisionsMock.deleteMany.mockResolvedValue({ count: 0 });
     divisionsMock.upsert.mockResolvedValue({});
 

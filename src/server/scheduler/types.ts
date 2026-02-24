@@ -15,6 +15,17 @@ export interface SchedulerContext {
   error: (message: string) => void;
 }
 
+export type PlayoffDivisionConfig = {
+  doubleElimination: boolean;
+  winnerSetCount: number;
+  loserSetCount: number;
+  winnerBracketPointsToVictory: number[];
+  loserBracketPointsToVictory: number[];
+  prize: string;
+  fieldCount: number;
+  restTimeMinutes: number;
+};
+
 export const sideFrom = (value?: string | null): Side | null => {
   if (!value) return null;
   if (value === Side.LEFT) return Side.LEFT;
@@ -63,10 +74,16 @@ export interface SchedulableEvent {
 export class Division implements Group {
   id: string;
   name: string;
+  kind: 'LEAGUE' | 'PLAYOFF';
   fieldIds: string[];
   price: number | null;
   maxParticipants: number | null;
   playoffTeamCount: number | null;
+  playoffPlacementDivisionIds: string[];
+  standingsOverrides: Record<string, number> | null;
+  standingsConfirmedAt: Date | null;
+  standingsConfirmedBy: string | null;
+  playoffConfig: PlayoffDivisionConfig | null;
 
   constructor(
     id: string,
@@ -75,9 +92,16 @@ export class Division implements Group {
     price?: number | null,
     maxParticipants?: number | null,
     playoffTeamCount?: number | null,
+    kind?: 'LEAGUE' | 'PLAYOFF',
+    playoffPlacementDivisionIds?: string[],
+    standingsOverrides?: Record<string, number> | null,
+    standingsConfirmedAt?: Date | null,
+    standingsConfirmedBy?: string | null,
+    playoffConfig?: PlayoffDivisionConfig | null,
   ) {
     this.id = id;
     this.name = name ?? id;
+    this.kind = kind ?? 'LEAGUE';
     this.fieldIds = Array.isArray(fieldIds) ? fieldIds : [];
     this.price = typeof price === 'number' && Number.isFinite(price) ? price : null;
     this.maxParticipants = typeof maxParticipants === 'number' && Number.isFinite(maxParticipants)
@@ -85,6 +109,23 @@ export class Division implements Group {
       : null;
     this.playoffTeamCount = typeof playoffTeamCount === 'number' && Number.isFinite(playoffTeamCount)
       ? Math.max(0, Math.trunc(playoffTeamCount))
+      : null;
+    this.playoffPlacementDivisionIds = Array.isArray(playoffPlacementDivisionIds)
+      ? playoffPlacementDivisionIds
+          .map((entry) => String(entry).trim())
+          .filter((entry) => entry.length > 0)
+      : [];
+    this.standingsOverrides = standingsOverrides && typeof standingsOverrides === 'object'
+      ? { ...standingsOverrides }
+      : null;
+    this.standingsConfirmedAt = standingsConfirmedAt ?? null;
+    this.standingsConfirmedBy = standingsConfirmedBy ?? null;
+    this.playoffConfig = playoffConfig && typeof playoffConfig === 'object'
+      ? {
+          ...playoffConfig,
+          winnerBracketPointsToVictory: [...(playoffConfig.winnerBracketPointsToVictory ?? [])],
+          loserBracketPointsToVictory: [...(playoffConfig.loserBracketPointsToVictory ?? [])],
+        }
       : null;
   }
 }
@@ -533,6 +574,8 @@ export class Tournament {
   gamesPerOpponent?: number;
   includePlayoffs?: boolean;
   playoffTeamCount?: number;
+  splitLeaguePlayoffDivisions?: boolean;
+  playoffDivisions?: Division[];
   setsPerMatch?: number;
   pointsToVictory?: number[];
   timeSlots: TimeSlot[];
@@ -597,6 +640,8 @@ export class Tournament {
     gamesPerOpponent?: number;
     includePlayoffs?: boolean;
     playoffTeamCount?: number;
+    splitLeaguePlayoffDivisions?: boolean;
+    playoffDivisions?: Division[];
     setsPerMatch?: number;
     pointsToVictory?: number[];
     timeSlots?: TimeSlot[];
@@ -660,6 +705,8 @@ export class Tournament {
     this.gamesPerOpponent = params.gamesPerOpponent ?? undefined;
     this.includePlayoffs = params.includePlayoffs ?? undefined;
     this.playoffTeamCount = params.playoffTeamCount ?? undefined;
+    this.splitLeaguePlayoffDivisions = params.splitLeaguePlayoffDivisions ?? false;
+    this.playoffDivisions = params.playoffDivisions ?? [];
     this.setsPerMatch = params.setsPerMatch ?? undefined;
     this.pointsToVictory = params.pointsToVictory ?? undefined;
     this.timeSlots = params.timeSlots ?? [];
@@ -670,6 +717,8 @@ export class League extends Tournament {
   gamesPerOpponent: number;
   includePlayoffs: boolean;
   playoffTeamCount: number;
+  splitLeaguePlayoffDivisions: boolean;
+  playoffDivisions: Division[];
   setsPerMatch: number;
   pointsToVictory: number[];
 
@@ -684,6 +733,8 @@ export class League extends Tournament {
     this.gamesPerOpponent = params.gamesPerOpponent ?? 1;
     this.includePlayoffs = params.includePlayoffs ?? false;
     this.playoffTeamCount = params.playoffTeamCount ?? 0;
+    this.splitLeaguePlayoffDivisions = params.splitLeaguePlayoffDivisions ?? false;
+    this.playoffDivisions = params.playoffDivisions ?? [];
     this.setsPerMatch = params.setsPerMatch ?? 0;
     this.pointsToVictory = params.pointsToVictory ?? [];
   }

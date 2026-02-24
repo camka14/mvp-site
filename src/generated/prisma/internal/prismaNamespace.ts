@@ -2672,12 +2672,17 @@ export const DivisionsScalarFieldEnum = {
   updatedAt: 'updatedAt',
   name: 'name',
   key: 'key',
+  kind: 'kind',
   eventId: 'eventId',
   organizationId: 'organizationId',
   sportId: 'sportId',
   price: 'price',
   maxParticipants: 'maxParticipants',
   playoffTeamCount: 'playoffTeamCount',
+  playoffPlacementDivisionIds: 'playoffPlacementDivisionIds',
+  standingsOverrides: 'standingsOverrides',
+  standingsConfirmedAt: 'standingsConfirmedAt',
+  standingsConfirmedBy: 'standingsConfirmedBy',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
   installmentDueDates: 'installmentDueDates',
@@ -2971,6 +2976,7 @@ export const EventsScalarFieldEnum = {
   installmentDueDates: 'installmentDueDates',
   installmentAmounts: 'installmentAmounts',
   allowTeamSplitDefault: 'allowTeamSplitDefault',
+  splitLeaguePlayoffDivisions: 'splitLeaguePlayoffDivisions',
   requiredTemplateIds: 'requiredTemplateIds'
 } as const
 
@@ -3279,19 +3285,19 @@ export const SortOrder = {
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
-export const JsonNullValueInput = {
-  JsonNull: JsonNull
-} as const
-
-export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
-
-
 export const NullableJsonNullValueInput = {
   DbNull: DbNull,
   JsonNull: JsonNull
 } as const
 
 export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const QueryMode = {
@@ -3389,6 +3395,34 @@ export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel,
 
 
 /**
+ * Reference to a field of type 'DivisionsKindEnum'
+ */
+export type EnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionsKindEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'DivisionsKindEnum[]'
+ */
+export type ListEnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionsKindEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'Json'
+ */
+export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
+    
+
+
+/**
+ * Reference to a field of type 'QueryMode'
+ */
+export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
+    
+
+
+/**
  * Reference to a field of type 'BillsOwnerTypeEnum'
  */
 export type EnumBillsOwnerTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BillsOwnerTypeEnum'>
@@ -3441,20 +3475,6 @@ export type EnumRefundRequestsStatusEnumFieldRefInput<$PrismaModel> = FieldRefIn
  * Reference to a field of type 'RefundRequestsStatusEnum[]'
  */
 export type ListEnumRefundRequestsStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RefundRequestsStatusEnum[]'>
-    
-
-
-/**
- * Reference to a field of type 'Json'
- */
-export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
-    
-
-
-/**
- * Reference to a field of type 'QueryMode'
- */
-export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
     
 
 

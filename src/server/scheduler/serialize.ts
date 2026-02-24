@@ -3,6 +3,19 @@ import { Division, League, Match, PlayingField, Team, TimeSlot, Tournament, User
 const serializeDivision = (division: Division) => ({
   id: division.id,
   name: division.name,
+  kind: division.kind,
+  playoffTeamCount: division.playoffTeamCount,
+  playoffPlacementDivisionIds: [...(division.playoffPlacementDivisionIds ?? [])],
+  standingsOverrides: division.standingsOverrides ? { ...division.standingsOverrides } : null,
+  standingsConfirmedAt: division.standingsConfirmedAt ? division.standingsConfirmedAt.toISOString() : null,
+  standingsConfirmedBy: division.standingsConfirmedBy ?? null,
+  playoffConfig: division.playoffConfig
+    ? {
+        ...division.playoffConfig,
+        winnerBracketPointsToVictory: [...(division.playoffConfig.winnerBracketPointsToVictory ?? [])],
+        loserBracketPointsToVictory: [...(division.playoffConfig.loserBracketPointsToVictory ?? [])],
+      }
+    : null,
 });
 
 const serializeTeam = (team: Team) => ({
@@ -117,7 +130,12 @@ const serializeEventBase = (event: Tournament | League) => ({
   installmentDueDates: event.installmentDueDates.map((date) => date.toISOString()),
   installmentAmounts: event.installmentAmounts ?? [],
   allowTeamSplitDefault: event.allowTeamSplitDefault ?? false,
+  splitLeaguePlayoffDivisions: event.splitLeaguePlayoffDivisions ?? false,
   divisions: event.divisions.map((division) => division.id),
+  divisionDetails: event.divisions.map(serializeDivision),
+  playoffDivisionDetails: event instanceof League
+    ? event.playoffDivisions.map(serializeDivision)
+    : [],
   fields: Object.values(event.fields).map(serializeField),
   teams: Object.values(event.teams).map(serializeTeam),
   timeSlots: event.timeSlots.map(serializeTimeSlot),
@@ -239,6 +257,44 @@ export const serializeEventLegacy = (event: Tournament | League) => {
     $id: base.id,
     id: base.id,
     divisions: event.divisions.map((division) => division.id),
+    divisionDetails: event.divisions.map((division) => ({
+      $id: division.id,
+      id: division.id,
+      name: division.name,
+      kind: division.kind,
+      playoffTeamCount: division.playoffTeamCount,
+      playoffPlacementDivisionIds: [...(division.playoffPlacementDivisionIds ?? [])],
+      standingsOverrides: division.standingsOverrides ? { ...division.standingsOverrides } : null,
+      standingsConfirmedAt: division.standingsConfirmedAt ? division.standingsConfirmedAt.toISOString() : null,
+      standingsConfirmedBy: division.standingsConfirmedBy ?? null,
+      playoffConfig: division.playoffConfig
+        ? {
+            ...division.playoffConfig,
+            winnerBracketPointsToVictory: [...(division.playoffConfig.winnerBracketPointsToVictory ?? [])],
+            loserBracketPointsToVictory: [...(division.playoffConfig.loserBracketPointsToVictory ?? [])],
+          }
+        : null,
+    })),
+    playoffDivisionDetails: event instanceof League
+      ? event.playoffDivisions.map((division) => ({
+          $id: division.id,
+          id: division.id,
+          name: division.name,
+          kind: division.kind,
+          playoffTeamCount: division.playoffTeamCount,
+          playoffPlacementDivisionIds: [...(division.playoffPlacementDivisionIds ?? [])],
+          standingsOverrides: division.standingsOverrides ? { ...division.standingsOverrides } : null,
+          standingsConfirmedAt: division.standingsConfirmedAt ? division.standingsConfirmedAt.toISOString() : null,
+          standingsConfirmedBy: division.standingsConfirmedBy ?? null,
+          playoffConfig: division.playoffConfig
+            ? {
+                ...division.playoffConfig,
+                winnerBracketPointsToVictory: [...(division.playoffConfig.winnerBracketPointsToVictory ?? [])],
+                loserBracketPointsToVictory: [...(division.playoffConfig.loserBracketPointsToVictory ?? [])],
+              }
+            : null,
+        }))
+      : [],
     fields: Object.values(event.fields).map(serializeFieldLegacy),
     teams: Object.values(event.teams).map(serializeTeamLegacy),
     timeSlots: event.timeSlots.map(serializeTimeSlotLegacy),

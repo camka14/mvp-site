@@ -125,3 +125,11 @@ export const EventRegistrationsStatusEnum = {
 } as const
 
 export type EventRegistrationsStatusEnum = (typeof EventRegistrationsStatusEnum)[keyof typeof EventRegistrationsStatusEnum]
+
+
+export const DivisionsKindEnum = {
+  LEAGUE: 'LEAGUE',
+  PLAYOFF: 'PLAYOFF'
+} as const
+
+export type DivisionsKindEnum = (typeof DivisionsKindEnum)[keyof typeof DivisionsKindEnum]

@@ -4,6 +4,38 @@ import { authService } from './auth';
 import { apiRequest } from './apiClient';
 import { normalizeApiMatch } from './apiMappers';
 
+export type LeagueStandingsDivisionRow = {
+    position: number;
+    teamId: string;
+    teamName: string;
+    wins: number;
+    losses: number;
+    draws: number;
+    goalsFor: number;
+    goalsAgainst: number;
+    goalDifference: number;
+    matchesPlayed: number;
+    basePoints: number;
+    finalPoints: number;
+    pointsDelta: number;
+};
+
+export type LeagueStandingsDivisionResponse = {
+    divisionId: string;
+    divisionName: string;
+    standingsConfirmedAt: string | null;
+    standingsConfirmedBy: string | null;
+    playoffTeamCount: number | null;
+    playoffPlacementDivisionIds: string[];
+    standingsOverrides: Record<string, number> | null;
+    standings: LeagueStandingsDivisionRow[];
+    validation: {
+        mappingErrors: string[];
+        capacityErrors: string[];
+    };
+    playoffDivisions: Array<{ id: string; name: string; maxParticipants: number | null }>;
+};
+
 class TournamentService {
     private toBulkMatchUpdatePayload(match: Match): Record<string, unknown> {
         return {
@@ -246,6 +278,60 @@ class TournamentService {
             console.error('Failed to finalize match via event manager:', error);
             throw error;
         }
+    }
+
+    async getLeagueDivisionStandings(
+        eventId: string,
+        divisionId: string,
+    ): Promise<LeagueStandingsDivisionResponse> {
+        const query = new URLSearchParams({ divisionId });
+        const response = await apiRequest<{ division: LeagueStandingsDivisionResponse }>(
+            `/api/events/${eventId}/standings?${query.toString()}`,
+        );
+        if (!response?.division) {
+            throw new Error('Failed to load league standings');
+        }
+        return response.division;
+    }
+
+    async updateLeagueStandingsOverrides(
+        eventId: string,
+        divisionId: string,
+        pointsOverrides: Array<{ teamId: string; points: number | null }>,
+    ): Promise<LeagueStandingsDivisionResponse> {
+        const response = await apiRequest<{ division: LeagueStandingsDivisionResponse }>(
+            `/api/events/${eventId}/standings`,
+            {
+                method: 'PATCH',
+                body: {
+                    divisionId,
+                    pointsOverrides,
+                },
+            },
+        );
+        if (!response?.division) {
+            throw new Error('Failed to save standings overrides');
+        }
+        return response.division;
+    }
+
+    async confirmLeagueStandings(
+        eventId: string,
+        divisionId: string,
+        applyReassignment: boolean = true,
+    ): Promise<{
+        division: LeagueStandingsDivisionResponse;
+        applyReassignment: boolean;
+        reassignedPlayoffDivisionIds: string[];
+        seededTeamIds: string[];
+    }> {
+        return apiRequest(`/api/events/${eventId}/standings/confirm`, {
+            method: 'POST',
+            body: {
+                divisionId,
+                applyReassignment,
+            },
+        });
     }
 }
 

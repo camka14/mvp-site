@@ -103,6 +103,7 @@ const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
   return fallback;
 };
 const DEFAULT_DIVISION_KEY = 'open';
+const DEFAULT_DIVISION_KIND: 'LEAGUE' | 'PLAYOFF' = 'LEAGUE';
 const LEAGUE_SCORING_BOOLEAN_FIELDS: readonly string[] = [];
 const LEAGUE_SCORING_NUMBER_FIELDS = [
   'pointsForWin',
@@ -117,6 +118,121 @@ const normalizeDivisionKey = (value: unknown): string | null => {
   const trimmed = value.trim().toLowerCase();
   return trimmed.length ? trimmed : null;
 };
+
+const normalizeDivisionKind = (value: unknown, fallback: 'LEAGUE' | 'PLAYOFF' = DEFAULT_DIVISION_KIND): 'LEAGUE' | 'PLAYOFF' => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'PLAYOFF') {
+    return 'PLAYOFF';
+  }
+  return 'LEAGUE';
+};
+
+const normalizeStandingsOverrides = (value: unknown): Record<string, number> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([teamId, points]) => {
+      const normalizedTeamId = typeof teamId === 'string' ? teamId.trim() : '';
+      const normalizedPoints = typeof points === 'number' ? points : Number(points);
+      if (!normalizedTeamId || !Number.isFinite(normalizedPoints)) {
+        return null;
+      }
+      return [normalizedTeamId, normalizedPoints] as const;
+    })
+    .filter((entry): entry is readonly [string, number] => entry !== null);
+  if (!entries.length) {
+    return null;
+  }
+  return Object.fromEntries(entries);
+};
+
+type PlayoffDivisionConfigPayload = {
+  doubleElimination: boolean;
+  winnerSetCount: number;
+  loserSetCount: number;
+  winnerBracketPointsToVictory: number[];
+  loserBracketPointsToVictory: number[];
+  prize: string;
+  fieldCount: number;
+  restTimeMinutes: number;
+};
+
+const PLAYOFF_CONFIG_KEYS: ReadonlyArray<keyof PlayoffDivisionConfigPayload> = [
+  'doubleElimination',
+  'winnerSetCount',
+  'loserSetCount',
+  'winnerBracketPointsToVictory',
+  'loserBracketPointsToVictory',
+  'prize',
+  'fieldCount',
+  'restTimeMinutes',
+];
+
+const normalizePlayoffDivisionConfig = (value: unknown): PlayoffDivisionConfigPayload | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  const hasConfigValue = PLAYOFF_CONFIG_KEYS.some(
+    (key) => Object.prototype.hasOwnProperty.call(row, key) && row[key] !== null && row[key] !== undefined,
+  );
+  if (!hasConfigValue) {
+    return null;
+  }
+
+  const normalizeNumber = (input: unknown, fallback: number, min: number = 0): number => {
+    const parsed = typeof input === 'number' ? input : Number(input);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+    return Math.max(min, Math.trunc(parsed));
+  };
+
+  const normalizePoints = (input: unknown, expectedLength: number): number[] => {
+    const values = Array.isArray(input)
+      ? input
+          .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+          .filter((entry) => Number.isFinite(entry))
+          .map((entry) => Math.max(1, Math.trunc(entry)))
+      : [];
+    const next = values.slice(0, expectedLength);
+    while (next.length < expectedLength) {
+      next.push(21);
+    }
+    return next;
+  };
+
+  const winnerSetCount = normalizeNumber(row.winnerSetCount, 1, 1);
+  const doubleElimination = Boolean(row.doubleElimination);
+  const loserSetCount = normalizeNumber(row.loserSetCount, 1, 1);
+  const normalizedLoserSetCount = doubleElimination ? loserSetCount : 1;
+
+  return {
+    doubleElimination,
+    winnerSetCount,
+    loserSetCount: normalizedLoserSetCount,
+    winnerBracketPointsToVictory: normalizePoints(row.winnerBracketPointsToVictory, winnerSetCount),
+    loserBracketPointsToVictory: normalizePoints(row.loserBracketPointsToVictory, normalizedLoserSetCount),
+    prize: typeof row.prize === 'string' ? row.prize : '',
+    fieldCount: normalizeNumber(row.fieldCount, 1, 1),
+    restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0, 0),
+  };
+};
+
+const serializePlayoffDivisionConfig = (value: PlayoffDivisionConfigPayload): Record<string, unknown> => ({
+  doubleElimination: value.doubleElimination,
+  winnerSetCount: value.winnerSetCount,
+  loserSetCount: value.loserSetCount,
+  winnerBracketPointsToVictory: [...value.winnerBracketPointsToVictory],
+  loserBracketPointsToVictory: [...value.loserBracketPointsToVictory],
+  prize: value.prize,
+  fieldCount: value.fieldCount,
+  restTimeMinutes: value.restTimeMinutes,
+});
 
 const normalizeDivisionKeys = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -204,6 +320,7 @@ type DivisionDetailPayload = {
   id: string;
   key: string;
   name: string;
+  kind: 'LEAGUE' | 'PLAYOFF';
   divisionTypeId: string;
   divisionTypeName: string;
   ratingType: DivisionRatingType;
@@ -211,6 +328,11 @@ type DivisionDetailPayload = {
   price?: number | null;
   maxParticipants?: number | null;
   playoffTeamCount?: number | null;
+  playoffPlacementDivisionIds?: string[];
+  standingsOverrides?: Record<string, number> | null;
+  playoffConfig?: PlayoffDivisionConfigPayload | null;
+  standingsConfirmedAt?: string | null;
+  standingsConfirmedBy?: string | null;
   allowPaymentPlans?: boolean | null;
   installmentCount?: number | null;
   installmentDueDates?: string[];
@@ -225,6 +347,7 @@ const normalizeDivisionDetailsPayload = (
   value: unknown,
   eventId: string,
   sportId?: string | null,
+  defaultKind: 'LEAGUE' | 'PLAYOFF' = 'LEAGUE',
 ): DivisionDetailPayload[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -266,6 +389,19 @@ const normalizeDivisionDetailsPayload = (
       const rawPrice = coerceNullableNumber(row.price);
       const rawMaxParticipants = coerceNullableNumber(row.maxParticipants);
       const rawPlayoffTeamCount = coerceNullableNumber(row.playoffTeamCount);
+      const rawKind = normalizeDivisionKind(row.kind, defaultKind);
+      const rawPlayoffPlacementDivisionIds = normalizeDivisionIdentifierList(row.playoffPlacementDivisionIds, eventId);
+      const rawStandingsOverrides = normalizeStandingsOverrides(row.standingsOverrides);
+      const rawPlayoffConfig = rawKind === 'PLAYOFF'
+        ? (
+            normalizePlayoffDivisionConfig(row.playoffConfig)
+            ?? normalizePlayoffDivisionConfig(row)
+          )
+        : null;
+      const rawStandingsConfirmedAt = normalizeIsoDateString(row.standingsConfirmedAt);
+      const rawStandingsConfirmedBy = typeof row.standingsConfirmedBy === 'string'
+        ? row.standingsConfirmedBy.trim() || null
+        : null;
       const rawAllowPaymentPlans = coerceNullableBoolean(row.allowPaymentPlans);
       const rawInstallmentCount = coerceNullableNumber(row.installmentCount);
       const rawInstallmentDueDates = Array.isArray(row.installmentDueDates)
@@ -284,6 +420,7 @@ const normalizeDivisionDetailsPayload = (
         id,
         key,
         name: typeof row.name === 'string' && row.name.trim().length ? row.name.trim() : defaultName,
+        kind: rawKind,
         divisionTypeId,
         divisionTypeName,
         ratingType,
@@ -299,6 +436,11 @@ const normalizeDivisionDetailsPayload = (
           : rawPlayoffTeamCount === null
             ? null
             : Math.max(0, Math.trunc(rawPlayoffTeamCount)),
+        playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds,
+        standingsOverrides: rawStandingsOverrides,
+        playoffConfig: rawPlayoffConfig,
+        standingsConfirmedAt: rawStandingsConfirmedAt,
+        standingsConfirmedBy: rawStandingsConfirmedBy,
         allowPaymentPlans: rawAllowPaymentPlans,
         installmentCount: rawInstallmentCount === undefined
           ? undefined
@@ -592,14 +734,22 @@ const buildDivisions = (
     id: string;
     name?: string | null;
     key?: string | null;
+    kind?: 'LEAGUE' | 'PLAYOFF' | null;
     fieldIds?: string[] | null;
     sportId?: string | null;
     price?: number | null;
     maxParticipants?: number | null;
     playoffTeamCount?: number | null;
+    playoffPlacementDivisionIds?: string[] | null;
+    standingsOverrides?: unknown;
+    standingsConfirmedAt?: Date | null;
+    standingsConfirmedBy?: string | null;
   }>,
   sportId?: string | null,
+  options?: { allowFallback?: boolean; fallbackKind?: 'LEAGUE' | 'PLAYOFF' },
 ) => {
+  const allowFallback = options?.allowFallback ?? true;
+  const fallbackKind = options?.fallbackKind ?? 'LEAGUE';
   const map = new Map<string, Division>();
   const fieldIdsByDivision = new Map<string, string[]>();
   const rowsById = new Map<string, (typeof divisionRows)[number]>();
@@ -638,6 +788,13 @@ const buildDivisions = (
       sportInput: matchedRow?.sportId ?? sportId ?? undefined,
       fallbackName: matchedRow?.name ?? undefined,
     });
+    const kind = normalizeDivisionKind(matchedRow?.kind, 'LEAGUE');
+    const standingsOverrides = kind === 'PLAYOFF'
+      ? null
+      : normalizeStandingsOverrides(matchedRow?.standingsOverrides) ?? null;
+    const playoffConfig = kind === 'PLAYOFF'
+      ? normalizePlayoffDivisionConfig(matchedRow?.standingsOverrides) ?? null
+      : null;
     const divisionName = matchedRow?.name
       ?? inferred.defaultName
       ?? buildDivisionDisplayName(divisionId, sportId);
@@ -649,6 +806,12 @@ const buildDivisions = (
       matchedRow?.price ?? null,
       matchedRow?.maxParticipants ?? null,
       matchedRow?.playoffTeamCount ?? null,
+      kind,
+      ensureStringArray(matchedRow?.playoffPlacementDivisionIds),
+      standingsOverrides,
+      matchedRow?.standingsConfirmedAt ?? null,
+      matchedRow?.standingsConfirmedBy ?? null,
+      playoffConfig,
     );
     result.push(division);
 
@@ -665,9 +828,9 @@ const buildDivisions = (
     );
   }
 
-  if (!result.length) {
+  if (!result.length && allowFallback) {
     const fallbackId = DEFAULT_DIVISION_KEY;
-    const fallback = new Division(fallbackId, buildDivisionDisplayName(fallbackId, sportId));
+    const fallback = new Division(fallbackId, buildDivisionDisplayName(fallbackId, sportId), [], null, null, null, fallbackKind);
     result.push(fallback);
     addAliases([fallbackId], fallback, []);
   }
@@ -853,23 +1016,41 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     throw new Error('Event not found');
   }
 
-  const divisionIds = ensureStringArray(event.divisions);
-  const divisionRows = divisionIds.length
-    ? await client.divisions.findMany({
-      where: {
-        OR: [
-          { key: { in: divisionIds }, eventId: event.id },
-          { id: { in: divisionIds } },
-        ],
-      },
-    })
-    : [];
-  const { divisions, map: divisionMap, fieldIdsByDivision } = buildDivisions(
-    divisionIds,
-    divisionRows,
+  const eventDivisionIds = ensureStringArray(event.divisions);
+  const allDivisionRows = await client.divisions.findMany({
+    where: { eventId: event.id },
+  });
+  const leagueDivisionRows = allDivisionRows.filter((row) => normalizeDivisionKind((row as any).kind, 'LEAGUE') !== 'PLAYOFF');
+  const playoffDivisionRows = allDivisionRows.filter((row) => normalizeDivisionKind((row as any).kind, 'LEAGUE') === 'PLAYOFF');
+  const leagueDivisionIds = eventDivisionIds.length
+    ? eventDivisionIds
+    : leagueDivisionRows.map((row) => row.id);
+  const { divisions, map: leagueDivisionMap, fieldIdsByDivision } = buildDivisions(
+    leagueDivisionIds,
+    leagueDivisionRows,
     event.sportId ?? null,
   );
-  const fallbackDivision = divisions[0];
+  const {
+    divisions: playoffDivisions,
+    map: playoffDivisionMap,
+  } = buildDivisions(
+    playoffDivisionRows.map((row) => row.id),
+    playoffDivisionRows,
+    event.sportId ?? null,
+    { allowFallback: false, fallbackKind: 'PLAYOFF' },
+  );
+  const divisionMap = new Map<string, Division>();
+  for (const [key, division] of leagueDivisionMap.entries()) {
+    divisionMap.set(key, division);
+  }
+  for (const [key, division] of playoffDivisionMap.entries()) {
+    divisionMap.set(key, division);
+  }
+  const allDivisions = [
+    ...divisions,
+    ...playoffDivisions,
+  ];
+  const fallbackDivision = divisions[0] ?? new Division(DEFAULT_DIVISION_KEY, buildDivisionDisplayName(DEFAULT_DIVISION_KEY, event.sportId ?? null));
 
   const fieldIds = ensureStringArray(event.fieldIds);
   const teamIds = ensureStringArray(event.teamIds);
@@ -885,11 +1066,11 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
   ]);
 
-  const fallbackFieldDivisionIds = divisionIds.length ? divisionIds : [DEFAULT_DIVISION_KEY];
+  const fallbackFieldDivisionIds = leagueDivisionIds.length ? leagueDivisionIds : [DEFAULT_DIVISION_KEY];
   const fields = buildFields(fieldRows, divisionMap, fallbackFieldDivisionIds, fieldIdsByDivision);
   const teams = buildTeams(teamRows, divisionMap, fallbackDivision);
   const timeSlots = buildTimeSlots(timeSlotRows, divisionMap, divisions);
-  const referees = buildReferees(refereeRows, divisions);
+  const referees = buildReferees(refereeRows, allDivisions);
   attachTimeSlotsToFields(fields, timeSlots);
 
   const coordinates = Array.isArray(event.coordinates)
@@ -960,6 +1141,8 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     usesSets: Boolean(event.usesSets),
     setDurationMinutes: event.setDurationMinutes ?? 0,
     timeSlots,
+    splitLeaguePlayoffDivisions: Boolean((event as any).splitLeaguePlayoffDivisions),
+    playoffDivisions,
   };
 
   const constructed = event.eventType === 'LEAGUE'
@@ -973,7 +1156,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
       })
     : new Tournament(baseParams);
 
-  const matches = buildMatches(matchRows, constructed, teams, fields, divisions, referees);
+  const matches = buildMatches(matchRows, constructed, teams, fields, allDivisions, referees);
   constructed.matches = matches;
   return constructed;
 };
@@ -1059,6 +1242,7 @@ export const syncEventDivisions = async (
     organizationId?: string | null;
     divisionFieldMap?: Record<string, string[]>;
     divisionDetails?: unknown[];
+    playoffDivisionDetails?: unknown[];
     defaultPrice?: number | null;
     defaultMaxParticipants?: number | null;
     defaultPlayoffTeamCount?: number | null;
@@ -1076,13 +1260,24 @@ export const syncEventDivisions = async (
   const divisionFieldMap = params.divisionFieldMap ?? {};
   const allowedFieldIds = new Set(params.fieldIds.map((fieldId) => String(fieldId)));
 
-  const normalizedDetails = normalizeDivisionDetailsPayload(
+  const normalizedLeagueDetails = normalizeDivisionDetailsPayload(
     params.divisionDetails ?? [],
     params.eventId,
     params.sportId,
+    'LEAGUE',
   );
+  const normalizedPlayoffDetails = normalizeDivisionDetailsPayload(
+    params.playoffDivisionDetails ?? [],
+    params.eventId,
+    params.sportId,
+    'PLAYOFF',
+  );
+  const allNormalizedDetails = [
+    ...normalizedLeagueDetails,
+    ...normalizedPlayoffDetails,
+  ];
   const detailLookup = new Map<string, DivisionDetailPayload>();
-  for (const detail of normalizedDetails) {
+  for (const detail of allNormalizedDetails) {
     const aliases = new Set<string>([
       detail.id,
       detail.key,
@@ -1119,6 +1314,11 @@ export const syncEventDivisions = async (
       ageCutoffLabel: true,
       ageCutoffSource: true,
       fieldIds: true,
+      kind: true,
+      playoffPlacementDivisionIds: true,
+      standingsOverrides: true,
+      standingsConfirmedAt: true,
+      standingsConfirmedBy: true,
     },
   });
 
@@ -1139,7 +1339,21 @@ export const syncEventDivisions = async (
     }
   }
 
-  const finalEntries = divisionIds.map((rawDivisionId) => {
+  const targetDivisionDescriptors = [
+    ...divisionIds.map((rawDivisionId) => ({ rawDivisionId, kind: 'LEAGUE' as const })),
+    ...normalizedPlayoffDetails.map((detail) => ({ rawDivisionId: detail.id, kind: 'PLAYOFF' as const })),
+  ];
+  const seenDivisionIds = new Set<string>();
+  const finalEntries = targetDivisionDescriptors
+    .filter(({ rawDivisionId }) => {
+      const normalizedDivisionId = normalizeDivisionKey(rawDivisionId) ?? rawDivisionId;
+      if (seenDivisionIds.has(normalizedDivisionId)) {
+        return false;
+      }
+      seenDivisionIds.add(normalizedDivisionId);
+      return true;
+    })
+    .map(({ rawDivisionId, kind: targetKind }) => {
     const normalizedDivisionId = normalizeDivisionKey(rawDivisionId) ?? rawDivisionId;
     const detail = detailLookup.get(normalizedDivisionId)
       ?? detailLookup.get(extractDivisionTokenFromId(normalizedDivisionId) ?? '')
@@ -1177,6 +1391,7 @@ export const syncEventDivisions = async (
       }
       return buildDivisionId(params.eventId, inferred.token);
     })();
+    const kind = normalizeDivisionKind(detail?.kind ?? existing?.kind ?? targetKind, targetKind);
 
     const gender = detail?.gender ?? inferred.gender;
     const ratingType = detail?.ratingType ?? inferred.ratingType;
@@ -1188,55 +1403,133 @@ export const syncEventDivisions = async (
     });
     const divisionTypeName = detail?.divisionTypeName ?? inferred.divisionTypeName;
 
-    const mappedFieldIds = Array.from(
-      new Set([
-        ...ensureStringArray(divisionFieldMap[normalizedDivisionId]),
-        ...ensureStringArray(divisionFieldMap[persistedId]),
-        ...ensureStringArray(divisionFieldMap[key]),
-        ...ensureStringArray(detail?.fieldIds),
-      ]),
-    ).filter((fieldId) => !allowedFieldIds.size || allowedFieldIds.has(fieldId));
+    const mappedFieldIds = kind === 'PLAYOFF'
+      ? []
+      : (() => {
+        const fieldMapAliases = Array.from(
+          new Set(
+            [
+              normalizedDivisionId,
+              persistedId,
+              key,
+              detail?.id,
+              detail?.key,
+              extractDivisionTokenFromId(normalizedDivisionId),
+              extractDivisionTokenFromId(persistedId),
+            ]
+              .map((alias) => normalizeDivisionKey(alias))
+              .filter((alias): alias is string => Boolean(alias)),
+          ),
+        );
+        return Array.from(
+          new Set([
+            ...fieldMapAliases.flatMap((alias) => ensureStringArray(divisionFieldMap[alias])),
+            ...ensureStringArray(detail?.fieldIds),
+          ]),
+        ).filter((fieldId) => !allowedFieldIds.size || allowedFieldIds.has(fieldId));
+      })();
 
-    const ratings = divisionRatingWindow(key, params.sportId ?? null);
+    const ratings = kind === 'PLAYOFF'
+      ? { minRating: null, maxRating: null }
+      : divisionRatingWindow(key, params.sportId ?? null);
     const name = detail?.name
       ?? existing?.name
       ?? inferred.defaultName
       ?? buildDivisionDisplayName(key, params.sportId ?? null);
-    const ageEligibility = evaluateDivisionAgeEligibility({
-      divisionTypeId,
-      sportInput: params.sportId ?? null,
-      referenceDate: params.referenceDate ?? null,
-    });
-    const ageCutoffDate = detail?.ageCutoffDate
-      ?? normalizeIsoDateString(existing?.ageCutoffDate)
-      ?? (ageEligibility.applies ? ageEligibility.cutoffDate.toISOString() : null);
-    const ageCutoffLabel = detail?.ageCutoffLabel
-      ?? existing?.ageCutoffLabel
-      ?? ageEligibility.message
-      ?? null;
-    const ageCutoffSource = detail?.ageCutoffSource
-      ?? existing?.ageCutoffSource
-      ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null);
-    const price = resolveDivisionValue(
-      detail?.price,
-      existing?.price,
-      params.defaultPrice ?? undefined,
-    ) ?? null;
+    const ageEligibility = kind === 'PLAYOFF'
+      ? null
+      : evaluateDivisionAgeEligibility({
+          divisionTypeId,
+          sportInput: params.sportId ?? null,
+          referenceDate: params.referenceDate ?? null,
+        });
+    const ageCutoffDate = kind === 'PLAYOFF'
+      ? null
+      : (
+        detail?.ageCutoffDate
+          ?? normalizeIsoDateString(existing?.ageCutoffDate)
+          ?? (ageEligibility?.applies ? ageEligibility.cutoffDate.toISOString() : null)
+      );
+    const ageCutoffLabel = kind === 'PLAYOFF'
+      ? null
+      : (
+        detail?.ageCutoffLabel
+          ?? existing?.ageCutoffLabel
+          ?? ageEligibility?.message
+          ?? null
+      );
+    const ageCutoffSource = kind === 'PLAYOFF'
+      ? null
+      : (
+        detail?.ageCutoffSource
+          ?? existing?.ageCutoffSource
+          ?? (ageEligibility?.applies ? ageEligibility.cutoffRule.source : null)
+      );
+    const price = kind === 'PLAYOFF'
+      ? null
+      : resolveDivisionValue(
+        detail?.price,
+        existing?.price,
+        params.defaultPrice ?? undefined,
+      ) ?? null;
     const maxParticipants = resolveDivisionValue(
       detail?.maxParticipants,
       existing?.maxParticipants,
       params.defaultMaxParticipants ?? undefined,
     ) ?? null;
-    const playoffTeamCount = resolveDivisionValue(
-      detail?.playoffTeamCount,
-      existing?.playoffTeamCount,
-      params.defaultPlayoffTeamCount ?? undefined,
-    ) ?? null;
-    const allowPaymentPlans = resolveDivisionValue(
-      detail?.allowPaymentPlans,
-      existing?.allowPaymentPlans ?? undefined,
-      params.defaultAllowPaymentPlans ?? undefined,
-    ) ?? null;
+    const playoffTeamCount = kind === 'PLAYOFF'
+      ? null
+      : resolveDivisionValue(
+        detail?.playoffTeamCount,
+        existing?.playoffTeamCount,
+        params.defaultPlayoffTeamCount ?? undefined,
+      ) ?? null;
+    const allowPaymentPlans = kind === 'PLAYOFF'
+      ? false
+      : resolveDivisionValue(
+        detail?.allowPaymentPlans,
+        existing?.allowPaymentPlans ?? undefined,
+        params.defaultAllowPaymentPlans ?? undefined,
+      ) ?? null;
+    const playoffPlacementDivisionIds = kind === 'PLAYOFF'
+      ? []
+      : resolveDivisionValue(
+          detail?.playoffPlacementDivisionIds,
+          ensureStringArray(existing?.playoffPlacementDivisionIds),
+          [],
+        ) ?? [];
+    const playoffConfig = kind === 'PLAYOFF'
+      ? resolveDivisionValue(
+          detail?.playoffConfig,
+          normalizePlayoffDivisionConfig(existing?.standingsOverrides),
+          normalizePlayoffDivisionConfig(detail),
+        ) ?? null
+      : null;
+    const standingsOverrides = kind === 'PLAYOFF'
+      ? (playoffConfig ? serializePlayoffDivisionConfig(playoffConfig) : null)
+      : resolveDivisionValue(
+          detail?.standingsOverrides,
+          normalizeStandingsOverrides(existing?.standingsOverrides),
+          null,
+        ) ?? null;
+    const standingsConfirmedAt = kind === 'PLAYOFF'
+      ? null
+      : (
+        resolveDivisionValue(
+          detail?.standingsConfirmedAt,
+          normalizeIsoDateString(existing?.standingsConfirmedAt),
+          null,
+        ) ?? null
+      );
+    const standingsConfirmedBy = kind === 'PLAYOFF'
+      ? null
+      : (
+        resolveDivisionValue(
+          detail?.standingsConfirmedBy,
+          existing?.standingsConfirmedBy ?? null,
+          null,
+        ) ?? null
+      );
 
     const fallbackInstallmentAmounts = normalizeInstallmentAmountList(params.defaultInstallmentAmounts ?? []);
     const fallbackInstallmentDueDates = normalizeInstallmentDateList(params.defaultInstallmentDueDates ?? []);
@@ -1275,6 +1568,7 @@ export const syncEventDivisions = async (
       id: persistedId,
       key,
       name,
+      kind,
       divisionTypeId,
       divisionTypeName,
       ratingType,
@@ -1285,6 +1579,10 @@ export const syncEventDivisions = async (
       price,
       maxParticipants,
       playoffTeamCount,
+      playoffPlacementDivisionIds,
+      standingsOverrides,
+      standingsConfirmedAt,
+      standingsConfirmedBy,
       allowPaymentPlans,
       installmentCount,
       installmentDueDates,
@@ -1319,12 +1617,17 @@ export const syncEventDivisions = async (
         id: entry.id,
         key: entry.key,
         name: entry.name,
+        kind: entry.kind,
         eventId: params.eventId,
         organizationId: params.organizationId ?? null,
         sportId: params.sportId ?? null,
         price: entry.price,
         maxParticipants: entry.maxParticipants,
         playoffTeamCount: entry.playoffTeamCount,
+        playoffPlacementDivisionIds: entry.playoffPlacementDivisionIds,
+        standingsOverrides: entry.standingsOverrides,
+        standingsConfirmedAt: entry.standingsConfirmedAt ? new Date(entry.standingsConfirmedAt) : null,
+        standingsConfirmedBy: entry.standingsConfirmedBy,
         allowPaymentPlans: entry.allowPaymentPlans,
         installmentCount: entry.installmentCount,
         installmentDueDates: entry.installmentDueDates
@@ -1347,12 +1650,17 @@ export const syncEventDivisions = async (
       update: {
         key: entry.key,
         name: entry.name,
+        kind: entry.kind,
         eventId: params.eventId,
         organizationId: params.organizationId ?? null,
         sportId: params.sportId ?? null,
         price: entry.price,
         maxParticipants: entry.maxParticipants,
         playoffTeamCount: entry.playoffTeamCount,
+        playoffPlacementDivisionIds: entry.playoffPlacementDivisionIds,
+        standingsOverrides: entry.standingsOverrides,
+        standingsConfirmedAt: entry.standingsConfirmedAt ? new Date(entry.standingsConfirmedAt) : null,
+        standingsConfirmedBy: entry.standingsConfirmedBy,
         allowPaymentPlans: entry.allowPaymentPlans,
         installmentCount: entry.installmentCount,
         installmentDueDates: entry.installmentDueDates
@@ -1389,7 +1697,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const fields = Array.isArray(payload.fields) ? payload.fields : [];
   const teams = Array.isArray(payload.teams) ? payload.teams : [];
   const timeSlots = Array.isArray(payload.timeSlots) ? payload.timeSlots : [];
-  const normalizedDivisionDetails = normalizeDivisionDetailsPayload(payload.divisionDetails, id, payload.sportId);
+  const normalizedDivisionDetails = normalizeDivisionDetailsPayload(payload.divisionDetails, id, payload.sportId, 'LEAGUE');
+  const normalizedPlayoffDivisionDetails = normalizeDivisionDetailsPayload(payload.playoffDivisionDetails, id, payload.sportId, 'PLAYOFF');
   const payloadDivisionIds = normalizeDivisionIdentifierList(payload.divisions, id);
   const divisionIdsFromDetails = normalizedDivisionDetails.map((detail) => detail.id);
   const fallbackDivisionIds = defaultDivisionKeysForSport(payload.sportId)
@@ -1483,6 +1792,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const payloadEventType = typeof payload.eventType === 'string'
     ? payload.eventType.toUpperCase()
     : null;
+  const splitLeaguePlayoffDivisions = payloadEventType === 'LEAGUE'
+    ? coerceBoolean(payload.splitLeaguePlayoffDivisions, false)
+    : false;
   const fallbackNoFixedEndDateTime = (
     isSchedulableEventType(payloadEventType)
       ? true
@@ -1593,6 +1905,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     installmentDueDates: ensureArray(payload.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[],
     installmentAmounts: ensureNumberArray(payload.installmentAmounts),
     allowTeamSplitDefault: payload.allowTeamSplitDefault ?? null,
+    splitLeaguePlayoffDivisions,
     requiredTemplateIds: ensureStringArray(payload.requiredTemplateIds),
     updatedAt: new Date(),
   };
@@ -1649,6 +1962,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     organizationId: payload.organizationId ?? null,
     divisionFieldMap,
     divisionDetails: normalizedDivisionDetails,
+    playoffDivisionDetails: normalizedPlayoffDivisionDetails,
     defaultPrice: defaultDivisionPrice,
     defaultMaxParticipants: defaultDivisionMaxParticipants,
     defaultPlayoffTeamCount: defaultDivisionPlayoffTeamCount,

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 
@@ -13,7 +13,7 @@ import { useLocation } from '@/app/hooks/useLocation';
 import { eventService } from '@/lib/eventService';
 import { fieldService } from '@/lib/fieldService';
 import { leagueService } from '@/lib/leagueService';
-import { tournamentService } from '@/lib/tournamentService';
+import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
@@ -153,6 +153,24 @@ const getDivisionLabel = (division: unknown): string | null => {
   );
 };
 
+const getDivisionKind = (division: unknown): 'LEAGUE' | 'PLAYOFF' | null => {
+  if (!division || typeof division !== 'object') {
+    return null;
+  }
+  const kind = (division as { kind?: unknown }).kind;
+  if (typeof kind !== 'string') {
+    return null;
+  }
+  const normalized = kind.trim().toUpperCase();
+  if (normalized === 'PLAYOFF') {
+    return 'PLAYOFF';
+  }
+  if (normalized === 'LEAGUE') {
+    return 'LEAGUE';
+  }
+  return null;
+};
+
 const getTeamDivision = (team: Match['team1'] | Match['team2']): unknown => {
   if (!team) {
     return null;
@@ -258,6 +276,9 @@ type StandingsRow = {
   goalDifference: number;
   matchesPlayed: number;
   points: number;
+  basePoints?: number;
+  finalPoints?: number;
+  pointsDelta?: number;
 };
 
 type RankedStandingsRow = StandingsRow & { rank: number };
@@ -399,6 +420,7 @@ function EventScheduleContent() {
   const [activeTab, setActiveTab] = useState<string>('details');
   const [selectedScheduleDivision, setSelectedScheduleDivision] = useState<string>('all');
   const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
+  const [selectedStandingsDivision, setSelectedStandingsDivision] = useState<string | null>(null);
   const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
@@ -414,6 +436,13 @@ function EventScheduleContent() {
     field: 'points',
     direction: 'desc',
   });
+  const [standingsDivisionData, setStandingsDivisionData] = useState<LeagueStandingsDivisionResponse | null>(null);
+  const [standingsDraftOverrides, setStandingsDraftOverrides] = useState<Record<string, number>>({});
+  const [standingsLoading, setStandingsLoading] = useState(false);
+  const [savingStandings, setSavingStandings] = useState(false);
+  const [confirmingStandings, setConfirmingStandings] = useState(false);
+  const [applyStandingsReassignment, setApplyStandingsReassignment] = useState(true);
+  const [standingsActionError, setStandingsActionError] = useState<string | null>(null);
   const [matchBeingEdited, setMatchBeingEdited] = useState<Match | null>(null);
   const [scoreUpdateMatch, setScoreUpdateMatch] = useState<Match | null>(null);
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
@@ -671,6 +700,16 @@ function EventScheduleContent() {
         labels.set(divisionKey, getDivisionLabel(division) ?? divisionId);
       });
     }
+    if (Array.isArray(activeEvent?.playoffDivisionDetails)) {
+      activeEvent.playoffDivisionDetails.forEach((division) => {
+        const divisionId = getDivisionId(division);
+        const divisionKey = toDivisionKey(divisionId);
+        if (!divisionId || !divisionKey || labels.has(divisionKey)) {
+          return;
+        }
+        labels.set(divisionKey, getDivisionLabel(division) ?? divisionId);
+      });
+    }
     if (!Array.isArray(activeEvent?.divisions)) {
       return labels;
     }
@@ -686,7 +725,7 @@ function EventScheduleContent() {
     });
 
     return labels;
-  }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions, activeEvent?.playoffDivisionDetails]);
 
   const scheduleDivisionOptions = useMemo<DivisionOption[]>(() => {
     const labels = new Map<string, string>(divisionLabelsByKey);
@@ -707,6 +746,32 @@ function EventScheduleContent() {
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [activeMatches, divisionLabelsByKey]);
+
+  const leagueDivisionOptions = useMemo<DivisionOption[]>(() => {
+    const optionsByValue = new Map<string, string>();
+    const addDivisionOption = (division: unknown) => {
+      const divisionId = getDivisionId(division);
+      if (!divisionId) {
+        return;
+      }
+      if (getDivisionKind(division) === 'PLAYOFF') {
+        return;
+      }
+      if (!optionsByValue.has(divisionId)) {
+        optionsByValue.set(divisionId, getDivisionLabel(division) ?? divisionId);
+      }
+    };
+
+    if (Array.isArray(activeEvent?.divisionDetails)) {
+      activeEvent.divisionDetails.forEach(addDivisionOption);
+    } else if (Array.isArray(activeEvent?.divisions)) {
+      activeEvent.divisions.forEach(addDivisionOption);
+    }
+
+    return Array.from(optionsByValue.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
 
   useEffect(() => {
     if (selectedScheduleDivision === 'all') {
@@ -729,6 +794,71 @@ function EventScheduleContent() {
   const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
   const isTournament = eventTypeForView === 'TOURNAMENT';
   const isLeague = eventTypeForView === 'LEAGUE';
+
+  useEffect(() => {
+    if (!isLeague || leagueDivisionOptions.length === 0) {
+      if (selectedStandingsDivision !== null) {
+        setSelectedStandingsDivision(null);
+      }
+      setStandingsDivisionData(null);
+      setStandingsDraftOverrides({});
+      return;
+    }
+
+    if (
+      selectedStandingsDivision
+      && leagueDivisionOptions.some((option) => option.value === selectedStandingsDivision)
+    ) {
+      return;
+    }
+
+    setSelectedStandingsDivision(leagueDivisionOptions[0].value);
+  }, [isLeague, leagueDivisionOptions, selectedStandingsDivision]);
+
+  const activeEventId = activeEvent?.$id ?? null;
+  const activeEventType = activeEvent?.eventType ?? null;
+
+  useEffect(() => {
+    if (!activeEventId || activeEventType !== 'LEAGUE' || !selectedStandingsDivision) {
+      setStandingsDivisionData(null);
+      setStandingsDraftOverrides({});
+      setStandingsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setStandingsLoading(true);
+    setStandingsActionError(null);
+
+    tournamentService
+      .getLeagueDivisionStandings(activeEventId, selectedStandingsDivision)
+      .then((division) => {
+        if (cancelled) {
+          return;
+        }
+        setStandingsDivisionData(division);
+        setStandingsDraftOverrides(division.standingsOverrides ? { ...division.standingsOverrides } : {});
+      })
+      .catch((loadError) => {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load division standings:', loadError);
+        setStandingsDivisionData(null);
+        setStandingsDraftOverrides({});
+        setStandingsActionError(loadError instanceof Error ? loadError.message : 'Failed to load division standings.');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStandingsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEventId, activeEventType, selectedStandingsDivision]);
+
   const activeOrganization = useMemo(() => {
     if (activeEvent && typeof activeEvent.organization === 'object') {
       return activeEvent.organization as Organization;
@@ -753,6 +883,7 @@ function EventScheduleContent() {
       ),
   );
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
+  const canManageStandings = Boolean(canManageEvent && !isPreview && !isCreateMode);
   const entityLabel = isTemplateEvent
     ? 'Template'
     : isTournament
@@ -2003,14 +2134,41 @@ function EventScheduleContent() {
   );
 
   const baseStandings = useMemo<StandingsRow[]>(() => {
+    if (
+      standingsDivisionData
+      && selectedStandingsDivision
+      && toDivisionKey(standingsDivisionData.divisionId) === toDivisionKey(selectedStandingsDivision)
+    ) {
+      return standingsDivisionData.standings.map((row) => ({
+        teamId: row.teamId,
+        teamName: row.teamName,
+        wins: row.wins,
+        losses: row.losses,
+        draws: row.draws,
+        goalsFor: row.goalsFor,
+        goalsAgainst: row.goalsAgainst,
+        goalDifference: row.goalDifference,
+        matchesPlayed: row.matchesPlayed,
+        points: row.finalPoints,
+        basePoints: row.basePoints,
+        finalPoints: row.finalPoints,
+        pointsDelta: row.pointsDelta,
+      }));
+    }
+
     if (!activeEvent) {
       return [];
     }
 
+    const selectedDivisionKey = toDivisionKey(selectedStandingsDivision);
     const teamsArray = Array.isArray(activeEvent.teams) ? (activeEvent.teams as Team[]) : [];
     const teamsById = new Map<string, Team>();
     teamsArray.forEach((team) => {
       if (team?.$id) {
+        const teamDivisionKey = toDivisionKey(getDivisionId(team.division));
+        if (selectedDivisionKey && teamDivisionKey !== selectedDivisionKey) {
+          return;
+        }
         teamsById.set(team.$id, team);
       }
     });
@@ -2054,6 +2212,9 @@ function EventScheduleContent() {
 
     activeMatches.forEach((match) => {
       if (playoffMatchIds.has(match.$id)) {
+        return;
+      }
+      if (selectedDivisionKey && toDivisionKey(getMatchDivisionId(match)) !== selectedDivisionKey) {
         return;
       }
 
@@ -2128,25 +2289,54 @@ function EventScheduleContent() {
     rows.forEach((row) => {
       row.matchesPlayed = row.wins + row.losses + row.draws;
       row.goalDifference = row.goalsFor - row.goalsAgainst;
-      const basePoints =
+      row.points =
         row.wins * leagueScoring.pointsForWin +
         row.draws * leagueScoring.pointsForDraw +
         row.losses * leagueScoring.pointsForLoss;
-      const goalPoints =
-        row.goalsFor * leagueScoring.pointsPerGoalScored +
-        row.goalsAgainst * leagueScoring.pointsPerGoalConceded;
-      row.points = basePoints + goalPoints;
+      row.basePoints = row.points;
+      row.finalPoints = row.points;
+      row.pointsDelta = 0;
     });
 
     return Array.from(rows.values()).map((row) => ({ ...row }));
-  }, [activeEvent, activeMatches, playoffMatchIds, leagueScoring]);
+  }, [
+    activeEvent,
+    activeMatches,
+    leagueScoring,
+    playoffMatchIds,
+    selectedStandingsDivision,
+    standingsDivisionData,
+  ]);
+
+  function getDraftStandingsPoints(row: StandingsRow): { basePoints: number; finalPoints: number; pointsDelta: number } {
+    const basePoints = typeof row.basePoints === 'number' ? row.basePoints : row.points;
+    const hasDraftOverride = Object.prototype.hasOwnProperty.call(standingsDraftOverrides, row.teamId);
+    const draftOverride = hasDraftOverride ? standingsDraftOverrides[row.teamId] : undefined;
+    const finalPoints = typeof draftOverride === 'number' && Number.isFinite(draftOverride)
+      ? draftOverride
+      : (typeof row.finalPoints === 'number' ? row.finalPoints : row.points);
+    return {
+      basePoints,
+      finalPoints,
+      pointsDelta: finalPoints - basePoints,
+    };
+  }
 
   const standings = useMemo<RankedStandingsRow[]>(() => {
     if (baseStandings.length === 0) {
       return [];
     }
 
-    const sorted = [...baseStandings];
+    const sorted = baseStandings.map((row) => {
+      const points = getDraftStandingsPoints(row);
+      return {
+        ...row,
+        points: points.finalPoints,
+        basePoints: points.basePoints,
+        finalPoints: points.finalPoints,
+        pointsDelta: points.pointsDelta,
+      };
+    });
     const modifier = standingsSort.direction === 'asc' ? 1 : -1;
 
     sorted.sort((a, b) => {
@@ -2196,7 +2386,7 @@ function EventScheduleContent() {
       ...row,
       rank: index + 1,
     }));
-  }, [baseStandings, standingsSort]);
+  }, [baseStandings, standingsDraftOverrides, standingsSort]);
 
   const hasRecordedMatches = standings.some((row) => row.matchesPlayed > 0);
   const bracketData = useMemo<TournamentBracket | null>(() => {
@@ -2950,6 +3140,127 @@ function EventScheduleContent() {
     [activeOrganization, buildLocationDefaults],
   );
 
+  const handleStandingsOverrideChange = useCallback((teamId: string, value: string | number) => {
+    setStandingsDraftOverrides((prev) => {
+      const next = { ...prev };
+      const numeric = typeof value === 'number' ? value : Number(value);
+      if (!Number.isFinite(numeric)) {
+        delete next[teamId];
+      } else {
+        next[teamId] = numeric;
+      }
+      return next;
+    });
+    setStandingsActionError(null);
+  }, []);
+
+  const handleSaveStandingsAdjustments = useCallback(async () => {
+    if (!activeEvent?.$id || !selectedStandingsDivision || !standingsDivisionData) {
+      return;
+    }
+
+    const existingOverrides = standingsDivisionData.standingsOverrides ?? {};
+    const updates = standingsDivisionData.standings.reduce<Array<{ teamId: string; points: number | null }>>((acc, row) => {
+      const existing = existingOverrides[row.teamId];
+      const desired = standingsDraftOverrides[row.teamId];
+      const basePoints = Number.isFinite(row.basePoints) ? Number(row.basePoints) : 0;
+      const hasExisting = typeof existing === 'number' && Number.isFinite(existing);
+      const hasDesired = typeof desired === 'number' && Number.isFinite(desired);
+
+      if (hasDesired) {
+        if (desired === basePoints) {
+          if (hasExisting) {
+            acc.push({ teamId: row.teamId, points: null });
+          }
+          return acc;
+        }
+        if (!hasExisting || desired !== existing) {
+          acc.push({ teamId: row.teamId, points: desired });
+        }
+        return acc;
+      }
+
+      if (hasExisting) {
+        acc.push({ teamId: row.teamId, points: null });
+      }
+      return acc;
+    }, []);
+
+    if (!updates.length) {
+      setInfoMessage('No standings adjustments to save.');
+      return;
+    }
+
+    setSavingStandings(true);
+    setStandingsActionError(null);
+    setInfoMessage(null);
+    setWarningMessage(null);
+
+    try {
+      const updatedDivision = await tournamentService.updateLeagueStandingsOverrides(
+        activeEvent.$id,
+        selectedStandingsDivision,
+        updates,
+      );
+      setStandingsDivisionData(updatedDivision);
+      setStandingsDraftOverrides(updatedDivision.standingsOverrides ? { ...updatedDivision.standingsOverrides } : {});
+      setInfoMessage('Standings adjustments saved.');
+    } catch (saveError) {
+      console.error('Failed to save standings adjustments:', saveError);
+      setStandingsActionError(saveError instanceof Error ? saveError.message : 'Failed to save standings adjustments.');
+    } finally {
+      setSavingStandings(false);
+    }
+  }, [activeEvent?.$id, selectedStandingsDivision, standingsDivisionData, standingsDraftOverrides]);
+
+  const handleConfirmStandings = useCallback(async () => {
+    if (!activeEvent?.$id || !selectedStandingsDivision) {
+      return;
+    }
+
+    setConfirmingStandings(true);
+    setStandingsActionError(null);
+    setInfoMessage(null);
+    setWarningMessage(null);
+
+    try {
+      const result = await tournamentService.confirmLeagueStandings(
+        activeEvent.$id,
+        selectedStandingsDivision,
+        applyStandingsReassignment,
+      );
+      setStandingsDivisionData(result.division);
+      setStandingsDraftOverrides(result.division.standingsOverrides ? { ...result.division.standingsOverrides } : {});
+      if (applyStandingsReassignment && result.reassignedPlayoffDivisionIds.length > 0) {
+        await loadSchedule();
+      }
+      if (applyStandingsReassignment) {
+        setInfoMessage(
+          result.reassignedPlayoffDivisionIds.length
+            ? `Standings confirmed and playoff assignments updated for ${result.reassignedPlayoffDivisionIds.length} division(s).`
+            : 'Standings confirmed.',
+        );
+      } else {
+        setInfoMessage('Standings confirmed without playoff reassignment.');
+      }
+    } catch (confirmError) {
+      console.error('Failed to confirm standings:', confirmError);
+      setStandingsActionError(confirmError instanceof Error ? confirmError.message : 'Failed to confirm standings.');
+    } finally {
+      setConfirmingStandings(false);
+    }
+  }, [activeEvent?.$id, applyStandingsReassignment, loadSchedule, selectedStandingsDivision]);
+
+  const standingsValidationMessages = useMemo(() => {
+    if (!standingsDivisionData?.validation) {
+      return [];
+    }
+    return [
+      ...(standingsDivisionData.validation.mappingErrors ?? []),
+      ...(standingsDivisionData.validation.capacityErrors ?? []),
+    ];
+  }, [standingsDivisionData]);
+
   const handleStandingsSortChange = useCallback((field: StandingsSortField) => {
     setStandingsSort((prev) => {
       if (prev.field === field) {
@@ -3438,91 +3749,193 @@ function EventScheduleContent() {
 
             {showStandingsTab && (
               <Tabs.Panel value="standings" pt="md">
-                {standings.length === 0 ? (
-                  <Paper withBorder radius="md" p="xl" ta="center">
-                    <Text>No teams available yet.</Text>
-                  </Paper>
-                ) : (
-                  <Paper withBorder radius="md" p={0}>
-                    {!hasRecordedMatches && (
-                      <div className="px-4 pt-4">
-                        <Text size="sm" c="dimmed">
-                          Standings will update automatically as match results are recorded.
-                        </Text>
-                      </div>
+                <Stack gap="sm">
+                  <Group justify="space-between" align="flex-end" wrap="wrap">
+                    <Select
+                      label="Division"
+                      data={leagueDivisionOptions}
+                      value={selectedStandingsDivision}
+                      onChange={(value) => setSelectedStandingsDivision(value)}
+                      allowDeselect={false}
+                      disabled={!leagueDivisionOptions.length || standingsLoading}
+                      w={260}
+                    />
+                    {canManageStandings && selectedStandingsDivision && (
+                      <Stack gap={6} align="flex-end">
+                        <Checkbox
+                          label="Apply automatic playoff reassignment"
+                          checked={applyStandingsReassignment}
+                          onChange={(event) => setApplyStandingsReassignment(event.currentTarget.checked)}
+                        />
+                        <Group gap="xs">
+                          <Button
+                            variant="light"
+                            onClick={() => void handleSaveStandingsAdjustments()}
+                            loading={savingStandings}
+                            disabled={standingsLoading || confirmingStandings}
+                          >
+                            Save Standings Adjustments
+                          </Button>
+                          <Button
+                            onClick={() => void handleConfirmStandings()}
+                            loading={confirmingStandings}
+                            disabled={standingsLoading || savingStandings}
+                          >
+                            Confirm Results
+                          </Button>
+                        </Group>
+                      </Stack>
                     )}
-                    <div className="overflow-x-auto">
-                      <Table striped highlightOnHover>
-                        <Table.Thead>
-                          <Table.Tr>
-                            <Table.Th className="w-12 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              #
-                            </Table.Th>
-                            <Table.Th className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              <UnstyledButton
-                                className="flex items-center gap-1 text-sm font-semibold text-gray-700"
-                                onClick={() => handleStandingsSortChange('team')}
-                              >
-                                Team
-                                {renderSortIndicator('team')}
-                              </UnstyledButton>
-                            </Table.Th>
-                            <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              <UnstyledButton
-                                className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                onClick={() => handleStandingsSortChange('wins')}
-                              >
-                                W
-                                {renderSortIndicator('wins')}
-                              </UnstyledButton>
-                            </Table.Th>
-                            <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              <UnstyledButton
-                                className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                onClick={() => handleStandingsSortChange('losses')}
-                              >
-                                L
-                                {renderSortIndicator('losses')}
-                              </UnstyledButton>
-                            </Table.Th>
-                            <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              <UnstyledButton
-                                className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                onClick={() => handleStandingsSortChange('draws')}
-                              >
-                                D
-                                {renderSortIndicator('draws')}
-                              </UnstyledButton>
-                            </Table.Th>
-                            <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              <UnstyledButton
-                                className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                onClick={() => handleStandingsSortChange('points')}
-                              >
-                                P
-                                {renderSortIndicator('points')}
-                              </UnstyledButton>
-                            </Table.Th>
-                          </Table.Tr>
-                        </Table.Thead>
-                        <Table.Tbody>
-                          {standings.map((row) => (
-                            <Table.Tr key={row.teamId}>
-                              <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
-                              <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
-                              <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
-                              <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
-                              <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
-                              <Table.Td className="text-right text-sm font-semibold text-gray-900">
-                                {formatPoints(row.points)}
-                              </Table.Td>
+                  </Group>
+
+                  {standingsDivisionData?.standingsConfirmedAt && (
+                    <Text size="sm" c="dimmed">
+                      Confirmed {new Date(standingsDivisionData.standingsConfirmedAt).toLocaleString()}
+                      {standingsDivisionData.standingsConfirmedBy ? ` by ${standingsDivisionData.standingsConfirmedBy}` : ''}.
+                    </Text>
+                  )}
+
+                  {standingsActionError && (
+                    <Alert color="red" radius="md">
+                      {standingsActionError}
+                    </Alert>
+                  )}
+
+                  {standingsValidationMessages.length > 0 && (
+                    <Alert color="yellow" radius="md">
+                      <Stack gap={2}>
+                        {standingsValidationMessages.map((message, index) => (
+                          <Text key={`${message}-${index}`} size="sm">
+                            {message}
+                          </Text>
+                        ))}
+                      </Stack>
+                    </Alert>
+                  )}
+
+                  {standingsLoading ? (
+                    <Paper withBorder radius="md" p="xl">
+                      <Group justify="center" gap="sm">
+                        <Loader size="sm" />
+                        <Text size="sm" c="dimmed">Loading standings...</Text>
+                      </Group>
+                    </Paper>
+                  ) : standings.length === 0 ? (
+                    <Paper withBorder radius="md" p="xl" ta="center">
+                      <Text>No teams available yet.</Text>
+                    </Paper>
+                  ) : (
+                    <Paper withBorder radius="md" p={0}>
+                      {!hasRecordedMatches && (
+                        <div className="px-4 pt-4">
+                          <Text size="sm" c="dimmed">
+                            Standings will update automatically as match results are recorded.
+                          </Text>
+                        </div>
+                      )}
+                      <div className="overflow-x-auto">
+                        <Table striped highlightOnHover>
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th className="w-12 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                #
+                              </Table.Th>
+                              <Table.Th className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <UnstyledButton
+                                  className="flex items-center gap-1 text-sm font-semibold text-gray-700"
+                                  onClick={() => handleStandingsSortChange('team')}
+                                >
+                                  Team
+                                  {renderSortIndicator('team')}
+                                </UnstyledButton>
+                              </Table.Th>
+                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <UnstyledButton
+                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                  onClick={() => handleStandingsSortChange('wins')}
+                                >
+                                  W
+                                  {renderSortIndicator('wins')}
+                                </UnstyledButton>
+                              </Table.Th>
+                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <UnstyledButton
+                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                  onClick={() => handleStandingsSortChange('losses')}
+                                >
+                                  L
+                                  {renderSortIndicator('losses')}
+                                </UnstyledButton>
+                              </Table.Th>
+                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <UnstyledButton
+                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                  onClick={() => handleStandingsSortChange('draws')}
+                                >
+                                  D
+                                  {renderSortIndicator('draws')}
+                                </UnstyledButton>
+                              </Table.Th>
+                              <Table.Th className="w-48 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <UnstyledButton
+                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                  onClick={() => handleStandingsSortChange('points')}
+                                >
+                                  Final Pts
+                                  {renderSortIndicator('points')}
+                                </UnstyledButton>
+                              </Table.Th>
                             </Table.Tr>
-                          ))}
-                        </Table.Tbody>
-                      </Table>
-                    </div>
-                  </Paper>
-                )}
+                          </Table.Thead>
+                          <Table.Tbody>
+                            {standings.map((row) => {
+                              const points = getDraftStandingsPoints(row);
+                              const deltaColor = points.pointsDelta > 0
+                                ? 'teal'
+                                : points.pointsDelta < 0
+                                  ? 'red'
+                                  : 'dimmed';
+                              return (
+                                <Table.Tr key={row.teamId}>
+                                  <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
+                                  <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
+                                  <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
+                                  <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
+                                  <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
+                                  <Table.Td className="text-right text-sm font-semibold text-gray-900">
+                                    {canManageStandings ? (
+                                      <Group justify="flex-end" gap="xs" wrap="nowrap">
+                                        <NumberInput
+                                          value={points.finalPoints}
+                                          onChange={(value) => handleStandingsOverrideChange(row.teamId, value as string | number)}
+                                          min={-9999}
+                                          max={9999}
+                                          step={1}
+                                          w={96}
+                                          size="xs"
+                                        />
+                                        <Text size="xs" c={deltaColor}>
+                                          Δ {formatPoints(points.pointsDelta)}
+                                        </Text>
+                                      </Group>
+                                    ) : (
+                                      <Group justify="flex-end" gap="xs" wrap="nowrap">
+                                        <Text size="sm" fw={600}>{formatPoints(points.finalPoints)}</Text>
+                                        <Text size="xs" c={deltaColor}>
+                                          Δ {formatPoints(points.pointsDelta)}
+                                        </Text>
+                                      </Group>
+                                    )}
+                                  </Table.Td>
+                                </Table.Tr>
+                              );
+                            })}
+                          </Table.Tbody>
+                        </Table>
+                      </div>
+                    </Paper>
+                  )}
+                </Stack>
               </Tabs.Panel>
             )}
           </Tabs>

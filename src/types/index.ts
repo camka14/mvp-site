@@ -14,6 +14,7 @@ export interface UserAccount {
 // Division interface matching Python model
 export type DivisionGender = 'M' | 'F' | 'C';
 export type DivisionRatingType = 'AGE' | 'SKILL';
+export type DivisionKind = 'LEAGUE' | 'PLAYOFF';
 
 export interface DivisionType {
   id: string;
@@ -26,12 +27,18 @@ export interface Division {
   id: string;
   name: string;
   key?: string;
+  kind?: DivisionKind;
   eventId?: string;
   organizationId?: string;
   sportId?: string;
   price?: number;
   maxParticipants?: number;
   playoffTeamCount?: number;
+  playoffPlacementDivisionIds?: string[];
+  standingsOverrides?: Record<string, number>;
+  standingsConfirmedAt?: string;
+  standingsConfirmedBy?: string;
+  playoffConfig?: TournamentConfig;
   allowPaymentPlans?: boolean;
   installmentCount?: number;
   installmentDueDates?: string[];
@@ -439,10 +446,12 @@ export interface Event {
   installmentAmounts?: number[];
   allowTeamSplitDefault?: boolean;
   registrationByDivisionType?: boolean;
+  splitLeaguePlayoffDivisions?: boolean;
 
   // Relationship fields - can be IDs or expanded objects
   divisions: Division[] | string[];
   divisionDetails?: Division[];
+  playoffDivisionDetails?: Division[];
   timeSlots?: TimeSlot[];
 
   // Tournament-specific fields
@@ -651,6 +660,64 @@ const uniqueIds = (values: (string | undefined | null)[]): string[] => {
     }
   });
   return Array.from(seen);
+};
+
+const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const row = value as Record<string, unknown>;
+  const hasConfigValue = [
+    'doubleElimination',
+    'winnerSetCount',
+    'loserSetCount',
+    'winnerBracketPointsToVictory',
+    'loserBracketPointsToVictory',
+    'prize',
+    'fieldCount',
+    'restTimeMinutes',
+  ].some((key) => Object.prototype.hasOwnProperty.call(row, key) && row[key] !== null && row[key] !== undefined);
+  if (!hasConfigValue) {
+    return undefined;
+  }
+
+  const normalizeNumber = (input: unknown, fallback: number, min: number = 0): number => {
+    const parsed = typeof input === 'number' ? input : Number(input);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+    return Math.max(min, Math.trunc(parsed));
+  };
+
+  const normalizePoints = (input: unknown, expectedLength: number): number[] => {
+    const values = Array.isArray(input)
+      ? input
+          .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+          .filter((entry) => Number.isFinite(entry))
+          .map((entry) => Math.max(1, Math.trunc(entry)))
+      : [];
+    const next = values.slice(0, expectedLength);
+    while (next.length < expectedLength) {
+      next.push(21);
+    }
+    return next;
+  };
+
+  const winnerSetCount = normalizeNumber(row.winnerSetCount, 1, 1);
+  const doubleElimination = Boolean(row.doubleElimination);
+  const loserSetCount = normalizeNumber(row.loserSetCount, 1, 1);
+  const normalizedLoserSetCount = doubleElimination ? loserSetCount : 1;
+
+  return {
+    doubleElimination,
+    winnerSetCount,
+    loserSetCount: normalizedLoserSetCount,
+    winnerBracketPointsToVictory: normalizePoints(row.winnerBracketPointsToVictory, winnerSetCount),
+    loserBracketPointsToVictory: normalizePoints(row.loserBracketPointsToVictory, normalizedLoserSetCount),
+    prize: typeof row.prize === 'string' ? row.prize : '',
+    fieldCount: normalizeNumber(row.fieldCount, 1, 1),
+    restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0, 0),
+  };
 };
 
 export function toMatchPayload(match: Match): MatchPayload {
@@ -911,6 +978,10 @@ export function toEventPayload(event: Event): EventPayload {
           id,
           name: typeof division.name === 'string' ? division.name : id,
           key: typeof division.key === 'string' ? division.key : undefined,
+          kind:
+            division.kind === 'PLAYOFF' || division.kind === 'LEAGUE'
+              ? division.kind
+              : undefined,
           divisionTypeId:
             typeof division.divisionTypeId === 'string' ? division.divisionTypeId : undefined,
           divisionTypeName:
@@ -948,6 +1019,22 @@ export function toEventPayload(event: Event): EventPayload {
               : Number.isFinite(Number(division.playoffTeamCount))
                 ? Number(division.playoffTeamCount)
                 : undefined,
+          playoffPlacementDivisionIds: Array.isArray(division.playoffPlacementDivisionIds)
+            ? uniqueIds(division.playoffPlacementDivisionIds.map((divisionId) => String(divisionId)))
+            : undefined,
+          standingsOverrides:
+            division.standingsOverrides && typeof division.standingsOverrides === 'object'
+              ? { ...division.standingsOverrides }
+              : undefined,
+          standingsConfirmedAt:
+            typeof division.standingsConfirmedAt === 'string' ? division.standingsConfirmedAt : undefined,
+          standingsConfirmedBy:
+            typeof division.standingsConfirmedBy === 'string' ? division.standingsConfirmedBy : undefined,
+          playoffConfig: normalizeTournamentConfigForPayload(
+            Object.prototype.hasOwnProperty.call(division, 'playoffConfig')
+              ? (division as unknown as { playoffConfig?: unknown }).playoffConfig
+              : undefined,
+          ),
           allowPaymentPlans:
             typeof division.allowPaymentPlans === 'boolean'
               ? division.allowPaymentPlans
@@ -968,6 +1055,46 @@ export function toEventPayload(event: Event): EventPayload {
                 .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
                 .filter((entry) => Number.isFinite(entry))
             : undefined,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  }
+
+  const explicitPlayoffDivisionDetails = (rest as { playoffDivisionDetails?: Array<Division | string> }).playoffDivisionDetails;
+  if (Array.isArray(explicitPlayoffDivisionDetails)) {
+    payload.playoffDivisionDetails = explicitPlayoffDivisionDetails
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') {
+          return null;
+        }
+        const id = extractId(entry);
+        if (!id) {
+          return null;
+        }
+        const division = entry as Division;
+        const playoffConfig = normalizeTournamentConfigForPayload(
+          Object.prototype.hasOwnProperty.call(division, 'playoffConfig')
+            ? (division as unknown as { playoffConfig?: unknown }).playoffConfig
+            : division,
+        );
+        return {
+          id,
+          name: typeof division.name === 'string' ? division.name : id,
+          key: typeof division.key === 'string' ? division.key : undefined,
+          kind: 'PLAYOFF' as const,
+          maxParticipants:
+            typeof division.maxParticipants === 'number'
+              ? division.maxParticipants
+              : Number.isFinite(Number(division.maxParticipants))
+                ? Number(division.maxParticipants)
+                : undefined,
+          playoffTeamCount:
+            typeof division.playoffTeamCount === 'number'
+              ? division.playoffTeamCount
+              : Number.isFinite(Number(division.playoffTeamCount))
+                ? Number(division.playoffTeamCount)
+                : undefined,
+          playoffConfig,
         };
       })
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));

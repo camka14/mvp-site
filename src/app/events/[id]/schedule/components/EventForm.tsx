@@ -163,6 +163,28 @@ const normalizeDivisionKeys = (values: unknown): string[] => {
     );
 };
 
+const normalizeDivisionNameKey = (value: unknown): string => String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+const buildUniqueDivisionIdForToken = (params: {
+    eventId: string;
+    token: string;
+    existingDivisionIds: string[];
+}): string => {
+    const usedDivisionIds = new Set(normalizeDivisionKeys(params.existingDivisionIds));
+    let suffix = 1;
+    while (true) {
+        const scopedEventId = suffix === 1 ? params.eventId : `${params.eventId}_${suffix}`;
+        const candidate = buildEventDivisionId(scopedEventId, params.token);
+        if (!usedDivisionIds.has(candidate)) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+};
+
 const normalizeFieldIds = (values: unknown): string[] => {
     if (!Array.isArray(values)) {
         return [];
@@ -238,6 +260,7 @@ const supportsScheduleSlots = (eventType: EventType): boolean =>
 type DivisionDetailForm = {
     id: string;
     key: string;
+    kind?: 'LEAGUE' | 'PLAYOFF';
     name: string;
     divisionTypeId: string;
     divisionTypeName: string;
@@ -251,6 +274,7 @@ type DivisionDetailForm = {
     price: number;
     maxParticipants: number;
     playoffTeamCount?: number;
+    playoffPlacementDivisionIds?: string[];
     allowPaymentPlans: boolean;
     installmentCount?: number;
     installmentDueDates: string[];
@@ -262,6 +286,15 @@ type DivisionDetailForm = {
     ageCutoffSource?: string;
 };
 
+type PlayoffDivisionDetailForm = {
+    id: string;
+    key: string;
+    kind: 'PLAYOFF';
+    name: string;
+    maxParticipants: number;
+    playoffConfig: TournamentConfig;
+};
+
 type SlotDivisionLookup = {
     options: Array<{ value: string; label: string }>;
     keys: string[];
@@ -269,26 +302,45 @@ type SlotDivisionLookup = {
     nameToId: Map<string, string>;
 };
 
+type SlotDivisionLookupDetail = {
+    id: string;
+    name: string;
+    gender?: 'M' | 'F' | 'C';
+    divisionTypeName?: string;
+};
+
 const getDivisionDetailLabel = (
-    detail: Pick<DivisionDetailForm, 'name' | 'gender' | 'divisionTypeName'>,
+    detail: SlotDivisionLookupDetail,
 ): string => {
     if (typeof detail.name === 'string' && detail.name.trim().length > 0) {
         return detail.name.trim();
     }
     return buildDivisionName({
-        gender: detail.gender,
-        divisionTypeName: detail.divisionTypeName,
+        gender: detail.gender ?? 'C',
+        divisionTypeName: detail.divisionTypeName ?? 'Open',
     });
 };
 
-const buildSlotDivisionLookup = (details: DivisionDetailForm[]): SlotDivisionLookup => {
+const buildSlotDivisionLookup = (
+    details: SlotDivisionLookupDetail[],
+    playoffDetails: PlayoffDivisionDetailForm[] = [],
+): SlotDivisionLookup => {
+    const allDetails: SlotDivisionLookupDetail[] = [
+        ...details,
+        ...playoffDetails.map((division) => ({
+            id: division.id,
+            name: division.name,
+            gender: 'C' as const,
+            divisionTypeName: 'Playoff',
+        })),
+    ];
     const optionByValue = new Map<string, { value: string; label: string }>();
     const orderedKeys: string[] = [];
     const seenKeys = new Set<string>();
     const idToName = new Map<string, string>();
     const nameToId = new Map<string, string>();
 
-    details.forEach((detail) => {
+    allDetails.forEach((detail) => {
         const normalizedId = normalizeDivisionKeys([detail.id])[0];
         const label = getDivisionDetailLabel(detail);
         const normalizedName = normalizeDivisionKeys([label])[0] ?? normalizedId;
@@ -405,6 +457,7 @@ const buildDefaultDivisionDetailsForSport = (
     const detail: DivisionDetailForm = {
         id: buildEventDivisionId(eventId, token),
         key: token,
+        kind: 'LEAGUE',
         name: buildDivisionName({
             gender: 'C',
             divisionTypeName,
@@ -420,6 +473,7 @@ const buildDefaultDivisionDetailsForSport = (
         price: 0,
         maxParticipants: 10,
         playoffTeamCount: 10,
+        playoffPlacementDivisionIds: [],
         allowPaymentPlans: false,
         installmentCount: 0,
         installmentDueDates: [],
@@ -894,9 +948,11 @@ type EventFormState = {
     teamSizeLimit: number;
     teamSignup: boolean;
     singleDivision: boolean;
+    splitLeaguePlayoffDivisions: boolean;
     registrationByDivisionType: boolean;
     divisions: string[];
     divisionDetails: DivisionDetailForm[];
+    playoffDivisionDetails: PlayoffDivisionDetailForm[];
     divisionFieldIds: Record<string, string[]>;
     selectedFieldIds: string[];
     cancellationRefundHours: number;
@@ -1005,6 +1061,11 @@ const normalizeDivisionDetailEntry = (
         : Number.isFinite(Number(row.playoffTeamCount))
             ? Number(row.playoffTeamCount)
             : undefined;
+    const rawPlayoffPlacementDivisionIds = Array.isArray(row.playoffPlacementDivisionIds)
+        ? row.playoffPlacementDivisionIds
+            .map((value) => String(value).trim())
+            .filter((value) => value.length > 0)
+        : [];
     const rawAllowPaymentPlans = normalizeBoolean(row.allowPaymentPlans) ?? false;
     const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
         ? row.installmentAmounts.map((value) => {
@@ -1025,6 +1086,7 @@ const normalizeDivisionDetailEntry = (
     const baseDetail: DivisionDetailForm = {
         id,
         key,
+        kind: typeof row.kind === 'string' && row.kind.toUpperCase() === 'PLAYOFF' ? 'PLAYOFF' : 'LEAGUE',
         name,
         divisionTypeId,
         divisionTypeName,
@@ -1041,6 +1103,7 @@ const normalizeDivisionDetailEntry = (
         playoffTeamCount: Number.isFinite(rawDivisionPlayoffTeamCount)
             ? Math.max(2, Math.trunc(rawDivisionPlayoffTeamCount as number))
             : undefined,
+        playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds,
         allowPaymentPlans: rawAllowPaymentPlans,
         installmentCount: rawAllowPaymentPlans
             ? (rawInstallmentCount || rawInstallmentAmounts.length || 0)
@@ -1056,6 +1119,39 @@ const normalizeDivisionDetailEntry = (
         ageCutoffSource: typeof row.ageCutoffSource === 'string' ? row.ageCutoffSource : undefined,
     };
     return applyDivisionAgeCutoff(baseDetail, sportInput, referenceDate);
+};
+
+const normalizePlayoffDivisionDetailEntry = (
+    entry: unknown,
+    eventId: string,
+    fallbackPlayoffConfig?: TournamentConfig,
+): PlayoffDivisionDetailForm | null => {
+    if (!entry || typeof entry !== 'object') {
+        return null;
+    }
+
+    const row = entry as Record<string, unknown>;
+    const rawId = normalizeDivisionKeys([row.id ?? row.$id])[0];
+    const rawKey = normalizeDivisionKeys([row.key])[0];
+    const key = rawKey || `playoff_${Math.max(1, Math.trunc(Number(row.seed) || 1))}`;
+    const id = rawId || buildEventDivisionId(eventId, key);
+    const name = typeof row.name === 'string' && row.name.trim().length > 0
+        ? row.name.trim()
+        : `Playoff Division ${key.replace(/^playoff_/, '')}`;
+    const maxParticipantsRaw = Number.isFinite(Number(row.maxParticipants))
+        ? Number(row.maxParticipants)
+        : 2;
+    const playoffConfig = extractTournamentConfigFromEvent(row as unknown as Partial<Event>)
+        ?? buildTournamentConfig(fallbackPlayoffConfig);
+
+    return {
+        id,
+        key,
+        kind: 'PLAYOFF',
+        name,
+        maxParticipants: Math.max(2, Math.trunc(maxParticipantsRaw)),
+        playoffConfig,
+    };
 };
 
 const buildTournamentConfig = (source?: Partial<TournamentConfig>): TournamentConfig => {
@@ -1224,6 +1320,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
             detailsById.set(divisionId, applyDivisionAgeCutoff({
                 id: divisionId,
                 key: inferredToken,
+                kind: 'LEAGUE',
                 name: buildDivisionName({ gender: inferred.gender, divisionTypeName: compositeDivisionTypeName }),
                 divisionTypeId: compositeDivisionTypeId,
                 divisionTypeName: compositeDivisionTypeName,
@@ -1238,6 +1335,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
                 playoffTeamCount: Number.isFinite(event.playoffTeamCount)
                     ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
                     : undefined,
+                playoffPlacementDivisionIds: [],
                 allowPaymentPlans: defaultEventAllowPaymentPlans,
                 installmentCount: defaultEventAllowPaymentPlans
                     ? (defaultEventInstallmentCount || defaultEventInstallmentAmounts.length || 0)
@@ -1270,8 +1368,9 @@ const mapEventToFormState = (event: Event): EventFormState => {
         });
         return ordered;
     })();
-    const normalizedDivisionDetailsWithCapacity = normalizedDivisionDetails.map((detail) => ({
+    const normalizedDivisionDetailsWithCapacity: DivisionDetailForm[] = normalizedDivisionDetails.map((detail): DivisionDetailForm => ({
         ...detail,
+        kind: detail.kind === 'PLAYOFF' ? 'PLAYOFF' : 'LEAGUE',
         price: Number.isFinite(detail.price)
             ? Math.max(0, detail.price)
             : Number.isFinite(event.price)
@@ -1287,6 +1386,11 @@ const mapEventToFormState = (event: Event): EventFormState => {
             : Number.isFinite(event.playoffTeamCount)
                 ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
                 : undefined,
+        playoffPlacementDivisionIds: Array.isArray(detail.playoffPlacementDivisionIds)
+            ? detail.playoffPlacementDivisionIds
+                .map((value) => String(value).trim())
+                .filter((value) => value.length > 0)
+            : [],
         allowPaymentPlans: typeof detail.allowPaymentPlans === 'boolean'
             ? detail.allowPaymentPlans
             : defaultEventAllowPaymentPlans,
@@ -1333,6 +1437,20 @@ const mapEventToFormState = (event: Event): EventFormState => {
         })(),
     }));
     const finalDivisionIds = normalizedDivisionDetailsWithCapacity.map((detail) => detail.id);
+    const fallbackPlayoffConfig = extractTournamentConfigFromEvent(event) ?? buildTournamentConfig();
+    const normalizedPlayoffDivisionDetails = Array.isArray((event as any).playoffDivisionDetails)
+        ? (event as any).playoffDivisionDetails
+            .map((entry: unknown) => normalizePlayoffDivisionDetailEntry(entry, event.$id, fallbackPlayoffConfig))
+            .filter((entry: PlayoffDivisionDetailForm | null): entry is PlayoffDivisionDetailForm => Boolean(entry))
+        : [];
+    const splitLeaguePlayoffDivisions = event.eventType === 'LEAGUE'
+        ? Boolean(
+            event.splitLeaguePlayoffDivisions
+            || (normalizedPlayoffDivisionDetails.length > 0 && normalizedDivisionDetailsWithCapacity.some((detail) => (
+                Array.isArray(detail.playoffPlacementDivisionIds) && detail.playoffPlacementDivisionIds.length > 0
+            ))),
+        )
+        : false;
 
     return {
     $id: event.$id,
@@ -1365,10 +1483,12 @@ const mapEventToFormState = (event: Event): EventFormState => {
     teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : 2,
     teamSignup: Boolean(event.teamSignup),
     singleDivision: Boolean(event.singleDivision),
+    splitLeaguePlayoffDivisions,
     registrationByDivisionType: Boolean(event.registrationByDivisionType),
     organizationId: event.organizationId || undefined,
     divisions: finalDivisionIds,
     divisionDetails: normalizedDivisionDetailsWithCapacity,
+    playoffDivisionDetails: normalizedPlayoffDivisionDetails,
     divisionFieldIds: event.divisionFieldIds && typeof event.divisionFieldIds === 'object'
         ? Object.fromEntries(
             Object.entries(event.divisionFieldIds).map(([divisionKey, fieldIds]) => [
@@ -1485,12 +1605,14 @@ const eventFormSchema = z
         teamSizeLimit: z.number().min(1, 'Enter at least 1'),
         teamSignup: z.boolean(),
         singleDivision: z.boolean(),
+        splitLeaguePlayoffDivisions: z.boolean().default(false),
         registrationByDivisionType: z.boolean().default(false),
         divisions: z.array(z.string()),
         divisionDetails: z.array(
             z.object({
                 id: z.string().trim().min(1),
                 key: z.string().trim().min(1),
+                kind: z.enum(['LEAGUE', 'PLAYOFF']).optional(),
                 name: z.string().trim().min(1),
                 divisionTypeId: z.string().trim().min(1),
                 divisionTypeName: z.string().trim().min(1),
@@ -1503,6 +1625,7 @@ const eventFormSchema = z
                 price: z.number().min(0),
                 maxParticipants: z.number().int().min(2),
                 playoffTeamCount: z.number().optional(),
+                playoffPlacementDivisionIds: z.array(z.string()).optional(),
                 allowPaymentPlans: z.boolean().default(false),
                 installmentCount: z.number().int().min(0).default(0),
                 installmentDueDates: z.array(z.string()).default([]),
@@ -1512,6 +1635,16 @@ const eventFormSchema = z
                 ageCutoffDate: z.string().optional(),
                 ageCutoffLabel: z.string().optional(),
                 ageCutoffSource: z.string().optional(),
+            }),
+        ).default([]),
+        playoffDivisionDetails: z.array(
+            z.object({
+                id: z.string().trim().min(1),
+                key: z.string().trim().min(1),
+                kind: z.literal('PLAYOFF').default('PLAYOFF'),
+                name: z.string().trim().min(1),
+                maxParticipants: z.number().int().min(2),
+                playoffConfig: z.any(),
             }),
         ).default([]),
         divisionFieldIds: z.record(z.string(), z.array(z.string())).default({}),
@@ -1686,10 +1819,82 @@ const eventFormSchema = z
         }
 
         if (supportsScheduleSlots(values.eventType)) {
-            const slotDivisionLookup = buildSlotDivisionLookup(values.divisionDetails);
+            const slotDivisionLookup = buildSlotDivisionLookup(
+                values.divisionDetails,
+                values.eventType === 'LEAGUE' && values.leagueData.includePlayoffs && values.splitLeaguePlayoffDivisions
+                    ? values.playoffDivisionDetails
+                    : [],
+            );
             const selectedDivisionKeys = slotDivisionLookup.keys;
             if (values.eventType === 'LEAGUE' && values.leagueData.includePlayoffs) {
-                if (values.singleDivision) {
+                if (values.splitLeaguePlayoffDivisions) {
+                    if (!values.playoffDivisionDetails.length) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Add at least one playoff division when split playoffs are enabled.',
+                            path: ['playoffDivisionDetails'],
+                        });
+                    }
+
+                    const playoffDivisionById = new Map(
+                        values.playoffDivisionDetails.map((division) => [
+                            normalizeDivisionKeys([division.id])[0],
+                            division,
+                        ]),
+                    );
+                    const mappingReferences = new Map<string, number>();
+
+                    values.divisionDetails.forEach((detail, index) => {
+                        if (!(typeof detail.playoffTeamCount === 'number' && detail.playoffTeamCount >= 2)) {
+                            ctx.addIssue({
+                                code: "custom",
+                                message: 'Division playoff team count is required when playoffs are enabled',
+                                path: ['divisionDetails', index, 'playoffTeamCount'],
+                            });
+                            return;
+                        }
+
+                        const mapping = Array.isArray(detail.playoffPlacementDivisionIds)
+                            ? detail.playoffPlacementDivisionIds
+                            : [];
+                        for (let placementIndex = 0; placementIndex < detail.playoffTeamCount; placementIndex += 1) {
+                            const mappedDivisionId = normalizeDivisionKeys([mapping[placementIndex]])[0];
+                            if (!mappedDivisionId) {
+                                ctx.addIssue({
+                                    code: "custom",
+                                    message: `Map placement ${placementIndex + 1} to a playoff division.`,
+                                    path: ['divisionDetails', index, 'playoffPlacementDivisionIds', placementIndex],
+                                });
+                                continue;
+                            }
+                            if (!playoffDivisionById.has(mappedDivisionId)) {
+                                ctx.addIssue({
+                                    code: "custom",
+                                    message: `Placement ${placementIndex + 1} references an invalid playoff division.`,
+                                    path: ['divisionDetails', index, 'playoffPlacementDivisionIds', placementIndex],
+                                });
+                                continue;
+                            }
+                            mappingReferences.set(mappedDivisionId, (mappingReferences.get(mappedDivisionId) ?? 0) + 1);
+                        }
+                    });
+
+                    values.playoffDivisionDetails.forEach((division, index) => {
+                        const normalizedId = normalizeDivisionKeys([division.id])[0];
+                        if (!normalizedId) {
+                            return;
+                        }
+                        const assignedCount = mappingReferences.get(normalizedId) ?? 0;
+                        const capacity = Math.max(0, Math.trunc(division.maxParticipants || 0));
+                        if (assignedCount > capacity) {
+                            ctx.addIssue({
+                                code: "custom",
+                                message: `Playoff division "${division.name}" has ${assignedCount} mapped positions but only ${capacity} slots.`,
+                                path: ['playoffDivisionDetails', index, 'maxParticipants'],
+                            });
+                        }
+                    });
+                } else if (values.singleDivision) {
                     if (!(typeof values.leagueData.playoffTeamCount === 'number' && values.leagueData.playoffTeamCount >= 2)) {
                         ctx.addIssue({
                             code: "custom",
@@ -1927,6 +2132,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (typeof defaults.teamSizeLimit === 'number') next.teamSizeLimit = defaults.teamSizeLimit;
         if (typeof defaults.teamSignup === 'boolean') next.teamSignup = defaults.teamSignup;
         if (typeof defaults.singleDivision === 'boolean') next.singleDivision = defaults.singleDivision;
+        if (typeof (defaults as any).splitLeaguePlayoffDivisions === 'boolean') {
+            next.splitLeaguePlayoffDivisions = Boolean((defaults as any).splitLeaguePlayoffDivisions);
+        }
         if (typeof (defaults as any).noFixedEndDateTime === 'boolean') {
             next.noFixedEndDateTime = (defaults as any).noFixedEndDateTime;
         }
@@ -1943,6 +2151,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     referenceDate,
                 ))
                 .filter((entry: DivisionDetailForm | null): entry is DivisionDetailForm => Boolean(entry));
+        }
+        if (Array.isArray((defaults as any).playoffDivisionDetails)) {
+            next.playoffDivisionDetails = (defaults as any).playoffDivisionDetails
+                .map((entry: unknown) => normalizePlayoffDivisionDetailEntry(entry, next.$id))
+                .filter((entry: PlayoffDivisionDetailForm | null): entry is PlayoffDivisionDetailForm => Boolean(entry));
         }
         if (defaults.divisions !== undefined) {
             next.divisions = Array.isArray(defaults.divisions)
@@ -1983,6 +2196,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return applyDivisionAgeCutoff({
                     id: divisionId,
                     key: token,
+                    kind: 'LEAGUE',
                     name: buildDivisionName({ gender: inferred.gender, divisionTypeName }),
                     divisionTypeId,
                     divisionTypeName,
@@ -1997,6 +2211,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     playoffTeamCount: Number.isFinite((defaults as any).playoffTeamCount)
                         ? Math.max(2, Math.trunc((defaults as any).playoffTeamCount))
                         : undefined,
+                    playoffPlacementDivisionIds: [],
                     allowPaymentPlans: Boolean((defaults as any).allowPaymentPlans),
                     installmentCount: Number.isFinite((defaults as any).installmentCount)
                         ? Math.max(0, Math.trunc((defaults as any).installmentCount))
@@ -2186,7 +2401,27 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 parseDateValue(base.start ?? null),
             );
         })();
-        const defaultSlotDivisionKeys = buildSlotDivisionLookup(defaultDivisionDetails).keys;
+        const baseLeagueIncludesPlayoffs = Boolean(
+            base.eventType === 'LEAGUE'
+            && (
+                (immutableDefaults && typeof (immutableDefaults as any).includePlayoffs === 'boolean'
+                    ? Boolean((immutableDefaults as any).includePlayoffs)
+                    : undefined)
+                ?? (immutableDefaults && typeof (immutableDefaults as any).leagueData?.includePlayoffs === 'boolean'
+                    ? Boolean((immutableDefaults as any).leagueData.includePlayoffs)
+                    : undefined)
+                ??
+                activeEditingEvent?.leagueConfig?.includePlayoffs
+                ?? activeEditingEvent?.includePlayoffs
+                ?? false
+            ),
+        );
+        const defaultSlotDivisionKeys = buildSlotDivisionLookup(
+            defaultDivisionDetails,
+            base.eventType === 'LEAGUE' && baseLeagueIncludesPlayoffs && base.splitLeaguePlayoffDivisions
+                ? (base.playoffDivisionDetails || [])
+                : [],
+        ).keys;
         const defaultDivisionKeys = (() => {
             const normalizedFromDetails = normalizeDivisionKeys(defaultDivisionDetails.map((detail) => detail.id));
             if (normalizedFromDetails.length) {
@@ -2329,7 +2564,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         control,
         register,
         watch,
-        setValue,
+        setValue: rawSetValue,
         getValues,
         reset,
         clearErrors,
@@ -2341,6 +2576,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         reValidateMode: 'onBlur',
         defaultValues: buildDefaultFormValues(),
     });
+    const setValue = rawSetValue as (
+        name: string,
+        value: unknown,
+        options?: Record<string, unknown>,
+    ) => void;
 
     useEffect(() => {
         if (!open) {
@@ -2453,6 +2693,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         (updater: React.SetStateAction<LeagueConfig>) => {
             const current = getValues('leagueData');
             const next = typeof updater === 'function' ? (updater as (prev: LeagueConfig) => LeagueConfig)(current) : updater;
+            if (Object.is(current, next)) {
+                return;
+            }
             setValue('leagueData', next, { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
@@ -2462,6 +2705,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         (updater: React.SetStateAction<TournamentConfig>) => {
             const current = getValues('tournamentData');
             const next = typeof updater === 'function' ? (updater as (prev: TournamentConfig) => TournamentConfig)(current) : updater;
+            if (Object.is(current, next)) {
+                return;
+            }
             setValue('tournamentData', next, { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
@@ -2471,6 +2717,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         (updater: React.SetStateAction<TournamentConfig>) => {
             const current = getValues('playoffData');
             const next = typeof updater === 'function' ? (updater as (prev: TournamentConfig) => TournamentConfig)(current) : updater;
+            if (Object.is(current, next)) {
+                return;
+            }
             setValue('playoffData', next, { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
@@ -2480,6 +2729,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         (updater: React.SetStateAction<LeagueSlotForm[]>) => {
             const current = getValues('leagueSlots');
             const next = typeof updater === 'function' ? (updater as (prev: LeagueSlotForm[]) => LeagueSlotForm[])(current) : updater;
+            if (Object.is(current, next)) {
+                return;
+            }
             setValue('leagueSlots', next, { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
@@ -2489,6 +2741,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         (updater: React.SetStateAction<Field[]>) => {
             const current = getValues('fields');
             const next = typeof updater === 'function' ? (updater as (prev: Field[]) => Field[])(current) : updater;
+            if (Object.is(current, next)) {
+                return;
+            }
             setValue('fields', next, { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
@@ -2496,28 +2751,41 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const setFieldCount = useCallback(
         (value: number) => {
+            if (Object.is(getValues('fieldCount'), value)) {
+                return;
+            }
             setValue('fieldCount', value, { shouldDirty: true, shouldValidate: true });
         },
-        [setValue],
+        [getValues, setValue],
     );
 
     const setSelectedFieldIds = useCallback(
         (value: string[]) => {
+            if (Object.is(getValues('selectedFieldIds'), value)) {
+                return;
+            }
             setValue('selectedFieldIds', value, { shouldDirty: true, shouldValidate: true });
         },
-        [setValue],
+        [getValues, setValue],
     );
 
     const setDivisionFieldIds = useCallback(
         (value: Record<string, string[]>) => {
+            if (Object.is(getValues('divisionFieldIds'), value)) {
+                return;
+            }
             setValue('divisionFieldIds', value, { shouldDirty: true, shouldValidate: true });
         },
-        [setValue],
+        [getValues, setValue],
     );
 
     const setJoinAsParticipant = useCallback(
         (value: boolean) => {
-            setValue('joinAsParticipant', value, { shouldDirty: true, shouldValidate: true });
+            (setValue as (name: string, value: unknown, options?: { shouldDirty?: boolean; shouldValidate?: boolean }) => void)(
+                'joinAsParticipant',
+                value,
+                { shouldDirty: true, shouldValidate: true },
+            );
         },
         [setValue],
     );
@@ -2818,8 +3086,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         []
     );
     const slotDivisionLookup = useMemo(
-        () => buildSlotDivisionLookup(eventData.divisionDetails || []),
-        [eventData.divisionDetails],
+        () => buildSlotDivisionLookup(
+            eventData.divisionDetails || [],
+            eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && eventData.splitLeaguePlayoffDivisions
+                ? (eventData.playoffDivisionDetails || [])
+                : [],
+        ),
+        [
+            eventData.divisionDetails,
+            eventData.eventType,
+            eventData.playoffDivisionDetails,
+            eventData.splitLeaguePlayoffDivisions,
+            leagueData.includePlayoffs,
+        ],
     );
     const slotDivisionKeys = slotDivisionLookup.keys;
     const divisionOptions = useMemo(
@@ -2900,6 +3179,204 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         nameTouched: false,
         error: null,
     });
+
+    const createNextPlayoffDivision = useCallback((
+        existing: PlayoffDivisionDetailForm[],
+        configTemplate?: TournamentConfig,
+    ): PlayoffDivisionDetailForm => {
+        let index = Math.max(1, existing.length + 1);
+        while (index < 500) {
+            const key = `playoff_${index}`;
+            const id = buildEventDivisionId(eventData.$id, key);
+            if (!existing.some((division) => division.id === id || division.key === key)) {
+                return {
+                    id,
+                    key,
+                    kind: 'PLAYOFF',
+                    name: `Playoff Division ${index}`,
+                    maxParticipants: 2,
+                    playoffConfig: buildTournamentConfig(configTemplate),
+                };
+            }
+            index += 1;
+        }
+        const fallbackKey = `playoff_${Date.now()}`;
+        return {
+            id: buildEventDivisionId(eventData.$id, fallbackKey),
+            key: fallbackKey,
+            kind: 'PLAYOFF',
+            name: 'Playoff Division',
+            maxParticipants: 2,
+            playoffConfig: buildTournamentConfig(configTemplate),
+        };
+    }, [eventData.$id]);
+
+    const handleAddPlayoffDivision = useCallback(() => {
+        const current = Array.isArray(eventData.playoffDivisionDetails) ? eventData.playoffDivisionDetails : [];
+        const next = [...current, createNextPlayoffDivision(current, playoffData)];
+        setValue('playoffDivisionDetails', next, { shouldDirty: true, shouldValidate: true });
+    }, [createNextPlayoffDivision, eventData.playoffDivisionDetails, playoffData, setValue]);
+
+    const handleUpdatePlayoffDivision = useCallback((
+        playoffDivisionId: string,
+        updates: Partial<Pick<PlayoffDivisionDetailForm, 'name' | 'maxParticipants'>>,
+    ) => {
+        const current = Array.isArray(eventData.playoffDivisionDetails) ? eventData.playoffDivisionDetails : [];
+        const next = current.map((division) => {
+            if (division.id !== playoffDivisionId) {
+                return division;
+            }
+            return {
+                ...division,
+                name: typeof updates.name === 'string' ? updates.name : division.name,
+                maxParticipants: typeof updates.maxParticipants === 'number'
+                    ? Math.max(2, Math.trunc(updates.maxParticipants))
+                    : division.maxParticipants,
+            };
+        });
+        setValue('playoffDivisionDetails', next, { shouldDirty: true, shouldValidate: true });
+    }, [eventData.playoffDivisionDetails, setValue]);
+
+    const handleSetPlayoffDivisionConfig = useCallback((
+        playoffDivisionId: string,
+        updater: React.SetStateAction<TournamentConfig>,
+    ) => {
+        const current = Array.isArray(eventData.playoffDivisionDetails) ? eventData.playoffDivisionDetails : [];
+        const next = current.map((division) => {
+            if (division.id !== playoffDivisionId) {
+                return division;
+            }
+            const previousConfig = buildTournamentConfig(division.playoffConfig);
+            const resolved = typeof updater === 'function'
+                ? (updater as (prev: TournamentConfig) => TournamentConfig)(previousConfig)
+                : updater;
+            return {
+                ...division,
+                playoffConfig: buildTournamentConfig(resolved),
+            };
+        });
+        setValue('playoffDivisionDetails', next, { shouldDirty: true, shouldValidate: true });
+    }, [eventData.playoffDivisionDetails, setValue]);
+
+    const handleSetDivisionPlayoffMapping = useCallback((
+        leagueDivisionId: string,
+        placementIndex: number,
+        playoffDivisionId: string | null,
+    ) => {
+        const normalizedPlayoffDivisionId = normalizeDivisionKeys([playoffDivisionId ?? ''])[0] ?? '';
+        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        const nextDetails = currentDetails.map((detail) => {
+            if (detail.id !== leagueDivisionId) {
+                return detail;
+            }
+            const mapping = Array.isArray(detail.playoffPlacementDivisionIds)
+                ? [...detail.playoffPlacementDivisionIds]
+                : [];
+            while (mapping.length <= placementIndex) {
+                mapping.push('');
+            }
+            mapping[placementIndex] = normalizedPlayoffDivisionId;
+            return {
+                ...detail,
+                playoffPlacementDivisionIds: mapping,
+            };
+        });
+        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+    }, [eventData.divisionDetails, setValue]);
+
+    const handleRemovePlayoffDivision = useCallback((playoffDivisionId: string) => {
+        const normalizedPlayoffDivisionId = normalizeDivisionKeys([playoffDivisionId])[0];
+        if (!normalizedPlayoffDivisionId) {
+            return;
+        }
+
+        const currentPlayoffDivisions = Array.isArray(eventData.playoffDivisionDetails)
+            ? eventData.playoffDivisionDetails
+            : [];
+        const nextPlayoffDivisions = currentPlayoffDivisions.filter((division) => (
+            normalizeDivisionKeys([division.id])[0] !== normalizedPlayoffDivisionId
+        ));
+        setValue('playoffDivisionDetails', nextPlayoffDivisions, { shouldDirty: true, shouldValidate: true });
+
+        const currentLeagueDivisions = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        const remappedLeagueDivisions = currentLeagueDivisions.map((division) => {
+            const mapping = Array.isArray(division.playoffPlacementDivisionIds)
+                ? division.playoffPlacementDivisionIds
+                : [];
+            const nextMapping = mapping.map((entry) => {
+                const normalizedEntry = normalizeDivisionKeys([entry])[0];
+                return normalizedEntry === normalizedPlayoffDivisionId ? '' : entry;
+            });
+            if (stringArraysEqual(mapping, nextMapping)) {
+                return division;
+            }
+            return {
+                ...division,
+                playoffPlacementDivisionIds: nextMapping,
+            };
+        });
+        setValue('divisionDetails', remappedLeagueDivisions, { shouldDirty: true, shouldValidate: true });
+    }, [eventData.divisionDetails, eventData.playoffDivisionDetails, setValue]);
+
+    const playoffDivisionSelectOptions = useMemo(
+        () => (eventData.playoffDivisionDetails || []).map((division) => ({
+            value: division.id,
+            label: division.name,
+        })),
+        [eventData.playoffDivisionDetails],
+    );
+
+    const playoffDivisionCapacityWarnings = useMemo(() => {
+        if (
+            eventData.eventType !== 'LEAGUE'
+            || !leagueData.includePlayoffs
+            || !eventData.splitLeaguePlayoffDivisions
+        ) {
+            return [] as string[];
+        }
+
+        const assignmentCounts = new Map<string, number>();
+        const playoffDivisions = Array.isArray(eventData.playoffDivisionDetails)
+            ? eventData.playoffDivisionDetails
+            : [];
+
+        (eventData.divisionDetails || []).forEach((division) => {
+            const playoffTeamCount = Number.isFinite(division.playoffTeamCount)
+                ? Math.max(0, Math.trunc(division.playoffTeamCount as number))
+                : 0;
+            const mapping = Array.isArray(division.playoffPlacementDivisionIds)
+                ? division.playoffPlacementDivisionIds
+                : [];
+            for (let index = 0; index < playoffTeamCount; index += 1) {
+                const mappedDivisionId = normalizeDivisionKeys([mapping[index]])[0];
+                if (!mappedDivisionId) {
+                    continue;
+                }
+                assignmentCounts.set(mappedDivisionId, (assignmentCounts.get(mappedDivisionId) ?? 0) + 1);
+            }
+        });
+
+        return playoffDivisions
+            .map((division) => {
+                const normalizedId = normalizeDivisionKeys([division.id])[0];
+                if (!normalizedId) {
+                    return null;
+                }
+                const assigned = assignmentCounts.get(normalizedId) ?? 0;
+                const capacity = Math.max(0, Math.trunc(division.maxParticipants || 0));
+                if (assigned > capacity) {
+                    return `${division.name} has ${assigned} mapped teams but only ${capacity} slots.`;
+                }
+                return null;
+            })
+            .filter((message): message is string => Boolean(message));
+    }, [
+        eventData.divisionDetails,
+        eventData.eventType,
+        eventData.playoffDivisionDetails,
+        eventData.splitLeaguePlayoffDivisions,
+        leagueData.includePlayoffs,
+    ]);
 
     const handleSearchReferees = useCallback(
         async (query: string) => {
@@ -3051,6 +3528,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 includePlayoffs: false,
                 playoffTeamCount: undefined,
             }));
+            setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
             return;
         }
 
@@ -3073,7 +3551,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? Math.max(2, Math.trunc(prev.playoffTeamCount))
                 : Math.max(2, Math.trunc(eventData.maxParticipants || 2)),
         }));
-    }, [eventData.maxParticipants, eventData.singleDivision, leagueData.playoffTeamCount, setLeagueData]);
+    }, [eventData.maxParticipants, eventData.singleDivision, leagueData.playoffTeamCount, setLeagueData, setValue]);
 
     const resetDivisionEditor = useCallback(() => {
         const defaultInstallmentAmounts = eventData.allowPaymentPlans
@@ -3383,25 +3861,35 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         const token = buildDivisionToken({ gender, ratingType, divisionTypeId });
-        const nextId = buildEventDivisionId(eventData.$id, token);
         const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId) || undefined;
         const referenceDate = parseDateValue(eventData.start ?? null);
 
         const currentDetails = Array.isArray(eventData.divisionDetails) ? [...eventData.divisionDetails] : [];
-        const duplicate = currentDetails.find((detail) =>
-            detail.id === nextId && detail.id !== divisionEditor.editingId,
+        const existingDetail = divisionEditor.editingId
+            ? currentDetails.find((detail) => detail.id === divisionEditor.editingId)
+            : null;
+        const normalizedName = normalizeDivisionNameKey(name);
+        const duplicateByName = currentDetails.find((detail) =>
+            detail.id !== divisionEditor.editingId
+            && normalizeDivisionNameKey(detail.name) === normalizedName,
         );
-        if (duplicate) {
+        if (duplicateByName) {
             setDivisionEditor((prev) => ({
                 ...prev,
-                error: 'That division already exists in this event.',
+                error: 'Division name must be unique within this event.',
             }));
             return;
         }
+        const nextId = existingDetail?.id ?? buildUniqueDivisionIdForToken({
+            eventId: eventData.$id,
+            token,
+            existingDivisionIds: currentDetails.map((detail) => detail.id),
+        });
 
         const nextDetail = applyDivisionAgeCutoff({
             id: nextId,
             key: token,
+            kind: 'LEAGUE',
             name,
             divisionTypeId,
             divisionTypeName,
@@ -3414,6 +3902,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             price: normalizedDivisionPrice,
             maxParticipants: normalizedDivisionMaxParticipants,
             playoffTeamCount: normalizedDivisionPlayoffTeamCount,
+            playoffPlacementDivisionIds: Array.isArray(existingDetail?.playoffPlacementDivisionIds)
+                ? [...existingDetail.playoffPlacementDivisionIds]
+                : [],
             allowPaymentPlans: normalizedDivisionAllowPaymentPlans,
             installmentCount: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentCount : 0,
             installmentDueDates: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueDates : [],
@@ -3482,25 +3973,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (sportsLoading) {
             return;
         }
-        setEventData((prev) => {
-            if (prev.sportId) {
-                const selected = sportsById.get(prev.sportId);
-                if (selected && (!prev.sportConfig || prev.sportConfig.$id !== selected.$id)) {
-                    return { ...prev, sportConfig: selected };
-                }
-                if (!selected && prev.sportConfig) {
-                    return { ...prev, sportConfig: null };
-                }
-                return prev;
-            }
+        const selectedSportId = String(getValues('sportId') ?? '').trim();
+        const currentSportConfig = getValues('sportConfig') as Sport | null | undefined;
+        const currentSportConfigId = currentSportConfig && typeof currentSportConfig === 'object'
+            ? String((currentSportConfig as any).$id ?? '')
+            : '';
 
-            if (prev.sportConfig) {
-                return { ...prev, sportConfig: null };
+        if (!selectedSportId) {
+            if (currentSportConfig) {
+                setValue('sportConfig', null, { shouldDirty: false, shouldValidate: false });
             }
+            return;
+        }
 
-            return prev;
-        });
-    }, [sportsLoading, sportsById, setEventData]);
+        const selected = sportsById.get(selectedSportId) ?? null;
+        if (selected && currentSportConfigId !== selected.$id) {
+            setValue('sportConfig', selected, { shouldDirty: false, shouldValidate: false });
+            return;
+        }
+        if (!selected && currentSportConfig) {
+            setValue('sportConfig', null, { shouldDirty: false, shouldValidate: false });
+        }
+    }, [getValues, setValue, sportsLoading, sportsById]);
 
     useEffect(() => {
         const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
@@ -3589,6 +4083,97 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }),
         );
     }, [eventData.singleDivision, leagueSlots, slotDivisionKeys, slotDivisionLookup, updateLeagueSlots]);
+
+    useEffect(() => {
+        if (eventData.eventType === 'LEAGUE') {
+            return;
+        }
+
+        if (eventData.splitLeaguePlayoffDivisions) {
+            setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
+        }
+        if ((eventData.playoffDivisionDetails || []).length > 0) {
+            setValue('playoffDivisionDetails', [], { shouldDirty: true, shouldValidate: true });
+        }
+    }, [
+        eventData.eventType,
+        eventData.playoffDivisionDetails,
+        eventData.splitLeaguePlayoffDivisions,
+        setValue,
+    ]);
+
+    useEffect(() => {
+        if (
+            eventData.eventType !== 'LEAGUE'
+            || !leagueData.includePlayoffs
+            || !eventData.splitLeaguePlayoffDivisions
+        ) {
+            return;
+        }
+        const current = Array.isArray(eventData.playoffDivisionDetails) ? eventData.playoffDivisionDetails : [];
+        if (current.length > 0) {
+            return;
+        }
+        setValue('playoffDivisionDetails', [createNextPlayoffDivision(current)], { shouldDirty: true, shouldValidate: true });
+    }, [
+        createNextPlayoffDivision,
+        eventData.eventType,
+        eventData.playoffDivisionDetails,
+        eventData.splitLeaguePlayoffDivisions,
+        leagueData.includePlayoffs,
+        setValue,
+    ]);
+
+    useEffect(() => {
+        if (
+            eventData.eventType !== 'LEAGUE'
+            || !leagueData.includePlayoffs
+            || !eventData.splitLeaguePlayoffDivisions
+        ) {
+            return;
+        }
+        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        if (!currentDetails.length) {
+            return;
+        }
+        let changed = false;
+        const nextDetails = currentDetails.map((detail) => {
+            const playoffTeamCount = Number.isFinite(detail.playoffTeamCount)
+                ? Math.max(0, Math.trunc(detail.playoffTeamCount as number))
+                : 0;
+            if (playoffTeamCount <= 0) {
+                return detail;
+            }
+            const mapping = Array.isArray(detail.playoffPlacementDivisionIds)
+                ? [...detail.playoffPlacementDivisionIds]
+                : [];
+            if (mapping.length < playoffTeamCount) {
+                changed = true;
+                while (mapping.length < playoffTeamCount) {
+                    mapping.push('');
+                }
+            } else if (mapping.length > playoffTeamCount) {
+                changed = true;
+                mapping.splice(playoffTeamCount);
+            }
+            if (!changed && stringArraysEqual(mapping, detail.playoffPlacementDivisionIds ?? [])) {
+                return detail;
+            }
+            return {
+                ...detail,
+                playoffPlacementDivisionIds: mapping,
+            };
+        });
+        if (changed) {
+            setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: true });
+        }
+    }, [
+        eventData.divisionDetails,
+        eventData.eventType,
+        eventData.splitLeaguePlayoffDivisions,
+        leagueData.includePlayoffs,
+        setValue,
+    ]);
 
     useEffect(() => {
         if (eventData.eventType !== 'LEAGUE' || !leagueData.includePlayoffs || !eventData.singleDivision) {
@@ -4357,6 +4942,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return applyDivisionAgeCutoff({
                     id: divisionId,
                     key: token,
+                    kind: 'LEAGUE',
                     name: buildDivisionName({ gender: inferred.gender, divisionTypeName }),
                     divisionTypeId,
                     divisionTypeName,
@@ -4371,6 +4957,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     playoffTeamCount: Number.isFinite(source.leagueData?.playoffTeamCount)
                         ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
                         : undefined,
+                    playoffPlacementDivisionIds: [],
                     allowPaymentPlans: Boolean(source.allowPaymentPlans),
                     installmentCount: source.allowPaymentPlans
                         ? (source.installmentCount || source.installmentAmounts.length || 0)
@@ -4399,25 +4986,60 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return normalizeDivisionKeys(source.divisions);
         })();
-        const slotDivisionLookupForDraft = buildSlotDivisionLookup(normalizedDivisionDetails);
+        const splitLeaguePlayoffDivisions = Boolean(
+            source.eventType === 'LEAGUE'
+            && source.leagueData.includePlayoffs
+            && source.splitLeaguePlayoffDivisions,
+        );
+        const normalizedPlayoffDivisionDetails = splitLeaguePlayoffDivisions
+            ? (source.playoffDivisionDetails || [])
+                .map((entry) => normalizePlayoffDivisionDetailEntry(entry, source.$id, source.playoffData))
+                .filter((entry): entry is PlayoffDivisionDetailForm => Boolean(entry))
+            : [];
+        const slotDivisionLookupForDraft = buildSlotDivisionLookup(
+            normalizedDivisionDetails,
+            splitLeaguePlayoffDivisions ? normalizedPlayoffDivisionDetails : [],
+        );
         const singleDivisionEnabled = Boolean(source.singleDivision);
         const normalizedDivisionDetailsForPayload = normalizedDivisionDetails.map((detail) => ({
             ...detail,
+            kind: 'LEAGUE' as const,
             price: singleDivisionEnabled
                 ? Math.max(0, source.price || 0)
                 : Math.max(0, detail.price || 0),
             maxParticipants: singleDivisionEnabled
                 ? Math.max(2, Math.trunc(source.maxParticipants || 2))
                 : Math.max(2, Math.trunc(detail.maxParticipants || source.maxParticipants || 2)),
-            playoffTeamCount: source.eventType !== 'LEAGUE' || !source.leagueData.includePlayoffs
-                ? undefined
-                : singleDivisionEnabled
-                    ? (Number.isFinite(source.leagueData.playoffTeamCount)
+            playoffTeamCount: (() => {
+                if (source.eventType !== 'LEAGUE' || !source.leagueData.includePlayoffs) {
+                    return undefined;
+                }
+                if (singleDivisionEnabled && !splitLeaguePlayoffDivisions) {
+                    return Number.isFinite(source.leagueData.playoffTeamCount)
                         ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
-                        : undefined)
-                    : (Number.isFinite(detail.playoffTeamCount)
-                        ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
-                        : undefined),
+                        : undefined;
+                }
+                return Number.isFinite(detail.playoffTeamCount)
+                    ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
+                    : undefined;
+            })(),
+            playoffPlacementDivisionIds: (() => {
+                if (!splitLeaguePlayoffDivisions) {
+                    return [] as string[];
+                }
+                const playoffTeamCount = Number.isFinite(detail.playoffTeamCount)
+                    ? Math.max(0, Math.trunc(detail.playoffTeamCount as number))
+                    : 0;
+                const mapping = Array.isArray(detail.playoffPlacementDivisionIds)
+                    ? detail.playoffPlacementDivisionIds
+                        .map((value) => String(value).trim())
+                        .filter((value) => value.length > 0)
+                    : [];
+                if (playoffTeamCount <= 0) {
+                    return mapping;
+                }
+                return mapping.slice(0, playoffTeamCount);
+            })(),
             allowPaymentPlans: singleDivisionEnabled
                 ? Boolean(source.allowPaymentPlans)
                 : Boolean(detail.allowPaymentPlans),
@@ -4483,6 +5105,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             teamSizeLimit: source.teamSizeLimit,
             teamSignup: source.teamSignup,
             singleDivision: source.singleDivision,
+            splitLeaguePlayoffDivisions,
             registrationByDivisionType: source.registrationByDivisionType,
             divisions: normalizedDivisionKeys,
             divisionDetails: normalizedDivisionDetailsForPayload.map((detail) => ({
@@ -4505,6 +5128,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         ? detail.installmentDueDates
                         : [])
                     : [],
+            })),
+            playoffDivisionDetails: normalizedPlayoffDivisionDetails.map((division) => ({
+                id: division.id,
+                key: division.key,
+                kind: 'PLAYOFF' as const,
+                name: division.name,
+                maxParticipants: Math.max(2, Math.trunc(division.maxParticipants || 2)),
+                playoffConfig: buildTournamentConfig(division.playoffConfig),
             })),
             cancellationRefundHours: source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
@@ -4673,7 +5304,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
             }
 
-            if (source.leagueData.includePlayoffs && source.playoffData) {
+            if (source.leagueData.includePlayoffs && source.playoffData && !splitLeaguePlayoffDivisions) {
                 draft.doubleElimination = source.playoffData.doubleElimination;
                 draft.winnerSetCount = source.playoffData.winnerSetCount;
                 draft.loserSetCount = source.playoffData.loserSetCount;
@@ -5003,15 +5634,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 label="Sport"
                                                 placeholder={sportsLoading ? 'Loading sports...' : 'Select a sport'}
                                                 data={sportOptions}
-                                                value={field.value || ''}
+                                                value={field.value || null}
                                                 comboboxProps={sharedComboboxProps}
                                                 disabled={isImmutableField('sport') || sportsLoading}
                                                 onChange={(value) => {
                                                     if (isImmutableField('sport')) return;
-                                                    const next = value || '';
+                                                    const next = (value || '').trim();
+                                                    if (next === (field.value || '').trim()) {
+                                                        return;
+                                                    }
                                                     field.onChange(next);
-                                                    const selected = next ? sportsById.get(next) ?? null : null;
-                                                    setValue('sportConfig', selected);
                                                 }}
                                                 searchable
                                                 nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
@@ -5907,7 +6539,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
                             <div className="space-y-4">
                                 <Text size="sm" fw={600}>
-                                    Divisions
+                                    {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && eventData.splitLeaguePlayoffDivisions
+                                        ? 'League Divisions'
+                                        : 'Divisions'}
                                 </Text>
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                                     <MantineSelect
@@ -5961,14 +6595,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         maw={520}
                                         maxLength={MAX_MEDIUM_TEXT_LENGTH}
                                         disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                        onChange={(event) =>
+                                        onChange={(event) => {
+                                            const nextName = event.currentTarget.value;
                                             setDivisionEditor((prev) => ({
                                                 ...prev,
-                                                name: event.currentTarget.value,
+                                                name: nextName,
                                                 nameTouched: true,
                                                 error: null,
-                                            }))
-                                        }
+                                            }));
+                                        }}
                                     />
                                     <NumberInput
                                         label="Division Price ($)"
@@ -6258,6 +6893,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                 {`Playoff teams: ${effectiveDivisionPlayoffTeamCount ?? 'Not set'}`}
                                                             </Text>
                                                         )}
+                                                        {eventData.eventType === 'LEAGUE'
+                                                            && leagueData.includePlayoffs
+                                                            && eventData.splitLeaguePlayoffDivisions
+                                                            && typeof effectiveDivisionPlayoffTeamCount === 'number'
+                                                            && effectiveDivisionPlayoffTeamCount > 0 && (
+                                                                <div className="mt-2 space-y-2">
+                                                                    <Text size="xs" fw={600} c="dimmed">
+                                                                        Playoff placement mapping
+                                                                    </Text>
+                                                                    {playoffDivisionSelectOptions.length === 0 ? (
+                                                                        <Text size="xs" c="red">
+                                                                            Add playoff divisions to map placements.
+                                                                        </Text>
+                                                                    ) : (
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                            {Array.from({ length: effectiveDivisionPlayoffTeamCount }).map((_, placementIndex) => (
+                                                                                <MantineSelect
+                                                                                    key={`${detail.id}-placement-${placementIndex}`}
+                                                                                    label={`Placement #${placementIndex + 1}`}
+                                                                                    placeholder="Select playoff division"
+                                                                                    data={playoffDivisionSelectOptions}
+                                                                                    value={normalizeDivisionKeys([
+                                                                                        detail.playoffPlacementDivisionIds?.[placementIndex] ?? '',
+                                                                                    ])[0] ?? null}
+                                                                                    comboboxProps={sharedComboboxProps}
+                                                                                    disabled={isImmutableField('divisions')}
+                                                                                    onChange={(value) => handleSetDivisionPlayoffMapping(
+                                                                                        detail.id,
+                                                                                        placementIndex,
+                                                                                        value,
+                                                                                    )}
+                                                                                />
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         {detail.ageCutoffLabel && (
                                                             <Text size="xs" c="dimmed">
                                                                 {detail.ageCutoffLabel}
@@ -6288,6 +6960,94 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         );
                                     })}
                                 </div>
+
+                                {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && eventData.splitLeaguePlayoffDivisions && (
+                                    <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+                                        <Group justify="space-between" align="center">
+                                            <div>
+                                                <Text fw={600} size="sm">Playoff Divisions</Text>
+                                                <Text size="xs" c="dimmed">
+                                                    Configure the playoff brackets that league placements feed into.
+                                                </Text>
+                                            </div>
+                                            <Button
+                                                variant="light"
+                                                onClick={handleAddPlayoffDivision}
+                                                disabled={isImmutableField('divisions')}
+                                            >
+                                                Add Playoff Division
+                                            </Button>
+                                        </Group>
+
+                                        {(eventData.playoffDivisionDetails || []).length === 0 ? (
+                                            <Text size="sm" c="dimmed">
+                                                No playoff divisions added yet.
+                                            </Text>
+                                        ) : (
+                                            <Stack gap="sm">
+                                                {(eventData.playoffDivisionDetails || []).map((playoffDivision, index) => (
+                                                    <Paper key={playoffDivision.id} withBorder radius="md" p="sm">
+                                                        <Stack gap="sm">
+                                                            <Group align="flex-end" justify="space-between" gap="sm" wrap="wrap">
+                                                                <TextInput
+                                                                    label="Playoff Division Name"
+                                                                    value={playoffDivision.name}
+                                                                    maw={320}
+                                                                    maxLength={MAX_MEDIUM_TEXT_LENGTH}
+                                                                    disabled={isImmutableField('divisions')}
+                                                                    onChange={(event) => handleUpdatePlayoffDivision(
+                                                                        playoffDivision.id,
+                                                                        { name: event.currentTarget.value },
+                                                                    )}
+                                                                />
+                                                                <NumberInput
+                                                                    label={eventData.teamSignup ? 'Teams Count' : 'Participants Count'}
+                                                                    value={playoffDivision.maxParticipants}
+                                                                    min={2}
+                                                                    max={MAX_STANDARD_NUMBER}
+                                                                    maw={220}
+                                                                    clampBehavior="strict"
+                                                                    disabled={isImmutableField('divisions')}
+                                                                    onChange={(value) => handleUpdatePlayoffDivision(
+                                                                        playoffDivision.id,
+                                                                        { maxParticipants: Number(value) || 2 },
+                                                                    )}
+                                                                    error={errors.playoffDivisionDetails?.[index]?.maxParticipants?.message as string | undefined}
+                                                                />
+                                                                <Button
+                                                                    size="xs"
+                                                                    color="red"
+                                                                    variant="subtle"
+                                                                    disabled={isImmutableField('divisions')}
+                                                                    onClick={() => handleRemovePlayoffDivision(playoffDivision.id)}
+                                                                >
+                                                                    Remove
+                                                                </Button>
+                                                            </Group>
+
+                                                            <TournamentFields
+                                                                title={`${playoffDivision.name} Playoff Settings`}
+                                                                tournamentData={buildTournamentConfig(playoffDivision.playoffConfig)}
+                                                                setTournamentData={(updater) => handleSetPlayoffDivisionConfig(playoffDivision.id, updater)}
+                                                                sport={eventData.sportConfig ?? undefined}
+                                                            />
+                                                        </Stack>
+                                                    </Paper>
+                                                ))}
+                                            </Stack>
+                                        )}
+
+                                        {playoffDivisionCapacityWarnings.length > 0 && (
+                                            <Alert color="yellow" radius="md">
+                                                <Stack gap={2}>
+                                                    {playoffDivisionCapacityWarnings.map((warning) => (
+                                                        <Text key={warning} size="sm">{warning}</Text>
+                                                    ))}
+                                                </Stack>
+                                            </Alert>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Team Settings */}
@@ -6402,6 +7162,34 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
+                                    {eventData.eventType === 'LEAGUE' && (
+                                        <Controller
+                                            name="splitLeaguePlayoffDivisions"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <Switch
+                                                    label="Split League & Playoff Divisions"
+                                                    description={leagueData.includePlayoffs
+                                                        ? 'Configure league divisions separately from playoff bracket divisions.'
+                                                        : 'Enable playoffs to configure split league/playoff divisions.'}
+                                                    checked={field.value}
+                                                    disabled={isImmutableField('splitLeaguePlayoffDivisions') || !leagueData.includePlayoffs}
+                                                    onChange={(event) => {
+                                                        if (isImmutableField('splitLeaguePlayoffDivisions')) return;
+                                                        const checked = event.currentTarget.checked;
+                                                        field.onChange(checked);
+                                                        if (checked && (eventData.playoffDivisionDetails || []).length === 0) {
+                                                            setValue(
+                                                                'playoffDivisionDetails',
+                                                                [createNextPlayoffDivision(eventData.playoffDivisionDetails || [], playoffData)],
+                                                                { shouldDirty: true, shouldValidate: true },
+                                                            );
+                                                        }
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                    )}
                                     <Text size="sm" c="dimmed">
                                         Leagues and tournaments are always team events. When single division is enabled,
                                         each timeslot is automatically assigned all selected divisions.
@@ -6488,7 +7276,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             showLeagueConfiguration={eventData.eventType === 'LEAGUE'}
                                         />
 
-                                        {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && (
+                                        {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions && (
                                             <TournamentFields
                                                 title="Playoffs Configuration"
                                                 tournamentData={playoffData}

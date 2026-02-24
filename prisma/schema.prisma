@@ -87,6 +87,11 @@ enum EventRegistrationsStatusEnum {
   CONSENTFAILED
 }
 
+enum DivisionsKindEnum {
+  LEAGUE
+  PLAYOFF
+}
+
 model Fields {
   id String @id
   createdAt DateTime?
@@ -146,12 +151,17 @@ model Divisions {
   updatedAt DateTime?
   name String
   key String?
+  kind DivisionsKindEnum? @default(LEAGUE)
   eventId String?
   organizationId String?
   sportId String?
   price Int?
   maxParticipants Int?
   playoffTeamCount Int?
+  playoffPlacementDivisionIds String[] @default([])
+  standingsOverrides Json?
+  standingsConfirmedAt DateTime?
+  standingsConfirmedBy String?
   allowPaymentPlans Boolean?
   installmentCount Int?
   installmentDueDates DateTime[] @default([])
@@ -417,6 +427,7 @@ model Events {
   installmentDueDates DateTime[]
   installmentAmounts Int[]
   allowTeamSplitDefault Boolean?
+  splitLeaguePlayoffDivisions Boolean? @default(false)
   requiredTemplateIds String[]
 
   @@index([organizationId])

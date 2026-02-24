@@ -8,7 +8,6 @@ const NUMERIC_FIELDS: Array<{ key: LeagueScoringConfigKey; label: string }> = [
   { key: 'pointsForWin', label: 'Points for Win' },
   { key: 'pointsForDraw', label: 'Points for Draw' },
   { key: 'pointsForLoss', label: 'Points for Loss' },
-  { key: 'pointsPerGoalScored', label: 'Points per Goal Scored' },
 ];
 
 interface LeagueScoringConfigPanelProps {
@@ -22,7 +21,6 @@ const FLAG_MAP: Partial<Record<LeagueScoringConfigKey, keyof Sport>> = {
   pointsForWin: 'usePointsForWin',
   pointsForDraw: 'usePointsForDraw',
   pointsForLoss: 'usePointsForLoss',
-  pointsPerGoalScored: 'usePointsPerGoalScored',
 };
 
 const shouldShowField = (sport: Sport | undefined, key: LeagueScoringConfigKey) => {
@@ -36,6 +34,9 @@ const LeagueScoringConfigPanel: React.FC<LeagueScoringConfigPanelProps> = ({ val
   <Stack gap="sm">
     <Text size="sm" c="dimmed">
       Configure only the scoring rules this app applies automatically to standings.
+    </Text>
+    <Text size="xs" c="dimmed">
+      Goal-based points are not applied automatically to league standings.
     </Text>
 
     <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 5 }} spacing="sm">

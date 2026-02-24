@@ -111,7 +111,7 @@ describe('finalizeMatch (league)', () => {
     expect(team1.losses + team2.losses).toBe(1);
   });
 
-  it('seeds playoff teams once all regular-season matches are scored (and assigns team refs for ready playoff matches)', () => {
+  it('does not auto-seed playoff teams when regular-season league matches are finalized', () => {
     const division = buildDivision();
     const field = buildField(division);
     const teams = buildTeams(4, division);
@@ -148,6 +148,12 @@ describe('finalizeMatch (league)', () => {
 
     const regularMatches = scheduled.matches.filter((match) => !isPlayoff(match));
     const playoffMatches = scheduled.matches.filter((match) => isPlayoff(match));
+    const initialPlayoffAssignments = new Map(
+      playoffMatches.map((match) => [
+        match.id,
+        [match.team1?.id ?? null, match.team2?.id ?? null] as const,
+      ]),
+    );
 
     expect(regularMatches.length).toBeGreaterThan(0);
     expect(playoffMatches.length).toBeGreaterThan(0);
@@ -174,21 +180,14 @@ describe('finalizeMatch (league)', () => {
       }
     }
 
-    expect(seeded).toEqual(['team_4', 'team_3', 'team_2', 'team_1']);
-    expect(league.teams.team_4.seed).toBe(4);
-    expect(league.teams.team_3.seed).toBe(3);
-    expect(league.teams.team_2.seed).toBe(2);
-    expect(league.teams.team_1.seed).toBe(1);
+    expect(seeded).toEqual([]);
+    expect(Object.values(league.teams).every((team) => team.seed === 0)).toBe(true);
 
-    const readyPlayoffMatches = Object.values(league.matches).filter(
-      (match) => isPlayoff(match) && match.team1 && match.team2,
-    );
-    expect(readyPlayoffMatches.length).toBeGreaterThan(0);
-    for (const match of readyPlayoffMatches) {
-      expect(match.field).not.toBeNull();
-      expect(match.teamReferee).not.toBeNull();
-      expect(match.teamReferee).not.toBe(match.team1);
-      expect(match.teamReferee).not.toBe(match.team2);
+    const updatedPlayoffMatches = Object.values(league.matches).filter((match) => isPlayoff(match));
+    for (const match of updatedPlayoffMatches) {
+      expect([match.team1?.id ?? null, match.team2?.id ?? null]).toEqual(
+        initialPlayoffAssignments.get(match.id),
+      );
     }
   });
 });

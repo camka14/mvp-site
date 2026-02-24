@@ -203,6 +203,38 @@ const resolveDivisionPlayoffTeamCount = (
   return Math.min(fallback, teamCount);
 };
 
+const resolveSplitPlayoffDivisionCapacity = (
+  event: League,
+  playoffDivision: Division,
+): number => {
+  const explicitCapacity = (() => {
+    if (typeof playoffDivision.maxParticipants === 'number' && Number.isFinite(playoffDivision.maxParticipants)) {
+      return Math.max(0, Math.trunc(playoffDivision.maxParticipants));
+    }
+    if (typeof playoffDivision.playoffTeamCount === 'number' && Number.isFinite(playoffDivision.playoffTeamCount)) {
+      return Math.max(0, Math.trunc(playoffDivision.playoffTeamCount));
+    }
+    return null;
+  })();
+  if (explicitCapacity !== null) {
+    return explicitCapacity;
+  }
+  const fallbackLeagueCount = typeof event.playoffTeamCount === 'number' && Number.isFinite(event.playoffTeamCount)
+    ? Math.max(0, Math.trunc(event.playoffTeamCount))
+    : 0;
+  return fallbackLeagueCount;
+};
+
+const resolveSplitPlayoffDivisionDoubleElimination = (
+  event: League,
+  playoffDivision: Division,
+): boolean => {
+  if (typeof playoffDivision.playoffConfig?.doubleElimination === 'boolean') {
+    return playoffDivision.playoffConfig.doubleElimination;
+  }
+  return Boolean(event.doubleElimination);
+};
+
 const describeScheduleFailure = (event: League, placeholderCount?: number): string => {
   let teamCount = Object.keys(event.teams).length;
   if (teamCount < 2 && placeholderCount) {
@@ -317,13 +349,31 @@ const estimateTotalMatches = (event: Tournament | League, teamCount: number): nu
 
 const estimateLeagueMatches = (event: League, teamCount: number): number => {
   const gamesPerOpponent = event.gamesPerOpponent || 1;
+  const splitPlayoffsEnabled = Boolean(event.splitLeaguePlayoffDivisions && event.playoffDivisions.length > 0);
   if (event.singleDivision || event.divisions.length === 0) {
     let regularMatches = 0;
     if (teamCount > 1) {
       regularMatches = Math.floor((teamCount * (teamCount - 1) / 2) * gamesPerOpponent);
     }
-    const playoffCount = event.includePlayoffs ? resolveDivisionPlayoffTeamCount(event, undefined, teamCount) : 0;
-    const playoffMatches = playoffCount >= 2 ? tournamentMatchCount(playoffCount, Boolean(event.doubleElimination)) : 0;
+    const playoffMatches = (() => {
+      if (!event.includePlayoffs) {
+        return 0;
+      }
+      if (splitPlayoffsEnabled) {
+        return event.playoffDivisions.reduce((total, playoffDivision) => {
+          const playoffCount = resolveSplitPlayoffDivisionCapacity(event, playoffDivision);
+          if (playoffCount < 2) {
+            return total;
+          }
+          return total + tournamentMatchCount(
+            playoffCount,
+            resolveSplitPlayoffDivisionDoubleElimination(event, playoffDivision),
+          );
+        }, 0);
+      }
+      const playoffCount = resolveDivisionPlayoffTeamCount(event, undefined, teamCount);
+      return playoffCount >= 2 ? tournamentMatchCount(playoffCount, Boolean(event.doubleElimination)) : 0;
+    })();
     return regularMatches + playoffMatches;
   }
 
@@ -336,7 +386,7 @@ const estimateLeagueMatches = (event: League, teamCount: number): number => {
       continue;
     }
     regularMatches += Math.floor((divisionTeamCount * (divisionTeamCount - 1) / 2) * gamesPerOpponent);
-    if (!event.includePlayoffs) {
+    if (!event.includePlayoffs || splitPlayoffsEnabled) {
       continue;
     }
     const playoffCount = resolveDivisionPlayoffTeamCount(
@@ -346,6 +396,18 @@ const estimateLeagueMatches = (event: League, teamCount: number): number => {
     );
     if (playoffCount >= 2) {
       playoffMatches += tournamentMatchCount(playoffCount, Boolean(event.doubleElimination));
+    }
+  }
+  if (event.includePlayoffs && splitPlayoffsEnabled) {
+    for (const playoffDivision of event.playoffDivisions) {
+      const playoffCount = resolveSplitPlayoffDivisionCapacity(event, playoffDivision);
+      if (playoffCount < 2) {
+        continue;
+      }
+      playoffMatches += tournamentMatchCount(
+        playoffCount,
+        resolveSplitPlayoffDivisionDoubleElimination(event, playoffDivision),
+      );
     }
   }
   return regularMatches + playoffMatches;
