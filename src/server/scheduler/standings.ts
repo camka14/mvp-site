@@ -118,6 +118,32 @@ export const getLeagueDivisionTeamIds = (league: League, divisionId: string): Se
     return teamIds;
   }
 
+  const division = getLeagueDivisionById(league, divisionId);
+  const hasConfiguredMembership = league.divisions.some(
+    (entry) => Array.isArray(entry.teamIds) && entry.teamIds.length > 0,
+  );
+  if (!league.singleDivision && division && hasConfiguredMembership) {
+    const configuredTeamIds = Array.isArray(division.teamIds)
+      ? division.teamIds
+      : [];
+    for (const rawTeamId of configuredTeamIds) {
+      const teamId = typeof rawTeamId === 'string' ? rawTeamId.trim() : '';
+      if (!teamId || !league.teams[teamId]) {
+        continue;
+      }
+      teamIds.add(teamId);
+    }
+    return teamIds;
+  }
+
+  // Single-division leagues intentionally ignore per-division teamIds.
+  if (league.singleDivision && league.divisions.length === 1) {
+    for (const teamId of Object.keys(league.teams)) {
+      teamIds.add(teamId);
+    }
+    return teamIds;
+  }
+
   for (const team of Object.values(league.teams)) {
     if (normalizeToken(team.division?.id) === normalizedDivisionId) {
       teamIds.add(team.id);
@@ -762,7 +788,11 @@ export const applyLeagueDivisionPlayoffReassignment = (
   league: League,
   divisionId: string,
   context: SchedulerContext = noopContext,
-): { affectedPlayoffDivisionIds: string[]; seededTeamIds: string[] } => {
+): {
+  affectedPlayoffDivisionIds: string[];
+  seededTeamIds: string[];
+  teamIdsByPlayoffDivision: Record<string, string[]>;
+} => {
   const leagueDivision = getLeagueDivisionById(league, divisionId);
   if (!leagueDivision) {
     throw new Error('League division not found.');
@@ -770,7 +800,7 @@ export const applyLeagueDivisionPlayoffReassignment = (
 
   const playoffTeamCount = getDivisionPlayoffTeamCount(league, leagueDivision);
   if (playoffTeamCount <= 0) {
-    return { affectedPlayoffDivisionIds: [], seededTeamIds: [] };
+    return { affectedPlayoffDivisionIds: [], seededTeamIds: [], teamIdsByPlayoffDivision: {} };
   }
 
   const affectedPlayoffDivisionIds = Array.from(
@@ -787,6 +817,7 @@ export const applyLeagueDivisionPlayoffReassignment = (
   });
 
   const seededTeamIds: string[] = [];
+  const teamIdsByPlayoffDivision: Record<string, string[]> = {};
 
   for (const playoffDivisionId of affectedPlayoffDivisionIds) {
     const playoffDivision = getPlayoffDivisionById(league, playoffDivisionId);
@@ -815,11 +846,21 @@ export const applyLeagueDivisionPlayoffReassignment = (
       seededEntrants,
       context,
     );
+    const normalizedAssignedTeamIds = Array.from(
+      new Set(
+        assignedTeamIds
+          .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
+          .filter((teamId): teamId is string => teamId.length > 0),
+      ),
+    );
+    playoffDivision.teamIds = normalizedAssignedTeamIds;
+    teamIdsByPlayoffDivision[playoffDivision.id] = normalizedAssignedTeamIds;
     seededTeamIds.push(...assignedTeamIds);
   }
 
   return {
     affectedPlayoffDivisionIds,
     seededTeamIds: Array.from(new Set(seededTeamIds)),
+    teamIdsByPlayoffDivision,
   };
 };

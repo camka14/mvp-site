@@ -79,6 +79,13 @@ const upsertEventWithUnknownArgFallback = async (
 
 const ensureArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : []);
 const ensureStringArray = (value: unknown): string[] => ensureArray(value as string[]);
+const normalizeTeamIdList = (value: unknown): string[] => Array.from(
+  new Set(
+    ensureArray(value as Array<string | null | undefined>)
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter((entry) => entry.length > 0),
+  ),
+);
 const ensureNumberArray = (value: unknown): number[] =>
   ensureArray(value as Array<number | string>)
     .map((item) => (typeof item === 'number' ? item : Number(item)))
@@ -398,6 +405,7 @@ type DivisionDetailPayload = {
   ageCutoffLabel: string | null;
   ageCutoffSource: string | null;
   fieldIds: string[];
+  teamIds: string[];
 };
 
 const normalizeDivisionDetailsPayload = (
@@ -472,6 +480,7 @@ const normalizeDivisionDetailsPayload = (
           .filter((value) => Number.isFinite(value))
           .map((value) => Math.max(0, Math.round(value)))
         : undefined;
+      const rawTeamIds = normalizeTeamIdList(row.teamIds);
 
       const detail: DivisionDetailPayload = {
         id,
@@ -510,6 +519,7 @@ const normalizeDivisionDetailsPayload = (
         ageCutoffLabel: typeof row.ageCutoffLabel === 'string' ? row.ageCutoffLabel : null,
         ageCutoffSource: typeof row.ageCutoffSource === 'string' ? row.ageCutoffSource : null,
         fieldIds: normalizeFieldIds(row.fieldIds),
+        teamIds: rawKind === 'PLAYOFF' ? [] : rawTeamIds,
       };
       return detail;
     })
@@ -816,6 +826,7 @@ const buildDivisions = (
     standingsOverrides?: unknown;
     standingsConfirmedAt?: Date | null;
     standingsConfirmedBy?: string | null;
+    teamIds?: string[] | null;
   }>,
   sportId?: string | null,
   options?: { allowFallback?: boolean; fallbackKind?: 'LEAGUE' | 'PLAYOFF' },
@@ -871,6 +882,7 @@ const buildDivisions = (
       ?? inferred.defaultName
       ?? buildDivisionDisplayName(divisionId, sportId);
     const fieldIds = ensureStringArray(matchedRow?.fieldIds);
+    const teamIds = normalizeTeamIdList(matchedRow?.teamIds);
     const division = new Division(
       divisionId,
       divisionName,
@@ -884,6 +896,7 @@ const buildDivisions = (
       matchedRow?.standingsConfirmedAt ?? null,
       matchedRow?.standingsConfirmedBy ?? null,
       playoffConfig,
+      teamIds,
     );
     result.push(division);
 
@@ -910,15 +923,22 @@ const buildDivisions = (
   return { divisions: result, map, fieldIdsByDivision };
 };
 
-const buildTeams = (rows: any[], divisionMap: Map<string, Division>, fallbackDivision: Division) => {
+const buildTeams = (
+  rows: any[],
+  divisionMap: Map<string, Division>,
+  fallbackDivision: Division,
+  divisionByTeamId: Map<string, Division> = new Map<string, Division>(),
+) => {
   const teams: Record<string, Team> = {};
   for (const row of rows) {
+    const mappedDivision = divisionByTeamId.get(row.id);
     const normalizedDivisionId = normalizeDivisionKey(row.division);
-    const division = normalizedDivisionId && divisionMap.has(normalizedDivisionId)
+    const division = mappedDivision
+      ?? (normalizedDivisionId && divisionMap.has(normalizedDivisionId)
       ? (divisionMap.get(normalizedDivisionId) as Division)
       : row.division && divisionMap.has(row.division)
       ? (divisionMap.get(row.division) as Division)
-      : fallbackDivision;
+      : fallbackDivision);
     teams[row.id] = new Team({
       id: row.id,
       seed: row.seed ?? 0,
@@ -1152,12 +1172,13 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
 
   const fieldIds = ensureStringArray(event.fieldIds);
   const teamIds = ensureStringArray(event.teamIds);
+  const teamIdsToLoad = Array.from(new Set(teamIds));
   const timeSlotIds = ensureStringArray(event.timeSlotIds);
   const refereeIds = ensureStringArray(event.refereeIds);
 
   const [fieldRows, teamRows, timeSlotRows, refereeRows, matchRows, leagueConfigRow] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
-    teamIds.length ? client.teams.findMany({ where: { id: { in: teamIds } } }) : Promise.resolve([]),
+    teamIdsToLoad.length ? client.teams.findMany({ where: { id: { in: teamIdsToLoad } } }) : Promise.resolve([]),
     timeSlotIds.length ? client.timeSlots.findMany({ where: { id: { in: timeSlotIds } } }) : Promise.resolve([]),
     refereeIds.length ? client.userData.findMany({ where: { id: { in: refereeIds } } }) : Promise.resolve([]),
     client.matches.findMany({ where: { eventId: event.id } }),
@@ -1166,7 +1187,21 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
 
   const fallbackFieldDivisionIds = leagueDivisionIds.length ? leagueDivisionIds : [DEFAULT_DIVISION_KEY];
   const fields = buildFields(fieldRows, divisionMap, fallbackFieldDivisionIds, fieldIdsByDivision);
-  const teams = buildTeams(teamRows, divisionMap, fallbackDivision);
+  const teamRosterSet = new Set(teamIdsToLoad);
+  const divisionByTeamId = new Map<string, Division>();
+  if (!Boolean(event.singleDivision) && divisions.length > 0) {
+    for (const division of divisions) {
+      for (const divisionTeamId of division.teamIds) {
+        if (!teamRosterSet.has(divisionTeamId)) {
+          continue;
+        }
+        if (!divisionByTeamId.has(divisionTeamId)) {
+          divisionByTeamId.set(divisionTeamId, division);
+        }
+      }
+    }
+  }
+  const teams = buildTeams(teamRows, divisionMap, fallbackDivision, divisionByTeamId);
   const timeSlots = buildTimeSlots(timeSlotRows, divisionMap, divisions);
   const referees = buildReferees(refereeRows, allDivisions);
   attachTimeSlotsToFields(fields, timeSlots);
@@ -1224,6 +1259,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     restTimeMinutes: event.restTimeMinutes ?? 0,
     state: event.state ?? 'UNPUBLISHED',
     leagueScoringConfig: leagueConfigRow ?? null,
+    registeredTeamIds: teamIds,
     teams,
     players: [],
     registrationIds: ensureStringArray(event.registrationIds),
@@ -1335,6 +1371,7 @@ export const syncEventDivisions = async (
     eventId: string;
     divisionIds: string[];
     fieldIds: string[];
+    singleDivision?: boolean;
     sportId?: string | null;
     referenceDate?: Date | null;
     organizationId?: string | null;
@@ -1417,6 +1454,7 @@ export const syncEventDivisions = async (
       standingsOverrides: true,
       standingsConfirmedAt: true,
       standingsConfirmedBy: true,
+      teamIds: true,
     },
   });
 
@@ -1526,6 +1564,15 @@ export const syncEventDivisions = async (
           ]),
         ).filter((fieldId) => !allowedFieldIds.size || allowedFieldIds.has(fieldId));
       })();
+    const mappedTeamIds = kind === 'PLAYOFF' || params.singleDivision
+      ? []
+      : normalizeTeamIdList(
+        resolveDivisionValue(
+          detail?.teamIds,
+          normalizeTeamIdList(existing?.teamIds),
+          [],
+        ) ?? [],
+      );
 
     const ratings = kind === 'PLAYOFF'
       ? { minRating: null, maxRating: null }
@@ -1688,8 +1735,25 @@ export const syncEventDivisions = async (
       minRating: ratings.minRating,
       maxRating: ratings.maxRating,
       fieldIds: mappedFieldIds,
+      teamIds: mappedTeamIds,
     };
   });
+
+  if (!params.singleDivision) {
+    const teamDivisionMap = new Map<string, string>();
+    for (const entry of finalEntries) {
+      if (entry.kind === 'PLAYOFF') {
+        continue;
+      }
+      for (const teamId of entry.teamIds) {
+        const existingDivisionId = teamDivisionMap.get(teamId);
+        if (existingDivisionId && existingDivisionId !== entry.id) {
+          throw new Error(`Team ${teamId} is assigned to more than one division.`);
+        }
+        teamDivisionMap.set(teamId, entry.id);
+      }
+    }
+  }
 
   const finalIdSet = new Set(
     finalEntries.map((entry) => normalizeDivisionKey(entry.id) ?? entry.id),
@@ -1742,6 +1806,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
+        teamIds: params.singleDivision ? [] : entry.teamIds,
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -1775,6 +1840,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
+        teamIds: params.singleDivision ? [] : entry.teamIds,
         updatedAt: now,
       } as any,
     });
@@ -2167,6 +2233,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     eventId: id,
     divisionIds: normalizedEventDivisionIds,
     fieldIds,
+    singleDivision: singleDivisionEnabled,
     sportId: payload.sportId ?? null,
     referenceDate: start,
     organizationId: payload.organizationId ?? null,

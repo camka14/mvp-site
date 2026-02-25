@@ -133,6 +133,7 @@ export type DivisionsCountAggregateOutputType = {
   ageCutoffLabel: number
   ageCutoffSource: number
   fieldIds: number
+  teamIds: number
   _all: number
 }
 
@@ -244,6 +245,7 @@ export type DivisionsCountAggregateInputType = {
   ageCutoffLabel?: true
   ageCutoffSource?: true
   fieldIds?: true
+  teamIds?: true
   _all?: true
 }
 
@@ -364,6 +366,7 @@ export type DivisionsGroupByOutputType = {
   ageCutoffLabel: string | null
   ageCutoffSource: string | null
   fieldIds: string[]
+  teamIds: string[]
   _count: DivisionsCountAggregateOutputType | null
   _avg: DivisionsAvgAggregateOutputType | null
   _sum: DivisionsSumAggregateOutputType | null
@@ -420,6 +423,7 @@ export type DivisionsWhereInput = {
   ageCutoffLabel?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ageCutoffSource?: Prisma.StringNullableFilter<"Divisions"> | string | null
   fieldIds?: Prisma.StringNullableListFilter<"Divisions">
+  teamIds?: Prisma.StringNullableListFilter<"Divisions">
 }
 
 export type DivisionsOrderByWithRelationInput = {
@@ -453,6 +457,7 @@ export type DivisionsOrderByWithRelationInput = {
   ageCutoffLabel?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffSource?: Prisma.SortOrderInput | Prisma.SortOrder
   fieldIds?: Prisma.SortOrder
+  teamIds?: Prisma.SortOrder
 }
 
 export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
@@ -489,6 +494,7 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   ageCutoffLabel?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ageCutoffSource?: Prisma.StringNullableFilter<"Divisions"> | string | null
   fieldIds?: Prisma.StringNullableListFilter<"Divisions">
+  teamIds?: Prisma.StringNullableListFilter<"Divisions">
 }, "id">
 
 export type DivisionsOrderByWithAggregationInput = {
@@ -522,6 +528,7 @@ export type DivisionsOrderByWithAggregationInput = {
   ageCutoffLabel?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffSource?: Prisma.SortOrderInput | Prisma.SortOrder
   fieldIds?: Prisma.SortOrder
+  teamIds?: Prisma.SortOrder
   _count?: Prisma.DivisionsCountOrderByAggregateInput
   _avg?: Prisma.DivisionsAvgOrderByAggregateInput
   _max?: Prisma.DivisionsMaxOrderByAggregateInput
@@ -563,6 +570,7 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   ageCutoffLabel?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   ageCutoffSource?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   fieldIds?: Prisma.StringNullableListFilter<"Divisions">
+  teamIds?: Prisma.StringNullableListFilter<"Divisions">
 }
 
 export type DivisionsCreateInput = {
@@ -596,6 +604,7 @@ export type DivisionsCreateInput = {
   ageCutoffLabel?: string | null
   ageCutoffSource?: string | null
   fieldIds?: Prisma.DivisionsCreatefieldIdsInput | string[]
+  teamIds?: Prisma.DivisionsCreateteamIdsInput | string[]
 }
 
 export type DivisionsUncheckedCreateInput = {
@@ -629,6 +638,7 @@ export type DivisionsUncheckedCreateInput = {
   ageCutoffLabel?: string | null
   ageCutoffSource?: string | null
   fieldIds?: Prisma.DivisionsCreatefieldIdsInput | string[]
+  teamIds?: Prisma.DivisionsCreateteamIdsInput | string[]
 }
 
 export type DivisionsUpdateInput = {
@@ -662,6 +672,7 @@ export type DivisionsUpdateInput = {
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
+  teamIds?: Prisma.DivisionsUpdateteamIdsInput | string[]
 }
 
 export type DivisionsUncheckedUpdateInput = {
@@ -695,6 +706,7 @@ export type DivisionsUncheckedUpdateInput = {
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
+  teamIds?: Prisma.DivisionsUpdateteamIdsInput | string[]
 }
 
 export type DivisionsCreateManyInput = {
@@ -728,6 +740,7 @@ export type DivisionsCreateManyInput = {
   ageCutoffLabel?: string | null
   ageCutoffSource?: string | null
   fieldIds?: Prisma.DivisionsCreatefieldIdsInput | string[]
+  teamIds?: Prisma.DivisionsCreateteamIdsInput | string[]
 }
 
 export type DivisionsUpdateManyMutationInput = {
@@ -761,6 +774,7 @@ export type DivisionsUpdateManyMutationInput = {
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
+  teamIds?: Prisma.DivisionsUpdateteamIdsInput | string[]
 }
 
 export type DivisionsUncheckedUpdateManyInput = {
@@ -794,6 +808,7 @@ export type DivisionsUncheckedUpdateManyInput = {
   ageCutoffLabel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffSource?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldIds?: Prisma.DivisionsUpdatefieldIdsInput | string[]
+  teamIds?: Prisma.DivisionsUpdateteamIdsInput | string[]
 }
 
 export type DateTimeNullableListFilter<$PrismaModel = never> = {
@@ -835,6 +850,7 @@ export type DivisionsCountOrderByAggregateInput = {
   ageCutoffLabel?: Prisma.SortOrder
   ageCutoffSource?: Prisma.SortOrder
   fieldIds?: Prisma.SortOrder
+  teamIds?: Prisma.SortOrder
 }
 
 export type DivisionsAvgOrderByAggregateInput = {
@@ -929,6 +945,10 @@ export type DivisionsCreatefieldIdsInput = {
   set: string[]
 }
 
+export type DivisionsCreateteamIdsInput = {
+  set: string[]
+}
+
 export type NullableEnumDivisionsKindEnumFieldUpdateOperationsInput = {
   set?: $Enums.DivisionsKindEnum | null
 }
@@ -957,6 +977,11 @@ export type DivisionsUpdateinstallmentAmountsInput = {
 }
 
 export type DivisionsUpdatefieldIdsInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
+export type DivisionsUpdateteamIdsInput = {
   set?: string[]
   push?: string | string[]
 }
@@ -994,6 +1019,7 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   ageCutoffLabel?: boolean
   ageCutoffSource?: boolean
   fieldIds?: boolean
+  teamIds?: boolean
 }, ExtArgs["result"]["divisions"]>
 
 export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1027,6 +1053,7 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   ageCutoffLabel?: boolean
   ageCutoffSource?: boolean
   fieldIds?: boolean
+  teamIds?: boolean
 }, ExtArgs["result"]["divisions"]>
 
 export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1060,6 +1087,7 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   ageCutoffLabel?: boolean
   ageCutoffSource?: boolean
   fieldIds?: boolean
+  teamIds?: boolean
 }, ExtArgs["result"]["divisions"]>
 
 export type DivisionsSelectScalar = {
@@ -1093,9 +1121,10 @@ export type DivisionsSelectScalar = {
   ageCutoffLabel?: boolean
   ageCutoffSource?: boolean
   fieldIds?: boolean
+  teamIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -1131,6 +1160,7 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     ageCutoffLabel: string | null
     ageCutoffSource: string | null
     fieldIds: string[]
+    teamIds: string[]
   }, ExtArgs["result"]["divisions"]>
   composites: {}
 }
@@ -1584,6 +1614,7 @@ export interface DivisionsFieldRefs {
   readonly ageCutoffLabel: Prisma.FieldRef<"Divisions", 'String'>
   readonly ageCutoffSource: Prisma.FieldRef<"Divisions", 'String'>
   readonly fieldIds: Prisma.FieldRef<"Divisions", 'String[]'>
+  readonly teamIds: Prisma.FieldRef<"Divisions", 'String[]'>
 }
     
 

@@ -44,6 +44,19 @@ const normalizeFieldIds = (value: unknown): string[] => {
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
 };
 
+const normalizeTeamIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
 const normalizeOptionalBoolean = (value: unknown): boolean | null => {
   if (typeof value === 'boolean') {
     return value;
@@ -179,6 +192,7 @@ const getDivisionDetailsForEvent = async (
       ageCutoffLabel: true,
       ageCutoffSource: true,
       fieldIds: true,
+      teamIds: true,
     },
   });
   const rows = Array.isArray(rawRows) ? rawRows : [];
@@ -262,6 +276,7 @@ const getDivisionDetailsForEvent = async (
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
       fieldIds: normalizeFieldIds(row?.fieldIds ?? []),
+      teamIds: normalizeTeamIds((row as any)?.teamIds),
     };
   });
 
@@ -320,6 +335,13 @@ const isFixedEndValidationError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes('No fixed end date/time')
     || message.includes('End date/time must be after start date/time');
+};
+
+const isDivisionAssignmentValidationError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('assigned to more than one division')
+    || normalized.includes('assigned to multiple divisions');
 };
 
 export async function GET(req: NextRequest) {
@@ -464,6 +486,10 @@ export async function POST(req: NextRequest) {
     }
     if (isFixedEndValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid schedule window';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isDivisionAssignmentValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid division team assignments';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Create event failed', error);

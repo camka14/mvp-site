@@ -18,6 +18,98 @@ const isLeague = (event: League | Tournament): event is League => {
   return event instanceof League || event.eventType === 'LEAGUE';
 };
 
+const normalizeTeamId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const normalizeLeagueRosterTeamIds = (league: League): string[] => {
+  const source = Array.isArray(league.registeredTeamIds) && league.registeredTeamIds.length
+    ? league.registeredTeamIds
+    : Object.keys(league.teams);
+  return Array.from(
+    new Set(
+      source
+        .map((teamId) => normalizeTeamId(teamId))
+        .filter((teamId): teamId is string => Boolean(teamId))
+        .filter((teamId) => Boolean(league.teams[teamId])),
+    ),
+  );
+};
+
+const applyRosterToLeagueTeams = (
+  league: League,
+  rosterTeamIds: string[],
+  divisionByTeamId: Map<string, Division> = new Map<string, Division>(),
+): void => {
+  if (!rosterTeamIds.length) {
+    return;
+  }
+  const nextTeams: Record<string, (typeof league.teams)[string]> = {};
+  for (const teamId of rosterTeamIds) {
+    const team = league.teams[teamId];
+    if (!team) {
+      continue;
+    }
+    const mappedDivision = divisionByTeamId.get(teamId);
+    if (mappedDivision) {
+      team.division = mappedDivision;
+    }
+    nextTeams[teamId] = team;
+  }
+  league.teams = nextTeams;
+};
+
+const formatTeamLabel = (league: League, teamId: string): string => {
+  const team = league.teams[teamId];
+  const name = team?.name?.trim() ?? '';
+  return name.length > 0 ? `${name} (${teamId})` : teamId;
+};
+
+const buildSplitDivisionAssignmentState = (
+  league: League,
+  rosterTeamIds: string[],
+): {
+  divisionByTeamId: Map<string, Division>;
+  unassignedTeamIds: string[];
+  duplicateAssignments: Array<{ teamId: string; divisionIds: string[] }>;
+} => {
+  const rosterSet = new Set(rosterTeamIds);
+  const divisionByTeamId = new Map<string, Division>();
+  const duplicateAssignments = new Map<string, Set<string>>();
+
+  for (const division of league.divisions) {
+    for (const rawTeamId of division.teamIds ?? []) {
+      const teamId = normalizeTeamId(rawTeamId);
+      if (!teamId || !rosterSet.has(teamId)) {
+        continue;
+      }
+      const existingDivision = divisionByTeamId.get(teamId);
+      if (existingDivision && existingDivision.id !== division.id) {
+        const conflictDivisionIds = duplicateAssignments.get(teamId) ?? new Set<string>([existingDivision.id]);
+        conflictDivisionIds.add(division.id);
+        duplicateAssignments.set(teamId, conflictDivisionIds);
+        continue;
+      }
+      divisionByTeamId.set(teamId, division);
+    }
+  }
+
+  const duplicateEntries = Array.from(duplicateAssignments.entries())
+    .map(([teamId, divisionIds]) => ({ teamId, divisionIds: Array.from(divisionIds) }));
+
+  const unassignedTeamIds = rosterTeamIds.filter((teamId) => !divisionByTeamId.has(teamId));
+
+  return {
+    divisionByTeamId,
+    unassignedTeamIds,
+    duplicateAssignments: duplicateEntries,
+  };
+};
+
 const OPEN_ENDED_WEEKS = 52;
 const NO_FIELDS_MESSAGE_REGEX = /^Unable to schedule event because no fields are available(?: for divisions:\s*(.+))?\.$/i;
 
@@ -61,6 +153,44 @@ const buildLeagueSchedule = (
   context: SchedulerContext,
   openEndedSchedule: boolean,
 ): ScheduleResult => {
+  const rosterTeamIds = normalizeLeagueRosterTeamIds(league);
+  const splitDivisionMode = !league.singleDivision && league.divisions.length > 0;
+
+  if (splitDivisionMode) {
+    const assignmentState = buildSplitDivisionAssignmentState(league, rosterTeamIds);
+
+    if (assignmentState.duplicateAssignments.length > 0) {
+      const divisionNameById = new Map<string, string>();
+      for (const division of league.divisions) {
+        divisionNameById.set(division.id, division.name || division.id);
+      }
+      const conflictSummary = assignmentState.duplicateAssignments
+        .map(({ teamId, divisionIds }) => {
+          const divisionNames = divisionIds
+            .map((divisionId) => divisionNameById.get(divisionId) ?? divisionId)
+            .join(', ');
+          return `${formatTeamLabel(league, teamId)} -> ${divisionNames}`;
+        })
+        .join('; ');
+      throw new ScheduleError(
+        `Cannot schedule split-division league because a team is assigned to multiple divisions: ${conflictSummary}.`,
+      );
+    }
+
+    if (assignmentState.unassignedTeamIds.length > 0) {
+      const unassigned = assignmentState.unassignedTeamIds
+        .map((teamId) => formatTeamLabel(league, teamId))
+        .join(', ');
+      throw new ScheduleError(
+        `Cannot schedule split-division league until all teams are assigned to a division. Unassigned teams: ${unassigned}.`,
+      );
+    }
+
+    applyRosterToLeagueTeams(league, rosterTeamIds, assignmentState.divisionByTeamId);
+  } else {
+    applyRosterToLeagueTeams(league, rosterTeamIds);
+  }
+
   if (!league.timeSlots.length) {
     throw new ScheduleError(describeScheduleFailure(league, league.maxParticipants));
   }

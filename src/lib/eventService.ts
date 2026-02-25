@@ -137,6 +137,43 @@ class EventService {
         }
     }
 
+    async addTeamParticipant(eventId: string, params: { teamId: string; divisionId?: string | null }): Promise<Event> {
+        try {
+            await apiRequest<any>(`/api/events/${eventId}/participants`, {
+                method: 'POST',
+                body: {
+                    teamId: params.teamId,
+                    ...(params.divisionId ? { divisionId: params.divisionId } : {}),
+                },
+            });
+            const hydrated = await this.getEventById(eventId);
+            if (!hydrated) {
+                throw new Error('Failed to refresh event after adding team participant');
+            }
+            return hydrated;
+        } catch (error) {
+            console.error('Failed to add team participant:', error);
+            throw error;
+        }
+    }
+
+    async removeTeamParticipant(eventId: string, teamId: string): Promise<Event> {
+        try {
+            await apiRequest<any>(`/api/events/${eventId}/participants`, {
+                method: 'DELETE',
+                body: { teamId },
+            });
+            const hydrated = await this.getEventById(eventId);
+            if (!hydrated) {
+                throw new Error('Failed to refresh event after removing team participant');
+            }
+            return hydrated;
+        } catch (error) {
+            console.error('Failed to remove team participant:', error);
+            throw error;
+        }
+    }
+
     async updateEvent(eventId: string, eventData: Partial<Event>): Promise<Event> {
         try {
             const payload = toEventPayload(eventData as Event)
@@ -498,6 +535,9 @@ class EventService {
                         : undefined,
                     fieldIds: Array.isArray(entry?.fieldIds)
                         ? entry.fieldIds.map((fieldId: unknown) => String(fieldId)).filter(Boolean)
+                        : [],
+                    teamIds: Array.isArray(entry?.teamIds)
+                        ? entry.teamIds.map((teamId: unknown) => String(teamId)).filter(Boolean)
                         : [],
                     ageCutoffDate: typeof entry?.ageCutoffDate === 'string' ? entry.ageCutoffDate : undefined,
                     ageCutoffLabel: typeof entry?.ageCutoffLabel === 'string' ? entry.ageCutoffLabel : undefined,

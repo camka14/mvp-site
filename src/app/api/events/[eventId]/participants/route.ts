@@ -7,6 +7,8 @@ import { calculateAgeOnDate } from '@/lib/age';
 import {
   resolveEventDivisionSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
+import { canManageEvent } from '@/server/accessControl';
+import { extractDivisionTokenFromId } from '@/lib/divisionTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +70,98 @@ const normalizeSportKey = (value: unknown): string => {
     return '';
   }
   return value.trim().toLowerCase();
+};
+
+const normalizeDivisionToken = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length ? normalized : null;
+};
+
+const normalizeDivisionTeamIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return ensureUnique(
+    value
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter((entry) => entry.length > 0),
+  );
+};
+
+const divisionMatchesTarget = (
+  row: { id?: string | null; key?: string | null },
+  targetDivisionId: string | null,
+): boolean => {
+  const normalizedTarget = normalizeDivisionToken(targetDivisionId);
+  if (!normalizedTarget) {
+    return false;
+  }
+  const aliases = new Set<string>();
+  const rowId = normalizeDivisionToken(row.id);
+  const rowKey = normalizeDivisionToken(row.key);
+  if (rowId) {
+    aliases.add(rowId);
+    const token = extractDivisionTokenFromId(rowId);
+    if (token) {
+      aliases.add(token);
+    }
+  }
+  if (rowKey) {
+    aliases.add(rowKey);
+  }
+  return aliases.has(normalizedTarget);
+};
+
+const syncDivisionTeamMembership = async (params: {
+  event: {
+    id: string;
+    singleDivision: boolean | null;
+    divisions: string[] | null;
+  };
+  teamId: string;
+  mode: 'add' | 'remove';
+  targetDivisionId: string | null;
+}) => {
+  const eventDivisionIds = normalizeUserIdList(params.event.divisions);
+  if (!eventDivisionIds.length) {
+    return;
+  }
+  const rows = await prisma.divisions.findMany({
+    where: {
+      eventId: params.event.id,
+      OR: [
+        { id: { in: eventDivisionIds } },
+        { key: { in: eventDivisionIds } },
+      ],
+    },
+    select: {
+      id: true,
+      key: true,
+      teamIds: true,
+      kind: true,
+    },
+  });
+
+  const shouldAssignToDivision = params.mode === 'add' && !Boolean(params.event.singleDivision);
+  for (const row of rows) {
+    const isPlayoff = typeof row.kind === 'string' && row.kind.toUpperCase() === 'PLAYOFF';
+    if (isPlayoff) {
+      continue;
+    }
+    const currentTeamIds = normalizeDivisionTeamIds(row.teamIds).filter((teamId) => teamId !== params.teamId);
+    const shouldIncludeTeam = shouldAssignToDivision && divisionMatchesTarget(row, params.targetDivisionId);
+    const nextTeamIds = shouldIncludeTeam ? ensureUnique([...currentTeamIds, params.teamId]) : currentTeamIds;
+    await prisma.divisions.update({
+      where: { id: row.id },
+      data: {
+        teamIds: nextTeamIds,
+        updatedAt: new Date(),
+      },
+    });
+  }
 };
 
 const canManageLinkedChildParticipant = async (params: {
@@ -316,7 +410,17 @@ async function updateParticipants(
   let nextFreeAgentIds = normalizeUserIdList(event.freeAgentIds);
 
   if (mode === 'add' && teamId && nextTeamIds.includes(teamId)) {
-    return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
+    const canManageExistingTeamRegistration = await canManageEvent(
+      session,
+      {
+        hostId: event.hostId,
+        assistantHostIds: event.assistantHostIds,
+        organizationId: event.organizationId,
+      },
+    );
+    if (!canManageExistingTeamRegistration) {
+      return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
+    }
   }
   if (mode === 'add' && userId && nextUserIds.includes(userId)) {
     return NextResponse.json({ error: 'User is already registered for this event.' }, { status: 409 });
@@ -387,6 +491,16 @@ async function updateParticipants(
           updatedAt: now,
         },
       });
+      await syncDivisionTeamMembership({
+        event: {
+          id: eventId,
+          singleDivision: event.singleDivision,
+          divisions: event.divisions,
+        },
+        teamId,
+        mode,
+        targetDivisionId: divisionSelection.divisionId,
+      });
     } else {
       await prisma.eventRegistrations.deleteMany({
         where: {
@@ -394,6 +508,16 @@ async function updateParticipants(
           registrantId: teamId,
           registrantType: 'TEAM',
         },
+      });
+      await syncDivisionTeamMembership({
+        event: {
+          id: eventId,
+          singleDivision: event.singleDivision,
+          divisions: event.divisions,
+        },
+        teamId,
+        mode,
+        targetDivisionId: null,
       });
     }
   }

@@ -76,6 +76,7 @@ export class Division implements Group {
   name: string;
   kind: 'LEAGUE' | 'PLAYOFF';
   fieldIds: string[];
+  teamIds: string[];
   price: number | null;
   maxParticipants: number | null;
   playoffTeamCount: number | null;
@@ -98,6 +99,7 @@ export class Division implements Group {
     standingsConfirmedAt?: Date | null,
     standingsConfirmedBy?: string | null,
     playoffConfig?: PlayoffDivisionConfig | null,
+    teamIds?: string[],
   ) {
     this.id = id;
     this.name = name ?? id;
@@ -126,6 +128,9 @@ export class Division implements Group {
           loserBracketPointsToVictory: [...(playoffConfig.loserBracketPointsToVictory ?? [])],
         }
       : null;
+    this.teamIds = Array.isArray(teamIds)
+      ? Array.from(new Set(teamIds.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0)))
+      : [];
   }
 }
 
@@ -556,6 +561,7 @@ export class Tournament {
   restTimeMinutes: number;
   state: string;
   leagueScoringConfig: Record<string, any> | null;
+  registeredTeamIds: string[];
   teams: Record<string, Team>;
   players: UserData[];
   registrationIds: string[];
@@ -622,6 +628,7 @@ export class Tournament {
     restTimeMinutes?: number;
     state?: string;
     leagueScoringConfig?: Record<string, any> | null;
+    registeredTeamIds?: string[];
     teams?: Record<string, Team>;
     players?: UserData[];
     registrationIds?: string[];
@@ -687,6 +694,15 @@ export class Tournament {
     this.restTimeMinutes = params.restTimeMinutes ?? 0;
     this.state = params.state ?? 'UNPUBLISHED';
     this.leagueScoringConfig = params.leagueScoringConfig ?? null;
+    this.registeredTeamIds = Array.isArray(params.registeredTeamIds)
+      ? Array.from(
+          new Set(
+            params.registeredTeamIds
+              .map((entry) => String(entry).trim())
+              .filter((entry) => entry.length > 0),
+          ),
+        )
+      : [];
     this.teams = params.teams ?? {};
     this.players = params.players ?? [];
     this.registrationIds = params.registrationIds ?? [];

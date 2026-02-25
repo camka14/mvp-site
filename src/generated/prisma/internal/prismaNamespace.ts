@@ -2696,7 +2696,8 @@ export const DivisionsScalarFieldEnum = {
   ageCutoffDate: 'ageCutoffDate',
   ageCutoffLabel: 'ageCutoffLabel',
   ageCutoffSource: 'ageCutoffSource',
-  fieldIds: 'fieldIds'
+  fieldIds: 'fieldIds',
+  teamIds: 'teamIds'
 } as const
 
 export type DivisionsScalarFieldEnum = (typeof DivisionsScalarFieldEnum)[keyof typeof DivisionsScalarFieldEnum]
@@ -2891,6 +2892,7 @@ export const RefundRequestsScalarFieldEnum = {
   eventId: 'eventId',
   userId: 'userId',
   hostId: 'hostId',
+  teamId: 'teamId',
   reason: 'reason',
   organizationId: 'organizationId',
   status: 'status'

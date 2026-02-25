@@ -171,6 +171,23 @@ const getDivisionKind = (division: unknown): 'LEAGUE' | 'PLAYOFF' | null => {
   return null;
 };
 
+const getDivisionTeamIds = (division: unknown): string[] => {
+  if (!division || typeof division !== 'object') {
+    return [];
+  }
+  const rawTeamIds = (division as { teamIds?: unknown }).teamIds;
+  if (!Array.isArray(rawTeamIds)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      rawTeamIds
+        .map((teamId) => normalizeIdToken(teamId))
+        .filter((teamId): teamId is string => Boolean(teamId)),
+    ),
+  );
+};
+
 const getTeamDivision = (team: Match['team1'] | Match['team2']): unknown => {
   if (!team) {
     return null;
@@ -428,6 +445,7 @@ function EventScheduleContent() {
   const [participantsError, setParticipantsError] = useState<string | null>(null);
   const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
   const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
+  const [selectedAddTeamDivisionId, setSelectedAddTeamDivisionId] = useState<string | null>(null);
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
   const [organizationTeamsForPicker, setOrganizationTeamsForPicker] = useState<Team[]>([]);
   const [organizationTeamsLoading, setOrganizationTeamsLoading] = useState(false);
@@ -776,6 +794,41 @@ function EventScheduleContent() {
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
+
+  const isSplitDivisionEvent = Boolean(
+    (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
+      && !activeEvent?.singleDivision
+      && leagueDivisionOptions.length > 0,
+  );
+
+  const participantDivisionColumns = useMemo<Array<{ id: string; label: string; teamIds: string[] }>>(() => {
+    const sourceDivisions = Array.isArray(activeEvent?.divisionDetails)
+      ? activeEvent.divisionDetails
+      : Array.isArray(activeEvent?.divisions)
+        ? activeEvent.divisions
+        : [];
+    const columns: Array<{ id: string; label: string; teamIds: string[] }> = [];
+    sourceDivisions.forEach((division) => {
+      if (getDivisionKind(division) === 'PLAYOFF') {
+        return;
+      }
+      const divisionId = getDivisionId(division);
+      if (!divisionId) {
+        return;
+      }
+      columns.push({
+        id: divisionId,
+        label: getDivisionLabel(division) ?? divisionId,
+        teamIds: getDivisionTeamIds(division),
+      });
+    });
+    return columns;
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
+
+  const participantDivisionSelectData = useMemo(
+    () => participantDivisionColumns.map((column) => ({ value: column.id, label: column.label })),
+    [participantDivisionColumns],
+  );
 
   useEffect(() => {
     if (selectedScheduleDivision === 'all') {
@@ -1213,6 +1266,49 @@ function EventScheduleContent() {
 
   const participantTeamIdSet = useMemo(() => new Set(participantTeamIds), [participantTeamIds]);
 
+  const participantTeamsById = useMemo(() => {
+    const teams = new Map<string, Team>();
+    participantTeams.forEach((team) => {
+      if (team?.$id) {
+        teams.set(team.$id, team);
+      }
+    });
+    if (Array.isArray(activeEvent?.teams)) {
+      activeEvent.teams.forEach((team) => {
+        if (team?.$id && !teams.has(team.$id)) {
+          teams.set(team.$id, team);
+        }
+      });
+    }
+    return teams;
+  }, [activeEvent?.teams, participantTeams]);
+
+  const assignedParticipantTeamIds = useMemo(() => {
+    const assigned = new Set<string>();
+    participantDivisionColumns.forEach((column) => {
+      column.teamIds.forEach((teamId) => {
+        if (participantTeamIdSet.has(teamId)) {
+          assigned.add(teamId);
+        }
+      });
+    });
+    return assigned;
+  }, [participantDivisionColumns, participantTeamIdSet]);
+
+  const unassignedParticipantTeamIds = useMemo(
+    () => participantTeamIds.filter((teamId) => !assignedParticipantTeamIds.has(teamId)),
+    [assignedParticipantTeamIds, participantTeamIds],
+  );
+
+  const unassignedParticipantTeams = useMemo(
+    () => unassignedParticipantTeamIds
+      .map((teamId) => participantTeamsById.get(teamId))
+      .filter((team): team is Team => Boolean(team)),
+    [participantTeamsById, unassignedParticipantTeamIds],
+  );
+
+  const hasSplitDivisionUnassignedTeams = isSplitDivisionEvent && unassignedParticipantTeamIds.length > 0;
+
   const organizationIdForParticipants = useMemo(() => {
     const organizationId = normalizeIdToken(activeEvent?.organizationId);
     if (organizationId) {
@@ -1331,6 +1427,25 @@ function EventScheduleContent() {
     if (!isAddTeamModalOpen) {
       return;
     }
+    if (!isSplitDivisionEvent) {
+      if (selectedAddTeamDivisionId !== null) {
+        setSelectedAddTeamDivisionId(null);
+      }
+      return;
+    }
+    if (
+      selectedAddTeamDivisionId
+      && participantDivisionSelectData.some((option) => option.value === selectedAddTeamDivisionId)
+    ) {
+      return;
+    }
+    setSelectedAddTeamDivisionId(participantDivisionSelectData[0]?.value ?? null);
+  }, [isAddTeamModalOpen, isSplitDivisionEvent, participantDivisionSelectData, selectedAddTeamDivisionId]);
+
+  useEffect(() => {
+    if (!isAddTeamModalOpen) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -1408,50 +1523,93 @@ function EventScheduleContent() {
     };
   }, [activeEvent?.organization, isAddTeamModalOpen, organizationIdForParticipants]);
 
-  const syncParticipantTeams = useCallback(
-    async (nextTeamIds: string[], successMessage: string) => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) {
-        return;
+  const refreshParticipantTeamsFromServer = useCallback(
+    async (targetEventId: string) => {
+      const refreshedEvent = await eventService.getEventById(targetEventId);
+      if (!refreshedEvent) {
+        throw new Error('Failed to refresh event participants.');
       }
 
-      const normalizedTeamIds = Array.from(
+      const refreshedTeamIds = Array.from(
         new Set(
-          nextTeamIds
+          (Array.isArray(refreshedEvent.teamIds) ? refreshedEvent.teamIds : [])
             .map((teamId) => normalizeIdToken(teamId))
             .filter((teamId): teamId is string => Boolean(teamId)),
         ),
       );
-      const normalizedUserIds = Array.isArray(activeEvent?.userIds)
-        ? Array.from(new Set(activeEvent.userIds.map((userId) => String(userId)).filter(Boolean)))
+      const refreshedTeams = refreshedTeamIds.length > 0
+        ? await teamService.getTeamsByIds(refreshedTeamIds, true)
         : [];
+      const refreshedTeamsById = new Map(refreshedTeams.map((team) => [team.$id, team]));
+      const orderedTeams = refreshedTeamIds
+        .map((teamId) => refreshedTeamsById.get(teamId))
+        .filter((team): team is Team => Boolean(team));
+
+      setParticipantTeams(orderedTeams);
+      setEvent((prev) => (prev
+        ? {
+            ...prev,
+            teamIds: refreshedTeamIds,
+            teams: orderedTeams,
+            divisions: refreshedEvent.divisions ?? prev.divisions,
+            divisionDetails: refreshedEvent.divisionDetails ?? prev.divisionDetails,
+            playoffDivisionDetails: refreshedEvent.playoffDivisionDetails ?? prev.playoffDivisionDetails,
+          }
+        : prev));
+      setChangesEvent((prev) => (prev
+        ? {
+            ...prev,
+            teamIds: refreshedTeamIds,
+            teams: orderedTeams,
+            divisions: refreshedEvent.divisions ?? prev.divisions,
+            divisionDetails: refreshedEvent.divisionDetails ?? prev.divisionDetails,
+            playoffDivisionDetails: refreshedEvent.playoffDivisionDetails ?? prev.playoffDivisionDetails,
+          }
+        : prev));
+    },
+    [],
+  );
+
+  const mutateTeamParticipantMembership = useCallback(
+    async (params: {
+      team: Team;
+      mode: 'add' | 'remove' | 'move';
+      divisionId?: string | null;
+    }) => {
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) {
+        return;
+      }
+      if (!params.team?.$id) {
+        return;
+      }
 
       setParticipantsError(null);
       setActionError(null);
       try {
-        await eventService.updateEventParticipants(targetEventId, {
-          userIds: normalizedUserIds,
-          teamIds: normalizedTeamIds,
+        if (params.mode === 'remove') {
+          await eventService.removeTeamParticipant(targetEventId, params.team.$id);
+          await refreshParticipantTeamsFromServer(targetEventId);
+          setInfoMessage(`${params.team.name || 'Team'} removed from participants.`);
+          return;
+        }
+
+        await eventService.addTeamParticipant(targetEventId, {
+          teamId: params.team.$id,
+          divisionId: params.divisionId ?? undefined,
         });
-
-        const hydratedTeams = normalizedTeamIds.length > 0
-          ? await teamService.getTeamsByIds(normalizedTeamIds, true)
-          : [];
-        const hydratedById = new Map(hydratedTeams.map((team) => [team.$id, team]));
-        const orderedTeams = normalizedTeamIds
-          .map((teamId) => hydratedById.get(teamId))
-          .filter((team): team is Team => Boolean(team));
-
-        setParticipantTeams(orderedTeams);
-        setEvent((prev) => (prev ? { ...prev, teamIds: normalizedTeamIds, teams: orderedTeams } : prev));
-        setChangesEvent((prev) => (prev ? { ...prev, teamIds: normalizedTeamIds, teams: orderedTeams } : prev));
-        setInfoMessage(successMessage);
+        await refreshParticipantTeamsFromServer(targetEventId);
+        if (params.mode === 'move') {
+          setInfoMessage(`${params.team.name || 'Team'} moved to a new division.`);
+        } else {
+          setInfoMessage(`${params.team.name || 'Team'} added to participants.`);
+        }
       } catch (updateError) {
         console.error('Failed to update event participants:', updateError);
         setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
       }
     },
-    [activeEvent?.$id, activeEvent?.userIds, eventId],
+    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer],
   );
 
   const handleAddTeamToParticipants = useCallback(
@@ -1460,14 +1618,47 @@ function EventScheduleContent() {
         return;
       }
 
+      if (isSplitDivisionEvent && !selectedAddTeamDivisionId) {
+        setParticipantsError('Select a division before adding a team.');
+        return;
+      }
+
       setParticipantsUpdatingTeamId(team.$id);
-      await syncParticipantTeams(
-        [...participantTeamIds, team.$id],
-        `${team.name || 'Team'} added to participants.`,
-      );
+      await mutateTeamParticipantMembership({
+        team,
+        mode: 'add',
+        divisionId: isSplitDivisionEvent ? selectedAddTeamDivisionId : undefined,
+      });
       setParticipantsUpdatingTeamId(null);
     },
-    [participantTeamIdSet, participantTeamIds, participantsUpdatingTeamId, syncParticipantTeams],
+    [
+      isSplitDivisionEvent,
+      mutateTeamParticipantMembership,
+      participantTeamIdSet,
+      participantsUpdatingTeamId,
+      selectedAddTeamDivisionId,
+    ],
+  );
+
+  const handleMoveTeamDivision = useCallback(
+    async (team: Team, nextDivisionId: string | null) => {
+      if (!nextDivisionId || !team?.$id || participantsUpdatingTeamId || !canManageEvent) {
+        return;
+      }
+      const currentDivisionId = participantDivisionColumns.find((column) => column.teamIds.includes(team.$id))?.id ?? null;
+      if (currentDivisionId === nextDivisionId) {
+        return;
+      }
+
+      setParticipantsUpdatingTeamId(team.$id);
+      await mutateTeamParticipantMembership({
+        team,
+        mode: 'move',
+        divisionId: nextDivisionId,
+      });
+      setParticipantsUpdatingTeamId(null);
+    },
+    [canManageEvent, mutateTeamParticipantMembership, participantDivisionColumns, participantsUpdatingTeamId],
   );
 
   const handleRemoveTeamFromParticipants = useCallback(
@@ -1484,13 +1675,13 @@ function EventScheduleContent() {
       }
 
       setParticipantsUpdatingTeamId(team.$id);
-      await syncParticipantTeams(
-        participantTeamIds.filter((teamId) => teamId !== team.$id),
-        `${team.name || 'Team'} removed from participants.`,
-      );
+      await mutateTeamParticipantMembership({
+        team,
+        mode: 'remove',
+      });
       setParticipantsUpdatingTeamId(null);
     },
-    [participantTeamIdSet, participantTeamIds, participantsUpdatingTeamId, syncParticipantTeams],
+    [mutateTeamParticipantMembership, participantTeamIdSet, participantsUpdatingTeamId],
   );
 
   const resolveTeam = useCallback(
@@ -3664,7 +3855,7 @@ function EventScheduleContent() {
                       <Button
                         color="green"
                         onClick={isCreateMode ? handlePublish : handleSaveEvent}
-                        disabled={!hasPendingUnsavedChanges}
+                        disabled={!hasPendingUnsavedChanges || hasSplitDivisionUnassignedTeams}
                       >
                         {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
                       </Button>
@@ -3673,6 +3864,7 @@ function EventScheduleContent() {
                       <Button
                         variant="light"
                         onClick={handleRescheduleMatches}
+                        disabled={hasSplitDivisionUnassignedTeams}
                       >
                         Reschedule Matches
                       </Button>
@@ -3720,6 +3912,13 @@ function EventScheduleContent() {
             </Alert>
           )}
 
+          {hasSplitDivisionUnassignedTeams && (
+            <Alert color="yellow" radius="md">
+              Split-division leagues require every registered team to be assigned to a division before saving or rescheduling.
+              Unassigned teams: {unassignedParticipantTeamIds.join(', ')}.
+            </Alert>
+          )}
+
           {actionError && (
             <Alert color="red" radius="md" onClose={() => setActionError(null)} withCloseButton>
               {actionError}
@@ -3729,7 +3928,7 @@ function EventScheduleContent() {
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tabs.List>
               <Tabs.Tab value="details">Details</Tabs.Tab>
-              {showParticipantsTab && <Tabs.Tab value="participants">Participants</Tabs.Tab>}
+              {showParticipantsTab && <Tabs.Tab value="participants">{isSplitDivisionEvent ? 'Divisions' : 'Participants'}</Tabs.Tab>}
               {showScheduleTab && <Tabs.Tab value="schedule">Schedule</Tabs.Tab>}
               {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
               {showStandingsTab && <Tabs.Tab value="standings">Standings</Tabs.Tab>}
@@ -3776,6 +3975,7 @@ function EventScheduleContent() {
                         onClick={() => {
                           setParticipantsError(null);
                           setTeamSearchQuery('');
+                          setSelectedAddTeamDivisionId(null);
                           setIsAddTeamModalOpen(true);
                         }}
                       >
@@ -3801,6 +4001,127 @@ function EventScheduleContent() {
                     <Paper withBorder radius="md" p="xl" ta="center">
                       <Text>No teams have been added yet.</Text>
                     </Paper>
+                  ) : isSplitDivisionEvent ? (
+                    <div className="overflow-x-auto">
+                      <Group align="flex-start" gap="md" wrap="nowrap">
+                        {participantDivisionColumns.map((column) => {
+                          const columnTeams = column.teamIds
+                            .map((teamId) => participantTeamsById.get(teamId))
+                            .filter((team): team is Team => Boolean(team));
+                          return (
+                            <Paper key={column.id} withBorder radius="md" p="md" miw={320}>
+                              <Stack gap="sm">
+                                <Group justify="space-between" align="center">
+                                  <Text fw={600}>{column.label}</Text>
+                                  <Text size="xs" c="dimmed">{columnTeams.length}</Text>
+                                </Group>
+                                {columnTeams.length === 0 ? (
+                                  <Text size="sm" c="dimmed">No teams assigned.</Text>
+                                ) : (
+                                  <Stack gap="sm">
+                                    {columnTeams.map((team) => (
+                                      <TeamCard
+                                        key={`${column.id}:${team.$id}`}
+                                        team={team}
+                                        actions={
+                                          canManageEvent
+                                            ? (
+                                              participantsUpdatingTeamId === team.$id
+                                                ? <Text size="xs" c="dimmed">Updating...</Text>
+                                                : (
+                                                  <Stack gap={6}>
+                                                    <Select
+                                                      size="xs"
+                                                      data={participantDivisionSelectData}
+                                                      value={column.id}
+                                                      onChange={(value) => {
+                                                        void handleMoveTeamDivision(team, value);
+                                                      }}
+                                                      allowDeselect={false}
+                                                      w={200}
+                                                    />
+                                                    <Button
+                                                      size="xs"
+                                                      variant="light"
+                                                      color="red"
+                                                      onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleRemoveTeamFromParticipants(team);
+                                                      }}
+                                                    >
+                                                      Remove
+                                                    </Button>
+                                                  </Stack>
+                                                )
+                                            )
+                                            : undefined
+                                        }
+                                      />
+                                    ))}
+                                  </Stack>
+                                )}
+                              </Stack>
+                            </Paper>
+                          );
+                        })}
+                        <Paper withBorder radius="md" p="md" miw={320}>
+                          <Stack gap="sm">
+                            <Group justify="space-between" align="center">
+                              <Text fw={600}>Unassigned</Text>
+                              <Text size="xs" c={unassignedParticipantTeams.length > 0 ? 'red' : 'dimmed'}>
+                                {unassignedParticipantTeams.length}
+                              </Text>
+                            </Group>
+                            {unassignedParticipantTeams.length === 0 ? (
+                              <Text size="sm" c="dimmed">All teams assigned.</Text>
+                            ) : (
+                              <Stack gap="sm">
+                                {unassignedParticipantTeams.map((team) => (
+                                  <TeamCard
+                                    key={`unassigned:${team.$id}`}
+                                    team={team}
+                                    actions={
+                                      canManageEvent
+                                        ? (
+                                          participantsUpdatingTeamId === team.$id
+                                            ? <Text size="xs" c="dimmed">Updating...</Text>
+                                            : (
+                                              <Stack gap={6}>
+                                                <Select
+                                                  size="xs"
+                                                  data={participantDivisionSelectData}
+                                                  value={null}
+                                                  placeholder="Move to division"
+                                                  onChange={(value) => {
+                                                    void handleMoveTeamDivision(team, value);
+                                                  }}
+                                                  allowDeselect
+                                                  w={200}
+                                                />
+                                                <Button
+                                                  size="xs"
+                                                  variant="light"
+                                                  color="red"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    void handleRemoveTeamFromParticipants(team);
+                                                  }}
+                                                >
+                                                  Remove
+                                                </Button>
+                                              </Stack>
+                                            )
+                                        )
+                                        : undefined
+                                    }
+                                  />
+                                ))}
+                              </Stack>
+                            )}
+                          </Stack>
+                        </Paper>
+                      </Group>
+                    </div>
                   ) : (
                     <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                       {participantTeams.map((team) => (
@@ -4114,6 +4435,7 @@ function EventScheduleContent() {
         onClose={() => {
           setIsAddTeamModalOpen(false);
           setTeamSearchQuery('');
+          setSelectedAddTeamDivisionId(null);
         }}
         title="Add Team"
         size="xl"
@@ -4127,6 +4449,16 @@ function EventScheduleContent() {
             value={teamSearchQuery}
             onChange={(event) => setTeamSearchQuery(event.currentTarget.value)}
           />
+
+          {isSplitDivisionEvent && (
+            <Select
+              label="Assign to division"
+              data={participantDivisionSelectData}
+              value={selectedAddTeamDivisionId}
+              onChange={(value) => setSelectedAddTeamDivisionId(value)}
+              allowDeselect={false}
+            />
+          )}
 
           {organizationIdForParticipants && (
             <Stack gap="sm">

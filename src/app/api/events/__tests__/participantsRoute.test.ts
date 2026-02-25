@@ -9,6 +9,7 @@ const prismaMock = {
   },
   divisions: {
     findMany: jest.fn(),
+    update: jest.fn(),
   },
   signedDocuments: {
     findMany: jest.fn(),
@@ -36,9 +37,11 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const canManageEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/accessControl', () => ({ canManageEvent: (...args: any[]) => canManageEventMock(...args) }));
 
 import { DELETE, POST } from '@/app/api/events/[eventId]/participants/route';
 
@@ -86,8 +89,12 @@ describe('POST /api/events/[eventId]/participants', () => {
         ageCutoffDate: null,
         ageCutoffLabel: null,
         ageCutoffSource: null,
+        teamIds: [],
+        kind: 'LEAGUE',
       },
     ]);
+    prismaMock.divisions.update.mockResolvedValue({});
+    canManageEventMock.mockResolvedValue(false);
     prismaMock.userData.findMany.mockResolvedValue([]);
     prismaMock.userData.findUnique.mockResolvedValue({
       dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
@@ -191,6 +198,105 @@ describe('POST /api/events/[eventId]/participants', () => {
     expect(response.status).toBe(200);
     expect(payload.error).toBeUndefined();
     expect(prismaMock.events.update).toHaveBeenCalled();
+  });
+
+  it('allows event manager to move an already-registered team to a different division', async () => {
+    canManageEventMock.mockResolvedValueOnce(true);
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['team_1'],
+      registrationByDivisionType: true,
+      divisions: ['div_a', 'div_b'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      hostId: 'host_1',
+      assistantHostIds: ['manager_1'],
+      organizationId: null,
+      singleDivision: false,
+    });
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'div_a',
+          key: 'c_skill_open',
+          name: 'Open A',
+          sportId: 'volleyball',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          ageCutoffDate: null,
+          ageCutoffLabel: null,
+          ageCutoffSource: null,
+          teamIds: ['team_1'],
+          kind: 'LEAGUE',
+        },
+        {
+          id: 'div_b',
+          key: 'c_skill_advanced',
+          name: 'Advanced',
+          sportId: 'volleyball',
+          divisionTypeId: 'advanced',
+          divisionTypeName: 'Advanced',
+          ratingType: 'SKILL',
+          gender: 'C',
+          ageCutoffDate: null,
+          ageCutoffLabel: null,
+          ageCutoffSource: null,
+          teamIds: [],
+          kind: 'LEAGUE',
+        },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'div_a', key: 'c_skill_open', teamIds: ['team_1'], kind: 'LEAGUE' },
+        { id: 'div_b', key: 'c_skill_advanced', teamIds: [], kind: 'LEAGUE' },
+      ]);
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+    });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      userIds: [],
+      teamIds: ['team_1'],
+    });
+    prismaMock.eventRegistrations.upsert.mockResolvedValueOnce({
+      id: 'event_1__team__team_1',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        userId: 'user_1',
+        teamId: 'team_1',
+        divisionTypeKey: 'c_skill_advanced',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          divisionId: 'div_b',
+          divisionTypeId: 'advanced',
+          divisionTypeKey: 'c_skill_advanced',
+        }),
+      }),
+    );
+    expect(prismaMock.divisions.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'div_b' },
+        data: expect.objectContaining({ teamIds: ['team_1'] }),
+      }),
+    );
   });
 
   it('allows team registration when team has no resolvable division type', async () => {

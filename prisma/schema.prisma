@@ -176,6 +176,7 @@ model Divisions {
   ageCutoffLabel String?
   ageCutoffSource String?
   fieldIds String[] @default([])
+  teamIds String[] @default([])
 
   @@index([eventId])
   @@index([organizationId])
@@ -348,6 +349,7 @@ model RefundRequests {
   eventId String
   userId String
   hostId String?
+  teamId String?
   reason String
   organizationId String?
   status RefundRequestsStatusEnum?

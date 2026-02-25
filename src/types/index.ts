@@ -44,6 +44,7 @@ export interface Division {
   installmentDueDates?: string[];
   installmentAmounts?: number[];
   fieldIds?: string[];
+  teamIds?: string[];
   skillLevel?: string;
   minRating?: number;
   maxRating?: number;
@@ -588,6 +589,7 @@ export interface RefundRequest {
   eventId: string;
   userId: string;
   hostId?: string;
+  teamId?: string;
   organizationId?: string;
   reason: string;
   status?: 'WAITING' | 'APPROVED' | 'REJECTED';
@@ -998,6 +1000,9 @@ export function toEventPayload(event: Event): EventPayload {
           fieldIds: Array.isArray(division.fieldIds)
             ? uniqueIds(division.fieldIds.map((fieldId) => String(fieldId)))
             : [],
+          teamIds: Array.isArray(division.teamIds)
+            ? uniqueIds(division.teamIds.map((teamId) => String(teamId)))
+            : [],
           ageCutoffDate: typeof division.ageCutoffDate === 'string' ? division.ageCutoffDate : undefined,
           ageCutoffLabel: typeof division.ageCutoffLabel === 'string' ? division.ageCutoffLabel : undefined,
           ageCutoffSource: typeof division.ageCutoffSource === 'string' ? division.ageCutoffSource : undefined,
@@ -1094,6 +1099,9 @@ export function toEventPayload(event: Event): EventPayload {
               : Number.isFinite(Number(division.playoffTeamCount))
                 ? Number(division.playoffTeamCount)
                 : undefined,
+          teamIds: Array.isArray(division.teamIds)
+            ? uniqueIds(division.teamIds.map((teamId) => String(teamId)))
+            : [],
           playoffConfig,
         };
       })

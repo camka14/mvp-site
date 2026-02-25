@@ -404,6 +404,88 @@ describe('upsertEventFromPayload', () => {
     );
   });
 
+  it('rejects split-division payloads that assign a team to multiple league divisions', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    const advancedDivisionId = divisionId('advanced');
+
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN', 'ADVANCED'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          teamIds: ['team_1'],
+        },
+        {
+          id: advancedDivisionId,
+          key: 'advanced',
+          name: 'Advanced',
+          divisionTypeId: 'advanced',
+          divisionTypeName: 'Advanced',
+          ratingType: 'SKILL',
+          gender: 'C',
+          teamIds: ['team_1'],
+        },
+      ],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any))
+      .rejects
+      .toThrow('Team team_1 is assigned to more than one division.');
+  });
+
+  it('clears persisted division teamIds when singleDivision mode is enabled', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    const advancedDivisionId = divisionId('advanced');
+
+    const payload = {
+      ...baseEventPayload(),
+      singleDivision: true,
+      divisions: ['OPEN', 'ADVANCED'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          teamIds: ['team_1'],
+        },
+        {
+          id: advancedDivisionId,
+          key: 'advanced',
+          name: 'Advanced',
+          divisionTypeId: 'advanced',
+          divisionTypeName: 'Advanced',
+          ratingType: 'SKILL',
+          gender: 'C',
+          teamIds: ['team_2', 'team_3'],
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const leagueDivisionUpsertCalls = client.divisions.upsert.mock.calls.filter(
+      ([args]) => args.where.id === openDivisionId || args.where.id === advancedDivisionId,
+    );
+    expect(leagueDivisionUpsertCalls).toHaveLength(2);
+    for (const [args] of leagueDivisionUpsertCalls) {
+      expect(args.create.teamIds).toEqual([]);
+      expect(args.update.teamIds).toEqual([]);
+    }
+  });
+
   it('preserves playoff placement indexes when mapping includes empty positions', async () => {
     const client = createMockClient();
     const openDivisionId = divisionId('open');

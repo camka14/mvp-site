@@ -321,6 +321,19 @@ const normalizeFieldIds = (value: unknown): string[] => {
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
 };
 
+const normalizeTeamIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
 const normalizeSlotFieldIds = (slot: Record<string, unknown>): string[] => {
   const fromList = normalizeFieldIds(slot.scheduledFieldIds);
   if (fromList.length) {
@@ -583,9 +596,43 @@ const normalizeDivisionDetailsInput = (
       ageCutoffLabel: ageEligibility.message ?? null,
       ageCutoffSource: ageEligibility.applies ? ageEligibility.cutoffRule.source : null,
       fieldIds: normalizeFieldIds(row.fieldIds),
+      teamIds: parsedKind === 'PLAYOFF' ? [] : normalizeTeamIds(row.teamIds),
     });
   }
   return details;
+};
+
+const validateUniqueDivisionTeamAssignments = (
+  divisionDetails: Array<Record<string, unknown>>,
+  singleDivision: boolean,
+) => {
+  if (singleDivision) {
+    return;
+  }
+  const assignmentMap = new Map<string, string>();
+  for (const detail of divisionDetails) {
+    const kind = normalizeDivisionKind(detail.kind, 'LEAGUE');
+    if (kind === 'PLAYOFF') {
+      continue;
+    }
+    const divisionId = normalizeDivisionKey(detail.id)
+      ?? normalizeDivisionKey(detail.key)
+      ?? '';
+    if (!divisionId) {
+      continue;
+    }
+    const teamIds = normalizeTeamIds(detail.teamIds);
+    for (const teamId of teamIds) {
+      const assignedDivisionId = assignmentMap.get(teamId);
+      if (assignedDivisionId && assignedDivisionId !== divisionId) {
+        throw new Response(
+          `Team ${teamId} is assigned to multiple divisions. Each team can only belong to one division.`,
+          { status: 400 },
+        );
+      }
+      assignmentMap.set(teamId, divisionId);
+    }
+  }
 };
 
 const buildDivisionFieldMap = (
@@ -769,6 +816,7 @@ const getDivisionDetailsForEvent = async (
       ageCutoffLabel: true,
       ageCutoffSource: true,
       fieldIds: true,
+      teamIds: true,
     },
   });
   const rows = Array.isArray(rawRows) ? rawRows : [];
@@ -868,6 +916,7 @@ const getDivisionDetailsForEvent = async (
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
       fieldIds: normalizeFieldIds(row?.fieldIds ?? []),
+      teamIds: kind === 'PLAYOFF' ? [] : normalizeTeamIds((row as any)?.teamIds),
     };
   });
 };
@@ -1183,6 +1232,13 @@ const hasScheduleImpact = (existing: any, payload: Record<string, any>): boolean
   });
 };
 
+const isDivisionAssignmentValidationError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('assigned to more than one division')
+    || normalized.includes('assigned to multiple divisions');
+};
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
   const event = await prisma.events.findUnique({ where: { id: eventId } });
@@ -1444,6 +1500,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const nextSingleDivision = typeof data.singleDivision === 'boolean'
         ? data.singleDivision
         : Boolean(existing.singleDivision);
+      if (incomingDivisionDetails.length > 0) {
+        validateUniqueDivisionTeamAssignments(incomingDivisionDetails, nextSingleDivision);
+      }
       const nextEventTypeRaw = (data.eventType ?? existing.eventType ?? null) as string | null;
       const nextEventType = typeof nextEventTypeRaw === 'string'
         ? nextEventTypeRaw.toUpperCase()
@@ -1706,6 +1765,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           eventId,
           divisionIds: nextDivisionKeys,
           fieldIds: nextFieldIds,
+          singleDivision: nextSingleDivision,
           sportId: (data.sportId ?? existing.sportId ?? null) as string | null,
           referenceDate: (data.start ?? existing.start ?? null) as Date | null,
           organizationId: (data.organizationId ?? existing.organizationId ?? null) as string | null,
@@ -1771,6 +1831,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     if (error instanceof Response) return error;
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (isDivisionAssignmentValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid division team assignments';
+      return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Update event failed', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

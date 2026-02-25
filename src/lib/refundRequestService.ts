@@ -14,6 +14,7 @@ class RefundRequestService {
       eventId: row.eventId ?? '',
       userId: row.userId ?? '',
       hostId: row.hostId ?? undefined,
+      teamId: row.teamId ?? undefined,
       organizationId: row.organizationId ?? undefined,
       reason: row.reason ?? '',
       status: row.status ?? 'WAITING',

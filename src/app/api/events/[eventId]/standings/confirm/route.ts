@@ -85,6 +85,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
 
       let reassignedPlayoffDivisionIds: string[] = [];
       let seededTeamIds: string[] = [];
+      let teamIdsByPlayoffDivision: Record<string, string[]> = {};
       if (applyReassignment) {
         const reassignment = applyLeagueDivisionPlayoffReassignment(
           league,
@@ -92,8 +93,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         );
         reassignedPlayoffDivisionIds = reassignment.affectedPlayoffDivisionIds;
         seededTeamIds = reassignment.seededTeamIds;
+        teamIdsByPlayoffDivision = reassignment.teamIdsByPlayoffDivision;
 
         if (reassignedPlayoffDivisionIds.length) {
+          const now = new Date();
+          await Promise.all(
+            reassignedPlayoffDivisionIds.map((playoffDivisionId) =>
+              tx.divisions.update({
+                where: { id: playoffDivisionId },
+                data: {
+                  teamIds: teamIdsByPlayoffDivision[playoffDivisionId] ?? [],
+                  updatedAt: now,
+                } as any,
+              }),
+            ),
+          );
           await saveMatches(eventId, Object.values(league.matches), tx);
           await saveTeamRecords(Object.values(league.teams), tx);
         }
@@ -104,6 +118,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         applyReassignment,
         reassignedPlayoffDivisionIds,
         seededTeamIds,
+        teamIdsByPlayoffDivision,
       };
     });
 
