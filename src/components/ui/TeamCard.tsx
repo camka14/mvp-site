@@ -1,4 +1,5 @@
-import { Team, UserData, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import { extractDivisionTokenFromId, inferDivisionDetails, parseDivisionToken } from '@/lib/divisionTypes';
+import { Team, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import { Paper, Group, Avatar, Text, Badge, SimpleGrid } from '@mantine/core';
 
 interface TeamCardProps {
@@ -16,10 +17,59 @@ export default function TeamCard({
   onClick,
   className = ''
 }: TeamCardProps) {
+  const resolveLabel = (value: unknown): string | null => {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  };
+  const looksLikeDivisionId = (value: string): boolean => {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    if (normalized.includes('__division__')) return true;
+    if (normalized.startsWith('division_') || normalized.startsWith('div_')) return true;
+    return false;
+  };
 
-  const divisionLabel = typeof team.division === 'string'
+  const divisionObject = typeof team.division === 'object' && team.division !== null
     ? team.division
-    : team.division?.name || team.division?.skillLevel || 'Division';
+    : null;
+
+  const divisionLabelFromObject = resolveLabel(divisionObject?.name)
+    ?? resolveLabel(divisionObject?.divisionTypeName)
+    ?? resolveLabel(divisionObject?.skillLevel);
+
+  const divisionLabelFromTypeName = resolveLabel(team.divisionTypeName);
+
+  const divisionLabelFromString = (() => {
+    const rawDivision = resolveLabel(typeof team.division === 'string' ? team.division : null);
+    if (!rawDivision) return null;
+
+    if (!looksLikeDivisionId(rawDivision)) {
+      return rawDivision;
+    }
+
+    const divisionToken = extractDivisionTokenFromId(rawDivision);
+    const parsedToken = divisionToken ? parseDivisionToken(divisionToken) : null;
+    if (!parsedToken) {
+      return null;
+    }
+
+    return inferDivisionDetails({
+      identifier: rawDivision,
+      sportInput: team.sport,
+    }).defaultName;
+  })();
+
+  const divisionLabel = divisionLabelFromObject
+    ?? divisionLabelFromTypeName
+    ?? divisionLabelFromString
+    ?? 'Division';
+
+  const divisionMetaLabel = /division$/i.test(divisionLabel)
+    ? divisionLabel
+    : `${divisionLabel} Division`;
 
   return (
     <Paper withBorder radius="md" p="md" className={className} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
@@ -29,7 +79,7 @@ export default function TeamCard({
           <div style={{ flex: 1, minWidth: 0 }}>
             <Text fw={600} size="lg" truncate>{team.name || 'Unnamed Team'}</Text>
             <Group gap={6} mt={4}>
-              <Text size="sm" c="dimmed">{divisionLabel} Division</Text>
+              <Text size="sm" c="dimmed">{divisionMetaLabel}</Text>
               {team.sport && <Badge variant="light" color="blue" size="xs">{team.sport}</Badge>}
               {team.isFull && <Badge variant="light" color="red" size="xs">Full</Badge>}
             </Group>

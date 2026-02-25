@@ -405,7 +405,7 @@ type DivisionDetailPayload = {
   ageCutoffLabel: string | null;
   ageCutoffSource: string | null;
   fieldIds: string[];
-  teamIds: string[];
+  teamIds?: string[];
 };
 
 const normalizeDivisionDetailsPayload = (
@@ -455,7 +455,10 @@ const normalizeDivisionDetailsPayload = (
       const rawMaxParticipants = coerceNullableNumber(row.maxParticipants);
       const rawPlayoffTeamCount = coerceNullableNumber(row.playoffTeamCount);
       const rawKind = normalizeDivisionKind(row.kind, defaultKind);
-      const rawPlayoffPlacementDivisionIds = normalizePlacementDivisionIdentifierList(row.playoffPlacementDivisionIds, eventId);
+      const hasPlayoffPlacementDivisionIdsInput = Object.prototype.hasOwnProperty.call(row, 'playoffPlacementDivisionIds');
+      const rawPlayoffPlacementDivisionIds = hasPlayoffPlacementDivisionIdsInput
+        ? normalizePlacementDivisionIdentifierList(row.playoffPlacementDivisionIds, eventId)
+        : undefined;
       const rawStandingsOverrides = normalizeStandingsOverrides(row.standingsOverrides);
       const rawPlayoffConfig = rawKind === 'PLAYOFF'
         ? (
@@ -480,7 +483,8 @@ const normalizeDivisionDetailsPayload = (
           .filter((value) => Number.isFinite(value))
           .map((value) => Math.max(0, Math.round(value)))
         : undefined;
-      const rawTeamIds = normalizeTeamIdList(row.teamIds);
+      const hasTeamIdsInput = Object.prototype.hasOwnProperty.call(row, 'teamIds');
+      const rawTeamIds = hasTeamIdsInput ? normalizeTeamIdList(row.teamIds) : undefined;
 
       const detail: DivisionDetailPayload = {
         id,
@@ -502,7 +506,9 @@ const normalizeDivisionDetailsPayload = (
           : rawPlayoffTeamCount === null
             ? null
             : Math.max(0, Math.trunc(rawPlayoffTeamCount)),
-        playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds,
+        ...(rawPlayoffPlacementDivisionIds !== undefined
+          ? { playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds }
+          : {}),
         standingsOverrides: rawStandingsOverrides,
         playoffConfig: rawPlayoffConfig,
         standingsConfirmedAt: rawStandingsConfirmedAt,
@@ -519,7 +525,11 @@ const normalizeDivisionDetailsPayload = (
         ageCutoffLabel: typeof row.ageCutoffLabel === 'string' ? row.ageCutoffLabel : null,
         ageCutoffSource: typeof row.ageCutoffSource === 'string' ? row.ageCutoffSource : null,
         fieldIds: normalizeFieldIds(row.fieldIds),
-        teamIds: rawKind === 'PLAYOFF' ? [] : rawTeamIds,
+        ...(rawKind === 'PLAYOFF'
+          ? { teamIds: [] }
+          : hasTeamIdsInput
+            ? { teamIds: rawTeamIds }
+            : {}),
       };
       return detail;
     })
@@ -1745,7 +1755,7 @@ export const syncEventDivisions = async (
       if (entry.kind === 'PLAYOFF') {
         continue;
       }
-      for (const teamId of entry.teamIds) {
+      for (const teamId of entry.teamIds ?? []) {
         const existingDivisionId = teamDivisionMap.get(teamId);
         if (existingDivisionId && existingDivisionId !== entry.id) {
           throw new Error(`Team ${teamId} is assigned to more than one division.`);
@@ -1806,7 +1816,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
-        teamIds: params.singleDivision ? [] : entry.teamIds,
+        teamIds: params.singleDivision ? [] : (entry.teamIds ?? []),
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -1840,7 +1850,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
-        teamIds: params.singleDivision ? [] : entry.teamIds,
+        teamIds: params.singleDivision ? [] : (entry.teamIds ?? []),
         updatedAt: now,
       } as any,
     });

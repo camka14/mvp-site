@@ -47,7 +47,7 @@ export class EventBuilder {
     if (!(this.event instanceof League)) {
       return false;
     }
-    return Boolean(this.event.splitLeaguePlayoffDivisions && this.event.playoffDivisions.length > 0);
+    return Boolean(this.event.splitLeaguePlayoffDivisions);
   }
 
   private schedulingDivisions(): Division[] {
@@ -141,6 +141,11 @@ export class EventBuilder {
     }
     if (this.useSplitPlayoffDivisions) {
       const league = this.event as League;
+      if (!league.playoffDivisions.length) {
+        throw new Error(
+          'Split playoff divisions are enabled but no playoff divisions are configured. Add at least one playoff division or disable split playoffs.',
+        );
+      }
       return league.playoffDivisions.some((division) => this.resolvePlayoffParticipantCount(division, participantCount) >= 2);
     }
     return participantCount > 1;

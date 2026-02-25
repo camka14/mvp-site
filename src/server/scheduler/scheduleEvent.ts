@@ -110,6 +110,22 @@ const buildSplitDivisionAssignmentState = (
   };
 };
 
+const hasConfiguredSplitDivisionMembership = (
+  league: League,
+  rosterTeamIds: string[],
+): boolean => {
+  if (!rosterTeamIds.length) {
+    return false;
+  }
+  const rosterSet = new Set(rosterTeamIds);
+  return league.divisions.some((division) => (
+    (division.teamIds ?? []).some((rawTeamId) => {
+      const teamId = normalizeTeamId(rawTeamId);
+      return Boolean(teamId && rosterSet.has(teamId));
+    })
+  ));
+};
+
 const OPEN_ENDED_WEEKS = 52;
 const NO_FIELDS_MESSAGE_REGEX = /^Unable to schedule event because no fields are available(?: for divisions:\s*(.+))?\.$/i;
 
@@ -157,36 +173,43 @@ const buildLeagueSchedule = (
   const splitDivisionMode = !league.singleDivision && league.divisions.length > 0;
 
   if (splitDivisionMode) {
-    const assignmentState = buildSplitDivisionAssignmentState(league, rosterTeamIds);
+    const splitMembershipConfigured = hasConfiguredSplitDivisionMembership(league, rosterTeamIds);
+    if (splitMembershipConfigured) {
+      const assignmentState = buildSplitDivisionAssignmentState(league, rosterTeamIds);
 
-    if (assignmentState.duplicateAssignments.length > 0) {
-      const divisionNameById = new Map<string, string>();
-      for (const division of league.divisions) {
-        divisionNameById.set(division.id, division.name || division.id);
+      if (assignmentState.duplicateAssignments.length > 0) {
+        const divisionNameById = new Map<string, string>();
+        for (const division of league.divisions) {
+          divisionNameById.set(division.id, division.name || division.id);
+        }
+        const conflictSummary = assignmentState.duplicateAssignments
+          .map(({ teamId, divisionIds }) => {
+            const divisionNames = divisionIds
+              .map((divisionId) => divisionNameById.get(divisionId) ?? divisionId)
+              .join(', ');
+            return `${formatTeamLabel(league, teamId)} -> ${divisionNames}`;
+          })
+          .join('; ');
+        throw new ScheduleError(
+          `Cannot schedule split-division league because a team is assigned to multiple divisions: ${conflictSummary}.`,
+        );
       }
-      const conflictSummary = assignmentState.duplicateAssignments
-        .map(({ teamId, divisionIds }) => {
-          const divisionNames = divisionIds
-            .map((divisionId) => divisionNameById.get(divisionId) ?? divisionId)
-            .join(', ');
-          return `${formatTeamLabel(league, teamId)} -> ${divisionNames}`;
-        })
-        .join('; ');
-      throw new ScheduleError(
-        `Cannot schedule split-division league because a team is assigned to multiple divisions: ${conflictSummary}.`,
-      );
-    }
 
-    if (assignmentState.unassignedTeamIds.length > 0) {
-      const unassigned = assignmentState.unassignedTeamIds
-        .map((teamId) => formatTeamLabel(league, teamId))
-        .join(', ');
-      throw new ScheduleError(
-        `Cannot schedule split-division league until all teams are assigned to a division. Unassigned teams: ${unassigned}.`,
-      );
-    }
+      if (assignmentState.unassignedTeamIds.length > 0) {
+        const unassigned = assignmentState.unassignedTeamIds
+          .map((teamId) => formatTeamLabel(league, teamId))
+          .join(', ');
+        throw new ScheduleError(
+          `Cannot schedule split-division league until all teams are assigned to a division. Unassigned teams: ${unassigned}.`,
+        );
+      }
 
-    applyRosterToLeagueTeams(league, rosterTeamIds, assignmentState.divisionByTeamId);
+      applyRosterToLeagueTeams(league, rosterTeamIds, assignmentState.divisionByTeamId);
+    } else {
+      // Legacy/synthetic callers may still only provide team.division without
+      // explicit division.teamIds membership payloads.
+      applyRosterToLeagueTeams(league, rosterTeamIds);
+    }
   } else {
     applyRosterToLeagueTeams(league, rosterTeamIds);
   }
@@ -220,6 +243,9 @@ const buildLeagueSchedule = (
       if (errMsg.toLowerCase().includes('no fields')) {
         // Misconfiguration: surface this as a 4xx instead of a 500.
         throw new ScheduleError(formatNoFieldsErrorForUser(errMsg, league));
+      }
+      if (errMsg.toLowerCase().includes('split playoff divisions are enabled')) {
+        throw new ScheduleError(errMsg);
       }
       if (openEndedSchedule && extensionAttempt < maxExtensions) {
         extensionAttempt += 1;

@@ -196,4 +196,53 @@ describe('eventService', () => {
     expect(event.sport.$id).toBe('unknown_sport');
     expect(event.sport.name).toBe('unknown_sport');
   });
+
+  it('preserves split playoff division settings when mapping event rows', async () => {
+    apiRequestMock.mockResolvedValue({
+      ...baseEventRow,
+      eventType: 'LEAGUE',
+      splitLeaguePlayoffDivisions: true,
+      playoffDivisionDetails: [
+        {
+          id: 'evt_1__playoff__gold',
+          name: 'Gold Playoff',
+          key: 'gold',
+          maxParticipants: '8',
+          playoffTeamCount: '4',
+          teamIds: ['team_1', 'team_2', '', null],
+          playoffConfig: {
+            doubleElimination: true,
+            winnerSetCount: 1,
+            loserSetCount: 1,
+            winnerBracketPointsToVictory: [21],
+            loserBracketPointsToVictory: [21],
+            prize: '',
+            fieldCount: 1,
+            restTimeMinutes: 0,
+          },
+        },
+      ],
+    });
+
+    const event = await eventService.getEvent('evt_1');
+
+    expect(event?.splitLeaguePlayoffDivisions).toBe(true);
+    expect(event?.playoffDivisionDetails).toHaveLength(1);
+    expect(event?.playoffDivisionDetails?.[0]).toEqual(
+      expect.objectContaining({
+        id: 'evt_1__playoff__gold',
+        name: 'Gold Playoff',
+        key: 'gold',
+        kind: 'PLAYOFF',
+        maxParticipants: 8,
+        playoffTeamCount: 4,
+        teamIds: ['team_1', 'team_2'],
+      }),
+    );
+    expect((event?.playoffDivisionDetails?.[0] as any)?.playoffConfig).toEqual(
+      expect.objectContaining({
+        doubleElimination: true,
+      }),
+    );
+  });
 });

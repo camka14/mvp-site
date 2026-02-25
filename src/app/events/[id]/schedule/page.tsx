@@ -206,6 +206,14 @@ const getMatchDivisionLabel = (match: Match): string | null =>
   getDivisionLabel(getTeamDivision(match.team1)) ??
   getDivisionLabel(getTeamDivision(match.team2));
 
+const isPlayoffBracketMatch = (match: Match): boolean =>
+  Boolean(
+    match.previousLeftId ||
+    match.previousRightId ||
+    match.winnerNextMatchId ||
+    match.loserNextMatchId,
+  );
+
 const pickPreferredRootMatch = (matches: Match[]): Match | null => {
   if (matches.length === 0) {
     return null;
@@ -840,17 +848,21 @@ function EventScheduleContent() {
     }
   }, [scheduleDivisionOptions, selectedScheduleDivision]);
 
-  const scheduleMatches = useMemo(() => {
-    if (selectedScheduleDivision === 'all') {
-      return activeMatches;
-    }
-
-    return activeMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedScheduleDivision);
-  }, [activeMatches, selectedScheduleDivision]);
-
   const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
   const isTournament = eventTypeForView === 'TOURNAMENT';
   const isLeague = eventTypeForView === 'LEAGUE';
+
+  const scheduleMatches = useMemo(() => {
+    const sourceMatches = isLeague
+      ? activeMatches.filter((match) => !isPlayoffBracketMatch(match))
+      : activeMatches;
+
+    if (selectedScheduleDivision === 'all') {
+      return sourceMatches;
+    }
+
+    return sourceMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedScheduleDivision);
+  }, [activeMatches, isLeague, selectedScheduleDivision]);
 
   useEffect(() => {
     if (!isLeague || leagueDivisionOptions.length === 0) {
@@ -4184,6 +4196,11 @@ function EventScheduleContent() {
                   ) : (
                     <LeagueCalendarView
                       matches={scheduleMatches}
+                      teams={
+                        participantTeams.length > 0
+                          ? participantTeams
+                          : (Array.isArray(activeEvent.teams) ? activeEvent.teams : [])
+                      }
                       fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
                       eventStart={activeEvent.start}
                       eventEnd={activeEvent.end}

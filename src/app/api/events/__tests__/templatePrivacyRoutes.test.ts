@@ -10,6 +10,9 @@ const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
   },
+  divisions: {
+    findMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -34,6 +37,7 @@ const jsonPost = (url: string, body: any) =>
 describe('event template privacy routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.divisions.findMany.mockResolvedValue([]);
   });
 
   it('excludes templates from GET /api/events when no state filter is provided', async () => {
@@ -213,6 +217,43 @@ describe('event template privacy routes', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('treats query search as a separate mode without default date floor and returns relevance-ranked names', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      { id: 'event_4', name: 'The Indoor Finals', location: '', description: '', state: 'PUBLISHED' },
+      { id: 'event_3', name: 'Playindoor Open', location: '', description: '', state: 'PUBLISHED' },
+      { id: 'event_2', name: 'Indoor Soccer Arena League', location: '', description: '', state: 'PUBLISHED' },
+      { id: 'event_1', name: 'Indoor', location: '', description: '', state: 'PUBLISHED' },
+    ]);
+
+    const res = await searchPost(jsonPost('http://localhost/api/events/search', {
+      filters: { query: 'indoor' },
+      limit: 4,
+      offset: 0,
+    }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.any(Array),
+        }),
+        take: 50,
+        skip: 0,
+      }),
+    );
+
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.start).toBeUndefined();
+    expect(json.events.map((event: any) => event.name)).toEqual([
+      'Indoor',
+      'Indoor Soccer Arena League',
+      'The Indoor Finals',
+      'Playindoor Open',
+    ]);
   });
 
   it('excludes templates from GET /api/events/field/:fieldId results', async () => {

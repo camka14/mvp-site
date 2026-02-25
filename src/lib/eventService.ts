@@ -457,6 +457,7 @@ class EventService {
             restTimeMinutes: row.restTimeMinutes,
             teamSignup: row.teamSignup,
             singleDivision: row.singleDivision,
+            splitLeaguePlayoffDivisions: Boolean(row.splitLeaguePlayoffDivisions),
             registrationByDivisionType: Boolean(row.registrationByDivisionType),
             waitListIds: row.waitListIds,
             freeAgentIds: row.freeAgentIds,
@@ -537,11 +538,45 @@ class EventService {
                         ? entry.fieldIds.map((fieldId: unknown) => String(fieldId)).filter(Boolean)
                         : [],
                     teamIds: Array.isArray(entry?.teamIds)
-                        ? entry.teamIds.map((teamId: unknown) => String(teamId)).filter(Boolean)
+                        ? entry.teamIds
+                            .filter((teamId: unknown): teamId is string => typeof teamId === 'string')
+                            .map((teamId: string) => teamId.trim())
+                            .filter((teamId: string) => teamId.length > 0)
                         : [],
                     ageCutoffDate: typeof entry?.ageCutoffDate === 'string' ? entry.ageCutoffDate : undefined,
                     ageCutoffLabel: typeof entry?.ageCutoffLabel === 'string' ? entry.ageCutoffLabel : undefined,
                     ageCutoffSource: typeof entry?.ageCutoffSource === 'string' ? entry.ageCutoffSource : undefined,
+                })).filter((entry: any) => entry.id.length > 0)
+                : undefined,
+            playoffDivisionDetails: Array.isArray(row.playoffDivisionDetails)
+                ? row.playoffDivisionDetails.map((entry: any) => ({
+                    id: String(entry?.id ?? entry?.$id ?? ''),
+                    name: String(entry?.name ?? entry?.id ?? ''),
+                    key: typeof entry?.key === 'string' ? entry.key : undefined,
+                    kind:
+                        entry?.kind === 'LEAGUE' || entry?.kind === 'PLAYOFF'
+                            ? entry.kind
+                            : 'PLAYOFF',
+                    maxParticipants: typeof entry?.maxParticipants === 'number'
+                        ? entry.maxParticipants
+                        : Number.isFinite(Number(entry?.maxParticipants))
+                            ? Number(entry.maxParticipants)
+                            : undefined,
+                    playoffTeamCount: typeof entry?.playoffTeamCount === 'number'
+                        ? entry.playoffTeamCount
+                        : Number.isFinite(Number(entry?.playoffTeamCount))
+                            ? Number(entry.playoffTeamCount)
+                            : undefined,
+                    teamIds: Array.isArray(entry?.teamIds)
+                        ? entry.teamIds
+                            .filter((teamId: unknown): teamId is string => typeof teamId === 'string')
+                            .map((teamId: string) => teamId.trim())
+                            .filter((teamId: string) => teamId.length > 0)
+                        : [],
+                    playoffConfig:
+                        entry?.playoffConfig && typeof entry.playoffConfig === 'object'
+                            ? entry.playoffConfig
+                            : undefined,
                 })).filter((entry: any) => entry.id.length > 0)
                 : undefined,
             divisionFieldIds:

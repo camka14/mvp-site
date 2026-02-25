@@ -525,7 +525,10 @@ const normalizeDivisionDetailsInput = (
     const parsedMaxParticipants = normalizeInputNullableNumber(row.maxParticipants);
     const parsedPlayoffTeamCount = normalizeInputNullableNumber(row.playoffTeamCount);
     const parsedKind = normalizeDivisionKind(row.kind, defaultKind);
-    const parsedPlacementDivisionIds = normalizePlacementDivisionIds(row.playoffPlacementDivisionIds, eventId);
+    const hasPlacementDivisionIdsInput = Object.prototype.hasOwnProperty.call(row, 'playoffPlacementDivisionIds');
+    const parsedPlacementDivisionIds = hasPlacementDivisionIdsInput
+      ? normalizePlacementDivisionIds(row.playoffPlacementDivisionIds, eventId)
+      : undefined;
     const parsedStandingsOverrides = normalizeStandingsOverrides(row.standingsOverrides);
     const parsedStandingsConfirmedAt = (() => {
       const parsed = parseDateInput(row.standingsConfirmedAt);
@@ -548,6 +551,7 @@ const normalizeDivisionDetailsInput = (
     const parsedInstallmentAmounts = Object.prototype.hasOwnProperty.call(row, 'installmentAmounts')
       ? normalizeInstallmentAmountList(row.installmentAmounts)
       : undefined;
+    const hasTeamIdsInput = Object.prototype.hasOwnProperty.call(row, 'teamIds');
     const id = normalizeDivisionKey(row.id)
       ?? buildEventDivisionId(eventId, inferred.token);
     if (seen.has(id)) {
@@ -578,7 +582,11 @@ const normalizeDivisionDetailsInput = (
       playoffTeamCount: typeof parsedPlayoffTeamCount === 'number'
         ? Math.max(0, Math.trunc(parsedPlayoffTeamCount))
         : parsedPlayoffTeamCount,
-      playoffPlacementDivisionIds: parsedKind === 'PLAYOFF' ? [] : parsedPlacementDivisionIds,
+      ...(parsedKind === 'PLAYOFF'
+        ? { playoffPlacementDivisionIds: [] }
+        : parsedPlacementDivisionIds !== undefined
+          ? { playoffPlacementDivisionIds: parsedPlacementDivisionIds }
+          : {}),
       standingsOverrides: parsedKind === 'PLAYOFF' ? null : parsedStandingsOverrides,
       standingsConfirmedAt: parsedKind === 'PLAYOFF' ? null : parsedStandingsConfirmedAt,
       standingsConfirmedBy: parsedKind === 'PLAYOFF' ? null : parsedStandingsConfirmedBy,
@@ -596,7 +604,11 @@ const normalizeDivisionDetailsInput = (
       ageCutoffLabel: ageEligibility.message ?? null,
       ageCutoffSource: ageEligibility.applies ? ageEligibility.cutoffRule.source : null,
       fieldIds: normalizeFieldIds(row.fieldIds),
-      teamIds: parsedKind === 'PLAYOFF' ? [] : normalizeTeamIds(row.teamIds),
+      ...(parsedKind === 'PLAYOFF'
+        ? { teamIds: [] }
+        : hasTeamIdsInput
+          ? { teamIds: normalizeTeamIds(row.teamIds) }
+          : {}),
     });
   }
   return details;

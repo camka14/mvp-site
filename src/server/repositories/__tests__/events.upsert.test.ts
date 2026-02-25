@@ -486,6 +486,102 @@ describe('upsertEventFromPayload', () => {
     }
   });
 
+  it('preserves existing division teamIds when divisionDetails omits teamIds', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    client.divisions.findMany.mockResolvedValue([
+      {
+        id: openDivisionId,
+        key: 'open',
+        name: 'Open',
+        kind: 'LEAGUE',
+        fieldIds: [],
+        teamIds: ['team_1', 'team_2'],
+      },
+    ]);
+
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          maxParticipants: 12,
+          // teamIds intentionally omitted; existing assignment should be preserved
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.divisions.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: openDivisionId },
+        create: expect.objectContaining({
+          teamIds: ['team_1', 'team_2'],
+        }),
+        update: expect.objectContaining({
+          teamIds: ['team_1', 'team_2'],
+        }),
+      }),
+    );
+  });
+
+  it('preserves existing playoff placement mappings when divisionDetails omits playoffPlacementDivisionIds', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    const playoffDivisionOneId = divisionId('playoff_1');
+    const playoffDivisionTwoId = divisionId('playoff_2');
+    client.divisions.findMany.mockResolvedValue([
+      {
+        id: openDivisionId,
+        key: 'open',
+        name: 'Open',
+        kind: 'LEAGUE',
+        fieldIds: [],
+        playoffPlacementDivisionIds: [playoffDivisionOneId, playoffDivisionTwoId],
+      },
+    ]);
+
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          playoffTeamCount: 2,
+          // playoffPlacementDivisionIds intentionally omitted; existing mapping should be preserved
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.divisions.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: openDivisionId },
+        create: expect.objectContaining({
+          playoffPlacementDivisionIds: [playoffDivisionOneId, playoffDivisionTwoId],
+        }),
+        update: expect.objectContaining({
+          playoffPlacementDivisionIds: [playoffDivisionOneId, playoffDivisionTwoId],
+        }),
+      }),
+    );
+  });
+
   it('preserves playoff placement indexes when mapping includes empty positions', async () => {
     const client = createMockClient();
     const openDivisionId = divisionId('open');

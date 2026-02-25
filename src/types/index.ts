@@ -976,6 +976,7 @@ export function toEventPayload(event: Event): EventPayload {
           return null;
         }
         const division = entry as Division;
+        const hasTeamIds = Object.prototype.hasOwnProperty.call(division, 'teamIds');
         return {
           id,
           name: typeof division.name === 'string' ? division.name : id,
@@ -1000,9 +1001,13 @@ export function toEventPayload(event: Event): EventPayload {
           fieldIds: Array.isArray(division.fieldIds)
             ? uniqueIds(division.fieldIds.map((fieldId) => String(fieldId)))
             : [],
-          teamIds: Array.isArray(division.teamIds)
-            ? uniqueIds(division.teamIds.map((teamId) => String(teamId)))
-            : [],
+          ...(hasTeamIds
+            ? {
+                teamIds: Array.isArray(division.teamIds)
+                  ? uniqueIds(division.teamIds.map((teamId) => String(teamId)))
+                  : [],
+              }
+            : {}),
           ageCutoffDate: typeof division.ageCutoffDate === 'string' ? division.ageCutoffDate : undefined,
           ageCutoffLabel: typeof division.ageCutoffLabel === 'string' ? division.ageCutoffLabel : undefined,
           ageCutoffSource: typeof division.ageCutoffSource === 'string' ? division.ageCutoffSource : undefined,
@@ -1077,6 +1082,7 @@ export function toEventPayload(event: Event): EventPayload {
           return null;
         }
         const division = entry as Division;
+        const hasTeamIds = Object.prototype.hasOwnProperty.call(division, 'teamIds');
         const playoffConfig = normalizeTournamentConfigForPayload(
           Object.prototype.hasOwnProperty.call(division, 'playoffConfig')
             ? (division as unknown as { playoffConfig?: unknown }).playoffConfig
@@ -1099,9 +1105,13 @@ export function toEventPayload(event: Event): EventPayload {
               : Number.isFinite(Number(division.playoffTeamCount))
                 ? Number(division.playoffTeamCount)
                 : undefined,
-          teamIds: Array.isArray(division.teamIds)
-            ? uniqueIds(division.teamIds.map((teamId) => String(teamId)))
-            : [],
+          ...(hasTeamIds
+            ? {
+                teamIds: Array.isArray(division.teamIds)
+                  ? uniqueIds(division.teamIds.map((teamId) => String(teamId)))
+                  : [],
+              }
+            : {}),
           playoffConfig,
         };
       })
