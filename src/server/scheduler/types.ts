@@ -348,6 +348,8 @@ export class Match implements SchedulableEvent {
   id: string;
   matchId: number | null;
   locked: boolean;
+  team1Seed: number | null;
+  team2Seed: number | null;
   team1Points: number[];
   team2Points: number[];
   start: Date;
@@ -375,6 +377,8 @@ export class Match implements SchedulableEvent {
     id: string;
     matchId?: number | null;
     locked?: boolean;
+    team1Seed?: number | null;
+    team2Seed?: number | null;
     team1Points?: number[];
     team2Points?: number[];
     start: Date;
@@ -401,6 +405,8 @@ export class Match implements SchedulableEvent {
     this.id = params.id;
     this.matchId = params.matchId ?? null;
     this.locked = params.locked ?? false;
+    this.team1Seed = params.team1Seed ?? null;
+    this.team2Seed = params.team2Seed ?? null;
     this.team1Points = params.team1Points ?? [];
     this.team2Points = params.team2Points ?? [];
     this.start = params.start;
@@ -453,22 +459,28 @@ export class Match implements SchedulableEvent {
       if (this.winnerNextMatch) {
         this.winnerNextMatch.team1 = winner;
         this.winnerNextMatch.team2 = loser;
+        this.winnerNextMatch.team1Seed = winner.seed;
+        this.winnerNextMatch.team2Seed = loser.seed;
         this.winnerNextMatch.teamReferee = this.teamReferee;
       }
     } else {
       if (this.winnerNextMatch) {
         if (this.side === Side.LEFT && !this.winnerNextMatch.team1) {
           this.winnerNextMatch.team1 = winner;
+          this.winnerNextMatch.team1Seed = winner.seed;
         } else {
           this.winnerNextMatch.team2 = winner;
+          this.winnerNextMatch.team2Seed = winner.seed;
         }
       }
       if (this.loserNextMatch) {
         loser.matches.push(this.loserNextMatch);
         if (this.side === Side.LEFT && !this.loserNextMatch.team1) {
           this.loserNextMatch.team1 = loser;
+          this.loserNextMatch.team1Seed = loser.seed;
         } else {
           this.loserNextMatch.team2 = loser;
+          this.loserNextMatch.team2Seed = loser.seed;
         }
       }
     }

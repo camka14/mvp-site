@@ -1225,12 +1225,7 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
   }
 
   const teamName = team.name || 'Team';
-  const initials = teamName.split(' ')
-    .map(word => word.charAt(0))
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
-  return buildInitialsAvatarUrl(initials, size);
+  return buildInitialsAvatarUrl(teamName, size);
 }
 
 export function getOrganizationAvatarUrl(

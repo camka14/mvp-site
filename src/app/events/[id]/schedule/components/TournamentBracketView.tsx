@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
-import { TournamentBracket, Match, UserData, Division } from '@/types';
+import { TournamentBracket, Match, UserData, Division, Team } from '@/types';
 
 import MatchCard from './MatchCard';
 
@@ -15,7 +15,7 @@ type BracketTeamSlot = 'team1' | 'team2';
 type PlayoffBracketSlot = {
     matchId: string;
     slot: BracketTeamSlot;
-    matchOrder: number;
+    seed: number | null;
     playoffDivisionId: string;
 };
 
@@ -36,6 +36,23 @@ const extractDivisionIdentifier = (value: unknown): string => {
     }
     const row = value as Record<string, unknown>;
     const candidates = [row.id, row.$id, row.key];
+    for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.trim().length > 0) {
+            return candidate.trim();
+        }
+    }
+    return '';
+};
+
+const extractEntityId = (value: unknown): string => {
+    if (typeof value === 'string') {
+        return value.trim();
+    }
+    if (!value || typeof value !== 'object') {
+        return '';
+    }
+    const row = value as Record<string, unknown>;
+    const candidates = [row.$id, row.id];
     for (const candidate of candidates) {
         if (typeof candidate === 'string' && candidate.trim().length > 0) {
             return candidate.trim();
@@ -250,14 +267,16 @@ const buildLeaguePlayoffPlaceholderAssignments = ({
         if (labels.length === 0) {
             return;
         }
-        const orderedSlots = [...divisionSlots].sort((left, right) =>
-            left.matchOrder - right.matchOrder ||
-            (left.slot === 'team1' ? 0 : 1) - (right.slot === 'team1' ? 0 : 1),
-        );
-        for (let index = 0; index < Math.min(orderedSlots.length, labels.length); index += 1) {
-            const slot = orderedSlots[index];
-            result[`${slot.matchId}:${slot.slot}`] = labels[index];
-        }
+        divisionSlots.forEach((slot) => {
+            if (typeof slot.seed !== 'number' || !Number.isFinite(slot.seed) || slot.seed < 1) {
+                return;
+            }
+            const label = labels[slot.seed - 1];
+            if (!label) {
+                return;
+            }
+            result[`${slot.matchId}:${slot.slot}`] = label;
+        });
     });
 
     return result;
@@ -302,6 +321,32 @@ export default function TournamentBracketView({
         () => Object.fromEntries(Object.values(bracket.matches).map((match) => [match.$id, match])),
         [bracket.matches],
     );
+    const teamsById = useMemo<Map<string, Team>>(() => {
+        const map = new Map<string, Team>();
+        const teams = Array.isArray(bracket.teams) ? bracket.teams : [];
+        teams.forEach((team) => {
+            const id = extractEntityId(team);
+            if (!id) {
+                return;
+            }
+            map.set(id, team as Team);
+        });
+        return map;
+    }, [bracket.teams]);
+    const refereesById = useMemo<Map<string, UserData>>(() => {
+        const map = new Map<string, UserData>();
+        const refs = Array.isArray((bracket.tournament as any)?.referees)
+            ? ((bracket.tournament as any).referees as UserData[])
+            : [];
+        refs.forEach((ref) => {
+            const id = extractEntityId(ref);
+            if (!id) {
+                return;
+            }
+            map.set(id, ref);
+        });
+        return map;
+    }, [bracket.tournament]);
     const leaguePlayoffPlaceholderAssignments = useMemo<Record<string, string>>(() => {
         const eventDivisionIds = extractEventDivisionOrder(bracket.tournament.divisions);
         const allDivisionDetails = collectAllDivisionDetails(bracket.tournament);
@@ -318,26 +363,36 @@ export default function TournamentBracketView({
 
         const slots: PlayoffBracketSlot[] = [];
         Object.values(bracket.matches).forEach((match) => {
-            const hasPreviousMatch = Boolean(
-                match.previousLeftMatch ||
-                match.previousRightMatch ||
-                match.previousLeftId ||
-                match.previousRightId,
-            );
-            if (match.losersBracket || hasPreviousMatch) {
+            if (match.losersBracket) {
                 return;
             }
             const playoffDivisionId = extractDivisionIdentifier(match.division);
             if (playoffDivisionId.length === 0) {
                 return;
             }
-            const matchOrder = typeof match.matchId === 'number' && Number.isFinite(match.matchId)
-                ? match.matchId
-                : 0;
-            slots.push(
-                { matchId: match.$id, slot: 'team1', matchOrder, playoffDivisionId },
-                { matchId: match.$id, slot: 'team2', matchOrder, playoffDivisionId },
+            const leftEntrantSlot = !(
+                match.previousLeftMatch ||
+                match.previousLeftId
             );
+            const rightEntrantSlot = !(
+                match.previousRightMatch ||
+                match.previousRightId
+            );
+            if (!leftEntrantSlot && !rightEntrantSlot) {
+                return;
+            }
+            const team1Seed = typeof match.team1Seed === 'number'
+                ? match.team1Seed
+                : (typeof match.team1?.seed === 'number' ? match.team1.seed : null);
+            const team2Seed = typeof match.team2Seed === 'number'
+                ? match.team2Seed
+                : (typeof match.team2?.seed === 'number' ? match.team2.seed : null);
+            if (leftEntrantSlot) {
+                slots.push({ matchId: match.$id, slot: 'team1', seed: team1Seed, playoffDivisionId });
+            }
+            if (rightEntrantSlot) {
+                slots.push({ matchId: match.$id, slot: 'team2', seed: team2Seed, playoffDivisionId });
+            }
         });
         if (slots.length === 0) {
             return {};
@@ -799,16 +854,44 @@ export default function TournamentBracketView({
                         <Text c="dimmed">No matches</Text>
 	                    ) : (
 	                        <>
-	                            {Object.values(viewById).map((m) => {
-	                                const pos = positionById.get(m.$id);
-	                                if (!pos) return null;
-                                    const resolvedMatch: Match = {
-                                        ...m,
-                                        previousLeftMatch:
-                                            m.previousLeftMatch ??
-                                            (m.previousLeftId ? matchesById[m.previousLeftId] : undefined),
-                                        previousRightMatch:
-                                            m.previousRightMatch ??
+		                            {Object.values(viewById).map((m) => {
+		                                const pos = positionById.get(m.$id);
+		                                if (!pos) return null;
+                                    const team1Id = extractEntityId((m as any).team1)
+                                        || (typeof m.team1Id === 'string' ? m.team1Id.trim() : '');
+                                    const team2Id = extractEntityId((m as any).team2)
+                                        || (typeof m.team2Id === 'string' ? m.team2Id.trim() : '');
+                                    const teamRefereeId = extractEntityId((m as any).teamReferee)
+                                        || (typeof m.teamRefereeId === 'string' ? m.teamRefereeId.trim() : '');
+                                    const refereeId = extractEntityId((m as any).referee)
+                                        || (typeof m.refereeId === 'string' ? m.refereeId.trim() : '');
+                                    const resolvedTeam1 = (m.team1 && typeof m.team1 === 'object')
+                                        ? m.team1
+                                        : (team1Id ? teamsById.get(team1Id) ?? null : null);
+                                    const resolvedTeam2 = (m.team2 && typeof m.team2 === 'object')
+                                        ? m.team2
+                                        : (team2Id ? teamsById.get(team2Id) ?? null : null);
+                                    const resolvedTeamReferee = (m.teamReferee && typeof m.teamReferee === 'object')
+                                        ? m.teamReferee
+                                        : (teamRefereeId ? teamsById.get(teamRefereeId) ?? null : null);
+                                    const resolvedReferee = (m.referee && typeof m.referee === 'object')
+                                        ? m.referee
+                                        : (refereeId ? refereesById.get(refereeId) ?? null : null);
+	                                    const resolvedMatch: Match = {
+	                                        ...m,
+                                        team1: resolvedTeam1 as Match['team1'],
+                                        team2: resolvedTeam2 as Match['team2'],
+                                        teamReferee: resolvedTeamReferee as Match['teamReferee'],
+                                        referee: resolvedReferee as Match['referee'],
+                                        team1Id: team1Id || m.team1Id || undefined,
+                                        team2Id: team2Id || m.team2Id || undefined,
+                                        teamRefereeId: teamRefereeId || m.teamRefereeId || undefined,
+                                        refereeId: refereeId || m.refereeId || undefined,
+	                                        previousLeftMatch:
+	                                            m.previousLeftMatch ??
+	                                            (m.previousLeftId ? matchesById[m.previousLeftId] : undefined),
+	                                        previousRightMatch:
+	                                            m.previousRightMatch ??
                                             (m.previousRightId ? matchesById[m.previousRightId] : undefined),
                                     };
 	                                const canInternalManage = canManageMatch(resolvedMatch);

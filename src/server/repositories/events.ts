@@ -1094,6 +1094,12 @@ const buildMatches = (
       id: row.id,
       matchId: row.matchId ?? null,
       locked: Boolean(row.locked),
+      team1Seed: typeof row.team1Seed === 'number'
+        ? row.team1Seed
+        : (row.team1Id ? teams[row.team1Id]?.seed ?? null : null),
+      team2Seed: typeof row.team2Seed === 'number'
+        ? row.team2Seed
+        : (row.team2Id ? teams[row.team2Id]?.seed ?? null : null),
       team1Points: ensureArray(row.team1Points),
       team2Points: ensureArray(row.team2Points),
       start: row.start instanceof Date ? row.start : new Date(row.start),
@@ -1312,12 +1318,21 @@ export const saveMatches = async (
 ) => {
   const now = new Date();
   for (const match of matches) {
+    const isBracketMatch = Boolean(
+      match.previousLeftMatch || match.previousRightMatch || match.winnerNextMatch || match.loserNextMatch,
+    );
     const data = {
       id: match.id,
       matchId: match.matchId ?? 0,
       start: match.start,
       end: match.end,
       locked: Boolean(match.locked),
+      team1Seed: isBracketMatch
+        ? (typeof match.team1Seed === 'number' ? match.team1Seed : (match.team1?.seed ?? null))
+        : null,
+      team2Seed: isBracketMatch
+        ? (typeof match.team2Seed === 'number' ? match.team2Seed : (match.team2?.seed ?? null))
+        : null,
       division: match.division?.id ?? null,
       team1Points: match.team1Points ?? [],
       team2Points: match.team2Points ?? [],

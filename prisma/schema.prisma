@@ -132,6 +132,8 @@ model Matches {
   refereeId String?
   team1Id String?
   team2Id String?
+  team1Seed Int?
+  team2Seed Int?
   eventId String?
   fieldId String?
   teamRefereeId String?

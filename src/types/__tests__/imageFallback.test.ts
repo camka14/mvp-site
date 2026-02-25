@@ -1,4 +1,4 @@
-import { getEventImageFallbackUrl, getEventImageUrl } from '@/types';
+import { getEventImageFallbackUrl, getEventImageUrl, getTeamAvatarUrl, getUserAvatarUrl } from '@/types';
 
 describe('event image fallbacks', () => {
   it('uses local initials placeholder when no event image is provided', () => {
@@ -38,5 +38,37 @@ describe('event image fallbacks', () => {
 
     expect(url).toContain('/api/avatars/initials?');
     expect(url).toContain('name=host_abc');
+  });
+});
+
+describe('avatar placeholder urls', () => {
+  it('passes full team name to initials endpoint so backend can derive up to three initials', () => {
+    const url = getTeamAvatarUrl(
+      {
+        name: 'Red River Rockets',
+        profileImageId: '',
+      } as any,
+      72,
+    );
+
+    expect(url).toContain('/api/avatars/initials?');
+    expect(url).toContain('name=Red+River+Rockets');
+    expect(url).toContain('size=72');
+  });
+
+  it('passes user full name to initials endpoint', () => {
+    const url = getUserAvatarUrl(
+      {
+        firstName: 'Ana',
+        lastName: 'Maria Lopez',
+        userName: 'amlopez',
+        profileImageId: '',
+      } as any,
+      80,
+    );
+
+    expect(url).toContain('/api/avatars/initials?');
+    expect(url).toContain('name=Ana+Maria+Lopez');
+    expect(url).toContain('size=80');
   });
 });

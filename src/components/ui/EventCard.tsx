@@ -10,6 +10,7 @@ import {
 } from '@/types';
 import { locationService } from '@/lib/locationService';
 import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
+import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 
 interface EventCardProps {
   event: Event;
@@ -206,6 +207,20 @@ export default function EventCard({
     return 'Community host';
   }, [event.organization, hostOptions, hostSelectValue]);
 
+  const participantCapacity = useMemo(
+    () => resolveEventParticipantCapacity(event),
+    [event.divisionDetails, event.maxParticipants, event.singleDivision],
+  );
+
+  const attendeeCount = useMemo(() => {
+    if (Number.isFinite(event.attendees)) {
+      return Math.max(0, Math.trunc(event.attendees));
+    }
+    return event.teamSignup
+      ? (Array.isArray(event.teamIds) ? event.teamIds.length : 0)
+      : (Array.isArray(event.userIds) ? event.userIds.length : 0);
+  }, [event.attendees, event.teamIds, event.teamSignup, event.userIds]);
+
   return (
     <div
       className={`card discover-event-card ${onClick ? 'cursor-pointer hover:elevation-3' : ''} transition-all duration-200 group h-full flex flex-col border border-slate-200/80`}
@@ -325,7 +340,7 @@ export default function EventCard({
             <span className="text-sm font-semibold text-slate-900">{formatPrice(event.price)}</span>
             <span className="text-slate-300">•</span>
             <span className="text-xs text-slate-500">
-              {event.attendees} / {event.maxParticipants} going
+              {attendeeCount} / {participantCapacity} going
             </span>
           </div>
           <span className="discover-details-pill">Details</span>

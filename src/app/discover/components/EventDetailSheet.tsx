@@ -25,6 +25,7 @@ import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService, FamilyChild } from '@/lib/familyService';
 import { registrationService, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
+import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import {
     buildDivisionToken,
     evaluateDivisionAgeEligibility,
@@ -1441,7 +1442,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             }
             return;
         }
-        const eventWaitlistMode = players.length >= currentEvent.maxParticipants || selectedChildIsWaitlisted;
+        const eventCapacity = resolveEventParticipantCapacity(currentEvent);
+        const eventWaitlistMode = (eventCapacity > 0 && players.length >= eventCapacity) || selectedChildIsWaitlisted;
         if (eventWaitlistMode) {
             setJoinError(null);
             setJoinNotice(null);
@@ -1771,7 +1773,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const { date, time } = getEventDateTime(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
     const totalParticipants = isTeamSignup ? teams.length : players.length;
-    const eventAtCapacity = totalParticipants >= currentEvent.maxParticipants;
+    const participantCapacity = resolveEventParticipantCapacity(currentEvent);
+    const eventAtCapacity = participantCapacity > 0 && totalParticipants >= participantCapacity;
     const normalizedFreeAgentIds = (() => {
         const fromEvent = collectUniqueUserIds(currentEvent.freeAgentIds);
         const additionalFromProfiles = freeAgents
@@ -2213,7 +2216,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                 <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Max Participants:</span>
-                                        <span className="font-medium">{currentEvent.maxParticipants}</span>
+                                        <span className="font-medium">{participantCapacity}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Team Size Limit:</span>
@@ -2347,7 +2350,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                         </Text>
                                         <div style={{ textAlign: 'center', marginTop: 8 }}>
                                             <Text size="sm" c="dimmed">
-                                                {totalParticipants} / {currentEvent.maxParticipants} total participants
+                                                {totalParticipants} / {participantCapacity} total participants
                                             </Text>
                                         </div>
                                         {canShowScheduleButton && (
@@ -2563,7 +2566,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 {/* Total participants below actions */}
                                                                 <div style={{ textAlign: 'center' }}>
                                                                     <Text size="sm" c="dimmed">
-                                                                        {totalParticipants} / {currentEvent.maxParticipants} total participants
+                                                                        {totalParticipants} / {participantCapacity} total participants
                                                                     </Text>
                                                                 </div>
                                                             </div>

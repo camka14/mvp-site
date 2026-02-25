@@ -953,14 +953,6 @@ export type NullableEnumDivisionsKindEnumFieldUpdateOperationsInput = {
   set?: $Enums.DivisionsKindEnum | null
 }
 
-export type NullableIntFieldUpdateOperationsInput = {
-  set?: number | null
-  increment?: number
-  decrement?: number
-  multiply?: number
-  divide?: number
-}
-
 export type DivisionsUpdateplayoffPlacementDivisionIdsInput = {
   set?: string[]
   push?: string | string[]

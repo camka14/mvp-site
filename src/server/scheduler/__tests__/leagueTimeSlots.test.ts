@@ -68,6 +68,20 @@ const buildTeamsForDivision = (prefix: string, count: number, division: Division
   return teams;
 };
 
+const isPlayoffMatch = (match: {
+  previousLeftMatch?: unknown;
+  previousRightMatch?: unknown;
+  winnerNextMatch?: unknown;
+  loserNextMatch?: unknown;
+}): boolean => (
+  Boolean(
+    match.previousLeftMatch
+    || match.previousRightMatch
+    || match.winnerNextMatch
+    || match.loserNextMatch
+  )
+);
+
 describe('league scheduling (time slots)', () => {
   it('uses zero rest time as-is without applying an implicit default gap', () => {
     const division = buildDivision();
@@ -116,6 +130,58 @@ describe('league scheduling (time slots)', () => {
       .sort((a, b) => a.start.getTime() - b.start.getTime());
     const gapMs = matchesByStart[1].start.getTime() - matchesByStart[0].end.getTime();
     expect(gapMs).toBe(0 * MINUTE_MS);
+  });
+
+  it('forces single-set playoff matches for timed leagues even when playoff set config is higher', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 0, 3, 22, 0, 0);
+    const timeSlots = [
+      new TimeSlot({
+        id: 'slot_timed_single_set_playoffs',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 22 * 60,
+      }),
+    ];
+
+    const league = new League({
+      id: 'league_timed_single_set_playoffs',
+      name: 'Timed Single Set Playoffs',
+      start,
+      end,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots,
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      winnerSetCount: 3,
+      loserSetCount: 3,
+      winnerBracketPointsToVictory: [21, 21, 15],
+      loserBracketPointsToVictory: [21, 21, 15],
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const playoffMatches = scheduled.matches.filter((match) => isPlayoffMatch(match));
+    expect(playoffMatches.length).toBeGreaterThan(0);
+    expect(playoffMatches.every((match) => match.team1Points.length === 1)).toBe(true);
+    expect(playoffMatches.every((match) => match.team2Points.length === 1)).toBe(true);
+    expect(playoffMatches.every((match) => match.setResults.length === 1)).toBe(true);
   });
 
   it('rejects schedulable events with fixed end windows when end is not after start', () => {

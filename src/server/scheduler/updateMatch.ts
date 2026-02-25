@@ -107,11 +107,13 @@ export const applyMatchUpdates = (event: Tournament | League, match: Match, upda
   if (update.team1Id !== undefined) {
     detachMatch(match.team1, match);
     match.team1 = update.team1Id ? event.teams[update.team1Id] ?? null : null;
+    match.team1Seed = match.team1?.seed ?? null;
     if (match.team1) ensureMatchesArray(match.team1).push(match);
   }
   if (update.team2Id !== undefined) {
     detachMatch(match.team2, match);
     match.team2 = update.team2Id ? event.teams[update.team2Id] ?? null : null;
+    match.team2Seed = match.team2?.seed ?? null;
     if (match.team2) ensureMatchesArray(match.team2).push(match);
   }
   if (update.teamRefereeId !== undefined) {
@@ -358,7 +360,6 @@ export const finalizeMatch = (
 ): FinalizeResult => {
   syncMatchParticipants(Object.values(event.matches));
 
-  const updatedIsPlayoffMatch = isPlayoffMatch(updatedMatch);
   const seededTeamIds: string[] = [];
 
   const teamOne = updatedMatch.team1;
@@ -376,9 +377,9 @@ export const finalizeMatch = (
   loser.losses += 1;
   updatedMatch.advanceTeams(winner, loser);
 
-  // Regular season league matches should not trigger bracket-style rescheduling. The schedule is pre-built and
-  // independent from match results; rescheduling here was unscheduling future matches without restoring them.
-  if (event instanceof League && !updatedIsPlayoffMatch) {
+  // League schedules are pre-built (regular season and playoffs). Finalizing a result should advance teams without
+  // invoking bracket-style rescheduling, which can fail for split-playoff mapping configurations.
+  if (event instanceof League) {
     if (event.doTeamsRef && seededTeamIds.length) {
       const participants = buildScheduleParticipants(event);
       const schedule = new Schedule<Match, PlayingField, Team | UserData, Division>(

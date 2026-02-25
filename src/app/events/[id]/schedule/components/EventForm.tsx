@@ -1168,6 +1168,31 @@ const buildTournamentConfig = (source?: Partial<TournamentConfig>): TournamentCo
     };
 };
 
+const normalizeTournamentConfigForSetMode = (
+    source: Partial<TournamentConfig> | undefined,
+    usesSets: boolean,
+): TournamentConfig => {
+    const normalized = buildTournamentConfig(source);
+    if (usesSets) {
+        return normalized;
+    }
+
+    const winnerTarget = Number.isFinite(Number(normalized.winnerBracketPointsToVictory?.[0]))
+        ? Math.max(1, Math.trunc(Number(normalized.winnerBracketPointsToVictory?.[0])))
+        : 21;
+    const loserTarget = Number.isFinite(Number(normalized.loserBracketPointsToVictory?.[0]))
+        ? Math.max(1, Math.trunc(Number(normalized.loserBracketPointsToVictory?.[0])))
+        : 21;
+
+    return {
+        ...normalized,
+        winnerSetCount: 1,
+        loserSetCount: 1,
+        winnerBracketPointsToVictory: [winnerTarget],
+        loserBracketPointsToVictory: [loserTarget],
+    };
+};
+
 const TOURNAMENT_CONFIG_KEYS: (keyof TournamentConfig)[] = [
     'doubleElimination',
     'winnerSetCount',
@@ -4479,6 +4504,49 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [eventData.sportConfig, setLeagueData]);
 
     useEffect(() => {
+        const requiresSets = Boolean(eventData.sportConfig?.usePointsPerSetWin);
+        if (requiresSets) {
+            return;
+        }
+
+        const normalizedPlayoff = normalizeTournamentConfigForSetMode(playoffData, false);
+        if (!tournamentConfigEqual(playoffData, normalizedPlayoff)) {
+            setPlayoffData(normalizedPlayoff);
+        }
+
+        const currentPlayoffDivisions = Array.isArray(eventData.playoffDivisionDetails)
+            ? eventData.playoffDivisionDetails
+            : [];
+        if (!currentPlayoffDivisions.length) {
+            return;
+        }
+
+        let changed = false;
+        const nextPlayoffDivisions = currentPlayoffDivisions.map((division) => {
+            const previousConfig = buildTournamentConfig(division.playoffConfig);
+            const normalizedConfig = normalizeTournamentConfigForSetMode(previousConfig, false);
+            if (tournamentConfigEqual(previousConfig, normalizedConfig)) {
+                return division;
+            }
+            changed = true;
+            return {
+                ...division,
+                playoffConfig: normalizedConfig,
+            };
+        });
+
+        if (changed) {
+            setValue('playoffDivisionDetails', nextPlayoffDivisions, { shouldDirty: true, shouldValidate: true });
+        }
+    }, [
+        eventData.playoffDivisionDetails,
+        eventData.sportConfig,
+        playoffData,
+        setPlayoffData,
+        setValue,
+    ]);
+
+    useEffect(() => {
         if (!hasImmutableFields) {
             return;
         }
@@ -5239,6 +5307,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return normalizeDivisionKeys(source.divisions);
         })();
+        const sportRequiresSets = Boolean(source.sportConfig?.usePointsPerSetWin);
         const splitLeaguePlayoffDivisions = Boolean(
             source.eventType === 'LEAGUE'
             && source.leagueData.includePlayoffs
@@ -5401,7 +5470,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 kind: 'PLAYOFF' as const,
                 name: division.name,
                 maxParticipants: Math.max(2, Math.trunc(division.maxParticipants || 2)),
-                playoffConfig: buildTournamentConfig(division.playoffConfig),
+                playoffConfig: normalizeTournamentConfigForSetMode(
+                    division.playoffConfig,
+                    sportRequiresSets,
+                ),
             })),
             cancellationRefundHours: source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
@@ -5534,13 +5606,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         if (source.eventType === 'LEAGUE') {
             const restTime = normalizeNumber(source.leagueData.restTimeMinutes);
-            const requiresSets = Boolean(source.sportConfig?.usePointsPerSetWin);
             const setsPerMatchValue = source.leagueData.setsPerMatch ?? 1;
-            const normalizedPoints = requiresSets
+            const normalizedPoints = sportRequiresSets
                 ? (() => {
                     const base = Array.isArray(source.leagueData.pointsToVictory)
                         ? source.leagueData.pointsToVictory.slice(0, setsPerMatchValue)
-                        : [];
+                    : [];
                     while (base.length < setsPerMatchValue) base.push(21);
                     return base;
                 })()
@@ -5554,7 +5625,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     : undefined)
                 : undefined;
 
-            if (requiresSets) {
+            if (sportRequiresSets) {
                 draft.usesSets = true;
                 draft.setDurationMinutes = normalizeNumber(source.leagueData.setDurationMinutes) ?? 20;
                 draft.setsPerMatch = setsPerMatchValue;
@@ -5571,24 +5642,32 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
 
             if (source.leagueData.includePlayoffs && source.playoffData && !splitLeaguePlayoffDivisions) {
-                draft.doubleElimination = source.playoffData.doubleElimination;
-                draft.winnerSetCount = source.playoffData.winnerSetCount;
-                draft.loserSetCount = source.playoffData.loserSetCount;
-                draft.winnerBracketPointsToVictory = source.playoffData.winnerBracketPointsToVictory;
-                draft.loserBracketPointsToVictory = source.playoffData.loserBracketPointsToVictory;
+                const normalizedPlayoffConfig = normalizeTournamentConfigForSetMode(
+                    source.playoffData,
+                    sportRequiresSets,
+                );
+                draft.doubleElimination = normalizedPlayoffConfig.doubleElimination;
+                draft.winnerSetCount = normalizedPlayoffConfig.winnerSetCount;
+                draft.loserSetCount = normalizedPlayoffConfig.loserSetCount;
+                draft.winnerBracketPointsToVictory = normalizedPlayoffConfig.winnerBracketPointsToVictory;
+                draft.loserBracketPointsToVictory = normalizedPlayoffConfig.loserBracketPointsToVictory;
             }
 
         }
 
         if (source.eventType === 'TOURNAMENT') {
-            draft.doubleElimination = source.tournamentData.doubleElimination;
-            draft.winnerSetCount = source.tournamentData.winnerSetCount;
-            draft.loserSetCount = source.tournamentData.loserSetCount;
-            draft.winnerBracketPointsToVictory = source.tournamentData.winnerBracketPointsToVictory;
-            draft.loserBracketPointsToVictory = source.tournamentData.loserBracketPointsToVictory;
-            draft.prize = source.tournamentData.prize;
-            draft.fieldCount = source.tournamentData.fieldCount;
-            draft.restTimeMinutes = normalizeNumber(source.tournamentData.restTimeMinutes, 0) ?? 0;
+            const normalizedTournamentConfig = normalizeTournamentConfigForSetMode(
+                source.tournamentData,
+                sportRequiresSets,
+            );
+            draft.doubleElimination = normalizedTournamentConfig.doubleElimination;
+            draft.winnerSetCount = normalizedTournamentConfig.winnerSetCount;
+            draft.loserSetCount = normalizedTournamentConfig.loserSetCount;
+            draft.winnerBracketPointsToVictory = normalizedTournamentConfig.winnerBracketPointsToVictory;
+            draft.loserBracketPointsToVictory = normalizedTournamentConfig.loserBracketPointsToVictory;
+            draft.prize = normalizedTournamentConfig.prize;
+            draft.fieldCount = normalizedTournamentConfig.fieldCount;
+            draft.restTimeMinutes = normalizeNumber(normalizedTournamentConfig.restTimeMinutes, 0) ?? 0;
         }
 
         if (supportsScheduleSlots(source.eventType)) {

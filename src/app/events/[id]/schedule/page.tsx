@@ -16,6 +16,7 @@ import { leagueService } from '@/lib/leagueService';
 import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
+import { userService } from '@/lib/userService';
 import { paymentService } from '@/lib/paymentService';
 import { familyService } from '@/lib/familyService';
 import { apiRequest } from '@/lib/apiClient';
@@ -25,7 +26,7 @@ import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
 import { toEventPayload } from '@/types';
-import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot } from '@/types';
+import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
@@ -171,6 +172,20 @@ const getDivisionKind = (division: unknown): 'LEAGUE' | 'PLAYOFF' | null => {
   return null;
 };
 
+const isDivisionStandingsConfirmed = (division: unknown): boolean => {
+  if (!division || typeof division !== 'object') {
+    return false;
+  }
+  const confirmedAt = (division as { standingsConfirmedAt?: unknown }).standingsConfirmedAt;
+  if (confirmedAt instanceof Date) {
+    return !Number.isNaN(confirmedAt.getTime());
+  }
+  if (typeof confirmedAt === 'string') {
+    return confirmedAt.trim().length > 0;
+  }
+  return false;
+};
+
 const getDivisionTeamIds = (division: unknown): string[] => {
   if (!division || typeof division !== 'object') {
     return [];
@@ -213,6 +228,43 @@ const isPlayoffBracketMatch = (match: Match): boolean =>
     match.winnerNextMatchId ||
     match.loserNextMatchId,
   );
+
+const hasRecordedScoreForReschedule = (match: Match): boolean => {
+  const setResults = Array.isArray(match.setResults) ? match.setResults : [];
+  if (setResults.some((result) => result === 1 || result === 2)) {
+    return true;
+  }
+  const hasPositivePoints = (points: unknown): boolean =>
+    Array.isArray(points) && points.some((point) => typeof point === 'number' && point > 0);
+  return hasPositivePoints(match.team1Points) || hasPositivePoints(match.team2Points);
+};
+
+const shouldPreserveMatchForReschedule = (match: Match): boolean =>
+  Boolean(match.refereeCheckedIn || match.refCheckedIn) || hasRecordedScoreForReschedule(match);
+
+const shouldPreserveCompletedMatchesForReschedule = (event: Event): boolean =>
+  event.eventType === 'TOURNAMENT' || (event.eventType === 'LEAGUE' && Boolean(event.includePlayoffs));
+
+const shouldResetBracketMatchForRebuild = (event: Event, match: Match): boolean => {
+  if (event.eventType === 'TOURNAMENT') {
+    return true;
+  }
+  if (event.eventType === 'LEAGUE' && event.includePlayoffs) {
+    return isPlayoffBracketMatch(match);
+  }
+  return false;
+};
+
+const toClearedBracketMatchUpdate = (match: Match): Partial<Match> & { $id: string } => ({
+  $id: match.$id,
+  refereeId: null,
+  teamRefereeId: null,
+  team1Points: [],
+  team2Points: [],
+  setResults: [],
+  refereeCheckedIn: false,
+  locked: false,
+});
 
 const pickPreferredRootMatch = (matches: Match[]): Match | null => {
   if (matches.length === 0) {
@@ -449,6 +501,7 @@ function EventScheduleContent() {
   const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
   const [selectedStandingsDivision, setSelectedStandingsDivision] = useState<string | null>(null);
   const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
+  const [participantReferees, setParticipantReferees] = useState<UserData[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
   const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
@@ -864,6 +917,30 @@ function EventScheduleContent() {
     return sourceMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedScheduleDivision);
   }, [activeMatches, isLeague, selectedScheduleDivision]);
 
+  const preferredStandingsDivisionId = useMemo(() => {
+    const validOptionIds = new Set(leagueDivisionOptions.map((option) => option.value));
+    const sourceDivisions = Array.isArray(activeEvent?.divisionDetails)
+      ? activeEvent.divisionDetails
+      : Array.isArray(activeEvent?.divisions)
+        ? activeEvent.divisions
+        : [];
+
+    for (const division of sourceDivisions) {
+      if (getDivisionKind(division) === 'PLAYOFF') {
+        continue;
+      }
+      const divisionId = getDivisionId(division);
+      if (!divisionId || !validOptionIds.has(divisionId)) {
+        continue;
+      }
+      if (!isDivisionStandingsConfirmed(division)) {
+        return divisionId;
+      }
+    }
+
+    return leagueDivisionOptions[0]?.value ?? null;
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions, leagueDivisionOptions]);
+
   useEffect(() => {
     if (!isLeague || leagueDivisionOptions.length === 0) {
       if (selectedStandingsDivision !== null) {
@@ -881,8 +958,8 @@ function EventScheduleContent() {
       return;
     }
 
-    setSelectedStandingsDivision(leagueDivisionOptions[0].value);
-  }, [isLeague, leagueDivisionOptions, selectedStandingsDivision]);
+    setSelectedStandingsDivision(preferredStandingsDivisionId ?? leagueDivisionOptions[0].value);
+  }, [isLeague, leagueDivisionOptions, preferredStandingsDivisionId, selectedStandingsDivision]);
 
   const activeEventId = activeEvent?.$id ?? null;
   const activeEventType = activeEvent?.eventType ?? null;
@@ -1277,6 +1354,34 @@ function EventScheduleContent() {
   }, [activeEvent?.teamIds, activeEvent?.teams]);
 
   const participantTeamIdSet = useMemo(() => new Set(participantTeamIds), [participantTeamIds]);
+  const participantRefereeIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    if (Array.isArray(activeEvent?.refereeIds)) {
+      activeEvent.refereeIds
+        .map((refereeId) => normalizeIdToken(refereeId))
+        .filter((refereeId): refereeId is string => Boolean(refereeId))
+        .forEach((refereeId) => ids.add(refereeId));
+    }
+
+    if (Array.isArray(activeEvent?.referees)) {
+      activeEvent.referees.forEach((refereeEntry) => {
+        const refereeId = normalizeIdToken(refereeEntry?.$id);
+        if (refereeId) {
+          ids.add(refereeId);
+        }
+      });
+    }
+
+    activeMatches.forEach((match) => {
+      const refereeId = normalizeIdToken(match.refereeId ?? match.referee?.$id);
+      if (refereeId) {
+        ids.add(refereeId);
+      }
+    });
+
+    return Array.from(ids);
+  }, [activeEvent?.refereeIds, activeEvent?.referees, activeMatches]);
 
   const participantTeamsById = useMemo(() => {
     const teams = new Map<string, Team>();
@@ -1434,6 +1539,40 @@ function EventScheduleContent() {
       cancelled = true;
     };
   }, [participantTeamIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadParticipantReferees = async () => {
+      if (participantRefereeIds.length === 0) {
+        setParticipantReferees([]);
+        return;
+      }
+
+      try {
+        const hydratedReferees = await userService.getUsersByIds(participantRefereeIds);
+        if (cancelled) {
+          return;
+        }
+        const hydratedById = new Map(hydratedReferees.map((referee) => [referee.$id, referee]));
+        const orderedReferees = participantRefereeIds
+          .map((refereeId) => hydratedById.get(refereeId))
+          .filter((referee): referee is UserData => Boolean(referee));
+        setParticipantReferees(orderedReferees);
+      } catch (refereesError) {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load referees for event:', refereesError);
+      }
+    };
+
+    void loadParticipantReferees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [participantRefereeIds]);
 
   useEffect(() => {
     if (!isAddTeamModalOpen) {
@@ -2755,6 +2894,36 @@ function EventScheduleContent() {
   }, [baseStandings, standingsDraftOverrides, standingsSort]);
 
   const hasRecordedMatches = standings.some((row) => row.matchesPlayed > 0);
+  const resolvedMatchTeams = useMemo(() => {
+    const teamsById = new Map<string, Team>();
+    const addTeam = (candidate: unknown) => {
+      if (!candidate || typeof candidate !== 'object') {
+        return;
+      }
+      const teamCandidate = candidate as Team & { id?: string };
+      const teamId = normalizeIdToken(teamCandidate.$id ?? teamCandidate.id);
+      if (!teamId || teamsById.has(teamId)) {
+        return;
+      }
+      teamsById.set(teamId, {
+        ...teamCandidate,
+        $id: teamId,
+      } as Team);
+    };
+
+    participantTeams.forEach(addTeam);
+    if (Array.isArray(activeEvent?.teams)) {
+      activeEvent.teams.forEach(addTeam);
+    }
+    activeMatches.forEach((match) => {
+      addTeam(match.team1);
+      addTeam(match.team2);
+      addTeam(match.teamReferee);
+    });
+
+    return Array.from(teamsById.values());
+  }, [participantTeams, activeEvent?.teams, activeMatches]);
+
   const bracketData = useMemo<TournamentBracket | null>(() => {
     if (!activeEvent || !bracketMatchesMap) {
       return null;
@@ -2763,11 +2932,11 @@ function EventScheduleContent() {
     return {
       tournament: activeEvent,
       matches: bracketMatchesMap,
-      teams: Array.isArray(activeEvent.teams) ? activeEvent.teams : [],
+      teams: resolvedMatchTeams,
       isHost: canManageEvent,
       canManage: !isPreview && canManageEvent,
     };
-  }, [activeEvent, bracketMatchesMap, canManageEvent, isPreview]);
+  }, [activeEvent, bracketMatchesMap, resolvedMatchTeams, canManageEvent, isPreview]);
 
   const scheduleDivisionSelectData = useMemo<DivisionOption[]>(
     () => [{ value: 'all', label: 'All divisions' }, ...scheduleDivisionOptions],
@@ -2998,14 +3167,22 @@ function EventScheduleContent() {
   }, [closeRentalPaymentModal, scheduleRegularEvent]);
 
   const saveExistingEvent = useCallback(
-    async ({ rescheduleAfterSave = false }: { rescheduleAfterSave?: boolean } = {}) => {
+    async ({
+      postSaveAction = 'none',
+    }: {
+      postSaveAction?: 'none' | 'reschedule' | 'buildBrackets';
+    } = {}) => {
       if (!activeEvent) return;
       if (!event) {
         setError(`Unable to save ${entityLabel.toLowerCase()} changes without the original event context.`);
         return;
       }
 
-      const draft = await getDraftFromForm({ allowCurrentEventFallback: rescheduleAfterSave });
+      const isRescheduleAction = postSaveAction === 'reschedule';
+      const isBuildBracketAction = postSaveAction === 'buildBrackets';
+      const hasSchedulingAction = isRescheduleAction || isBuildBracketAction;
+
+      const draft = await getDraftFromForm({ allowCurrentEventFallback: hasSchedulingAction });
       if (!draft) {
         return;
       }
@@ -3014,7 +3191,7 @@ function EventScheduleContent() {
       setError(null);
       setInfoMessage(null);
       setWarningMessage(null);
-      if (rescheduleAfterSave) {
+      if (hasSchedulingAction) {
         setReschedulingMatches(true);
       } else {
         setPublishing(true);
@@ -3045,27 +3222,84 @@ function EventScheduleContent() {
           updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
         }
 
-        if (updatedEvent.$id && !rescheduleAfterSave && nextMatches.length > 0) {
+        if (updatedEvent.$id && !hasSchedulingAction && nextMatches.length > 0) {
           const updatedMatches = await tournamentService.updateMatchesBulk(updatedEvent.$id, nextMatches);
           if (updatedMatches.length > 0) {
             updatedEvent.matches = updatedMatches;
           }
         }
 
-        let rescheduleWarningText: string | null = null;
-        if (rescheduleAfterSave && updatedEvent.$id) {
-          const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
-          const scheduled = await eventService.scheduleEvent(schedulePayload, { eventId: updatedEvent.$id });
-          if (!scheduled?.event) {
-            throw new Error('Failed to reschedule matches.');
+        let scheduleWarningText: string | null = null;
+        if (hasSchedulingAction && updatedEvent.$id) {
+          const scheduleEventId = updatedEvent.$id;
+          let temporarilyLockedMatches: Match[] = [];
+          if (isRescheduleAction && shouldPreserveCompletedMatchesForReschedule(updatedEvent)) {
+            temporarilyLockedMatches = nextMatches.filter((match) => !match.locked && shouldPreserveMatchForReschedule(match));
+            if (temporarilyLockedMatches.length > 0) {
+              await tournamentService.updateMatchesBulk(
+                scheduleEventId,
+                temporarilyLockedMatches.map((match) => ({ $id: match.$id, locked: true })),
+              );
+            }
           }
-          if (Array.isArray(scheduled.warnings) && scheduled.warnings.length) {
-            rescheduleWarningText = scheduled.warnings
-              .map((warning) => warning.message)
-              .filter((message) => typeof message === 'string' && message.trim().length > 0)
-              .join(' ');
+
+          try {
+            if (isBuildBracketAction) {
+              await leagueService.deleteMatchesByEvent(scheduleEventId);
+            }
+
+            const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
+            const scheduleOptions: { eventId: string; participantCount?: number } = { eventId: scheduleEventId };
+            if (isBuildBracketAction) {
+              const participantCount = typeof updatedEvent.maxParticipants === 'number'
+                ? Math.max(2, Math.trunc(updatedEvent.maxParticipants))
+                : undefined;
+              if (participantCount) {
+                scheduleOptions.participantCount = participantCount;
+              }
+            }
+            const scheduled = await eventService.scheduleEvent(schedulePayload, scheduleOptions);
+            if (!scheduled?.event) {
+              throw new Error(
+                isBuildBracketAction ? 'Failed to rebuild bracket(s).' : 'Failed to reschedule matches.',
+              );
+            }
+            if (Array.isArray(scheduled.warnings) && scheduled.warnings.length) {
+              scheduleWarningText = scheduled.warnings
+                .map((warning) => warning.message)
+                .filter((message) => typeof message === 'string' && message.trim().length > 0)
+                .join(' ');
+            }
+            updatedEvent = scheduled.event;
+
+            if (isBuildBracketAction && Array.isArray(updatedEvent.matches) && updatedEvent.matches.length > 0) {
+              const bracketMatchesToClear = updatedEvent.matches
+                .filter((match) => shouldResetBracketMatchForRebuild(updatedEvent, match))
+                .map((match) => toClearedBracketMatchUpdate(match));
+              if (bracketMatchesToClear.length > 0) {
+                const clearedMatches = await tournamentService.updateMatchesBulk(scheduleEventId, bracketMatchesToClear);
+                if (clearedMatches.length > 0) {
+                  const clearedById = new Map(clearedMatches.map((match) => [match.$id, match]));
+                  updatedEvent.matches = updatedEvent.matches.map((match) => clearedById.get(match.$id) ?? match);
+                }
+              }
+            }
+          } finally {
+            if (temporarilyLockedMatches.length > 0) {
+              try {
+                await tournamentService.updateMatchesBulk(
+                  scheduleEventId,
+                  temporarilyLockedMatches.map((match) => ({ $id: match.$id, locked: false })),
+                );
+              } catch (unlockError) {
+                console.error('Failed to restore temporary lock state after reschedule:', unlockError);
+                scheduleWarningText = [
+                  scheduleWarningText,
+                  'Some completed matches may still be locked after reschedule. Review match locks.',
+                ].filter((text): text is string => Boolean(text && text.trim().length > 0)).join(' ');
+              }
+            }
           }
-          updatedEvent = scheduled.event;
         }
 
         if (!Array.isArray(updatedEvent.matches) || updatedEvent.matches.length === 0) {
@@ -3086,21 +3320,30 @@ function EventScheduleContent() {
         }
 
         await loadSchedule();
-        if (rescheduleAfterSave) {
+        if (isRescheduleAction) {
           setInfoMessage(`${entityLabel} settings saved and matches rescheduled.`);
-          if (rescheduleWarningText) {
-            setWarningMessage(rescheduleWarningText);
+          if (scheduleWarningText) {
+            setWarningMessage(scheduleWarningText);
+          }
+        } else if (isBuildBracketAction) {
+          setInfoMessage('Bracket(s) rebuilt and playoff/tournament results reset.');
+          if (scheduleWarningText) {
+            setWarningMessage(scheduleWarningText);
           }
         } else {
           setInfoMessage(`${entityLabel} changes saved.`);
         }
       } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : null;
         console.error(`Failed to save ${entityLabel.toLowerCase()} changes:`, err);
-        setError(
-          rescheduleAfterSave
-            ? `Failed to save ${entityLabel.toLowerCase()} and reschedule matches.`
-            : `Failed to save ${entityLabel.toLowerCase()} changes.`,
-        );
+        const baseMessage = isBuildBracketAction
+          ? 'Failed to rebuild bracket(s).'
+          : (
+            isRescheduleAction
+              ? `Failed to save ${entityLabel.toLowerCase()} and reschedule matches.`
+              : `Failed to save ${entityLabel.toLowerCase()} changes.`
+          );
+        setError(errorMessage ? `${baseMessage} ${errorMessage}` : baseMessage);
       } finally {
         setPublishing(false);
         setReschedulingMatches(false);
@@ -3130,8 +3373,22 @@ function EventScheduleContent() {
   const handleRescheduleMatches = useCallback(async () => {
     if (publishing || reschedulingMatches) return;
     setSubmitError(null);
-    await saveExistingEvent({ rescheduleAfterSave: true });
+    await saveExistingEvent({ postSaveAction: 'reschedule' });
   }, [publishing, reschedulingMatches, saveExistingEvent]);
+
+  const handleBuildBrackets = useCallback(async () => {
+    if (publishing || reschedulingMatches) return;
+    if (!activeEvent) return;
+    const entityNoun = activeEvent.eventType === 'TOURNAMENT' ? 'tournament' : 'playoff';
+    const confirmed = window.confirm(
+      `Build bracket(s)? This will reset the bracket and any match results in the ${entityNoun}.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    setSubmitError(null);
+    await saveExistingEvent({ postSaveAction: 'buildBrackets' });
+  }, [activeEvent, publishing, reschedulingMatches, saveExistingEvent]);
 
   const handlePublish = async () => {
     if (publishing || reschedulingMatches) return;
@@ -3280,6 +3537,34 @@ function EventScheduleContent() {
       setMatchBeingEdited(null);
     }
   }, [canEditMatches, isMatchEditorOpen]);
+
+  const matchEditorTeams = resolvedMatchTeams;
+
+  const matchEditorReferees = useMemo(() => {
+    const refereesById = new Map<string, UserData>();
+    const addReferee = (candidate: unknown) => {
+      if (!candidate || typeof candidate !== 'object') {
+        return;
+      }
+      const refereeCandidate = candidate as UserData & { id?: string };
+      const refereeId = normalizeIdToken(refereeCandidate.$id ?? refereeCandidate.id);
+      if (!refereeId || refereesById.has(refereeId)) {
+        return;
+      }
+      refereesById.set(refereeId, {
+        ...refereeCandidate,
+        $id: refereeId,
+      } as UserData);
+    };
+
+    participantReferees.forEach(addReferee);
+    if (Array.isArray(activeEvent?.referees)) {
+      activeEvent.referees.forEach(addReferee);
+    }
+    activeMatches.forEach((match) => addReferee(match.referee));
+
+    return Array.from(refereesById.values());
+  }, [participantReferees, activeEvent?.referees, activeMatches]);
 
   const handleMatchEditRequest = useCallback((match: Match) => {
     if (!canEditMatches) return;
@@ -3520,8 +3805,16 @@ function EventScheduleContent() {
     setStandingsActionError(null);
   }, []);
 
+  const standingsActionDivisionId = useMemo(() => {
+    const loadedDivisionId = normalizeIdToken(standingsDivisionData?.divisionId ?? null);
+    if (loadedDivisionId) {
+      return loadedDivisionId;
+    }
+    return normalizeIdToken(selectedStandingsDivision);
+  }, [selectedStandingsDivision, standingsDivisionData?.divisionId]);
+
   const handleSaveStandingsAdjustments = useCallback(async () => {
-    if (!activeEvent?.$id || !selectedStandingsDivision || !standingsDivisionData) {
+    if (!activeEvent?.$id || !standingsActionDivisionId || !standingsDivisionData) {
       return;
     }
 
@@ -3565,7 +3858,7 @@ function EventScheduleContent() {
     try {
       const updatedDivision = await tournamentService.updateLeagueStandingsOverrides(
         activeEvent.$id,
-        selectedStandingsDivision,
+        standingsActionDivisionId,
         updates,
       );
       setStandingsDivisionData(updatedDivision);
@@ -3577,10 +3870,10 @@ function EventScheduleContent() {
     } finally {
       setSavingStandings(false);
     }
-  }, [activeEvent?.$id, selectedStandingsDivision, standingsDivisionData, standingsDraftOverrides]);
+  }, [activeEvent?.$id, standingsActionDivisionId, standingsDivisionData, standingsDraftOverrides]);
 
   const handleConfirmStandings = useCallback(async () => {
-    if (!activeEvent?.$id || !selectedStandingsDivision) {
+    if (!activeEvent?.$id || !standingsActionDivisionId) {
       return;
     }
 
@@ -3592,20 +3885,29 @@ function EventScheduleContent() {
     try {
       const result = await tournamentService.confirmLeagueStandings(
         activeEvent.$id,
-        selectedStandingsDivision,
+        standingsActionDivisionId,
         applyStandingsReassignment,
       );
+      const seededTeamCount = Array.isArray(result.seededTeamIds)
+        ? new Set(
+          result.seededTeamIds
+            .map((teamId) => normalizeIdToken(teamId))
+            .filter((teamId): teamId is string => Boolean(teamId)),
+        ).size
+        : 0;
       setStandingsDivisionData(result.division);
       setStandingsDraftOverrides(result.division.standingsOverrides ? { ...result.division.standingsOverrides } : {});
-      if (applyStandingsReassignment && result.reassignedPlayoffDivisionIds.length > 0) {
-        await loadSchedule();
-      }
       if (applyStandingsReassignment) {
-        setInfoMessage(
-          result.reassignedPlayoffDivisionIds.length
-            ? `Standings confirmed and playoff assignments updated for ${result.reassignedPlayoffDivisionIds.length} division(s).`
-            : 'Standings confirmed.',
-        );
+        await loadSchedule();
+        if (result.reassignedPlayoffDivisionIds.length > 0) {
+          setInfoMessage(
+            seededTeamCount > 0
+              ? `Standings confirmed and seeded ${seededTeamCount} playoff team(s) across ${result.reassignedPlayoffDivisionIds.length} division(s).`
+              : `Standings confirmed and playoff assignments refreshed for ${result.reassignedPlayoffDivisionIds.length} division(s). No teams were seeded yet.`,
+          );
+        } else {
+          setInfoMessage('Standings confirmed. No mapped playoff divisions were updated.');
+        }
       } else {
         setInfoMessage('Standings confirmed without playoff reassignment.');
       }
@@ -3615,7 +3917,7 @@ function EventScheduleContent() {
     } finally {
       setConfirmingStandings(false);
     }
-  }, [activeEvent?.$id, applyStandingsReassignment, loadSchedule, selectedStandingsDivision]);
+  }, [activeEvent?.$id, applyStandingsReassignment, loadSchedule, standingsActionDivisionId]);
 
   const standingsValidationMessages = useMemo(() => {
     if (!standingsDivisionData?.validation) {
@@ -3828,6 +4130,9 @@ function EventScheduleContent() {
   const showEditActionButton = !isTemplateEvent && !isEditingEvent && !isSavingOrRescheduling && !cancelling;
   const showSaveActionButton = isEditingEvent && !publishing && !reschedulingMatches;
   const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament) && !publishing && !reschedulingMatches;
+  const showBuildBracketsActionButton = isEditingEvent && (
+    isTournament || (isLeague && Boolean(activeEvent.includePlayoffs))
+  ) && !publishing && !reschedulingMatches;
   const showCancelEditActionButton =
     !isCreateMode && isEditingEvent && isUnpublished && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
   const showCancelActionButton = !isTemplateEvent && !cancelling;
@@ -3878,7 +4183,17 @@ function EventScheduleContent() {
                         onClick={handleRescheduleMatches}
                         disabled={hasSplitDivisionUnassignedTeams}
                       >
-                        Reschedule Matches
+                        Reschedule Event
+                      </Button>
+                    )}
+                    {showBuildBracketsActionButton && (
+                      <Button
+                        variant="light"
+                        color="orange"
+                        onClick={handleBuildBrackets}
+                        disabled={hasSplitDivisionUnassignedTeams}
+                      >
+                        Build Bracket(s)
                       </Button>
                     )}
                     {showCancelEditActionButton && (
@@ -4584,8 +4899,8 @@ function EventScheduleContent() {
         opened={isMatchEditorOpen}
         match={matchBeingEdited}
         fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
-        teams={Array.isArray(activeEvent.teams) ? activeEvent.teams : []}
-        referees={Array.isArray(activeEvent.referees) ? activeEvent.referees : []}
+        teams={matchEditorTeams}
+        referees={matchEditorReferees}
         doTeamsRef={Boolean(activeEvent.doTeamsRef)}
         onClose={handleMatchEditClose}
         onSave={handleMatchEditSave}

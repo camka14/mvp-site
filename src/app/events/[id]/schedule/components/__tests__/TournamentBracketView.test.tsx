@@ -81,11 +81,15 @@ const buildWinnersOnlyBracket = (): TournamentBracket => {
 const buildSplitLeaguePlayoffBracket = (): TournamentBracket => {
   const semifinalA = buildMatch('m1', {
     matchId: 1,
+    team1Seed: 1,
+    team2Seed: 2,
     division: { id: 'playoff_top', name: 'Playoff Top' } as Match['division'],
     winnerNextMatchId: 'm3',
   });
   const semifinalB = buildMatch('m2', {
     matchId: 2,
+    team1Seed: 1,
+    team2Seed: 2,
     division: { id: 'playoff_bottom', name: 'Playoff Bottom' } as Match['division'],
     winnerNextMatchId: 'm3',
   });

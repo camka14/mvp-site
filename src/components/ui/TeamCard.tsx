@@ -24,6 +24,18 @@ export default function TeamCard({
     const trimmed = value.trim();
     return trimmed.length ? trimmed : null;
   };
+  const looksLikeLegacyDivisionMetadataLabel = (value: string): boolean => {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    const hasWordSkill = /\bskill\b/.test(normalized);
+    const hasWordAge = /\bage\b/.test(normalized);
+    const hasTokenPattern = normalized.includes('skill_') && normalized.includes('_age_');
+    return (hasWordSkill && hasWordAge) || hasTokenPattern;
+  };
+  const toDisplayDivisionLabel = (value: string | null): string | null => {
+    if (!value) return null;
+    return looksLikeLegacyDivisionMetadataLabel(value) ? null : value;
+  };
   const looksLikeDivisionId = (value: string): boolean => {
     const normalized = value.trim().toLowerCase();
     if (!normalized) return false;
@@ -36,18 +48,27 @@ export default function TeamCard({
     ? team.division
     : null;
 
-  const divisionLabelFromObject = resolveLabel(divisionObject?.name)
-    ?? resolveLabel(divisionObject?.divisionTypeName)
-    ?? resolveLabel(divisionObject?.skillLevel);
+  const divisionLabelFromObjectName = toDisplayDivisionLabel(resolveLabel(divisionObject?.name));
+  const divisionLabelFromObjectTypeName = toDisplayDivisionLabel(resolveLabel(divisionObject?.divisionTypeName));
+  const divisionLabelFromObjectSkillLevel = toDisplayDivisionLabel(resolveLabel(divisionObject?.skillLevel));
+  const divisionLabelFromObjectId = (() => {
+    const divisionId = resolveLabel(divisionObject?.id);
+    if (!divisionId) return null;
+    const inferred = inferDivisionDetails({
+      identifier: divisionId,
+      sportInput: team.sport,
+    });
+    return toDisplayDivisionLabel(resolveLabel(inferred.divisionTypeName) ?? inferred.defaultName);
+  })();
 
-  const divisionLabelFromTypeName = resolveLabel(team.divisionTypeName);
+  const divisionLabelFromTypeName = toDisplayDivisionLabel(resolveLabel(team.divisionTypeName));
 
   const divisionLabelFromString = (() => {
     const rawDivision = resolveLabel(typeof team.division === 'string' ? team.division : null);
     if (!rawDivision) return null;
 
     if (!looksLikeDivisionId(rawDivision)) {
-      return rawDivision;
+      return toDisplayDivisionLabel(rawDivision);
     }
 
     const divisionToken = extractDivisionTokenFromId(rawDivision);
@@ -56,20 +77,19 @@ export default function TeamCard({
       return null;
     }
 
-    return inferDivisionDetails({
+    return toDisplayDivisionLabel(inferDivisionDetails({
       identifier: rawDivision,
       sportInput: team.sport,
-    }).defaultName;
+    }).defaultName);
   })();
 
-  const divisionLabel = divisionLabelFromObject
+  const divisionLabel = divisionLabelFromObjectName
     ?? divisionLabelFromTypeName
+    ?? divisionLabelFromObjectTypeName
+    ?? divisionLabelFromObjectSkillLevel
+    ?? divisionLabelFromObjectId
     ?? divisionLabelFromString
     ?? 'Division';
-
-  const divisionMetaLabel = /division$/i.test(divisionLabel)
-    ? divisionLabel
-    : `${divisionLabel} Division`;
 
   return (
     <Paper withBorder radius="md" p="md" className={className} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
@@ -79,7 +99,7 @@ export default function TeamCard({
           <div style={{ flex: 1, minWidth: 0 }}>
             <Text fw={600} size="lg" truncate>{team.name || 'Unnamed Team'}</Text>
             <Group gap={6} mt={4}>
-              <Text size="sm" c="dimmed">{divisionMetaLabel}</Text>
+              <Text size="sm" c="dimmed">{divisionLabel}</Text>
               {team.sport && <Badge variant="light" color="blue" size="xs">{team.sport}</Badge>}
               {team.isFull && <Badge variant="light" color="red" size="xs">Full</Badge>}
             </Group>

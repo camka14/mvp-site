@@ -139,6 +139,8 @@ export const MatchesScalarFieldEnum = {
   refereeId: 'refereeId',
   team1Id: 'team1Id',
   team2Id: 'team2Id',
+  team1Seed: 'team1Seed',
+  team2Seed: 'team2Seed',
   eventId: 'eventId',
   fieldId: 'fieldId',
   teamRefereeId: 'teamRefereeId'

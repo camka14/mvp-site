@@ -341,7 +341,7 @@ export class EventBuilder {
       const placeholderId = this.generatePlaceholderId(`playoff-${safeDivisionId}`);
       const placeholder = new Team({
         id: placeholderId,
-        seed: count - seedIndex,
+        seed: seedIndex + 1,
         captainId: '',
         division,
         matches: [],
@@ -645,6 +645,9 @@ export class EventBuilder {
       : 1;
     const rawLoserSetCount = normalizePositiveInt(divisionConfig?.loserSetCount, fallbackLoserSetCount);
     const loserSetCount = doubleElimination ? rawLoserSetCount : 1;
+    const enforceSingleSet = !this.event.usesSets;
+    const normalizedWinnerSetCount = enforceSingleSet ? 1 : winnerSetCount;
+    const normalizedLoserSetCount = enforceSingleSet ? 1 : loserSetCount;
     const winnerPointsFallback = Array.isArray(this.event.winnerBracketPointsToVictory)
       ? this.event.winnerBracketPointsToVictory
       : [];
@@ -654,16 +657,16 @@ export class EventBuilder {
 
     return {
       doubleElimination,
-      winnerSetCount,
-      loserSetCount,
+      winnerSetCount: normalizedWinnerSetCount,
+      loserSetCount: normalizedLoserSetCount,
       winnerBracketPointsToVictory: normalizePoints(
         divisionConfig?.winnerBracketPointsToVictory,
-        winnerSetCount,
+        normalizedWinnerSetCount,
         winnerPointsFallback,
       ),
       loserBracketPointsToVictory: normalizePoints(
         divisionConfig?.loserBracketPointsToVictory,
-        loserSetCount,
+        normalizedLoserSetCount,
         loserPointsFallback,
       ),
       prize: typeof divisionConfig?.prize === 'string'
@@ -766,9 +769,11 @@ export class EventBuilder {
       match.unschedule();
       if (match.team1) {
         match.team1 = teamLookup[match.team1.id] ?? match.team1;
+        match.team1Seed = match.team1?.seed ?? match.team1Seed ?? null;
       }
       if (match.team2) {
         match.team2 = teamLookup[match.team2.id] ?? match.team2;
+        match.team2Seed = match.team2?.seed ?? match.team2Seed ?? null;
       }
       if (match.teamReferee) {
         match.teamReferee = teamLookup[match.teamReferee.id] ?? match.teamReferee;
@@ -804,7 +809,7 @@ export class EventBuilder {
   }
 
   private seedParticipants(participants: Team[], count: number): Team[] {
-    return [...participants].sort((a, b) => b.seed - a.seed).slice(0, count);
+    return [...participants].sort((a, b) => a.seed - b.seed).slice(0, count);
   }
 
   private maxEndTime(matches: Match[]): Date | null {
@@ -814,8 +819,18 @@ export class EventBuilder {
 
   private stripPlaceholderAssignments(matches: Match[]): void {
     for (const match of matches) {
-      if (match.team1 && this.placeholderIds.has(match.team1.id)) match.team1 = null;
-      if (match.team2 && this.placeholderIds.has(match.team2.id)) match.team2 = null;
+      if (match.team1 && this.placeholderIds.has(match.team1.id)) {
+        if (typeof match.team1Seed !== 'number') {
+          match.team1Seed = match.team1.seed;
+        }
+        match.team1 = null;
+      }
+      if (match.team2 && this.placeholderIds.has(match.team2.id)) {
+        if (typeof match.team2Seed !== 'number') {
+          match.team2Seed = match.team2.seed;
+        }
+        match.team2 = null;
+      }
       if (match.teamReferee && this.placeholderIds.has(match.teamReferee.id)) match.teamReferee = null;
     }
     if (this.placeholderIds.size) {

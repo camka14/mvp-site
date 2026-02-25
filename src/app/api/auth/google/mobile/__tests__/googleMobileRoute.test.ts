@@ -9,6 +9,7 @@ const prismaMock = {
     update: jest.fn(),
   },
   userData: {
+    findFirst: jest.fn(),
     findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),

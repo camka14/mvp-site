@@ -62,3 +62,296 @@ Error: listen EADDRINUSE: address already in use :::3000
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
  ✓ Ready in 522ms
 [?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Ready in 6.2s
+ ○ Compiling / ...
+ GET / 200 in 375ms (compile: 225ms, render: 149ms)
+ GET /api/auth/me 200 in 786ms (compile: 436ms, render: 350ms)
+ POST /api/messaging/topics/user_b4cb98cf-ccee-499e-92a3-ef6012a01ed7/subscriptions 200 in 199ms
+ POST /api/messaging/topics/user_b4cb98cf-ccee-499e-92a3-ef6012a01ed7/subscriptions 200 in 1788ms
+ GET /api/auth/me 200 in 6.1s (compile: 4.9s, render: 1258ms)
+ POST /api/messaging/topics/user_b4cb98cf-ccee-499e-92a3-ef6012a01ed7/subscriptions 200 in 5.8s (compile: 2.3s, render: 3.6s)
+ GET /api/organizations?limit=1000 200 in 64ms (compile: 27ms, render: 36ms)
+ POST /api/messaging/topics/user_b4cb98cf-ccee-499e-92a3-ef6012a01ed7/subscriptions 200 in 185ms (compile: 144ms, render: 40ms)
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⨯ Unable to acquire lock at /Users/elesesy/StudioProjects/mvp-site/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+
+> starter-for-nextjs@0.1.0 dev:plain
+> next dev
+
+   ▲ Next.js 16.0.4 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.254.249.181:3000
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Ready in 11.9s

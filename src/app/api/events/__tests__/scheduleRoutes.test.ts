@@ -262,6 +262,48 @@ describe('schedule routes', () => {
     ]);
   });
 
+  it('preserves populated unlocked matches during event reschedule', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      matches: {
+        match_1: { id: 'match_1', locked: false, team1: 'team_a', team2: 'team_b', score1: 3, score2: 2 },
+      },
+    });
+    rescheduleEventMatchesPreservingLocksMock.mockReturnValue({
+      event: { id: 'event_1' },
+      matches: [{ id: 'match_1', locked: false, team1: 'team_a', team2: 'team_b', score1: 3, score2: 2 }],
+      warnings: [],
+    });
+    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', team1: 'team_a', team2: 'team_b', score1: 3, score2: 2 }]);
+
+    const res = await scheduleByIdPost(
+      jsonRequest('http://localhost/api/events/event_1/schedule', {}),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(rescheduleEventMatchesPreservingLocksMock).toHaveBeenCalled();
+    expect(scheduleEventMock).not.toHaveBeenCalled();
+    expect(deleteMatchesByEventMock).not.toHaveBeenCalled();
+    expect(saveMatchesMock).toHaveBeenCalledWith(
+      'event_1',
+      [{ id: 'match_1', locked: false, team1: 'team_a', team2: 'team_b', score1: 3, score2: 2 }],
+      prismaMock,
+    );
+    expect(json.warnings).toEqual([]);
+  });
+
   it('rejects match updates when user is not host', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({

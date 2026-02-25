@@ -82,13 +82,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         return { preview: false, event, matches: Object.values(event.matches), warnings: [] };
       }
 
-      const hasLockedMatches = Object.values(event.matches).some((match) => Boolean(match.locked));
-      if (hasLockedMatches) {
+      const existingMatches = Object.values(event.matches);
+      const hasExistingMatches = existingMatches.length > 0;
+      if (hasExistingMatches) {
         let scheduled;
         try {
           scheduled = rescheduleEventMatchesPreservingLocks(event);
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unable to reschedule while preserving locked matches.';
+          const message = error instanceof Error ? error.message : 'Unable to reschedule while preserving existing matches.';
           throw new ScheduleError(message);
         }
         await saveMatches(eventId, scheduled.matches, tx);

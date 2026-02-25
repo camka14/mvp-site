@@ -14,6 +14,122 @@ type SchedulerEvent = League | Tournament;
 
 const MIN_SCHEDULE_DURATION_MS = 5 * MINUTE_MS;
 
+const isLeagueEvent = (event: SchedulerEvent): event is League => (
+  event instanceof League || event.eventType === 'LEAGUE'
+);
+
+const isSplitPlayoffLeague = (event: SchedulerEvent): event is League => (
+  isLeagueEvent(event)
+  && Boolean(event.splitLeaguePlayoffDivisions)
+  && Array.isArray(event.playoffDivisions)
+  && event.playoffDivisions.length > 0
+);
+
+const normalizeDivisionId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const schedulingDivisionsForEvent = (event: SchedulerEvent): Division[] => {
+  const divisions: Division[] = [...event.divisions];
+  if (!isSplitPlayoffLeague(event)) {
+    return divisions;
+  }
+  const seenIds = new Set(divisions.map((division) => division.id));
+  for (const playoffDivision of event.playoffDivisions) {
+    if (seenIds.has(playoffDivision.id)) {
+      continue;
+    }
+    seenIds.add(playoffDivision.id);
+    divisions.push(playoffDivision);
+  }
+  return divisions;
+};
+
+const ensureSplitPlayoffTimeSlotCoverage = (event: SchedulerEvent): void => {
+  if (!isSplitPlayoffLeague(event) || !event.timeSlots.length) {
+    return;
+  }
+
+  const playoffDivisionById = new Map<string, Division>();
+  for (const playoffDivision of event.playoffDivisions) {
+    const normalizedId = normalizeDivisionId(playoffDivision.id);
+    if (!normalizedId) {
+      continue;
+    }
+    playoffDivisionById.set(normalizedId, playoffDivision);
+  }
+  if (!playoffDivisionById.size) {
+    return;
+  }
+
+  const mappedPlayoffIdsByDivisionId = new Map<string, Set<string>>();
+  for (const division of event.divisions) {
+    const sourceDivisionId = normalizeDivisionId(division.id);
+    if (!sourceDivisionId) {
+      continue;
+    }
+    for (const mappedPlayoffDivisionIdRaw of division.playoffPlacementDivisionIds ?? []) {
+      const mappedPlayoffDivisionId = normalizeDivisionId(mappedPlayoffDivisionIdRaw);
+      if (!mappedPlayoffDivisionId || !playoffDivisionById.has(mappedPlayoffDivisionId)) {
+        continue;
+      }
+      const bucket = mappedPlayoffIdsByDivisionId.get(sourceDivisionId) ?? new Set<string>();
+      bucket.add(mappedPlayoffDivisionId);
+      mappedPlayoffIdsByDivisionId.set(sourceDivisionId, bucket);
+    }
+  }
+
+  if (!mappedPlayoffIdsByDivisionId.size) {
+    return;
+  }
+
+  for (const slot of event.timeSlots) {
+    const existingDivisions = Array.isArray(slot.divisions) ? slot.divisions : [];
+    if (!existingDivisions.length) {
+      continue;
+    }
+    const normalizedSlotDivisionIds = new Set<string>();
+    for (const division of existingDivisions) {
+      const normalizedId = normalizeDivisionId(division?.id);
+      if (normalizedId) {
+        normalizedSlotDivisionIds.add(normalizedId);
+      }
+    }
+    if (!normalizedSlotDivisionIds.size) {
+      continue;
+    }
+
+    const nextDivisions: Division[] = [...existingDivisions];
+    let changed = false;
+    for (const divisionId of normalizedSlotDivisionIds) {
+      const mappedPlayoffIds = mappedPlayoffIdsByDivisionId.get(divisionId);
+      if (!mappedPlayoffIds) {
+        continue;
+      }
+      for (const playoffDivisionId of mappedPlayoffIds) {
+        if (normalizedSlotDivisionIds.has(playoffDivisionId)) {
+          continue;
+        }
+        const playoffDivision = playoffDivisionById.get(playoffDivisionId);
+        if (!playoffDivision) {
+          continue;
+        }
+        nextDivisions.push(playoffDivision);
+        normalizedSlotDivisionIds.add(playoffDivisionId);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      slot.divisions = nextDivisions;
+    }
+  }
+};
+
 export type LockedScheduleWarning = {
   code: 'LOCKED_MATCH_OUTSIDE_WINDOW';
   message: string;
@@ -26,11 +142,14 @@ export type LockedPreservingRescheduleResult = {
   warnings: LockedScheduleWarning[];
 };
 
-const buildScheduleParticipants = (event: SchedulerEvent): Record<string, Team | UserData> => {
+const buildScheduleParticipants = (
+  event: SchedulerEvent,
+  schedulingDivisions: Division[],
+): Record<string, Team | UserData> => {
   const participants: Record<string, Team | UserData> = { ...event.teams };
   for (const referee of event.referees) {
     if (!referee.divisions.length) {
-      referee.divisions = [...event.divisions];
+      referee.divisions = [...schedulingDivisions];
     }
     participants[referee.id] = referee;
   }
@@ -212,6 +331,60 @@ const latestMatchEnd = (matches: Match[]): Date | null => {
   return latest;
 };
 
+const isMatchCompleted = (match: Match): boolean => {
+  if (!Array.isArray(match.setResults) || match.setResults.length === 0) {
+    return false;
+  }
+  const team1Wins = match.setResults.filter((result) => result === 1).length;
+  const team2Wins = match.setResults.filter((result) => result === 2).length;
+  const setsToWin = Math.ceil(match.setResults.length / 2);
+  return team1Wins >= setsToWin || team2Wins >= setsToWin;
+};
+
+const detachMatchFromParticipant = (participant: { matches?: Match[] } | null | undefined, match: Match): void => {
+  if (!participant?.matches) {
+    return;
+  }
+  participant.matches = participant.matches.filter((existing) => existing.id !== match.id);
+};
+
+type PendingDependencyAssignment = {
+  match: Match;
+  team1: Team | null;
+  team2: Team | null;
+  teamReferee: Team | null;
+  team1Seed: number | null;
+  team2Seed: number | null;
+};
+
+const detachPendingDependencyAssignments = (match: Match): PendingDependencyAssignment => {
+  const snapshot: PendingDependencyAssignment = {
+    match,
+    team1: match.team1,
+    team2: match.team2,
+    teamReferee: match.teamReferee,
+    team1Seed: match.team1Seed ?? null,
+    team2Seed: match.team2Seed ?? null,
+  };
+  detachMatchFromParticipant(match.team1, match);
+  detachMatchFromParticipant(match.team2, match);
+  detachMatchFromParticipant(match.teamReferee, match);
+  match.team1 = null;
+  match.team2 = null;
+  match.teamReferee = null;
+  return snapshot;
+};
+
+const restorePendingDependencyAssignments = (snapshot: PendingDependencyAssignment): void => {
+  const { match } = snapshot;
+  match.team1 = snapshot.team1;
+  match.team2 = snapshot.team2;
+  match.teamReferee = snapshot.teamReferee;
+  match.team1Seed = snapshot.team1Seed;
+  match.team2Seed = snapshot.team2Seed;
+  attachMatchToParticipants(match);
+};
+
 const dependenciesAreScheduled = (match: Match, pendingIds: Set<string>): boolean => {
   for (const dependency of match.getDependencies()) {
     if (pendingIds.has(dependency.id)) {
@@ -229,6 +402,9 @@ export const rescheduleEventMatchesPreservingLocks = (
     return { event, matches: [], warnings: [] };
   }
 
+  ensureSplitPlayoffTimeSlotCoverage(event);
+  const schedulingDivisions = schedulingDivisionsForEvent(event);
+
   const lockedMatches = allMatches.filter((match) => match.locked);
   const warnings = collectWarnings(event, lockedMatches);
   resetScheduleCollections(event);
@@ -238,12 +414,12 @@ export const rescheduleEventMatchesPreservingLocks = (
     attachMatchToParticipants(match);
   }
 
-  const participants = buildScheduleParticipants(event);
+  const participants = buildScheduleParticipants(event, schedulingDivisions);
   const schedule = new Schedule<Match, PlayingField, Team | UserData, Division>(
     event.start,
     event.fields,
     participants,
-    event.divisions,
+    schedulingDivisions,
     event.start,
     { endTime: event.end, timeSlots: event.timeSlots },
   );
@@ -253,25 +429,34 @@ export const rescheduleEventMatchesPreservingLocks = (
     .sort(compareMatches);
   const unlockedById = new Map(unlockedMatches.map((match) => [match.id, match]));
   const pendingIds = new Set(unlockedMatches.map((match) => match.id));
+  const detachedPendingAssignments: PendingDependencyAssignment[] = [];
 
   for (const match of unlockedMatches) {
+    const hasUnresolvedDependency = match.getDependencies().some((dependency) => !isMatchCompleted(dependency));
+    if (hasUnresolvedDependency) {
+      detachedPendingAssignments.push(detachPendingDependencyAssignments(match));
+    }
     match.unschedule();
   }
 
-  while (pendingIds.size > 0) {
-    const readyMatches = unlockedMatches
-      .filter((match) => pendingIds.has(match.id) && dependenciesAreScheduled(match, pendingIds))
-      .sort(compareMatches);
+  try {
+    while (pendingIds.size > 0) {
+      const readyMatches = unlockedMatches
+        .filter((match) => pendingIds.has(match.id) && dependenciesAreScheduled(match, pendingIds))
+        .sort(compareMatches);
 
-    const nextBatch = readyMatches.length
-      ? readyMatches
-      : [unlockedById.get(Array.from(pendingIds.values())[0]) as Match];
+      const nextBatch = readyMatches.length
+        ? readyMatches
+        : [unlockedById.get(Array.from(pendingIds.values())[0]) as Match];
 
-    for (const match of nextBatch) {
-      schedule.scheduleEvent(match, durationForReschedule(match));
-      attachMatchToParticipants(match);
-      pendingIds.delete(match.id);
+      for (const match of nextBatch) {
+        schedule.scheduleEvent(match, durationForReschedule(match));
+        attachMatchToParticipants(match);
+        pendingIds.delete(match.id);
+      }
     }
+  } finally {
+    detachedPendingAssignments.forEach(restorePendingDependencyAssignments);
   }
 
   const latestEnd = latestMatchEnd(allMatches);

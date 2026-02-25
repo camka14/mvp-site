@@ -37,26 +37,125 @@ export type LeagueStandingsDivisionResponse = {
 };
 
 class TournamentService {
-    private toBulkMatchUpdatePayload(match: Match): Record<string, unknown> {
-        return {
-            id: match.$id,
-            matchId: match.matchId,
-            locked: Boolean(match.locked),
-            team1Points: match.team1Points,
-            team2Points: match.team2Points,
-            setResults: match.setResults,
-            team1Id: match.team1Id ?? match.team1?.$id ?? null,
-            team2Id: match.team2Id ?? match.team2?.$id ?? null,
-            refereeId: match.refereeId ?? match.referee?.$id ?? null,
-            teamRefereeId: match.teamRefereeId ?? match.teamReferee?.$id ?? null,
-            fieldId: match.fieldId ?? match.field?.$id ?? null,
-            previousLeftId: match.previousLeftId ?? match.previousLeftMatch?.$id ?? null,
-            previousRightId: match.previousRightId ?? match.previousRightMatch?.$id ?? null,
-            winnerNextMatchId: match.winnerNextMatchId ?? match.winnerNextMatch?.$id ?? null,
-            loserNextMatchId: match.loserNextMatchId ?? match.loserNextMatch?.$id ?? null,
-            side: match.side ?? null,
-            refereeCheckedIn: match.refereeCheckedIn ?? false,
+    private toBulkMatchUpdatePayload(match: Partial<Match> & { $id: string }): Record<string, unknown> {
+        const payload: Record<string, unknown> = { id: match.$id };
+        const hasOwn = (key: string) => Object.prototype.hasOwnProperty.call(match, key);
+        const relationId = (value: unknown): string | null => {
+            if (typeof value === 'string') {
+                return value;
+            }
+            if (value && typeof value === 'object' && '$id' in (value as Record<string, unknown>)) {
+                const entityId = (value as Record<string, unknown>).$id;
+                return typeof entityId === 'string' ? entityId : null;
+            }
+            return null;
         };
+
+        if (hasOwn('matchId') && match.matchId !== undefined) {
+            payload.matchId = match.matchId;
+        }
+        if (hasOwn('locked') && typeof match.locked === 'boolean') {
+            payload.locked = match.locked;
+        }
+        if (hasOwn('team1Points') && Array.isArray(match.team1Points)) {
+            payload.team1Points = match.team1Points;
+        }
+        if (hasOwn('team2Points') && Array.isArray(match.team2Points)) {
+            payload.team2Points = match.team2Points;
+        }
+        if (hasOwn('setResults') && Array.isArray(match.setResults)) {
+            payload.setResults = match.setResults;
+        }
+
+        if (hasOwn('team1Id')) {
+            if (match.team1Id !== undefined) {
+                payload.team1Id = match.team1Id ?? null;
+            } else if (hasOwn('team1')) {
+                payload.team1Id = relationId(match.team1);
+            }
+        } else if (hasOwn('team1')) {
+            payload.team1Id = relationId(match.team1);
+        }
+        if (hasOwn('team2Id')) {
+            if (match.team2Id !== undefined) {
+                payload.team2Id = match.team2Id ?? null;
+            } else if (hasOwn('team2')) {
+                payload.team2Id = relationId(match.team2);
+            }
+        } else if (hasOwn('team2')) {
+            payload.team2Id = relationId(match.team2);
+        }
+        if (hasOwn('refereeId')) {
+            if (match.refereeId !== undefined) {
+                payload.refereeId = match.refereeId ?? null;
+            } else if (hasOwn('referee')) {
+                payload.refereeId = relationId(match.referee);
+            }
+        } else if (hasOwn('referee')) {
+            payload.refereeId = relationId(match.referee);
+        }
+        if (hasOwn('teamRefereeId')) {
+            if (match.teamRefereeId !== undefined) {
+                payload.teamRefereeId = match.teamRefereeId ?? null;
+            } else if (hasOwn('teamReferee')) {
+                payload.teamRefereeId = relationId(match.teamReferee);
+            }
+        } else if (hasOwn('teamReferee')) {
+            payload.teamRefereeId = relationId(match.teamReferee);
+        }
+        if (hasOwn('fieldId')) {
+            if (match.fieldId !== undefined) {
+                payload.fieldId = match.fieldId ?? null;
+            } else if (hasOwn('field')) {
+                payload.fieldId = relationId(match.field);
+            }
+        } else if (hasOwn('field')) {
+            payload.fieldId = relationId(match.field);
+        }
+        if (hasOwn('previousLeftId')) {
+            if (match.previousLeftId !== undefined) {
+                payload.previousLeftId = match.previousLeftId ?? null;
+            } else if (hasOwn('previousLeftMatch')) {
+                payload.previousLeftId = relationId(match.previousLeftMatch);
+            }
+        } else if (hasOwn('previousLeftMatch')) {
+            payload.previousLeftId = relationId(match.previousLeftMatch);
+        }
+        if (hasOwn('previousRightId')) {
+            if (match.previousRightId !== undefined) {
+                payload.previousRightId = match.previousRightId ?? null;
+            } else if (hasOwn('previousRightMatch')) {
+                payload.previousRightId = relationId(match.previousRightMatch);
+            }
+        } else if (hasOwn('previousRightMatch')) {
+            payload.previousRightId = relationId(match.previousRightMatch);
+        }
+        if (hasOwn('winnerNextMatchId')) {
+            if (match.winnerNextMatchId !== undefined) {
+                payload.winnerNextMatchId = match.winnerNextMatchId ?? null;
+            } else if (hasOwn('winnerNextMatch')) {
+                payload.winnerNextMatchId = relationId(match.winnerNextMatch);
+            }
+        } else if (hasOwn('winnerNextMatch')) {
+            payload.winnerNextMatchId = relationId(match.winnerNextMatch);
+        }
+        if (hasOwn('loserNextMatchId')) {
+            if (match.loserNextMatchId !== undefined) {
+                payload.loserNextMatchId = match.loserNextMatchId ?? null;
+            } else if (hasOwn('loserNextMatch')) {
+                payload.loserNextMatchId = relationId(match.loserNextMatch);
+            }
+        } else if (hasOwn('loserNextMatch')) {
+            payload.loserNextMatchId = relationId(match.loserNextMatch);
+        }
+
+        if (hasOwn('side')) {
+            payload.side = match.side ?? null;
+        }
+        if (hasOwn('refereeCheckedIn') && typeof match.refereeCheckedIn === 'boolean') {
+            payload.refereeCheckedIn = match.refereeCheckedIn;
+        }
+        return payload;
     }
 
     async getTournamentBracket(tournamentId: string): Promise<TournamentBracket> {
@@ -237,7 +336,7 @@ class TournamentService {
         return this.updateMatch(eventId, matchId, updates);
     }
 
-    async updateMatchesBulk(eventId: string, matches: Match[]): Promise<Match[]> {
+    async updateMatchesBulk(eventId: string, matches: Array<Partial<Match> & { $id: string }>): Promise<Match[]> {
         if (!eventId || !Array.isArray(matches) || matches.length === 0) {
             return [];
         }
@@ -266,7 +365,6 @@ class TournamentService {
             await apiRequest(`/api/events/${eventId}/matches/${matchId}`, {
                 method: 'PATCH',
                 body: {
-                    matchId,
                     finalize: true,
                     setResults: payload.setResults,
                     team1Points: payload.team1Points,

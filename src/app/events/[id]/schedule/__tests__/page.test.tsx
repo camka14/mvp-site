@@ -719,7 +719,7 @@ describe('League schedule page', () => {
     expect(await screen.findByText(/Summer League/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: /schedule/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /reschedule matches/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /reschedule event/i }));
 
     await waitFor(() => {
       expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);

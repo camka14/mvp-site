@@ -22,6 +22,17 @@ const buildField = (division: Division) =>
     name: 'Court A',
   });
 
+const buildFieldById = (id: string, division: Division) =>
+  new PlayingField({
+    id,
+    fieldNumber: 1,
+    divisions: [division],
+    matches: [],
+    events: [],
+    rentalSlots: [],
+    name: id,
+  });
+
 const buildTeams = (count: number, division: Division) => {
   const teams: Record<string, Team> = {};
   for (let i = 1; i <= count; i += 1) {
@@ -189,5 +200,106 @@ describe('finalizeMatch (league)', () => {
         initialPlayoffAssignments.get(match.id),
       );
     }
+  });
+
+  it('finalizes split-playoff matches without rescheduling when playoff divisions map to regular slots', () => {
+    const mixedAge = new Division(
+      'mixed_age_finalize_mapped_slots',
+      'Mixed Age',
+      [],
+      null,
+      8,
+      4,
+      'LEAGUE',
+      [
+        'mixed_age_finalize_playoff_mapped_slots',
+        'mixed_age_finalize_playoff_mapped_slots',
+        'mixed_age_finalize_playoff_mapped_slots',
+        'mixed_age_finalize_playoff_mapped_slots',
+      ],
+    );
+    const mixedAgePlayoff = new Division(
+      'mixed_age_finalize_playoff_mapped_slots',
+      'Mixed Age Playoff',
+      [],
+      null,
+      8,
+      null,
+      'PLAYOFF',
+    );
+    const fieldRegular = buildFieldById('field_finalize_mapped_slots_regular', mixedAge);
+    const teams = buildTeams(8, mixedAge);
+
+    const league = new League({
+      id: 'league_finalize_split_playoff_mapped_slot_fallback',
+      name: 'Finalize Split Playoff Mapped Slot Fallback',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 2, 30, 22, 0, 0),
+      noFixedEndDateTime: false,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams,
+      divisions: [mixedAge],
+      playoffDivisions: [mixedAgePlayoff],
+      splitLeaguePlayoffDivisions: true,
+      referees: [],
+      fields: {
+        [fieldRegular.id]: fieldRegular,
+      },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_finalize_mapped_slots_regular',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldRegular.id,
+          divisions: [mixedAge],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const playoffMatch = scheduled.matches.find((match) => match.division.id === mixedAgePlayoff.id);
+
+    expect(playoffMatch).toBeTruthy();
+    if (!playoffMatch) {
+      return;
+    }
+
+    const teamsArray = Object.values(league.teams);
+    const [team1, team2] = teamsArray;
+    expect(team1).toBeTruthy();
+    expect(team2).toBeTruthy();
+    if (!team1 || !team2) {
+      return;
+    }
+
+    playoffMatch.team1 = team1;
+    playoffMatch.team2 = team2;
+    if (!team1.matches.includes(playoffMatch)) {
+      team1.matches.push(playoffMatch);
+    }
+    if (!team2.matches.includes(playoffMatch)) {
+      team2.matches.push(playoffMatch);
+    }
+
+    playoffMatch.setResults = [1];
+    playoffMatch.team1Points = [21];
+    playoffMatch.team2Points = [19];
+
+    expect(() => finalizeMatch(league, playoffMatch, context, new Date(playoffMatch.end))).not.toThrow();
   });
 });
