@@ -1078,6 +1078,69 @@ describe('league scheduling (time slots)', () => {
     expect(earliestPlayoffStart).toBeGreaterThanOrEqual(latestRegularEnd);
   });
 
+  it('reuses mapped regular-season slots for split playoffs when explicit playoff slots are missing', () => {
+    const mixedAge = new Division(
+      'mixed_age_mapped_slots',
+      'Mixed Age',
+      [],
+      null,
+      8,
+      2,
+      'LEAGUE',
+      ['mixed_age_playoff_mapped_slots', 'mixed_age_playoff_mapped_slots'],
+    );
+    const mixedAgePlayoff = new Division('mixed_age_playoff_mapped_slots', 'Mixed Age Playoff', [], null, 8, null, 'PLAYOFF');
+    const fieldRegular = buildFieldById('field_mixed_age_regular_mapped', mixedAge);
+    const teams = buildTeams(8, mixedAge);
+
+    const league = new League({
+      id: 'league_split_playoff_mapped_slot_fallback',
+      name: 'Split Playoff Mapped Slot Fallback',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 2, 30, 22, 0, 0),
+      noFixedEndDateTime: false,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams,
+      divisions: [mixedAge],
+      playoffDivisions: [mixedAgePlayoff],
+      splitLeaguePlayoffDivisions: true,
+      referees: [],
+      fields: {
+        [fieldRegular.id]: fieldRegular,
+      },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_mixed_age_regular_mapped',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldRegular.id,
+          divisions: [mixedAge],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 2,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const playoffMatches = scheduled.matches.filter((match) => match.division.id === mixedAgePlayoff.id);
+
+    expect(playoffMatches.length).toBeGreaterThan(0);
+    expect(playoffMatches.every((match) => match.field?.id === fieldRegular.id)).toBe(true);
+  });
+
   it('fails fast when split playoffs are enabled without playoff divisions', () => {
     const mixedAge = new Division('mixed_age_missing_split', 'Mixed Age Missing Split', [], null, 4, 2, 'LEAGUE');
     const fieldRegular = buildFieldById('field_mixed_age_missing_split_regular', mixedAge);

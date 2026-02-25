@@ -126,6 +126,94 @@ const hasConfiguredSplitDivisionMembership = (
   ));
 };
 
+const normalizeDivisionId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const ensureSplitPlayoffTimeSlotCoverage = (league: League): void => {
+  if (!league.splitLeaguePlayoffDivisions || !league.playoffDivisions.length || !league.timeSlots.length) {
+    return;
+  }
+
+  const playoffDivisionById = new Map<string, Division>();
+  for (const playoffDivision of league.playoffDivisions) {
+    const normalizedId = normalizeDivisionId(playoffDivision.id);
+    if (!normalizedId) {
+      continue;
+    }
+    playoffDivisionById.set(normalizedId, playoffDivision);
+  }
+  if (!playoffDivisionById.size) {
+    return;
+  }
+
+  const mappedPlayoffIdsByDivisionId = new Map<string, Set<string>>();
+  for (const division of league.divisions) {
+    const sourceDivisionId = normalizeDivisionId(division.id);
+    if (!sourceDivisionId) {
+      continue;
+    }
+    for (const mappedPlayoffDivisionIdRaw of division.playoffPlacementDivisionIds ?? []) {
+      const mappedPlayoffDivisionId = normalizeDivisionId(mappedPlayoffDivisionIdRaw);
+      if (!mappedPlayoffDivisionId || !playoffDivisionById.has(mappedPlayoffDivisionId)) {
+        continue;
+      }
+      const bucket = mappedPlayoffIdsByDivisionId.get(sourceDivisionId) ?? new Set<string>();
+      bucket.add(mappedPlayoffDivisionId);
+      mappedPlayoffIdsByDivisionId.set(sourceDivisionId, bucket);
+    }
+  }
+
+  if (!mappedPlayoffIdsByDivisionId.size) {
+    return;
+  }
+
+  for (const slot of league.timeSlots) {
+    const existingDivisions = Array.isArray(slot.divisions) ? slot.divisions : [];
+    if (!existingDivisions.length) {
+      continue;
+    }
+    const normalizedSlotDivisionIds = new Set<string>();
+    for (const division of existingDivisions) {
+      const normalizedId = normalizeDivisionId(division?.id);
+      if (normalizedId) {
+        normalizedSlotDivisionIds.add(normalizedId);
+      }
+    }
+    if (!normalizedSlotDivisionIds.size) {
+      continue;
+    }
+
+    const nextDivisions: Division[] = [...existingDivisions];
+    let changed = false;
+    for (const divisionId of normalizedSlotDivisionIds) {
+      const mappedPlayoffIds = mappedPlayoffIdsByDivisionId.get(divisionId);
+      if (!mappedPlayoffIds) {
+        continue;
+      }
+      for (const playoffDivisionId of mappedPlayoffIds) {
+        if (normalizedSlotDivisionIds.has(playoffDivisionId)) {
+          continue;
+        }
+        const playoffDivision = playoffDivisionById.get(playoffDivisionId);
+        if (!playoffDivision) {
+          continue;
+        }
+        nextDivisions.push(playoffDivision);
+        normalizedSlotDivisionIds.add(playoffDivisionId);
+        changed = true;
+      }
+    }
+    if (changed) {
+      slot.divisions = nextDivisions;
+    }
+  }
+};
+
 const OPEN_ENDED_WEEKS = 52;
 const NO_FIELDS_MESSAGE_REGEX = /^Unable to schedule event because no fields are available(?: for divisions:\s*(.+))?\.$/i;
 
@@ -213,6 +301,8 @@ const buildLeagueSchedule = (
   } else {
     applyRosterToLeagueTeams(league, rosterTeamIds);
   }
+
+  ensureSplitPlayoffTimeSlotCoverage(league);
 
   if (!league.timeSlots.length) {
     throw new ScheduleError(describeScheduleFailure(league, league.maxParticipants));

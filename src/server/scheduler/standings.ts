@@ -630,59 +630,149 @@ const assignTeamRefereesForKnownMatches = (matches: Match[], candidates: Team[])
   }
 };
 
-const copyTemplateAssignments = (
-  actualMatch: Match,
-  templateMatch: Match,
-  teamLookup: Record<string, Team>,
+type EntrantSlot = {
+  match: Match;
+  attribute: 'team1' | 'team2';
+  seed: number | null;
+  team: Team | null;
+};
+
+const collectEntrantSlots = (
+  match: Match | null,
+  slots: EntrantSlot[],
   visited: Set<string>,
 ): void => {
-  if (visited.has(actualMatch.id)) {
+  if (!match || visited.has(match.id)) {
     return;
   }
-  visited.add(actualMatch.id);
+  visited.add(match.id);
 
-  for (const attribute of ['team1', 'team2'] as const) {
-    const templateSeed = attribute === 'team1' ? templateMatch.team1Seed : templateMatch.team2Seed;
-    if (typeof templateSeed === 'number') {
-      if (attribute === 'team1') {
-        actualMatch.team1Seed = templateSeed;
-      } else {
-        actualMatch.team2Seed = templateSeed;
-      }
-    }
-
-    const templateTeam = templateMatch[attribute];
-    if (!templateTeam) {
-      continue;
-    }
-    const team = teamLookup[templateTeam.id];
-    if (!team) {
-      continue;
-    }
-    assignTeamToMatch(actualMatch, attribute, team);
+  if (match.previousLeftMatch) {
+    collectEntrantSlots(match.previousLeftMatch, slots, visited);
+  } else {
+    slots.push({
+      match,
+      attribute: 'team1',
+      seed: typeof match.team1Seed === 'number' ? match.team1Seed : null,
+      team: match.team1 ?? null,
+    });
   }
 
-  const templateTeamReferee = templateMatch.teamReferee;
-  if (templateTeamReferee) {
-    const resolvedTeamReferee = teamLookup[templateTeamReferee.id];
-    if (
-      resolvedTeamReferee
-      && resolvedTeamReferee !== actualMatch.team1
-      && resolvedTeamReferee !== actualMatch.team2
-    ) {
-      assignTeamRefereeToMatch(actualMatch, resolvedTeamReferee);
+  if (match.previousRightMatch) {
+    collectEntrantSlots(match.previousRightMatch, slots, visited);
+  } else {
+    slots.push({
+      match,
+      attribute: 'team2',
+      seed: typeof match.team2Seed === 'number' ? match.team2Seed : null,
+      team: match.team2 ?? null,
+    });
+  }
+};
+
+const countEntrantSlots = (matches: Match[]): number => {
+  let slotCount = 0;
+  for (const match of matches) {
+    if (!match.previousLeftMatch) {
+      slotCount += 1;
+    }
+    if (!match.previousRightMatch) {
+      slotCount += 1;
     }
   }
+  return slotCount;
+};
 
-  const children: Array<[Match | null, Match | null]> = [
-    [actualMatch.previousLeftMatch, templateMatch.previousLeftMatch],
-    [actualMatch.previousRightMatch, templateMatch.previousRightMatch],
-  ];
+const maxConfiguredPlayoffEntrants = (
+  league: League,
+  playoffDivision: Division,
+): number => {
+  const divisionCapacity = [
+    playoffDivision.maxParticipants,
+    playoffDivision.playoffTeamCount,
+  ]
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    .map((value) => Math.max(0, Math.trunc(value)));
+  const leagueCapacity = typeof league.playoffTeamCount === 'number' && Number.isFinite(league.playoffTeamCount)
+    ? Math.max(0, Math.trunc(league.playoffTeamCount))
+    : 0;
+  return Math.max(leagueCapacity, ...divisionCapacity, 0);
+};
 
-  for (const [actualChild, templateChild] of children) {
-    if (actualChild && templateChild) {
-      copyTemplateAssignments(actualChild, templateChild, teamLookup, visited);
+const resolveTemplateEntrantCount = (
+  league: League,
+  playoffDivision: Division,
+  playoffMatches: Match[],
+  seededTeamCount: number,
+): number => {
+  const configured = maxConfiguredPlayoffEntrants(league, playoffDivision);
+  const observedSlotCount = countEntrantSlots(playoffMatches);
+  const observedSeed = playoffMatches.reduce((maxSeed, match) => {
+    const team1Seed = typeof match.team1Seed === 'number' ? match.team1Seed : 0;
+    const team2Seed = typeof match.team2Seed === 'number' ? match.team2Seed : 0;
+    return Math.max(maxSeed, team1Seed, team2Seed);
+  }, 0);
+  return Math.max(seededTeamCount, configured, observedSlotCount, observedSeed, 2);
+};
+
+const buildTemplateEntrants = (
+  league: League,
+  playoffDivision: Division,
+  seededTeams: Team[],
+  entrantCount: number,
+): Team[] => {
+  const entrants: Team[] = [...seededTeams];
+  const targetCount = Math.max(entrantCount, seededTeams.length, 2);
+  for (let index = seededTeams.length; index < targetCount; index += 1) {
+    const seed = index + 1;
+    entrants.push(new Team({
+      id: `${league.id}__${playoffDivision.id}__seed_placeholder_${seed}`,
+      seed,
+      captainId: '',
+      division: playoffDivision,
+      name: `Seed ${seed}`,
+      matches: [],
+      playerIds: [],
+      wins: 0,
+      losses: 0,
+    }));
+  }
+  return entrants;
+};
+
+const applyTemplateEntrantAssignments = (
+  actualRoot: Match,
+  templateRoot: Match,
+  teamLookup: Record<string, Team>,
+): void => {
+  const actualSlots: EntrantSlot[] = [];
+  const templateSlots: EntrantSlot[] = [];
+  collectEntrantSlots(actualRoot, actualSlots, new Set<string>());
+  collectEntrantSlots(templateRoot, templateSlots, new Set<string>());
+
+  for (let index = 0; index < actualSlots.length; index += 1) {
+    const actualSlot = actualSlots[index];
+    if (isMatchScored(actualSlot.match)) {
+      continue;
     }
+    const templateSlot = templateSlots[index] ?? null;
+    const templateSeed = typeof templateSlot?.seed === 'number' ? templateSlot.seed : null;
+    const templateTeamId = templateSlot?.team?.id ?? null;
+    const mappedTeam = templateTeamId ? (teamLookup[templateTeamId] ?? null) : null;
+
+    if (actualSlot.attribute === 'team1') {
+      actualSlot.match.team1Seed = templateSeed;
+      actualSlot.match.team1 = null;
+    } else {
+      actualSlot.match.team2Seed = templateSeed;
+      actualSlot.match.team2 = null;
+    }
+
+    if (!mappedTeam) {
+      continue;
+    }
+
+    assignTeamToMatch(actualSlot.match, actualSlot.attribute, mappedTeam);
   }
 };
 
@@ -886,6 +976,14 @@ export const assignTeamsToPlayoffDivisionMatches = (
     return [];
   }
 
+  const seededTeamIds = teams.map((team) => team.id);
+  const templateEntrantCount = resolveTemplateEntrantCount(
+    league,
+    playoffDivision,
+    playoffMatches,
+    teams.length,
+  );
+
   clearPendingPlayoffAssignments(playoffMatches);
   if (teams.length < 2) {
     return [];
@@ -896,8 +994,8 @@ export const assignTeamsToPlayoffDivisionMatches = (
     return [];
   }
 
-  const templateRoot = buildTemplateBracket(league, playoffDivision, teams, context);
-  const seededTeamIds = teams.map((team) => team.id);
+  const templateEntrants = buildTemplateEntrants(league, playoffDivision, teams, templateEntrantCount);
+  const templateRoot = buildTemplateBracket(league, playoffDivision, templateEntrants, context);
 
   if (!templateRoot) {
     const firstRoundMatch = playoffMatches.find(
@@ -914,7 +1012,7 @@ export const assignTeamsToPlayoffDivisionMatches = (
   }
 
   const teamLookup = Object.fromEntries(teams.map((team) => [team.id, team]));
-  copyTemplateAssignments(actualRoot, templateRoot, teamLookup, new Set<string>());
+  applyTemplateEntrantAssignments(actualRoot, templateRoot, teamLookup);
 
   if (league.doTeamsRef) {
     assignTeamRefereesForKnownMatches(playoffMatches, teams);
