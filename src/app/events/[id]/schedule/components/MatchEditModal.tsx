@@ -27,6 +27,40 @@ const MATCH_TIME_PICKER_PROPS = {
 
 const coerceDate = (value?: string | Date | null): Date | null => parseLocalDateTime(value ?? null);
 
+const getEntityId = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const row = value as { $id?: unknown; id?: unknown };
+  const idCandidate = typeof row.$id === 'string' && row.$id.trim().length > 0
+    ? row.$id
+    : typeof row.id === 'string' && row.id.trim().length > 0
+      ? row.id
+      : null;
+  return idCandidate ? idCandidate.trim() : null;
+};
+
+const normalizeOptionalId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const resolveMatchTeamId = (match: Match | null | undefined, slot: 'team1' | 'team2'): string | null => {
+  if (!match) {
+    return null;
+  }
+  const idFromField = slot === 'team1'
+    ? normalizeOptionalId(match.team1Id)
+    : normalizeOptionalId(match.team2Id);
+  if (idFromField) {
+    return idFromField;
+  }
+  return slot === 'team1' ? getTeamId(match.team1) : getTeamId(match.team2);
+};
+
 const resolveTeamName = (team: Match['team1'], fallbackTeams: Team[]): string => {
   if (team && typeof team === 'object') {
     if ('name' in team && team?.name) {
@@ -43,9 +77,9 @@ const resolveTeamName = (team: Match['team1'], fallbackTeams: Team[]): string =>
     }
   }
 
-  const rawId = typeof team === 'string' ? team : (team as any)?.$id;
+  const rawId = getEntityId(team);
   if (rawId) {
-    const matchTeam = fallbackTeams.find((candidate) => candidate.$id === rawId);
+    const matchTeam = fallbackTeams.find((candidate) => getEntityId(candidate) === rawId);
     if (matchTeam?.name) {
       return matchTeam.name;
     }
@@ -56,20 +90,12 @@ const resolveTeamName = (team: Match['team1'], fallbackTeams: Team[]): string =>
 
 const getTeamId = (team?: Match['team1']): string | null => {
   if (!team) return null;
-  if (typeof team === 'string') return team;
-  if (typeof team === 'object' && '$id' in team && typeof (team as Team).$id === 'string') {
-    return (team as Team).$id;
-  }
-  return null;
+  return getEntityId(team);
 };
 
 const getUserId = (user?: Match['referee']): string | null => {
   if (!user) return null;
-  if (typeof user === 'string') return user;
-  if (typeof user === 'object' && '$id' in user && typeof (user as UserData).$id === 'string') {
-    return (user as UserData).$id;
-  }
-  return null;
+  return getEntityId(user);
 };
 
 const formatUserLabel = (user?: Partial<UserData> | null): string => {
@@ -86,9 +112,9 @@ const formatUserLabel = (user?: Partial<UserData> | null): string => {
 
 const findTeamById = (id: string | null, allTeams: Team[], fallback?: Match['team1']): Team | undefined => {
   if (!id) return undefined;
-  const fromList = allTeams.find((team) => team.$id === id);
+  const fromList = allTeams.find((team) => getEntityId(team) === id);
   if (fromList) return fromList;
-  if (fallback && typeof fallback === 'object' && '$id' in fallback && (fallback as Team).$id === id) {
+  if (fallback && typeof fallback === 'object' && getEntityId(fallback) === id) {
     return fallback as Team;
   }
   return undefined;
@@ -164,16 +190,16 @@ export default function MatchEditModal({
 
     setStartValue(coerceDate(match.start));
     setEndValue(coerceDate(match.end));
-    setFieldId(match.field && typeof match.field === 'object' ? match.field.$id : null);
-    setTeam1Id(getTeamId(match.team1));
-    setTeam2Id(getTeamId(match.team2));
+    setFieldId(getEntityId(match.field));
+    setTeam1Id(resolveMatchTeamId(match, 'team1'));
+    setTeam2Id(resolveMatchTeamId(match, 'team2'));
     const initialTeamRefId =
-      match.teamRefereeId ??
+      normalizeOptionalId(match.teamRefereeId) ??
       getTeamId(match.teamReferee) ??
       // Legacy fallback when referee held team data
       getTeamId((match as any).referee);
     setTeamRefereeId(initialTeamRefId);
-    setUserRefereeId(match.refereeId ?? getUserId(match.referee));
+    setUserRefereeId(normalizeOptionalId(match.refereeId) ?? getUserId(match.referee));
 
     const aligned = extractSetData(match);
     setTeam1Points(aligned.team1);
@@ -184,14 +210,14 @@ export default function MatchEditModal({
   }, [match, opened]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const matchTeam1Id = useMemo(() => getTeamId(match?.team1), [match]);
-  const matchTeam2Id = useMemo(() => getTeamId(match?.team2), [match]);
+  const matchTeam1Id = useMemo(() => resolveMatchTeamId(match, 'team1'), [match]);
+  const matchTeam2Id = useMemo(() => resolveMatchTeamId(match, 'team2'), [match]);
   const matchTeamRefereeId = useMemo(
-    () => match?.teamRefereeId ?? getTeamId(match?.teamReferee) ?? getTeamId((match as any)?.referee),
+    () => normalizeOptionalId(match?.teamRefereeId) ?? getTeamId(match?.teamReferee) ?? getTeamId((match as any)?.referee),
     [match],
   );
   const matchUserRefereeId = useMemo(
-    () => match?.refereeId ?? getUserId(match?.referee),
+    () => normalizeOptionalId(match?.refereeId) ?? getUserId(match?.referee),
     [match],
   );
 
@@ -200,8 +226,12 @@ export default function MatchEditModal({
     const optionsMap = new Map<string, { value: string; label: string }>();
 
     teams.forEach((team) => {
-      optionsMap.set(team.$id, {
-        value: team.$id,
+      const teamId = getEntityId(team);
+      if (!teamId) {
+        return;
+      }
+      optionsMap.set(teamId, {
+        value: teamId,
         label: resolveTeamName(team, teams),
       });
     });
@@ -221,10 +251,17 @@ export default function MatchEditModal({
   }, [teams, matchTeam1Id, matchTeam2Id, matchTeamRefereeId, match]);
 
   const refereeOptions = useMemo(() => {
-    const options = (referees ?? []).map((referee) => ({
-      value: referee.$id,
-      label: formatUserLabel(referee),
-    }));
+    const options = (referees ?? []).reduce<Array<{ value: string; label: string }>>((acc, referee) => {
+      const refereeId = getEntityId(referee);
+      if (!refereeId) {
+        return acc;
+      }
+      acc.push({
+        value: refereeId,
+        label: formatUserLabel(referee),
+      });
+      return acc;
+    }, []);
 
     const ensureOption = (id: string | null, label: string) => {
       if (!id || !label) return;
@@ -249,10 +286,17 @@ export default function MatchEditModal({
   );
 
   const fieldOptions = useMemo(
-    () => fields.map((field) => ({
-      value: field.$id,
-      label: field.name || `Field ${field.fieldNumber ?? ''}`.trim(),
-    })),
+    () => fields.reduce<Array<{ value: string; label: string }>>((acc, field) => {
+      const fieldId = getEntityId(field);
+      if (!fieldId) {
+        return acc;
+      }
+      acc.push({
+        value: fieldId,
+        label: field.name || `Field ${field.fieldNumber ?? ''}`.trim(),
+      });
+      return acc;
+    }, []),
     [fields],
   );
 
@@ -263,7 +307,7 @@ export default function MatchEditModal({
     [teamRefereeId, teams, match],
   );
   const selectedUserReferee = useMemo(() => {
-    const fromList = referees.find((referee) => referee.$id === userRefereeId);
+    const fromList = referees.find((referee) => getEntityId(referee) === userRefereeId);
     if (fromList) {
       return fromList;
     }
@@ -347,9 +391,9 @@ export default function MatchEditModal({
 
   const findFieldById = (id: string | null): Field | undefined => {
     if (!id) return undefined;
-    const fromList = fields.find((field) => field.$id === id);
+    const fromList = fields.find((field) => getEntityId(field) === id);
     if (fromList) return fromList;
-    if (match?.field && typeof match.field === 'object' && match.field.$id === id) {
+    if (match?.field && typeof match.field === 'object' && getEntityId(match.field) === id) {
       return match.field;
     }
     return undefined;
@@ -387,6 +431,7 @@ export default function MatchEditModal({
     };
 
     const nextField = findFieldById(fieldId);
+    updated.fieldId = fieldId ?? null;
     if (nextField) {
       updated.field = { ...nextField };
     } else {
@@ -394,6 +439,7 @@ export default function MatchEditModal({
     }
 
     const nextTeam1 = selectedTeam1;
+    updated.team1Id = team1Id ?? null;
     if (nextTeam1) {
       updated.team1 = { ...nextTeam1 };
     } else {
@@ -401,6 +447,7 @@ export default function MatchEditModal({
     }
 
     const nextTeam2 = selectedTeam2;
+    updated.team2Id = team2Id ?? null;
     if (nextTeam2) {
       updated.team2 = { ...nextTeam2 };
     } else {
