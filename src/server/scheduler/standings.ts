@@ -477,12 +477,12 @@ const detachMatchFromTeam = (team: Team | null | undefined, match: Match): void 
   team.matches = team.matches.filter((entry) => entry.id !== match.id);
 };
 
-const assignTeamToMatch = (match: Match, attribute: 'team1' | 'team2', team: Team): void => {
-  const previousTeam = match[attribute];
-  if (previousTeam) {
-    detachMatchFromTeam(previousTeam, match);
+const assignTeamRefereeToMatch = (match: Match, team: Team): void => {
+  const previousTeamReferee = match.teamReferee;
+  if (previousTeamReferee) {
+    detachMatchFromTeam(previousTeamReferee, match);
   }
-  match[attribute] = team;
+  match.teamReferee = team;
   if (!team.matches) {
     team.matches = [];
   }
@@ -491,14 +491,34 @@ const assignTeamToMatch = (match: Match, attribute: 'team1' | 'team2', team: Tea
   }
 };
 
-const clearFirstRoundAssignments = (matches: Match[]): void => {
+const windowsOverlap = (
+  startA: Date,
+  endA: Date,
+  startB: Date,
+  endB: Date,
+): boolean => startA < endB && endA > startB;
+
+const assignTeamToMatch = (match: Match, attribute: 'team1' | 'team2', team: Team): void => {
+  const previousTeam = match[attribute];
+  if (previousTeam) {
+    detachMatchFromTeam(previousTeam, match);
+  }
+  match[attribute] = team;
+  if (attribute === 'team1') {
+    match.team1Seed = team.seed;
+  } else {
+    match.team2Seed = team.seed;
+  }
+  if (!team.matches) {
+    team.matches = [];
+  }
+  if (!team.matches.includes(match)) {
+    team.matches.push(match);
+  }
+};
+
+const clearPendingPlayoffAssignments = (matches: Match[]): void => {
   for (const match of matches) {
-    if (match.losersBracket) {
-      continue;
-    }
-    if (match.previousLeftMatch || match.previousRightMatch) {
-      continue;
-    }
     if (isMatchScored(match)) {
       continue;
     }
@@ -516,6 +536,97 @@ const clearFirstRoundAssignments = (matches: Match[]): void => {
     match.team1 = null;
     match.team2 = null;
     match.teamReferee = null;
+    match.team1Seed = null;
+    match.team2Seed = null;
+  }
+};
+
+const assignTeamRefereesForKnownMatches = (matches: Match[], candidates: Team[]): void => {
+  const candidatesById = new Map<string, Team>();
+  candidates.forEach((team) => {
+    if (!team.id || candidatesById.has(team.id)) {
+      return;
+    }
+    candidatesById.set(team.id, team);
+  });
+
+  const orderedCandidates = Array.from(candidatesById.values()).sort((left, right) => {
+    const leftSeed = Number.isFinite(left.seed) ? left.seed : Number.MAX_SAFE_INTEGER;
+    const rightSeed = Number.isFinite(right.seed) ? right.seed : Number.MAX_SAFE_INTEGER;
+    if (leftSeed !== rightSeed) {
+      return leftSeed - rightSeed;
+    }
+    return left.id.localeCompare(right.id);
+  });
+
+  const orderedMatches = [...matches].sort((left, right) => {
+    const startDiff = left.start.getTime() - right.start.getTime();
+    if (startDiff !== 0) {
+      return startDiff;
+    }
+    const endDiff = left.end.getTime() - right.end.getTime();
+    if (endDiff !== 0) {
+      return endDiff;
+    }
+    return (left.matchId ?? 0) - (right.matchId ?? 0);
+  });
+
+  for (const match of orderedMatches) {
+    if (isMatchScored(match)) {
+      continue;
+    }
+
+    const team1 = match.team1;
+    const team2 = match.team2;
+    if (!team1 || !team2) {
+      if (match.teamReferee) {
+        detachMatchFromTeam(match.teamReferee, match);
+        match.teamReferee = null;
+      }
+      continue;
+    }
+
+    if (match.teamReferee && (match.teamReferee.id === team1.id || match.teamReferee.id === team2.id)) {
+      detachMatchFromTeam(match.teamReferee, match);
+      match.teamReferee = null;
+    }
+
+    if (match.teamReferee) {
+      const existingRef = match.teamReferee;
+      const conflict = (existingRef.matches ?? []).some((existingMatch) =>
+        existingMatch.id !== match.id
+        && windowsOverlap(existingMatch.start, existingMatch.end, match.start, match.end),
+      );
+      if (!conflict) {
+        if (!existingRef.matches) {
+          existingRef.matches = [];
+        }
+        if (!existingRef.matches.includes(match)) {
+          existingRef.matches.push(match);
+        }
+        continue;
+      }
+
+      detachMatchFromTeam(existingRef, match);
+      match.teamReferee = null;
+    }
+
+    const candidate = orderedCandidates.find((team) => {
+      if (team.id === team1.id || team.id === team2.id) {
+        return false;
+      }
+      const teamMatches = team.matches ?? [];
+      return !teamMatches.some((teamMatch) =>
+        teamMatch.id !== match.id
+        && windowsOverlap(teamMatch.start, teamMatch.end, match.start, match.end),
+      );
+    });
+
+    if (!candidate) {
+      continue;
+    }
+
+    assignTeamRefereeToMatch(match, candidate);
   }
 };
 
@@ -531,6 +642,15 @@ const copyTemplateAssignments = (
   visited.add(actualMatch.id);
 
   for (const attribute of ['team1', 'team2'] as const) {
+    const templateSeed = attribute === 'team1' ? templateMatch.team1Seed : templateMatch.team2Seed;
+    if (typeof templateSeed === 'number') {
+      if (attribute === 'team1') {
+        actualMatch.team1Seed = templateSeed;
+      } else {
+        actualMatch.team2Seed = templateSeed;
+      }
+    }
+
     const templateTeam = templateMatch[attribute];
     if (!templateTeam) {
       continue;
@@ -540,6 +660,18 @@ const copyTemplateAssignments = (
       continue;
     }
     assignTeamToMatch(actualMatch, attribute, team);
+  }
+
+  const templateTeamReferee = templateMatch.teamReferee;
+  if (templateTeamReferee) {
+    const resolvedTeamReferee = teamLookup[templateTeamReferee.id];
+    if (
+      resolvedTeamReferee
+      && resolvedTeamReferee !== actualMatch.team1
+      && resolvedTeamReferee !== actualMatch.team2
+    ) {
+      assignTeamRefereeToMatch(actualMatch, resolvedTeamReferee);
+    }
   }
 
   const children: Array<[Match | null, Match | null]> = [
@@ -754,7 +886,7 @@ export const assignTeamsToPlayoffDivisionMatches = (
     return [];
   }
 
-  clearFirstRoundAssignments(playoffMatches);
+  clearPendingPlayoffAssignments(playoffMatches);
   if (teams.length < 2) {
     return [];
   }
@@ -775,11 +907,18 @@ export const assignTeamsToPlayoffDivisionMatches = (
       assignTeamToMatch(firstRoundMatch, 'team1', teams[0]);
       assignTeamToMatch(firstRoundMatch, 'team2', teams[1]);
     }
+    if (league.doTeamsRef) {
+      assignTeamRefereesForKnownMatches(playoffMatches, teams);
+    }
     return seededTeamIds;
   }
 
   const teamLookup = Object.fromEntries(teams.map((team) => [team.id, team]));
   copyTemplateAssignments(actualRoot, templateRoot, teamLookup, new Set<string>());
+
+  if (league.doTeamsRef) {
+    assignTeamRefereesForKnownMatches(playoffMatches, teams);
+  }
 
   return seededTeamIds;
 };
@@ -835,7 +974,7 @@ export const applyLeagueDivisionPlayoffReassignment = (
     }
 
     const seededEntrants = entrants.map((team, index) => {
-      const nextSeed = Math.max(1, entrants.length - index);
+      const nextSeed = index + 1;
       team.seed = nextSeed;
       return team;
     });

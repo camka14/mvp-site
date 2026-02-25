@@ -203,8 +203,9 @@ export interface Match {
   side?: string;
   refCheckedIn?: boolean;
   refereeCheckedIn?: boolean;
-  team1Seed?: number;
-  team2Seed?: number;
+  team1Seed?: number | null;
+  team2Seed?: number | null;
+  teamRefereeSeed?: number | null;
 
   // Relationship fields - hydrated when selected via Queries
   division?: Division;
@@ -764,6 +765,13 @@ export function toMatchPayload(match: Match): MatchPayload {
     const teamRefereeId = extractId(teamReferee);
     if (teamRefereeId) {
       payload.teamRefereeId = teamRefereeId;
+    }
+  }
+
+  if (payload.teamRefereeSeed == null) {
+    const teamRefereeSeed = typeof teamReferee?.seed === 'number' ? teamReferee.seed : null;
+    if (teamRefereeSeed !== null) {
+      payload.teamRefereeSeed = teamRefereeSeed;
     }
   }
 

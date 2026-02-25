@@ -1257,6 +1257,10 @@ class EventService {
             locked: Boolean(input.locked),
             team1Seed: input.team1Seed,
             team2Seed: input.team2Seed,
+            teamRefereeSeed:
+                typeof input.teamRefereeSeed === 'number' && Number.isFinite(input.teamRefereeSeed)
+                    ? input.teamRefereeSeed
+                    : null,
             losersBracket: input.losersBracket,
             matchId: input.matchId,
             team1Points: Array.isArray(input.team1Points) ? (input.team1Points as number[]) : [],
@@ -1291,6 +1295,12 @@ class EventService {
             match.teamReferee = context.teamsById.get(resolvedTeamRefereeId);
         } else if (input.teamReferee && typeof input.teamReferee === 'object') {
             match.teamReferee = input.teamReferee as Team;
+        }
+        if (
+            match.teamReferee
+            && (typeof match.teamRefereeSeed !== 'number' || !Number.isFinite(match.teamRefereeSeed))
+        ) {
+            match.teamRefereeSeed = match.teamReferee.seed ?? null;
         }
 
         if (resolvedRefereeId && context?.refereesById?.has(resolvedRefereeId)) {
