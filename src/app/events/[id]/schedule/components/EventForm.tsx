@@ -29,6 +29,7 @@ import {
 } from './eventFieldSelection';
 import { applyLeagueScoringConfigFieldChange } from './leagueScoringConfigForm';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
+import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import UserCard from '@/components/ui/UserCard';
 import {
     buildDivisionName,
@@ -185,6 +186,13 @@ const normalizeDivisionKeys = (values: unknown): string[] => {
                 .filter((value) => value.length > 0),
         ),
     );
+};
+
+const normalizePlacementDivisionIds = (values: unknown): string[] => {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+    return values.map((value) => normalizeDivisionKeys([value])[0] ?? '');
 };
 
 const normalizeDivisionNameKey = (value: unknown): string => String(value ?? '')
@@ -619,82 +627,6 @@ const tournamentConfigEqual = (left: TournamentConfig, right: TournamentConfig):
     )
 );
 
-const mergeSlotPayloadsForForm = (
-    slots: TimeSlot[],
-    fallbackFieldId?: string,
-): Array<Partial<TimeSlot>> => {
-    const groups = new Map<string, {
-        slot: Partial<TimeSlot>;
-        days: Set<number>;
-        divisions: Set<string>;
-        fieldIds: Set<string>;
-        ids: string[];
-    }>();
-
-    for (const slot of slots) {
-        const resolvedFieldIds = normalizeSlotFieldIds({
-            scheduledFieldId: slot.scheduledFieldId,
-            scheduledFieldIds: slot.scheduledFieldIds,
-        });
-        if (!resolvedFieldIds.length && fallbackFieldId) {
-            resolvedFieldIds.push(fallbackFieldId);
-        }
-        const normalizedDays = normalizeWeekdays({
-            dayOfWeek: slot.dayOfWeek,
-            daysOfWeek: slot.daysOfWeek as number[] | undefined,
-        });
-        const key = [
-            slot.startTimeMinutes ?? '',
-            slot.endTimeMinutes ?? '',
-            slot.repeating ?? true,
-            slot.startDate ?? '',
-            slot.endDate ?? '',
-        ].join('|');
-
-        const existing = groups.get(key);
-        if (!existing) {
-            groups.set(key, {
-                slot: {
-                    $id: slot.$id,
-                    scheduledFieldId: resolvedFieldIds[0],
-                    scheduledFieldIds: resolvedFieldIds,
-                    startTimeMinutes: slot.startTimeMinutes,
-                    endTimeMinutes: slot.endTimeMinutes,
-                    repeating: slot.repeating,
-                    startDate: slot.startDate,
-                    endDate: slot.endDate,
-                },
-                days: new Set(normalizedDays),
-                divisions: new Set(normalizeDivisionKeys(slot.divisions)),
-                fieldIds: new Set(resolvedFieldIds),
-                ids: [slot.$id],
-            });
-            continue;
-        }
-        normalizedDays.forEach((day) => existing.days.add(day));
-        normalizeDivisionKeys(slot.divisions).forEach((divisionKey) => existing.divisions.add(divisionKey));
-        resolvedFieldIds.forEach((fieldId) => existing.fieldIds.add(fieldId));
-        if (slot.$id) {
-            existing.ids.push(slot.$id);
-        }
-    }
-
-    return Array.from(groups.values()).map(({ slot, days, divisions, fieldIds, ids }) => {
-        const mergedDays = Array.from(days).sort((a, b) => a - b);
-        const mergedDivisions = Array.from(divisions).sort();
-        const mergedFieldIds = Array.from(fieldIds);
-        return {
-            ...slot,
-            $id: ids.length === 1 ? ids[0] : createClientId(),
-            scheduledFieldId: mergedFieldIds[0],
-            scheduledFieldIds: mergedFieldIds,
-            dayOfWeek: (mergedDays[0] ?? 0) as TimeSlot['dayOfWeek'],
-            daysOfWeek: mergedDays as TimeSlot['daysOfWeek'],
-            divisions: mergedDivisions,
-        };
-    });
-};
-
 const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
     if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
         return 'TEXT';
@@ -1121,11 +1053,7 @@ const normalizeDivisionDetailEntry = (
         : Number.isFinite(Number(row.playoffTeamCount))
             ? Number(row.playoffTeamCount)
             : undefined;
-    const rawPlayoffPlacementDivisionIds = Array.isArray(row.playoffPlacementDivisionIds)
-        ? row.playoffPlacementDivisionIds
-            .map((value) => String(value).trim())
-            .filter((value) => value.length > 0)
-        : [];
+    const rawPlayoffPlacementDivisionIds = normalizePlacementDivisionIds(row.playoffPlacementDivisionIds);
     const rawAllowPaymentPlans = normalizeBoolean(row.allowPaymentPlans) ?? false;
     const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
         ? row.installmentAmounts.map((value) => {
@@ -1446,11 +1374,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
             : Number.isFinite(event.playoffTeamCount)
                 ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
                 : undefined,
-        playoffPlacementDivisionIds: Array.isArray(detail.playoffPlacementDivisionIds)
-            ? detail.playoffPlacementDivisionIds
-                .map((value) => String(value).trim())
-                .filter((value) => value.length > 0)
-            : [],
+        playoffPlacementDivisionIds: normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds),
         allowPaymentPlans: typeof detail.allowPaymentPlans === 'boolean'
             ? detail.allowPaymentPlans
             : defaultEventAllowPaymentPlans,
@@ -5363,11 +5287,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 const playoffTeamCount = Number.isFinite(detail.playoffTeamCount)
                     ? Math.max(0, Math.trunc(detail.playoffTeamCount as number))
                     : 0;
-                const mapping = Array.isArray(detail.playoffPlacementDivisionIds)
-                    ? detail.playoffPlacementDivisionIds
-                        .map((value) => String(value).trim())
-                        .filter((value) => value.length > 0)
-                    : [];
+                const mapping = normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds);
                 if (playoffTeamCount <= 0) {
                     return mapping;
                 }

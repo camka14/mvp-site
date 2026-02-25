@@ -301,6 +301,21 @@ const normalizeDivisionIds = (value: unknown, eventId: string): string[] => {
   ));
 };
 
+const normalizePlacementDivisionIds = (value: unknown, eventId: string): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => {
+    const normalized = normalizeDivisionKey(entry);
+    if (!normalized) {
+      return '';
+    }
+    return normalized.includes('__division__') || normalized.startsWith('division_')
+      ? normalized
+      : buildEventDivisionId(eventId, normalized);
+  });
+};
+
 const normalizeFieldIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
@@ -497,7 +512,7 @@ const normalizeDivisionDetailsInput = (
     const parsedMaxParticipants = normalizeInputNullableNumber(row.maxParticipants);
     const parsedPlayoffTeamCount = normalizeInputNullableNumber(row.playoffTeamCount);
     const parsedKind = normalizeDivisionKind(row.kind, defaultKind);
-    const parsedPlacementDivisionIds = normalizeDivisionIds(row.playoffPlacementDivisionIds, eventId);
+    const parsedPlacementDivisionIds = normalizePlacementDivisionIds(row.playoffPlacementDivisionIds, eventId);
     const parsedStandingsOverrides = normalizeStandingsOverrides(row.standingsOverrides);
     const parsedStandingsConfirmedAt = (() => {
       const parsed = parseDateInput(row.standingsConfirmedAt);
@@ -829,7 +844,7 @@ const getDivisionDetailsForEvent = async (
       playoffTeamCount: typeof row?.playoffTeamCount === 'number'
         ? row.playoffTeamCount
         : (typeof eventDefaults?.playoffTeamCount === 'number' ? eventDefaults.playoffTeamCount : null),
-      playoffPlacementDivisionIds: kind === 'PLAYOFF' ? [] : normalizeDivisionIds((row as any)?.playoffPlacementDivisionIds, eventId),
+      playoffPlacementDivisionIds: kind === 'PLAYOFF' ? [] : normalizePlacementDivisionIds((row as any)?.playoffPlacementDivisionIds, eventId),
       standingsOverrides: kind === 'PLAYOFF' ? null : standingsOverrides,
       standingsConfirmedAt: kind === 'PLAYOFF' ? null : standingsConfirmedAt,
       standingsConfirmedBy: kind === 'PLAYOFF' ? null : standingsConfirmedBy,
@@ -918,6 +933,21 @@ const buildExpandedSlotId = (
   return `${baseSlotId}__d${day}__f${fieldId}`;
 };
 
+const ensureUniqueExpandedSlotIds = <T extends { id: string }>(slots: T[]): T[] => {
+  const seen = new Map<string, number>();
+  return slots.map((slot) => {
+    const count = seen.get(slot.id) ?? 0;
+    seen.set(slot.id, count + 1);
+    if (count === 0) {
+      return slot;
+    }
+    return {
+      ...slot,
+      id: `${slot.id}__dup${count}`,
+    };
+  });
+};
+
 const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   const normalized = message.toLowerCase();
@@ -972,7 +1002,7 @@ const expandTimeSlotsForUpdate = (
   enforceAllDivisions: boolean,
   useDivisionIds: boolean,
 ): ExpandedTimeSlotInput[] => {
-  return slots.flatMap((slot, index) => {
+  return ensureUniqueExpandedSlotIds(slots.flatMap((slot, index) => {
     const sourceId = typeof slot.$id === 'string' && slot.$id.length > 0
       ? slot.$id
       : typeof slot.id === 'string' && slot.id.length > 0
@@ -1091,7 +1121,7 @@ const expandTimeSlotsForUpdate = (
         requiredTemplateIds,
       })),
     );
-  });
+  }));
 };
 
 const hasScheduleImpact = (existing: any, payload: Record<string, any>): boolean => {

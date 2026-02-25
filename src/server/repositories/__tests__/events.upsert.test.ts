@@ -126,6 +126,52 @@ describe('upsertEventFromPayload', () => {
     expect(eventUpsertArg.update.timeSlotIds).toEqual(['slot_multi__d1', 'slot_multi__d3']);
   });
 
+  it('persists both slots when incoming payload contains duplicate slot ids', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      timeSlots: [
+        {
+          $id: 'slot_duplicate',
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          divisions: ['OPEN'],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          repeating: true,
+          scheduledFieldId: 'field_1',
+          startDate: '2026-01-05T09:00:00.000Z',
+          endDate: '2026-03-05T09:00:00.000Z',
+        },
+        {
+          $id: 'slot_duplicate',
+          dayOfWeek: 2,
+          daysOfWeek: [2],
+          divisions: ['OPEN'],
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 11 * 60,
+          repeating: true,
+          scheduledFieldId: 'field_1',
+          startDate: '2026-01-05T09:00:00.000Z',
+          endDate: '2026-03-05T09:00:00.000Z',
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.timeSlots.upsert).toHaveBeenCalledTimes(2);
+    const persistedSlotIds = client.timeSlots.upsert.mock.calls
+      .map((call) => call[0].where.id)
+      .sort();
+    expect(persistedSlotIds).toEqual(['slot_duplicate', 'slot_duplicate__dup1']);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.timeSlotIds.sort()).toEqual(['slot_duplicate', 'slot_duplicate__dup1']);
+    expect(eventUpsertArg.update.timeSlotIds.sort()).toEqual(['slot_duplicate', 'slot_duplicate__dup1']);
+  });
+
   it('forces all event divisions onto each timeslot when singleDivision is enabled', async () => {
     const client = createMockClient();
     const payload = {
@@ -353,6 +399,45 @@ describe('upsertEventFromPayload', () => {
             new Date('2026-01-09T09:00:00.000Z'),
             new Date('2026-01-16T09:00:00.000Z'),
           ],
+        }),
+      }),
+    );
+  });
+
+  it('preserves playoff placement indexes when mapping includes empty positions', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    const playoffDivisionOneId = divisionId('playoff_1');
+    const playoffDivisionTwoId = divisionId('playoff_2');
+
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          playoffTeamCount: 3,
+          playoffPlacementDivisionIds: [playoffDivisionOneId, '', 'playoff_2'],
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.divisions.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: openDivisionId },
+        create: expect.objectContaining({
+          playoffPlacementDivisionIds: [playoffDivisionOneId, '', playoffDivisionTwoId],
+        }),
+        update: expect.objectContaining({
+          playoffPlacementDivisionIds: [playoffDivisionOneId, '', playoffDivisionTwoId],
         }),
       }),
     );

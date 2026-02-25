@@ -112,8 +112,7 @@ export class Division implements Group {
       : null;
     this.playoffPlacementDivisionIds = Array.isArray(playoffPlacementDivisionIds)
       ? playoffPlacementDivisionIds
-          .map((entry) => String(entry).trim())
-          .filter((entry) => entry.length > 0)
+          .map((entry) => String(entry ?? '').trim())
       : [];
     this.standingsOverrides = standingsOverrides && typeof standingsOverrides === 'object'
       ? { ...standingsOverrides }

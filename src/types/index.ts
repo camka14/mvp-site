@@ -1020,7 +1020,7 @@ export function toEventPayload(event: Event): EventPayload {
                 ? Number(division.playoffTeamCount)
                 : undefined,
           playoffPlacementDivisionIds: Array.isArray(division.playoffPlacementDivisionIds)
-            ? uniqueIds(division.playoffPlacementDivisionIds.map((divisionId) => String(divisionId)))
+            ? division.playoffPlacementDivisionIds.map((divisionId) => String(divisionId ?? '').trim())
             : undefined,
           standingsOverrides:
             division.standingsOverrides && typeof division.standingsOverrides === 'object'

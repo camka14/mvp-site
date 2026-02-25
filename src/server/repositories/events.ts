@@ -352,6 +352,27 @@ const normalizeDivisionIdentifierList = (
   ));
 };
 
+const normalizePlacementDivisionIdentifierList = (
+  value: unknown,
+  eventId?: string,
+): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => {
+    const normalized = normalizeDivisionKey(entry);
+    if (!normalized) {
+      return '';
+    }
+    if (!eventId) {
+      return normalized;
+    }
+    return normalized.includes('__division__') || normalized.startsWith('division_')
+      ? normalized
+      : buildDivisionId(eventId, normalized);
+  });
+};
+
 type DivisionDetailPayload = {
   id: string;
   key: string;
@@ -426,7 +447,7 @@ const normalizeDivisionDetailsPayload = (
       const rawMaxParticipants = coerceNullableNumber(row.maxParticipants);
       const rawPlayoffTeamCount = coerceNullableNumber(row.playoffTeamCount);
       const rawKind = normalizeDivisionKind(row.kind, defaultKind);
-      const rawPlayoffPlacementDivisionIds = normalizeDivisionIdentifierList(row.playoffPlacementDivisionIds, eventId);
+      const rawPlayoffPlacementDivisionIds = normalizePlacementDivisionIdentifierList(row.playoffPlacementDivisionIds, eventId);
       const rawStandingsOverrides = normalizeStandingsOverrides(row.standingsOverrides);
       const rawPlayoffConfig = rawKind === 'PLAYOFF'
         ? (
@@ -653,6 +674,21 @@ const buildExpandedSlotId = (
   return `${baseSlotId}__d${day}__f${fieldId}`;
 };
 
+const ensureUniqueExpandedSlotIds = <T extends { id: string }>(slots: T[]): T[] => {
+  const seen = new Map<string, number>();
+  return slots.map((slot) => {
+    const count = seen.get(slot.id) ?? 0;
+    seen.set(slot.id, count + 1);
+    if (count === 0) {
+      return slot;
+    }
+    return {
+      ...slot,
+      id: `${slot.id}__dup${count}`,
+    };
+  });
+};
+
 const coerceDate = (value: unknown): Date | null => {
   if (value instanceof Date) return value;
   if (typeof value === 'string' || typeof value === 'number') {
@@ -843,7 +879,7 @@ const buildDivisions = (
       matchedRow?.maxParticipants ?? null,
       matchedRow?.playoffTeamCount ?? null,
       kind,
-      ensureStringArray(matchedRow?.playoffPlacementDivisionIds),
+      normalizePlacementDivisionIdentifierList(matchedRow?.playoffPlacementDivisionIds),
       standingsOverrides,
       matchedRow?.standingsConfirmedAt ?? null,
       matchedRow?.standingsConfirmedBy ?? null,
@@ -1557,7 +1593,7 @@ export const syncEventDivisions = async (
       ? []
       : resolveDivisionValue(
           detail?.playoffPlacementDivisionIds,
-          ensureStringArray(existing?.playoffPlacementDivisionIds),
+          normalizePlacementDivisionIdentifierList(existing?.playoffPlacementDivisionIds),
           [],
         ) ?? [];
     const playoffConfig = kind === 'PLAYOFF'
@@ -1800,7 +1836,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       : fallbackDivisionIds;
   const singleDivisionEnabled = Boolean(payload.singleDivision);
 
-  const expandedTimeSlots = timeSlots.flatMap((slot: any, index: number) => {
+  const expandedTimeSlots: Array<Record<string, any>> = ensureUniqueExpandedSlotIds(timeSlots.flatMap((slot: any, index: number) => {
     const sourceSlotId = slot.$id || slot.id || `${id}__slot_${index + 1}`;
     const baseSlotId = normalizeSlotBaseId(sourceSlotId);
     const repeating = slot.repeating !== false;
@@ -1895,7 +1931,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         divisions: slotDivisions,
       })),
     );
-  });
+  }));
 
   const slotFieldIds = normalizeFieldIds(
     expandedTimeSlots

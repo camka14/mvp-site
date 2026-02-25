@@ -483,10 +483,14 @@ export class EventBuilder {
 
     const groupedByDivision = this.groupsByDivision(participants);
     const scheduled: Match[] = [];
+    const regularSeasonStart = new Date(this.event.start);
     for (const { division, teams } of groupedByDivision) {
       if (teams.length < 2) {
         continue;
       }
+      // Split divisions should start from the same baseline so each division can
+      // use its own weekly slot cadence in parallel.
+      this.schedule.currentTime = new Date(regularSeasonStart);
       scheduled.push(...this.scheduleRegularSeasonForDivision(teams, durationMs, division));
     }
 
@@ -546,6 +550,8 @@ export class EventBuilder {
         if (playoffCount < 2) {
           continue;
         }
+        // Ensure each playoff division begins from the shared playoff start anchor.
+        this.schedule.currentTime = new Date(playoffStart);
         const seeded = this.buildLeaguePlayoffPlaceholders(playoffCount, playoffDivision);
         const config = this.resolvePlayoffTournamentConfig(playoffDivision);
         scheduledMatches.push(

@@ -573,6 +573,85 @@ describe('league scheduling (time slots)', () => {
     expect(divisionCounts.get('advanced')).toBe(1);
   });
 
+  it('schedules split divisions in parallel from the same season start', () => {
+    const rec = new Division('rec', 'Rec');
+    const open = new Division('open', 'Open');
+
+    const fieldRec = buildFieldById('field_rec_parallel', rec);
+    const fieldOpen = buildFieldById('field_open_parallel', open);
+
+    const teams = {
+      ...buildTeamsForDivision('rec', 4, rec),
+      ...buildTeamsForDivision('open', 4, open),
+    };
+
+    const start = new Date(2026, 0, 5, 8, 0, 0); // Monday
+    const end = new Date(2026, 2, 30, 20, 0, 0);
+
+    const league = new League({
+      id: 'league_split_divisions_parallel_start',
+      name: 'Split Divisions Parallel Start',
+      start,
+      end,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams,
+      divisions: [rec, open],
+      referees: [],
+      fields: { [fieldRec.id]: fieldRec, [fieldOpen.id]: fieldOpen },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_rec_parallel',
+          dayOfWeek: 0, // Monday
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          field: fieldRec.id,
+          divisions: [rec],
+        }),
+        new TimeSlot({
+          id: 'slot_open_parallel',
+          dayOfWeek: 1, // Tuesday
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          field: fieldOpen.id,
+          divisions: [open],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const recStarts = scheduled.matches
+      .filter((match) => match.division.id === rec.id)
+      .map((match) => match.start.getTime());
+    const openStarts = scheduled.matches
+      .filter((match) => match.division.id === open.id)
+      .map((match) => match.start.getTime());
+
+    expect(recStarts.length).toBeGreaterThan(0);
+    expect(openStarts.length).toBeGreaterThan(0);
+
+    const firstRecStart = Math.min(...recStarts);
+    const firstOpenStart = Math.min(...openStarts);
+    const firstWeekEnd = start.getTime() + 7 * 24 * 60 * 60 * 1000;
+
+    expect(firstRecStart).toBeLessThan(firstWeekEnd);
+    expect(firstOpenStart).toBeLessThan(firstWeekEnd);
+  });
+
   it('distributes placeholder teams across divisions when singleDivision is disabled', () => {
     const beginner = new Division('beginner', 'Beginner');
     const intermediate = new Division('intermediate', 'Intermediate');
@@ -918,10 +997,99 @@ describe('league scheduling (time slots)', () => {
     });
 
     const scheduled = scheduleEvent({ event: league }, context);
+    const regularMatches = scheduled.matches.filter((match) => match.division.id === mixedAge.id);
     const playoffMatches = scheduled.matches.filter((match) => match.division.id === mixedAgePlayoff.id);
 
+    expect(regularMatches.length).toBeGreaterThan(0);
     expect(playoffMatches.length).toBeGreaterThan(0);
     expect(playoffMatches.every((match) => match.field?.id === fieldPlayoff.id)).toBe(true);
+    const latestRegularEnd = Math.max(...regularMatches.map((match) => match.end.getTime()));
+    const earliestPlayoffStart = Math.min(...playoffMatches.map((match) => match.start.getTime()));
+    expect(earliestPlayoffStart).toBeGreaterThanOrEqual(latestRegularEnd);
+  });
+
+  it('schedules split playoff divisions in parallel when they share the same playoff window', () => {
+    const mixedAge = new Division('mixed_age_parallel', 'Mixed Age', [], null, 4, 2, 'LEAGUE');
+    const playoffA = new Division('mixed_age_playoff_a', 'Mixed Age Playoff A', [], null, 4, null, 'PLAYOFF');
+    const playoffB = new Division('mixed_age_playoff_b', 'Mixed Age Playoff B', [], null, 4, null, 'PLAYOFF');
+    const fieldRegular = buildFieldById('field_mixed_age_regular_parallel', mixedAge);
+    const fieldPlayoffA = buildFieldById('field_mixed_age_playoff_a_parallel', playoffA);
+    const fieldPlayoffB = buildFieldById('field_mixed_age_playoff_b_parallel', playoffB);
+    const teams = buildTeams(4, mixedAge);
+
+    const league = new League({
+      id: 'league_split_playoff_parallel_start',
+      name: 'Split Playoff Parallel Start',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 2, 30, 22, 0, 0),
+      noFixedEndDateTime: false,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams,
+      divisions: [mixedAge],
+      playoffDivisions: [playoffA, playoffB],
+      splitLeaguePlayoffDivisions: true,
+      referees: [],
+      fields: {
+        [fieldRegular.id]: fieldRegular,
+        [fieldPlayoffA.id]: fieldPlayoffA,
+        [fieldPlayoffB.id]: fieldPlayoffB,
+      },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_mixed_age_regular_parallel',
+          dayOfWeek: 0, // Monday
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldRegular.id,
+          divisions: [mixedAge],
+        }),
+        new TimeSlot({
+          id: 'slot_mixed_age_playoff_a_parallel',
+          dayOfWeek: 1, // Tuesday
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          field: fieldPlayoffA.id,
+          divisions: [playoffA],
+        }),
+        new TimeSlot({
+          id: 'slot_mixed_age_playoff_b_parallel',
+          dayOfWeek: 1, // Tuesday
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          field: fieldPlayoffB.id,
+          divisions: [playoffB],
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 2,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const playoffAMatches = scheduled.matches.filter((match) => match.division.id === playoffA.id);
+    const playoffBMatches = scheduled.matches.filter((match) => match.division.id === playoffB.id);
+
+    expect(playoffAMatches.length).toBeGreaterThan(0);
+    expect(playoffBMatches.length).toBeGreaterThan(0);
+
+    const firstPlayoffAStart = Math.min(...playoffAMatches.map((match) => match.start.getTime()));
+    const firstPlayoffBStart = Math.min(...playoffBMatches.map((match) => match.start.getTime()));
+    expect(firstPlayoffAStart).toBe(firstPlayoffBStart);
   });
 
   it('surfaces a configuration error when selected divisions have no available fields', () => {

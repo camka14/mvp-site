@@ -203,14 +203,29 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
 
   private checkAvailabilityOfParticipants(start: Date, end: Date, minParticipants: number): boolean {
     const currentEvents = this.currentEvents(start, end);
-    let totalParticipants = 0;
+    const currentParticipantIds = new Set<string>();
     for (const group of this.currentGroups) {
-      totalParticipants += (this.participants.get(group) ?? []).length;
+      for (const participant of this.participants.get(group) ?? []) {
+        currentParticipantIds.add(participant.id);
+      }
     }
+    if (!currentParticipantIds.size) {
+      return minParticipants <= 0;
+    }
+
+    const busyParticipantIds = new Set<string>();
     for (const event of currentEvents) {
-      totalParticipants -= event.getParticipants().length;
+      for (const participant of event.getParticipants()) {
+        const participantId = participant?.id;
+        if (!participantId || !currentParticipantIds.has(participantId)) {
+          continue;
+        }
+        busyParticipantIds.add(participantId);
+      }
     }
-    return totalParticipants >= minParticipants;
+
+    const availableParticipants = currentParticipantIds.size - busyParticipantIds.size;
+    return availableParticipants >= minParticipants;
   }
 
   private findAvailableResource(start: Date, durationMs: number): R | null {
