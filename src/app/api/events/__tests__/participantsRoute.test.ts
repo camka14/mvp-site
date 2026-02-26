@@ -250,6 +250,10 @@ describe('POST /api/events/[eventId]/participants', () => {
     expect(prismaMock.teams.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: 'slot_1' }),
+        data: expect.objectContaining({
+          division: 'div_a',
+          parentTeamId: 'team_1',
+        }),
       }),
     );
     expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(

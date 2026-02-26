@@ -7,6 +7,9 @@ const prismaMock = {
     findMany: jest.fn(),
     findUnique: jest.fn(),
   },
+  matches: {
+    findMany: jest.fn(),
+  },
   organizations: {
     findUnique: jest.fn(),
   },
@@ -26,6 +29,7 @@ import { GET as eventsGet } from '@/app/api/events/route';
 import { GET as eventGet } from '@/app/api/events/[eventId]/route';
 import { POST as searchPost } from '@/app/api/events/search/route';
 import { GET as eventsByFieldGet } from '@/app/api/events/field/[fieldId]/route';
+import { GET as matchesByFieldGet } from '@/app/api/fields/[id]/matches/route';
 
 const jsonPost = (url: string, body: any) =>
   new NextRequest(url, {
@@ -270,5 +274,33 @@ describe('event template privacy routes', () => {
         where: expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
       }),
     );
+  });
+
+  it('excludes template matches from GET /api/fields/:id/matches results', async () => {
+    prismaMock.matches.findMany.mockResolvedValueOnce([
+      { id: 'match_published', eventId: 'event_published', fieldId: 'field_1' },
+      { id: 'match_template', eventId: 'event_template', fieldId: 'field_1' },
+    ]);
+    prismaMock.events.findMany.mockResolvedValueOnce([{ id: 'event_published' }]);
+
+    const res = await matchesByFieldGet(
+      new NextRequest('http://localhost/api/fields/field_1/matches'),
+      { params: Promise.resolve({ id: 'field_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          NOT: { state: 'TEMPLATE' },
+        }),
+      }),
+    );
+
+    const matchIds = (json.matches as Array<{ id?: string; $id?: string }>)
+      .map((row) => row.id ?? row.$id)
+      .filter((id): id is string => Boolean(id));
+    expect(matchIds).toEqual(['match_published']);
   });
 });

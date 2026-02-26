@@ -1,4 +1,5 @@
 import type { Event, Field, TimeSlot } from '@/types';
+import { buildEventDivisionId } from '@/lib/divisionTypes';
 import {
   addEventTemplateSuffix,
   stripEventTemplateSuffix,
@@ -133,6 +134,164 @@ describe('eventTemplates', () => {
     expect(template.hostId).toBe('');
   });
 
+  it('remaps division identifiers to the new template id for complex division payloads without dropping metadata', () => {
+    const openSourceId = buildEventDivisionId('event_source', 'open');
+    const advancedSourceId = buildEventDivisionId('event_source', 'advanced');
+    const playoffUpperSourceId = buildEventDivisionId('event_source', 'playoff_upper');
+    const playoffLowerSourceId = buildEventDivisionId('event_source', 'playoff_lower');
+
+    const templateId = 'tmpl_complex';
+    const openTemplateId = buildEventDivisionId(templateId, 'open');
+    const advancedTemplateId = buildEventDivisionId(templateId, 'advanced');
+    const playoffUpperTemplateId = buildEventDivisionId(templateId, 'playoff_upper');
+    const playoffLowerTemplateId = buildEventDivisionId(templateId, 'playoff_lower');
+
+    const source = buildBaseEvent({
+      $id: 'event_source',
+      name: 'Complex Source League',
+      state: 'PUBLISHED',
+      organizationId: null,
+      singleDivision: false,
+      divisions: [openSourceId, advancedSourceId],
+      divisionFieldIds: {
+        [openSourceId]: ['field_a'],
+        advanced: ['field_b'],
+      },
+      divisionDetails: [
+        {
+          id: openSourceId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'skill_open_age_18plus',
+          divisionTypeName: 'Open • 18+',
+          ratingType: 'SKILL',
+          gender: 'C',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          ageCutoffLabel: 'Age 18+ as of 08/01/2026',
+          ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+          playoffPlacementDivisionIds: [playoffUpperSourceId, '', 'playoff_lower'],
+          teamIds: ['team_a'],
+        } as any,
+        {
+          id: advancedSourceId,
+          key: 'advanced',
+          name: 'Advanced',
+          divisionTypeId: 'skill_premier_age_u17',
+          divisionTypeName: 'Premier • U17',
+          ratingType: 'SKILL',
+          gender: 'C',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          ageCutoffLabel: 'Age 17 or younger as of 08/01/2026',
+          ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+          teamIds: ['team_b'],
+        } as any,
+      ],
+      playoffDivisionDetails: [
+        {
+          id: playoffUpperSourceId,
+          key: 'playoff_upper',
+          name: 'Playoff Upper',
+          kind: 'PLAYOFF',
+        } as any,
+        {
+          id: 'playoff_lower',
+          key: 'playoff_lower',
+          name: 'Playoff Lower',
+          kind: 'PLAYOFF',
+        } as any,
+      ],
+      fields: [
+        {
+          $id: 'field_a',
+          name: 'Court A',
+          location: 'Denver',
+          lat: 0,
+          long: 0,
+          fieldNumber: 1,
+          divisions: [openSourceId, 'advanced'],
+        } as any,
+        {
+          $id: 'field_b',
+          name: 'Court B',
+          location: 'Denver',
+          lat: 0,
+          long: 0,
+          fieldNumber: 2,
+          divisions: [advancedSourceId],
+        } as any,
+      ],
+      fieldIds: ['field_a', 'field_b'],
+      timeSlots: [
+        {
+          $id: 'slot_a',
+          dayOfWeek: 2,
+          startTimeMinutes: 18 * 60,
+          endTimeMinutes: 20 * 60,
+          startDate: '2026-01-05T10:30:00',
+          endDate: '2026-01-12T10:30:00',
+          repeating: true,
+          scheduledFieldId: 'field_a',
+          divisions: [openSourceId],
+        } as any,
+      ],
+      timeSlotIds: ['slot_a'],
+    });
+
+    const template = cloneEventAsTemplate(source, {
+      templateId,
+      idFactory: makeIdFactory('map'),
+    });
+
+    expect(template.divisions).toEqual([openTemplateId, advancedTemplateId]);
+    expect(template.divisionFieldIds).toEqual({
+      [openTemplateId]: ['map_1'],
+      [advancedTemplateId]: ['map_2'],
+    });
+    expect(template.divisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: openTemplateId,
+          key: 'open',
+          divisionTypeId: 'skill_open_age_18plus',
+          divisionTypeName: 'Open • 18+',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          ageCutoffLabel: 'Age 18+ as of 08/01/2026',
+          ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+          playoffPlacementDivisionIds: [playoffUpperTemplateId, '', playoffLowerTemplateId],
+        }),
+        expect.objectContaining({
+          id: advancedTemplateId,
+          key: 'advanced',
+          divisionTypeId: 'skill_premier_age_u17',
+          divisionTypeName: 'Premier • U17',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          ageCutoffLabel: 'Age 17 or younger as of 08/01/2026',
+          ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+        }),
+      ]),
+    );
+    expect(template.playoffDivisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: playoffUpperTemplateId,
+          key: 'playoff_upper',
+        }),
+        expect.objectContaining({
+          id: playoffLowerTemplateId,
+          key: 'playoff_lower',
+        }),
+      ]),
+    );
+    expect(template.timeSlots?.[0]?.divisions).toEqual([openTemplateId]);
+    expect((template.fields?.[0] as any)?.divisions).toEqual([openTemplateId, advancedTemplateId]);
+    expect((template.fields?.[1] as any)?.divisions).toEqual([advancedTemplateId]);
+
+    // Source event must remain unchanged after cloning.
+    expect(source.divisions).toEqual([openSourceId, advancedSourceId]);
+    expect(source.divisionDetails?.[0]?.id).toBe(openSourceId);
+    expect(source.timeSlots?.[0]?.divisions).toEqual([openSourceId]);
+  });
+
   it('seeds a draft event from a template with aligned dates and new slot ids', () => {
     const idFactory = makeIdFactory('seed');
 
@@ -243,5 +402,96 @@ describe('eventTemplates', () => {
       pointsForDraw: 1,
       pointsForLoss: 0,
     });
+  });
+
+  it('remaps template division identifiers to the new event id when seeding from template', () => {
+    const templateOpenId = buildEventDivisionId('tmpl_seed', 'open');
+    const templatePlayoffId = buildEventDivisionId('tmpl_seed', 'playoff');
+    const seededOpenId = buildEventDivisionId('event_seeded', 'open');
+    const seededPlayoffId = buildEventDivisionId('event_seeded', 'playoff');
+
+    const seeded = seedEventFromTemplate(
+      buildBaseEvent({
+        $id: 'tmpl_seed',
+        name: 'Seed Complex (TEMPLATE)',
+        state: 'TEMPLATE',
+        organizationId: null,
+        singleDivision: false,
+        divisions: [templateOpenId],
+        divisionDetails: [
+          {
+            id: templateOpenId,
+            key: 'open',
+            name: 'Open',
+            playoffPlacementDivisionIds: [templatePlayoffId],
+          } as any,
+        ],
+        playoffDivisionDetails: [
+          {
+            id: templatePlayoffId,
+            key: 'playoff',
+            name: 'Playoff',
+            kind: 'PLAYOFF',
+          } as any,
+        ],
+        divisionFieldIds: {
+          [templateOpenId]: ['field_tmpl'],
+        },
+        fields: [
+          {
+            $id: 'field_tmpl',
+            name: 'Court Template',
+            location: 'Denver',
+            lat: 0,
+            long: 0,
+            fieldNumber: 1,
+            divisions: [templateOpenId],
+          } as any,
+        ],
+        fieldIds: ['field_tmpl'],
+        timeSlots: [
+          {
+            $id: 'slot_tmpl',
+            dayOfWeek: 2,
+            startTimeMinutes: 18 * 60,
+            endTimeMinutes: 20 * 60,
+            startDate: '2026-01-05T10:30:00',
+            endDate: '2026-01-12T10:30:00',
+            repeating: true,
+            scheduledFieldId: 'field_tmpl',
+            divisions: [templateOpenId],
+          } as any,
+        ],
+        timeSlotIds: ['slot_tmpl'],
+      }),
+      {
+        newEventId: 'event_seeded',
+        newStartDate: new Date('2026-03-01T00:00:00'),
+        hostId: 'host_1',
+        idFactory: makeIdFactory('seed_map'),
+      },
+    );
+
+    expect(seeded.divisions).toEqual([seededOpenId]);
+    expect(seeded.divisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: seededOpenId,
+          playoffPlacementDivisionIds: [seededPlayoffId],
+        }),
+      ]),
+    );
+    expect(seeded.playoffDivisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: seededPlayoffId,
+        }),
+      ]),
+    );
+    expect(seeded.divisionFieldIds).toEqual({
+      [seededOpenId]: ['seed_map_1'],
+    });
+    expect((seeded.fields?.[0] as any)?.divisions).toEqual([seededOpenId]);
+    expect(seeded.timeSlots?.[0]?.divisions).toEqual([seededOpenId]);
   });
 });

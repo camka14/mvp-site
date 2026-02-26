@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import {
@@ -1258,6 +1259,201 @@ const isDivisionAssignmentValidationError = (error: unknown): boolean => {
     || normalized.includes('assigned to multiple divisions');
 };
 
+const normalizeEntityId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const normalizeEntityIdList = (value: unknown): string[] => (
+  Array.isArray(value)
+    ? Array.from(
+        new Set(
+          value
+            .map((entry) => normalizeEntityId(entry))
+            .filter((entry): entry is string => Boolean(entry)),
+        ),
+      )
+    : []
+);
+
+const normalizeStripeSecretKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+  const normalizedLower = normalized.toLowerCase();
+  if (normalizedLower === 'undefined' || normalizedLower === 'null') {
+    return null;
+  }
+  return normalized;
+};
+
+const removeEntityIdFromList = (values: unknown, targetId: string): string[] => {
+  const normalizedTargetId = normalizeEntityId(targetId);
+  if (!normalizedTargetId) {
+    return normalizeEntityIdList(values);
+  }
+  return normalizeEntityIdList(values).filter((value) => value !== normalizedTargetId);
+};
+
+const isAlreadyRefundedStripeError = (error: unknown): boolean => {
+  const normalizedCode = typeof (error as { code?: unknown })?.code === 'string'
+    ? (error as { code: string }).code.toLowerCase()
+    : '';
+  if (normalizedCode === 'charge_already_refunded') {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.toLowerCase().includes('already refunded');
+};
+
+const isCancellablePaymentIntentStatus = (status: unknown): boolean => {
+  if (typeof status !== 'string') {
+    return false;
+  }
+  const normalized = status.toLowerCase();
+  return normalized === 'requires_payment_method'
+    || normalized === 'requires_confirmation'
+    || normalized === 'requires_action'
+    || normalized === 'requires_capture'
+    || normalized === 'processing';
+};
+
+const collectEventBillIds = async (
+  eventId: string,
+  client: any = prisma,
+): Promise<string[]> => {
+  const rootRows = await client.bills.findMany({
+    where: { eventId },
+    select: { id: true },
+  });
+  const collected = new Set<string>(normalizeEntityIdList(rootRows.map((row: { id: string }) => row.id)));
+  let frontier = Array.from(collected);
+
+  while (frontier.length > 0) {
+    const childRows = await client.bills.findMany({
+      where: { parentBillId: { in: frontier } },
+      select: { id: true },
+    });
+    const nextFrontier: string[] = [];
+    childRows.forEach((row: { id: string }) => {
+      const normalizedId = normalizeEntityId(row.id);
+      if (!normalizedId || collected.has(normalizedId)) {
+        return;
+      }
+      collected.add(normalizedId);
+      nextFrontier.push(normalizedId);
+    });
+    frontier = nextFrontier;
+  }
+
+  return Array.from(collected);
+};
+
+const settleEventBillingBeforeDelete = async (params: {
+  eventId: string;
+  billIds: string[];
+  client?: any;
+}): Promise<{ refundedPaymentIntentIds: string[]; cancelledPaymentIntentIds: string[] }> => {
+  if (!params.billIds.length) {
+    return {
+      refundedPaymentIntentIds: [],
+      cancelledPaymentIntentIds: [],
+    };
+  }
+
+  const client = params.client ?? prisma;
+  const paymentRows = await client.billPayments.findMany({
+    where: {
+      billId: { in: params.billIds },
+      paymentIntentId: { not: null },
+    },
+    select: {
+      id: true,
+      paymentIntentId: true,
+      status: true,
+    },
+  });
+
+  const byIntentId = new Map<string, { hasPaid: boolean; hasPending: boolean }>();
+  paymentRows.forEach((row: { paymentIntentId: string | null; status: string | null }) => {
+    const intentId = normalizeEntityId(row.paymentIntentId);
+    if (!intentId) {
+      return;
+    }
+    const existing = byIntentId.get(intentId) ?? { hasPaid: false, hasPending: false };
+    const normalizedStatus = typeof row.status === 'string' ? row.status.toUpperCase() : '';
+    if (normalizedStatus === 'PAID') {
+      existing.hasPaid = true;
+    } else if (normalizedStatus === '' || normalizedStatus === 'PENDING') {
+      existing.hasPending = true;
+    }
+    byIntentId.set(intentId, existing);
+  });
+
+  const paidIntentIds = Array.from(byIntentId.entries())
+    .filter(([, state]) => state.hasPaid)
+    .map(([intentId]) => intentId);
+  const stripeSecretKey = normalizeStripeSecretKey(process.env.STRIPE_SECRET_KEY);
+  const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+
+  if (paidIntentIds.length > 0 && !stripe) {
+    throw new Error('Cannot refund paid bills because Stripe is not configured.');
+  }
+
+  const refundedPaymentIntentIds: string[] = [];
+  const cancelledPaymentIntentIds: string[] = [];
+
+  for (const [intentId, state] of byIntentId.entries()) {
+    if (state.hasPaid) {
+      try {
+        await stripe!.refunds.create({
+          payment_intent: intentId,
+          reason: 'requested_by_customer',
+          metadata: {
+            event_id: params.eventId,
+            source: 'event_delete',
+          },
+        });
+        refundedPaymentIntentIds.push(intentId);
+      } catch (error) {
+        if (isAlreadyRefundedStripeError(error)) {
+          refundedPaymentIntentIds.push(intentId);
+          continue;
+        }
+        throw error;
+      }
+      continue;
+    }
+
+    if (!state.hasPending || !stripe) {
+      continue;
+    }
+
+    try {
+      const intent = await stripe.paymentIntents.retrieve(intentId);
+      if (!isCancellablePaymentIntentStatus(intent.status)) {
+        continue;
+      }
+      await stripe.paymentIntents.cancel(intentId);
+      cancelledPaymentIntentIds.push(intentId);
+    } catch (error) {
+      console.warn(`Failed to cancel pending PaymentIntent ${intentId} before event delete.`, error);
+    }
+  }
+
+  return {
+    refundedPaymentIntentIds,
+    cancelledPaymentIntentIds,
+  };
+};
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
   const event = await prisma.events.findUnique({ where: { id: eventId } });
@@ -1879,7 +2075,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const session = await requireSession(req);
   const { eventId } = await params;
-  const event = await prisma.events.findUnique({ where: { id: eventId } });
+  const event = await prisma.events.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      hostId: true,
+      assistantHostIds: true,
+      organizationId: true,
+      fieldIds: true,
+      timeSlotIds: true,
+      teamIds: true,
+      state: true,
+      leagueScoringConfigId: true,
+    },
+  });
   if (!event) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
@@ -1887,6 +2096,195 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await prisma.events.delete({ where: { id: eventId } });
+  const billIds = await collectEventBillIds(eventId);
+  try {
+    await settleEventBillingBeforeDelete({ eventId, billIds });
+  } catch (error) {
+    console.error('Failed to settle billing before deleting event.', error);
+    const message = error instanceof Error
+      ? error.message
+      : 'Failed to settle billing before deleting event';
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
+
+  const eventFieldIds = normalizeEntityIdList(event.fieldIds);
+  const eventTimeSlotIds = normalizeEntityIdList(event.timeSlotIds);
+  const eventTeamIds = normalizeEntityIdList(event.teamIds);
+  const eventState = typeof event.state === 'string' ? event.state.toUpperCase() : '';
+  const leagueScoringConfigId = normalizeEntityId(event.leagueScoringConfigId);
+
+  await prisma.$transaction(async (tx) => {
+    if (eventState === 'TEMPLATE') {
+      const [eventsUsingTemplate, timeSlotsUsingTemplate] = await Promise.all([
+        tx.events.findMany({
+          where: {
+            id: { not: eventId },
+            requiredTemplateIds: { has: eventId },
+          },
+          select: {
+            id: true,
+            requiredTemplateIds: true,
+          },
+        }),
+        tx.timeSlots.findMany({
+          where: {
+            requiredTemplateIds: { has: eventId },
+          },
+          select: {
+            id: true,
+            requiredTemplateIds: true,
+          },
+        }),
+      ]);
+
+      for (const linkedEvent of eventsUsingTemplate) {
+        await tx.events.update({
+          where: { id: linkedEvent.id },
+          data: {
+            requiredTemplateIds: removeEntityIdFromList(linkedEvent.requiredTemplateIds, eventId),
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      for (const linkedSlot of timeSlotsUsingTemplate) {
+        await tx.timeSlots.update({
+          where: { id: linkedSlot.id },
+          data: {
+            requiredTemplateIds: removeEntityIdFromList(linkedSlot.requiredTemplateIds, eventId),
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+
+    const registrations = await tx.eventRegistrations.findMany({
+      where: { eventId },
+      select: {
+        registrantId: true,
+        registrantType: true,
+      },
+    });
+    const registrationTeamIds = registrations
+      .filter((row: { registrantType: string }) => row.registrantType === 'TEAM')
+      .map((row: { registrantId: string }) => row.registrantId);
+    const seedTeamIds = Array.from(new Set([...eventTeamIds, ...normalizeEntityIdList(registrationTeamIds)]));
+
+    const linkedTeams = seedTeamIds.length > 0
+      ? await tx.teams.findMany({
+          where: {
+            OR: [
+              { id: { in: seedTeamIds } },
+              { parentTeamId: { in: seedTeamIds } },
+            ],
+          },
+          select: { id: true },
+        })
+      : [];
+    const candidateTeamIds = Array.from(
+      new Set([...seedTeamIds, ...linkedTeams.map((row: { id: string }) => row.id)]),
+    );
+
+    const referencedTeamIds = new Set<string>();
+    if (candidateTeamIds.length > 0) {
+      const registrationsUsingTeams = await tx.eventRegistrations.findMany({
+        where: {
+          eventId: { not: eventId },
+          registrantType: 'TEAM',
+          registrantId: { in: candidateTeamIds },
+        },
+        select: { registrantId: true },
+      });
+      normalizeEntityIdList(registrationsUsingTeams.map((row: { registrantId: string }) => row.registrantId))
+        .forEach((id) => referencedTeamIds.add(id));
+
+      const eventsUsingTeams = await tx.events.findMany({
+        where: {
+          id: { not: eventId },
+          OR: candidateTeamIds.map((teamId) => ({ teamIds: { has: teamId } })),
+        },
+        select: { teamIds: true },
+      });
+      eventsUsingTeams.forEach((row: { teamIds: string[] }) => {
+        normalizeEntityIdList(row.teamIds).forEach((teamId) => {
+          if (candidateTeamIds.includes(teamId)) {
+            referencedTeamIds.add(teamId);
+          }
+        });
+      });
+    }
+    const teamIdsToDelete = candidateTeamIds.filter((teamId) => !referencedTeamIds.has(teamId));
+
+    const localFieldIds = eventFieldIds.length > 0
+      ? (await tx.fields.findMany({
+          where: {
+            id: { in: eventFieldIds },
+            organizationId: null,
+          },
+          select: { id: true },
+        })).map((row: { id: string }) => row.id)
+      : [];
+
+    await tx.matches.deleteMany({ where: { eventId } });
+    await tx.divisions.deleteMany({ where: { eventId } });
+    await tx.eventRegistrations.deleteMany({ where: { eventId } });
+    await tx.refundRequests.deleteMany({ where: { eventId } });
+    await tx.signedDocuments.deleteMany({ where: { eventId } });
+    await tx.invites.deleteMany({ where: { eventId } });
+    await tx.paymentIntents.deleteMany({ where: { eventId } });
+    await tx.templateDocuments.deleteMany({ where: { templateId: eventId } });
+
+    if (billIds.length > 0) {
+      await tx.billPayments.deleteMany({
+        where: {
+          billId: { in: billIds },
+        },
+      });
+      await tx.bills.deleteMany({
+        where: {
+          id: { in: billIds },
+        },
+      });
+    }
+
+    if (eventTimeSlotIds.length > 0) {
+      await tx.timeSlots.deleteMany({
+        where: {
+          id: { in: eventTimeSlotIds },
+        },
+      });
+    }
+
+    if (localFieldIds.length > 0) {
+      await tx.fields.deleteMany({
+        where: {
+          id: { in: localFieldIds },
+          organizationId: null,
+        },
+      });
+    }
+
+    if (teamIdsToDelete.length > 0) {
+      await tx.teams.deleteMany({
+        where: {
+          id: { in: teamIdsToDelete },
+        },
+      });
+    }
+
+    await tx.events.delete({ where: { id: eventId } });
+
+    if (leagueScoringConfigId) {
+      const remainingEventsUsingConfig = await tx.events.count({
+        where: { leagueScoringConfigId },
+      });
+      if (remainingEventsUsingConfig === 0) {
+        await tx.leagueScoringConfigs.deleteMany({
+          where: { id: leagueScoringConfigId },
+        });
+      }
+    }
+  });
+
   return NextResponse.json({ deleted: true }, { status: 200 });
 }

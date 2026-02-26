@@ -6,6 +6,7 @@ import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
 import { organizationService } from '@/lib/organizationService';
 import { formatLocalDateTime } from '@/lib/dateUtils';
+import { buildEventDivisionId } from '@/lib/divisionTypes';
 
 jest.setTimeout(20000);
 
@@ -99,6 +100,11 @@ jest.mock('../components/LeagueCalendarView', () => {
     return (
       <div data-testid="league-calendar">
         <span>Calendar View</span>
+        {Array.isArray(matches) && matches.map((match) => (
+          <span key={match?.$id ?? match?.id ?? 'unknown'} data-testid={`calendar-match-${match?.$id ?? match?.id ?? 'unknown'}`}>
+            {match?.$id ?? match?.id ?? 'unknown'}
+          </span>
+        ))}
         {canManage && matches?.length > 0 && (
           <button type="button" onClick={() => onMatchClick?.(matches[0])}>
             Edit First Match
@@ -209,6 +215,94 @@ describe('League schedule page', () => {
     expect(screen.queryByText(/Edit Match/)).not.toBeInTheDocument();
     expect(capturedEventFormProps?.event?.$id).toBe('event_1');
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
+  });
+
+  it('includes playoff matches in the league schedule tab', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const regularDivisionId = buildEventDivisionId('event_1', 'open');
+    const playoffDivisionId = buildEventDivisionId('event_1', 'open_playoff');
+    const baseEvent = buildApiEvent({
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      divisions: [regularDivisionId, playoffDivisionId],
+      divisionDetails: [
+        {
+          id: regularDivisionId,
+          key: 'open',
+          name: 'Open',
+          kind: 'LEAGUE',
+          teamIds: [],
+        },
+        {
+          id: playoffDivisionId,
+          key: 'open_playoff',
+          name: 'Open Playoff',
+          kind: 'PLAYOFF',
+          teamIds: [],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: playoffDivisionId,
+          key: 'open_playoff',
+          name: 'Open Playoff',
+          kind: 'PLAYOFF',
+          teamIds: [],
+        },
+      ],
+    });
+
+    const matchTemplate = buildApiEvent().matches?.[0] ?? {};
+    const regularMatch = {
+      ...matchTemplate,
+      $id: 'match_regular',
+      id: 'match_regular',
+      division: regularDivisionId,
+      previousLeftId: null,
+      previousRightId: null,
+      winnerNextMatchId: null,
+      loserNextMatchId: null,
+    };
+    const playoffMatch = {
+      ...matchTemplate,
+      $id: 'match_playoff',
+      id: 'match_playoff',
+      division: playoffDivisionId,
+      previousLeftId: 'match_seed_left',
+      previousRightId: 'match_seed_right',
+      winnerNextMatchId: null,
+      loserNextMatchId: null,
+    };
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = { ...baseEvent };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [regularMatch, playoffMatch] });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Summer League/)).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('calendar-match-match_regular')).toBeInTheDocument();
+      expect(screen.getByTestId('calendar-match-match_playoff')).toBeInTheDocument();
+    });
   });
 
   it('shows the load error message below the try again button', async () => {
@@ -412,6 +506,243 @@ describe('League schedule page', () => {
     expect(requestBody?.event?.state).toBe('TEMPLATE');
     expect(requestBody?.event?.name).toBe('Unsaved League (TEMPLATE)');
     expect(eventService.getEventWithRelations).not.toHaveBeenCalled();
+  });
+
+  it('creates a template from persisted edit data and preserves complex divisions/time slots', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const openSourceDivisionId = buildEventDivisionId('event_1', 'open');
+    const advancedSourceDivisionId = buildEventDivisionId('event_1', 'advanced');
+    const playoffUpperSourceDivisionId = buildEventDivisionId('event_1', 'playoff_upper');
+    const playoffLowerSourceDivisionId = buildEventDivisionId('event_1', 'playoff_lower');
+
+    const persistedEvent = buildApiEvent({
+      id: 'event_1',
+      $id: 'event_1',
+      name: 'Test League',
+      state: 'PUBLISHED',
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      fieldIds: ['field_local_1', 'field_local_2'],
+      divisions: [openSourceDivisionId, advancedSourceDivisionId],
+      divisionDetails: [
+        {
+          id: openSourceDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'skill_open_age_18plus',
+          divisionTypeName: 'Open • 18+',
+          ratingType: 'SKILL',
+          gender: 'C',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          ageCutoffLabel: 'Age 18+ as of 08/01/2026',
+          ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+          playoffPlacementDivisionIds: [playoffUpperSourceDivisionId, '', playoffLowerSourceDivisionId],
+          teamIds: ['team_a'],
+        },
+        {
+          id: advancedSourceDivisionId,
+          key: 'advanced',
+          name: 'Advanced',
+          divisionTypeId: 'skill_premier_age_u17',
+          divisionTypeName: 'Premier • U17',
+          ratingType: 'SKILL',
+          gender: 'C',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          ageCutoffLabel: 'Age 17 or younger as of 08/01/2026',
+          ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+          playoffPlacementDivisionIds: [playoffUpperSourceDivisionId, '', playoffLowerSourceDivisionId],
+          teamIds: ['team_b'],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: playoffUpperSourceDivisionId,
+          key: 'playoff_upper',
+          name: 'Playoff Upper',
+          kind: 'PLAYOFF',
+        },
+        {
+          id: playoffLowerSourceDivisionId,
+          key: 'playoff_lower',
+          name: 'Playoff Lower',
+          kind: 'PLAYOFF',
+        },
+      ],
+      fields: [
+        {
+          $id: 'field_local_1',
+          name: 'Court A',
+          fieldNumber: 1,
+          location: '',
+          lat: 0,
+          long: 0,
+          divisions: [openSourceDivisionId, advancedSourceDivisionId],
+        },
+        {
+          $id: 'field_local_2',
+          name: 'Court B',
+          fieldNumber: 2,
+          location: '',
+          lat: 0,
+          long: 0,
+          divisions: [advancedSourceDivisionId],
+        },
+      ],
+      timeSlots: [
+        {
+          $id: 'slot_multi_days',
+          dayOfWeek: 1,
+          daysOfWeek: [1, 3],
+          divisions: [openSourceDivisionId],
+          startTimeMinutes: 540,
+          endTimeMinutes: 600,
+          repeating: true,
+          scheduledFieldId: 'field_local_1',
+          scheduledFieldIds: ['field_local_1'],
+          requiredTemplateIds: ['tmpl_waiver'],
+        },
+        {
+          $id: 'slot_advanced',
+          dayOfWeek: 4,
+          daysOfWeek: [4],
+          divisions: [advancedSourceDivisionId],
+          startTimeMinutes: 600,
+          endTimeMinutes: 660,
+          repeating: true,
+          scheduledFieldId: 'field_local_2',
+          scheduledFieldIds: ['field_local_2'],
+        },
+      ],
+    });
+
+    mockEventFormDraft = {
+      ...buildApiEvent({
+        id: 'event_1',
+        $id: 'event_1',
+        name: 'Test League',
+        state: 'PUBLISHED',
+        eventType: 'LEAGUE',
+        singleDivision: false,
+        splitLeaguePlayoffDivisions: true,
+        fieldIds: ['field_draft_1'],
+        divisions: [openSourceDivisionId],
+        divisionDetails: [
+          {
+            id: openSourceDivisionId,
+            key: 'open',
+            name: 'Open',
+            divisionTypeId: 'skill_undefined_age_undefined',
+            maxParticipants: 8,
+            teamIds: ['team_a'],
+          },
+        ],
+      }),
+      name: 'Test League Edited',
+    };
+
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(persistedEvent);
+
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path === '/api/events/event_1') {
+        const event = buildApiEvent(persistedEvent);
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: buildApiEvent().matches });
+      }
+      if (path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST') {
+        const payloadEvent = (
+          (options as { body?: { event?: Record<string, unknown> } } | undefined)
+            ?.body?.event
+        ) ?? {};
+        return Promise.resolve({ event: { ...payloadEvent } });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const createTemplateButton = await screen.findByRole('button', { name: /create template/i });
+    fireEvent.click(createTemplateButton);
+
+    await waitFor(() => {
+      const createCall = apiRequestMock.mock.calls.find(
+        ([path, options]) => path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST',
+      );
+      expect(createCall).toBeDefined();
+    });
+
+    const createCall = apiRequestMock.mock.calls.find(
+      ([path, options]) => path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST',
+    );
+    const requestBody = (createCall?.[1] as { body?: { event?: Record<string, any> } } | undefined)?.body;
+    const templateId = String(requestBody?.id ?? requestBody?.event?.$id ?? '');
+    const openTemplateDivisionId = buildEventDivisionId(templateId, 'open');
+    const advancedTemplateDivisionId = buildEventDivisionId(templateId, 'advanced');
+    const playoffUpperTemplateDivisionId = buildEventDivisionId(templateId, 'playoff_upper');
+    const playoffLowerTemplateDivisionId = buildEventDivisionId(templateId, 'playoff_lower');
+
+    expect(templateId).toBeTruthy();
+    expect(requestBody?.event?.state).toBe('TEMPLATE');
+    expect(requestBody?.event?.name).toBe('Test League (TEMPLATE)');
+    expect(requestBody?.event?.divisions).toEqual([openTemplateDivisionId, advancedTemplateDivisionId]);
+    expect(requestBody?.event?.divisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: openTemplateDivisionId,
+          key: 'open',
+          divisionTypeId: 'skill_open_age_18plus',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          playoffPlacementDivisionIds: [playoffUpperTemplateDivisionId, '', playoffLowerTemplateDivisionId],
+          teamIds: ['team_a'],
+        }),
+        expect.objectContaining({
+          id: advancedTemplateDivisionId,
+          key: 'advanced',
+          divisionTypeId: 'skill_premier_age_u17',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          playoffPlacementDivisionIds: [playoffUpperTemplateDivisionId, '', playoffLowerTemplateDivisionId],
+          teamIds: ['team_b'],
+        }),
+      ]),
+    );
+    expect(requestBody?.event?.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          divisions: [openTemplateDivisionId, advancedTemplateDivisionId],
+        }),
+        expect.objectContaining({
+          divisions: [advancedTemplateDivisionId],
+        }),
+      ]),
+    );
+    expect(requestBody?.event?.timeSlots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dayOfWeek: 1,
+          daysOfWeek: [1, 3],
+          divisions: [openTemplateDivisionId],
+          requiredTemplateIds: ['tmpl_waiver'],
+        }),
+        expect.objectContaining({
+          dayOfWeek: 4,
+          daysOfWeek: [4],
+          divisions: [advancedTemplateDivisionId],
+        }),
+      ]),
+    );
+    const divisionTypeIds = (requestBody?.event?.divisionDetails ?? []).map((entry: { divisionTypeId?: string }) => entry.divisionTypeId);
+    expect(divisionTypeIds).not.toContain('skill_undefined_age_undefined');
+    expect(eventService.getEventWithRelations).toHaveBeenCalledWith('event_1');
   });
 
   it('seeds create mode from templateId query and does not fetch standings for unsaved events', async () => {
@@ -690,6 +1021,90 @@ describe('League schedule page', () => {
     expect(payload.fields?.[0]?.rentalSlotIds).toBeUndefined();
     expect(payload).not.toHaveProperty('attendees');
     expect(eventService.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('saves a template without changing template lifecycle state', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const baseEvent = buildApiEvent({
+      id: 'event_1',
+      $id: 'event_1',
+      name: 'Test League (TEMPLATE)',
+      state: 'TEMPLATE',
+      singleDivision: true,
+      divisions: ['event_1__division__open'],
+      divisionDetails: [
+        {
+          id: 'event_1__division__open',
+          key: 'open',
+          name: 'Open',
+          teamIds: [],
+        },
+      ],
+      timeSlots: [
+        {
+          id: 'slot_template_1',
+          dayOfWeek: 2,
+          daysOfWeek: [2],
+          divisions: ['event_1__division__open'],
+          startTimeMinutes: 540,
+          endTimeMinutes: 600,
+          repeating: true,
+          scheduledFieldId: 'field_1',
+        },
+      ],
+    });
+
+    mockEventFormDraft = {
+      ...baseEvent,
+      name: 'Test League Renamed (TEMPLATE)',
+      state: 'TEMPLATE',
+    };
+    mockEventFormDirtyState = true;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = { ...baseEvent };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: buildApiEvent().matches });
+      }
+      return Promise.resolve({});
+    });
+
+    (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
+      Promise.resolve({
+        ...payload,
+        $id: 'event_1',
+        state: payload?.state ?? 'TEMPLATE',
+      }),
+    );
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const saveTemplateButton = await screen.findByRole('button', { name: /save template/i });
+    await waitFor(() => {
+      expect(saveTemplateButton).toBeEnabled();
+    });
+    fireEvent.click(saveTemplateButton);
+
+    await waitFor(() => {
+      expect(eventService.updateEvent).toHaveBeenCalledTimes(1);
+    });
+
+    const [, payload] = (eventService.updateEvent as jest.Mock).mock.calls[0];
+    expect(payload.state).toBe('TEMPLATE');
+    expect(payload.name).toBe('Test League Renamed (TEMPLATE)');
+    expect(payload.divisions).toEqual(['event_1__division__open']);
+    expect(payload.timeSlots).toHaveLength(1);
   });
 
   it('reschedules from non-details tabs and surfaces backend warnings', async () => {

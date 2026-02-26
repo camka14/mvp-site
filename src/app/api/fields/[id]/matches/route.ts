@@ -19,5 +19,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { start: 'asc' },
   });
 
-  return NextResponse.json({ matches: withLegacyList(matches) }, { status: 200 });
+  const eventIds = Array.from(
+    new Set(
+      matches
+        .map((match) => (typeof match.eventId === 'string' ? match.eventId : ''))
+        .filter((eventId) => eventId.length > 0),
+    ),
+  );
+
+  if (!eventIds.length) {
+    return NextResponse.json({ matches: withLegacyList(matches) }, { status: 200 });
+  }
+
+  const visibleEvents = await prisma.events.findMany({
+    where: {
+      id: { in: eventIds },
+      NOT: { state: 'TEMPLATE' },
+    },
+    select: { id: true },
+  });
+  const visibleEventIds = new Set(visibleEvents.map((event) => event.id));
+  const filteredMatches = matches.filter((match) => {
+    const eventId = typeof match.eventId === 'string' ? match.eventId : '';
+    return !eventId || visibleEventIds.has(eventId);
+  });
+
+  return NextResponse.json({ matches: withLegacyList(filteredMatches) }, { status: 200 });
 }

@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 
@@ -26,8 +26,10 @@ import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
 import { toEventPayload } from '@/types';
+import { formatBillAmount } from '@/types';
 import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
+import type { EventTeamComplianceResponse, TeamComplianceSummary } from '@/lib/eventTeamCompliance';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
@@ -36,6 +38,7 @@ import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 import TeamCard from '@/components/ui/TeamCard';
+import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 
 const cloneValue = <T,>(value: T): T => {
   if (value === null || typeof value !== 'object') {
@@ -489,6 +492,11 @@ function EventScheduleContent() {
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
   const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
+  const [teamComplianceById, setTeamComplianceById] = useState<Record<string, TeamComplianceSummary>>({});
+  const [teamComplianceLoading, setTeamComplianceLoading] = useState(false);
+  const [teamComplianceError, setTeamComplianceError] = useState<string | null>(null);
+  const [selectedComplianceTeamId, setSelectedComplianceTeamId] = useState<string | null>(null);
+  const [expandedComplianceUserIds, setExpandedComplianceUserIds] = useState<string[]>([]);
   const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
   const [selectedAddTeamDivisionId, setSelectedAddTeamDivisionId] = useState<string | null>(null);
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
@@ -890,16 +898,12 @@ function EventScheduleContent() {
   const isLeague = eventTypeForView === 'LEAGUE';
 
   const scheduleMatches = useMemo(() => {
-    const sourceMatches = isLeague
-      ? activeMatches.filter((match) => !isPlayoffBracketMatch(match))
-      : activeMatches;
-
     if (selectedScheduleDivision === 'all') {
-      return sourceMatches;
+      return activeMatches;
     }
 
-    return sourceMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedScheduleDivision);
-  }, [activeMatches, isLeague, selectedScheduleDivision]);
+    return activeMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedScheduleDivision);
+  }, [activeMatches, selectedScheduleDivision]);
 
   const preferredStandingsDivisionId = useMemo(() => {
     const validOptionIds = new Set(leagueDivisionOptions.map((option) => option.value));
@@ -1013,6 +1017,7 @@ function EventScheduleContent() {
       ),
   );
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
+  const canUseTeamCompliance = Boolean(isEditingEvent && canManageEvent && isSplitDivisionEvent);
   const canManageStandings = Boolean(canManageEvent && !isPreview && !isCreateMode);
   const entityLabel = isTemplateEvent
     ? 'Template'
@@ -1025,8 +1030,7 @@ function EventScheduleContent() {
   const canEditMatches = Boolean(canManageEvent && isEditingEvent);
   const shouldShowCreationSheet = Boolean(
     isCreateMode
-    || (isEditingEvent && canManageEvent && user)
-    || (isTemplateEvent && user),
+    || (isEditingEvent && canManageEvent && user),
   );
   const createFormId = 'create-event-form';
   const templateSelectData = useMemo(
@@ -1544,6 +1548,75 @@ function EventScheduleContent() {
   }, [participantTeamIds]);
 
   useEffect(() => {
+    if (!canUseTeamCompliance) {
+      setTeamComplianceById({});
+      setTeamComplianceError(null);
+      setTeamComplianceLoading(false);
+      setSelectedComplianceTeamId(null);
+      setExpandedComplianceUserIds([]);
+      return;
+    }
+
+    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+    if (!targetEventId || participantTeamIds.length === 0) {
+      setTeamComplianceById({});
+      setTeamComplianceError(null);
+      setTeamComplianceLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTeamComplianceLoading(true);
+    setTeamComplianceError(null);
+
+    void apiRequest<EventTeamComplianceResponse>(`/api/events/${targetEventId}/teams/compliance`)
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        const byId: Record<string, TeamComplianceSummary> = {};
+        (payload?.teams ?? []).forEach((teamSummary) => {
+          if (teamSummary?.teamId) {
+            byId[teamSummary.teamId] = teamSummary;
+          }
+        });
+        setTeamComplianceById(byId);
+      })
+      .catch((complianceError) => {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load team compliance summaries:', complianceError);
+        setTeamComplianceById({});
+        setTeamComplianceError(
+          complianceError instanceof Error
+            ? complianceError.message
+            : 'Failed to load team payment and document status.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setTeamComplianceLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIds]);
+
+  useEffect(() => {
+    if (!selectedComplianceTeamId) {
+      return;
+    }
+    const stillVisible = participantTeamIdSet.has(selectedComplianceTeamId);
+    if (!stillVisible) {
+      setSelectedComplianceTeamId(null);
+      setExpandedComplianceUserIds([]);
+    }
+  }, [participantTeamIdSet, selectedComplianceTeamId]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadParticipantReferees = async () => {
@@ -1837,6 +1910,14 @@ function EventScheduleContent() {
     },
     [mutateTeamParticipantMembership, participantTeamIdSet, participantsUpdatingTeamId],
   );
+
+  const toggleComplianceUserExpanded = useCallback((userId: string) => {
+    setExpandedComplianceUserIds((current) => (
+      current.includes(userId)
+        ? current.filter((value) => value !== userId)
+        : [...current, userId]
+    ));
+  }, []);
 
   const resolveTeam = useCallback(
     (value: Match['team1'] | string | null | undefined): Team | null => {
@@ -2955,6 +3036,30 @@ function EventScheduleContent() {
   const showStandingsTab = isLeague;
   const showParticipantsTab = !isTemplateEvent
     && Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0);
+  const selectedComplianceSummary = selectedComplianceTeamId
+    ? teamComplianceById[selectedComplianceTeamId] ?? null
+    : null;
+  const selectedComplianceTeam = useMemo(() => {
+    if (!selectedComplianceTeamId) {
+      return null;
+    }
+    return participantTeamsById.get(selectedComplianceTeamId)
+      ?? (Array.isArray(activeEvent?.teams)
+        ? activeEvent.teams.find((team) => team?.$id === selectedComplianceTeamId) ?? null
+        : null);
+  }, [activeEvent?.teams, participantTeamsById, selectedComplianceTeamId]);
+
+  const formatCompliancePaymentLabel = useCallback((payment: TeamComplianceSummary['payment']) => {
+    if (!payment.hasBill) {
+      return 'No bill';
+    }
+    if (payment.isPaidInFull) {
+      return `Paid in full (${formatBillAmount(payment.totalAmountCents)})`;
+    }
+    const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
+    return `${prefix}: ${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)} paid`;
+  }, []);
+
   const defaultTab = showScheduleTab ? 'schedule' : 'details';
   const shouldShowBracketTab = !!bracketData || isPreview;
 
@@ -3220,8 +3325,14 @@ function EventScheduleContent() {
           delete (nextEvent as Partial<Event>).attendees;
         }
 
-        const lifecycleStatus = selectedLifecycleStatus ?? getEventLifecycleStatus(nextEvent);
-        nextEvent.state = lifecycleStatus === 'DRAFT' ? 'UNPUBLISHED' : 'PUBLISHED';
+        const isTemplateDraft = typeof nextEvent.state === 'string'
+          && nextEvent.state.toUpperCase() === 'TEMPLATE';
+        if (isTemplateDraft) {
+          nextEvent.state = 'TEMPLATE';
+        } else {
+          const lifecycleStatus = selectedLifecycleStatus ?? getEventLifecycleStatus(nextEvent);
+          nextEvent.state = lifecycleStatus === 'DRAFT' ? 'UNPUBLISHED' : 'PUBLISHED';
+        }
 
         let updatedEvent = nextEvent;
         if (nextEvent.$id) {
@@ -3438,6 +3549,34 @@ function EventScheduleContent() {
       await saveExistingEvent();
     }
   };
+
+  const handleDeleteTemplate = useCallback(async () => {
+    if (cancelling) return;
+    const templateEvent = activeEvent ?? event;
+    if (!templateEvent?.$id) return;
+
+    if (!window.confirm('Delete this template? This will remove its saved schedule and cannot be undone.')) {
+      return;
+    }
+
+    setCancelling(true);
+    setError(null);
+    setInfoMessage(null);
+    setWarningMessage(null);
+    setActionError(null);
+
+    try {
+      await leagueService.deleteMatchesByEvent(templateEvent.$id);
+      await leagueService.deleteWeeklySchedulesForEvent(templateEvent.$id);
+      await eventService.deleteEvent(templateEvent);
+      router.push('/events');
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+      setError('Failed to delete template.');
+    } finally {
+      setCancelling(false);
+    }
+  }, [activeEvent, cancelling, event, router]);
 
   const handleCancel = async () => {
     if (isCreateMode) {
@@ -4157,6 +4296,7 @@ function EventScheduleContent() {
   const showBuildBracketsActionButton = isEditingEvent && (
     isTournament || (isLeague && Boolean(activeEvent.includePlayoffs))
   ) && !publishing && !reschedulingMatches;
+  const showDeleteTemplateActionButton = isTemplateEvent && !isSavingOrRescheduling && !cancelling;
   const showCancelEditActionButton =
     !isCreateMode && isEditingEvent && isUnpublished && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
   const showCancelActionButton = !isTemplateEvent && !cancelling;
@@ -4237,6 +4377,15 @@ function EventScheduleContent() {
                     onClick={handleCancel}
                   >
                     {cancelButtonLabel}
+                  </Button>
+                )}
+                {showDeleteTemplateActionButton && (
+                  <Button
+                    color="red"
+                    variant="light"
+                    onClick={handleDeleteTemplate}
+                  >
+                    Delete Template
                   </Button>
                 )}
                 {showCreateTemplateButton && (
@@ -4341,6 +4490,12 @@ function EventScheduleContent() {
                     </Alert>
                   )}
 
+                  {canUseTeamCompliance && teamComplianceError && (
+                    <Alert color="yellow" radius="md">
+                      {teamComplianceError}
+                    </Alert>
+                  )}
+
                   {participantsLoading ? (
                     <Paper withBorder radius="md" p="xl">
                       <Group justify="center" gap="sm">
@@ -4371,46 +4526,65 @@ function EventScheduleContent() {
                                   <Text size="sm" c="dimmed">No teams assigned.</Text>
                                 ) : (
                                   <Stack gap="sm">
-                                    {columnTeams.map((team) => (
-                                      <TeamCard
-                                        key={`${column.id}:${team.$id}`}
-                                        team={team}
-                                        className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
-                                        actions={
-                                          canManageEvent
-                                            ? (
-                                              participantsUpdatingTeamId === team.$id
-                                                ? <Text size="xs" c="dimmed">Updating...</Text>
-                                                : (
-                                                  <Stack gap={6}>
-                                                    <Select
-                                                      size="xs"
-                                                      data={participantDivisionSelectData}
-                                                      value={column.id}
-                                                      onChange={(value) => {
-                                                        void handleMoveTeamDivision(team, value);
-                                                      }}
-                                                      allowDeselect={false}
-                                                      w={200}
-                                                    />
-                                                    <Button
-                                                      size="xs"
-                                                      variant="light"
-                                                      color="red"
-                                                      onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        void handleRemoveTeamFromParticipants(team);
-                                                      }}
-                                                    >
-                                                      Remove
-                                                    </Button>
-                                                  </Stack>
-                                                )
+                                    {columnTeams.map((team) => {
+                                      const teamActions = canManageEvent
+                                        ? (
+                                          participantsUpdatingTeamId === team.$id
+                                            ? <Text size="xs" c="dimmed">Updating...</Text>
+                                            : (
+                                              <Stack gap={6}>
+                                                <Select
+                                                  size="xs"
+                                                  data={participantDivisionSelectData}
+                                                  value={column.id}
+                                                  onChange={(value) => {
+                                                    void handleMoveTeamDivision(team, value);
+                                                  }}
+                                                  allowDeselect={false}
+                                                  w={200}
+                                                />
+                                                <Button
+                                                  size="xs"
+                                                  variant="light"
+                                                  color="red"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    void handleRemoveTeamFromParticipants(team);
+                                                  }}
+                                                >
+                                                  Remove
+                                                </Button>
+                                              </Stack>
                                             )
-                                            : undefined
-                                        }
-                                      />
-                                    ))}
+                                        )
+                                        : undefined;
+
+                                      if (canUseTeamCompliance) {
+                                        return (
+                                          <DivisionTeamComplianceCard
+                                            key={`${column.id}:${team.$id}`}
+                                            team={team}
+                                            summary={teamComplianceById[team.$id]}
+                                            loading={teamComplianceLoading}
+                                            className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
+                                            onClick={() => {
+                                              setSelectedComplianceTeamId(team.$id);
+                                              setExpandedComplianceUserIds([]);
+                                            }}
+                                            actions={teamActions}
+                                          />
+                                        );
+                                      }
+
+                                      return (
+                                        <TeamCard
+                                          key={`${column.id}:${team.$id}`}
+                                          team={team}
+                                          className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
+                                          actions={teamActions}
+                                        />
+                                      );
+                                    })}
                                   </Stack>
                                 )}
                               </Stack>
@@ -4429,47 +4603,66 @@ function EventScheduleContent() {
                               <Text size="sm" c="dimmed">All teams assigned.</Text>
                             ) : (
                               <Stack gap="sm">
-                                {unassignedParticipantTeams.map((team) => (
-                                  <TeamCard
-                                    key={`unassigned:${team.$id}`}
-                                    team={team}
-                                    className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
-                                    actions={
-                                      canManageEvent
-                                        ? (
-                                          participantsUpdatingTeamId === team.$id
-                                            ? <Text size="xs" c="dimmed">Updating...</Text>
-                                            : (
-                                              <Stack gap={6}>
-                                                <Select
-                                                  size="xs"
-                                                  data={participantDivisionSelectData}
-                                                  value={null}
-                                                  placeholder="Move to division"
-                                                  onChange={(value) => {
-                                                    void handleMoveTeamDivision(team, value);
-                                                  }}
-                                                  allowDeselect
-                                                  w={200}
-                                                />
-                                                <Button
-                                                  size="xs"
-                                                  variant="light"
-                                                  color="red"
-                                                  onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    void handleRemoveTeamFromParticipants(team);
-                                                  }}
-                                                >
-                                                  Remove
-                                                </Button>
-                                              </Stack>
-                                            )
+                                {unassignedParticipantTeams.map((team) => {
+                                  const teamActions = canManageEvent
+                                    ? (
+                                      participantsUpdatingTeamId === team.$id
+                                        ? <Text size="xs" c="dimmed">Updating...</Text>
+                                        : (
+                                          <Stack gap={6}>
+                                            <Select
+                                              size="xs"
+                                              data={participantDivisionSelectData}
+                                              value={null}
+                                              placeholder="Move to division"
+                                              onChange={(value) => {
+                                                void handleMoveTeamDivision(team, value);
+                                              }}
+                                              allowDeselect
+                                              w={200}
+                                            />
+                                            <Button
+                                              size="xs"
+                                              variant="light"
+                                              color="red"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                void handleRemoveTeamFromParticipants(team);
+                                              }}
+                                            >
+                                              Remove
+                                            </Button>
+                                          </Stack>
                                         )
-                                        : undefined
-                                    }
-                                  />
-                                ))}
+                                    )
+                                    : undefined;
+
+                                  if (canUseTeamCompliance) {
+                                    return (
+                                      <DivisionTeamComplianceCard
+                                        key={`unassigned:${team.$id}`}
+                                        team={team}
+                                        summary={teamComplianceById[team.$id]}
+                                        loading={teamComplianceLoading}
+                                        className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
+                                        onClick={() => {
+                                          setSelectedComplianceTeamId(team.$id);
+                                          setExpandedComplianceUserIds([]);
+                                        }}
+                                        actions={teamActions}
+                                      />
+                                    );
+                                  }
+
+                                  return (
+                                    <TeamCard
+                                      key={`unassigned:${team.$id}`}
+                                      team={team}
+                                      className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
+                                      actions={teamActions}
+                                    />
+                                  );
+                                })}
                               </Stack>
                             )}
                           </Stack>
@@ -4905,6 +5098,148 @@ function EventScheduleContent() {
               </SimpleGrid>
             )}
           </Stack>
+        </Stack>
+      </Modal>
+      <Modal
+        opened={Boolean(selectedComplianceTeamId)}
+        onClose={() => {
+          setSelectedComplianceTeamId(null);
+          setExpandedComplianceUserIds([]);
+        }}
+        title={selectedComplianceTeam ? `${selectedComplianceTeam.name || 'Team'} users` : 'Team users'}
+        size="xl"
+        centered
+        fullScreen={Boolean(isMobile)}
+      >
+        <Stack gap="md">
+          {selectedComplianceSummary ? (
+            <>
+              <Group justify="space-between" align="flex-start" wrap="wrap">
+                <Stack gap={2}>
+                  <Text size="sm" c="dimmed">Payment</Text>
+                  <Text size="sm">{formatCompliancePaymentLabel(selectedComplianceSummary.payment)}</Text>
+                </Stack>
+                <Stack gap={2}>
+                  <Text size="sm" c="dimmed">Required signatures</Text>
+                  <Text size="sm">
+                    {selectedComplianceSummary.documents.signedCount}/{selectedComplianceSummary.documents.requiredCount} complete
+                  </Text>
+                </Stack>
+              </Group>
+
+              {selectedComplianceSummary.users.length === 0 ? (
+                <Paper withBorder radius="md" p="md">
+                  <Text size="sm" c="dimmed">No users were found on this team.</Text>
+                </Paper>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <Table withTableBorder withColumnBorders highlightOnHover miw={760}>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>User</Table.Th>
+                        <Table.Th>Payment</Table.Th>
+                        <Table.Th>Documents</Table.Th>
+                        <Table.Th style={{ width: 120 }}>Details</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {selectedComplianceSummary.users.map((userSummary) => {
+                        const expanded = expandedComplianceUserIds.includes(userSummary.userId);
+                        return (
+                          <Fragment key={userSummary.userId}>
+                            <Table.Tr>
+                              <Table.Td>
+                                <Text fw={600}>{userSummary.fullName}</Text>
+                                {userSummary.userName ? (
+                                  <Text size="xs" c="dimmed">@{userSummary.userName}</Text>
+                                ) : null}
+                                <Text size="xs" c="dimmed">
+                                  {userSummary.registrationType === 'CHILD'
+                                    ? 'Child registration'
+                                    : 'Adult registration'}
+                                </Text>
+                              </Table.Td>
+                              <Table.Td>
+                                <Text size="sm">{formatCompliancePaymentLabel(userSummary.payment)}</Text>
+                              </Table.Td>
+                              <Table.Td>
+                                {userSummary.documents.requiredCount === 0 ? (
+                                  <Text size="xs" c="dimmed">No required documents</Text>
+                                ) : (
+                                  <Text size="sm">
+                                    {userSummary.documents.signedCount}/{userSummary.documents.requiredCount} signed
+                                  </Text>
+                                )}
+                              </Table.Td>
+                              <Table.Td>
+                                <Button
+                                  size="xs"
+                                  variant="light"
+                                  onClick={() => toggleComplianceUserExpanded(userSummary.userId)}
+                                >
+                                  {expanded ? 'Collapse' : 'Expand'}
+                                </Button>
+                              </Table.Td>
+                            </Table.Tr>
+                            {expanded && (
+                              <Table.Tr>
+                                <Table.Td colSpan={4}>
+                                  {userSummary.requiredDocuments.length === 0 ? (
+                                    <Text size="xs" c="dimmed">No required documents for this user.</Text>
+                                  ) : (
+                                    <Stack gap={6}>
+                                      {userSummary.requiredDocuments.map((document) => (
+                                        <Group key={document.key} justify="space-between" align="center" wrap="wrap">
+                                          <Stack gap={0}>
+                                            <Text size="sm">{document.title}</Text>
+                                            <Text size="xs" c="dimmed">
+                                              {document.signerLabel}
+                                              {document.signOnce ? ' • Sign once' : ' • Event-specific'}
+                                            </Text>
+                                          </Stack>
+                                          <Group gap={6}>
+                                            {document.signedAt ? (
+                                              <Text size="xs" c="dimmed">
+                                                {new Date(document.signedAt).toLocaleString()}
+                                              </Text>
+                                            ) : null}
+                                            <Badge
+                                              size="sm"
+                                              color={document.status === 'SIGNED' ? 'green' : 'yellow'}
+                                              variant="light"
+                                            >
+                                              {document.status === 'SIGNED' ? 'Signed' : 'Needs signature'}
+                                            </Badge>
+                                          </Group>
+                                        </Group>
+                                      ))}
+                                    </Stack>
+                                  )}
+                                </Table.Td>
+                              </Table.Tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </Table.Tbody>
+                  </Table>
+                </div>
+              )}
+            </>
+          ) : teamComplianceLoading ? (
+            <Paper withBorder radius="md" p="md">
+              <Group justify="center" gap="sm">
+                <Loader size="sm" />
+                <Text size="sm" c="dimmed">Loading team users...</Text>
+              </Group>
+            </Paper>
+          ) : (
+            <Paper withBorder radius="md" p="md">
+              <Text size="sm" c="dimmed">
+                Team compliance details are not available yet.
+              </Text>
+            </Paper>
+          )}
         </Stack>
       </Modal>
       {scoreUpdateMatch && activeEvent && (

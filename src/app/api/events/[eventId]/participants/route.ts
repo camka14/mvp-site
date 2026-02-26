@@ -524,6 +524,16 @@ async function updateParticipants(
           let filledSlotTeamId: string | null = null;
 
           for (const candidate of placeholderCandidates) {
+            const slotDivisionId = (() => {
+              if (typeof divisionSelection.divisionId === 'string' && divisionSelection.divisionId.trim().length > 0) {
+                return divisionSelection.divisionId.trim();
+              }
+              if (typeof candidate.division === 'string' && candidate.division.trim().length > 0) {
+                return candidate.division.trim();
+              }
+              const fallbackDivisionId = normalizeUserIdList(freshEvent.divisions)[0];
+              return fallbackDivisionId ?? 'open';
+            })();
             const updateResult = await tx.teams.updateMany({
               where: {
                 id: candidate.id,
@@ -541,6 +551,7 @@ async function updateParticipants(
                 teamSize: canonical.teamSize ?? Math.max(0, Math.trunc(freshEvent.teamSizeLimit ?? 0)),
                 profileImageId: canonical.profileImageId ?? null,
                 sport: canonical.sport ?? null,
+                division: slotDivisionId,
                 divisionTypeId: canonical.divisionTypeId ?? null,
                 divisionTypeName: canonical.divisionTypeName ?? null,
                 wins: 0,

@@ -341,6 +341,14 @@ const buildDivisionDisplayName = (key: string, sportId?: string | null): string 
 
 const buildDivisionId = (eventId: string, key: string): string => buildEventDivisionId(eventId, key);
 
+const scopeDivisionIdentifierToEvent = (identifier: string, eventId: string): string => {
+  if (identifier.startsWith('division_')) {
+    return identifier;
+  }
+  const token = extractDivisionTokenFromId(identifier) ?? identifier;
+  return buildDivisionId(eventId, token);
+};
+
 const normalizeDivisionIdentifierList = (
   value: unknown,
   eventId?: string,
@@ -352,11 +360,7 @@ const normalizeDivisionIdentifierList = (
   if (!eventId) {
     return normalized;
   }
-  return normalized.map((entry) => (
-    entry.includes('__division__') || entry.startsWith('division_')
-      ? entry
-      : buildDivisionId(eventId, entry)
-  ));
+  return normalized.map((entry) => scopeDivisionIdentifierToEvent(entry, eventId));
 };
 
 const normalizePlacementDivisionIdentifierList = (
@@ -374,9 +378,7 @@ const normalizePlacementDivisionIdentifierList = (
     if (!eventId) {
       return normalized;
     }
-    return normalized.includes('__division__') || normalized.startsWith('division_')
-      ? normalized
-      : buildDivisionId(eventId, normalized);
+    return scopeDivisionIdentifierToEvent(normalized, eventId);
   });
 };
 
@@ -441,8 +443,7 @@ const normalizeDivisionDetailsPayload = (
           divisionTypeId,
         });
       const id = rawId
-        && (rawId.includes('__division__') || rawId.startsWith('division_'))
-        ? rawId
+        ? scopeDivisionIdentifierToEvent(rawId, eventId)
         : buildDivisionId(eventId, key);
       const divisionTypeName = typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
         ? row.divisionTypeName.trim()
@@ -1375,6 +1376,53 @@ export const persistScheduledRosterTeams = async (
   const rosterTeamIds = Object.keys(params.scheduled.teams ?? {});
   const now = new Date();
 
+  const scheduledLeagueDivisionIds = (() => {
+    const ids: string[] = [];
+    for (const division of params.scheduled.divisions ?? []) {
+      if (normalizeDivisionKind(division.kind, 'LEAGUE') === 'PLAYOFF') {
+        continue;
+      }
+      const normalizedId = normalizeDivisionKey(division.id);
+      if (!normalizedId) {
+        continue;
+      }
+      if (!ids.includes(division.id)) {
+        ids.push(division.id);
+      }
+    }
+    return ids;
+  })();
+  const scheduledDivisionAliasToId = new Map<string, string>();
+  for (const divisionId of scheduledLeagueDivisionIds) {
+    const aliases = [
+      normalizeDivisionKey(divisionId),
+      normalizeDivisionKey(extractDivisionTokenFromId(divisionId)),
+    ].filter((alias): alias is string => Boolean(alias));
+    for (const alias of aliases) {
+      if (!scheduledDivisionAliasToId.has(alias)) {
+        scheduledDivisionAliasToId.set(alias, divisionId);
+      }
+    }
+  }
+  const fallbackDivisionId = scheduledLeagueDivisionIds[0] ?? DEFAULT_DIVISION_KEY;
+  const resolveScheduledTeamDivisionId = (team: Team | undefined): string => {
+    const explicitDivisionId = normalizeDivisionKey(team?.division?.id);
+    if (explicitDivisionId) {
+      const mappedFromId = scheduledDivisionAliasToId.get(explicitDivisionId);
+      if (mappedFromId) {
+        return mappedFromId;
+      }
+      const token = normalizeDivisionKey(extractDivisionTokenFromId(team?.division?.id));
+      if (token) {
+        const mappedFromToken = scheduledDivisionAliasToId.get(token);
+        if (mappedFromToken) {
+          return mappedFromToken;
+        }
+      }
+    }
+    return fallbackDivisionId;
+  };
+
   await client.events.update({
     where: { id: params.eventId },
     data: {
@@ -1387,60 +1435,128 @@ export const persistScheduledRosterTeams = async (
     return rosterTeamIds;
   }
 
-  const existingTeams = await client.teams.findMany({
-    where: { id: { in: rosterTeamIds } },
-    select: { id: true },
-  });
-  const existingTeamIds = new Set(existingTeams.map((team) => team.id));
-  const missingTeamIds = rosterTeamIds.filter((teamId) => !existingTeamIds.has(teamId));
-  if (!missingTeamIds.length) {
-    return rosterTeamIds;
-  }
-
   const event = await client.events.findUnique({
     where: { id: params.eventId },
-    select: { teamSizeLimit: true },
+    select: {
+      teamSizeLimit: true,
+      singleDivision: true,
+    },
   });
   const eventTeamSizeLimit = typeof event?.teamSizeLimit === 'number' && Number.isFinite(event.teamSizeLimit)
     ? Math.max(0, Math.trunc(event.teamSizeLimit))
     : null;
 
-  for (const teamId of missingTeamIds) {
+  const existingTeams = await client.teams.findMany({
+    where: { id: { in: rosterTeamIds } },
+    select: {
+      id: true,
+      seed: true,
+      division: true,
+    },
+  });
+  const existingTeamById = new Map(existingTeams.map((team) => [team.id, team]));
+
+  for (const teamId of rosterTeamIds) {
     const scheduledTeam = params.scheduled.teams[teamId];
     if (!scheduledTeam) {
       continue;
     }
+    const existingTeam = existingTeamById.get(teamId);
     const captainId = String(scheduledTeam.captainId ?? '');
     const playerIds = ensureStringArray(scheduledTeam.playerIds);
     const seed = typeof scheduledTeam.seed === 'number' && Number.isFinite(scheduledTeam.seed)
       ? Math.trunc(scheduledTeam.seed)
       : 0;
+    const divisionId = resolveScheduledTeamDivisionId(scheduledTeam);
     const teamSize = eventTeamSizeLimit ?? playerIds.length;
 
-    await client.teams.create({
-      data: {
-        id: teamId,
-        createdAt: now,
-        updatedAt: now,
-        seed,
-        playerIds,
-        division: scheduledTeam.division?.id ?? DEFAULT_DIVISION_KEY,
-        divisionTypeId: null,
-        divisionTypeName: null,
-        wins: typeof scheduledTeam.wins === 'number' && Number.isFinite(scheduledTeam.wins) ? Math.trunc(scheduledTeam.wins) : 0,
-        losses: typeof scheduledTeam.losses === 'number' && Number.isFinite(scheduledTeam.losses) ? Math.trunc(scheduledTeam.losses) : 0,
-        name: scheduledTeam.name ?? '',
-        captainId,
-        managerId: captainId || '',
-        headCoachId: null,
-        coachIds: [],
-        parentTeamId: null,
-        pending: [],
-        teamSize,
-        profileImageId: null,
-        sport: null,
+    if (!existingTeam) {
+      await client.teams.create({
+        data: {
+          id: teamId,
+          createdAt: now,
+          updatedAt: now,
+          seed,
+          playerIds,
+          division: divisionId,
+          divisionTypeId: null,
+          divisionTypeName: null,
+          wins: typeof scheduledTeam.wins === 'number' && Number.isFinite(scheduledTeam.wins) ? Math.trunc(scheduledTeam.wins) : 0,
+          losses: typeof scheduledTeam.losses === 'number' && Number.isFinite(scheduledTeam.losses) ? Math.trunc(scheduledTeam.losses) : 0,
+          name: scheduledTeam.name ?? '',
+          captainId,
+          managerId: captainId || '',
+          headCoachId: null,
+          coachIds: [],
+          parentTeamId: null,
+          pending: [],
+          teamSize,
+          profileImageId: null,
+          sport: null,
+        },
+      });
+      continue;
+    }
+
+    const existingDivision = normalizeDivisionKey(existingTeam.division);
+    const nextDivision = normalizeDivisionKey(divisionId);
+    const existingSeed = typeof existingTeam.seed === 'number' && Number.isFinite(existingTeam.seed)
+      ? Math.trunc(existingTeam.seed)
+      : 0;
+    if (existingSeed !== seed || existingDivision !== nextDivision) {
+      await client.teams.update({
+        where: { id: teamId },
+        data: {
+          seed,
+          division: divisionId,
+          updatedAt: now,
+        },
+      });
+    }
+  }
+
+  const isLeagueSchedule = String(params.scheduled.eventType ?? '').toUpperCase() === 'LEAGUE';
+  if (isLeagueSchedule && !Boolean(event?.singleDivision)) {
+    const assignedTeamIdsByDivisionId = new Map<string, string[]>();
+    for (const teamId of rosterTeamIds) {
+      const scheduledTeam = params.scheduled.teams[teamId];
+      const divisionId = resolveScheduledTeamDivisionId(scheduledTeam);
+      const bucket = assignedTeamIdsByDivisionId.get(divisionId) ?? [];
+      bucket.push(teamId);
+      assignedTeamIdsByDivisionId.set(divisionId, bucket);
+    }
+
+    const divisionRows = await client.divisions.findMany({
+      where: { eventId: params.eventId },
+      select: {
+        id: true,
+        key: true,
+        kind: true,
       },
     });
+
+    for (const row of divisionRows) {
+      if (normalizeDivisionKind(row.kind, 'LEAGUE') === 'PLAYOFF') {
+        continue;
+      }
+      const aliases = [
+        normalizeDivisionKey(row.id),
+        normalizeDivisionKey(row.key),
+        normalizeDivisionKey(extractDivisionTokenFromId(row.id)),
+      ].filter((alias): alias is string => Boolean(alias));
+      const mappedDivisionId = aliases
+        .map((alias) => scheduledDivisionAliasToId.get(alias))
+        .find((value): value is string => Boolean(value))
+        ?? fallbackDivisionId;
+
+      await client.divisions.update({
+        where: { id: row.id },
+        data: {
+          teamIds: assignedTeamIdsByDivisionId.get(mappedDivisionId) ?? [],
+          updatedAt: now,
+        },
+      });
+    }
   }
 
   return rosterTeamIds;

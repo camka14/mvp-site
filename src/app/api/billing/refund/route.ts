@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       id: true,
       hostId: true,
       organizationId: true,
+      teamIds: true,
       userIds: true,
       waitListIds: true,
       freeAgentIds: true,
@@ -94,9 +95,26 @@ export async function POST(req: NextRequest) {
   const currentUserIds = normalizeIdList(event.userIds);
   const currentWaitlistIds = normalizeIdList(event.waitListIds);
   const currentFreeAgentIds = normalizeIdList(event.freeAgentIds);
+  const currentTeamIds = normalizeIdList(event.teamIds);
+  const registeredTeam = currentTeamIds.length > 0
+    ? await prisma.teams.findFirst({
+      where: {
+        id: { in: currentTeamIds },
+        OR: [
+          { playerIds: { has: targetUserId } },
+          { captainId: targetUserId },
+          { managerId: targetUserId },
+          { headCoachId: targetUserId },
+          { coachIds: { has: targetUserId } },
+        ],
+      },
+      select: { id: true },
+    })
+    : null;
   const isTargetInEvent = currentUserIds.includes(targetUserId)
     || currentWaitlistIds.includes(targetUserId)
-    || currentFreeAgentIds.includes(targetUserId);
+    || currentFreeAgentIds.includes(targetUserId)
+    || Boolean(registeredTeam);
 
   if (!isTargetInEvent) {
     return NextResponse.json(
@@ -141,6 +159,7 @@ export async function POST(req: NextRequest) {
         eventId,
         userId: targetUserId,
         hostId: event.hostId ?? parsed.data.payloadEvent?.hostId ?? null,
+        teamId: registeredTeam?.id ?? null,
         organizationId: event.organizationId ?? parsed.data.payloadEvent?.organizationId ?? null,
         reason,
         status: 'WAITING',

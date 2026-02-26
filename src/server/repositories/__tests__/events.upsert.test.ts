@@ -4,7 +4,7 @@ jest.mock('@/lib/prisma', () => ({
   prisma: {},
 }));
 
-import { upsertEventFromPayload } from '@/server/repositories/events';
+import { persistScheduledRosterTeams, upsertEventFromPayload } from '@/server/repositories/events';
 import { buildEventDivisionId } from '@/lib/divisionTypes';
 
 type MockClient = {
@@ -200,6 +200,88 @@ describe('upsertEventFromPayload', () => {
     expect(client.$executeRaw).toHaveBeenCalled();
     const persistedDivisions = client.$executeRaw.mock.calls[0]?.[1];
     expect(persistedDivisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
+  });
+
+  it('remaps foreign event-scoped division ids to the current event before persisting', async () => {
+    const client = createMockClient();
+    const sourceOpenDivisionId = buildEventDivisionId('event_source', 'open');
+    const sourceAdvancedDivisionId = buildEventDivisionId('event_source', 'advanced');
+    const targetOpenDivisionId = buildEventDivisionId('event_target', 'open');
+    const targetAdvancedDivisionId = buildEventDivisionId('event_target', 'advanced');
+
+    const payload = {
+      ...baseEventPayload(),
+      $id: 'event_target',
+      divisions: [sourceOpenDivisionId, sourceAdvancedDivisionId],
+      divisionDetails: [
+        {
+          id: sourceOpenDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'skill_open_age_18plus',
+          divisionTypeName: 'Open • 18+',
+          ratingType: 'SKILL',
+          gender: 'C',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          ageCutoffLabel: 'Age 18+ as of 08/01/2026',
+          ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+          playoffPlacementDivisionIds: [sourceAdvancedDivisionId, ''],
+        },
+        {
+          id: sourceAdvancedDivisionId,
+          key: 'advanced',
+          name: 'Advanced',
+          divisionTypeId: 'skill_premier_age_u17',
+          divisionTypeName: 'Premier • U17',
+          ratingType: 'SKILL',
+          gender: 'C',
+          ageCutoffDate: '2026-08-01T19:00:00.000Z',
+          ageCutoffLabel: 'Age 17 or younger as of 08/01/2026',
+          ageCutoffSource: 'US Youth Soccer seasonal-year age grouping guidance.',
+        },
+      ],
+      timeSlots: [
+        {
+          $id: 'slot_foreign_divisions',
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          divisions: [sourceOpenDivisionId],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          repeating: true,
+          scheduledFieldId: 'field_1',
+          startDate: '2026-01-05T09:00:00.000Z',
+          endDate: '2026-03-05T09:00:00.000Z',
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.divisions).toEqual([targetOpenDivisionId, targetAdvancedDivisionId]);
+    expect(eventUpsertArg.update.divisions).toEqual([targetOpenDivisionId, targetAdvancedDivisionId]);
+
+    const persistedDivisionIds = client.divisions.upsert.mock.calls.map(([args]) => args.where.id);
+    expect(persistedDivisionIds).toEqual(expect.arrayContaining([targetOpenDivisionId, targetAdvancedDivisionId]));
+    expect(persistedDivisionIds).not.toContain(sourceOpenDivisionId);
+    expect(persistedDivisionIds).not.toContain(sourceAdvancedDivisionId);
+
+    const openDivisionUpsertArgs = client.divisions.upsert.mock.calls.find(
+      ([args]) => args.where.id === targetOpenDivisionId,
+    )?.[0];
+    expect(openDivisionUpsertArgs?.create.divisionTypeId).toBe('skill_open_age_18plus');
+    expect(openDivisionUpsertArgs?.create.divisionTypeName).toBe('Open • 18+');
+    expect(openDivisionUpsertArgs?.create.ageCutoffDate).toEqual(new Date('2026-08-01T19:00:00.000Z'));
+    expect(openDivisionUpsertArgs?.create.ageCutoffLabel).toBe('Age 18+ as of 08/01/2026');
+    expect(openDivisionUpsertArgs?.create.ageCutoffSource).toBe('US Youth Soccer seasonal-year age grouping guidance.');
+    expect(openDivisionUpsertArgs?.update.divisionTypeId).toBe('skill_open_age_18plus');
+    expect(openDivisionUpsertArgs?.update.ageCutoffDate).toEqual(new Date('2026-08-01T19:00:00.000Z'));
+    expect(openDivisionUpsertArgs?.create.playoffPlacementDivisionIds).toEqual([targetAdvancedDivisionId, '']);
+    expect(openDivisionUpsertArgs?.update.playoffPlacementDivisionIds).toEqual([targetAdvancedDivisionId, '']);
+
+    const persistedSlotDivisions = client.$executeRaw.mock.calls[0]?.[1];
+    expect(persistedSlotDivisions).toEqual([targetOpenDivisionId]);
   });
 
   it('fans out each multi-field slot/day combination and derives event fieldIds from slot assignments', async () => {
@@ -869,5 +951,189 @@ describe('upsertEventFromPayload', () => {
     const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
     expect(eventUpsertArgs.create.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
     expect(eventUpsertArgs.update.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
+  });
+});
+
+describe('persistScheduledRosterTeams', () => {
+  it('creates missing roster slot teams and syncs split-division teamIds', async () => {
+    const divisionA = buildEventDivisionId('event_1', 'a');
+    const divisionB = buildEventDivisionId('event_1', 'b');
+    const scheduled = {
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      divisions: [
+        { id: divisionA, kind: 'LEAGUE' },
+        { id: divisionB, kind: 'LEAGUE' },
+      ],
+      teams: {
+        slot_1: {
+          id: 'slot_1',
+          seed: 1,
+          captainId: '',
+          division: { id: divisionA },
+          name: 'Place Holder 1',
+          playerIds: [],
+          wins: 0,
+          losses: 0,
+        },
+        slot_2: {
+          id: 'slot_2',
+          seed: 2,
+          captainId: '',
+          division: { id: divisionB },
+          name: 'Place Holder 2',
+          playerIds: [],
+          wins: 0,
+          losses: 0,
+        },
+      },
+    } as any;
+
+    const client = {
+      events: {
+        update: jest.fn().mockResolvedValue(undefined),
+        findUnique: jest.fn().mockResolvedValue({
+          teamSizeLimit: 2,
+          singleDivision: false,
+        }),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue(undefined),
+      },
+      divisions: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: divisionA, key: 'a', kind: 'LEAGUE' },
+          { id: divisionB, key: 'b', kind: 'LEAGUE' },
+          { id: buildEventDivisionId('event_1', 'playoff'), key: 'playoff', kind: 'PLAYOFF' },
+        ]),
+        update: jest.fn().mockResolvedValue(undefined),
+      },
+    };
+
+    const rosterTeamIds = await persistScheduledRosterTeams(
+      { eventId: 'event_1', scheduled },
+      client as any,
+    );
+
+    expect(rosterTeamIds).toEqual(['slot_1', 'slot_2']);
+    expect(client.events.update).toHaveBeenCalledWith({
+      where: { id: 'event_1' },
+      data: expect.objectContaining({
+        teamIds: ['slot_1', 'slot_2'],
+      }),
+    });
+    expect(client.teams.create).toHaveBeenCalledTimes(2);
+    expect(client.teams.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          id: 'slot_1',
+          division: divisionA,
+        }),
+      }),
+    );
+    expect(client.teams.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          id: 'slot_2',
+          division: divisionB,
+        }),
+      }),
+    );
+    expect(client.divisions.update).toHaveBeenCalledTimes(2);
+    expect(client.divisions.update).toHaveBeenCalledWith({
+      where: { id: divisionA },
+      data: expect.objectContaining({ teamIds: ['slot_1'] }),
+    });
+    expect(client.divisions.update).toHaveBeenCalledWith({
+      where: { id: divisionB },
+      data: expect.objectContaining({ teamIds: ['slot_2'] }),
+    });
+  });
+
+  it('updates existing slot teams with scheduled division/seed during rebuild', async () => {
+    const divisionA = buildEventDivisionId('event_1', 'a');
+    const divisionB = buildEventDivisionId('event_1', 'b');
+    const scheduled = {
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      divisions: [
+        { id: divisionA, kind: 'LEAGUE' },
+        { id: divisionB, kind: 'LEAGUE' },
+      ],
+      teams: {
+        slot_1: {
+          id: 'slot_1',
+          seed: 1,
+          captainId: '',
+          division: { id: divisionA },
+          name: 'Place Holder 1',
+          playerIds: [],
+          wins: 0,
+          losses: 0,
+        },
+        slot_2: {
+          id: 'slot_2',
+          seed: 2,
+          captainId: '',
+          division: { id: divisionB },
+          name: 'Place Holder 2',
+          playerIds: [],
+          wins: 0,
+          losses: 0,
+        },
+      },
+    } as any;
+
+    const client = {
+      events: {
+        update: jest.fn().mockResolvedValue(undefined),
+        findUnique: jest.fn().mockResolvedValue({
+          teamSizeLimit: 2,
+          singleDivision: false,
+        }),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'slot_1', seed: 9, division: 'open' },
+          { id: 'slot_2', seed: 2, division: divisionB },
+        ]),
+        create: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue(undefined),
+      },
+      divisions: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: divisionA, key: 'a', kind: 'LEAGUE' },
+          { id: divisionB, key: 'b', kind: 'LEAGUE' },
+        ]),
+        update: jest.fn().mockResolvedValue(undefined),
+      },
+    };
+
+    await persistScheduledRosterTeams(
+      { eventId: 'event_1', scheduled },
+      client as any,
+    );
+
+    expect(client.teams.create).not.toHaveBeenCalled();
+    expect(client.teams.update).toHaveBeenCalledTimes(1);
+    expect(client.teams.update).toHaveBeenCalledWith({
+      where: { id: 'slot_1' },
+      data: expect.objectContaining({
+        seed: 1,
+        division: divisionA,
+      }),
+    });
+    expect(client.divisions.update).toHaveBeenCalledWith({
+      where: { id: divisionA },
+      data: expect.objectContaining({ teamIds: ['slot_1'] }),
+    });
+    expect(client.divisions.update).toHaveBeenCalledWith({
+      where: { id: divisionB },
+      data: expect.objectContaining({ teamIds: ['slot_2'] }),
+    });
   });
 });

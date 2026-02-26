@@ -182,7 +182,16 @@ const normalizeDivisionKeys = (values: unknown): string[] => {
     return Array.from(
         new Set(
             values
-                .map((value) => String(value).trim().toLowerCase())
+                .map((value) => {
+                    if (typeof value !== 'string' && typeof value !== 'number') {
+                        return '';
+                    }
+                    const normalized = String(value).trim().toLowerCase();
+                    if (normalized === 'undefined' || normalized === 'null') {
+                        return '';
+                    }
+                    return normalized;
+                })
                 .filter((value) => value.length > 0),
         ),
     );

@@ -10,6 +10,7 @@ const prismaMock = {
   },
   divisions: {
     findMany: jest.fn(),
+    update: jest.fn(),
   },
   fields: {
     findMany: jest.fn(),
@@ -61,6 +62,7 @@ describe('event schedule route - split divisions regression', () => {
     prismaMock.matches.findMany.mockResolvedValue([]);
     prismaMock.matches.deleteMany.mockResolvedValue(undefined);
     prismaMock.matches.upsert.mockResolvedValue(undefined);
+    prismaMock.divisions.update.mockResolvedValue(undefined);
     prismaMock.userData.findMany.mockResolvedValue([]);
     prismaMock.leagueScoringConfigs.findUnique.mockResolvedValue(null);
   });
