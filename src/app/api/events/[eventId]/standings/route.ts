@@ -33,7 +33,6 @@ const getDivisionIdFromRequest = (req: NextRequest): string | null => {
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   try {
-    const session = await requireSession(req);
     const { eventId } = await params;
     const divisionId = getDivisionIdFromRequest(req);
     if (!divisionId) {
@@ -55,8 +54,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    if (!(await canManageEvent(session, eventAccess))) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (eventAccess.state === 'TEMPLATE') {
+      const session = await requireSession(req);
+      if (!(await canManageEvent(session, eventAccess))) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     const loaded = await loadEventWithRelations(eventId);
