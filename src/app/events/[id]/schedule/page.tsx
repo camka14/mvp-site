@@ -1384,6 +1384,20 @@ function EventScheduleContent() {
     return teams;
   }, [activeEvent?.teams, participantTeams]);
 
+  const isPlaceholderParticipantTeam = useCallback(
+    (team: Team | null | undefined): boolean => {
+      if (!team) return true;
+      if (!isLeague && !isTournament) return false;
+      return typeof team.parentTeamId !== 'string' || team.parentTeamId.trim().length === 0;
+    },
+    [isLeague, isTournament],
+  );
+
+  const filledParticipantTeams = useMemo(
+    () => participantTeams.filter((team) => !isPlaceholderParticipantTeam(team)),
+    [isPlaceholderParticipantTeam, participantTeams],
+  );
+
   const assignedParticipantTeamIds = useMemo(() => {
     const assigned = new Set<string>();
     participantDivisionColumns.forEach((column) => {
@@ -1408,7 +1422,12 @@ function EventScheduleContent() {
     [participantTeamsById, unassignedParticipantTeamIds],
   );
 
-  const hasSplitDivisionUnassignedTeams = isSplitDivisionEvent && unassignedParticipantTeamIds.length > 0;
+  const unassignedFilledParticipantTeams = useMemo(
+    () => unassignedParticipantTeams.filter((team) => !isPlaceholderParticipantTeam(team)),
+    [isPlaceholderParticipantTeam, unassignedParticipantTeams],
+  );
+
+  const hasSplitDivisionUnassignedTeams = isSplitDivisionEvent && unassignedFilledParticipantTeams.length > 0;
 
   const organizationIdForParticipants = useMemo(() => {
     const organizationId = normalizeIdToken(activeEvent?.organizationId);
@@ -4247,7 +4266,7 @@ function EventScheduleContent() {
           {hasSplitDivisionUnassignedTeams && (
             <Alert color="yellow" radius="md">
               Split-division leagues require every registered team to be assigned to a division before saving or rescheduling.
-              Unassigned teams: {unassignedParticipantTeamIds.join(', ')}.
+              Unassigned teams: {unassignedFilledParticipantTeams.map((team) => team.$id).join(', ')}.
             </Alert>
           )}
 
@@ -4297,9 +4316,9 @@ function EventScheduleContent() {
                 <Stack gap="md">
                   <Group justify="space-between" align="center">
                     <Text size="sm" c="dimmed">
-                      {participantTeamIds.length === 1
+                      {filledParticipantTeams.length === 1
                         ? '1 team is currently participating.'
-                        : `${participantTeamIds.length} teams are currently participating.`}
+                        : `${filledParticipantTeams.length} teams are currently participating.`}
                     </Text>
                     {canManageEvent && (
                       <Button
@@ -4340,12 +4359,13 @@ function EventScheduleContent() {
                           const columnTeams = column.teamIds
                             .map((teamId) => participantTeamsById.get(teamId))
                             .filter((team): team is Team => Boolean(team));
+                          const filledColumnTeamsCount = columnTeams.filter((team) => !isPlaceholderParticipantTeam(team)).length;
                           return (
                             <Paper key={column.id} withBorder radius="md" p="md" miw={320}>
                               <Stack gap="sm">
                                 <Group justify="space-between" align="center">
                                   <Text fw={600}>{column.label}</Text>
-                                  <Text size="xs" c="dimmed">{columnTeams.length}</Text>
+                                  <Text size="xs" c="dimmed">{filledColumnTeamsCount}</Text>
                                 </Group>
                                 {columnTeams.length === 0 ? (
                                   <Text size="sm" c="dimmed">No teams assigned.</Text>
@@ -4355,6 +4375,7 @@ function EventScheduleContent() {
                                       <TeamCard
                                         key={`${column.id}:${team.$id}`}
                                         team={team}
+                                        className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
                                         actions={
                                           canManageEvent
                                             ? (
@@ -4400,8 +4421,8 @@ function EventScheduleContent() {
                           <Stack gap="sm">
                             <Group justify="space-between" align="center">
                               <Text fw={600}>Unassigned</Text>
-                              <Text size="xs" c={unassignedParticipantTeams.length > 0 ? 'red' : 'dimmed'}>
-                                {unassignedParticipantTeams.length}
+                              <Text size="xs" c={unassignedFilledParticipantTeams.length > 0 ? 'red' : 'dimmed'}>
+                                {unassignedFilledParticipantTeams.length}
                               </Text>
                             </Group>
                             {unassignedParticipantTeams.length === 0 ? (
@@ -4412,6 +4433,7 @@ function EventScheduleContent() {
                                   <TeamCard
                                     key={`unassigned:${team.$id}`}
                                     team={team}
+                                    className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
                                     actions={
                                       canManageEvent
                                         ? (
@@ -4460,6 +4482,7 @@ function EventScheduleContent() {
                         <TeamCard
                           key={team.$id}
                           team={team}
+                          className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
                           actions={
                             canManageEvent
                               ? (
