@@ -480,6 +480,7 @@ export interface Event {
   setDurationMinutes?: number;
   setsPerMatch?: number;
   doTeamsRef?: boolean;
+  teamRefsMaySwap?: boolean;
   refType?: string;
   pointsToVictory?: number[];
   status?: EventStatus;
@@ -1155,6 +1156,12 @@ export function toEventPayload(event: Event): EventPayload {
   const normalizedEventType = normalizeEnumValue(payload.eventType);
   if (normalizedEventType) {
     payload.eventType = normalizedEventType as EventType;
+  }
+
+  if (typeof payload.doTeamsRef === 'boolean' && payload.doTeamsRef !== true) {
+    payload.teamRefsMaySwap = false;
+  } else if (typeof payload.teamRefsMaySwap === 'boolean') {
+    payload.teamRefsMaySwap = Boolean(payload.teamRefsMaySwap);
   }
 
   if (payload.eventType && payload.eventType !== 'LEAGUE') {

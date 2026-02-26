@@ -455,6 +455,7 @@ export const EventsScalarFieldEnum = {
   autoCancellation: 'autoCancellation',
   eventType: 'eventType',
   doTeamsRef: 'doTeamsRef',
+  teamRefsMaySwap: 'teamRefsMaySwap',
   refereeIds: 'refereeIds',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',

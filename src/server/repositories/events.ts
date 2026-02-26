@@ -1258,6 +1258,10 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     minAge: event.minAge ?? null,
     maxAge: event.maxAge ?? null,
     doTeamsRef: typeof event.doTeamsRef === 'boolean' ? event.doTeamsRef : true,
+    teamRefsMaySwap:
+      event.doTeamsRef === true && typeof (event as any).teamRefsMaySwap === 'boolean'
+        ? Boolean((event as any).teamRefsMaySwap)
+        : false,
     fieldCount: event.fieldCount ?? null,
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
@@ -1359,6 +1363,87 @@ export const saveMatches = async (
       update: updateData,
     });
   }
+};
+
+export const persistScheduledRosterTeams = async (
+  params: {
+    eventId: string;
+    scheduled: League | Tournament;
+  },
+  client: PrismaLike = prisma,
+): Promise<string[]> => {
+  const rosterTeamIds = Object.keys(params.scheduled.teams ?? {});
+  const now = new Date();
+
+  await client.events.update({
+    where: { id: params.eventId },
+    data: {
+      teamIds: rosterTeamIds,
+      updatedAt: now,
+    },
+  });
+
+  if (!rosterTeamIds.length) {
+    return rosterTeamIds;
+  }
+
+  const existingTeams = await client.teams.findMany({
+    where: { id: { in: rosterTeamIds } },
+    select: { id: true },
+  });
+  const existingTeamIds = new Set(existingTeams.map((team) => team.id));
+  const missingTeamIds = rosterTeamIds.filter((teamId) => !existingTeamIds.has(teamId));
+  if (!missingTeamIds.length) {
+    return rosterTeamIds;
+  }
+
+  const event = await client.events.findUnique({
+    where: { id: params.eventId },
+    select: { teamSizeLimit: true },
+  });
+  const eventTeamSizeLimit = typeof event?.teamSizeLimit === 'number' && Number.isFinite(event.teamSizeLimit)
+    ? Math.max(0, Math.trunc(event.teamSizeLimit))
+    : null;
+
+  for (const teamId of missingTeamIds) {
+    const scheduledTeam = params.scheduled.teams[teamId];
+    if (!scheduledTeam) {
+      continue;
+    }
+    const captainId = String(scheduledTeam.captainId ?? '');
+    const playerIds = ensureStringArray(scheduledTeam.playerIds);
+    const seed = typeof scheduledTeam.seed === 'number' && Number.isFinite(scheduledTeam.seed)
+      ? Math.trunc(scheduledTeam.seed)
+      : 0;
+    const teamSize = eventTeamSizeLimit ?? playerIds.length;
+
+    await client.teams.create({
+      data: {
+        id: teamId,
+        createdAt: now,
+        updatedAt: now,
+        seed,
+        playerIds,
+        division: scheduledTeam.division?.id ?? DEFAULT_DIVISION_KEY,
+        divisionTypeId: null,
+        divisionTypeName: null,
+        wins: typeof scheduledTeam.wins === 'number' && Number.isFinite(scheduledTeam.wins) ? Math.trunc(scheduledTeam.wins) : 0,
+        losses: typeof scheduledTeam.losses === 'number' && Number.isFinite(scheduledTeam.losses) ? Math.trunc(scheduledTeam.losses) : 0,
+        name: scheduledTeam.name ?? '',
+        captainId,
+        managerId: captainId || '',
+        headCoachId: null,
+        coachIds: [],
+        parentTeamId: null,
+        pending: [],
+        teamSize,
+        profileImageId: null,
+        sport: null,
+      },
+    });
+  }
+
+  return rosterTeamIds;
 };
 
 export const deleteMatchesByEvent = async (
@@ -2136,6 +2221,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedEventInstallmentAmounts = billingOwnerHasStripeAccount
     ? ensureNumberArray(payload.installmentAmounts)
     : [];
+  const normalizedDoTeamsRef = coerceNullableBoolean(payload.doTeamsRef);
+  const normalizedTeamRefsMaySwap = normalizedDoTeamsRef === true
+    ? coerceBoolean(payload.teamRefsMaySwap, false)
+    : false;
 
   const eventData = {
     id,
@@ -2193,7 +2282,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     organizationId: payload.organizationId ?? null,
     autoCancellation: payload.autoCancellation ?? null,
     eventType: payload.eventType ?? null,
-    doTeamsRef: payload.doTeamsRef ?? null,
+    doTeamsRef: normalizedDoTeamsRef ?? null,
+    teamRefsMaySwap: normalizedTeamRefsMaySwap,
     refereeIds: ensureStringArray(payload.refereeIds),
     allowPaymentPlans: normalizedEventAllowPaymentPlans,
     installmentCount: normalizedEventInstallmentCount,

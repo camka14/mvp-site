@@ -76,6 +76,40 @@ const detachMatch = (participant: { matches?: Match[] } | null | undefined, matc
   participant.matches = participant.matches.filter((existing) => existing.id !== match.id);
 };
 
+const getMatchStartMs = (match: Match): number | null => {
+  const start = (match as unknown as { start?: Date | null }).start;
+  if (!(start instanceof Date)) {
+    return null;
+  }
+  const startMs = start.getTime();
+  return Number.isNaN(startMs) ? null : startMs;
+};
+
+export const shouldAutoLockMatch = (match: Match, now: Date = new Date()): boolean => {
+  if (match.refereeCheckedIn === true) {
+    return true;
+  }
+  const startMs = getMatchStartMs(match);
+  if (startMs === null) {
+    return false;
+  }
+  return startMs <= now.getTime();
+};
+
+export const applyPersistentAutoLock = (
+  match: Match,
+  options?: { now?: Date; explicitLockedValue?: boolean | undefined },
+): boolean => {
+  if (options?.explicitLockedValue === false) {
+    return false;
+  }
+  if (shouldAutoLockMatch(match, options?.now ?? new Date()) && !match.locked) {
+    match.locked = true;
+    return true;
+  }
+  return false;
+};
+
 export const applyMatchUpdates = (event: Tournament | League, match: Match, update: MatchUpdate) => {
   if (update.matchId !== undefined) {
     match.matchId = update.matchId ?? null;

@@ -939,8 +939,12 @@ describe('league scheduling (time slots)', () => {
     const recMatches = scheduled.matches.filter((match) => match.division.id === rec.id);
     const openMatches = scheduled.matches.filter((match) => match.division.id === open.id);
 
-    expect(recMatches.some((match) => !match.team1 || !match.team2)).toBe(true);
-    expect(openMatches.some((match) => !match.team1 || !match.team2)).toBe(false);
+    const involvesPlaceholder = (match: (typeof scheduled.matches)[number]) => (
+      (match.team1?.captainId ?? '').trim().length === 0 || (match.team2?.captainId ?? '').trim().length === 0
+    );
+
+    expect(recMatches.some(involvesPlaceholder)).toBe(true);
+    expect(openMatches.some(involvesPlaceholder)).toBe(false);
   });
 
   it('uses per-division playoff team count when divisions are separate', () => {
@@ -1490,8 +1494,23 @@ describe('league scheduling (time slots)', () => {
 
     const scheduled = scheduleEvent({ event: league }, context);
     expect(scheduled.matches.length).toBe(28);
-    expect(Object.keys((scheduled.event as League).teams)).toHaveLength(0);
-    expect(scheduled.matches.every((match) => !match.team1 || !match.team1.id.startsWith('placeholder-'))).toBe(true);
-    expect(scheduled.matches.every((match) => !match.team2 || !match.team2.id.startsWith('placeholder-'))).toBe(true);
+    const scheduledLeague = scheduled.event as League;
+    const rosterTeamIds = Object.keys(scheduledLeague.teams);
+    expect(rosterTeamIds).toHaveLength(10);
+    expect(
+      Object.values(scheduledLeague.teams).every(
+        (team) => team.name.startsWith('Place Holder ') && team.captainId.trim().length === 0,
+      ),
+    ).toBe(true);
+    expect(rosterTeamIds.some((teamId) => teamId.startsWith('playoff-'))).toBe(false);
+
+    const isBracketMatch = (match: (typeof scheduled.matches)[number]) => Boolean(
+      match.previousLeftMatch || match.previousRightMatch || match.winnerNextMatch || match.loserNextMatch,
+    );
+    const regularSeasonMatches = scheduled.matches.filter((match) => !isBracketMatch(match));
+    const playoffMatches = scheduled.matches.filter(isBracketMatch);
+
+    expect(regularSeasonMatches.every((match) => match.team1 && match.team2)).toBe(true);
+    expect(playoffMatches.every((match) => !match.team1 && !match.team2)).toBe(true);
   });
 });

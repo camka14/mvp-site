@@ -3,6 +3,7 @@
 import { NextRequest } from 'next/server';
 
 const prismaMock = {
+  $transaction: jest.fn(),
   events: {
     findUnique: jest.fn(),
     update: jest.fn(),
@@ -27,6 +28,10 @@ const prismaMock = {
   },
   teams: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    updateMany: jest.fn(),
+    update: jest.fn(),
   },
   eventRegistrations: {
     findFirst: jest.fn(),
@@ -63,6 +68,7 @@ describe('POST /api/events/[eventId]/participants', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       teamSignup: false,
@@ -103,6 +109,10 @@ describe('POST /api/events/[eventId]/participants', () => {
     prismaMock.parentChildLinks.findMany.mockResolvedValue([]);
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ parentId: 'parent_1' });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.teams.findFirst.mockResolvedValue(null);
+    prismaMock.teams.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.teams.update.mockResolvedValue({});
   });
 
   it('rejects direct user participant joins for team-signup events', async () => {
@@ -166,6 +176,154 @@ describe('POST /api/events/[eventId]/participants', () => {
     expect(response.status).toBe(409);
     expect(payload.error).toBe('Team is already registered for this event.');
     expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('fills a placeholder slot instead of appending canonical teamId (schedulable events)', async () => {
+    const eventRow = {
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['slot_1', 'slot_2'],
+      waitListIds: [],
+      freeAgentIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+      singleDivision: true,
+      teamSizeLimit: 2,
+    };
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce(eventRow)
+      .mockResolvedValueOnce(eventRow);
+
+    const canonicalTeam = {
+      id: 'team_1',
+      name: 'Canonical Team',
+      division: 'Open',
+      divisionTypeId: 'open',
+      divisionTypeName: 'Open',
+      sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+      captainId: 'user_1',
+      managerId: 'user_1',
+      headCoachId: null,
+      coachIds: [],
+      pending: [],
+      teamSize: 2,
+      profileImageId: null,
+    };
+    prismaMock.teams.findUnique
+      .mockResolvedValueOnce(canonicalTeam)
+      .mockResolvedValueOnce(canonicalTeam);
+    prismaMock.teams.findMany.mockResolvedValueOnce([
+      { id: 'slot_1', seed: 1, captainId: '', division: 'div_a', parentTeamId: null },
+      { id: 'slot_2', seed: 2, captainId: '', division: 'div_a', parentTeamId: null },
+    ]);
+    prismaMock.teams.updateMany.mockResolvedValueOnce({ count: 1 });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      teamIds: ['slot_1', 'slot_2'],
+      waitListIds: [],
+    });
+    prismaMock.eventRegistrations.upsert.mockResolvedValueOnce({
+      id: 'event_1__team__slot_1',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        teamId: 'team_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.error).toBeUndefined();
+    expect(prismaMock.teams.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'slot_1' }),
+      }),
+    );
+    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1__team__slot_1' },
+        create: expect.objectContaining({
+          registrantId: 'slot_1',
+        }),
+      }),
+    );
+    const updateArgs = prismaMock.events.update.mock.calls[0][0];
+    expect(updateArgs.data.teamIds).toBeUndefined();
+  });
+
+  it('rejects duplicate team registration attempts based on parentTeamId (schedulable events)', async () => {
+    const eventRow = {
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['slot_1'],
+      waitListIds: [],
+      freeAgentIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+      singleDivision: true,
+      teamSizeLimit: 2,
+    };
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce(eventRow)
+      .mockResolvedValueOnce(eventRow);
+
+    const canonicalTeam = {
+      id: 'team_1',
+      name: 'Canonical Team',
+      division: 'Open',
+      divisionTypeId: 'open',
+      divisionTypeName: 'Open',
+      sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+      captainId: 'user_1',
+      managerId: 'user_1',
+      headCoachId: null,
+      coachIds: [],
+      pending: [],
+      teamSize: 2,
+      profileImageId: null,
+    };
+    prismaMock.teams.findUnique
+      .mockResolvedValueOnce(canonicalTeam)
+      .mockResolvedValueOnce(canonicalTeam);
+    prismaMock.teams.findMany.mockResolvedValueOnce([
+      { id: 'slot_1', seed: 1, captainId: 'user_1', division: 'div_a', parentTeamId: 'team_1' },
+    ]);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        teamId: 'team_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toBe('Team is already registered for this event.');
+    expect(prismaMock.teams.updateMany).not.toHaveBeenCalled();
   });
 
   it('allows team registration when team division type does not match selection', async () => {

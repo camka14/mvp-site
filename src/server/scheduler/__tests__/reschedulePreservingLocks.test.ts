@@ -507,4 +507,150 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     expect(rescheduledDependent?.team1Seed).toBe(11);
     expect(rescheduledDependent?.team2Seed).toBe(12);
   });
+
+  it('extends open-ended reschedule windows so matches can spill into later weeks', () => {
+    const division = new Division('open', 'Open');
+    const field = new PlayingField({
+      id: 'field_open_ended',
+      fieldNumber: 1,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court Open Ended',
+    });
+
+    const team1 = new Team({
+      id: 'open_team_1',
+      seed: 1,
+      captainId: 'open_captain_1',
+      division,
+      name: 'Open Team 1',
+      matches: [],
+      playerIds: [],
+    });
+    const team2 = new Team({
+      id: 'open_team_2',
+      seed: 2,
+      captainId: 'open_captain_2',
+      division,
+      name: 'Open Team 2',
+      matches: [],
+      playerIds: [],
+    });
+    const team3 = new Team({
+      id: 'open_team_3',
+      seed: 3,
+      captainId: 'open_captain_3',
+      division,
+      name: 'Open Team 3',
+      matches: [],
+      playerIds: [],
+    });
+    const team4 = new Team({
+      id: 'open_team_4',
+      seed: 4,
+      captainId: 'open_captain_4',
+      division,
+      name: 'Open Team 4',
+      matches: [],
+      playerIds: [],
+    });
+
+    const eventStart = new Date('2026-03-02T10:00:00.000Z');
+    const originalEventEnd = new Date('2026-03-02T18:00:00.000Z');
+
+    const matchOne = createMatch({
+      id: 'match_open_1',
+      matchId: 1,
+      start: new Date('2026-03-02T10:00:00.000Z'),
+      end: new Date('2026-03-02T11:00:00.000Z'),
+      field,
+      division,
+      team1,
+      team2,
+      eventId: 'event_open_ended',
+    });
+    const matchTwo = createMatch({
+      id: 'match_open_2',
+      matchId: 2,
+      start: new Date('2026-03-02T11:00:00.000Z'),
+      end: new Date('2026-03-02T12:00:00.000Z'),
+      field,
+      division,
+      team1: team3,
+      team2: team4,
+      eventId: 'event_open_ended',
+    });
+
+    const event = new League({
+      id: 'event_open_ended',
+      name: 'Open Ended League',
+      description: '',
+      start: eventStart,
+      end: originalEventEnd,
+      location: '',
+      organizationId: null,
+      teams: {
+        [team1.id]: team1,
+        [team2.id]: team2,
+        [team3.id]: team3,
+        [team4.id]: team4,
+      },
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [division],
+      fields: { [field.id]: field },
+      matches: {
+        [matchOne.id]: matchOne,
+        [matchTwo.id]: matchTwo,
+      },
+      referees: [],
+      registrationIds: [],
+      eventType: 'LEAGUE',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      setsPerMatch: 3,
+      pointsToVictory: [],
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      doTeamsRef: false,
+      noFixedEndDateTime: true,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_open_ended',
+          dayOfWeek: 0,
+          startDate: eventStart,
+          endDate: null,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 11 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(event);
+    const sorted = [...result.matches].sort((left, right) => (left.matchId ?? 0) - (right.matchId ?? 0));
+
+    expect(sorted).toHaveLength(2);
+    expect(sorted[0]?.start.getTime()).toBeGreaterThanOrEqual(eventStart.getTime());
+    expect((sorted[0]?.end.getTime() ?? 0) - (sorted[0]?.start.getTime() ?? 0)).toBe(60 * MINUTE_MS);
+    const matchGapMs = (sorted[1]?.start.getTime() ?? 0) - (sorted[0]?.start.getTime() ?? 0);
+    expect(matchGapMs).toBeGreaterThanOrEqual(6 * 24 * 60 * MINUTE_MS);
+    expect(matchGapMs).toBeLessThanOrEqual(8 * 24 * 60 * MINUTE_MS);
+    expect(result.event.end.getTime()).toBe(sorted[1]?.end.getTime());
+    expect(result.event.end.getTime()).toBeGreaterThan(originalEventEnd.getTime());
+    expect(result.warnings).toHaveLength(0);
+  });
 });

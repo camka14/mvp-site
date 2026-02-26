@@ -78,10 +78,14 @@ describe('GET /api/profile/schedule', () => {
     prismaMock.fields.findMany.mockResolvedValue([
       { id: 'field_1', fieldNumber: 1, name: 'Field 1' },
     ]);
-    prismaMock.teams.findMany.mockResolvedValue([
-      { id: 'team_1', name: 'Team One' },
-      { id: 'team_2', name: 'Team Two' },
-    ]);
+    prismaMock.teams.findMany
+      .mockResolvedValueOnce([
+        { id: 'team_2' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'team_1', name: 'Team One' },
+        { id: 'team_2', name: 'Team Two' },
+      ]);
 
     const response = await GET(
       new NextRequest(
@@ -105,7 +109,7 @@ describe('GET /api/profile/schedule', () => {
             { freeAgentIds: { has: 'user_1' } },
             { waitListIds: { has: 'user_1' } },
             { refereeIds: { has: 'user_1' } },
-            { teamIds: { hasSome: ['team_1'] } },
+            { teamIds: { hasSome: ['team_1', 'team_2'] } },
           ]),
           AND: expect.any(Array),
         }),
@@ -118,9 +122,9 @@ describe('GET /api/profile/schedule', () => {
           eventId: { in: ['event_1'] },
           OR: expect.arrayContaining([
             { refereeId: 'user_1' },
-            { team1Id: { in: ['team_1'] } },
-            { team2Id: { in: ['team_1'] } },
-            { teamRefereeId: { in: ['team_1'] } },
+            { team1Id: { in: ['team_1', 'team_2'] } },
+            { team2Id: { in: ['team_1', 'team_2'] } },
+            { teamRefereeId: { in: ['team_1', 'team_2'] } },
           ]),
         }),
       }),

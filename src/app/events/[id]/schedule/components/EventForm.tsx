@@ -963,6 +963,7 @@ type EventFormState = {
     refereeIds: string[];
     assistantHostIds: string[];
     doTeamsRef: boolean;
+    teamRefsMaySwap: boolean;
     leagueScoringConfig: LeagueScoringConfig;
 };
 
@@ -1532,6 +1533,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     refereeIds: event.refereeIds || [],
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsRef: Boolean(event.doTeamsRef),
+    teamRefsMaySwap: Boolean(event.doTeamsRef) && Boolean((event as any).teamRefsMaySwap),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
             ? (event.leagueScoringConfig as Partial<LeagueScoringConfig>)
@@ -1676,6 +1678,7 @@ const eventFormSchema = z
         refereeIds: z.array(z.string()),
         assistantHostIds: z.array(z.string()).default([]),
         doTeamsRef: z.boolean(),
+        teamRefsMaySwap: z.boolean().default(false),
         leagueScoringConfig: z.any(),
         leagueSlots: z.array(leagueSlotSchema),
         leagueData: z.object({
@@ -2181,6 +2184,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         if (typeof defaults.registrationByDivisionType === 'boolean') {
             next.registrationByDivisionType = defaults.registrationByDivisionType;
+        }
+        if (typeof (defaults as any).doTeamsRef === 'boolean') {
+            next.doTeamsRef = Boolean((defaults as any).doTeamsRef);
+        }
+        if (typeof (defaults as any).teamRefsMaySwap === 'boolean') {
+            next.teamRefsMaySwap = next.doTeamsRef ? Boolean((defaults as any).teamRefsMaySwap) : false;
         }
         if (Array.isArray((defaults as any).divisionDetails)) {
             const referenceDate = parseDateValue(next.start ?? null);
@@ -5494,6 +5503,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ),
             ),
             doTeamsRef: source.doTeamsRef,
+            teamRefsMaySwap: source.doTeamsRef ? Boolean(source.teamRefsMaySwap) : false,
             coordinates: baseCoordinates,
         };
 
@@ -6751,10 +6761,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             label="Teams provide referees"
                                             description="Allow assigning team referees alongside dedicated refs."
                                             checked={field.value}
-                                            onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
+                                            onChange={(e) => {
+                                                const checked = e?.currentTarget?.checked ?? false;
+                                                field.onChange(checked);
+                                                if (!checked) {
+                                                    setValue('teamRefsMaySwap', false, { shouldDirty: true, shouldValidate: true });
+                                                }
+                                            }}
                                         />
                                     )}
                                 />
+                                {eventData.doTeamsRef && (
+                                    <Controller
+                                        name="teamRefsMaySwap"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Switch
+                                                label="Team refs may swap"
+                                                description="Allow any participating team to take over refereeing a match."
+                                                checked={field.value}
+                                                onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
+                                            />
+                                        )}
+                                    />
+                                )}
 
                                 <div>
                                     <Title order={6} mb="xs">Selected referees</Title>

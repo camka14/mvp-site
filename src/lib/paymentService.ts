@@ -94,6 +94,7 @@ class PaymentService {
     timeSlot?: TimeSlot,
     organization?: PaymentOrganizationContext,
     selection?: DivisionRegistrationSelection,
+    timeoutMs?: number,
   ): Promise<void> {
     try {
       if (!event?.$id) {
@@ -112,6 +113,7 @@ class PaymentService {
 
       const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {
         method: 'POST',
+        timeoutMs,
         body: payload,
       });
 
@@ -131,6 +133,7 @@ class PaymentService {
     timeSlot?: TimeSlot,
     organization?: PaymentOrganizationContext,
     targetUserId?: string,
+    timeoutMs?: number,
   ): Promise<void> {
     try {
       if (!event?.$id) {
@@ -149,6 +152,7 @@ class PaymentService {
 
       const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {
         method: 'DELETE',
+        timeoutMs,
         body: payload,
       });
 

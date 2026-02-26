@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import {
   loadEventWithRelations,
+  persistScheduledRosterTeams,
   saveEventSchedule,
   saveMatches,
   deleteMatchesByEvent,
@@ -92,12 +93,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           const message = error instanceof Error ? error.message : 'Unable to reschedule while preserving existing matches.';
           throw new ScheduleError(message);
         }
+        await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
         await saveMatches(eventId, scheduled.matches, tx);
         await saveEventSchedule(scheduled.event, tx);
         return { preview: false, ...scheduled };
       }
 
       const scheduled = scheduleEvent({ event, participantCount: parsed.data.participantCount }, context);
+      await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
       await deleteMatchesByEvent(eventId, tx);
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);

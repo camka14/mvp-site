@@ -13,6 +13,7 @@ import {
 type SchedulerEvent = League | Tournament;
 
 const MIN_SCHEDULE_DURATION_MS = 5 * MINUTE_MS;
+const OPEN_ENDED_RESCHEDULE_WEEKS = 52;
 
 const isLeagueEvent = (event: SchedulerEvent): event is League => (
   event instanceof League || event.eventType === 'LEAGUE'
@@ -285,8 +286,23 @@ const slotAllowsDateTime = (
   return slotAllowsDate(slot, matchStart) && slotAllowsTime(slot, matchStart, matchEnd);
 };
 
-const lockedMatchFitsUpdatedWindow = (event: SchedulerEvent, match: Match): boolean => {
-  if (match.start.getTime() < event.start.getTime() || match.end.getTime() > event.end.getTime()) {
+const isOpenEndedSchedule = (event: SchedulerEvent): boolean => {
+  if (typeof event.noFixedEndDateTime === 'boolean') {
+    return event.noFixedEndDateTime;
+  }
+  return event.start.getTime() === event.end.getTime();
+};
+
+const resolveRescheduleEndTime = (event: SchedulerEvent): Date => {
+  if (!isOpenEndedSchedule(event)) {
+    return event.end;
+  }
+  const baseline = Math.max(event.start.getTime(), event.end.getTime());
+  return new Date(baseline + OPEN_ENDED_RESCHEDULE_WEEKS * 7 * 24 * 60 * MINUTE_MS);
+};
+
+const lockedMatchFitsUpdatedWindow = (event: SchedulerEvent, rescheduleEndTime: Date, match: Match): boolean => {
+  if (match.start.getTime() < event.start.getTime() || match.end.getTime() > rescheduleEndTime.getTime()) {
     return false;
   }
   if (!event.timeSlots.length) {
@@ -302,10 +318,14 @@ const lockedMatchFitsUpdatedWindow = (event: SchedulerEvent, match: Match): bool
   );
 };
 
-const collectWarnings = (event: SchedulerEvent, lockedMatches: Match[]): LockedScheduleWarning[] => {
+const collectWarnings = (
+  event: SchedulerEvent,
+  lockedMatches: Match[],
+  rescheduleEndTime: Date,
+): LockedScheduleWarning[] => {
   if (!lockedMatches.length) return [];
   const outOfWindowIds = lockedMatches
-    .filter((match) => !lockedMatchFitsUpdatedWindow(event, match))
+    .filter((match) => !lockedMatchFitsUpdatedWindow(event, rescheduleEndTime, match))
     .map((match) => match.id);
   if (!outOfWindowIds.length) {
     return [];
@@ -404,9 +424,10 @@ export const rescheduleEventMatchesPreservingLocks = (
 
   ensureSplitPlayoffTimeSlotCoverage(event);
   const schedulingDivisions = schedulingDivisionsForEvent(event);
+  const rescheduleEndTime = resolveRescheduleEndTime(event);
 
   const lockedMatches = allMatches.filter((match) => match.locked);
-  const warnings = collectWarnings(event, lockedMatches);
+  const warnings = collectWarnings(event, lockedMatches, rescheduleEndTime);
   resetScheduleCollections(event);
 
   for (const match of lockedMatches) {
@@ -421,7 +442,7 @@ export const rescheduleEventMatchesPreservingLocks = (
     participants,
     schedulingDivisions,
     event.start,
-    { endTime: event.end, timeSlots: event.timeSlots },
+    { endTime: rescheduleEndTime, timeSlots: event.timeSlots },
   );
 
   const unlockedMatches = allMatches

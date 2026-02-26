@@ -6,7 +6,7 @@ import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
 import { canManageEvent } from '@/server/accessControl';
 import { loadEventWithRelations, saveMatches, saveTeamRecords } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
-import { applyMatchUpdates } from '@/server/scheduler/updateMatch';
+import { applyMatchUpdates, applyPersistentAutoLock } from '@/server/scheduler/updateMatch';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 
 export const dynamic = 'force-dynamic';
@@ -85,6 +85,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
       const event = await loadEventWithRelations(eventId, tx);
       const touchedIds: string[] = [];
+      const lockEvaluationTime = new Date();
 
       for (const entry of parsed.data.matches) {
         const matchId = resolveMatchId(entry);
@@ -154,6 +155,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         if (Object.prototype.hasOwnProperty.call(entry, 'losersBracket')) {
           target.losersBracket = Boolean(entry.losersBracket);
         }
+
+        applyPersistentAutoLock(target, {
+          now: lockEvaluationTime,
+          explicitLockedValue: entry.locked,
+        });
 
         touchedIds.push(matchId);
       }

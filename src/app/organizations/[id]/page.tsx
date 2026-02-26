@@ -2160,11 +2160,13 @@ function OrganizationDetailContent() {
       </Container>
 
       {/* Modals */}
-      <EventDetailSheet
-        event={selectedEvent!}
-        isOpen={showEventDetailSheet}
-        onClose={() => { setShowEventDetailSheet(false); }}
-      />
+      {showEventDetailSheet && selectedEvent ? (
+        <EventDetailSheet
+          event={selectedEvent}
+          isOpen={showEventDetailSheet}
+          onClose={() => { setShowEventDetailSheet(false); }}
+        />
+      ) : null}
       <CreateTeamModal
         isOpen={showCreateTeamModal}
         onClose={() => setShowCreateTeamModal(false)}

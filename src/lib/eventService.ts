@@ -606,6 +606,12 @@ class EventService {
             setDurationMinutes: row.setDurationMinutes,
             setsPerMatch: row.setsPerMatch,
             doTeamsRef: typeof row.doTeamsRef === 'boolean' ? row.doTeamsRef : undefined,
+            teamRefsMaySwap:
+                typeof row.doTeamsRef === 'boolean' && row.doTeamsRef
+                    ? typeof row.teamRefsMaySwap === 'boolean'
+                        ? row.teamRefsMaySwap
+                        : false
+                    : false,
             refType: row.refType,
             pointsToVictory: row.pointsToVictory,
             allowPaymentPlans: !!row.allowPaymentPlans,

@@ -162,6 +162,7 @@ const serializeTournamentExtras = (event: Tournament) => ({
   setDurationMinutes: event.setDurationMinutes ?? null,
   setsPerMatch: event.setsPerMatch ?? null,
   doTeamsRef: event.doTeamsRef ?? true,
+  teamRefsMaySwap: event.doTeamsRef ? event.teamRefsMaySwap ?? false : false,
 });
 
 const serializeLeagueExtras = (event: League) => ({

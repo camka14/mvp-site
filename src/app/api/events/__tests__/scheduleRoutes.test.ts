@@ -25,6 +25,7 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const loadEventWithRelationsMock = jest.fn();
+const persistScheduledRosterTeamsMock = jest.fn();
 const saveEventScheduleMock = jest.fn();
 const saveMatchesMock = jest.fn();
 const upsertEventFromPayloadMock = jest.fn();
@@ -36,6 +37,7 @@ const serializeEventLegacyMock = jest.fn();
 const serializeMatchesLegacyMock = jest.fn();
 const rescheduleEventMatchesPreservingLocksMock = jest.fn();
 const applyMatchUpdatesMock = jest.fn();
+const applyPersistentAutoLockMock = jest.fn();
 const finalizeMatchMock = jest.fn();
 const isScheduleWindowExceededErrorMock = jest.fn();
 const sendPushToUsersMock = jest.fn();
@@ -47,6 +49,7 @@ jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 
 jest.mock('@/server/repositories/events', () => ({
   loadEventWithRelations: (...args: any[]) => loadEventWithRelationsMock(...args),
+  persistScheduledRosterTeams: (...args: any[]) => persistScheduledRosterTeamsMock(...args),
   saveEventSchedule: (...args: any[]) => saveEventScheduleMock(...args),
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
   upsertEventFromPayload: (...args: any[]) => upsertEventFromPayloadMock(...args),
@@ -74,6 +77,7 @@ jest.mock('@/server/scheduler/reschedulePreservingLocks', () => ({
 
 jest.mock('@/server/scheduler/updateMatch', () => ({
   applyMatchUpdates: (...args: any[]) => applyMatchUpdatesMock(...args),
+  applyPersistentAutoLock: (...args: any[]) => applyPersistentAutoLockMock(...args),
   finalizeMatch: (...args: any[]) => finalizeMatchMock(...args),
   isScheduleWindowExceededError: (...args: any[]) => isScheduleWindowExceededErrorMock(...args),
 }));
@@ -105,8 +109,10 @@ const patchRequest = (url: string, body: any) => new NextRequest(url, {
 describe('schedule routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    applyPersistentAutoLockMock.mockReturnValue(false);
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
     prismaMock.organizations.findUnique.mockResolvedValue(null);
+    persistScheduledRosterTeamsMock.mockResolvedValue([]);
     isEmailEnabledMock.mockReturnValue(false);
     sendPushToUsersMock.mockResolvedValue(undefined);
     sendEmailMock.mockResolvedValue(undefined);
@@ -326,6 +332,116 @@ describe('schedule routes', () => {
     );
 
     expect(res.status).toBe(403);
+  });
+
+  it('allows an event team member to swap into referee when enabled', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'player_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: ['player_1'] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: ['player_2'] };
+    const team3 = { id: 'team_3', captainId: 'captain_3', playerIds: ['player_1'] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      doTeamsRef: true,
+      teamRefsMaySwap: true,
+      matches: {
+        match_1: {
+          id: 'match_1',
+          team1,
+          team2,
+          teamReferee: team2,
+          referee: null,
+          refereeCheckedIn: false,
+        },
+      },
+      teams: {
+        team_1: team1,
+        team_2: team2,
+        team_3: team3,
+      },
+      referees: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', teamRefereeId: 'team_3', refereeCheckedIn: false }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        teamRefereeId: 'team_3',
+        refereeCheckedIn: true,
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(applyMatchUpdatesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        teamRefereeId: 'team_3',
+        refereeCheckedIn: false,
+      }),
+    );
+    expect(saveMatchesMock).toHaveBeenCalled();
+    expect(json.match.$id).toBe('match_1');
+  });
+
+  it('rejects swap attempts that include non-swap fields', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'player_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: ['player_1'] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: ['player_2'] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      doTeamsRef: true,
+      teamRefsMaySwap: true,
+      matches: {
+        match_1: {
+          id: 'match_1',
+          team1,
+          team2,
+          teamReferee: team2,
+          referee: null,
+          refereeCheckedIn: false,
+        },
+      },
+      teams: {
+        team_1: team1,
+        team_2: team2,
+      },
+      referees: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        teamRefereeId: 'team_1',
+        refereeCheckedIn: true,
+        team1Points: [1],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(applyMatchUpdatesMock).not.toHaveBeenCalled();
   });
 
   it('updates a match when user is host', async () => {

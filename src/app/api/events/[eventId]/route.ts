@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import {
   deleteMatchesByEvent,
   loadEventWithRelations,
+  persistScheduledRosterTeams,
   saveEventSchedule,
   saveMatches,
   syncEventDivisions,
@@ -77,6 +78,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'autoCancellation',
   'eventType',
   'doTeamsRef',
+  'teamRefsMaySwap',
   'refereeIds',
   'allowPaymentPlans',
   'installmentCount',
@@ -127,6 +129,11 @@ const withLegacyEvent = (row: any) => {
       && end
       && start.getTime() === end.getTime(),
     );
+  }
+  if ((legacy as any).doTeamsRef !== true) {
+    (legacy as any).teamRefsMaySwap = false;
+  } else if (typeof (legacy as any).teamRefsMaySwap !== 'boolean') {
+    (legacy as any).teamRefsMaySwap = false;
   }
   return legacy;
 };
@@ -1408,6 +1415,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           delete payload.noFixedEndDateTime;
         }
       }
+      if (Object.prototype.hasOwnProperty.call(payload, 'teamRefsMaySwap')) {
+        const normalizedTeamRefsMaySwap = normalizeOptionalBoolean(payload.teamRefsMaySwap);
+        if (normalizedTeamRefsMaySwap !== null) {
+          payload.teamRefsMaySwap = normalizedTeamRefsMaySwap;
+        } else {
+          delete payload.teamRefsMaySwap;
+        }
+      }
 
       const data: Record<string, any> = {};
       for (const [key, value] of Object.entries(payload)) {
@@ -1425,6 +1440,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.splitLeaguePlayoffDivisions = Boolean(payload.splitLeaguePlayoffDivisions);
       } else if (!Object.prototype.hasOwnProperty.call(data, 'splitLeaguePlayoffDivisions')) {
         data.splitLeaguePlayoffDivisions = Boolean(existing.splitLeaguePlayoffDivisions);
+      }
+      if (data.doTeamsRef !== true) {
+        data.teamRefsMaySwap = false;
+      } else if (Object.prototype.hasOwnProperty.call(payload, 'teamRefsMaySwap')) {
+        data.teamRefsMaySwap = Boolean(payload.teamRefsMaySwap);
+      } else if (!Object.prototype.hasOwnProperty.call(data, 'teamRefsMaySwap')) {
+        data.teamRefsMaySwap = Boolean((existing as any).teamRefsMaySwap);
       }
       if (targetEventType === 'LEAGUE') {
         const normalizedLeagueConfig = normalizeLeagueScoringConfigUpdate(incomingLeagueScoringConfig);
@@ -1800,6 +1822,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         const loaded = await loadEventWithRelations(eventId, tx);
         if (isSchedulableEventType(loaded.eventType)) {
           const scheduled = scheduleEvent({ event: loaded }, context);
+          await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
           await deleteMatchesByEvent(eventId, tx);
           await saveMatches(eventId, scheduled.matches, tx);
           await saveEventSchedule(scheduled.event, tx);

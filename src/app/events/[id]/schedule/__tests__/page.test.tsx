@@ -211,6 +211,16 @@ describe('League schedule page', () => {
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
   });
 
+  it('shows the load error message below the try again button', async () => {
+    apiRequestMock.mockRejectedValue(new Error('Network down'));
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const retryButton = await screen.findByRole('button', { name: /try again/i });
+    const errorMessage = await screen.findByText('Failed to load league schedule. Please try again.');
+    expect(retryButton.compareDocumentPosition(errorMessage)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it('hydrates league scoring config details from leagueScoringConfigId on load', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {

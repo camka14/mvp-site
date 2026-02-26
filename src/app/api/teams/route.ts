@@ -117,7 +117,10 @@ export async function GET(req: NextRequest) {
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
   if (playerId) where.playerIds = { has: playerId };
-  if (!ids?.length) where.parentTeamId = null;
+  if (!ids?.length) {
+    where.parentTeamId = null;
+    where.captainId = { not: '' };
+  }
 
   const teamsDelegate = getTeamsDelegate(prisma);
   if (!teamsDelegate?.findMany) {

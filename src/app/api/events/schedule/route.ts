@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { loadEventWithRelations, saveEventSchedule, saveMatches, upsertEventFromPayload, deleteMatchesByEvent } from '@/server/repositories/events';
+import {
+  deleteMatchesByEvent,
+  loadEventWithRelations,
+  persistScheduledRosterTeams,
+  saveEventSchedule,
+  saveMatches,
+  upsertEventFromPayload,
+} from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
@@ -76,6 +83,7 @@ export async function POST(req: NextRequest) {
       }
 
       const scheduled = scheduleEvent({ event, participantCount }, context);
+      await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
       await deleteMatchesByEvent(eventId, tx);
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);

@@ -73,4 +73,31 @@ describe('ScoreUpdateModal', () => {
       expect(onSubmit).toHaveBeenCalledWith('match_1', [3], [1], [1]);
     });
   });
+
+  it('shows a field location toggle and expands the embedded map', () => {
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          field: {
+            $id: 'field_1',
+            name: 'Court 1',
+            location: '123 Demo St',
+            lat: 45.5,
+            long: -122.6,
+          } as Match['field'],
+        })}
+        tournament={buildEvent({
+          location: 'Fallback Event Location',
+          coordinates: [45.4, -122.7],
+        } as Partial<Event>)}
+        canManage={false}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'View Field Location' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'View Field Location' }));
+    expect(screen.getByTitle('Match field location preview')).toBeInTheDocument();
+  });
 });

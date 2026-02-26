@@ -75,6 +75,7 @@ export default function ScoreUpdateModal({
   const [setResults, setSetResults] = useState<number[]>(match.setResults || []);
   const [currentSet, setCurrentSet] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [showFieldMap, setShowFieldMap] = useState(false);
   const matchCompletionTriggered = useRef(false);
   const sportAllowsDraw = Boolean(tournament?.sport?.usePointsForDraw);
   const eventUsesSets = typeof tournament.usesSets === 'boolean'
@@ -347,6 +348,44 @@ export default function ScoreUpdateModal({
     setResults[currentSet] === 0 &&
     isWinConditionMet();
 
+  const fieldLat = typeof match.field?.lat === 'number' ? match.field.lat : null;
+  const fieldLng = typeof match.field?.long === 'number' ? match.field.long : null;
+  const hasFieldCoords = Number.isFinite(fieldLat) && Number.isFinite(fieldLng);
+
+  const eventLat = Array.isArray(tournament.coordinates) && typeof tournament.coordinates[0] === 'number'
+    ? tournament.coordinates[0]
+    : null;
+  const eventLng = Array.isArray(tournament.coordinates) && typeof tournament.coordinates[1] === 'number'
+    ? tournament.coordinates[1]
+    : null;
+  const hasEventCoords = Number.isFinite(eventLat) && Number.isFinite(eventLng);
+
+  const mapLat = hasFieldCoords ? fieldLat : hasEventCoords ? eventLat : null;
+  const mapLng = hasFieldCoords ? fieldLng : hasEventCoords ? eventLng : null;
+  const hasValidCoords = Number.isFinite(mapLat) && Number.isFinite(mapLng);
+  const locationLabel = (
+    match.field?.location?.trim()
+    || match.field?.name?.trim()
+    || tournament.location?.trim()
+    || ''
+  );
+  const mapQuery = hasValidCoords ? `${mapLat},${mapLng}` : locationLabel;
+  const encodedMapQuery = encodeURIComponent(mapQuery);
+  const googleMapsLink = mapQuery
+    ? `https://www.google.com/maps/search/?api=1&query=${encodedMapQuery}`
+    : null;
+  const mapEmbedSrc = hasValidCoords
+    ? `https://maps.google.com/maps?q=${mapLat},${mapLng}&z=14&output=embed`
+    : mapQuery
+      ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
+      : null;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowFieldMap(false);
+    }
+  }, [isOpen, match.$id]);
+
   return (
     <Modal opened={isOpen} onClose={onClose} title={<Text fw={600}>Update Match Score</Text>} centered>
       <div className="mb-4">
@@ -357,6 +396,47 @@ export default function ScoreUpdateModal({
           <Badge mt={6} color="orange">Loser Bracket</Badge>
         )}
       </div>
+
+      {googleMapsLink && mapEmbedSrc && (
+        <Paper withBorder p="md" radius="md" mb="md">
+          <Group justify="space-between" align="center">
+            <div>
+              <Text c="dimmed" size="sm">Field</Text>
+              <Text fw={600}>{locationLabel || 'Field location'}</Text>
+            </div>
+            <Group gap="xs">
+              <Button
+                variant="light"
+                size="xs"
+                onClick={() => setShowFieldMap((prev) => !prev)}
+              >
+                {showFieldMap ? 'Hide Field Location' : 'View Field Location'}
+              </Button>
+              <Button
+                component="a"
+                href={googleMapsLink}
+                target="_blank"
+                rel="noreferrer"
+                variant="subtle"
+                size="xs"
+              >
+                Open in Maps
+              </Button>
+            </Group>
+          </Group>
+          {showFieldMap && (
+            <div className="overflow-hidden rounded-md border border-gray-200 mt-3" style={{ aspectRatio: '16 / 9' }}>
+              <iframe
+                title="Match field location preview"
+                src={mapEmbedSrc}
+                className="w-full h-full"
+                loading="lazy"
+                allowFullScreen
+              />
+            </div>
+          )}
+        </Paper>
+      )}
 
       <div className="grid grid-cols-1 gap-6 mb-8">
         {/* Team 1 */}

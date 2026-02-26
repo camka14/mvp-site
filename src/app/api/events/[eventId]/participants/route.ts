@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
+import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import {
   resolveEventDivisionSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
@@ -115,6 +116,41 @@ const divisionMatchesTarget = (
   return aliases.has(normalizedTarget);
 };
 
+type PrismaLike = PrismaClient | Prisma.TransactionClient;
+
+const divisionAliases = (divisionId: string | null): Set<string> => {
+  const aliases = new Set<string>();
+  const normalized = normalizeDivisionToken(divisionId);
+  if (normalized) {
+    aliases.add(normalized);
+  }
+  if (divisionId) {
+    const token = extractDivisionTokenFromId(divisionId);
+    const normalizedToken = normalizeDivisionToken(token);
+    if (normalizedToken) {
+      aliases.add(normalizedToken);
+    }
+  }
+  return aliases;
+};
+
+const teamDivisionMatchesSelection = (
+  teamDivision: string | null,
+  targetDivisionId: string | null,
+): boolean => {
+  const targetAliases = divisionAliases(targetDivisionId);
+  if (!targetAliases.size) {
+    return true;
+  }
+  const teamAliases = divisionAliases(teamDivision);
+  for (const alias of teamAliases) {
+    if (targetAliases.has(alias)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const syncDivisionTeamMembership = async (params: {
   event: {
     id: string;
@@ -124,12 +160,12 @@ const syncDivisionTeamMembership = async (params: {
   teamId: string;
   mode: 'add' | 'remove';
   targetDivisionId: string | null;
-}) => {
+}, client: PrismaLike = prisma) => {
   const eventDivisionIds = normalizeUserIdList(params.event.divisions);
   if (!eventDivisionIds.length) {
     return;
   }
-  const rows = await prisma.divisions.findMany({
+  const rows = await client.divisions.findMany({
     where: {
       eventId: params.event.id,
       OR: [
@@ -154,7 +190,7 @@ const syncDivisionTeamMembership = async (params: {
     const currentTeamIds = normalizeDivisionTeamIds(row.teamIds).filter((teamId) => teamId !== params.teamId);
     const shouldIncludeTeam = shouldAssignToDivision && divisionMatchesTarget(row, params.targetDivisionId);
     const nextTeamIds = shouldIncludeTeam ? ensureUnique([...currentTeamIds, params.teamId]) : currentTeamIds;
-    await prisma.divisions.update({
+    await client.divisions.update({
       where: { id: row.id },
       data: {
         teamIds: nextTeamIds,
@@ -408,6 +444,254 @@ async function updateParticipants(
   let nextTeamIds = normalizeUserIdList(event.teamIds);
   let nextWaitListIds = normalizeUserIdList(event.waitListIds);
   let nextFreeAgentIds = normalizeUserIdList(event.freeAgentIds);
+
+  const schedulableTeamEvent = Boolean(
+    teamId
+    && event.teamSignup
+    && ['LEAGUE', 'TOURNAMENT'].includes(String(event.eventType ?? '').toUpperCase()),
+  );
+  if (teamId && schedulableTeamEvent) {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const freshEvent = await tx.events.findUnique({
+          where: { id: eventId },
+          select: {
+            id: true,
+            eventType: true,
+            teamSignup: true,
+            teamIds: true,
+            waitListIds: true,
+            singleDivision: true,
+            divisions: true,
+            teamSizeLimit: true,
+          },
+        });
+        if (!freshEvent) {
+          return { ok: false as const, status: 404, error: 'Event not found' };
+        }
+
+        const rosterTeamIds = normalizeUserIdList(freshEvent.teamIds);
+        const canonicalTeamId = teamId;
+        const canonical = await tx.teams.findUnique({
+          where: { id: canonicalTeamId },
+          select: {
+            id: true,
+            name: true,
+            playerIds: true,
+            captainId: true,
+            managerId: true,
+            headCoachId: true,
+            coachIds: true,
+            pending: true,
+            teamSize: true,
+            profileImageId: true,
+            sport: true,
+            divisionTypeId: true,
+            divisionTypeName: true,
+          },
+        });
+        if (!canonical) {
+          return { ok: false as const, status: 404, error: 'Team not found' };
+        }
+
+        const slotTeams = await tx.teams.findMany({
+          where: { id: { in: rosterTeamIds } },
+          select: {
+            id: true,
+            seed: true,
+            captainId: true,
+            division: true,
+            parentTeamId: true,
+          },
+        });
+
+        if (mode === 'add') {
+          if (slotTeams.some((team) => team.parentTeamId === canonicalTeamId)) {
+            return { ok: false as const, status: 409, error: 'Team is already registered for this event.' };
+          }
+
+          const placeholderCandidates = slotTeams
+            .filter((team) => String(team.captainId ?? '').trim().length === 0)
+            .filter((team) => freshEvent.singleDivision ? true : teamDivisionMatchesSelection(team.division, divisionSelection.divisionId))
+            .sort((a, b) => a.seed - b.seed);
+
+          if (!placeholderCandidates.length) {
+            return { ok: false as const, status: 409, error: 'Event/division is full.' };
+          }
+
+          const now = new Date();
+          const canonicalPlayerIds = normalizeUserIdList(canonical.playerIds);
+          let filledSlotTeamId: string | null = null;
+
+          for (const candidate of placeholderCandidates) {
+            const updateResult = await tx.teams.updateMany({
+              where: {
+                id: candidate.id,
+                captainId: '',
+                parentTeamId: null,
+              },
+              data: {
+                name: canonical.name ?? '',
+                playerIds: canonicalPlayerIds,
+                captainId: canonical.captainId ?? '',
+                managerId: canonical.managerId ?? '',
+                headCoachId: canonical.headCoachId ?? null,
+                coachIds: Array.isArray(canonical.coachIds) ? canonical.coachIds : [],
+                pending: [],
+                teamSize: canonical.teamSize ?? Math.max(0, Math.trunc(freshEvent.teamSizeLimit ?? 0)),
+                profileImageId: canonical.profileImageId ?? null,
+                sport: canonical.sport ?? null,
+                divisionTypeId: canonical.divisionTypeId ?? null,
+                divisionTypeName: canonical.divisionTypeName ?? null,
+                wins: 0,
+                losses: 0,
+                parentTeamId: canonicalTeamId,
+                updatedAt: now,
+              },
+            });
+            if (updateResult.count === 1) {
+              filledSlotTeamId = candidate.id;
+              break;
+            }
+          }
+
+          if (!filledSlotTeamId) {
+            return { ok: false as const, status: 409, error: 'Event/division is full.' };
+          }
+
+          const nextWaitListIds = normalizeUserIdList(freshEvent.waitListIds).filter((id) => id !== canonicalTeamId);
+          const updatedEvent = await tx.events.update({
+            where: { id: eventId },
+            data: {
+              waitListIds: nextWaitListIds,
+              updatedAt: now,
+            },
+          });
+
+          const registrationId = `${eventId}__team__${filledSlotTeamId}`;
+          await tx.eventRegistrations.upsert({
+            where: { id: registrationId },
+            create: {
+              id: registrationId,
+              eventId,
+              registrantId: filledSlotTeamId,
+              registrantType: 'TEAM',
+              status: 'ACTIVE',
+              ageAtEvent: null,
+              divisionId: divisionSelection.divisionId,
+              divisionTypeId: divisionSelection.divisionTypeId,
+              divisionTypeKey: divisionSelection.divisionTypeKey,
+              createdBy: session.userId,
+              createdAt: now,
+              updatedAt: now,
+            },
+            update: {
+              status: 'ACTIVE',
+              divisionId: divisionSelection.divisionId,
+              divisionTypeId: divisionSelection.divisionTypeId,
+              divisionTypeKey: divisionSelection.divisionTypeKey,
+              updatedAt: now,
+            },
+          });
+
+          await syncDivisionTeamMembership({
+            event: {
+              id: eventId,
+              singleDivision: freshEvent.singleDivision,
+              divisions: freshEvent.divisions,
+            },
+            teamId: filledSlotTeamId,
+            mode: 'add',
+            targetDivisionId: divisionSelection.divisionId,
+          }, tx);
+
+          return { ok: true as const, event: updatedEvent };
+        }
+
+        // mode === 'remove'
+        const now = new Date();
+        const inputTeamId = canonicalTeamId;
+        const normalizedRosterTeamIds = new Set(rosterTeamIds);
+
+        const slotTeam = normalizedRosterTeamIds.has(inputTeamId)
+          ? await tx.teams.findUnique({
+            where: { id: inputTeamId },
+            select: { id: true, seed: true, parentTeamId: true },
+          })
+          : await tx.teams.findFirst({
+            where: {
+              id: { in: rosterTeamIds },
+              parentTeamId: inputTeamId,
+            },
+            select: { id: true, seed: true, parentTeamId: true },
+          });
+
+        if (!slotTeam?.id) {
+          return { ok: false as const, status: 404, error: 'Team is not registered for this event.' };
+        }
+
+        await tx.teams.update({
+          where: { id: slotTeam.id },
+          data: {
+            name: `Place Holder ${slotTeam.seed}`,
+            captainId: '',
+            managerId: '',
+            playerIds: [],
+            wins: 0,
+            losses: 0,
+            parentTeamId: null,
+            divisionTypeId: null,
+            divisionTypeName: null,
+            sport: null,
+            profileImageId: null,
+            headCoachId: null,
+            coachIds: [],
+            pending: [],
+            teamSize: Math.max(0, Math.trunc(freshEvent.teamSizeLimit ?? 0)),
+            updatedAt: now,
+          },
+        });
+
+        await tx.eventRegistrations.deleteMany({
+          where: {
+            eventId,
+            registrantId: slotTeam.id,
+            registrantType: 'TEAM',
+          },
+        });
+
+        await syncDivisionTeamMembership({
+          event: {
+            id: eventId,
+            singleDivision: freshEvent.singleDivision,
+            divisions: freshEvent.divisions,
+          },
+          teamId: slotTeam.id,
+          mode: 'remove',
+          targetDivisionId: null,
+        }, tx);
+
+        const updatedEvent = await tx.events.update({
+          where: { id: eventId },
+          data: { updatedAt: now },
+        });
+
+        return { ok: true as const, event: updatedEvent };
+      });
+
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+
+      return NextResponse.json({
+        event: withLegacyEvent(result.event),
+        warnings: warnings.length ? warnings : undefined,
+      }, { status: 200 });
+    } catch (error) {
+      console.error('Event participant update failed', error);
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+  }
 
   if (mode === 'add' && teamId && nextTeamIds.includes(teamId)) {
     const canManageExistingTeamRegistration = await canManageEvent(

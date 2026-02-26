@@ -3,7 +3,14 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
-import { deleteMatchesByEvent, loadEventWithRelations, saveEventSchedule, saveMatches, upsertEventFromPayload } from '@/server/repositories/events';
+import {
+  deleteMatchesByEvent,
+  loadEventWithRelations,
+  persistScheduledRosterTeams,
+  saveEventSchedule,
+  saveMatches,
+  upsertEventFromPayload,
+} from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
@@ -311,6 +318,11 @@ const withLegacyEvent = (row: any) => {
       && start.getTime() === end.getTime(),
     );
   }
+  if ((legacy as any).doTeamsRef !== true) {
+    (legacy as any).teamRefsMaySwap = false;
+  } else if (typeof (legacy as any).teamRefsMaySwap !== 'boolean') {
+    (legacy as any).teamRefsMaySwap = false;
+  }
   return legacy;
 };
 
@@ -443,6 +455,7 @@ export async function POST(req: NextRequest) {
       if (isSchedulableEventType(loaded.eventType)) {
         await acquireEventLock(tx, eventId);
         const scheduled = scheduleEvent({ event: loaded }, context);
+        await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
         await deleteMatchesByEvent(eventId, tx);
         await saveMatches(eventId, scheduled.matches, tx);
         await saveEventSchedule(scheduled.event, tx);

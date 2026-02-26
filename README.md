@@ -50,6 +50,7 @@ npm install
   - `BOLDSIGN_API_KEY`
   - `BOLDSIGN_API_BASE_URL` (optional, defaults to `https://api.boldsign.com`)
   - `BOLDSIGN_DEV_REDIRECT_BASE_URL` (optional override; in dev this is auto-set from ngrok by `npm run dev`)
+  - `STRIPE_CONNECT_CLIENT_ID` (required for Stripe Connect OAuth onboarding + fallback management flows)
   - SMTP email invites:
   - `SMTP_URL` (or configure host/port/user/password below)
   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`
@@ -70,6 +71,7 @@ npm run dev
 ```
 
 `npm run dev` now starts ngrok (when available) and injects a public redirect URL for BoldSign (`BOLDSIGN_DEV_REDIRECT_BASE_URL`) to avoid browser Private Network Access blocks after signing. To disable this behavior: `MVP_DEV_ENABLE_NGROK=0 npm run dev`.
+It also injects `PUBLIC_WEB_BASE_URL` with the ngrok URL, which is used by Stripe Connect for OAuth callback origin so localhost is not sent as `redirect_uri`.
 
 For automatic tunneling, install and authenticate ngrok on your machine first (`ngrok config add-authtoken <token>`). If ngrok is not available, dev server still starts but BoldSign localhost redirect issues will remain.
 When running in WSL, the dev wrapper also attempts to resolve Windows-installed ngrok (`where ngrok` / `Get-Command ngrok`). You can force a specific binary path with `NGROK_BIN=/mnt/c/.../ngrok.exe npm run dev`.

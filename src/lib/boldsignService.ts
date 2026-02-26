@@ -144,11 +144,13 @@ class BoldSignService {
     signerContext?: 'participant' | 'parent_guardian' | 'child';
     childUserId?: string;
     childEmail?: string;
+    timeoutMs?: number;
   }): Promise<SignStep[]> {
     const result = await apiRequest<SignLinksResponse>(
       `/api/events/${params.eventId}/sign`,
       {
         method: 'POST',
+        timeoutMs: params.timeoutMs,
         body: {
           user: params.user,
           userId: params.user.$id,

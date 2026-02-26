@@ -32,9 +32,11 @@ class BillService {
         paymentPlanEnabled?: boolean;
         event?: any;
         user?: any;
+        timeoutMs?: number;
     }): Promise<Bill> {
         const result = await apiRequest<{ bill?: Bill; error?: string }>('/api/billing/bills', {
             method: 'POST',
+            timeoutMs: params.timeoutMs,
             body: {
                 ownerType: params.ownerType,
                 ownerId: params.ownerId,

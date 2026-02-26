@@ -562,6 +562,7 @@ export class Tournament {
   minAge: number | null;
   maxAge: number | null;
   doTeamsRef: boolean;
+  teamRefsMaySwap: boolean;
   fieldCount: number | null;
   prize: string | null;
   hostId: string;
@@ -629,6 +630,7 @@ export class Tournament {
     minAge?: number | null;
     maxAge?: number | null;
     doTeamsRef?: boolean;
+    teamRefsMaySwap?: boolean;
     fieldCount?: number | null;
     prize?: string | null;
     hostId?: string;
@@ -695,6 +697,7 @@ export class Tournament {
     this.minAge = params.minAge ?? null;
     this.maxAge = params.maxAge ?? null;
     this.doTeamsRef = typeof params.doTeamsRef === 'boolean' ? params.doTeamsRef : true;
+    this.teamRefsMaySwap = this.doTeamsRef ? Boolean(params.teamRefsMaySwap) : false;
     this.fieldCount = params.fieldCount ?? null;
     this.prize = params.prize ?? null;
     this.hostId = params.hostId ?? '';

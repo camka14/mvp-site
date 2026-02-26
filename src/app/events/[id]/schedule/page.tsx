@@ -229,22 +229,6 @@ const isPlayoffBracketMatch = (match: Match): boolean =>
     match.loserNextMatchId,
   );
 
-const hasRecordedScoreForReschedule = (match: Match): boolean => {
-  const setResults = Array.isArray(match.setResults) ? match.setResults : [];
-  if (setResults.some((result) => result === 1 || result === 2)) {
-    return true;
-  }
-  const hasPositivePoints = (points: unknown): boolean =>
-    Array.isArray(points) && points.some((point) => typeof point === 'number' && point > 0);
-  return hasPositivePoints(match.team1Points) || hasPositivePoints(match.team2Points);
-};
-
-const shouldPreserveMatchForReschedule = (match: Match): boolean =>
-  Boolean(match.refereeCheckedIn || match.refCheckedIn) || hasRecordedScoreForReschedule(match);
-
-const shouldPreserveCompletedMatchesForReschedule = (event: Event): boolean =>
-  event.eventType === 'TOURNAMENT' || (event.eventType === 'LEAGUE' && Boolean(event.includePlayoffs));
-
 const shouldResetBracketMatchForRebuild = (event: Event, match: Match): boolean => {
   if (event.eventType === 'TOURNAMENT') {
     return true;
@@ -1839,14 +1823,19 @@ function EventScheduleContent() {
     (value: Match['team1'] | string | null | undefined): Team | null => {
       if (!value) return null;
       if (typeof value === 'string') {
-        return teamsById.get(value) ?? null;
+        return participantTeamsById.get(value) ?? teamsById.get(value) ?? null;
       }
       if (typeof value === 'object') {
-        return (value as Team) ?? null;
+        const team = value as Team & { id?: string };
+        const teamId = normalizeIdToken(team.$id ?? team.id);
+        if (teamId) {
+          return participantTeamsById.get(teamId) ?? teamsById.get(teamId) ?? team;
+        }
+        return team;
       }
       return null;
     },
-    [teamsById],
+    [participantTeamsById, teamsById],
   );
 
   const userOnTeam = useCallback(
@@ -1878,30 +1867,28 @@ function EventScheduleContent() {
     [user?.$id],
   );
 
-  const findUserTeam = useCallback(
-    (match?: Match | null) => {
-      if (!user?.$id) return null;
-      const candidates: (Match['team1'] | string | null | undefined)[] = [];
-      if (match) {
-        candidates.push(match.team1 ?? match.team1Id);
-        candidates.push(match.team2 ?? match.team2Id);
-        candidates.push(match.teamReferee ?? match.teamRefereeId);
-      }
-      for (const candidate of candidates) {
-        const team = resolveTeam(candidate);
-        if (team && userOnTeam(team)) {
-          return team;
-        }
-      }
-      for (const team of teamsById.values()) {
-        if (userOnTeam(team)) {
-          return team;
-        }
-      }
+  const userEventTeamIdFromProfile = useMemo(() => {
+    if (!Array.isArray(user?.teamIds) || user.teamIds.length === 0) {
       return null;
-    },
-    [resolveTeam, teamsById, user?.$id, userOnTeam],
-  );
+    }
+    for (const teamIdRaw of user.teamIds) {
+      const teamId = normalizeIdToken(teamIdRaw);
+      if (teamId && participantTeamIdSet.has(teamId)) {
+        return teamId;
+      }
+    }
+    return null;
+  }, [participantTeamIdSet, user?.teamIds]);
+
+  const findUserEventTeam = useCallback(() => {
+    if (!user?.$id) return null;
+    for (const team of participantTeamsById.values()) {
+      if (team && userOnTeam(team)) {
+        return team;
+      }
+    }
+    return null;
+  }, [participantTeamsById, user?.$id, userOnTeam]);
 
   const hasUnsavedChangesRef = useRef(hasPendingUnsavedChanges);
   const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
@@ -3232,71 +3219,43 @@ function EventScheduleContent() {
         let scheduleWarningText: string | null = null;
         if (hasSchedulingAction && updatedEvent.$id) {
           const scheduleEventId = updatedEvent.$id;
-          let temporarilyLockedMatches: Match[] = [];
-          if (isRescheduleAction && shouldPreserveCompletedMatchesForReschedule(updatedEvent)) {
-            temporarilyLockedMatches = nextMatches.filter((match) => !match.locked && shouldPreserveMatchForReschedule(match));
-            if (temporarilyLockedMatches.length > 0) {
-              await tournamentService.updateMatchesBulk(
-                scheduleEventId,
-                temporarilyLockedMatches.map((match) => ({ $id: match.$id, locked: true })),
-              );
-            }
+          if (isBuildBracketAction) {
+            await leagueService.deleteMatchesByEvent(scheduleEventId);
           }
 
-          try {
-            if (isBuildBracketAction) {
-              await leagueService.deleteMatchesByEvent(scheduleEventId);
+          const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
+          const scheduleOptions: { eventId: string; participantCount?: number } = { eventId: scheduleEventId };
+          if (isBuildBracketAction) {
+            const participantCount = typeof updatedEvent.maxParticipants === 'number'
+              ? Math.max(2, Math.trunc(updatedEvent.maxParticipants))
+              : undefined;
+            if (participantCount) {
+              scheduleOptions.participantCount = participantCount;
             }
+          }
+          const scheduled = await eventService.scheduleEvent(schedulePayload, scheduleOptions);
+          if (!scheduled?.event) {
+            throw new Error(
+              isBuildBracketAction ? 'Failed to rebuild bracket(s).' : 'Failed to reschedule matches.',
+            );
+          }
+          if (Array.isArray(scheduled.warnings) && scheduled.warnings.length) {
+            scheduleWarningText = scheduled.warnings
+              .map((warning) => warning.message)
+              .filter((message) => typeof message === 'string' && message.trim().length > 0)
+              .join(' ');
+          }
+          updatedEvent = scheduled.event;
 
-            const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
-            const scheduleOptions: { eventId: string; participantCount?: number } = { eventId: scheduleEventId };
-            if (isBuildBracketAction) {
-              const participantCount = typeof updatedEvent.maxParticipants === 'number'
-                ? Math.max(2, Math.trunc(updatedEvent.maxParticipants))
-                : undefined;
-              if (participantCount) {
-                scheduleOptions.participantCount = participantCount;
-              }
-            }
-            const scheduled = await eventService.scheduleEvent(schedulePayload, scheduleOptions);
-            if (!scheduled?.event) {
-              throw new Error(
-                isBuildBracketAction ? 'Failed to rebuild bracket(s).' : 'Failed to reschedule matches.',
-              );
-            }
-            if (Array.isArray(scheduled.warnings) && scheduled.warnings.length) {
-              scheduleWarningText = scheduled.warnings
-                .map((warning) => warning.message)
-                .filter((message) => typeof message === 'string' && message.trim().length > 0)
-                .join(' ');
-            }
-            updatedEvent = scheduled.event;
-
-            if (isBuildBracketAction && Array.isArray(updatedEvent.matches) && updatedEvent.matches.length > 0) {
-              const bracketMatchesToClear = updatedEvent.matches
-                .filter((match) => shouldResetBracketMatchForRebuild(updatedEvent, match))
-                .map((match) => toClearedBracketMatchUpdate(match));
-              if (bracketMatchesToClear.length > 0) {
-                const clearedMatches = await tournamentService.updateMatchesBulk(scheduleEventId, bracketMatchesToClear);
-                if (clearedMatches.length > 0) {
-                  const clearedById = new Map(clearedMatches.map((match) => [match.$id, match]));
-                  updatedEvent.matches = updatedEvent.matches.map((match) => clearedById.get(match.$id) ?? match);
-                }
-              }
-            }
-          } finally {
-            if (temporarilyLockedMatches.length > 0) {
-              try {
-                await tournamentService.updateMatchesBulk(
-                  scheduleEventId,
-                  temporarilyLockedMatches.map((match) => ({ $id: match.$id, locked: false })),
-                );
-              } catch (unlockError) {
-                console.error('Failed to restore temporary lock state after reschedule:', unlockError);
-                scheduleWarningText = [
-                  scheduleWarningText,
-                  'Some completed matches may still be locked after reschedule. Review match locks.',
-                ].filter((text): text is string => Boolean(text && text.trim().length > 0)).join(' ');
+          if (isBuildBracketAction && Array.isArray(updatedEvent.matches) && updatedEvent.matches.length > 0) {
+            const bracketMatchesToClear = updatedEvent.matches
+              .filter((match) => shouldResetBracketMatchForRebuild(updatedEvent, match))
+              .map((match) => toClearedBracketMatchUpdate(match));
+            if (bracketMatchesToClear.length > 0) {
+              const clearedMatches = await tournamentService.updateMatchesBulk(scheduleEventId, bracketMatchesToClear);
+              if (clearedMatches.length > 0) {
+                const clearedById = new Map(clearedMatches.map((match) => [match.$id, match]));
+                updatedEvent.matches = updatedEvent.matches.map((match) => clearedById.get(match.$id) ?? match);
               }
             }
           }
@@ -3648,16 +3607,21 @@ function EventScheduleContent() {
     });
   }, []);
 
+  const isRefereeCheckedIn = useCallback(
+    (match: Match) => Boolean(match.refereeCheckedIn || match.refCheckedIn),
+    [],
+  );
+
   const canUserManageScore = useCallback(
     (match: Match) => {
-      if (!user?.$id) return false;
+      if (!user?.$id || !isRefereeCheckedIn(match)) return false;
       if (match.refereeId === user.$id || match.referee?.$id === user.$id) {
         return true;
       }
       const teamRef = resolveTeam(match.teamReferee ?? match.teamRefereeId);
       return userOnTeam(teamRef);
     },
-    [resolveTeam, user?.$id, userOnTeam],
+    [isRefereeCheckedIn, resolveTeam, user?.$id, userOnTeam],
   );
 
   const handleScoreChange = useCallback(
@@ -3723,35 +3687,24 @@ function EventScheduleContent() {
     [applyMatchUpdate, activeEvent?.$id, eventId],
   );
 
-  const handleMakeUserTeamReferee = useCallback(
-    async (match: Match) => {
-      const userTeam = findUserTeam(match);
-      if (!userTeam) {
-        window.alert('You need to be on a team in this event to referee this match.');
-        return null;
-      }
-
-      const confirm = window.confirm('No referee is assigned. Make your team the referee for this match?');
-      if (!confirm) return null;
-
+  const updateMatchRefereeState = useCallback(
+    async (match: Match, updates: Partial<Match>, failureMessage: string) => {
       const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) return null;
+      if (!targetEventId) {
+        return match;
+      }
 
       try {
-        const updated = await tournamentService.updateMatch(targetEventId, match.$id, { teamRefereeId: userTeam.$id });
-        const withTeam = {
-          ...(updated as Match),
-          teamReferee: (updated as Match).teamReferee ?? userTeam,
-        };
-        applyMatchUpdate(withTeam as Match);
-        return withTeam as Match;
+        const updated = await tournamentService.updateMatch(targetEventId, match.$id, updates);
+        applyMatchUpdate(updated as Match);
+        return updated as Match;
       } catch (err) {
-        console.error('Failed to assign team referee:', err);
-        setError('Failed to assign a referee to this match. Please try again.');
-        return null;
+        console.error(failureMessage, err);
+        setError(failureMessage);
+        return match;
       }
     },
-    [applyMatchUpdate, findUserTeam, activeEvent?.$id, eventId],
+    [activeEvent?.$id, applyMatchUpdate, eventId],
   );
 
   const handleMatchClick = useCallback(
@@ -3761,29 +3714,80 @@ function EventScheduleContent() {
         return;
       }
 
-      if (!user) {
-        return;
-      }
+      let modalMatch = activeMatches.find((candidate) => candidate.$id === match.$id) ?? match;
 
-      const isUserReferee = match.refereeId === user.$id || match.referee?.$id === user.$id;
-      const teamRef = resolveTeam(match.teamReferee ?? match.teamRefereeId);
-      const userIsTeamRef = userOnTeam(teamRef);
+      if (user?.$id) {
+        const assignedTeamRef = resolveTeam(modalMatch.teamReferee ?? modalMatch.teamRefereeId);
+        const assignedTeamRefId = normalizeIdToken(modalMatch.teamRefereeId ?? modalMatch.teamReferee?.$id);
+        const currentUserEventTeam = findUserEventTeam();
+        const currentUserEventTeamId = normalizeIdToken(currentUserEventTeam?.$id) ?? userEventTeamIdFromProfile;
+        const isAssignedUserRef = modalMatch.refereeId === user.$id || modalMatch.referee?.$id === user.$id;
+        const isAssignedTeamRef =
+          userOnTeam(assignedTeamRef) ||
+          Boolean(currentUserEventTeamId && assignedTeamRefId && currentUserEventTeamId === assignedTeamRefId);
+        const userIsCurrentRef = isAssignedUserRef || isAssignedTeamRef;
+        const checkedIn = isRefereeCheckedIn(modalMatch);
 
-      if (isUserReferee || userIsTeamRef) {
-        setScoreUpdateMatch(match);
-        setIsScoreModalOpen(true);
-        return;
-      }
+        if (!checkedIn && userIsCurrentRef) {
+          const confirmCheckIn = window.confirm('Would you like to check in and start this match?');
+          if (confirmCheckIn) {
+            modalMatch = await updateMatchRefereeState(
+              modalMatch,
+              { refereeCheckedIn: true },
+              'Failed to check in as referee. Please try again.',
+            );
+          }
+        } else {
+          const canSwapIntoRef =
+            !checkedIn &&
+            Boolean(activeEvent?.doTeamsRef) &&
+            Boolean(activeEvent?.teamRefsMaySwap) &&
+            Boolean(currentUserEventTeamId) &&
+            assignedTeamRefId !== currentUserEventTeamId;
 
-      if (!match.referee && !match.refereeId && teamRef) {
-        const updated = await handleMakeUserTeamReferee(match);
-        if (updated) {
-          setScoreUpdateMatch(updated);
-          setIsScoreModalOpen(true);
+          if (canSwapIntoRef && currentUserEventTeamId) {
+            const confirmSwap = window.confirm(
+              'The referee has not checked in yet. Do you want your team to referee this match?',
+            );
+            if (confirmSwap) {
+              modalMatch = await updateMatchRefereeState(
+                modalMatch,
+                {
+                  teamRefereeId: currentUserEventTeamId,
+                  refereeCheckedIn: false,
+                },
+                'Failed to swap referee for this match. Please try again.',
+              );
+              const confirmCheckIn = window.confirm('Would you like to check in and start this match?');
+              if (confirmCheckIn) {
+                modalMatch = await updateMatchRefereeState(
+                  modalMatch,
+                  { refereeCheckedIn: true },
+                  'Failed to check in as referee. Please try again.',
+                );
+              }
+            }
+          }
         }
       }
+
+      setScoreUpdateMatch(modalMatch);
+      setIsScoreModalOpen(true);
     },
-    [canEditMatches, handleMakeUserTeamReferee, handleMatchEditRequest, resolveTeam, user, userOnTeam],
+    [
+      activeEvent?.doTeamsRef,
+      activeEvent?.teamRefsMaySwap,
+      activeMatches,
+      canEditMatches,
+      findUserEventTeam,
+      handleMatchEditRequest,
+      isRefereeCheckedIn,
+      resolveTeam,
+      updateMatchRefereeState,
+      user,
+      userEventTeamIdFromProfile,
+      userOnTeam,
+    ],
   );
 
   const activeLocationDefaults = useMemo(
@@ -4100,8 +4104,9 @@ function EventScheduleContent() {
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <Paper withBorder shadow="sm" p="xl" radius="md">
             <Stack gap="md" align="center">
-              <Text fw={600} size="lg">{error}</Text>
+              <Text fw={600} size="lg">Something went wrong.</Text>
               <Button variant="default" onClick={() => loadSchedule()}>Try Again</Button>
+              <Text size="sm" c="red" ta="center">{error}</Text>
             </Stack>
           </Paper>
         </div>

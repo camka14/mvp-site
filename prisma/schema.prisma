@@ -425,6 +425,7 @@ model Events {
   autoCancellation Boolean?
   eventType EventsEventTypeEnum?
   doTeamsRef Boolean?
+  teamRefsMaySwap Boolean?
   refereeIds String[]
   allowPaymentPlans Boolean?
   installmentCount Int?

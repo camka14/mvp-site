@@ -379,166 +379,76 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const nextState = buildTeamState(existing as Record<string, any>, payload);
   const now = new Date();
 
-  const endedEventCount = await prisma.events.count({
-    where: {
-      teamIds: { has: id },
-      end: { lt: now },
-    },
-  });
-  const shouldVersion = endedEventCount > 0
-    && hasVersionedProfileChanges(payload, existing as Record<string, any>, nextState);
+  const updated = await prisma.$transaction(async (tx) => {
+    const txTeams = getTeamsDelegate(tx);
+    if (!txTeams?.update || !txTeams?.findMany) {
+      throw new Error('Team storage is unavailable in transaction.');
+    }
 
-  if (!shouldVersion) {
-    const updated = await updateTeamWithCompatibility(
-      teamsDelegate,
+    const canonical = await updateTeamWithCompatibility(
+      txTeams,
       { id },
       {
         ...nextState,
         updatedAt: now,
       },
     );
-    return NextResponse.json(withTeamRoleAliases(updated as any), { status: 200 });
-  }
 
-  const nextTeam = await prisma.$transaction(async (tx) => {
-    const nextTeamId = crypto.randomUUID();
-    const txTeams = getTeamsDelegate(tx);
-    if (!txTeams?.create || !txTeams?.update) {
-      throw new Error('Team storage is unavailable in transaction.');
+    const derivedTeams = await txTeams.findMany({
+      where: { parentTeamId: id },
+      select: { id: true },
+    });
+    const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
+    if (!derivedTeamIds.length) {
+      return canonical;
     }
 
-    const created = await createTeamWithCompatibility(txTeams, {
-      id: nextTeamId,
-      ...nextState,
-      parentTeamId: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await updateTeamWithCompatibility(
-      txTeams,
-      { id },
-      {
-        parentTeamId: nextTeamId,
-        updatedAt: now,
-      },
-    );
-
-    const organizations = await tx.organizations.findMany({
-      where: { teamIds: { has: id } },
-      select: { id: true, teamIds: true },
-    });
-    for (const organization of organizations) {
-      const currentIds = Array.isArray(organization.teamIds) ? organization.teamIds : [];
-      const nextIds = replaceTeamId(currentIds, id, nextTeamId);
-      await tx.organizations.update({
-        where: { id: organization.id },
-        data: {
-          teamIds: nextIds,
-          updatedAt: now,
-        },
-      });
-    }
-
-    const activeEvents = await tx.events.findMany({
+    const events = await tx.events.findMany({
       where: {
-        teamIds: { has: id },
         end: { gte: now },
+        teamIds: { hasSome: derivedTeamIds },
       },
       select: { id: true, teamIds: true },
     });
-    for (const event of activeEvents) {
-      const currentIds = Array.isArray(event.teamIds) ? event.teamIds : [];
-      const nextIds = replaceTeamId(currentIds, id, nextTeamId);
-      await tx.events.update({
-        where: { id: event.id },
-        data: {
-          teamIds: nextIds,
-          updatedAt: now,
-        },
-      });
+
+    if (!events.length) {
+      return canonical;
     }
 
-    const activeEventIds = activeEvents.map((event) => event.id);
-    if (activeEventIds.length) {
-      await tx.matches.updateMany({
-        where: {
-          eventId: { in: activeEventIds },
-          team1Id: id,
-        },
-        data: {
-          team1Id: nextTeamId,
-          updatedAt: now,
-        },
-      });
-
-      await tx.matches.updateMany({
-        where: {
-          eventId: { in: activeEventIds },
-          team2Id: id,
-        },
-        data: {
-          team2Id: nextTeamId,
-          updatedAt: now,
-        },
-      });
-
-      await tx.eventRegistrations.updateMany({
-        where: {
-          eventId: { in: activeEventIds },
-          registrantType: 'TEAM',
-          registrantId: id,
-        },
-        data: {
-          registrantId: nextTeamId,
-          updatedAt: now,
-        },
-      });
-    }
-
-    await tx.invites.updateMany({
-      where: { teamId: id },
-      data: {
-        teamId: nextTeamId,
-        updatedAt: now,
-      },
-    });
-
-    const userOrFilters: Array<Record<string, any>> = [
-      { teamIds: { has: id } },
-    ];
-    if (nextState.playerIds.length) {
-      userOrFilters.push({ id: { in: nextState.playerIds } });
-    }
-    const users = await tx.userData.findMany({
-      where: { OR: userOrFilters },
-      select: { id: true, teamIds: true },
-    });
-    const playerSet = new Set(nextState.playerIds);
-
-    for (const user of users) {
-      const currentIds = Array.isArray(user.teamIds) ? user.teamIds.map(String) : [];
-      const withoutLegacy = currentIds.filter((teamId) => teamId !== id && teamId !== nextTeamId);
-      const nextIds = playerSet.has(user.id)
-        ? Array.from(new Set([...withoutLegacy, nextTeamId]))
-        : withoutLegacy;
-      if (arraysEqual(currentIds, nextIds)) {
-        continue;
+    const derivedSet = new Set(derivedTeamIds);
+    const teamIdsToUpdate = new Set<string>();
+    for (const event of events) {
+      const teamIds = Array.isArray(event.teamIds) ? event.teamIds : [];
+      for (const teamId of teamIds) {
+        if (derivedSet.has(teamId)) {
+          teamIdsToUpdate.add(teamId);
+        }
       }
-
-      await tx.userData.update({
-        where: { id: user.id },
-        data: {
-          teamIds: nextIds,
-          updatedAt: now,
-        },
-      });
     }
 
-    return created;
+    const updatePayload = {
+      name: nextState.name,
+      playerIds: nextState.playerIds,
+      captainId: nextState.captainId,
+      managerId: nextState.managerId,
+      headCoachId: nextState.headCoachId,
+      coachIds: nextState.coachIds,
+      teamSize: nextState.teamSize,
+      profileImageId: nextState.profileImageId,
+      sport: nextState.sport,
+      divisionTypeId: nextState.divisionTypeId,
+      divisionTypeName: nextState.divisionTypeName,
+      updatedAt: now,
+    };
+
+    for (const teamId of teamIdsToUpdate) {
+      await updateTeamWithCompatibility(txTeams, { id: teamId }, updatePayload);
+    }
+
+    return canonical;
   });
 
-  return NextResponse.json(withTeamRoleAliases(nextTeam as any), { status: 200 });
+  return NextResponse.json(withTeamRoleAliases(updated as any), { status: 200 });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
