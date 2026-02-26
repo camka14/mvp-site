@@ -97,6 +97,50 @@ describe('divisionCapacity', () => {
     expect(isDivisionAtCapacity(snapshot)).toBe(true);
   });
 
+  it('filters filled counts to eligibleTeamIds when provided', () => {
+    const snapshot = resolveDivisionCapacitySnapshot({
+      event: {
+        singleDivision: false,
+        maxParticipants: 12,
+        divisionDetails: [
+          {
+            id: 'event_1__division__open',
+            key: 'open',
+            name: 'Open',
+            maxParticipants: 8,
+            teamIds: ['team_1', 'team_2', 'team_3'],
+          } as any,
+        ],
+      },
+      divisionId: 'open',
+      eligibleTeamIds: ['team_2', 'team_missing'],
+    });
+
+    expect(snapshot).toEqual({ capacity: 8, filled: 1 });
+    expect(isDivisionAtCapacity(snapshot)).toBe(false);
+
+    const breakdown = buildDivisionCapacityBreakdown({
+      event: {
+        singleDivision: false,
+        maxParticipants: 12,
+        divisionDetails: [
+          {
+            id: 'event_1__division__open',
+            key: 'open',
+            name: 'Open',
+            maxParticipants: 8,
+            teamIds: ['team_1', 'team_2', 'team_3'],
+          } as any,
+        ],
+      },
+      excludePlayoffs: true,
+      eligibleTeamIds: ['team_2', 'team_missing'],
+    });
+
+    expect(breakdown).toHaveLength(1);
+    expect(breakdown[0]?.filled).toBe(1);
+  });
+
   it('excludes playoff divisions from breakdown when requested', () => {
     const breakdown = buildDivisionCapacityBreakdown({
       event: {

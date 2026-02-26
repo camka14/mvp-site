@@ -69,6 +69,7 @@ const divisionMatchesSelection = (
 export const resolveDivisionCapacitySnapshot = (params: {
   event: Pick<Event, 'singleDivision' | 'divisionDetails' | 'maxParticipants'> | null | undefined;
   divisionId: string | null | undefined;
+  eligibleTeamIds?: string[] | null | undefined;
 }): DivisionCapacitySnapshot | null => {
   if (!params.event) {
     return null;
@@ -98,7 +99,13 @@ export const resolveDivisionCapacitySnapshot = (params: {
   const capacity = normalizeCapacity(matched.maxParticipants)
     ?? normalizeCapacity(params.event.maxParticipants)
     ?? 0;
-  const filled = normalizeIdList(matched.teamIds).length;
+  const eligibleTeamIdSet = params.eligibleTeamIds
+    ? new Set(normalizeIdList(params.eligibleTeamIds))
+    : null;
+  const filledTeamIds = normalizeIdList(matched.teamIds);
+  const filled = eligibleTeamIdSet
+    ? filledTeamIds.filter((teamId) => eligibleTeamIdSet.has(teamId)).length
+    : filledTeamIds.length;
 
   return { capacity, filled };
 };
@@ -110,12 +117,16 @@ export const isDivisionAtCapacity = (snapshot: DivisionCapacitySnapshot | null):
 export const buildDivisionCapacityBreakdown = (params: {
   event: Pick<Event, 'singleDivision' | 'divisionDetails' | 'maxParticipants'>;
   excludePlayoffs?: boolean;
+  eligibleTeamIds?: string[] | null | undefined;
 }): DivisionCapacityBreakdownRow[] => {
   if (params.event.singleDivision !== false) {
     return [];
   }
 
   const fallbackCapacity = normalizeCapacity(params.event.maxParticipants) ?? 0;
+  const eligibleTeamIdSet = params.eligibleTeamIds
+    ? new Set(normalizeIdList(params.eligibleTeamIds))
+    : null;
   const detailRows = Array.isArray(params.event.divisionDetails) ? params.event.divisionDetails : [];
 
   return detailRows
@@ -133,7 +144,10 @@ export const buildDivisionCapacityBreakdown = (params: {
       const name = typeof detail.name === 'string' && detail.name.trim().length > 0 ? detail.name.trim() : null;
       const kind = typeof detail.kind === 'string' && detail.kind.trim().length > 0 ? detail.kind.trim() : null;
       const capacity = normalizeCapacity(detail.maxParticipants) ?? fallbackCapacity;
-      const filled = normalizeIdList(detail.teamIds).length;
+      const divisionTeamIds = normalizeIdList(detail.teamIds);
+      const filled = eligibleTeamIdSet
+        ? divisionTeamIds.filter((teamId) => eligibleTeamIdSet.has(teamId)).length
+        : divisionTeamIds.length;
 
       return {
         divisionId,

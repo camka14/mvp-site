@@ -502,16 +502,18 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         () => resolveDivisionCapacitySnapshot({
             event: currentEvent,
             divisionId: selectedDivisionOption?.id,
+            eligibleTeamIds: teams.map((team) => team.$id),
         }),
-        [currentEvent, selectedDivisionOption?.id],
+        [currentEvent, selectedDivisionOption?.id, teams],
     );
     const selectedDivisionAtCapacity = isDivisionAtCapacity(selectedDivisionCapacitySnapshot);
     const divisionCapacityBreakdown = React.useMemo(
         () => buildDivisionCapacityBreakdown({
             event: currentEvent,
             excludePlayoffs: true,
+            eligibleTeamIds: teams.map((team) => team.$id),
         }),
-        [currentEvent],
+        [currentEvent, teams],
     );
     const selectedDivisionBilling = React.useMemo(() => {
         if (!currentEvent) {
@@ -797,7 +799,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             const eventTeams: Team[] = Array.isArray(baseEvent.teams) ? (baseEvent.teams as Team[]) : [];
 
             setPlayers(eventPlayers);
-            setTeams(eventTeams);
+            const isSchedulableSlotEvent = baseEvent.eventType === 'LEAGUE' || baseEvent.eventType === 'TOURNAMENT';
+            const filteredTeams = isSchedulableSlotEvent
+                ? eventTeams.filter((team) => typeof team.parentTeamId === 'string' && team.parentTeamId.trim().length > 0)
+                : eventTeams;
+            setTeams(filteredTeams);
 
             const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
             const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
@@ -1859,7 +1865,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     // Check registration status depending on signup type using relations
                     const registered = latest.teamSignup
                         ? (targetTeamId
-                            ? Object.values(latest.teams || {}).some(t => t.$id === targetTeamId)
+                            ? Object.values(latest.teams || {}).some(t => t.parentTeamId === targetTeamId || t.$id === targetTeamId)
                             : Object.values(latest.teams || {}).some(t => (t.playerIds || []).includes(user.$id)))
                         : (latest.players || []).some(p => p.$id === user.$id);
 
