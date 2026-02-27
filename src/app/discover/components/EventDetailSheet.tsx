@@ -673,7 +673,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             try {
                 const userTeamsAll = await teamService.getTeamsByIds(teamIds, true);
                 const targetSportName = (() => {
-                    const rawSport = (targetEvent as { sport?: unknown }).sport;
+                    const rawSport: unknown = (targetEvent as { sport?: unknown }).sport;
                     if (typeof rawSport === 'string' && rawSport.trim().length > 0) {
                         return rawSport.trim();
                     }
