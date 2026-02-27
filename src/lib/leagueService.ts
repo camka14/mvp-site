@@ -162,7 +162,7 @@ class LeagueService {
 
   async listMatchesByEvent(eventId: string): Promise<Match[]> {
     const event = await eventService.getEventWithRelations(eventId);
-    return (event?.matches ?? []).sort((a, b) => a.start.localeCompare(b.start));
+    return (event?.matches ?? []).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
   }
 
   async deleteMatchesByEvent(eventId: string): Promise<void> {

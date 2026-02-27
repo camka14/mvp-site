@@ -195,15 +195,15 @@ export interface Match {
   teamRefereeId?: string | null;
   team1Points: number[];
   team2Points: number[];
-  previousLeftId?: string;
-  previousRightId?: string;
-  winnerNextMatchId?: string;
-  loserNextMatchId?: string;
+  previousLeftId?: string | null;
+  previousRightId?: string | null;
+  winnerNextMatchId?: string | null;
+  loserNextMatchId?: string | null;
   start: string | null;
   end: string | null;
   losersBracket?: boolean;
   setResults: number[];
-  side?: string;
+  side?: string | null;
   refCheckedIn?: boolean;
   refereeCheckedIn?: boolean;
   team1Seed?: number | null;
@@ -211,7 +211,7 @@ export interface Match {
   teamRefereeSeed?: number | null;
 
   // Relationship fields - hydrated when selected via Queries
-  division?: Division;
+  division?: Division | string | null;
   field?: Field;
   referee?: UserData;
   teamReferee?: Team;

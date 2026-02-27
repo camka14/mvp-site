@@ -121,12 +121,12 @@ const getClientIdFromMatchId = (id: string): string =>
 const isLocalPlaceholderId = (id: string | null | undefined): boolean =>
   typeof id === 'string' && id.startsWith(LOCAL_PLACEHOLDER_PREFIX);
 
-const asBulkMatchRef = (value: string | null | undefined): string | null => {
+const asBulkMatchRef = (value: string | null | undefined): string | undefined => {
   if (typeof value !== 'string') {
-    return null;
+    return undefined;
   }
   const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
+  return normalized.length > 0 ? normalized : undefined;
 };
 
 const nextMatchSequenceNumber = (matches: Match[]): number => {
@@ -168,16 +168,16 @@ const clearMatchReferencesToTarget = (match: Match, removedMatchId: string): Mat
   const loserNextMatchId = normalizeIdToken(next.loserNextMatchId);
 
   if (previousLeftId === targetId) {
-    next = { ...next, previousLeftId: null, previousLeftMatch: undefined };
+    next = { ...next, previousLeftId: undefined, previousLeftMatch: undefined };
   }
   if (previousRightId === targetId) {
-    next = { ...next, previousRightId: null, previousRightMatch: undefined };
+    next = { ...next, previousRightId: undefined, previousRightMatch: undefined };
   }
   if (winnerNextMatchId === targetId) {
-    next = { ...next, winnerNextMatchId: null, winnerNextMatch: undefined };
+    next = { ...next, winnerNextMatchId: undefined, winnerNextMatch: undefined };
   }
   if (loserNextMatchId === targetId) {
-    next = { ...next, loserNextMatchId: null, loserNextMatch: undefined };
+    next = { ...next, loserNextMatchId: undefined, loserNextMatch: undefined };
   }
 
   return next;
@@ -3251,22 +3251,21 @@ function EventScheduleContent() {
   );
 
   const buildBracketNodes = useCallback((draftMatches: Match[]): BracketNode[] => (
-    draftMatches
-      .map((match) => {
-        const id = normalizeIdToken(match.$id);
-        if (!id) {
-          return null;
-        }
-        return {
-          id,
-          matchId: typeof match.matchId === 'number' ? match.matchId : null,
-          previousLeftId: asBulkMatchRef(match.previousLeftId),
-          previousRightId: asBulkMatchRef(match.previousRightId),
-          winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
-          loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
-        } satisfies BracketNode;
-      })
-      .filter((entry): entry is BracketNode => entry !== null)
+    draftMatches.reduce<BracketNode[]>((nodes, match) => {
+      const id = normalizeIdToken(match.$id);
+      if (!id) {
+        return nodes;
+      }
+      nodes.push({
+        id,
+        matchId: typeof match.matchId === 'number' ? match.matchId : null,
+        previousLeftId: asBulkMatchRef(match.previousLeftId),
+        previousRightId: asBulkMatchRef(match.previousRightId),
+        winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
+        loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
+      });
+      return nodes;
+    }, [])
   ), []);
 
   const validateDraftMatchGraph = useCallback((draftMatches: Match[]): { ok: true } | { ok: false; message: string } => {
@@ -3577,10 +3576,10 @@ function EventScheduleContent() {
                 },
               },
             );
-            const resolvePersistedMatchRef = (value: string | null | undefined): string | null => {
+            const resolvePersistedMatchRef = (value: string | null | undefined): string | undefined => {
               const normalized = normalizeIdToken(value);
               if (!normalized) {
-                return null;
+                return undefined;
               }
               if (!isClientMatchId(normalized)) {
                 return normalized;

@@ -272,21 +272,22 @@ export default function MatchEditModal({
       candidates.push(match);
     }
 
-    return candidates
-      .map((candidate) => {
-        const id = normalizeOptionalId(candidate.$id);
-        if (!id) return null;
-        const isCurrent = currentMatchId === id;
-        return {
-          id,
-          matchId: typeof candidate.matchId === 'number' ? candidate.matchId : null,
-          previousLeftId: normalizeOptionalId(candidate.previousLeftId) ?? null,
-          previousRightId: normalizeOptionalId(candidate.previousRightId) ?? null,
-          winnerNextMatchId: normalizeOptionalId(isCurrent ? winnerNextMatchId : candidate.winnerNextMatchId) ?? null,
-          loserNextMatchId: normalizeOptionalId(isCurrent ? loserNextMatchId : candidate.loserNextMatchId) ?? null,
-        } satisfies BracketNode;
-      })
-      .filter((entry): entry is BracketNode => entry !== null);
+    return candidates.reduce<BracketNode[]>((acc, candidate) => {
+      const id = normalizeOptionalId(candidate.$id);
+      if (!id) {
+        return acc;
+      }
+      const isCurrent = currentMatchId === id;
+      acc.push({
+        id,
+        matchId: typeof candidate.matchId === 'number' ? candidate.matchId : null,
+        previousLeftId: normalizeOptionalId(candidate.previousLeftId) ?? null,
+        previousRightId: normalizeOptionalId(candidate.previousRightId) ?? null,
+        winnerNextMatchId: normalizeOptionalId(isCurrent ? winnerNextMatchId : candidate.winnerNextMatchId) ?? null,
+        loserNextMatchId: normalizeOptionalId(isCurrent ? loserNextMatchId : candidate.loserNextMatchId) ?? null,
+      });
+      return acc;
+    }, []);
   }, [allMatches, currentMatchId, loserNextMatchId, match, winnerNextMatchId]);
 
   const winnerCandidateIds = useMemo(() => {
@@ -581,8 +582,8 @@ export default function MatchEditModal({
       team1Points: sanitizePoints(team1Points),
       team2Points: sanitizePoints(team2Points),
       setResults: sanitizeResults(setResults),
-      winnerNextMatchId: selectedWinnerNextMatchId,
-      loserNextMatchId: selectedLoserNextMatchId,
+      winnerNextMatchId: selectedWinnerNextMatchId ?? undefined,
+      loserNextMatchId: selectedLoserNextMatchId ?? undefined,
     };
 
     const nextField = findFieldById(fieldId);

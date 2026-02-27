@@ -139,7 +139,7 @@ const resolveDivisionForMatch = (
 };
 
 const ensureEventDivisionMembershipForTeam = async (
-  tx: typeof prisma,
+  tx: Pick<typeof prisma, 'divisions'>,
   eventId: string,
   teamId: string,
   divisionId: string,

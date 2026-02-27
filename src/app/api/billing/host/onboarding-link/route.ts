@@ -71,6 +71,10 @@ export async function POST(req: NextRequest) {
 
     try {
       const stripe = new Stripe(secretKey);
+      const isLiveSecretKey = !(
+        secretKey.startsWith('sk_test_')
+        || secretKey.startsWith('rk_test_')
+      );
       const account = await stripe.accounts.retrieve(accountRecord.accountId);
       const dashboardType = account.controller?.stripe_dashboard?.type;
       const isStandardAccount =
@@ -80,7 +84,7 @@ export async function POST(req: NextRequest) {
 
       if (isStandardAccount) {
         return NextResponse.json(
-          { onboardingUrl: getStandardDashboardUrl(account.livemode) },
+          { onboardingUrl: getStandardDashboardUrl(isLiveSecretKey) },
           { status: 200 },
         );
       }
