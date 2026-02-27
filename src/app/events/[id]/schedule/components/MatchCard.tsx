@@ -16,6 +16,8 @@ interface MatchCardProps {
     hideTimeBadge?: boolean;
     showRefereeInHeader?: boolean;
     fieldLabel?: string;
+    team1Placeholder?: string;
+    team2Placeholder?: string;
 }
 
 type MatchDivisionInput = Match['division'] | string | null | undefined;
@@ -56,6 +58,8 @@ function MatchCard({
     hideTimeBadge = false,
     showRefereeInHeader = false,
     fieldLabel,
+    team1Placeholder,
+    team2Placeholder,
 }: MatchCardProps) {
     const isCompactHorizontal = layout === 'horizontal' && hideTimeBadge;
 
@@ -83,9 +87,16 @@ function MatchCard({
         return `${prefix} of match #${previousMatch.matchId}`;
     };
 
-    const getTeamLabel = (teamData: Match['team1'], previousMatch?: Match | null) => {
+    const getTeamLabel = (
+        teamData: Match['team1'],
+        previousMatch?: Match | null,
+        placeholder?: string,
+    ) => {
         if (teamData) {
             return getTeamName(teamData);
+        }
+        if (placeholder && placeholder.trim().length > 0) {
+            return placeholder.trim();
         }
         return getBracketPlaceholder(previousMatch);
     };
@@ -110,9 +121,10 @@ function MatchCard({
     const isInProgress = match.setResults.some((r) => r === 0) && match.setResults.some((r) => r !== 0);
     const divisionLabel = resolveDivisionLabel(match.division);
 
-    const formatTime = (timeString: string) => {
+    const formatTime = (timeString?: string | null) => {
+        if (!timeString || typeof timeString !== 'string') return 'TBD';
         const date = new Date(timeString);
-        if (Number.isNaN(date.getTime())) return '';
+        if (Number.isNaN(date.getTime())) return 'TBD';
         return showDate
             ? formatDisplayDateTime(date)
             : formatDisplayTime(date);
@@ -143,12 +155,14 @@ function MatchCard({
         points,
         winner,
         previousMatch,
+        placeholder,
         reverseScore = false,
     }: {
         team: Match['team1'];
         points: number[];
         winner: boolean;
         previousMatch?: Match | null;
+        placeholder?: string;
         reverseScore?: boolean;
     }) => (
         <div className={`flex items-center justify-between ${isCompactHorizontal ? 'p-1.5' : 'p-2'} rounded ${winner ? 'bg-green-50 border border-green-200' : 'bg-gray-100'}`}>
@@ -169,14 +183,16 @@ function MatchCard({
                         {team && (
                             <Image
                                 src={getTeamAvatarUrl(team, 24)}
-                                alt={getTeamLabel(team, previousMatch)}
+                                alt={getTeamLabel(team, previousMatch, placeholder)}
                                 width={24}
                                 height={24}
                                 unoptimized
                                 className="w-6 h-6 rounded-full"
                             />
                         )}
-                        <span className="text-sm font-medium truncate text-right">{getTeamLabel(team, previousMatch)}</span>
+                        <span className="text-sm font-medium truncate text-right">
+                            {getTeamLabel(team, previousMatch, placeholder)}
+                        </span>
                     </div>
                 </>
             ) : (
@@ -185,14 +201,16 @@ function MatchCard({
                         {team && (
                             <Image
                                 src={getTeamAvatarUrl(team, 24)}
-                                alt={getTeamLabel(team, previousMatch)}
+                                alt={getTeamLabel(team, previousMatch, placeholder)}
                                 width={24}
                                 height={24}
                                 unoptimized
                                 className="w-6 h-6 rounded-full"
                             />
                         )}
-                        <span className="text-sm font-medium truncate">{getTeamLabel(team, previousMatch)}</span>
+                        <span className="text-sm font-medium truncate">
+                            {getTeamLabel(team, previousMatch, placeholder)}
+                        </span>
                     </div>
                     <div className="flex items-center gap-1 text-sm font-mono ml-2">
                         {points.length > 0 ? (
@@ -218,12 +236,14 @@ function MatchCard({
                     points: match.team1Points,
                     winner: result?.winner === 1,
                     previousMatch: match.previousLeftMatch,
+                    placeholder: team1Placeholder,
                 })}
                 {renderTeamRow({
                     team: match.team2,
                     points: match.team2Points,
                     winner: result?.winner === 2,
                     previousMatch: match.previousRightMatch,
+                    placeholder: team2Placeholder,
                 })}
             </div>
             <div className="mt-3 flex items-center justify-between">
@@ -246,6 +266,7 @@ function MatchCard({
                         points: match.team1Points,
                         winner: result?.winner === 1,
                         previousMatch: match.previousLeftMatch,
+                        placeholder: team1Placeholder,
                     })}
                 </div>
                 <div className="h-full">
@@ -254,6 +275,7 @@ function MatchCard({
                         points: match.team2Points,
                         winner: result?.winner === 2,
                         previousMatch: match.previousRightMatch,
+                        placeholder: team2Placeholder,
                         reverseScore: true,
                     })}
                 </div>

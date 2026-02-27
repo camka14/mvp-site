@@ -5,18 +5,25 @@ import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider,
 import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
 import type { Field, Match, Team, UserData } from '@/types';
 
 interface MatchEditModalProps {
   opened: boolean;
   match: Match | null;
+  allMatches?: Match[];
   fields?: Field[];
   teams?: Team[];
   referees?: UserData[];
   doTeamsRef?: boolean;
+  isCreateMode?: boolean;
+  creationContext?: 'schedule' | 'bracket';
+  eventType?: string | null;
+  enforceScheduleFields?: boolean;
   onClose: () => void;
   onSave: (updated: Match) => void;
+  onDelete?: (target: Match) => void;
 }
 
 const MATCH_TIME_PICKER_PROPS = {
@@ -26,6 +33,40 @@ const MATCH_TIME_PICKER_PROPS = {
 };
 
 const coerceDate = (value?: string | Date | null): Date | null => parseLocalDateTime(value ?? null);
+
+const getEntityId = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const row = value as { $id?: unknown; id?: unknown };
+  const idCandidate = typeof row.$id === 'string' && row.$id.trim().length > 0
+    ? row.$id
+    : typeof row.id === 'string' && row.id.trim().length > 0
+      ? row.id
+      : null;
+  return idCandidate ? idCandidate.trim() : null;
+};
+
+const normalizeOptionalId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const resolveMatchTeamId = (match: Match | null | undefined, slot: 'team1' | 'team2'): string | null => {
+  if (!match) {
+    return null;
+  }
+  const idFromField = slot === 'team1'
+    ? normalizeOptionalId(match.team1Id)
+    : normalizeOptionalId(match.team2Id);
+  if (idFromField) {
+    return idFromField;
+  }
+  return slot === 'team1' ? getTeamId(match.team1) : getTeamId(match.team2);
+};
 
 const resolveTeamName = (team: Match['team1'], fallbackTeams: Team[]): string => {
   if (team && typeof team === 'object') {
@@ -43,9 +84,9 @@ const resolveTeamName = (team: Match['team1'], fallbackTeams: Team[]): string =>
     }
   }
 
-  const rawId = typeof team === 'string' ? team : (team as any)?.$id;
+  const rawId = getEntityId(team);
   if (rawId) {
-    const matchTeam = fallbackTeams.find((candidate) => candidate.$id === rawId);
+    const matchTeam = fallbackTeams.find((candidate) => getEntityId(candidate) === rawId);
     if (matchTeam?.name) {
       return matchTeam.name;
     }
@@ -56,20 +97,12 @@ const resolveTeamName = (team: Match['team1'], fallbackTeams: Team[]): string =>
 
 const getTeamId = (team?: Match['team1']): string | null => {
   if (!team) return null;
-  if (typeof team === 'string') return team;
-  if (typeof team === 'object' && '$id' in team && typeof (team as Team).$id === 'string') {
-    return (team as Team).$id;
-  }
-  return null;
+  return getEntityId(team);
 };
 
 const getUserId = (user?: Match['referee']): string | null => {
   if (!user) return null;
-  if (typeof user === 'string') return user;
-  if (typeof user === 'object' && '$id' in user && typeof (user as UserData).$id === 'string') {
-    return (user as UserData).$id;
-  }
-  return null;
+  return getEntityId(user);
 };
 
 const formatUserLabel = (user?: Partial<UserData> | null): string => {
@@ -86,9 +119,9 @@ const formatUserLabel = (user?: Partial<UserData> | null): string => {
 
 const findTeamById = (id: string | null, allTeams: Team[], fallback?: Match['team1']): Team | undefined => {
   if (!id) return undefined;
-  const fromList = allTeams.find((team) => team.$id === id);
+  const fromList = allTeams.find((team) => getEntityId(team) === id);
   if (fromList) return fromList;
-  if (fallback && typeof fallback === 'object' && '$id' in fallback && (fallback as Team).$id === id) {
+  if (fallback && typeof fallback === 'object' && getEntityId(fallback) === id) {
     return fallback as Team;
   }
   return undefined;
@@ -124,12 +157,18 @@ const extractSetData = (match?: Match | null) => {
 export default function MatchEditModal({
   opened,
   match,
+  allMatches = [],
   fields = [],
   teams = [],
   referees = [],
   doTeamsRef = false,
+  isCreateMode = false,
+  creationContext = 'bracket',
+  eventType = null,
+  enforceScheduleFields = false,
   onClose,
   onSave,
+  onDelete,
 }: MatchEditModalProps) {
   const [startValue, setStartValue] = useState<Date | null>(null);
   const [endValue, setEndValue] = useState<Date | null>(null);
@@ -141,8 +180,11 @@ export default function MatchEditModal({
   const [team1Points, setTeam1Points] = useState<number[]>([0]);
   const [team2Points, setTeam2Points] = useState<number[]>([0]);
   const [setResults, setSetResults] = useState<number[]>([0]);
+  const [winnerNextMatchId, setWinnerNextMatchId] = useState<string | null>(null);
+  const [loserNextMatchId, setLoserNextMatchId] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -157,6 +199,8 @@ export default function MatchEditModal({
       setTeam1Points([0]);
       setTeam2Points([0]);
       setSetResults([0]);
+      setWinnerNextMatchId(null);
+      setLoserNextMatchId(null);
       setLocked(false);
       setError(null);
       return;
@@ -164,34 +208,135 @@ export default function MatchEditModal({
 
     setStartValue(coerceDate(match.start));
     setEndValue(coerceDate(match.end));
-    setFieldId(match.field && typeof match.field === 'object' ? match.field.$id : null);
-    setTeam1Id(getTeamId(match.team1));
-    setTeam2Id(getTeamId(match.team2));
+    setFieldId(getEntityId(match.field));
+    setTeam1Id(resolveMatchTeamId(match, 'team1'));
+    setTeam2Id(resolveMatchTeamId(match, 'team2'));
     const initialTeamRefId =
-      match.teamRefereeId ??
+      normalizeOptionalId(match.teamRefereeId) ??
       getTeamId(match.teamReferee) ??
       // Legacy fallback when referee held team data
       getTeamId((match as any).referee);
     setTeamRefereeId(initialTeamRefId);
-    setUserRefereeId(match.refereeId ?? getUserId(match.referee));
+    setUserRefereeId(normalizeOptionalId(match.refereeId) ?? getUserId(match.referee));
 
     const aligned = extractSetData(match);
     setTeam1Points(aligned.team1);
     setTeam2Points(aligned.team2);
     setSetResults(aligned.results);
+    setWinnerNextMatchId(normalizeOptionalId(match.winnerNextMatchId) ?? null);
+    setLoserNextMatchId(normalizeOptionalId(match.loserNextMatchId) ?? null);
     setLocked(Boolean(match.locked));
     setError(null);
   }, [match, opened]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const matchTeam1Id = useMemo(() => getTeamId(match?.team1), [match]);
-  const matchTeam2Id = useMemo(() => getTeamId(match?.team2), [match]);
+  const allMatchOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allMatches.forEach((candidate) => {
+      const id = normalizeOptionalId(candidate.$id);
+      if (!id) {
+        return;
+      }
+      const label = typeof candidate.matchId === 'number'
+        ? `Match #${candidate.matchId}`
+        : id;
+      map.set(id, label);
+    });
+    const currentId = normalizeOptionalId(match?.$id);
+    if (currentId && !map.has(currentId)) {
+      map.set(
+        currentId,
+        typeof match?.matchId === 'number' ? `Match #${match.matchId}` : currentId,
+      );
+    }
+    return map;
+  }, [allMatches, match]);
+
+  const currentMatchId = useMemo(
+    () => normalizeOptionalId(match?.$id),
+    [match?.$id],
+  );
+
+  const bracketNodes = useMemo<BracketNode[]>(() => {
+    const ids = new Set<string>();
+    const candidates: Match[] = [];
+    allMatches.forEach((candidate) => {
+      const id = normalizeOptionalId(candidate.$id);
+      if (!id || ids.has(id)) {
+        return;
+      }
+      ids.add(id);
+      candidates.push(candidate);
+    });
+    if (match && currentMatchId && !ids.has(currentMatchId)) {
+      candidates.push(match);
+    }
+
+    return candidates
+      .map((candidate) => {
+        const id = normalizeOptionalId(candidate.$id);
+        if (!id) return null;
+        const isCurrent = currentMatchId === id;
+        return {
+          id,
+          matchId: typeof candidate.matchId === 'number' ? candidate.matchId : null,
+          previousLeftId: normalizeOptionalId(candidate.previousLeftId) ?? null,
+          previousRightId: normalizeOptionalId(candidate.previousRightId) ?? null,
+          winnerNextMatchId: normalizeOptionalId(isCurrent ? winnerNextMatchId : candidate.winnerNextMatchId) ?? null,
+          loserNextMatchId: normalizeOptionalId(isCurrent ? loserNextMatchId : candidate.loserNextMatchId) ?? null,
+        } satisfies BracketNode;
+      })
+      .filter((entry): entry is BracketNode => entry !== null);
+  }, [allMatches, currentMatchId, loserNextMatchId, match, winnerNextMatchId]);
+
+  const winnerCandidateIds = useMemo(() => {
+    if (!currentMatchId) {
+      return [] as string[];
+    }
+    return filterValidNextMatchCandidates({
+      sourceId: currentMatchId,
+      nodes: bracketNodes,
+      lane: 'winner',
+    });
+  }, [bracketNodes, currentMatchId]);
+
+  const loserCandidateIds = useMemo(() => {
+    if (!currentMatchId) {
+      return [] as string[];
+    }
+    return filterValidNextMatchCandidates({
+      sourceId: currentMatchId,
+      nodes: bracketNodes,
+      lane: 'loser',
+    });
+  }, [bracketNodes, currentMatchId]);
+
+  const winnerNextOptions = useMemo(
+    () => winnerCandidateIds.map((id) => ({ value: id, label: allMatchOptions.get(id) ?? id })),
+    [allMatchOptions, winnerCandidateIds],
+  );
+  const loserNextOptions = useMemo(
+    () => loserCandidateIds.map((id) => ({ value: id, label: allMatchOptions.get(id) ?? id })),
+    [allMatchOptions, loserCandidateIds],
+  );
+
+  const selectedWinnerNextMatchId = useMemo(
+    () => (winnerNextMatchId && winnerCandidateIds.includes(winnerNextMatchId) ? winnerNextMatchId : null),
+    [winnerCandidateIds, winnerNextMatchId],
+  );
+  const selectedLoserNextMatchId = useMemo(
+    () => (loserNextMatchId && loserCandidateIds.includes(loserNextMatchId) ? loserNextMatchId : null),
+    [loserCandidateIds, loserNextMatchId],
+  );
+
+  const matchTeam1Id = useMemo(() => resolveMatchTeamId(match, 'team1'), [match]);
+  const matchTeam2Id = useMemo(() => resolveMatchTeamId(match, 'team2'), [match]);
   const matchTeamRefereeId = useMemo(
-    () => match?.teamRefereeId ?? getTeamId(match?.teamReferee) ?? getTeamId((match as any)?.referee),
+    () => normalizeOptionalId(match?.teamRefereeId) ?? getTeamId(match?.teamReferee) ?? getTeamId((match as any)?.referee),
     [match],
   );
   const matchUserRefereeId = useMemo(
-    () => match?.refereeId ?? getUserId(match?.referee),
+    () => normalizeOptionalId(match?.refereeId) ?? getUserId(match?.referee),
     [match],
   );
 
@@ -200,8 +345,12 @@ export default function MatchEditModal({
     const optionsMap = new Map<string, { value: string; label: string }>();
 
     teams.forEach((team) => {
-      optionsMap.set(team.$id, {
-        value: team.$id,
+      const teamId = getEntityId(team);
+      if (!teamId) {
+        return;
+      }
+      optionsMap.set(teamId, {
+        value: teamId,
         label: resolveTeamName(team, teams),
       });
     });
@@ -221,10 +370,17 @@ export default function MatchEditModal({
   }, [teams, matchTeam1Id, matchTeam2Id, matchTeamRefereeId, match]);
 
   const refereeOptions = useMemo(() => {
-    const options = (referees ?? []).map((referee) => ({
-      value: referee.$id,
-      label: formatUserLabel(referee),
-    }));
+    const options = (referees ?? []).reduce<Array<{ value: string; label: string }>>((acc, referee) => {
+      const refereeId = getEntityId(referee);
+      if (!refereeId) {
+        return acc;
+      }
+      acc.push({
+        value: refereeId,
+        label: formatUserLabel(referee),
+      });
+      return acc;
+    }, []);
 
     const ensureOption = (id: string | null, label: string) => {
       if (!id || !label) return;
@@ -249,10 +405,17 @@ export default function MatchEditModal({
   );
 
   const fieldOptions = useMemo(
-    () => fields.map((field) => ({
-      value: field.$id,
-      label: field.name || `Field ${field.fieldNumber ?? ''}`.trim(),
-    })),
+    () => fields.reduce<Array<{ value: string; label: string }>>((acc, field) => {
+      const fieldId = getEntityId(field);
+      if (!fieldId) {
+        return acc;
+      }
+      acc.push({
+        value: fieldId,
+        label: field.name || `Field ${field.fieldNumber ?? ''}`.trim(),
+      });
+      return acc;
+    }, []),
     [fields],
   );
 
@@ -263,7 +426,7 @@ export default function MatchEditModal({
     [teamRefereeId, teams, match],
   );
   const selectedUserReferee = useMemo(() => {
-    const fromList = referees.find((referee) => referee.$id === userRefereeId);
+    const fromList = referees.find((referee) => getEntityId(referee) === userRefereeId);
     if (fromList) {
       return fromList;
     }
@@ -347,9 +510,9 @@ export default function MatchEditModal({
 
   const findFieldById = (id: string | null): Field | undefined => {
     if (!id) return undefined;
-    const fromList = fields.find((field) => field.$id === id);
+    const fromList = fields.find((field) => getEntityId(field) === id);
     if (fromList) return fromList;
-    if (match?.field && typeof match.field === 'object' && match.field.$id === id) {
+    if (match?.field && typeof match.field === 'object' && getEntityId(match.field) === id) {
       return match.field;
     }
     return undefined;
@@ -361,12 +524,16 @@ export default function MatchEditModal({
       return;
     }
 
-    if (!startValue || !endValue) {
-      setError('Start and end times are required.');
-      return;
-    }
-
-    if (endValue.getTime() <= startValue.getTime()) {
+    if (requiresScheduleFields) {
+      if (!fieldId || !startValue || !endValue) {
+        setError('Field, start, and end are required for schedule-created matches.');
+        return;
+      }
+      if (endValue.getTime() <= startValue.getTime()) {
+        setError('End time must be after the start time.');
+        return;
+      }
+    } else if (startValue && endValue && endValue.getTime() <= startValue.getTime()) {
       setError('End time must be after the start time.');
       return;
     }
@@ -376,17 +543,50 @@ export default function MatchEditModal({
       return;
     }
 
+    const nodesForValidation = bracketNodes.map((node) => {
+      if (!currentMatchId || node.id !== currentMatchId) {
+        return node;
+      }
+      return {
+        ...node,
+        winnerNextMatchId: selectedWinnerNextMatchId,
+        loserNextMatchId: selectedLoserNextMatchId,
+      } satisfies BracketNode;
+    });
+    const graphValidation = validateAndNormalizeBracketGraph(nodesForValidation);
+    if (!graphValidation.ok) {
+      setError(graphValidation.errors[0]?.message ?? 'Invalid bracket links.');
+      return;
+    }
+
+    if (isCreateMode && String(eventType ?? '').toUpperCase() === 'TOURNAMENT' && currentMatchId) {
+      const normalizedNode = graphValidation.normalizedById[currentMatchId];
+      const hasAnyLink = Boolean(
+        normalizeOptionalId(selectedWinnerNextMatchId)
+        || normalizeOptionalId(selectedLoserNextMatchId)
+        || normalizedNode?.previousLeftId
+        || normalizedNode?.previousRightId,
+      );
+      if (!hasAnyLink) {
+        setError('Tournament match creation requires at least one bracket link.');
+        return;
+      }
+    }
+
     const updated: Match = {
       ...match,
-      start: formatLocalDateTime(startValue),
-      end: formatLocalDateTime(endValue),
+      start: startValue ? formatLocalDateTime(startValue) : null,
+      end: endValue ? formatLocalDateTime(endValue) : null,
       locked,
       team1Points: sanitizePoints(team1Points),
       team2Points: sanitizePoints(team2Points),
       setResults: sanitizeResults(setResults),
+      winnerNextMatchId: selectedWinnerNextMatchId,
+      loserNextMatchId: selectedLoserNextMatchId,
     };
 
     const nextField = findFieldById(fieldId);
+    updated.fieldId = fieldId ?? null;
     if (nextField) {
       updated.field = { ...nextField };
     } else {
@@ -394,6 +594,7 @@ export default function MatchEditModal({
     }
 
     const nextTeam1 = selectedTeam1;
+    updated.team1Id = team1Id ?? null;
     if (nextTeam1) {
       updated.team1 = { ...nextTeam1 };
     } else {
@@ -401,6 +602,7 @@ export default function MatchEditModal({
     }
 
     const nextTeam2 = selectedTeam2;
+    updated.team2Id = team2Id ?? null;
     if (nextTeam2) {
       updated.team2 = { ...nextTeam2 };
     } else {
@@ -427,8 +629,24 @@ export default function MatchEditModal({
     onSave(updated);
   };
 
+  const handleDelete = () => {
+    if (!match || !onDelete) {
+      return;
+    }
+    const confirmed = window.confirm(
+      isCreateMode
+        ? 'Remove this unsaved match from the draft?'
+        : 'Delete this match from the event? This cannot be undone.',
+    );
+    if (!confirmed) {
+      return;
+    }
+    setError(null);
+    onDelete(match);
+  };
+
   return (
-    <Modal opened={opened} onClose={handleClose} title="Edit Match" centered size="lg">
+    <Modal opened={opened} onClose={handleClose} title={isCreateMode ? 'Add Match' : 'Edit Match'} centered size="lg">
       <Stack gap="md">
         {error && (
           <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
@@ -503,23 +721,46 @@ export default function MatchEditModal({
         )}
 
         <DateTimePicker
-          label="Start time"
+          label={requiresScheduleFields ? 'Start time' : 'Start time (optional)'}
           value={startValue}
           onChange={handleStartDateChange}
           withSeconds
           valueFormat="MM/DD/YYYY hh:mm:ss A"
           timePickerProps={MATCH_TIME_PICKER_PROPS}
-          required
+          required={requiresScheduleFields}
         />
         <DateTimePicker
-          label="End time"
+          label={requiresScheduleFields ? 'End time' : 'End time (optional)'}
           value={endValue}
           onChange={handleEndDateChange}
           withSeconds
           valueFormat="MM/DD/YYYY hh:mm:ss A"
           timePickerProps={MATCH_TIME_PICKER_PROPS}
-          required
+          required={requiresScheduleFields}
           minDate={startValue ?? undefined}
+        />
+
+        <Divider label="Bracket Links" />
+
+        <Select
+          label="Winner advances to"
+          data={winnerNextOptions}
+          value={selectedWinnerNextMatchId}
+          onChange={setWinnerNextMatchId}
+          placeholder="No next winner match"
+          clearable
+          searchable
+          nothingFoundMessage={winnerNextOptions.length ? 'No matches' : 'No valid matches'}
+        />
+        <Select
+          label="Loser advances to"
+          data={loserNextOptions}
+          value={selectedLoserNextMatchId}
+          onChange={setLoserNextMatchId}
+          placeholder="No next loser match"
+          clearable
+          searchable
+          nothingFoundMessage={loserNextOptions.length ? 'No matches' : 'No valid matches'}
         />
 
         <Divider label="Sets" />
@@ -562,9 +803,24 @@ export default function MatchEditModal({
           </Group>
         </Group>
 
-        <Group justify="flex-end" mt="md">
-          <Button variant="default" onClick={handleClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!startValue || !endValue}>Save changes</Button>
+        <Group justify="space-between" mt="md">
+          <Group>
+            {onDelete && (
+              <Button
+                variant="light"
+                color="red"
+                onClick={handleDelete}
+              >
+                {isCreateMode ? 'Discard match' : 'Delete match'}
+              </Button>
+            )}
+          </Group>
+          <Group>
+            <Button variant="default" onClick={handleClose}>Cancel</Button>
+            <Button onClick={handleSave} disabled={requiresScheduleFields && (!startValue || !endValue || !fieldId)}>
+              {isCreateMode ? 'Create match' : 'Save changes'}
+            </Button>
+          </Group>
         </Group>
       </Stack>
     </Modal>

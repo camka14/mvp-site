@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack } from '@mantine/core';
+import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
     Event,
@@ -14,6 +14,7 @@ import {
     getEventImageUrl,
     formatPrice,
 } from '@/types';
+import { apiRequest } from '@/lib/apiClient';
 import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
@@ -25,6 +26,8 @@ import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService, FamilyChild } from '@/lib/familyService';
 import { registrationService, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
+import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
+import { buildDivisionCapacityBreakdown, isDivisionAtCapacity, resolveDivisionCapacitySnapshot } from '@/lib/divisionCapacity';
 import {
     buildDivisionToken,
     evaluateDivisionAgeEligibility,
@@ -35,6 +38,7 @@ import {
     normalizeDivisionRatingType,
     parseDivisionToken,
 } from '@/lib/divisionTypes';
+import { buildDivisionDisplayNameIndex, resolveDivisionDisplayName } from '@/lib/divisionDisplay';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -56,6 +60,7 @@ const SHEET_CONTENT_WIDTH = `min(${SHEET_CONTENT_MAX_WIDTH}, calc(100vw - 2rem))
 const SIGN_MODAL_Z_INDEX = SHEET_POPOVER_Z_INDEX + 200;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
+const JOIN_API_TIMEOUT_MS = 5_000;
 
 type JoinIntent = {
     mode: 'user' | 'team' | 'child' | 'child_free_agent' | 'user_waitlist' | 'team_waitlist' | 'child_waitlist';
@@ -317,6 +322,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [showPlayersDropdown, setShowPlayersDropdown] = useState(false);
     const [showTeamsDropdown, setShowTeamsDropdown] = useState(false);
     const [showFreeAgentsDropdown, setShowFreeAgentsDropdown] = useState(false);
+    const [showCapacityBreakdown, setShowCapacityBreakdown] = useState(false);
     const [selectedFreeAgentActionUser, setSelectedFreeAgentActionUser] = useState<UserData | null>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [joining, setJoining] = useState(false);
@@ -370,6 +376,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const divisionOptions = React.useMemo(
         () => buildDivisionOptionsForEvent(currentEvent),
         [currentEvent],
+    );
+    const divisionDisplayNameIndex = React.useMemo(
+        () => buildDivisionDisplayNameIndex(currentEvent?.divisionDetails),
+        [currentEvent?.divisionDetails],
     );
     const eventDivisionLabels = React.useMemo(() => {
         const nameById = new Map<string, string>();
@@ -488,6 +498,23 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         selectedDivisionOption,
         selectedDivisionTypeKey,
     ]);
+    const selectedDivisionCapacitySnapshot = React.useMemo(
+        () => resolveDivisionCapacitySnapshot({
+            event: currentEvent,
+            divisionId: selectedDivisionOption?.id,
+            eligibleTeamIds: teams.map((team) => team.$id),
+        }),
+        [currentEvent, selectedDivisionOption?.id, teams],
+    );
+    const selectedDivisionAtCapacity = isDivisionAtCapacity(selectedDivisionCapacitySnapshot);
+    const divisionCapacityBreakdown = React.useMemo(
+        () => buildDivisionCapacityBreakdown({
+            event: currentEvent,
+            excludePlayoffs: true,
+            eligibleTeamIds: teams.map((team) => team.$id),
+        }),
+        [currentEvent, teams],
+    );
     const selectedDivisionBilling = React.useMemo(() => {
         if (!currentEvent) {
             return {
@@ -772,7 +799,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             const eventTeams: Team[] = Array.isArray(baseEvent.teams) ? (baseEvent.teams as Team[]) : [];
 
             setPlayers(eventPlayers);
-            setTeams(eventTeams);
+            const isSchedulableSlotEvent = baseEvent.eventType === 'LEAGUE' || baseEvent.eventType === 'TOURNAMENT';
+            const filteredTeams = isSchedulableSlotEvent
+                ? eventTeams.filter((team) => typeof team.parentTeamId === 'string' && team.parentTeamId.trim().length > 0)
+                : eventTeams;
+            setTeams(filteredTeams);
 
             const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
             const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
@@ -816,6 +847,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setPendingSignedDocumentId(null);
             setShowPasswordModal(false);
             setShowJoinChoiceModal(false);
+            setShowCapacityBreakdown(false);
             setPassword('');
             setPasswordError(null);
             setConfirmingPassword(false);
@@ -875,6 +907,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             installmentDueDates,
             allowSplit: ownerType === 'TEAM' ? Boolean(currentEvent.allowTeamSplitDefault) : false,
             paymentPlanEnabled: true,
+            timeoutMs: JOIN_API_TIMEOUT_MS,
             event: {
                 $id: currentEvent.$id,
                 start: currentEvent.start,
@@ -1003,6 +1036,28 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return undefined;
         })();
 
+        const totalParticipants = currentEvent.teamSignup ? teams.length : players.length;
+        const participantCapacity = resolveEventParticipantCapacity(currentEvent);
+        const eventAtCapacity = participantCapacity > 0 && totalParticipants >= participantCapacity;
+        const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
+
+        if (joinAtCapacity && intent.mode === 'user') {
+            await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user');
+            setJoinNotice('Added to waitlist.');
+            await loadEventDetails();
+            return;
+        }
+
+        if (joinAtCapacity && intent.mode === 'team') {
+            if (!resolvedTeam?.$id) {
+                throw new Error('Team is required to join the waitlist.');
+            }
+            await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team');
+            setJoinNotice('Team added to waitlist.');
+            await loadEventDetails();
+            return;
+        }
+
         const shouldRegisterSelf = intent.mode === 'user' && !currentEvent.teamSignup;
         let registrationResult: EventRegistration | null = null;
 
@@ -1032,16 +1087,66 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
 
         if (selectedDivisionBilling.allowPaymentPlans) {
-            if (intent.mode === 'team') {
-                if (!resolvedTeam?.$id) {
-                    throw new Error('Team is required to start a payment plan.');
-                }
-                await createBillForOwner('TEAM', resolvedTeam.$id);
-                setJoinNotice('Payment plan started for your team. A bill was created—you can manage payments from your Profile.');
-            } else {
-                await createBillForOwner('USER', user.$id);
-                setJoinNotice('Payment plan started. A bill was created for you—pay installments from your Profile.');
+            const eventForJoin = checkoutEvent ?? currentEvent;
+            const joinTeam = intent.mode === 'team' ? resolvedTeam : undefined;
+
+            if (intent.mode === 'team' && !joinTeam?.$id) {
+                throw new Error('Team is required to start a payment plan.');
             }
+
+            try {
+                await paymentService.joinEvent(
+                    user,
+                    eventForJoin,
+                    joinTeam,
+                    undefined,
+                    undefined,
+                    selection,
+                    JOIN_API_TIMEOUT_MS,
+                );
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Failed to join event.';
+                if (!message.toLowerCase().includes('already registered')) {
+                    throw error;
+                }
+            }
+
+            try {
+                if (intent.mode === 'team' && joinTeam?.$id) {
+                    await createBillForOwner('TEAM', joinTeam.$id);
+                    setJoinNotice(
+                        'Team joined. Payment plan started. A bill was created—you can manage payments from your Profile.',
+                    );
+                } else {
+                    await createBillForOwner('USER', user.$id);
+                    setJoinNotice('Joined. Payment plan started. A bill was created—pay installments from your Profile.');
+                }
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Failed to start payment plan.';
+                if (message.toLowerCase().includes('payment plan already exists')) {
+                    setJoinNotice(
+                        intent.mode === 'team'
+                            ? 'Team joined. Payment plan already exists—you can manage payments from your Profile.'
+                            : 'Joined. Payment plan already exists—you can manage payments from your Profile.',
+                    );
+                } else {
+                    try {
+                        await paymentService.leaveEvent(
+                            user,
+                            eventForJoin,
+                            joinTeam,
+                            undefined,
+                            undefined,
+                            undefined,
+                            JOIN_API_TIMEOUT_MS,
+                        );
+                    } catch (rollbackError) {
+                        console.error('Failed to rollback payment-plan join after billing error', rollbackError);
+                    }
+                    throw new Error(message);
+                }
+            }
+
             await loadEventDetails();
             return;
         }
@@ -1055,6 +1160,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     undefined,
                     undefined,
                     selection,
+                    JOIN_API_TIMEOUT_MS,
                 );
             }
             await loadEventDetails();
@@ -1075,10 +1181,13 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         isDivisionSelectionMissing,
         isFreeForUser,
         loadEventDetails,
+        players.length,
         registrationByDivisionType,
         registerChildForEvent,
         selectedDivisionBilling.allowPaymentPlans,
+        selectedDivisionAtCapacity,
         selectedTeamId,
+        teams.length,
         user,
         userTeams,
     ]);
@@ -1103,27 +1212,26 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
         setConfirmingPassword(true);
         setPasswordError(null);
+        setJoinError(null);
+        setJoinNotice(null);
+        let stage: 'confirm_password' | 'load_sign_links' | 'finalize_join' = 'confirm_password';
         try {
-            const response = await fetch('/api/documents/confirm-password', {
+            stage = 'confirm_password';
+            await apiRequest<{ ok: true }>('/api/documents/confirm-password', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
+                timeoutMs: JOIN_API_TIMEOUT_MS,
+                body: {
                     email: authUser.email,
-                    password: password,
+                    password,
                     eventId: currentEvent.$id,
-                }),
+                },
             });
-            const result = await response.json().catch(() => ({}));
-            if (!response.ok || result?.error) {
-                throw new Error(result?.error || 'Password confirmation failed.');
-            }
 
             const signerContext =
                 pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent' || pendingJoin.mode === 'child_waitlist'
                     ? 'parent_guardian'
                     : 'participant';
+            stage = 'load_sign_links';
             const parentLinks = await boldsignService.createSignLinks({
                 eventId: currentEvent.$id,
                 user,
@@ -1131,6 +1239,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 signerContext,
                 childUserId: pendingJoin.childId,
                 childEmail: pendingJoin.childEmail ?? undefined,
+                timeoutMs: JOIN_API_TIMEOUT_MS,
             });
             const shouldCollectChildSignatureInSameSession = (
                 pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent' || pendingJoin.mode === 'child_waitlist'
@@ -1149,6 +1258,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     signerContext: 'child',
                     childUserId: pendingJoin.childId,
                     childEmail: pendingJoin.childEmail ?? undefined,
+                    timeoutMs: JOIN_API_TIMEOUT_MS,
                 });
                 const seen = new Set<string>();
                 links = [...parentLinks, ...childLinks].filter((link) => {
@@ -1162,12 +1272,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             }
 
             if (!links.length) {
+                stage = 'finalize_join';
                 setShowPasswordModal(false);
                 setPassword('');
                 const intent = pendingJoin;
                 setPendingJoin(null);
                 await finalizeJoin(intent);
                 setJoining(false);
+                setJoiningChildFreeAgent(false);
                 return;
             }
 
@@ -1178,7 +1290,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setPassword('');
             setShowSignModal(true);
         } catch (error) {
-            setPasswordError(error instanceof Error ? error.message : 'Failed to confirm password.');
+            const message = error instanceof Error ? error.message : 'Failed to confirm password.';
+            if (stage === 'finalize_join') {
+                setJoinError(message || 'Failed to complete registration.');
+                setPendingJoin(null);
+                setShowPasswordModal(false);
+                setPassword('');
+                setJoining(false);
+                setJoiningChildFreeAgent(false);
+                return;
+            }
+            setPasswordError(message);
         } finally {
             setConfirmingPassword(false);
         }
@@ -1375,7 +1497,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 if (cancelled) {
                     return;
                 }
-                setJoinError('Failed to confirm signature.');
+                const message = error instanceof Error ? error.message : 'Failed to confirm signature.';
+                setJoinError(message || 'Failed to confirm signature.');
                 setPendingSignedDocumentId(null);
                 setShowSignModal(false);
                 setSignLinks([]);
@@ -1441,7 +1564,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             }
             return;
         }
-        const eventWaitlistMode = players.length >= currentEvent.maxParticipants || selectedChildIsWaitlisted;
+        const eventCapacity = resolveEventParticipantCapacity(currentEvent);
+        const eventWaitlistMode = (eventCapacity > 0 && players.length >= eventCapacity) || selectedChildIsWaitlisted;
         if (eventWaitlistMode) {
             setJoinError(null);
             setJoinNotice(null);
@@ -1741,7 +1865,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     // Check registration status depending on signup type using relations
                     const registered = latest.teamSignup
                         ? (targetTeamId
-                            ? Object.values(latest.teams || {}).some(t => t.$id === targetTeamId)
+                            ? Object.values(latest.teams || {}).some(t => t.parentTeamId === targetTeamId || t.$id === targetTeamId)
                             : Object.values(latest.teams || {}).some(t => (t.playerIds || []).includes(user.$id)))
                         : (latest.players || []).some(p => p.$id === user.$id);
 
@@ -1771,7 +1895,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const { date, time } = getEventDateTime(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
     const totalParticipants = isTeamSignup ? teams.length : players.length;
-    const eventAtCapacity = totalParticipants >= currentEvent.maxParticipants;
+    const participantCapacity = resolveEventParticipantCapacity(currentEvent);
+    const eventAtCapacity = participantCapacity > 0 && totalParticipants >= participantCapacity;
+    const spotsLeft = participantCapacity > 0 ? Math.max(0, participantCapacity - totalParticipants) : 0;
+    const eventFillPercent = participantCapacity > 0
+        ? Math.min(100, Math.round((totalParticipants / participantCapacity) * 100))
+        : 0;
     const normalizedFreeAgentIds = (() => {
         const fromEvent = collectUniqueUserIds(currentEvent.freeAgentIds);
         const additionalFromProfiles = freeAgents
@@ -1875,9 +2004,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         ? userTeams.find((team) => team.$id === selectedTeamId) ?? null
         : null;
     const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
-    const showSelfWaitlistActions = eventAtCapacity || isUserWaitlisted;
-    const childWaitlistMode = !isTeamSignup && (eventAtCapacity || selectedChildIsWaitlisted);
-    const showTeamWaitlistActions = eventAtCapacity || selectedTeamIsWaitlisted;
+    const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
+    const showSelfWaitlistActions = joinAtCapacity || isUserWaitlisted;
+    const childWaitlistMode = !isTeamSignup && (joinAtCapacity || selectedChildIsWaitlisted);
+    const showTeamWaitlistActions = joinAtCapacity || selectedTeamIsWaitlisted;
     const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
     const selfWaitlistJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
     const selfWaitlistLeaveDisabled = joining || eventHasStarted;
@@ -2213,7 +2343,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                 <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Max Participants:</span>
-                                        <span className="font-medium">{currentEvent.maxParticipants}</span>
+                                        <span className="font-medium">{participantCapacity}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Team Size Limit:</span>
@@ -2232,18 +2362,110 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             {/* Participants */}
                             <h3 className="text-lg font-semibold text-gray-900 mb-4">Participants</h3>
 
+                            <Paper withBorder p="md" radius="md" className="space-y-3">
+                                <Group justify="space-between" align="flex-start" gap="xs">
+                                    <div>
+                                        <Text size="xs" c="dimmed">{isTeamSignup ? 'Teams' : 'Spots'}</Text>
+                                        <Text fw={600}>
+                                            {participantCapacity > 0
+                                                ? `${totalParticipants}/${participantCapacity}`
+                                                : totalParticipants}
+                                        </Text>
+                                    </div>
+                                    <div>
+                                        <Text size="xs" c="dimmed">{isTeamSignup ? 'Free Agents' : 'Waitlist'}</Text>
+                                        <Text fw={600}>
+                                            {isTeamSignup
+                                                ? normalizedFreeAgentIds.length
+                                                : normalizedWaitlistIds.length}
+                                        </Text>
+                                    </div>
+                                    <div>
+                                        <Text size="xs" c="dimmed">Left</Text>
+                                        <Text fw={600}>{participantCapacity > 0 ? spotsLeft : '—'}</Text>
+                                    </div>
+                                </Group>
+                                <Progress value={eventFillPercent} />
+                                <Text size="xs" c="dimmed">
+                                    {participantCapacity > 0
+                                        ? `${eventFillPercent}% full • ${spotsLeft} left`
+                                        : 'No capacity configured'}
+                                </Text>
+
+                                {divisionCapacityBreakdown.length > 0 && (
+                                    <>
+                                        <Button
+                                            variant="subtle"
+                                            size="xs"
+                                            px={0}
+                                            onClick={() => setShowCapacityBreakdown((prev) => !prev)}
+                                        >
+                                            {showCapacityBreakdown ? 'Hide division breakdown' : 'Show division breakdown'}
+                                        </Button>
+                                        <Collapse in={showCapacityBreakdown}>
+                                            <div className="space-y-2 pt-2">
+                                                {divisionCapacityBreakdown.map((divisionRow) => {
+                                                    const sportInput = typeof currentEvent?.sport === 'string'
+                                                        ? currentEvent.sport
+                                                        : currentEvent?.sport?.name ?? currentEvent?.sportId ?? null;
+                                                    const divisionLabel = resolveDivisionDisplayName({
+                                                        division: divisionRow.divisionId,
+                                                        divisionNameIndex: divisionDisplayNameIndex,
+                                                        sportInput,
+                                                    }) ?? divisionRow.name ?? 'Division';
+                                                    const divisionLeft = divisionRow.capacity > 0
+                                                        ? Math.max(0, divisionRow.capacity - divisionRow.filled)
+                                                        : 0;
+                                                    const divisionPercent = divisionRow.capacity > 0
+                                                        ? Math.min(100, Math.round((divisionRow.filled / divisionRow.capacity) * 100))
+                                                        : 0;
+                                                    return (
+                                                        <Paper
+                                                            key={divisionRow.divisionId}
+                                                            withBorder
+                                                            p="sm"
+                                                            radius="md"
+                                                            className="space-y-2"
+                                                        >
+                                                            <Group justify="space-between" align="center" gap="xs">
+                                                                <Text size="sm" fw={600}>
+                                                                    {divisionLabel}
+                                                                </Text>
+                                                                <Text size="sm" c="dimmed" fw={600}>
+                                                                    {divisionRow.capacity > 0
+                                                                        ? `${divisionRow.filled}/${divisionRow.capacity}`
+                                                                        : divisionRow.filled}
+                                                                </Text>
+                                                            </Group>
+                                                            <Progress value={divisionPercent} size="sm" />
+                                                            <Text size="xs" c="dimmed">
+                                                                {divisionRow.capacity > 0
+                                                                    ? `${divisionPercent}% full • ${divisionLeft} left`
+                                                                    : 'No capacity configured'}
+                                                            </Text>
+                                                        </Paper>
+                                                    );
+                                                })}
+                                            </div>
+                                        </Collapse>
+                                    </>
+                                )}
+                            </Paper>
+
                             {/* Players Section */}
-                            <div className="mb-4">
-                                <ParticipantsPreview
-                                    title="Players"
-                                    participants={players}
-                                    totalCount={players.length}
-                                    isLoading={isLoadingEvent}
-                                    onClick={() => setShowPlayersDropdown(true)}
-                                    getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
-                                    emptyMessage="No players registered yet"
-                                />
-                            </div>
+                            {!isTeamSignup && (
+                                <div className="mb-4">
+                                    <ParticipantsPreview
+                                        title="Players"
+                                        participants={players}
+                                        totalCount={players.length}
+                                        isLoading={isLoadingEvent}
+                                        onClick={() => setShowPlayersDropdown(true)}
+                                        getAvatarUrl={(participant) => getUserAvatarUrl(participant as UserData, 32)}
+                                        emptyMessage="No players registered yet"
+                                    />
+                                </div>
+                            )}
 
                             {/* Teams Section */}
                             {isTeamSignup && (
@@ -2347,7 +2569,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                         </Text>
                                         <div style={{ textAlign: 'center', marginTop: 8 }}>
                                             <Text size="sm" c="dimmed">
-                                                {totalParticipants} / {currentEvent.maxParticipants} total participants
+                                                {totalParticipants} / {participantCapacity} total participants
                                             </Text>
                                         </div>
                                         {canShowScheduleButton && (
@@ -2563,7 +2785,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 {/* Total participants below actions */}
                                                                 <div style={{ textAlign: 'center' }}>
                                                                     <Text size="sm" c="dimmed">
-                                                                        {totalParticipants} / {currentEvent.maxParticipants} total participants
+                                                                        {totalParticipants} / {participantCapacity} total participants
                                                                     </Text>
                                                                 </div>
                                                             </div>
@@ -2750,61 +2972,77 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             )}
 
             {/* Players Dropdown */}
-            <ParticipantsDropdown
-                isOpen={showPlayersDropdown}
-                onClose={() => setShowPlayersDropdown(false)}
-                title="Event Players"
-                participants={players}
-                isLoading={isLoadingEvent}
-                renderParticipant={(player) => (
-                    <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                        <Image
-                            src={getUserAvatarUrl(player as UserData, 40)}
-                            alt={(player as UserData).fullName}
-                            width={40}
-                            height={40}
-                            unoptimized
-                            className="w-10 h-10 rounded-full object-cover"
-                        />
-                        <div>
-                            <div className="font-medium text-gray-900">{(player as UserData).fullName}</div>
-                            <div className="text-sm text-gray-500">@{(player as UserData).userName}</div>
-                        </div>
-                    </div>
-                )}
-                emptyMessage="No players have joined this event yet."
-            />
-
-            {/* Teams Dropdown */}
-            <ParticipantsDropdown
-                isOpen={showTeamsDropdown}
-                onClose={() => setShowTeamsDropdown(false)}
-                title="Event Teams"
-                participants={teams}
-                isLoading={isLoadingEvent}
-                renderParticipant={(team) => (
-                    <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                        <Image
-                            src={getTeamAvatarUrl(team as Team, 40)}
-                            alt={(team as Team).name || 'Team'}
-                            width={40}
-                            height={40}
-                            unoptimized
-                            className="w-10 h-10 rounded-full object-cover"
-                        />
-                        <div className="flex-1">
-                            <div className="font-medium text-gray-900">{(team as Team).name || 'Unnamed Team'}</div>
-                            <div className="text-sm text-gray-500">
-                                {(team as Team).currentSize} members • {typeof (team as Team).division === 'string' ? (team as Team).division : ((team as Team).division as any)?.name || 'Division'} Division
+            {!isTeamSignup && (
+                <ParticipantsDropdown
+                    isOpen={showPlayersDropdown}
+                    onClose={() => setShowPlayersDropdown(false)}
+                    title="Event Players"
+                    participants={players}
+                    isLoading={isLoadingEvent}
+                    renderParticipant={(player) => (
+                        <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
+                            <Image
+                                src={getUserAvatarUrl(player as UserData, 40)}
+                                alt={(player as UserData).fullName}
+                                width={40}
+                                height={40}
+                                unoptimized
+                                className="w-10 h-10 rounded-full object-cover"
+                            />
+                            <div>
+                                <div className="font-medium text-gray-900">{(player as UserData).fullName}</div>
+                                <div className="text-sm text-gray-500">@{(player as UserData).userName}</div>
                             </div>
                         </div>
-                        <div className="text-xs text-gray-400">
-                            {(team as Team).winRate}% win rate
+                    )}
+                    emptyMessage="No players have joined this event yet."
+                />
+            )}
+
+            {/* Teams Dropdown */}
+            {isTeamSignup && (
+                <ParticipantsDropdown
+                    isOpen={showTeamsDropdown}
+                    onClose={() => setShowTeamsDropdown(false)}
+                    title="Event Teams"
+                    participants={teams}
+                    isLoading={isLoadingEvent}
+                    renderParticipant={(team) => {
+                        const teamRow = team as Team;
+                        const sportInput = typeof currentEvent?.sport === 'string'
+                            ? currentEvent.sport
+                            : currentEvent?.sport?.name ?? currentEvent?.sportId ?? null;
+                        const divisionLabel = resolveDivisionDisplayName({
+                            division: teamRow.division,
+                            divisionNameIndex: divisionDisplayNameIndex,
+                            sportInput,
+                        }) ?? 'Division';
+                        const divisionSuffix = /\\bdivision\\b/i.test(divisionLabel) ? '' : ' Division';
+                        return (
+                            <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
+                            <Image
+                                src={getTeamAvatarUrl(teamRow, 40)}
+                                alt={teamRow.name || 'Team'}
+                                width={40}
+                                height={40}
+                                unoptimized
+                                className="w-10 h-10 rounded-full object-cover"
+                            />
+                            <div className="flex-1">
+                                <div className="font-medium text-gray-900">{teamRow.name || 'Unnamed Team'}</div>
+                                <div className="text-sm text-gray-500">
+                                    {teamRow.currentSize} members • {divisionLabel}{divisionSuffix}
+                                </div>
+                            </div>
+                            <div className="text-xs text-gray-400">
+                                Team
+                            </div>
                         </div>
-                    </div>
-                )}
-                emptyMessage="No teams have registered for this event yet."
-            />
+                        );
+                    }}
+                    emptyMessage="No teams have registered for this event yet."
+                />
+            )}
 
             {/* Free Agents Dropdown */}
             {isTeamSignup && (

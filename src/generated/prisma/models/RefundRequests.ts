@@ -31,6 +31,7 @@ export type RefundRequestsMinAggregateOutputType = {
   eventId: string | null
   userId: string | null
   hostId: string | null
+  teamId: string | null
   reason: string | null
   organizationId: string | null
   status: $Enums.RefundRequestsStatusEnum | null
@@ -43,6 +44,7 @@ export type RefundRequestsMaxAggregateOutputType = {
   eventId: string | null
   userId: string | null
   hostId: string | null
+  teamId: string | null
   reason: string | null
   organizationId: string | null
   status: $Enums.RefundRequestsStatusEnum | null
@@ -55,6 +57,7 @@ export type RefundRequestsCountAggregateOutputType = {
   eventId: number
   userId: number
   hostId: number
+  teamId: number
   reason: number
   organizationId: number
   status: number
@@ -69,6 +72,7 @@ export type RefundRequestsMinAggregateInputType = {
   eventId?: true
   userId?: true
   hostId?: true
+  teamId?: true
   reason?: true
   organizationId?: true
   status?: true
@@ -81,6 +85,7 @@ export type RefundRequestsMaxAggregateInputType = {
   eventId?: true
   userId?: true
   hostId?: true
+  teamId?: true
   reason?: true
   organizationId?: true
   status?: true
@@ -93,6 +98,7 @@ export type RefundRequestsCountAggregateInputType = {
   eventId?: true
   userId?: true
   hostId?: true
+  teamId?: true
   reason?: true
   organizationId?: true
   status?: true
@@ -178,6 +184,7 @@ export type RefundRequestsGroupByOutputType = {
   eventId: string
   userId: string
   hostId: string | null
+  teamId: string | null
   reason: string
   organizationId: string | null
   status: $Enums.RefundRequestsStatusEnum | null
@@ -211,6 +218,7 @@ export type RefundRequestsWhereInput = {
   eventId?: Prisma.StringFilter<"RefundRequests"> | string
   userId?: Prisma.StringFilter<"RefundRequests"> | string
   hostId?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
+  teamId?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
   reason?: Prisma.StringFilter<"RefundRequests"> | string
   organizationId?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
   status?: Prisma.EnumRefundRequestsStatusEnumNullableFilter<"RefundRequests"> | $Enums.RefundRequestsStatusEnum | null
@@ -223,6 +231,7 @@ export type RefundRequestsOrderByWithRelationInput = {
   eventId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   hostId?: Prisma.SortOrderInput | Prisma.SortOrder
+  teamId?: Prisma.SortOrderInput | Prisma.SortOrder
   reason?: Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -238,6 +247,7 @@ export type RefundRequestsWhereUniqueInput = Prisma.AtLeast<{
   eventId?: Prisma.StringFilter<"RefundRequests"> | string
   userId?: Prisma.StringFilter<"RefundRequests"> | string
   hostId?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
+  teamId?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
   reason?: Prisma.StringFilter<"RefundRequests"> | string
   organizationId?: Prisma.StringNullableFilter<"RefundRequests"> | string | null
   status?: Prisma.EnumRefundRequestsStatusEnumNullableFilter<"RefundRequests"> | $Enums.RefundRequestsStatusEnum | null
@@ -250,6 +260,7 @@ export type RefundRequestsOrderByWithAggregationInput = {
   eventId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   hostId?: Prisma.SortOrderInput | Prisma.SortOrder
+  teamId?: Prisma.SortOrderInput | Prisma.SortOrder
   reason?: Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -268,6 +279,7 @@ export type RefundRequestsScalarWhereWithAggregatesInput = {
   eventId?: Prisma.StringWithAggregatesFilter<"RefundRequests"> | string
   userId?: Prisma.StringWithAggregatesFilter<"RefundRequests"> | string
   hostId?: Prisma.StringNullableWithAggregatesFilter<"RefundRequests"> | string | null
+  teamId?: Prisma.StringNullableWithAggregatesFilter<"RefundRequests"> | string | null
   reason?: Prisma.StringWithAggregatesFilter<"RefundRequests"> | string
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"RefundRequests"> | string | null
   status?: Prisma.EnumRefundRequestsStatusEnumNullableWithAggregatesFilter<"RefundRequests"> | $Enums.RefundRequestsStatusEnum | null
@@ -280,6 +292,7 @@ export type RefundRequestsCreateInput = {
   eventId: string
   userId: string
   hostId?: string | null
+  teamId?: string | null
   reason: string
   organizationId?: string | null
   status?: $Enums.RefundRequestsStatusEnum | null
@@ -292,6 +305,7 @@ export type RefundRequestsUncheckedCreateInput = {
   eventId: string
   userId: string
   hostId?: string | null
+  teamId?: string | null
   reason: string
   organizationId?: string | null
   status?: $Enums.RefundRequestsStatusEnum | null
@@ -304,6 +318,7 @@ export type RefundRequestsUpdateInput = {
   eventId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   hostId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reason?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.NullableEnumRefundRequestsStatusEnumFieldUpdateOperationsInput | $Enums.RefundRequestsStatusEnum | null
@@ -316,6 +331,7 @@ export type RefundRequestsUncheckedUpdateInput = {
   eventId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   hostId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reason?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.NullableEnumRefundRequestsStatusEnumFieldUpdateOperationsInput | $Enums.RefundRequestsStatusEnum | null
@@ -328,6 +344,7 @@ export type RefundRequestsCreateManyInput = {
   eventId: string
   userId: string
   hostId?: string | null
+  teamId?: string | null
   reason: string
   organizationId?: string | null
   status?: $Enums.RefundRequestsStatusEnum | null
@@ -340,6 +357,7 @@ export type RefundRequestsUpdateManyMutationInput = {
   eventId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   hostId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reason?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.NullableEnumRefundRequestsStatusEnumFieldUpdateOperationsInput | $Enums.RefundRequestsStatusEnum | null
@@ -352,6 +370,7 @@ export type RefundRequestsUncheckedUpdateManyInput = {
   eventId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   hostId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reason?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.NullableEnumRefundRequestsStatusEnumFieldUpdateOperationsInput | $Enums.RefundRequestsStatusEnum | null
@@ -364,6 +383,7 @@ export type RefundRequestsCountOrderByAggregateInput = {
   eventId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   reason?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   status?: Prisma.SortOrder
@@ -376,6 +396,7 @@ export type RefundRequestsMaxOrderByAggregateInput = {
   eventId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   reason?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   status?: Prisma.SortOrder
@@ -388,6 +409,7 @@ export type RefundRequestsMinOrderByAggregateInput = {
   eventId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   hostId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   reason?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   status?: Prisma.SortOrder
@@ -406,6 +428,7 @@ export type RefundRequestsSelect<ExtArgs extends runtime.Types.Extensions.Intern
   eventId?: boolean
   userId?: boolean
   hostId?: boolean
+  teamId?: boolean
   reason?: boolean
   organizationId?: boolean
   status?: boolean
@@ -418,6 +441,7 @@ export type RefundRequestsSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   eventId?: boolean
   userId?: boolean
   hostId?: boolean
+  teamId?: boolean
   reason?: boolean
   organizationId?: boolean
   status?: boolean
@@ -430,6 +454,7 @@ export type RefundRequestsSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   eventId?: boolean
   userId?: boolean
   hostId?: boolean
+  teamId?: boolean
   reason?: boolean
   organizationId?: boolean
   status?: boolean
@@ -442,12 +467,13 @@ export type RefundRequestsSelectScalar = {
   eventId?: boolean
   userId?: boolean
   hostId?: boolean
+  teamId?: boolean
   reason?: boolean
   organizationId?: boolean
   status?: boolean
 }
 
-export type RefundRequestsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "userId" | "hostId" | "reason" | "organizationId" | "status", ExtArgs["result"]["refundRequests"]>
+export type RefundRequestsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "userId" | "hostId" | "teamId" | "reason" | "organizationId" | "status", ExtArgs["result"]["refundRequests"]>
 
 export type $RefundRequestsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "RefundRequests"
@@ -459,6 +485,7 @@ export type $RefundRequestsPayload<ExtArgs extends runtime.Types.Extensions.Inte
     eventId: string
     userId: string
     hostId: string | null
+    teamId: string | null
     reason: string
     organizationId: string | null
     status: $Enums.RefundRequestsStatusEnum | null
@@ -891,6 +918,7 @@ export interface RefundRequestsFieldRefs {
   readonly eventId: Prisma.FieldRef<"RefundRequests", 'String'>
   readonly userId: Prisma.FieldRef<"RefundRequests", 'String'>
   readonly hostId: Prisma.FieldRef<"RefundRequests", 'String'>
+  readonly teamId: Prisma.FieldRef<"RefundRequests", 'String'>
   readonly reason: Prisma.FieldRef<"RefundRequests", 'String'>
   readonly organizationId: Prisma.FieldRef<"RefundRequests", 'String'>
   readonly status: Prisma.FieldRef<"RefundRequests", 'RefundRequestsStatusEnum'>

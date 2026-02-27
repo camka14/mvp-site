@@ -41,14 +41,24 @@ export async function GET(req: NextRequest) {
     ? user.teamIds.map((id) => String(id).trim()).filter(Boolean)
     : [];
 
+  const teamsDelegate = getTeamsDelegate(prisma);
+  const slotTeamRows = teamIds.length && teamsDelegate?.findMany
+    ? await teamsDelegate.findMany({
+        where: { parentTeamId: { in: teamIds } },
+        select: { id: true },
+      })
+    : [];
+  const slotTeamIds = uniqueStrings(slotTeamRows.map((row: { id?: unknown }) => String(row.id ?? '').trim()));
+  const relevantTeamIds = uniqueStrings([...teamIds, ...slotTeamIds]);
+
   const involvementFilters: Record<string, unknown>[] = [
     { userIds: { has: user.id } },
     { freeAgentIds: { has: user.id } },
     { waitListIds: { has: user.id } },
     { refereeIds: { has: user.id } },
   ];
-  if (teamIds.length) {
-    involvementFilters.push({ teamIds: { hasSome: teamIds } });
+  if (relevantTeamIds.length) {
+    involvementFilters.push({ teamIds: { hasSome: relevantTeamIds } });
   }
 
   const where: Record<string, unknown> = {
@@ -75,11 +85,11 @@ export async function GET(req: NextRequest) {
 
   const eventIds = events.map((event) => event.id);
   const matchFilters: Record<string, unknown>[] = [{ refereeId: user.id }];
-  if (teamIds.length) {
+  if (relevantTeamIds.length) {
     matchFilters.push(
-      { team1Id: { in: teamIds } },
-      { team2Id: { in: teamIds } },
-      { teamRefereeId: { in: teamIds } },
+      { team1Id: { in: relevantTeamIds } },
+      { team2Id: { in: relevantTeamIds } },
+      { teamRefereeId: { in: relevantTeamIds } },
     );
   }
 
@@ -103,7 +113,6 @@ export async function GET(req: NextRequest) {
     ...matches.flatMap((match) => [match.team1Id, match.team2Id, match.teamRefereeId]),
   ]);
 
-  const teamsDelegate = getTeamsDelegate(prisma);
   const [fields, teams] = await Promise.all([
     fieldIds.length
       ? prisma.fields.findMany({

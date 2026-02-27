@@ -11,12 +11,13 @@ import {
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
-import type { Field, Match, UserData } from '@/types';
+import type { Field, Match, Team, UserData } from '@/types';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import MatchCard from './MatchCard';
 
 interface LeagueCalendarViewProps {
   matches: Match[];
+  teams?: Team[];
   fields?: Field[];
   eventStart?: string;
   eventEnd?: string;
@@ -213,6 +214,7 @@ const calendarFormats = {
 
 export function LeagueCalendarView({
   matches,
+  teams = [],
   fields = [],
   eventStart,
   eventEnd,
@@ -249,6 +251,16 @@ export function LeagueCalendarView({
     });
     return lookup;
   }, [fields]);
+
+  const teamLookup = useMemo(() => {
+    const lookup = new Map<string, Team>();
+    teams.forEach((team) => {
+      if (typeof team?.$id === 'string' && team.$id.trim().length > 0) {
+        lookup.set(team.$id.trim(), team);
+      }
+    });
+    return lookup;
+  }, [teams]);
 
   const teamHasUser = useCallback(
     (team: Match['team1'], fallbackId?: string | null) => {
@@ -335,27 +347,42 @@ export function LeagueCalendarView({
   const calendarEvents = useMemo(() => {
     return matchesToDisplay
       .map((match) => {
+        const hydratedMatch: Match = {
+          ...match,
+          team1:
+            match.team1 && typeof match.team1 === 'object'
+              ? match.team1
+              : (typeof match.team1Id === 'string' ? teamLookup.get(match.team1Id) : undefined),
+          team2:
+            match.team2 && typeof match.team2 === 'object'
+              ? match.team2
+              : (typeof match.team2Id === 'string' ? teamLookup.get(match.team2Id) : undefined),
+          teamReferee:
+            match.teamReferee && typeof match.teamReferee === 'object'
+              ? match.teamReferee
+              : (typeof match.teamRefereeId === 'string' ? teamLookup.get(match.teamRefereeId) : undefined),
+        };
         const start = coerceDateTime(match.start);
         if (!start) return null;
         const end = coerceDateTime(match.end)
           ?? new Date(start.getTime() + 60 * 60 * 1000);
-        const fieldId = resolveMatchFieldId(match);
-        const fieldLabel = resolveMatchFieldLabel(match, fieldLookup);
+        const fieldId = resolveMatchFieldId(hydratedMatch);
+        const fieldLabel = resolveMatchFieldLabel(hydratedMatch, fieldLookup);
 
         return {
           id: match.$id,
-          title: `${resolveTeamLabel(match, 'team1')} vs ${resolveTeamLabel(match, 'team2')}`,
+          title: `${resolveTeamLabel(hydratedMatch, 'team1')} vs ${resolveTeamLabel(hydratedMatch, 'team2')}`,
           start,
           end,
           allDay: false,
           resourceId: fieldId ?? UNASSIGNED_FIELD_RESOURCE_ID,
           fieldLabel,
-          resource: match,
+          resource: hydratedMatch,
         } as CalendarEvent;
       })
       .filter((event): event is CalendarEvent => Boolean(event))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [fieldLookup, matchesToDisplay]);
+  }, [fieldLookup, matchesToDisplay, teamLookup]);
 
   const calendarResources = useMemo<CalendarResource[]>(() => {
     const resources = new Map<string, CalendarResource>();

@@ -15,8 +15,6 @@ export type LeagueStanding = {
   teamId: string;
   teamName: string;
   team: Team | null;
-  wins: number;
-  losses: number;
   draws: number;
   goalsFor: number;
   goalsAgainst: number;
@@ -118,6 +116,32 @@ export const getLeagueDivisionTeamIds = (league: League, divisionId: string): Se
     return teamIds;
   }
 
+  const division = getLeagueDivisionById(league, divisionId);
+  const hasConfiguredMembership = league.divisions.some(
+    (entry) => Array.isArray(entry.teamIds) && entry.teamIds.length > 0,
+  );
+  if (!league.singleDivision && division && hasConfiguredMembership) {
+    const configuredTeamIds = Array.isArray(division.teamIds)
+      ? division.teamIds
+      : [];
+    for (const rawTeamId of configuredTeamIds) {
+      const teamId = typeof rawTeamId === 'string' ? rawTeamId.trim() : '';
+      if (!teamId || !league.teams[teamId]) {
+        continue;
+      }
+      teamIds.add(teamId);
+    }
+    return teamIds;
+  }
+
+  // Single-division leagues intentionally ignore per-division teamIds.
+  if (league.singleDivision && league.divisions.length === 1) {
+    for (const teamId of Object.keys(league.teams)) {
+      teamIds.add(teamId);
+    }
+    return teamIds;
+  }
+
   for (const team of Object.values(league.teams)) {
     if (normalizeToken(team.division?.id) === normalizedDivisionId) {
       teamIds.add(team.id);
@@ -146,6 +170,10 @@ export const computeLeagueStandings = (
   options?: ComputeStandingsOptions,
 ): LeagueStanding[] => {
   const standings = new Map<string, LeagueStanding>();
+  const scoring = league.leagueScoringConfig ?? {};
+  const pointsForWin = resolveLeagueScoringValue((scoring as any).pointsForWin);
+  const pointsForDraw = resolveLeagueScoringValue((scoring as any).pointsForDraw);
+  const pointsForLoss = resolveLeagueScoringValue((scoring as any).pointsForLoss);
 
   const ensureRow = (teamObj: Team | null): LeagueStanding | null => {
     if (!teamObj) {
@@ -159,8 +187,6 @@ export const computeLeagueStandings = (
         teamId: teamObj.id,
         teamName: teamObj.name || teamObj.id,
         team: teamObj,
-        wins: 0,
-        losses: 0,
         draws: 0,
         goalsFor: 0,
         goalsAgainst: 0,
@@ -233,28 +259,25 @@ export const computeLeagueStandings = (
     row1.goalsAgainst += team2Total;
     row2.goalsFor += team2Total;
     row2.goalsAgainst += team1Total;
+    row1.matchesPlayed += 1;
+    row2.matchesPlayed += 1;
 
     if (outcome === 'team1') {
-      row1.wins += 1;
-      row2.losses += 1;
+      row1.basePoints += pointsForWin;
+      row2.basePoints += pointsForLoss;
     } else if (outcome === 'team2') {
-      row2.wins += 1;
-      row1.losses += 1;
+      row2.basePoints += pointsForWin;
+      row1.basePoints += pointsForLoss;
     } else {
       row1.draws += 1;
       row2.draws += 1;
+      row1.basePoints += pointsForDraw;
+      row2.basePoints += pointsForDraw;
     }
   }
 
-  const scoring = league.leagueScoringConfig ?? {};
-  const pointsForWin = resolveLeagueScoringValue((scoring as any).pointsForWin);
-  const pointsForDraw = resolveLeagueScoringValue((scoring as any).pointsForDraw);
-  const pointsForLoss = resolveLeagueScoringValue((scoring as any).pointsForLoss);
-
   for (const row of standings.values()) {
-    row.matchesPlayed = row.wins + row.losses + row.draws;
     row.goalDifference = row.goalsFor - row.goalsAgainst;
-    row.basePoints = row.wins * pointsForWin + row.draws * pointsForDraw + row.losses * pointsForLoss;
 
     const overrideRaw = options?.overridesByTeamId?.[row.teamId];
     const hasOverride = typeof overrideRaw === 'number' && Number.isFinite(overrideRaw);
@@ -264,7 +287,6 @@ export const computeLeagueStandings = (
 
   return Array.from(standings.values()).sort((a, b) => {
     if (b.finalPoints !== a.finalPoints) return b.finalPoints - a.finalPoints;
-    if (b.wins !== a.wins) return b.wins - a.wins;
     if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
     if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
     return a.teamName.toLowerCase().localeCompare(b.teamName.toLowerCase());
@@ -451,12 +473,12 @@ const detachMatchFromTeam = (team: Team | null | undefined, match: Match): void 
   team.matches = team.matches.filter((entry) => entry.id !== match.id);
 };
 
-const assignTeamToMatch = (match: Match, attribute: 'team1' | 'team2', team: Team): void => {
-  const previousTeam = match[attribute];
-  if (previousTeam) {
-    detachMatchFromTeam(previousTeam, match);
+const assignTeamRefereeToMatch = (match: Match, team: Team): void => {
+  const previousTeamReferee = match.teamReferee;
+  if (previousTeamReferee) {
+    detachMatchFromTeam(previousTeamReferee, match);
   }
-  match[attribute] = team;
+  match.teamReferee = team;
   if (!team.matches) {
     team.matches = [];
   }
@@ -465,14 +487,43 @@ const assignTeamToMatch = (match: Match, attribute: 'team1' | 'team2', team: Tea
   }
 };
 
-const clearFirstRoundAssignments = (matches: Match[]): void => {
+const windowsOverlap = (
+  startA: Date,
+  endA: Date,
+  startB: Date,
+  endB: Date,
+): boolean => startA < endB && endA > startB;
+
+const assignTeamToMatch = (
+  match: Match,
+  attribute: 'team1' | 'team2',
+  team: Team,
+  seed: number | null = null,
+): void => {
+  const previousTeam = match[attribute];
+  if (previousTeam) {
+    detachMatchFromTeam(previousTeam, match);
+  }
+  match[attribute] = team;
+  if (attribute === 'team1') {
+    if (typeof seed === 'number') {
+      match.team1Seed = seed;
+    }
+  } else {
+    if (typeof seed === 'number') {
+      match.team2Seed = seed;
+    }
+  }
+  if (!team.matches) {
+    team.matches = [];
+  }
+  if (!team.matches.includes(match)) {
+    team.matches.push(match);
+  }
+};
+
+const clearPendingPlayoffAssignments = (matches: Match[]): void => {
   for (const match of matches) {
-    if (match.losersBracket) {
-      continue;
-    }
-    if (match.previousLeftMatch || match.previousRightMatch) {
-      continue;
-    }
     if (isMatchScored(match)) {
       continue;
     }
@@ -490,41 +541,240 @@ const clearFirstRoundAssignments = (matches: Match[]): void => {
     match.team1 = null;
     match.team2 = null;
     match.teamReferee = null;
+    match.team1Seed = null;
+    match.team2Seed = null;
   }
 };
 
-const copyTemplateAssignments = (
-  actualMatch: Match,
-  templateMatch: Match,
-  teamLookup: Record<string, Team>,
+const assignTeamRefereesForKnownMatches = (matches: Match[], candidates: Team[]): void => {
+  const candidatesById = new Map<string, Team>();
+  candidates.forEach((team) => {
+    if (!team.id || candidatesById.has(team.id)) {
+      return;
+    }
+    candidatesById.set(team.id, team);
+  });
+
+  const orderedCandidates = Array.from(candidatesById.values()).sort((left, right) => {
+    const leftName = left.name?.trim().toLowerCase() ?? '';
+    const rightName = right.name?.trim().toLowerCase() ?? '';
+    if (leftName !== rightName) {
+      return leftName.localeCompare(rightName);
+    }
+    return left.id.localeCompare(right.id);
+  });
+
+  const orderedMatches = [...matches].sort((left, right) => {
+    const startDiff = left.start.getTime() - right.start.getTime();
+    if (startDiff !== 0) {
+      return startDiff;
+    }
+    const endDiff = left.end.getTime() - right.end.getTime();
+    if (endDiff !== 0) {
+      return endDiff;
+    }
+    return (left.matchId ?? 0) - (right.matchId ?? 0);
+  });
+
+  for (const match of orderedMatches) {
+    if (isMatchScored(match)) {
+      continue;
+    }
+
+    const team1 = match.team1;
+    const team2 = match.team2;
+    if (!team1 || !team2) {
+      if (match.teamReferee) {
+        detachMatchFromTeam(match.teamReferee, match);
+        match.teamReferee = null;
+      }
+      continue;
+    }
+
+    if (match.teamReferee && (match.teamReferee.id === team1.id || match.teamReferee.id === team2.id)) {
+      detachMatchFromTeam(match.teamReferee, match);
+      match.teamReferee = null;
+    }
+
+    if (match.teamReferee) {
+      const existingRef = match.teamReferee;
+      const conflict = (existingRef.matches ?? []).some((existingMatch) =>
+        existingMatch.id !== match.id
+        && windowsOverlap(existingMatch.start, existingMatch.end, match.start, match.end),
+      );
+      if (!conflict) {
+        if (!existingRef.matches) {
+          existingRef.matches = [];
+        }
+        if (!existingRef.matches.includes(match)) {
+          existingRef.matches.push(match);
+        }
+        continue;
+      }
+
+      detachMatchFromTeam(existingRef, match);
+      match.teamReferee = null;
+    }
+
+    const candidate = orderedCandidates.find((team) => {
+      if (team.id === team1.id || team.id === team2.id) {
+        return false;
+      }
+      const teamMatches = team.matches ?? [];
+      return !teamMatches.some((teamMatch) =>
+        teamMatch.id !== match.id
+        && windowsOverlap(teamMatch.start, teamMatch.end, match.start, match.end),
+      );
+    });
+
+    if (!candidate) {
+      continue;
+    }
+
+    assignTeamRefereeToMatch(match, candidate);
+  }
+};
+
+type EntrantSlot = {
+  match: Match;
+  attribute: 'team1' | 'team2';
+  seed: number | null;
+  team: Team | null;
+};
+
+const collectEntrantSlots = (
+  match: Match | null,
+  slots: EntrantSlot[],
   visited: Set<string>,
 ): void => {
-  if (visited.has(actualMatch.id)) {
+  if (!match || visited.has(match.id)) {
     return;
   }
-  visited.add(actualMatch.id);
+  visited.add(match.id);
 
-  for (const attribute of ['team1', 'team2'] as const) {
-    const templateTeam = templateMatch[attribute];
-    if (!templateTeam) {
-      continue;
-    }
-    const team = teamLookup[templateTeam.id];
-    if (!team) {
-      continue;
-    }
-    assignTeamToMatch(actualMatch, attribute, team);
+  if (match.previousLeftMatch) {
+    collectEntrantSlots(match.previousLeftMatch, slots, visited);
+  } else {
+    slots.push({
+      match,
+      attribute: 'team1',
+      seed: typeof match.team1Seed === 'number' ? match.team1Seed : null,
+      team: match.team1 ?? null,
+    });
   }
 
-  const children: Array<[Match | null, Match | null]> = [
-    [actualMatch.previousLeftMatch, templateMatch.previousLeftMatch],
-    [actualMatch.previousRightMatch, templateMatch.previousRightMatch],
-  ];
+  if (match.previousRightMatch) {
+    collectEntrantSlots(match.previousRightMatch, slots, visited);
+  } else {
+    slots.push({
+      match,
+      attribute: 'team2',
+      seed: typeof match.team2Seed === 'number' ? match.team2Seed : null,
+      team: match.team2 ?? null,
+    });
+  }
+};
 
-  for (const [actualChild, templateChild] of children) {
-    if (actualChild && templateChild) {
-      copyTemplateAssignments(actualChild, templateChild, teamLookup, visited);
+const countEntrantSlots = (matches: Match[]): number => {
+  let slotCount = 0;
+  for (const match of matches) {
+    if (!match.previousLeftMatch) {
+      slotCount += 1;
     }
+    if (!match.previousRightMatch) {
+      slotCount += 1;
+    }
+  }
+  return slotCount;
+};
+
+const maxConfiguredPlayoffEntrants = (
+  league: League,
+  playoffDivision: Division,
+): number => {
+  const divisionCapacity = [
+    playoffDivision.maxParticipants,
+    playoffDivision.playoffTeamCount,
+  ]
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    .map((value) => Math.max(0, Math.trunc(value)));
+  const leagueCapacity = typeof league.playoffTeamCount === 'number' && Number.isFinite(league.playoffTeamCount)
+    ? Math.max(0, Math.trunc(league.playoffTeamCount))
+    : 0;
+  return Math.max(leagueCapacity, ...divisionCapacity, 0);
+};
+
+const resolveTemplateEntrantCount = (
+  league: League,
+  playoffDivision: Division,
+  playoffMatches: Match[],
+  seededTeamCount: number,
+): number => {
+  const configured = maxConfiguredPlayoffEntrants(league, playoffDivision);
+  const observedSlotCount = countEntrantSlots(playoffMatches);
+  const observedSeed = playoffMatches.reduce((maxSeed, match) => {
+    const team1Seed = typeof match.team1Seed === 'number' ? match.team1Seed : 0;
+    const team2Seed = typeof match.team2Seed === 'number' ? match.team2Seed : 0;
+    return Math.max(maxSeed, team1Seed, team2Seed);
+  }, 0);
+  return Math.max(seededTeamCount, configured, observedSlotCount, observedSeed, 2);
+};
+
+const buildTemplateEntrants = (
+  league: League,
+  playoffDivision: Division,
+  seededTeams: Team[],
+  entrantCount: number,
+): Team[] => {
+  const entrants: Team[] = [...seededTeams];
+  const targetCount = Math.max(entrantCount, seededTeams.length, 2);
+  for (let index = seededTeams.length; index < targetCount; index += 1) {
+    const seed = index + 1;
+    entrants.push(new Team({
+      id: `${league.id}__${playoffDivision.id}__seed_placeholder_${seed}`,
+      captainId: '',
+      division: playoffDivision,
+      name: `Seed ${seed}`,
+      matches: [],
+      playerIds: [],
+    }));
+  }
+  return entrants;
+};
+
+const applyTemplateEntrantAssignments = (
+  actualRoot: Match,
+  templateRoot: Match,
+  teamLookup: Record<string, Team>,
+): void => {
+  const actualSlots: EntrantSlot[] = [];
+  const templateSlots: EntrantSlot[] = [];
+  collectEntrantSlots(actualRoot, actualSlots, new Set<string>());
+  collectEntrantSlots(templateRoot, templateSlots, new Set<string>());
+
+  for (let index = 0; index < actualSlots.length; index += 1) {
+    const actualSlot = actualSlots[index];
+    if (isMatchScored(actualSlot.match)) {
+      continue;
+    }
+    const templateSlot = templateSlots[index] ?? null;
+    const templateSeed = typeof templateSlot?.seed === 'number' ? templateSlot.seed : null;
+    const templateTeamId = templateSlot?.team?.id ?? null;
+    const mappedTeam = templateTeamId ? (teamLookup[templateTeamId] ?? null) : null;
+
+    if (actualSlot.attribute === 'team1') {
+      actualSlot.match.team1Seed = templateSeed;
+      actualSlot.match.team1 = null;
+    } else {
+      actualSlot.match.team2Seed = templateSeed;
+      actualSlot.match.team2 = null;
+    }
+
+    if (!mappedTeam) {
+      continue;
+    }
+
+    assignTeamToMatch(actualSlot.match, actualSlot.attribute, mappedTeam, templateSeed);
   }
 };
 
@@ -638,14 +888,11 @@ const buildTemplateBracket = (
   for (const team of seededTeams) {
     clonedTeams[team.id] = new Team({
       id: team.id,
-      seed: team.seed,
       captainId: team.captainId,
       division: playoffDivision,
       name: team.name,
       matches: [],
       playerIds: [...(team.playerIds ?? [])],
-      wins: team.wins,
-      losses: team.losses,
     });
   }
 
@@ -728,7 +975,15 @@ export const assignTeamsToPlayoffDivisionMatches = (
     return [];
   }
 
-  clearFirstRoundAssignments(playoffMatches);
+  const seededTeamIds = teams.map((team) => team.id);
+  const templateEntrantCount = resolveTemplateEntrantCount(
+    league,
+    playoffDivision,
+    playoffMatches,
+    teams.length,
+  );
+
+  clearPendingPlayoffAssignments(playoffMatches);
   if (teams.length < 2) {
     return [];
   }
@@ -738,22 +993,31 @@ export const assignTeamsToPlayoffDivisionMatches = (
     return [];
   }
 
-  const templateRoot = buildTemplateBracket(league, playoffDivision, teams, context);
-  const seededTeamIds = teams.map((team) => team.id);
+  const templateEntrants = buildTemplateEntrants(league, playoffDivision, teams, templateEntrantCount);
+  const templateRoot = buildTemplateBracket(league, playoffDivision, templateEntrants, context);
 
   if (!templateRoot) {
     const firstRoundMatch = playoffMatches.find(
       (match) => !match.losersBracket && !match.previousLeftMatch && !match.previousRightMatch,
     );
     if (firstRoundMatch && teams[0] && teams[1]) {
-      assignTeamToMatch(firstRoundMatch, 'team1', teams[0]);
-      assignTeamToMatch(firstRoundMatch, 'team2', teams[1]);
+      const team1Seed = typeof firstRoundMatch.team1Seed === 'number' ? firstRoundMatch.team1Seed : 1;
+      const team2Seed = typeof firstRoundMatch.team2Seed === 'number' ? firstRoundMatch.team2Seed : 2;
+      assignTeamToMatch(firstRoundMatch, 'team1', teams[0], team1Seed);
+      assignTeamToMatch(firstRoundMatch, 'team2', teams[1], team2Seed);
+    }
+    if (league.doTeamsRef) {
+      assignTeamRefereesForKnownMatches(playoffMatches, teams);
     }
     return seededTeamIds;
   }
 
   const teamLookup = Object.fromEntries(teams.map((team) => [team.id, team]));
-  copyTemplateAssignments(actualRoot, templateRoot, teamLookup, new Set<string>());
+  applyTemplateEntrantAssignments(actualRoot, templateRoot, teamLookup);
+
+  if (league.doTeamsRef) {
+    assignTeamRefereesForKnownMatches(playoffMatches, teams);
+  }
 
   return seededTeamIds;
 };
@@ -762,7 +1026,11 @@ export const applyLeagueDivisionPlayoffReassignment = (
   league: League,
   divisionId: string,
   context: SchedulerContext = noopContext,
-): { affectedPlayoffDivisionIds: string[]; seededTeamIds: string[] } => {
+): {
+  affectedPlayoffDivisionIds: string[];
+  seededTeamIds: string[];
+  teamIdsByPlayoffDivision: Record<string, string[]>;
+} => {
   const leagueDivision = getLeagueDivisionById(league, divisionId);
   if (!leagueDivision) {
     throw new Error('League division not found.');
@@ -770,7 +1038,7 @@ export const applyLeagueDivisionPlayoffReassignment = (
 
   const playoffTeamCount = getDivisionPlayoffTeamCount(league, leagueDivision);
   if (playoffTeamCount <= 0) {
-    return { affectedPlayoffDivisionIds: [], seededTeamIds: [] };
+    return { affectedPlayoffDivisionIds: [], seededTeamIds: [], teamIdsByPlayoffDivision: {} };
   }
 
   const affectedPlayoffDivisionIds = Array.from(
@@ -787,6 +1055,7 @@ export const applyLeagueDivisionPlayoffReassignment = (
   });
 
   const seededTeamIds: string[] = [];
+  const teamIdsByPlayoffDivision: Record<string, string[]> = {};
 
   for (const playoffDivisionId of affectedPlayoffDivisionIds) {
     const playoffDivision = getPlayoffDivisionById(league, playoffDivisionId);
@@ -803,23 +1072,27 @@ export const applyLeagueDivisionPlayoffReassignment = (
       throw new Error(`Playoff division "${playoffDivision.name}" exceeded capacity (${entrants.length}/${capacity}).`);
     }
 
-    const seededEntrants = entrants.map((team, index) => {
-      const nextSeed = Math.max(1, entrants.length - index);
-      team.seed = nextSeed;
-      return team;
-    });
-
     const assignedTeamIds = assignTeamsToPlayoffDivisionMatches(
       league,
       playoffDivisionId,
-      seededEntrants,
+      entrants,
       context,
     );
+    const normalizedAssignedTeamIds = Array.from(
+      new Set(
+        assignedTeamIds
+          .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
+          .filter((teamId): teamId is string => teamId.length > 0),
+      ),
+    );
+    playoffDivision.teamIds = normalizedAssignedTeamIds;
+    teamIdsByPlayoffDivision[playoffDivision.id] = normalizedAssignedTeamIds;
     seededTeamIds.push(...assignedTeamIds);
   }
 
   return {
     affectedPlayoffDivisionIds,
     seededTeamIds: Array.from(new Set(seededTeamIds)),
+    teamIdsByPlayoffDivision,
   };
 };

@@ -16,13 +16,10 @@ const buildTeams = (division: Division, count: number): Record<string, Team> => 
     const id = `team_${i}`;
     teams[id] = new Team({
       id,
-      seed: i,
       captainId: `captain_${i}`,
       division,
       name: `Team ${i}`,
       playerIds: [],
-      wins: 0,
-      losses: 0,
     });
   }
   return teams;

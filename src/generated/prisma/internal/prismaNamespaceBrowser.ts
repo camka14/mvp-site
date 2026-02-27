@@ -139,6 +139,8 @@ export const MatchesScalarFieldEnum = {
   refereeId: 'refereeId',
   team1Id: 'team1Id',
   team2Id: 'team2Id',
+  team1Seed: 'team1Seed',
+  team2Seed: 'team2Seed',
   eventId: 'eventId',
   fieldId: 'fieldId',
   teamRefereeId: 'teamRefereeId'
@@ -177,7 +179,8 @@ export const DivisionsScalarFieldEnum = {
   ageCutoffDate: 'ageCutoffDate',
   ageCutoffLabel: 'ageCutoffLabel',
   ageCutoffSource: 'ageCutoffSource',
-  fieldIds: 'fieldIds'
+  fieldIds: 'fieldIds',
+  teamIds: 'teamIds'
 } as const
 
 export type DivisionsScalarFieldEnum = (typeof DivisionsScalarFieldEnum)[keyof typeof DivisionsScalarFieldEnum]
@@ -372,6 +375,7 @@ export const RefundRequestsScalarFieldEnum = {
   eventId: 'eventId',
   userId: 'userId',
   hostId: 'hostId',
+  teamId: 'teamId',
   reason: 'reason',
   organizationId: 'organizationId',
   status: 'status'
@@ -451,6 +455,7 @@ export const EventsScalarFieldEnum = {
   autoCancellation: 'autoCancellation',
   eventType: 'eventType',
   doTeamsRef: 'doTeamsRef',
+  teamRefsMaySwap: 'teamRefsMaySwap',
   refereeIds: 'refereeIds',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
@@ -527,12 +532,14 @@ export const TimeSlotsScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   dayOfWeek: 'dayOfWeek',
+  daysOfWeek: 'daysOfWeek',
   startTimeMinutes: 'startTimeMinutes',
   endTimeMinutes: 'endTimeMinutes',
   startDate: 'startDate',
   repeating: 'repeating',
   endDate: 'endDate',
   scheduledFieldId: 'scheduledFieldId',
+  scheduledFieldIds: 'scheduledFieldIds',
   price: 'price',
   divisions: 'divisions',
   requiredTemplateIds: 'requiredTemplateIds'

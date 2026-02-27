@@ -24,6 +24,11 @@ import {
   sideFrom,
   MINUTE_MS,
 } from '@/server/scheduler/types';
+import {
+  canonicalizeTimeSlots,
+  normalizeTimeSlotDays,
+  normalizeTimeSlotFieldIds,
+} from '@/server/timeSlotCanonical';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -79,6 +84,13 @@ const upsertEventWithUnknownArgFallback = async (
 
 const ensureArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : []);
 const ensureStringArray = (value: unknown): string[] => ensureArray(value as string[]);
+const normalizeTeamIdList = (value: unknown): string[] => Array.from(
+  new Set(
+    ensureArray(value as Array<string | null | undefined>)
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter((entry) => entry.length > 0),
+  ),
+);
 const ensureNumberArray = (value: unknown): number[] =>
   ensureArray(value as Array<number | string>)
     .map((item) => (typeof item === 'number' ? item : Number(item)))
@@ -310,6 +322,77 @@ const persistTimeSlotDivisions = async (
   }
 };
 
+const isMissingTimeSlotArrayColumnError = (error: unknown): boolean => {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'P2022') {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('timeslots')
+    && (
+      normalized.includes('scheduledfieldids')
+      || normalized.includes('daysofweek')
+      || normalized.includes('(not available)')
+    )
+    && normalized.includes('does not exist');
+};
+
+const loadTimeSlotRows = async (client: PrismaLike, timeSlotIds: string[]): Promise<any[]> => {
+  if (!timeSlotIds.length) {
+    return [];
+  }
+  try {
+    return await client.timeSlots.findMany({
+      where: { id: { in: timeSlotIds } },
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        dayOfWeek: true,
+        daysOfWeek: true,
+        startTimeMinutes: true,
+        endTimeMinutes: true,
+        startDate: true,
+        repeating: true,
+        endDate: true,
+        scheduledFieldId: true,
+        scheduledFieldIds: true,
+        price: true,
+        divisions: true,
+        requiredTemplateIds: true,
+      } as any,
+    });
+  } catch (error) {
+    if (!isMissingTimeSlotArrayColumnError(error)) {
+      throw error;
+    }
+    const legacyRows = await client.timeSlots.findMany({
+      where: { id: { in: timeSlotIds } },
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        dayOfWeek: true,
+        startTimeMinutes: true,
+        endTimeMinutes: true,
+        startDate: true,
+        repeating: true,
+        endDate: true,
+        scheduledFieldId: true,
+        price: true,
+      } as any,
+    });
+    return legacyRows.map((row: any) => ({
+      ...row,
+      daysOfWeek: row.dayOfWeek === null || row.dayOfWeek === undefined ? [] : [Number(row.dayOfWeek)],
+      scheduledFieldIds: row.scheduledFieldId ? [String(row.scheduledFieldId)] : [],
+      divisions: [],
+      requiredTemplateIds: [],
+    }));
+  }
+};
+
 const defaultDivisionKeysForSport = (sportId: unknown): string[] => {
   const normalizedSport = typeof sportId === 'string' ? sportId.toLowerCase() : '';
   if (normalizedSport.includes('soccer')) {
@@ -334,6 +417,14 @@ const buildDivisionDisplayName = (key: string, sportId?: string | null): string 
 
 const buildDivisionId = (eventId: string, key: string): string => buildEventDivisionId(eventId, key);
 
+const scopeDivisionIdentifierToEvent = (identifier: string, eventId: string): string => {
+  if (identifier.startsWith('division_')) {
+    return identifier;
+  }
+  const token = extractDivisionTokenFromId(identifier) ?? identifier;
+  return buildDivisionId(eventId, token);
+};
+
 const normalizeDivisionIdentifierList = (
   value: unknown,
   eventId?: string,
@@ -345,11 +436,7 @@ const normalizeDivisionIdentifierList = (
   if (!eventId) {
     return normalized;
   }
-  return normalized.map((entry) => (
-    entry.includes('__division__') || entry.startsWith('division_')
-      ? entry
-      : buildDivisionId(eventId, entry)
-  ));
+  return normalized.map((entry) => scopeDivisionIdentifierToEvent(entry, eventId));
 };
 
 const normalizePlacementDivisionIdentifierList = (
@@ -367,9 +454,7 @@ const normalizePlacementDivisionIdentifierList = (
     if (!eventId) {
       return normalized;
     }
-    return normalized.includes('__division__') || normalized.startsWith('division_')
-      ? normalized
-      : buildDivisionId(eventId, normalized);
+    return scopeDivisionIdentifierToEvent(normalized, eventId);
   });
 };
 
@@ -398,6 +483,7 @@ type DivisionDetailPayload = {
   ageCutoffLabel: string | null;
   ageCutoffSource: string | null;
   fieldIds: string[];
+  teamIds?: string[];
 };
 
 const normalizeDivisionDetailsPayload = (
@@ -433,8 +519,7 @@ const normalizeDivisionDetailsPayload = (
           divisionTypeId,
         });
       const id = rawId
-        && (rawId.includes('__division__') || rawId.startsWith('division_'))
-        ? rawId
+        ? scopeDivisionIdentifierToEvent(rawId, eventId)
         : buildDivisionId(eventId, key);
       const divisionTypeName = typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
         ? row.divisionTypeName.trim()
@@ -447,7 +532,10 @@ const normalizeDivisionDetailsPayload = (
       const rawMaxParticipants = coerceNullableNumber(row.maxParticipants);
       const rawPlayoffTeamCount = coerceNullableNumber(row.playoffTeamCount);
       const rawKind = normalizeDivisionKind(row.kind, defaultKind);
-      const rawPlayoffPlacementDivisionIds = normalizePlacementDivisionIdentifierList(row.playoffPlacementDivisionIds, eventId);
+      const hasPlayoffPlacementDivisionIdsInput = Object.prototype.hasOwnProperty.call(row, 'playoffPlacementDivisionIds');
+      const rawPlayoffPlacementDivisionIds = hasPlayoffPlacementDivisionIdsInput
+        ? normalizePlacementDivisionIdentifierList(row.playoffPlacementDivisionIds, eventId)
+        : undefined;
       const rawStandingsOverrides = normalizeStandingsOverrides(row.standingsOverrides);
       const rawPlayoffConfig = rawKind === 'PLAYOFF'
         ? (
@@ -472,6 +560,8 @@ const normalizeDivisionDetailsPayload = (
           .filter((value) => Number.isFinite(value))
           .map((value) => Math.max(0, Math.round(value)))
         : undefined;
+      const hasTeamIdsInput = Object.prototype.hasOwnProperty.call(row, 'teamIds');
+      const rawTeamIds = hasTeamIdsInput ? normalizeTeamIdList(row.teamIds) : undefined;
 
       const detail: DivisionDetailPayload = {
         id,
@@ -493,7 +583,9 @@ const normalizeDivisionDetailsPayload = (
           : rawPlayoffTeamCount === null
             ? null
             : Math.max(0, Math.trunc(rawPlayoffTeamCount)),
-        playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds,
+        ...(rawPlayoffPlacementDivisionIds !== undefined
+          ? { playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds }
+          : {}),
         standingsOverrides: rawStandingsOverrides,
         playoffConfig: rawPlayoffConfig,
         standingsConfirmedAt: rawStandingsConfirmedAt,
@@ -510,6 +602,11 @@ const normalizeDivisionDetailsPayload = (
         ageCutoffLabel: typeof row.ageCutoffLabel === 'string' ? row.ageCutoffLabel : null,
         ageCutoffSource: typeof row.ageCutoffSource === 'string' ? row.ageCutoffSource : null,
         fieldIds: normalizeFieldIds(row.fieldIds),
+        ...(rawKind === 'PLAYOFF'
+          ? { teamIds: [] }
+          : hasTeamIdsInput
+            ? { teamIds: rawTeamIds }
+            : {}),
       };
       return detail;
     })
@@ -569,17 +666,6 @@ const normalizeFieldIds = (value: unknown): string[] => {
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
 };
 
-const normalizeSlotFieldIds = (slot: Record<string, unknown>): string[] => {
-  const fromList = normalizeFieldIds(slot.scheduledFieldIds);
-  if (fromList.length) {
-    return fromList;
-  }
-  if (typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0) {
-    return [slot.scheduledFieldId];
-  }
-  return [];
-};
-
 const buildDivisionFieldMap = (
   divisionKeys: string[],
   fieldIds: string[],
@@ -632,62 +718,6 @@ const buildLegacyFieldDivisionMap = (divisionFieldMap: Record<string, string[]>)
   return result;
 };
 
-const normalizeDayValues = (slot: { dayOfWeek?: unknown; daysOfWeek?: unknown }): number[] => {
-  const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
-    ? slot.daysOfWeek
-    : slot.dayOfWeek !== undefined
-      ? [slot.dayOfWeek]
-      : [];
-  return Array.from(
-    new Set(
-      source
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
-    ),
-  ).sort((a, b) => a - b);
-};
-
-const normalizeSlotBaseId = (value: string): string => {
-  return value
-    .replace(/__d[0-6]__f.+$/, '')
-    .replace(/__f.+$/, '')
-    .replace(/__d[0-6](?:_\d+)?$/, '');
-};
-
-const buildExpandedSlotId = (
-  sourceId: string,
-  baseSlotId: string,
-  day: number,
-  fieldId: string | null,
-  dayCount: number,
-  fieldCount: number,
-): string => {
-  if (dayCount === 1 && fieldCount === 1) {
-    return sourceId;
-  }
-  if (dayCount > 1 && fieldCount === 1) {
-    return `${baseSlotId}__d${day}`;
-  }
-  if (dayCount === 1 && fieldCount > 1) {
-    return `${baseSlotId}__f${fieldId}`;
-  }
-  return `${baseSlotId}__d${day}__f${fieldId}`;
-};
-
-const ensureUniqueExpandedSlotIds = <T extends { id: string }>(slots: T[]): T[] => {
-  const seen = new Map<string, number>();
-  return slots.map((slot) => {
-    const count = seen.get(slot.id) ?? 0;
-    seen.set(slot.id, count + 1);
-    if (count === 0) {
-      return slot;
-    }
-    return {
-      ...slot,
-      id: `${slot.id}__dup${count}`,
-    };
-  });
-};
 
 const coerceDate = (value: unknown): Date | null => {
   if (value instanceof Date) return value;
@@ -816,6 +846,7 @@ const buildDivisions = (
     standingsOverrides?: unknown;
     standingsConfirmedAt?: Date | null;
     standingsConfirmedBy?: string | null;
+    teamIds?: string[] | null;
   }>,
   sportId?: string | null,
   options?: { allowFallback?: boolean; fallbackKind?: 'LEAGUE' | 'PLAYOFF' },
@@ -871,6 +902,7 @@ const buildDivisions = (
       ?? inferred.defaultName
       ?? buildDivisionDisplayName(divisionId, sportId);
     const fieldIds = ensureStringArray(matchedRow?.fieldIds);
+    const teamIds = normalizeTeamIdList(matchedRow?.teamIds);
     const division = new Division(
       divisionId,
       divisionName,
@@ -884,6 +916,7 @@ const buildDivisions = (
       matchedRow?.standingsConfirmedAt ?? null,
       matchedRow?.standingsConfirmedBy ?? null,
       playoffConfig,
+      teamIds,
     );
     result.push(division);
 
@@ -910,25 +943,29 @@ const buildDivisions = (
   return { divisions: result, map, fieldIdsByDivision };
 };
 
-const buildTeams = (rows: any[], divisionMap: Map<string, Division>, fallbackDivision: Division) => {
+const buildTeams = (
+  rows: any[],
+  divisionMap: Map<string, Division>,
+  fallbackDivision: Division,
+  divisionByTeamId: Map<string, Division> = new Map<string, Division>(),
+) => {
   const teams: Record<string, Team> = {};
   for (const row of rows) {
+    const mappedDivision = divisionByTeamId.get(row.id);
     const normalizedDivisionId = normalizeDivisionKey(row.division);
-    const division = normalizedDivisionId && divisionMap.has(normalizedDivisionId)
+    const division = mappedDivision
+      ?? (normalizedDivisionId && divisionMap.has(normalizedDivisionId)
       ? (divisionMap.get(normalizedDivisionId) as Division)
       : row.division && divisionMap.has(row.division)
       ? (divisionMap.get(row.division) as Division)
-      : fallbackDivision;
+      : fallbackDivision);
     teams[row.id] = new Team({
       id: row.id,
-      seed: row.seed ?? 0,
       captainId: row.captainId ?? '',
       division,
       name: row.name ?? '',
       matches: [],
       playerIds: ensureArray(row.playerIds),
-      wins: row.wins ?? 0,
-      losses: row.losses ?? 0,
     });
   }
   return teams;
@@ -972,7 +1009,7 @@ const buildTimeSlots = (
   divisionMap: Map<string, Division>,
   fallbackDivisions: Division[],
 ) => {
-  return rows.flatMap((row) => {
+  return rows.map((row) => {
     const repeating = Boolean(row.repeating);
     const startDate = row.startDate instanceof Date ? row.startDate : new Date(row.startDate);
     const endDate = row.endDate ? new Date(row.endDate) : null;
@@ -982,44 +1019,33 @@ const buildTimeSlots = (
     const endTimeMinutes = typeof row.endTimeMinutes === 'number'
       ? row.endTimeMinutes
       : (endDate ? endDate.getHours() * 60 + endDate.getMinutes() : 0);
-    const normalizedDays = normalizeDayValues({
+    const normalizedDays = normalizeTimeSlotDays({
       dayOfWeek: row.dayOfWeek,
       daysOfWeek: (row as any).daysOfWeek,
     });
+    const normalizedFieldIds = normalizeTimeSlotFieldIds(row);
     const slotDivisionIds = normalizeDivisionKeys((row as any).divisions);
     const slotDivisions = slotDivisionIds.length
       ? slotDivisionIds.map((id) => divisionMap.get(id) ?? new Division(id, buildDivisionDisplayName(id)))
       : fallbackDivisions;
-    if (!repeating) {
-      const day = normalizedDays.length
-        ? normalizedDays[0]
-        : ((startDate.getDay() + 6) % 7);
-      return [new TimeSlot({
-        id: row.id,
-        dayOfWeek: day,
-        startDate,
-        endDate,
-        repeating: false,
-        startTimeMinutes,
-        endTimeMinutes,
-        price: row.price ?? null,
-        field: row.scheduledFieldId ?? null,
-        divisions: [...slotDivisions],
-      })];
-    }
-    const days = normalizedDays.length ? normalizedDays : [0];
-    return days.map((day, index) => new TimeSlot({
-      id: days.length === 1 ? row.id : `${row.id}__d${day}_${index}`,
-      dayOfWeek: day,
+    const daysOfWeek = normalizedDays.length
+      ? normalizedDays
+      : [((startDate.getDay() + 6) % 7)];
+    const dayOfWeek = daysOfWeek[0] ?? ((startDate.getDay() + 6) % 7);
+    return new TimeSlot({
+      id: row.id,
+      dayOfWeek,
+      daysOfWeek,
       startDate,
       endDate,
-      repeating: true,
+      repeating,
       startTimeMinutes,
       endTimeMinutes,
       price: row.price ?? null,
-      field: row.scheduledFieldId ?? null,
+      field: normalizedFieldIds[0] ?? null,
+      fieldIds: normalizedFieldIds,
       divisions: [...slotDivisions],
-    }));
+    });
   });
 };
 
@@ -1038,8 +1064,26 @@ const buildReferees = (rows: any[], divisions: Division[]) => {
 
 const attachTimeSlotsToFields = (fields: Record<string, PlayingField>, slots: TimeSlot[]) => {
   for (const field of Object.values(fields)) {
-    field.rentalSlots = slots.filter((slot) => slot.field === field.id);
+    field.rentalSlots = slots.filter((slot) =>
+      (Array.isArray(slot.fieldIds) && slot.fieldIds.length
+        ? slot.fieldIds
+        : slot.field
+          ? [slot.field]
+          : []
+      ).includes(field.id),
+    );
   }
+};
+
+const toOptionalDate = (value: unknown): Date | null => {
+  if (value == null) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const parsed = new Date(value as string | number);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
 const buildMatches = (
@@ -1060,14 +1104,24 @@ const buildMatches = (
       : row.division && divisionLookup.has(row.division)
       ? (divisionLookup.get(row.division) as Division)
       : divisions[0];
+    const start = toOptionalDate(row.start);
+    const end = toOptionalDate(row.end);
     const match = new Match({
       id: row.id,
       matchId: row.matchId ?? null,
       locked: Boolean(row.locked),
+      team1Seed: typeof row.team1Seed === 'number'
+        ? row.team1Seed
+        : null,
+      team2Seed: typeof row.team2Seed === 'number'
+        ? row.team2Seed
+        : null,
       team1Points: ensureArray(row.team1Points),
       team2Points: ensureArray(row.team2Points),
-      start: row.start instanceof Date ? row.start : new Date(row.start),
-      end: row.end instanceof Date ? row.end : new Date(row.end),
+      // Match currently expects Date in constructor, but unscheduled matches may be null.
+      // Use a temporary fallback and overwrite below.
+      start: start ?? new Date(0),
+      end: end ?? new Date(0),
       createdAt: row.createdAt ?? null,
       updatedAt: row.updatedAt ?? null,
       losersBracket: Boolean(row.losersBracket),
@@ -1083,6 +1137,12 @@ const buildMatches = (
       team2: row.team2Id ? teams[row.team2Id] ?? null : null,
       eventId: row.eventId,
     });
+    if (!start) {
+      (match as unknown as { start: Date | null }).start = null;
+    }
+    if (!end) {
+      (match as unknown as { end: Date | null }).end = null;
+    }
     matches[row.id] = match;
   }
   // Wire pointers
@@ -1152,13 +1212,14 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
 
   const fieldIds = ensureStringArray(event.fieldIds);
   const teamIds = ensureStringArray(event.teamIds);
+  const teamIdsToLoad = Array.from(new Set(teamIds));
   const timeSlotIds = ensureStringArray(event.timeSlotIds);
   const refereeIds = ensureStringArray(event.refereeIds);
 
   const [fieldRows, teamRows, timeSlotRows, refereeRows, matchRows, leagueConfigRow] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
-    teamIds.length ? client.teams.findMany({ where: { id: { in: teamIds } } }) : Promise.resolve([]),
-    timeSlotIds.length ? client.timeSlots.findMany({ where: { id: { in: timeSlotIds } } }) : Promise.resolve([]),
+    teamIdsToLoad.length ? client.teams.findMany({ where: { id: { in: teamIdsToLoad } } }) : Promise.resolve([]),
+    loadTimeSlotRows(client, timeSlotIds),
     refereeIds.length ? client.userData.findMany({ where: { id: { in: refereeIds } } }) : Promise.resolve([]),
     client.matches.findMany({ where: { eventId: event.id } }),
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
@@ -1166,7 +1227,21 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
 
   const fallbackFieldDivisionIds = leagueDivisionIds.length ? leagueDivisionIds : [DEFAULT_DIVISION_KEY];
   const fields = buildFields(fieldRows, divisionMap, fallbackFieldDivisionIds, fieldIdsByDivision);
-  const teams = buildTeams(teamRows, divisionMap, fallbackDivision);
+  const teamRosterSet = new Set(teamIdsToLoad);
+  const divisionByTeamId = new Map<string, Division>();
+  if (!Boolean(event.singleDivision) && divisions.length > 0) {
+    for (const division of divisions) {
+      for (const divisionTeamId of division.teamIds) {
+        if (!teamRosterSet.has(divisionTeamId)) {
+          continue;
+        }
+        if (!divisionByTeamId.has(divisionTeamId)) {
+          divisionByTeamId.set(divisionTeamId, division);
+        }
+      }
+    }
+  }
+  const teams = buildTeams(teamRows, divisionMap, fallbackDivision, divisionByTeamId);
   const timeSlots = buildTimeSlots(timeSlotRows, divisionMap, divisions);
   const referees = buildReferees(refereeRows, allDivisions);
   attachTimeSlotsToFields(fields, timeSlots);
@@ -1207,6 +1282,10 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     minAge: event.minAge ?? null,
     maxAge: event.maxAge ?? null,
     doTeamsRef: typeof event.doTeamsRef === 'boolean' ? event.doTeamsRef : true,
+    teamRefsMaySwap:
+      event.doTeamsRef === true && typeof (event as any).teamRefsMaySwap === 'boolean'
+        ? Boolean((event as any).teamRefsMaySwap)
+        : false,
     fieldCount: event.fieldCount ?? null,
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
@@ -1224,6 +1303,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     restTimeMinutes: event.restTimeMinutes ?? 0,
     state: event.state ?? 'UNPUBLISHED',
     leagueScoringConfig: leagueConfigRow ?? null,
+    registeredTeamIds: teamIds,
     teams,
     players: [],
     registrationIds: ensureStringArray(event.registrationIds),
@@ -1266,12 +1346,23 @@ export const saveMatches = async (
 ) => {
   const now = new Date();
   for (const match of matches) {
+    const isBracketMatch = Boolean(
+      match.previousLeftMatch || match.previousRightMatch || match.winnerNextMatch || match.loserNextMatch,
+    );
+    const start = (match as unknown as { start: Date | null }).start ?? null;
+    const end = (match as unknown as { end: Date | null }).end ?? null;
     const data = {
       id: match.id,
       matchId: match.matchId ?? 0,
-      start: match.start,
-      end: match.end,
+      start,
+      end,
       locked: Boolean(match.locked),
+      team1Seed: isBracketMatch
+        ? (typeof match.team1Seed === 'number' ? match.team1Seed : null)
+        : null,
+      team2Seed: isBracketMatch
+        ? (typeof match.team2Seed === 'number' ? match.team2Seed : null)
+        : null,
       division: match.division?.id ?? null,
       team1Points: match.team1Points ?? [],
       team2Points: match.team2Points ?? [],
@@ -1300,6 +1391,192 @@ export const saveMatches = async (
   }
 };
 
+export const persistScheduledRosterTeams = async (
+  params: {
+    eventId: string;
+    scheduled: League | Tournament;
+  },
+  client: PrismaLike = prisma,
+): Promise<string[]> => {
+  const rosterTeamIds = Object.keys(params.scheduled.teams ?? {});
+  const now = new Date();
+
+  const scheduledLeagueDivisionIds = (() => {
+    const ids: string[] = [];
+    for (const division of params.scheduled.divisions ?? []) {
+      if (normalizeDivisionKind(division.kind, 'LEAGUE') === 'PLAYOFF') {
+        continue;
+      }
+      const normalizedId = normalizeDivisionKey(division.id);
+      if (!normalizedId) {
+        continue;
+      }
+      if (!ids.includes(division.id)) {
+        ids.push(division.id);
+      }
+    }
+    return ids;
+  })();
+  const scheduledDivisionAliasToId = new Map<string, string>();
+  for (const divisionId of scheduledLeagueDivisionIds) {
+    const aliases = [
+      normalizeDivisionKey(divisionId),
+      normalizeDivisionKey(extractDivisionTokenFromId(divisionId)),
+    ].filter((alias): alias is string => Boolean(alias));
+    for (const alias of aliases) {
+      if (!scheduledDivisionAliasToId.has(alias)) {
+        scheduledDivisionAliasToId.set(alias, divisionId);
+      }
+    }
+  }
+  const fallbackDivisionId = scheduledLeagueDivisionIds[0] ?? DEFAULT_DIVISION_KEY;
+  const resolveScheduledTeamDivisionId = (team: Team | undefined): string => {
+    const explicitDivisionId = normalizeDivisionKey(team?.division?.id);
+    if (explicitDivisionId) {
+      const mappedFromId = scheduledDivisionAliasToId.get(explicitDivisionId);
+      if (mappedFromId) {
+        return mappedFromId;
+      }
+      const token = normalizeDivisionKey(extractDivisionTokenFromId(team?.division?.id));
+      if (token) {
+        const mappedFromToken = scheduledDivisionAliasToId.get(token);
+        if (mappedFromToken) {
+          return mappedFromToken;
+        }
+      }
+    }
+    return fallbackDivisionId;
+  };
+
+  await client.events.update({
+    where: { id: params.eventId },
+    data: {
+      teamIds: rosterTeamIds,
+      updatedAt: now,
+    },
+  });
+
+  if (!rosterTeamIds.length) {
+    return rosterTeamIds;
+  }
+
+  const event = await client.events.findUnique({
+    where: { id: params.eventId },
+    select: {
+      teamSizeLimit: true,
+      singleDivision: true,
+    },
+  });
+  const eventTeamSizeLimit = typeof event?.teamSizeLimit === 'number' && Number.isFinite(event.teamSizeLimit)
+    ? Math.max(0, Math.trunc(event.teamSizeLimit))
+    : null;
+
+  const existingTeams = await client.teams.findMany({
+    where: { id: { in: rosterTeamIds } },
+    select: {
+      id: true,
+      division: true,
+    },
+  });
+  const existingTeamById = new Map(existingTeams.map((team) => [team.id, team]));
+
+  for (const teamId of rosterTeamIds) {
+    const scheduledTeam = params.scheduled.teams[teamId];
+    if (!scheduledTeam) {
+      continue;
+    }
+    const existingTeam = existingTeamById.get(teamId);
+    const captainId = String(scheduledTeam.captainId ?? '');
+    const playerIds = ensureStringArray(scheduledTeam.playerIds);
+    const divisionId = resolveScheduledTeamDivisionId(scheduledTeam);
+    const teamSize = eventTeamSizeLimit ?? playerIds.length;
+
+    if (!existingTeam) {
+      await client.teams.create({
+        data: {
+          id: teamId,
+          createdAt: now,
+          updatedAt: now,
+          seed: 0,
+          playerIds,
+          division: divisionId,
+          divisionTypeId: null,
+          divisionTypeName: null,
+          name: scheduledTeam.name ?? '',
+          captainId,
+          managerId: captainId || '',
+          headCoachId: null,
+          coachIds: [],
+          parentTeamId: null,
+          pending: [],
+          teamSize,
+          profileImageId: null,
+          sport: null,
+        },
+      });
+      continue;
+    }
+
+    const existingDivision = normalizeDivisionKey(existingTeam.division);
+    const nextDivision = normalizeDivisionKey(divisionId);
+    if (existingDivision !== nextDivision) {
+      await client.teams.update({
+        where: { id: teamId },
+        data: {
+          division: divisionId,
+          updatedAt: now,
+        },
+      });
+    }
+  }
+
+  const isLeagueSchedule = String(params.scheduled.eventType ?? '').toUpperCase() === 'LEAGUE';
+  if (isLeagueSchedule && !Boolean(event?.singleDivision)) {
+    const assignedTeamIdsByDivisionId = new Map<string, string[]>();
+    for (const teamId of rosterTeamIds) {
+      const scheduledTeam = params.scheduled.teams[teamId];
+      const divisionId = resolveScheduledTeamDivisionId(scheduledTeam);
+      const bucket = assignedTeamIdsByDivisionId.get(divisionId) ?? [];
+      bucket.push(teamId);
+      assignedTeamIdsByDivisionId.set(divisionId, bucket);
+    }
+
+    const divisionRows = await client.divisions.findMany({
+      where: { eventId: params.eventId },
+      select: {
+        id: true,
+        key: true,
+        kind: true,
+      },
+    });
+
+    for (const row of divisionRows) {
+      if (normalizeDivisionKind(row.kind, 'LEAGUE') === 'PLAYOFF') {
+        continue;
+      }
+      const aliases = [
+        normalizeDivisionKey(row.id),
+        normalizeDivisionKey(row.key),
+        normalizeDivisionKey(extractDivisionTokenFromId(row.id)),
+      ].filter((alias): alias is string => Boolean(alias));
+      const mappedDivisionId = aliases
+        .map((alias) => scheduledDivisionAliasToId.get(alias))
+        .find((value): value is string => Boolean(value))
+        ?? fallbackDivisionId;
+
+      await client.divisions.update({
+        where: { id: row.id },
+        data: {
+          teamIds: assignedTeamIdsByDivisionId.get(mappedDivisionId) ?? [],
+          updatedAt: now,
+        },
+      });
+    }
+  }
+
+  return rosterTeamIds;
+};
+
 export const deleteMatchesByEvent = async (
   eventId: string,
   client: PrismaLike = prisma,
@@ -1318,16 +1595,8 @@ export const saveEventSchedule = async (event: League | Tournament, client: Pris
 };
 
 export const saveTeamRecords = async (teams: Team[], client: PrismaLike = prisma) => {
-  for (const team of teams) {
-    await client.teams.update({
-      where: { id: team.id },
-      data: {
-        wins: team.wins,
-        losses: team.losses,
-        updatedAt: new Date(),
-      },
-    });
-  }
+  void teams;
+  void client;
 };
 
 export const syncEventDivisions = async (
@@ -1335,6 +1604,7 @@ export const syncEventDivisions = async (
     eventId: string;
     divisionIds: string[];
     fieldIds: string[];
+    singleDivision?: boolean;
     sportId?: string | null;
     referenceDate?: Date | null;
     organizationId?: string | null;
@@ -1417,6 +1687,7 @@ export const syncEventDivisions = async (
       standingsOverrides: true,
       standingsConfirmedAt: true,
       standingsConfirmedBy: true,
+      teamIds: true,
     },
   });
 
@@ -1526,6 +1797,15 @@ export const syncEventDivisions = async (
           ]),
         ).filter((fieldId) => !allowedFieldIds.size || allowedFieldIds.has(fieldId));
       })();
+    const mappedTeamIds = kind === 'PLAYOFF' || params.singleDivision
+      ? []
+      : normalizeTeamIdList(
+        resolveDivisionValue(
+          detail?.teamIds,
+          normalizeTeamIdList(existing?.teamIds),
+          [],
+        ) ?? [],
+      );
 
     const ratings = kind === 'PLAYOFF'
       ? { minRating: null, maxRating: null }
@@ -1688,8 +1968,25 @@ export const syncEventDivisions = async (
       minRating: ratings.minRating,
       maxRating: ratings.maxRating,
       fieldIds: mappedFieldIds,
+      teamIds: mappedTeamIds,
     };
   });
+
+  if (!params.singleDivision) {
+    const teamDivisionMap = new Map<string, string>();
+    for (const entry of finalEntries) {
+      if (entry.kind === 'PLAYOFF') {
+        continue;
+      }
+      for (const teamId of entry.teamIds ?? []) {
+        const existingDivisionId = teamDivisionMap.get(teamId);
+        if (existingDivisionId && existingDivisionId !== entry.id) {
+          throw new Error(`Team ${teamId} is assigned to more than one division.`);
+        }
+        teamDivisionMap.set(teamId, entry.id);
+      }
+    }
+  }
 
   const finalIdSet = new Set(
     finalEntries.map((entry) => normalizeDivisionKey(entry.id) ?? entry.id),
@@ -1742,6 +2039,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
+        teamIds: params.singleDivision ? [] : (entry.teamIds ?? []),
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -1775,6 +2073,7 @@ export const syncEventDivisions = async (
         minRating: entry.minRating,
         maxRating: entry.maxRating,
         fieldIds: entry.fieldIds,
+        teamIds: params.singleDivision ? [] : (entry.teamIds ?? []),
         updatedAt: now,
       } as any,
     });
@@ -1835,108 +2134,19 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? divisionIdsFromDetails
       : fallbackDivisionIds;
   const singleDivisionEnabled = Boolean(payload.singleDivision);
-
-  const expandedTimeSlots: Array<Record<string, any>> = ensureUniqueExpandedSlotIds(timeSlots.flatMap((slot: any, index: number) => {
-    const sourceSlotId = slot.$id || slot.id || `${id}__slot_${index + 1}`;
-    const baseSlotId = normalizeSlotBaseId(sourceSlotId);
-    const repeating = slot.repeating !== false;
-    const startDate = coerceDate(slot.startDate) ?? new Date();
-    const parsedEndDate = slot.endDate ? coerceDate(slot.endDate) : null;
-    const normalizedDays = normalizeDayValues({
-      dayOfWeek: slot.dayOfWeek,
-      daysOfWeek: slot.daysOfWeek,
-    });
-    const startTimeMinutesInput = typeof slot.startTimeMinutes === 'number'
-      ? slot.startTimeMinutes
-      : Number.isFinite(Number(slot.startTimeMinutes))
-        ? Number(slot.startTimeMinutes)
-        : null;
-    const endTimeMinutesInput = typeof slot.endTimeMinutes === 'number'
-      ? slot.endTimeMinutes
-      : Number.isFinite(Number(slot.endTimeMinutes))
-        ? Number(slot.endTimeMinutes)
-        : null;
-    const startTimeMinutes = startTimeMinutesInput ?? (repeating ? null : (startDate.getHours() * 60 + startDate.getMinutes()));
-    const endTimeMinutes = endTimeMinutesInput ?? (repeating
-      ? null
-      : (parsedEndDate ? parsedEndDate.getHours() * 60 + parsedEndDate.getMinutes() : null));
-    const normalizedFieldIds = normalizeSlotFieldIds(slot);
-    const expandedFieldIds: Array<string | null> = normalizedFieldIds.length ? normalizedFieldIds : [null];
-    const normalizedSlotDivisions = normalizeDivisionIdentifierList(slot.divisions, id);
-    const slotDivisions = singleDivisionEnabled
-      ? normalizedEventDivisionIds
-      : normalizedSlotDivisions.length
-      ? normalizedSlotDivisions
-      : normalizedEventDivisionIds;
-
-    if (!repeating) {
-      const explicitEndDate = parsedEndDate ?? (() => {
-        if (typeof startTimeMinutes === 'number' && typeof endTimeMinutes === 'number') {
-          const startOfDay = new Date(startDate);
-          startOfDay.setHours(0, 0, 0, 0);
-          const candidate = new Date(startOfDay.getTime() + endTimeMinutes * 60 * 1000);
-          if (candidate.getTime() <= startDate.getTime()) {
-            candidate.setDate(candidate.getDate() + 1);
-          }
-          return candidate;
-        }
-        return null;
-      })();
-      if (!explicitEndDate || explicitEndDate.getTime() <= startDate.getTime()) {
-        return [];
-      }
-      const defaultDay = ((startDate.getDay() + 6) % 7);
-      const slotDay = normalizedDays[0] ?? defaultDay;
-      return expandedFieldIds.map((fieldId) => ({
-        ...slot,
-        id: buildExpandedSlotId(
-          sourceSlotId,
-          baseSlotId,
-          slotDay,
-          fieldId,
-          1,
-          expandedFieldIds.length,
-        ),
-        dayOfWeek: slotDay,
-        startDate,
-        endDate: explicitEndDate,
-        startTimeMinutes,
-        endTimeMinutes,
-        repeating: false,
-        scheduledFieldId: fieldId,
-        divisions: slotDivisions,
-      }));
-    }
-
-    const days = normalizedDays.length ? normalizedDays : [((startDate.getDay() + 6) % 7)];
-
-    return days.flatMap((day) =>
-      expandedFieldIds.map((fieldId) => ({
-        ...slot,
-        id: buildExpandedSlotId(
-          sourceSlotId,
-          baseSlotId,
-          day,
-          fieldId,
-          days.length,
-          expandedFieldIds.length,
-        ),
-        dayOfWeek: day,
-        startDate,
-        endDate: parsedEndDate,
-        startTimeMinutes,
-        endTimeMinutes,
-        repeating: true,
-        scheduledFieldId: fieldId,
-        divisions: slotDivisions,
-      })),
-    );
-  }));
+  const start = coerceDate(payload.start) ?? new Date();
+  const end = coerceDate(payload.end) ?? start;
+  const canonicalTimeSlots = canonicalizeTimeSlots({
+    eventId: id,
+    slots: timeSlots,
+    fallbackStartDate: start,
+    fallbackDivisionKeys: normalizedEventDivisionIds,
+    enforceAllDivisions: singleDivisionEnabled,
+    normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
+  });
 
   const slotFieldIds = normalizeFieldIds(
-    expandedTimeSlots
-      .map((slot: any) => slot.scheduledFieldId)
-      .filter(Boolean),
+    canonicalTimeSlots.flatMap((slot) => slot.scheduledFieldIds),
   );
   const fieldIds = slotFieldIds.length
     ? slotFieldIds
@@ -1953,7 +2163,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const teamIds = Array.isArray(payload.teamIds) && payload.teamIds.length
     ? payload.teamIds
     : teams.map((team: any) => team.$id || team.id).filter(Boolean);
-  const derivedTimeSlotIds = expandedTimeSlots.map((slot: any) => slot.id).filter(Boolean);
+  const derivedTimeSlotIds = canonicalTimeSlots.map((slot) => slot.id).filter(Boolean);
   const timeSlotIds = derivedTimeSlotIds.length
     ? derivedTimeSlotIds
     : Array.isArray(payload.timeSlotIds) && payload.timeSlotIds.length
@@ -1968,8 +2178,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   );
   const legacyFieldDivisionMap = buildLegacyFieldDivisionMap(divisionFieldMap);
 
-  const start = coerceDate(payload.start) ?? new Date();
-  const end = coerceDate(payload.end) ?? start;
   const payloadEventType = typeof payload.eventType === 'string'
     ? payload.eventType.toUpperCase()
     : null;
@@ -2045,6 +2253,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedEventInstallmentAmounts = billingOwnerHasStripeAccount
     ? ensureNumberArray(payload.installmentAmounts)
     : [];
+  const normalizedDoTeamsRef = coerceNullableBoolean(payload.doTeamsRef);
+  const normalizedTeamRefsMaySwap = normalizedDoTeamsRef === true
+    ? coerceBoolean(payload.teamRefsMaySwap, false)
+    : false;
 
   const eventData = {
     id,
@@ -2102,7 +2314,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     organizationId: payload.organizationId ?? null,
     autoCancellation: payload.autoCancellation ?? null,
     eventType: payload.eventType ?? null,
-    doTeamsRef: payload.doTeamsRef ?? null,
+    doTeamsRef: normalizedDoTeamsRef ?? null,
+    teamRefsMaySwap: normalizedTeamRefsMaySwap,
     refereeIds: ensureStringArray(payload.refereeIds),
     allowPaymentPlans: normalizedEventAllowPaymentPlans,
     installmentCount: normalizedEventInstallmentCount,
@@ -2167,6 +2380,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     eventId: id,
     divisionIds: normalizedEventDivisionIds,
     fieldIds,
+    singleDivision: singleDivisionEnabled,
     sportId: payload.sportId ?? null,
     referenceDate: start,
     organizationId: payload.organizationId ?? null,
@@ -2271,13 +2485,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: teamId },
       create: {
         id: teamId,
-        seed: team.seed ?? 0,
+        seed: 0,
         playerIds: ensureArray(team.playerIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,
         divisionTypeName: normalizedTeamDivisionTypeName,
-        wins: team.wins ?? 0,
-        losses: team.losses ?? 0,
         name: team.name ?? null,
         captainId: team.captainId ?? '',
         managerId: team.managerId ?? team.captainId ?? '',
@@ -2292,13 +2504,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         updatedAt: new Date(),
       },
       update: {
-        seed: team.seed ?? 0,
         playerIds: ensureArray(team.playerIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,
         divisionTypeName: normalizedTeamDivisionTypeName,
-        wins: team.wins ?? 0,
-        losses: team.losses ?? 0,
         name: team.name ?? null,
         captainId: team.captainId ?? '',
         managerId: team.managerId ?? team.captainId ?? '',
@@ -2314,7 +2523,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     });
   }
 
-  for (const slot of expandedTimeSlots) {
+  for (const slot of canonicalTimeSlots) {
     const slotId = slot.id;
     if (!slotId) continue;
     const startDate = coerceDate(slot.startDate) ?? new Date();
@@ -2330,25 +2539,29 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: slotId },
       create: {
         id: slotId,
-        dayOfWeek: slot.dayOfWeek ?? 0,
+        dayOfWeek: slot.dayOfWeek ?? null,
+        daysOfWeek: slot.daysOfWeek,
         startTimeMinutes: slot.startTimeMinutes ?? null,
         endTimeMinutes: slot.endTimeMinutes ?? null,
         startDate,
         repeating: Boolean(slot.repeating),
         endDate,
         scheduledFieldId: slot.scheduledFieldId ?? null,
+        scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
         createdAt: now,
         updatedAt: now,
       } as any,
       update: {
-        dayOfWeek: slot.dayOfWeek ?? 0,
+        dayOfWeek: slot.dayOfWeek ?? null,
+        daysOfWeek: slot.daysOfWeek,
         startTimeMinutes: slot.startTimeMinutes ?? null,
         endTimeMinutes: slot.endTimeMinutes ?? null,
         startDate,
         repeating: Boolean(slot.repeating),
         endDate,
         scheduledFieldId: slot.scheduledFieldId ?? null,
+        scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
         updatedAt: now,
       } as any,

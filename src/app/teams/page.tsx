@@ -393,7 +393,7 @@ function TeamsPageContent() {
                     </Group>
                     <Group justify="space-between" c="dimmed" mb="md">
                       <Text size="sm">{team ? `${team.teamSize} members` : 'Pending invite'}</Text>
-                      <Text size="sm">{team ? `${team.winRate}% win rate` : 'Team loading unavailable'}</Text>
+                      <Text size="sm">{team ? `${team.currentSize} active` : 'Team loading unavailable'}</Text>
                     </Group>
                     <Group>
                       <Button onClick={() => handleAcceptInvitation(invite.$id)} fullWidth>Accept</Button>

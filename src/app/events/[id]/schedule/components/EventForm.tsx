@@ -182,7 +182,16 @@ const normalizeDivisionKeys = (values: unknown): string[] => {
     return Array.from(
         new Set(
             values
-                .map((value) => String(value).trim().toLowerCase())
+                .map((value) => {
+                    if (typeof value !== 'string' && typeof value !== 'number') {
+                        return '';
+                    }
+                    const normalized = String(value).trim().toLowerCase();
+                    if (normalized === 'undefined' || normalized === 'null') {
+                        return '';
+                    }
+                    return normalized;
+                })
                 .filter((value) => value.length > 0),
         ),
     );
@@ -617,6 +626,9 @@ const tournamentConfigEqual = (left: TournamentConfig, right: TournamentConfig):
     && left.prize === right.prize
     && left.fieldCount === right.fieldCount
     && left.restTimeMinutes === right.restTimeMinutes
+    && left.usesSets === right.usesSets
+    && left.matchDurationMinutes === right.matchDurationMinutes
+    && left.setDurationMinutes === right.setDurationMinutes
     && stringArraysEqual(
         (left.winnerBracketPointsToVictory || []).map((value) => String(value)),
         (right.winnerBracketPointsToVictory || []).map((value) => String(value)),
@@ -963,6 +975,7 @@ type EventFormState = {
     refereeIds: string[];
     assistantHostIds: string[];
     doTeamsRef: boolean;
+    teamRefsMaySwap: boolean;
     leagueScoringConfig: LeagueScoringConfig;
 };
 
@@ -1165,6 +1178,42 @@ const buildTournamentConfig = (source?: Partial<TournamentConfig>): TournamentCo
         prize: source?.prize ?? '',
         fieldCount: source?.fieldCount ?? 1,
         restTimeMinutes: source?.restTimeMinutes ?? 0,
+        usesSets: Boolean(source?.usesSets),
+        matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
+        setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
+    };
+};
+
+const normalizeTournamentConfigForSetMode = (
+    source: Partial<TournamentConfig> | undefined,
+    usesSets: boolean,
+): TournamentConfig => {
+    const normalized = buildTournamentConfig(source);
+    if (usesSets) {
+        return {
+            ...normalized,
+            usesSets: true,
+            matchDurationMinutes: normalizeNumber(normalized.matchDurationMinutes, 60) ?? 60,
+            setDurationMinutes: normalizeNumber(normalized.setDurationMinutes, 20) ?? 20,
+        };
+    }
+
+    const winnerTarget = Number.isFinite(Number(normalized.winnerBracketPointsToVictory?.[0]))
+        ? Math.max(1, Math.trunc(Number(normalized.winnerBracketPointsToVictory?.[0])))
+        : 21;
+    const loserTarget = Number.isFinite(Number(normalized.loserBracketPointsToVictory?.[0]))
+        ? Math.max(1, Math.trunc(Number(normalized.loserBracketPointsToVictory?.[0])))
+        : 21;
+
+    return {
+        ...normalized,
+        usesSets: false,
+        matchDurationMinutes: normalizeNumber(normalized.matchDurationMinutes, 60) ?? 60,
+        setDurationMinutes: undefined,
+        winnerSetCount: 1,
+        loserSetCount: 1,
+        winnerBracketPointsToVictory: [winnerTarget],
+        loserBracketPointsToVictory: [loserTarget],
     };
 };
 
@@ -1177,6 +1226,9 @@ const TOURNAMENT_CONFIG_KEYS: (keyof TournamentConfig)[] = [
     'prize',
     'fieldCount',
     'restTimeMinutes',
+    'usesSets',
+    'matchDurationMinutes',
+    'setDurationMinutes',
 ];
 
 const TOURNAMENT_ARRAY_CONFIG_KEYS = new Set<keyof TournamentConfig>([
@@ -1507,6 +1559,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     refereeIds: event.refereeIds || [],
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsRef: Boolean(event.doTeamsRef),
+    teamRefsMaySwap: Boolean(event.doTeamsRef) && Boolean((event as any).teamRefsMaySwap),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
             ? (event.leagueScoringConfig as Partial<LeagueScoringConfig>)
@@ -1564,6 +1617,9 @@ const tournamentConfigSchema = z.object({
     prize: z.string(),
     fieldCount: z.number().min(1),
     restTimeMinutes: z.number().min(0),
+    usesSets: z.boolean().optional(),
+    matchDurationMinutes: z.number().optional(),
+    setDurationMinutes: z.number().optional(),
 });
 
 const eventFormSchema = z
@@ -1651,6 +1707,7 @@ const eventFormSchema = z
         refereeIds: z.array(z.string()),
         assistantHostIds: z.array(z.string()).default([]),
         doTeamsRef: z.boolean(),
+        teamRefsMaySwap: z.boolean().default(false),
         leagueScoringConfig: z.any(),
         leagueSlots: z.array(leagueSlotSchema),
         leagueData: z.object({
@@ -2157,6 +2214,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (typeof defaults.registrationByDivisionType === 'boolean') {
             next.registrationByDivisionType = defaults.registrationByDivisionType;
         }
+        if (typeof (defaults as any).doTeamsRef === 'boolean') {
+            next.doTeamsRef = Boolean((defaults as any).doTeamsRef);
+        }
+        if (typeof (defaults as any).teamRefsMaySwap === 'boolean') {
+            next.teamRefsMaySwap = next.doTeamsRef ? Boolean((defaults as any).teamRefsMaySwap) : false;
+        }
         if (Array.isArray((defaults as any).divisionDetails)) {
             const referenceDate = parseDateValue(next.start ?? null);
             next.divisionDetails = (defaults as any).divisionDetails
@@ -2535,6 +2598,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     prize: activeEditingEvent.prize,
                     fieldCount: activeEditingEvent.fieldCount ?? activeEditingEvent.fields?.length ?? 1,
                     restTimeMinutes: normalizeNumber(activeEditingEvent.restTimeMinutes, 0) ?? 0,
+                    usesSets: activeEditingEvent.usesSets,
+                    matchDurationMinutes: normalizeNumber(activeEditingEvent.matchDurationMinutes, 60) ?? 60,
+                    setDurationMinutes: normalizeNumber(activeEditingEvent.setDurationMinutes),
                 });
             }
             return buildTournamentConfig();
@@ -4175,7 +4241,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!selected && currentSportConfig) {
             setValue('sportConfig', null, { shouldDirty: false, shouldValidate: false });
         }
-    }, [getValues, setValue, sportsLoading, sportsById]);
+    }, [eventData.sportId, getValues, setValue, sportsLoading, sportsById]);
 
     useEffect(() => {
         const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
@@ -4416,7 +4482,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     ]);
 
     useEffect(() => {
-        const requiresSets = Boolean(eventData.sportConfig?.usePointsPerSetWin);
+        const selectedSport = (
+            eventData.sportId ? sportsById.get(eventData.sportId) : null
+        ) ?? eventData.sportConfig;
+        const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
         setLeagueData((prev) => {
             const next = { ...prev };
             let changed = false;
@@ -4476,7 +4545,55 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             return changed ? next : prev;
         });
-    }, [eventData.sportConfig, setLeagueData]);
+    }, [eventData.sportConfig, eventData.sportId, setLeagueData, sportsById]);
+
+    useEffect(() => {
+        const selectedSport = (
+            eventData.sportId ? sportsById.get(eventData.sportId) : null
+        ) ?? eventData.sportConfig;
+        const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
+        if (requiresSets) {
+            return;
+        }
+
+        const normalizedPlayoff = normalizeTournamentConfigForSetMode(playoffData, false);
+        if (!tournamentConfigEqual(playoffData, normalizedPlayoff)) {
+            setPlayoffData(normalizedPlayoff);
+        }
+
+        const currentPlayoffDivisions = Array.isArray(eventData.playoffDivisionDetails)
+            ? eventData.playoffDivisionDetails
+            : [];
+        if (!currentPlayoffDivisions.length) {
+            return;
+        }
+
+        let changed = false;
+        const nextPlayoffDivisions = currentPlayoffDivisions.map((division) => {
+            const previousConfig = buildTournamentConfig(division.playoffConfig);
+            const normalizedConfig = normalizeTournamentConfigForSetMode(previousConfig, false);
+            if (tournamentConfigEqual(previousConfig, normalizedConfig)) {
+                return division;
+            }
+            changed = true;
+            return {
+                ...division,
+                playoffConfig: normalizedConfig,
+            };
+        });
+
+        if (changed) {
+            setValue('playoffDivisionDetails', nextPlayoffDivisions, { shouldDirty: true, shouldValidate: true });
+        }
+    }, [
+        eventData.playoffDivisionDetails,
+        eventData.sportConfig,
+        eventData.sportId,
+        playoffData,
+        setPlayoffData,
+        setValue,
+        sportsById,
+    ]);
 
     useEffect(() => {
         if (!hasImmutableFields) {
@@ -5123,7 +5240,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const source = formValues ?? eventData;
         const finalImageId = source.imageId;
         const sportSelection = source.sportConfig;
-        const sportId = (sportSelection?.$id && String(sportSelection.$id)) || (source.sportId?.trim() || '');
+        const selectedSportId = source.sportId?.trim() || '';
+        const fallbackSportId = (sportSelection?.$id && String(sportSelection.$id)) || '';
+        const sportId = selectedSportId || fallbackSportId;
+        const resolvedSport = (
+            sportId ? sportsById.get(sportId) : undefined
+        ) ?? (
+            sportSelection && typeof sportSelection === 'object' ? sportSelection : null
+        );
         const baseCoordinates: [number, number] = source.coordinates;
         const toIdList = <T extends { $id?: string | undefined }>(items: T[] | undefined): string[] => {
             if (!Array.isArray(items)) {
@@ -5147,7 +5271,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             : [];
         const minAge = normalizeNumber(source.minAge);
         const maxAge = normalizeNumber(source.maxAge);
-        const sportInput = resolveSportInput(source.sportConfig ?? source.sportId);
+        const sportInput = resolveSportInput(resolvedSport ?? sportId);
         const divisionReferenceDate = parseDateValue(source.start ?? null);
         const normalizedDivisionDetails = (() => {
             const fromDetails = Array.isArray(source.divisionDetails)
@@ -5239,6 +5363,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return normalizeDivisionKeys(source.divisions);
         })();
+        const sportRequiresSets = Boolean(resolvedSport?.usePointsPerSetWin);
         const splitLeaguePlayoffDivisions = Boolean(
             source.eventType === 'LEAGUE'
             && source.leagueData.includePlayoffs
@@ -5401,7 +5526,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 kind: 'PLAYOFF' as const,
                 name: division.name,
                 maxParticipants: Math.max(2, Math.trunc(division.maxParticipants || 2)),
-                playoffConfig: buildTournamentConfig(division.playoffConfig),
+                playoffConfig: normalizeTournamentConfigForSetMode(
+                    division.playoffConfig,
+                    sportRequiresSets,
+                ),
             })),
             cancellationRefundHours: source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
@@ -5422,6 +5550,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ),
             ),
             doTeamsRef: source.doTeamsRef,
+            teamRefsMaySwap: source.doTeamsRef ? Boolean(source.teamRefsMaySwap) : false,
             coordinates: baseCoordinates,
         };
 
@@ -5534,13 +5663,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         if (source.eventType === 'LEAGUE') {
             const restTime = normalizeNumber(source.leagueData.restTimeMinutes);
-            const requiresSets = Boolean(source.sportConfig?.usePointsPerSetWin);
             const setsPerMatchValue = source.leagueData.setsPerMatch ?? 1;
-            const normalizedPoints = requiresSets
+            const normalizedPoints = sportRequiresSets
                 ? (() => {
                     const base = Array.isArray(source.leagueData.pointsToVictory)
                         ? source.leagueData.pointsToVictory.slice(0, setsPerMatchValue)
-                        : [];
+                    : [];
                     while (base.length < setsPerMatchValue) base.push(21);
                     return base;
                 })()
@@ -5554,7 +5682,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     : undefined)
                 : undefined;
 
-            if (requiresSets) {
+            if (sportRequiresSets) {
                 draft.usesSets = true;
                 draft.setDurationMinutes = normalizeNumber(source.leagueData.setDurationMinutes) ?? 20;
                 draft.setsPerMatch = setsPerMatchValue;
@@ -5571,24 +5699,41 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
 
             if (source.leagueData.includePlayoffs && source.playoffData && !splitLeaguePlayoffDivisions) {
-                draft.doubleElimination = source.playoffData.doubleElimination;
-                draft.winnerSetCount = source.playoffData.winnerSetCount;
-                draft.loserSetCount = source.playoffData.loserSetCount;
-                draft.winnerBracketPointsToVictory = source.playoffData.winnerBracketPointsToVictory;
-                draft.loserBracketPointsToVictory = source.playoffData.loserBracketPointsToVictory;
+                const normalizedPlayoffConfig = normalizeTournamentConfigForSetMode(
+                    source.playoffData,
+                    sportRequiresSets,
+                );
+                draft.doubleElimination = normalizedPlayoffConfig.doubleElimination;
+                draft.winnerSetCount = normalizedPlayoffConfig.winnerSetCount;
+                draft.loserSetCount = normalizedPlayoffConfig.loserSetCount;
+                draft.winnerBracketPointsToVictory = normalizedPlayoffConfig.winnerBracketPointsToVictory;
+                draft.loserBracketPointsToVictory = normalizedPlayoffConfig.loserBracketPointsToVictory;
             }
 
         }
 
         if (source.eventType === 'TOURNAMENT') {
-            draft.doubleElimination = source.tournamentData.doubleElimination;
-            draft.winnerSetCount = source.tournamentData.winnerSetCount;
-            draft.loserSetCount = source.tournamentData.loserSetCount;
-            draft.winnerBracketPointsToVictory = source.tournamentData.winnerBracketPointsToVictory;
-            draft.loserBracketPointsToVictory = source.tournamentData.loserBracketPointsToVictory;
-            draft.prize = source.tournamentData.prize;
-            draft.fieldCount = source.tournamentData.fieldCount;
-            draft.restTimeMinutes = normalizeNumber(source.tournamentData.restTimeMinutes, 0) ?? 0;
+            const normalizedTournamentConfig = normalizeTournamentConfigForSetMode(
+                source.tournamentData,
+                sportRequiresSets,
+            );
+            draft.doubleElimination = normalizedTournamentConfig.doubleElimination;
+            draft.winnerSetCount = normalizedTournamentConfig.winnerSetCount;
+            draft.loserSetCount = normalizedTournamentConfig.loserSetCount;
+            draft.winnerBracketPointsToVictory = normalizedTournamentConfig.winnerBracketPointsToVictory;
+            draft.loserBracketPointsToVictory = normalizedTournamentConfig.loserBracketPointsToVictory;
+            draft.prize = normalizedTournamentConfig.prize;
+            draft.fieldCount = normalizedTournamentConfig.fieldCount;
+            draft.restTimeMinutes = normalizeNumber(normalizedTournamentConfig.restTimeMinutes, 0) ?? 0;
+            if (sportRequiresSets) {
+                draft.usesSets = true;
+                draft.setDurationMinutes = normalizeNumber(normalizedTournamentConfig.setDurationMinutes, 20) ?? 20;
+                draft.matchDurationMinutes = undefined;
+            } else {
+                draft.usesSets = false;
+                draft.matchDurationMinutes = normalizeNumber(normalizedTournamentConfig.matchDurationMinutes, 60) ?? 60;
+                draft.setDurationMinutes = undefined;
+            }
         }
 
         if (supportsScheduleSlots(source.eventType)) {
@@ -5708,6 +5853,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         currentUser,
         joinAsParticipant,
         rentalPurchase,
+        sportsById,
         shouldManageLocalFields,
         shouldProvisionFields,
         fieldCount,
@@ -5950,6 +6096,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     if (next === (field.value || '').trim()) {
                                                         return;
                                                     }
+                                                    setValue(
+                                                        'sportConfig',
+                                                        next ? (sportsById.get(next) ?? null) : null,
+                                                        { shouldDirty: false, shouldValidate: false },
+                                                    );
                                                     field.onChange(next);
                                                 }}
                                                 searchable
@@ -6672,10 +6823,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             label="Teams provide referees"
                                             description="Allow assigning team referees alongside dedicated refs."
                                             checked={field.value}
-                                            onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
+                                            onChange={(e) => {
+                                                const checked = e?.currentTarget?.checked ?? false;
+                                                field.onChange(checked);
+                                                if (!checked) {
+                                                    setValue('teamRefsMaySwap', false, { shouldDirty: true, shouldValidate: true });
+                                                }
+                                            }}
                                         />
                                     )}
                                 />
+                                {eventData.doTeamsRef && (
+                                    <Controller
+                                        name="teamRefsMaySwap"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Switch
+                                                label="Team refs may swap"
+                                                description="Allow any participating team to take over refereeing a match."
+                                                checked={field.value}
+                                                onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
+                                            />
+                                        )}
+                                    />
+                                )}
 
                                 <div>
                                     <Title order={6} mb="xs">Selected referees</Title>
@@ -7335,6 +7506,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                 tournamentData={buildTournamentConfig(playoffDivision.playoffConfig)}
                                                                 setTournamentData={(updater) => handleSetPlayoffDivisionConfig(playoffDivision.id, updater)}
                                                                 sport={eventData.sportConfig ?? undefined}
+                                                                showDurationControls={false}
                                                             />
                                                         </Stack>
                                                     </Paper>
@@ -7597,6 +7769,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 tournamentData={playoffData}
                                                 setTournamentData={setPlayoffData}
                                                 sport={eventData.sportConfig ?? undefined}
+                                                showDurationControls={false}
                                             />
                                         </AnimatedSection>
                                     </div>

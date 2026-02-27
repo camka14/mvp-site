@@ -138,7 +138,26 @@ describe('standings routes', () => {
     divisionsMock.update.mockResolvedValue({});
   });
 
-  it('GET requires host/admin authorization for standings access', async () => {
+  it('GET allows non-host access for published events', async () => {
+    const res = await standingsGet(
+      new NextRequest('http://localhost/api/events/event_1/standings?divisionId=division_1', { method: 'GET' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1');
+    expect(requireSessionMock).not.toHaveBeenCalled();
+    expect(canManageEventMock).not.toHaveBeenCalled();
+  });
+
+  it('GET requires host/admin authorization for template events', async () => {
+    eventsMock.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      state: 'TEMPLATE',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
     canManageEventMock.mockResolvedValueOnce(false);
 
     const res = await standingsGet(
@@ -147,6 +166,7 @@ describe('standings routes', () => {
     );
 
     expect(res.status).toBe(403);
+    expect(requireSessionMock).toHaveBeenCalledTimes(1);
     expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
   });
 

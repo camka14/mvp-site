@@ -76,6 +76,40 @@ const detachMatch = (participant: { matches?: Match[] } | null | undefined, matc
   participant.matches = participant.matches.filter((existing) => existing.id !== match.id);
 };
 
+const getMatchStartMs = (match: Match): number | null => {
+  const start = (match as unknown as { start?: Date | null }).start;
+  if (!(start instanceof Date)) {
+    return null;
+  }
+  const startMs = start.getTime();
+  return Number.isNaN(startMs) ? null : startMs;
+};
+
+export const shouldAutoLockMatch = (match: Match, now: Date = new Date()): boolean => {
+  if (match.refereeCheckedIn === true) {
+    return true;
+  }
+  const startMs = getMatchStartMs(match);
+  if (startMs === null) {
+    return false;
+  }
+  return startMs <= now.getTime();
+};
+
+export const applyPersistentAutoLock = (
+  match: Match,
+  options?: { now?: Date; explicitLockedValue?: boolean | undefined },
+): boolean => {
+  if (options?.explicitLockedValue === false) {
+    return false;
+  }
+  if (shouldAutoLockMatch(match, options?.now ?? new Date()) && !match.locked) {
+    match.locked = true;
+    return true;
+  }
+  return false;
+};
+
 export const applyMatchUpdates = (event: Tournament | League, match: Match, update: MatchUpdate) => {
   if (update.matchId !== undefined) {
     match.matchId = update.matchId ?? null;
@@ -241,7 +275,7 @@ const reassignTeamReferee = (match: Match, schedule: Schedule<Match, any, any, D
     (participant) => participant instanceof Team && participant !== match.team1 && participant !== match.team2,
   ) as Team[];
   for (const freeTeam of freeTeams) {
-    if (!freeTeam.losses && !isTeamInPreviousMatch(freeTeam, match)) {
+    if (!isTeamInPreviousMatch(freeTeam, match)) {
       match.teamReferee = freeTeam;
       ensureMatchesArray(freeTeam).push(match);
       return;
@@ -358,7 +392,6 @@ export const finalizeMatch = (
 ): FinalizeResult => {
   syncMatchParticipants(Object.values(event.matches));
 
-  const updatedIsPlayoffMatch = isPlayoffMatch(updatedMatch);
   const seededTeamIds: string[] = [];
 
   const teamOne = updatedMatch.team1;
@@ -372,13 +405,11 @@ export const finalizeMatch = (
   const winner = team1Wins > team2Wins ? teamOne : teamTwo;
   const loser = winner === teamOne ? teamTwo : teamOne;
 
-  winner.wins += 1;
-  loser.losses += 1;
   updatedMatch.advanceTeams(winner, loser);
 
-  // Regular season league matches should not trigger bracket-style rescheduling. The schedule is pre-built and
-  // independent from match results; rescheduling here was unscheduling future matches without restoring them.
-  if (event instanceof League && !updatedIsPlayoffMatch) {
+  // League schedules are pre-built (regular season and playoffs). Finalizing a result should advance teams without
+  // invoking bracket-style rescheduling, which can fail for split-playoff mapping configurations.
+  if (event instanceof League) {
     if (event.doTeamsRef && seededTeamIds.length) {
       const participants = buildScheduleParticipants(event);
       const schedule = new Schedule<Match, PlayingField, Team | UserData, Division>(
@@ -508,7 +539,6 @@ export const finalizeMatch = (
 
     const waitingTeams = teamsWaitingToStart(Object.values(event.teams), currentTime);
     for (const team of waitingTeams) {
-      if (team.losses) continue;
       const lastMatch = team.matches[team.matches.length - 1];
       if (!lastMatch) continue;
       const availableMatches = getUpcomingMatchesInTimeRange(currentTime, lastMatch.start, event.matches, true);

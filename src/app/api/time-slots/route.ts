@@ -97,27 +97,43 @@ const persistTimeSlotDivisions = async (
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
-  const fieldId = params.get('fieldId');
+  const fieldId = params.get('fieldId')?.trim();
   const dayOfWeek = params.get('dayOfWeek');
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
 
-  const where: any = {};
-  if (ids?.length) where.id = { in: ids };
-  if (fieldId) where.scheduledFieldId = fieldId;
+  const whereClauses: any[] = [];
+  if (ids?.length) whereClauses.push({ id: { in: ids } });
+  if (fieldId) {
+    whereClauses.push({
+      OR: [
+        { scheduledFieldId: fieldId },
+        { scheduledFieldIds: { has: fieldId } },
+      ],
+    });
+  }
   if (dayOfWeek !== null && dayOfWeek !== undefined) {
     const day = Number(dayOfWeek);
-    if (!Number.isNaN(day)) {
-      where.dayOfWeek = day;
+    if (Number.isInteger(day) && day >= 0 && day <= 6) {
+      whereClauses.push({
+        OR: [
+          { dayOfWeek: day },
+          { daysOfWeek: { has: day } },
+        ],
+      });
     }
   }
 
   const slots = await prisma.timeSlots.findMany({
-    where,
+    where: whereClauses.length ? { AND: whereClauses } : {},
     orderBy: { startDate: 'asc' },
   });
 
   const normalizedSlots = slots.map((slot) => {
+    const normalizedFieldIds = normalizeFieldIds(
+      (slot as any).scheduledFieldIds
+        ?? (slot.scheduledFieldId ? [slot.scheduledFieldId] : []),
+    );
     const normalizedDays = normalizeDaysOfWeek({
       dayOfWeek: slot.dayOfWeek ?? undefined,
       daysOfWeek: (slot as any).daysOfWeek ?? undefined,
@@ -127,7 +143,8 @@ export async function GET(req: NextRequest) {
       ...slot,
       dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
       daysOfWeek: normalizedDays,
-      scheduledFieldIds: slot.scheduledFieldId ? [slot.scheduledFieldId] : [],
+      scheduledFieldId: normalizedFieldIds[0] ?? null,
+      scheduledFieldIds: normalizedFieldIds,
       divisions: normalizedDivisions,
     } as any);
   });
@@ -153,7 +170,10 @@ export async function POST(req: NextRequest) {
   const requiredTemplateIds = Array.isArray(data.requiredTemplateIds)
     ? Array.from(new Set(data.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
     : [];
-  const scheduledFieldIds = normalizeFieldIds(data.scheduledFieldIds);
+  const scheduledFieldIds = normalizeFieldIds([
+    ...(Array.isArray(data.scheduledFieldIds) ? data.scheduledFieldIds : []),
+    ...(typeof data.scheduledFieldId === 'string' ? [data.scheduledFieldId] : []),
+  ]);
   const scheduledFieldId = scheduledFieldIds[0] ?? data.scheduledFieldId ?? null;
   const divisions = normalizeDivisionKeys(data.divisions);
   const now = new Date();
@@ -162,12 +182,14 @@ export async function POST(req: NextRequest) {
     data: {
       id: data.id,
       dayOfWeek: normalizedDays[0] ?? data.dayOfWeek ?? null,
+      daysOfWeek: normalizedDays,
       startTimeMinutes: data.startTimeMinutes ?? null,
       endTimeMinutes: data.endTimeMinutes ?? null,
       startDate,
       endDate: endDate ?? null,
       repeating: data.repeating ?? false,
       scheduledFieldId,
+      scheduledFieldIds,
       price: data.price ?? null,
       requiredTemplateIds,
       createdAt: now,
@@ -180,7 +202,8 @@ export async function POST(req: NextRequest) {
     ...slot,
     dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
     daysOfWeek: normalizedDays,
-    scheduledFieldIds: slot.scheduledFieldId ? [slot.scheduledFieldId] : [],
+    scheduledFieldId: scheduledFieldIds[0] ?? slot.scheduledFieldId ?? null,
+    scheduledFieldIds,
     divisions,
   } as any), { status: 201 });
 }

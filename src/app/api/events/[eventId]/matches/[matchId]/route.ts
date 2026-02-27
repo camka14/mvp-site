@@ -6,6 +6,7 @@ import { loadEventWithRelations, saveMatches, saveTeamRecords } from '@/server/r
 import { acquireEventLock } from '@/server/repositories/locks';
 import {
   applyMatchUpdates,
+  applyPersistentAutoLock,
   finalizeMatch,
   isScheduleWindowExceededError,
 } from '@/server/scheduler/updateMatch';
@@ -80,6 +81,69 @@ const formatHostName = (profile?: { firstName: string | null; lastName: string |
     return userName;
   }
   return 'Host';
+};
+
+const normalizeIdToken = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const isUserOnTeam = (team: unknown, userId: string): boolean => {
+  if (!team || typeof team !== 'object') {
+    return false;
+  }
+  const teamRecord = team as Record<string, unknown>;
+  const memberIds = new Set<string>();
+  const addId = (value: unknown) => {
+    const normalized = normalizeIdToken(value);
+    if (normalized) {
+      memberIds.add(normalized);
+    }
+  };
+  const addIdsFromList = (value: unknown) => {
+    if (!Array.isArray(value)) {
+      return;
+    }
+    value.forEach((entry) => {
+      if (typeof entry === 'string') {
+        addId(entry);
+        return;
+      }
+      if (entry && typeof entry === 'object') {
+        const row = entry as Record<string, unknown>;
+        addId(row.id ?? row.$id);
+      }
+    });
+  };
+
+  addId(teamRecord.captainId);
+  addId(teamRecord.managerId);
+  addId(teamRecord.headCoachId);
+
+  if (teamRecord.captain && typeof teamRecord.captain === 'object') {
+    const captain = teamRecord.captain as Record<string, unknown>;
+    addId(captain.id ?? captain.$id);
+  }
+  if (teamRecord.manager && typeof teamRecord.manager === 'object') {
+    const manager = teamRecord.manager as Record<string, unknown>;
+    addId(manager.id ?? manager.$id);
+  }
+  if (teamRecord.headCoach && typeof teamRecord.headCoach === 'object') {
+    const headCoach = teamRecord.headCoach as Record<string, unknown>;
+    addId(headCoach.id ?? headCoach.$id);
+  }
+
+  addIdsFromList(teamRecord.playerIds);
+  addIdsFromList(teamRecord.coachIds);
+  addIdsFromList(teamRecord.assistantCoachIds);
+  addIdsFromList(teamRecord.players);
+  addIdsFromList(teamRecord.coaches);
+  addIdsFromList(teamRecord.assistantCoaches);
+
+  return memberIds.has(userId);
 };
 
 const notifyHostOfAutoRescheduleFailure = async (
@@ -160,19 +224,48 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const isHostOrAdmin = await canManageEvent(session, eventAccess, tx);
       const event = await loadEventWithRelations(eventId, tx);
 
-      const isEventReferee = Array.isArray((event as any).referees) && (event as any).referees.some((ref: any) => ref?.id === session.userId);
+      const isEventReferee = Array.isArray((event as any).referees) && (event as any).referees.some((ref: any) => {
+        const refId = normalizeIdToken(ref?.id ?? ref?.$id);
+        return refId === session.userId;
+      });
 
       const targetMatch = event.matches[matchId];
       if (!targetMatch) {
         throw new Response('Match not found', { status: 404 });
       }
 
-      const isTeamRefereeMember = Array.isArray((targetMatch as any).teamReferee?.playerIds)
-        && (targetMatch as any).teamReferee.playerIds.includes(session.userId);
-      const isAssignedRefereeUser = (targetMatch as any).referee?.id === session.userId;
-      const isReferee = Boolean(isEventReferee || isTeamRefereeMember || isAssignedRefereeUser);
+      const eventTeams = Array.isArray((event as any).teams)
+        ? ((event as any).teams as unknown[])
+        : Object.values(((event as any).teams ?? {}) as Record<string, unknown>);
+      const userEventTeamIds = new Set<string>();
+      eventTeams.forEach((team) => {
+        if (!isUserOnTeam(team, session.userId)) {
+          return;
+        }
+        if (!team || typeof team !== 'object') {
+          return;
+        }
+        const row = team as Record<string, unknown>;
+        const teamId = normalizeIdToken(row.id ?? row.$id);
+        if (teamId) {
+          userEventTeamIds.add(teamId);
+        }
+      });
+      const assignedTeamRefereeId = normalizeIdToken((targetMatch as any).teamReferee?.id ?? (targetMatch as any).teamReferee?.$id);
+      const matchRefereeCheckedIn = targetMatch.refereeCheckedIn === true;
+      const isTeamRefereeMember = isUserOnTeam((targetMatch as any).teamReferee, session.userId);
+      const isAssignedRefereeUser = normalizeIdToken((targetMatch as any).referee?.id ?? (targetMatch as any).referee?.$id) === session.userId;
+      const isAssignedTeamRefById = Boolean(assignedTeamRefereeId && userEventTeamIds.has(assignedTeamRefereeId));
+      const isReferee = Boolean(isEventReferee || isTeamRefereeMember || isAssignedRefereeUser || isAssignedTeamRefById);
+      const canEventTeamSwap =
+        !isHostOrAdmin &&
+        !isReferee &&
+        event.doTeamsRef === true &&
+        event.teamRefsMaySwap === true &&
+        !matchRefereeCheckedIn &&
+        userEventTeamIds.size > 0;
 
-      if (!isHostOrAdmin && !isReferee) {
+      if (!isHostOrAdmin && !isReferee && !canEventTeamSwap) {
         throw new Response('Forbidden', { status: 403 });
       }
 
@@ -180,19 +273,63 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Unsupported event type', { status: 400 });
       }
 
-      const updates = isHostOrAdmin
-        ? parsed.data
-        : {
+      let updates: z.infer<typeof updateSchema>;
+      if (isHostOrAdmin) {
+        updates = parsed.data;
+      } else if (canEventTeamSwap) {
+        const requestedKeys = Object.entries(parsed.data)
+          .filter(([, value]) => value !== undefined)
+          .map(([key]) => key);
+        const swapOnlyKeys = new Set(['teamRefereeId', 'refereeCheckedIn']);
+        if (requestedKeys.some((key) => !swapOnlyKeys.has(key))) {
+          throw new Response('Forbidden', { status: 403 });
+        }
+
+        const requestedTeamRefereeId = normalizeIdToken(parsed.data.teamRefereeId);
+        const isEventTeamRefereeId = eventTeams.some((team) => {
+          if (!team || typeof team !== 'object') {
+            return false;
+          }
+          const row = team as Record<string, unknown>;
+          const teamId = normalizeIdToken(row.id ?? row.$id);
+          return teamId === requestedTeamRefereeId;
+        });
+        if (
+          !requestedTeamRefereeId ||
+          !userEventTeamIds.has(requestedTeamRefereeId) ||
+          !isEventTeamRefereeId
+        ) {
+          throw new Response('Forbidden', { status: 403 });
+        }
+
+        updates = {
+          teamRefereeId: requestedTeamRefereeId,
+          // Swap-only action; check-in is a follow-up referee action.
+          refereeCheckedIn: false,
+        };
+      } else {
+        updates = {
           team1Points: parsed.data.team1Points,
           team2Points: parsed.data.team2Points,
           setResults: parsed.data.setResults,
           refereeCheckedIn: parsed.data.refereeCheckedIn,
-          teamRefereeId: parsed.data.teamRefereeId,
+          teamRefereeId: parsed.data.teamRefereeId ?? assignedTeamRefereeId ?? null,
           finalize: parsed.data.finalize,
           time: parsed.data.time,
         };
+      }
 
       applyMatchUpdates(event, targetMatch, updates);
+
+      const lockEvaluationTime = (() => {
+        if (typeof updates.time === 'string' && updates.time.trim().length > 0) {
+          const parsedTime = new Date(updates.time);
+          if (!Number.isNaN(parsedTime.getTime())) {
+            return parsedTime;
+          }
+        }
+        return new Date();
+      })();
 
       if (updates.finalize) {
         const currentTime = updates.time ? new Date(updates.time) : new Date();
@@ -217,6 +354,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           throw error;
         }
       }
+
+      applyPersistentAutoLock(targetMatch, {
+        now: lockEvaluationTime,
+        explicitLockedValue: updates.locked,
+      });
 
       await saveMatches(eventId, Object.values(event.matches), tx);
       await saveTeamRecords(Object.values(event.teams), tx);

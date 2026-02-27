@@ -597,6 +597,7 @@ const run = async () => {
   if (publicUrl) {
     nextEnv.BOLDSIGN_DEV_REDIRECT_BASE_URL = publicUrl;
     nextEnv.NEXT_PUBLIC_BOLDSIGN_DEV_REDIRECT_BASE_URL = publicUrl;
+    nextEnv.PUBLIC_WEB_BASE_URL = publicUrl;
     nextEnv.MVP_DEV_NGROK_URL = publicUrl;
   }
 

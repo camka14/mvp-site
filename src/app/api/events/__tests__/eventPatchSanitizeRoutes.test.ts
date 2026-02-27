@@ -313,6 +313,120 @@ describe('event PATCH route', () => {
     );
   });
 
+  it('preserves existing division teamIds when divisionDetails omits teamIds', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        divisions: ['event_1__division__open'],
+        fieldIds: ['field_1'],
+        eventType: 'LEAGUE',
+        sportId: 'sport_1',
+        organizationId: null,
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        end: new Date('2026-02-01T00:00:00.000Z'),
+        singleDivision: false,
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        divisions: ['event_1__division__open'],
+        fieldIds: ['field_1'],
+        eventType: 'LEAGUE',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        end: new Date('2026-02-01T00:00:00.000Z'),
+        singleDivision: false,
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      divisions: ['event_1__division__open'],
+      fieldIds: ['field_1'],
+      eventType: 'LEAGUE',
+      start: new Date('2026-01-01T00:00:00.000Z'),
+      end: new Date('2026-02-01T00:00:00.000Z'),
+      singleDivision: false,
+    });
+    divisionsMock.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'event_1__division__open',
+          key: 'open',
+          name: 'Open',
+          kind: 'LEAGUE',
+          fieldIds: ['field_1'],
+          teamIds: ['team_1', 'team_2'],
+        },
+      ]) // currentDivisionFieldMap lookup
+      .mockResolvedValueOnce([
+        {
+          id: 'event_1__division__open',
+          key: 'open',
+          name: 'Open',
+          kind: 'LEAGUE',
+          fieldIds: ['field_1'],
+          teamIds: ['team_1', 'team_2'],
+        },
+      ]) // existing divisions lookup in syncEventDivisions
+      .mockResolvedValueOnce([]) // playoff division ids lookup (kind=PLAYOFF)
+      .mockResolvedValueOnce([
+        {
+          id: 'event_1__division__open',
+          key: 'open',
+          fieldIds: ['field_1'],
+          teamIds: ['team_1', 'team_2'],
+        },
+      ]) // response divisionFieldIds
+      .mockResolvedValueOnce([
+        {
+          id: 'event_1__division__open',
+          key: 'open',
+          name: 'Open',
+          kind: 'LEAGUE',
+          fieldIds: ['field_1'],
+          teamIds: ['team_1', 'team_2'],
+        },
+      ]); // response divisionDetails
+    divisionsMock.deleteMany.mockResolvedValue({ count: 0 });
+    divisionsMock.upsert.mockResolvedValue({});
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          divisions: ['event_1__division__open'],
+          divisionDetails: [
+            {
+              id: 'event_1__division__open',
+              key: 'open',
+              name: 'Open',
+              divisionTypeId: 'open',
+              divisionTypeName: 'Open',
+              ratingType: 'SKILL',
+              gender: 'C',
+              maxParticipants: 12,
+              // teamIds intentionally omitted; existing assignment should be preserved
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(divisionsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1__division__open' },
+        create: expect.objectContaining({
+          teamIds: ['team_1', 'team_2'],
+        }),
+        update: expect.objectContaining({
+          teamIds: ['team_1', 'team_2'],
+        }),
+      }),
+    );
+  });
+
   it('forces slot divisions to all selected event divisions when singleDivision is enabled', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique
@@ -369,7 +483,7 @@ describe('event PATCH route', () => {
     expect(executeRawMock.mock.calls[0]?.[1]).toEqual(['beginner', 'advanced']);
   });
 
-  it('fans out multi-day + multi-field slots and removes local fields that were unassigned', async () => {
+  it('persists multi-day + multi-field slots canonically and removes local fields that were unassigned', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique
       .mockResolvedValueOnce({
@@ -427,15 +541,20 @@ describe('event PATCH route', () => {
     );
 
     expect(res.status).toBe(200);
-    expect(timeSlotsMock.upsert).toHaveBeenCalledTimes(4);
+    expect(timeSlotsMock.upsert).toHaveBeenCalledTimes(1);
     expect(
       timeSlotsMock.upsert.mock.calls.map((call) => call[0].where.id).sort(),
-    ).toEqual([
-      'slot_multi__d1__ffield_keep',
-      'slot_multi__d1__ffield_new',
-      'slot_multi__d3__ffield_keep',
-      'slot_multi__d3__ffield_new',
-    ]);
+    ).toEqual(['slot_multi']);
+    expect(timeSlotsMock.upsert.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          dayOfWeek: 1,
+          daysOfWeek: [1, 3],
+          scheduledFieldId: 'field_keep',
+          scheduledFieldIds: ['field_keep', 'field_new'],
+        }),
+      }),
+    );
     expect(fieldsMock.upsert).toHaveBeenCalledTimes(2);
     expect(matchesMock.deleteMany).toHaveBeenCalledWith({
       where: {

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import {
   deleteMatchesByEvent,
   loadEventWithRelations,
+  persistScheduledRosterTeams,
   saveEventSchedule,
   saveMatches,
   syncEventDivisions,
@@ -20,6 +22,7 @@ import {
   extractDivisionTokenFromId,
   inferDivisionDetails,
 } from '@/lib/divisionTypes';
+import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeSlotCanonical';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +80,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'autoCancellation',
   'eventType',
   'doTeamsRef',
+  'teamRefsMaySwap',
   'refereeIds',
   'allowPaymentPlans',
   'installmentCount',
@@ -127,6 +131,11 @@ const withLegacyEvent = (row: any) => {
       && end
       && start.getTime() === end.getTime(),
     );
+  }
+  if ((legacy as any).doTeamsRef !== true) {
+    (legacy as any).teamRefsMaySwap = false;
+  } else if (typeof (legacy as any).teamRefsMaySwap !== 'boolean') {
+    (legacy as any).teamRefsMaySwap = false;
   }
   return legacy;
 };
@@ -321,15 +330,17 @@ const normalizeFieldIds = (value: unknown): string[] => {
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
 };
 
-const normalizeSlotFieldIds = (slot: Record<string, unknown>): string[] => {
-  const fromList = normalizeFieldIds(slot.scheduledFieldIds);
-  if (fromList.length) {
-    return fromList;
+const normalizeTeamIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
   }
-  if (typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0) {
-    return [slot.scheduledFieldId];
-  }
-  return [];
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter((entry) => entry.length > 0),
+    ),
+  );
 };
 
 const normalizeFieldNumber = (value: unknown, fallback: number): number => {
@@ -512,7 +523,10 @@ const normalizeDivisionDetailsInput = (
     const parsedMaxParticipants = normalizeInputNullableNumber(row.maxParticipants);
     const parsedPlayoffTeamCount = normalizeInputNullableNumber(row.playoffTeamCount);
     const parsedKind = normalizeDivisionKind(row.kind, defaultKind);
-    const parsedPlacementDivisionIds = normalizePlacementDivisionIds(row.playoffPlacementDivisionIds, eventId);
+    const hasPlacementDivisionIdsInput = Object.prototype.hasOwnProperty.call(row, 'playoffPlacementDivisionIds');
+    const parsedPlacementDivisionIds = hasPlacementDivisionIdsInput
+      ? normalizePlacementDivisionIds(row.playoffPlacementDivisionIds, eventId)
+      : undefined;
     const parsedStandingsOverrides = normalizeStandingsOverrides(row.standingsOverrides);
     const parsedStandingsConfirmedAt = (() => {
       const parsed = parseDateInput(row.standingsConfirmedAt);
@@ -535,6 +549,7 @@ const normalizeDivisionDetailsInput = (
     const parsedInstallmentAmounts = Object.prototype.hasOwnProperty.call(row, 'installmentAmounts')
       ? normalizeInstallmentAmountList(row.installmentAmounts)
       : undefined;
+    const hasTeamIdsInput = Object.prototype.hasOwnProperty.call(row, 'teamIds');
     const id = normalizeDivisionKey(row.id)
       ?? buildEventDivisionId(eventId, inferred.token);
     if (seen.has(id)) {
@@ -565,7 +580,11 @@ const normalizeDivisionDetailsInput = (
       playoffTeamCount: typeof parsedPlayoffTeamCount === 'number'
         ? Math.max(0, Math.trunc(parsedPlayoffTeamCount))
         : parsedPlayoffTeamCount,
-      playoffPlacementDivisionIds: parsedKind === 'PLAYOFF' ? [] : parsedPlacementDivisionIds,
+      ...(parsedKind === 'PLAYOFF'
+        ? { playoffPlacementDivisionIds: [] }
+        : parsedPlacementDivisionIds !== undefined
+          ? { playoffPlacementDivisionIds: parsedPlacementDivisionIds }
+          : {}),
       standingsOverrides: parsedKind === 'PLAYOFF' ? null : parsedStandingsOverrides,
       standingsConfirmedAt: parsedKind === 'PLAYOFF' ? null : parsedStandingsConfirmedAt,
       standingsConfirmedBy: parsedKind === 'PLAYOFF' ? null : parsedStandingsConfirmedBy,
@@ -583,9 +602,47 @@ const normalizeDivisionDetailsInput = (
       ageCutoffLabel: ageEligibility.message ?? null,
       ageCutoffSource: ageEligibility.applies ? ageEligibility.cutoffRule.source : null,
       fieldIds: normalizeFieldIds(row.fieldIds),
+      ...(parsedKind === 'PLAYOFF'
+        ? { teamIds: [] }
+        : hasTeamIdsInput
+          ? { teamIds: normalizeTeamIds(row.teamIds) }
+          : {}),
     });
   }
   return details;
+};
+
+const validateUniqueDivisionTeamAssignments = (
+  divisionDetails: Array<Record<string, unknown>>,
+  singleDivision: boolean,
+) => {
+  if (singleDivision) {
+    return;
+  }
+  const assignmentMap = new Map<string, string>();
+  for (const detail of divisionDetails) {
+    const kind = normalizeDivisionKind(detail.kind, 'LEAGUE');
+    if (kind === 'PLAYOFF') {
+      continue;
+    }
+    const divisionId = normalizeDivisionKey(detail.id)
+      ?? normalizeDivisionKey(detail.key)
+      ?? '';
+    if (!divisionId) {
+      continue;
+    }
+    const teamIds = normalizeTeamIds(detail.teamIds);
+    for (const teamId of teamIds) {
+      const assignedDivisionId = assignmentMap.get(teamId);
+      if (assignedDivisionId && assignedDivisionId !== divisionId) {
+        throw new Response(
+          `Team ${teamId} is assigned to multiple divisions. Each team can only belong to one division.`,
+          { status: 400 },
+        );
+      }
+      assignmentMap.set(teamId, divisionId);
+    }
+  }
 };
 
 const buildDivisionFieldMap = (
@@ -769,6 +826,7 @@ const getDivisionDetailsForEvent = async (
       ageCutoffLabel: true,
       ageCutoffSource: true,
       fieldIds: true,
+      teamIds: true,
     },
   });
   const rows = Array.isArray(rawRows) ? rawRows : [];
@@ -868,6 +926,7 @@ const getDivisionDetailsForEvent = async (
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
       fieldIds: normalizeFieldIds(row?.fieldIds ?? []),
+      teamIds: kind === 'PLAYOFF' ? [] : normalizeTeamIds((row as any)?.teamIds),
     };
   });
 };
@@ -888,64 +947,6 @@ const getDivisionKeysForEventKind = async (
   return rows
     .map((row) => normalizeDivisionKey(row.id))
     .filter((value): value is string => Boolean(value));
-};
-
-const normalizeSlotDays = (input: { dayOfWeek?: unknown; daysOfWeek?: unknown }): number[] => {
-  const source = Array.isArray(input.daysOfWeek) && input.daysOfWeek.length
-    ? input.daysOfWeek
-    : input.dayOfWeek !== undefined
-      ? [input.dayOfWeek]
-      : [];
-
-  return Array.from(
-    new Set(
-      source
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
-    ),
-  ).sort((a, b) => a - b);
-};
-
-const normalizeSlotBaseId = (value: string): string => {
-  return value
-    .replace(/__d[0-6]__f.+$/, '')
-    .replace(/__f.+$/, '')
-    .replace(/__d[0-6](?:_\d+)?$/, '');
-};
-
-const buildExpandedSlotId = (
-  sourceId: string,
-  baseSlotId: string,
-  day: number,
-  fieldId: string | null,
-  dayCount: number,
-  fieldCount: number,
-): string => {
-  if (dayCount === 1 && fieldCount === 1) {
-    return sourceId;
-  }
-  if (dayCount > 1 && fieldCount === 1) {
-    return `${baseSlotId}__d${day}`;
-  }
-  if (dayCount === 1 && fieldCount > 1) {
-    return `${baseSlotId}__f${fieldId}`;
-  }
-  return `${baseSlotId}__d${day}__f${fieldId}`;
-};
-
-const ensureUniqueExpandedSlotIds = <T extends { id: string }>(slots: T[]): T[] => {
-  const seen = new Map<string, number>();
-  return slots.map((slot) => {
-    const count = seen.get(slot.id) ?? 0;
-    seen.set(slot.id, count + 1);
-    if (count === 0) {
-      return slot;
-    }
-    return {
-      ...slot,
-      id: `${slot.id}__dup${count}`,
-    };
-  });
 };
 
 const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
@@ -978,150 +979,6 @@ const persistTimeSlotDivisions = async (
     }
     throw error;
   }
-};
-
-type ExpandedTimeSlotInput = {
-  id: string;
-  dayOfWeek: number;
-  startTimeMinutes: number | null;
-  endTimeMinutes: number | null;
-  startDate: Date;
-  endDate: Date | null;
-  repeating: boolean;
-  scheduledFieldId: string | null;
-  price: number | null;
-  divisions: string[];
-  requiredTemplateIds: string[];
-};
-
-const expandTimeSlotsForUpdate = (
-  eventId: string,
-  slots: Array<Record<string, any>>,
-  fallbackStartDate: Date,
-  fallbackDivisionKeys: string[],
-  enforceAllDivisions: boolean,
-  useDivisionIds: boolean,
-): ExpandedTimeSlotInput[] => {
-  return ensureUniqueExpandedSlotIds(slots.flatMap((slot, index) => {
-    const sourceId = typeof slot.$id === 'string' && slot.$id.length > 0
-      ? slot.$id
-      : typeof slot.id === 'string' && slot.id.length > 0
-        ? slot.id
-        : `${eventId}__slot_${index + 1}`;
-    const baseSlotId = normalizeSlotBaseId(sourceId);
-    const repeating = typeof slot.repeating === 'boolean' ? slot.repeating : true;
-    const startDate = parseDateInput(slot.startDate) ?? fallbackStartDate;
-    const parsedEndDate = slot.endDate === null ? null : parseDateInput(slot.endDate);
-    const normalizedDays = normalizeSlotDays({
-      dayOfWeek: slot.dayOfWeek,
-      daysOfWeek: slot.daysOfWeek,
-    });
-    const startTimeMinutesInput = typeof slot.startTimeMinutes === 'number'
-      ? slot.startTimeMinutes
-      : Number.isFinite(Number(slot.startTimeMinutes))
-        ? Number(slot.startTimeMinutes)
-        : null;
-    const endTimeMinutesInput = typeof slot.endTimeMinutes === 'number'
-      ? slot.endTimeMinutes
-      : Number.isFinite(Number(slot.endTimeMinutes))
-        ? Number(slot.endTimeMinutes)
-        : null;
-    const derivedStartTimeMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-    const derivedEndTimeMinutes = parsedEndDate
-      ? parsedEndDate.getHours() * 60 + parsedEndDate.getMinutes()
-      : null;
-    const startTimeMinutes = startTimeMinutesInput ?? (repeating ? null : derivedStartTimeMinutes);
-    const endTimeMinutes = endTimeMinutesInput ?? (repeating ? null : derivedEndTimeMinutes);
-    const normalizedFieldIds = normalizeSlotFieldIds(slot);
-    const expandedFieldIds: Array<string | null> = normalizedFieldIds.length ? normalizedFieldIds : [null];
-    const price = typeof slot.price === 'number'
-      ? slot.price
-      : Number.isFinite(Number(slot.price))
-        ? Number(slot.price)
-        : null;
-    const requiredTemplateIds = Array.isArray(slot.requiredTemplateIds)
-      ? Array.from(
-        new Set(
-          slot.requiredTemplateIds
-            .map((entry: unknown) => String(entry))
-            .filter((entry: string) => entry.length > 0),
-        ),
-      )
-      : [];
-    const normalizedSlotDivisions = useDivisionIds
-      ? normalizeDivisionIds(slot.divisions, eventId)
-      : normalizeDivisionKeys(slot.divisions);
-    const divisions = enforceAllDivisions
-      ? fallbackDivisionKeys
-      : normalizedSlotDivisions.length
-      ? normalizedSlotDivisions
-      : fallbackDivisionKeys;
-
-    if (!repeating) {
-      const explicitEndDate = parsedEndDate ?? (() => {
-        if (typeof startTimeMinutes === 'number' && typeof endTimeMinutes === 'number') {
-          const baseDay = new Date(startDate);
-          baseDay.setHours(0, 0, 0, 0);
-          const candidate = new Date(baseDay.getTime() + endTimeMinutes * 60 * 1000);
-          if (candidate.getTime() <= startDate.getTime()) {
-            candidate.setDate(candidate.getDate() + 1);
-          }
-          return candidate;
-        }
-        return null;
-      })();
-      if (!explicitEndDate || explicitEndDate.getTime() <= startDate.getTime()) {
-        return [];
-      }
-      const defaultDay = ((startDate.getDay() + 6) % 7);
-      const slotDay = normalizedDays[0] ?? defaultDay;
-      return expandedFieldIds.map((fieldId): ExpandedTimeSlotInput => ({
-        id: buildExpandedSlotId(
-          sourceId,
-          baseSlotId,
-          slotDay,
-          fieldId,
-          1,
-          expandedFieldIds.length,
-        ),
-        dayOfWeek: slotDay,
-        startTimeMinutes,
-        endTimeMinutes,
-        startDate,
-        endDate: explicitEndDate,
-        repeating: false,
-        scheduledFieldId: fieldId,
-        price,
-        divisions,
-        requiredTemplateIds,
-      }));
-    }
-
-    const days = normalizedDays.length ? normalizedDays : [((startDate.getDay() + 6) % 7)];
-
-    return days.flatMap((day) =>
-      expandedFieldIds.map((fieldId): ExpandedTimeSlotInput => ({
-        id: buildExpandedSlotId(
-          sourceId,
-          baseSlotId,
-          day,
-          fieldId,
-          days.length,
-          expandedFieldIds.length,
-        ),
-        dayOfWeek: day,
-        startTimeMinutes,
-        endTimeMinutes,
-        startDate,
-        endDate: parsedEndDate ?? null,
-        repeating: true,
-        scheduledFieldId: fieldId,
-        price,
-        divisions,
-        requiredTemplateIds,
-      })),
-    );
-  }));
 };
 
 const hasScheduleImpact = (existing: any, payload: Record<string, any>): boolean => {
@@ -1181,6 +1038,208 @@ const hasScheduleImpact = (existing: any, payload: Record<string, any>): boolean
 
     return nextValue !== prevValue;
   });
+};
+
+const isDivisionAssignmentValidationError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('assigned to more than one division')
+    || normalized.includes('assigned to multiple divisions');
+};
+
+const normalizeEntityId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const normalizeEntityIdList = (value: unknown): string[] => (
+  Array.isArray(value)
+    ? Array.from(
+        new Set(
+          value
+            .map((entry) => normalizeEntityId(entry))
+            .filter((entry): entry is string => Boolean(entry)),
+        ),
+      )
+    : []
+);
+
+const normalizeStripeSecretKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+  const normalizedLower = normalized.toLowerCase();
+  if (normalizedLower === 'undefined' || normalizedLower === 'null') {
+    return null;
+  }
+  return normalized;
+};
+
+const removeEntityIdFromList = (values: unknown, targetId: string): string[] => {
+  const normalizedTargetId = normalizeEntityId(targetId);
+  if (!normalizedTargetId) {
+    return normalizeEntityIdList(values);
+  }
+  return normalizeEntityIdList(values).filter((value) => value !== normalizedTargetId);
+};
+
+const isAlreadyRefundedStripeError = (error: unknown): boolean => {
+  const normalizedCode = typeof (error as { code?: unknown })?.code === 'string'
+    ? (error as { code: string }).code.toLowerCase()
+    : '';
+  if (normalizedCode === 'charge_already_refunded') {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.toLowerCase().includes('already refunded');
+};
+
+const isCancellablePaymentIntentStatus = (status: unknown): boolean => {
+  if (typeof status !== 'string') {
+    return false;
+  }
+  const normalized = status.toLowerCase();
+  return normalized === 'requires_payment_method'
+    || normalized === 'requires_confirmation'
+    || normalized === 'requires_action'
+    || normalized === 'requires_capture'
+    || normalized === 'processing';
+};
+
+const collectEventBillIds = async (
+  eventId: string,
+  client: any = prisma,
+): Promise<string[]> => {
+  const rootRows = await client.bills.findMany({
+    where: { eventId },
+    select: { id: true },
+  });
+  const collected = new Set<string>(normalizeEntityIdList(rootRows.map((row: { id: string }) => row.id)));
+  let frontier = Array.from(collected);
+
+  while (frontier.length > 0) {
+    const childRows = await client.bills.findMany({
+      where: { parentBillId: { in: frontier } },
+      select: { id: true },
+    });
+    const nextFrontier: string[] = [];
+    childRows.forEach((row: { id: string }) => {
+      const normalizedId = normalizeEntityId(row.id);
+      if (!normalizedId || collected.has(normalizedId)) {
+        return;
+      }
+      collected.add(normalizedId);
+      nextFrontier.push(normalizedId);
+    });
+    frontier = nextFrontier;
+  }
+
+  return Array.from(collected);
+};
+
+const settleEventBillingBeforeDelete = async (params: {
+  eventId: string;
+  billIds: string[];
+  client?: any;
+}): Promise<{ refundedPaymentIntentIds: string[]; cancelledPaymentIntentIds: string[] }> => {
+  if (!params.billIds.length) {
+    return {
+      refundedPaymentIntentIds: [],
+      cancelledPaymentIntentIds: [],
+    };
+  }
+
+  const client = params.client ?? prisma;
+  const paymentRows = await client.billPayments.findMany({
+    where: {
+      billId: { in: params.billIds },
+      paymentIntentId: { not: null },
+    },
+    select: {
+      id: true,
+      paymentIntentId: true,
+      status: true,
+    },
+  });
+
+  const byIntentId = new Map<string, { hasPaid: boolean; hasPending: boolean }>();
+  paymentRows.forEach((row: { paymentIntentId: string | null; status: string | null }) => {
+    const intentId = normalizeEntityId(row.paymentIntentId);
+    if (!intentId) {
+      return;
+    }
+    const existing = byIntentId.get(intentId) ?? { hasPaid: false, hasPending: false };
+    const normalizedStatus = typeof row.status === 'string' ? row.status.toUpperCase() : '';
+    if (normalizedStatus === 'PAID') {
+      existing.hasPaid = true;
+    } else if (normalizedStatus === '' || normalizedStatus === 'PENDING') {
+      existing.hasPending = true;
+    }
+    byIntentId.set(intentId, existing);
+  });
+
+  const paidIntentIds = Array.from(byIntentId.entries())
+    .filter(([, state]) => state.hasPaid)
+    .map(([intentId]) => intentId);
+  const stripeSecretKey = normalizeStripeSecretKey(process.env.STRIPE_SECRET_KEY);
+  const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+
+  if (paidIntentIds.length > 0 && !stripe) {
+    throw new Error('Cannot refund paid bills because Stripe is not configured.');
+  }
+
+  const refundedPaymentIntentIds: string[] = [];
+  const cancelledPaymentIntentIds: string[] = [];
+
+  for (const [intentId, state] of byIntentId.entries()) {
+    if (state.hasPaid) {
+      try {
+        await stripe!.refunds.create({
+          payment_intent: intentId,
+          reason: 'requested_by_customer',
+          metadata: {
+            event_id: params.eventId,
+            source: 'event_delete',
+          },
+        });
+        refundedPaymentIntentIds.push(intentId);
+      } catch (error) {
+        if (isAlreadyRefundedStripeError(error)) {
+          refundedPaymentIntentIds.push(intentId);
+          continue;
+        }
+        throw error;
+      }
+      continue;
+    }
+
+    if (!state.hasPending || !stripe) {
+      continue;
+    }
+
+    try {
+      const intent = await stripe.paymentIntents.retrieve(intentId);
+      if (!isCancellablePaymentIntentStatus(intent.status)) {
+        continue;
+      }
+      await stripe.paymentIntents.cancel(intentId);
+      cancelledPaymentIntentIds.push(intentId);
+    } catch (error) {
+      console.warn(`Failed to cancel pending PaymentIntent ${intentId} before event delete.`, error);
+    }
+  }
+
+  return {
+    refundedPaymentIntentIds,
+    cancelledPaymentIntentIds,
+  };
 };
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
@@ -1340,6 +1399,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           delete payload.noFixedEndDateTime;
         }
       }
+      if (Object.prototype.hasOwnProperty.call(payload, 'teamRefsMaySwap')) {
+        const normalizedTeamRefsMaySwap = normalizeOptionalBoolean(payload.teamRefsMaySwap);
+        if (normalizedTeamRefsMaySwap !== null) {
+          payload.teamRefsMaySwap = normalizedTeamRefsMaySwap;
+        } else {
+          delete payload.teamRefsMaySwap;
+        }
+      }
 
       const data: Record<string, any> = {};
       for (const [key, value] of Object.entries(payload)) {
@@ -1357,6 +1424,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.splitLeaguePlayoffDivisions = Boolean(payload.splitLeaguePlayoffDivisions);
       } else if (!Object.prototype.hasOwnProperty.call(data, 'splitLeaguePlayoffDivisions')) {
         data.splitLeaguePlayoffDivisions = Boolean(existing.splitLeaguePlayoffDivisions);
+      }
+      if (data.doTeamsRef !== true) {
+        data.teamRefsMaySwap = false;
+      } else if (Object.prototype.hasOwnProperty.call(payload, 'teamRefsMaySwap')) {
+        data.teamRefsMaySwap = Boolean(payload.teamRefsMaySwap);
+      } else if (!Object.prototype.hasOwnProperty.call(data, 'teamRefsMaySwap')) {
+        data.teamRefsMaySwap = Boolean((existing as any).teamRefsMaySwap);
       }
       if (targetEventType === 'LEAGUE') {
         const normalizedLeagueConfig = normalizeLeagueScoringConfigUpdate(incomingLeagueScoringConfig);
@@ -1406,7 +1480,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const hasTimeSlotPayload = incomingTimeSlots !== null;
       const slotDerivedFieldIds = hasTimeSlotPayload
         ? normalizeFieldIds(
-          incomingTimeSlots.flatMap((slot) => normalizeSlotFieldIds(slot)),
+          incomingTimeSlots.flatMap((slot) => normalizeTimeSlotFieldIds(slot)),
         )
         : [];
       const nextFieldIds = (() => {
@@ -1444,6 +1518,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const nextSingleDivision = typeof data.singleDivision === 'boolean'
         ? data.singleDivision
         : Boolean(existing.singleDivision);
+      if (incomingDivisionDetails.length > 0) {
+        validateUniqueDivisionTeamAssignments(incomingDivisionDetails, nextSingleDivision);
+      }
       const nextEventTypeRaw = (data.eventType ?? existing.eventType ?? null) as string | null;
       const nextEventType = typeof nextEventTypeRaw === 'string'
         ? nextEventTypeRaw.toUpperCase()
@@ -1509,38 +1586,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         divisionFieldMapChanged = !divisionFieldMapsEqual(currentDivisionFieldMap, nextDivisionFieldMap);
       }
 
-      let expandedTimeSlots: ExpandedTimeSlotInput[] | null = null;
+      let canonicalTimeSlots: ReturnType<typeof canonicalizeTimeSlots> | null = null;
       if (incomingTimeSlots !== null) {
-        expandedTimeSlots = expandTimeSlotsForUpdate(
+        canonicalTimeSlots = canonicalizeTimeSlots({
           eventId,
-          incomingTimeSlots,
-          existing.start,
-          nextDivisionKeys,
-          nextSingleDivision,
-          hasDivisionDetailsInput,
-        );
-        data.timeSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
+          slots: incomingTimeSlots,
+          fallbackStartDate: existing.start,
+          fallbackDivisionKeys: nextDivisionKeys,
+          enforceAllDivisions: nextSingleDivision,
+          normalizeDivisions: (value) => (
+            hasDivisionDetailsInput
+              ? normalizeDivisionIds(value, eventId)
+              : normalizeDivisionKeys(value)
+          ),
+        });
+        data.timeSlotIds = Array.from(new Set(canonicalTimeSlots.map((slot) => slot.id)));
       }
 
       // Keep plain PATCH saves metadata-only; clients must explicitly opt-in to a rebuild.
       const scheduleChanged = hasScheduleImpact(existing, data) || divisionFieldMapChanged || hasTimeSlotPayload;
       const shouldSchedule = parsed.data.reschedule === true && scheduleChanged;
 
-      if (expandedTimeSlots !== null) {
-        const nextSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
+      if (canonicalTimeSlots !== null) {
+        const nextSlotIds = Array.from(new Set(canonicalTimeSlots.map((slot) => slot.id)));
         const nextSlotIdSet = new Set(nextSlotIds);
         const staleSlotIds = existingSlotIds.filter((slotId) => !nextSlotIdSet.has(slotId));
 
-        for (const slot of expandedTimeSlots) {
+        for (const slot of canonicalTimeSlots) {
           const now = new Date();
           const upsertData = {
             dayOfWeek: slot.dayOfWeek,
+            daysOfWeek: slot.daysOfWeek,
             startTimeMinutes: slot.startTimeMinutes,
             endTimeMinutes: slot.endTimeMinutes,
             startDate: slot.startDate,
             endDate: slot.endDate,
             repeating: slot.repeating,
             scheduledFieldId: slot.scheduledFieldId,
+            scheduledFieldIds: slot.scheduledFieldIds,
             price: slot.price,
             requiredTemplateIds: slot.requiredTemplateIds,
             updatedAt: now,
@@ -1706,6 +1789,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           eventId,
           divisionIds: nextDivisionKeys,
           fieldIds: nextFieldIds,
+          singleDivision: nextSingleDivision,
           sportId: (data.sportId ?? existing.sportId ?? null) as string | null,
           referenceDate: (data.start ?? existing.start ?? null) as Date | null,
           organizationId: (data.organizationId ?? existing.organizationId ?? null) as string | null,
@@ -1728,6 +1812,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         const loaded = await loadEventWithRelations(eventId, tx);
         if (isSchedulableEventType(loaded.eventType)) {
           const scheduled = scheduleEvent({ event: loaded }, context);
+          await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
           await deleteMatchesByEvent(eventId, tx);
           await saveMatches(eventId, scheduled.matches, tx);
           await saveEventSchedule(scheduled.event, tx);
@@ -1772,6 +1857,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+    if (isDivisionAssignmentValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid division team assignments';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
     console.error('Update event failed', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
@@ -1780,7 +1869,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const session = await requireSession(req);
   const { eventId } = await params;
-  const event = await prisma.events.findUnique({ where: { id: eventId } });
+  const event = await prisma.events.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      hostId: true,
+      assistantHostIds: true,
+      organizationId: true,
+      fieldIds: true,
+      timeSlotIds: true,
+      teamIds: true,
+      state: true,
+      leagueScoringConfigId: true,
+    },
+  });
   if (!event) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
@@ -1788,6 +1890,195 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await prisma.events.delete({ where: { id: eventId } });
+  const billIds = await collectEventBillIds(eventId);
+  try {
+    await settleEventBillingBeforeDelete({ eventId, billIds });
+  } catch (error) {
+    console.error('Failed to settle billing before deleting event.', error);
+    const message = error instanceof Error
+      ? error.message
+      : 'Failed to settle billing before deleting event';
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
+
+  const eventFieldIds = normalizeEntityIdList(event.fieldIds);
+  const eventTimeSlotIds = normalizeEntityIdList(event.timeSlotIds);
+  const eventTeamIds = normalizeEntityIdList(event.teamIds);
+  const eventState = typeof event.state === 'string' ? event.state.toUpperCase() : '';
+  const leagueScoringConfigId = normalizeEntityId(event.leagueScoringConfigId);
+
+  await prisma.$transaction(async (tx) => {
+    if (eventState === 'TEMPLATE') {
+      const [eventsUsingTemplate, timeSlotsUsingTemplate] = await Promise.all([
+        tx.events.findMany({
+          where: {
+            id: { not: eventId },
+            requiredTemplateIds: { has: eventId },
+          },
+          select: {
+            id: true,
+            requiredTemplateIds: true,
+          },
+        }),
+        tx.timeSlots.findMany({
+          where: {
+            requiredTemplateIds: { has: eventId },
+          },
+          select: {
+            id: true,
+            requiredTemplateIds: true,
+          },
+        }),
+      ]);
+
+      for (const linkedEvent of eventsUsingTemplate) {
+        await tx.events.update({
+          where: { id: linkedEvent.id },
+          data: {
+            requiredTemplateIds: removeEntityIdFromList(linkedEvent.requiredTemplateIds, eventId),
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      for (const linkedSlot of timeSlotsUsingTemplate) {
+        await tx.timeSlots.update({
+          where: { id: linkedSlot.id },
+          data: {
+            requiredTemplateIds: removeEntityIdFromList(linkedSlot.requiredTemplateIds, eventId),
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+
+    const registrations = await tx.eventRegistrations.findMany({
+      where: { eventId },
+      select: {
+        registrantId: true,
+        registrantType: true,
+      },
+    });
+    const registrationTeamIds = registrations
+      .filter((row: { registrantType: string }) => row.registrantType === 'TEAM')
+      .map((row: { registrantId: string }) => row.registrantId);
+    const seedTeamIds = Array.from(new Set([...eventTeamIds, ...normalizeEntityIdList(registrationTeamIds)]));
+
+    const linkedTeams = seedTeamIds.length > 0
+      ? await tx.teams.findMany({
+          where: {
+            OR: [
+              { id: { in: seedTeamIds } },
+              { parentTeamId: { in: seedTeamIds } },
+            ],
+          },
+          select: { id: true },
+        })
+      : [];
+    const candidateTeamIds = Array.from(
+      new Set([...seedTeamIds, ...linkedTeams.map((row: { id: string }) => row.id)]),
+    );
+
+    const referencedTeamIds = new Set<string>();
+    if (candidateTeamIds.length > 0) {
+      const registrationsUsingTeams = await tx.eventRegistrations.findMany({
+        where: {
+          eventId: { not: eventId },
+          registrantType: 'TEAM',
+          registrantId: { in: candidateTeamIds },
+        },
+        select: { registrantId: true },
+      });
+      normalizeEntityIdList(registrationsUsingTeams.map((row: { registrantId: string }) => row.registrantId))
+        .forEach((id) => referencedTeamIds.add(id));
+
+      const eventsUsingTeams = await tx.events.findMany({
+        where: {
+          id: { not: eventId },
+          OR: candidateTeamIds.map((teamId) => ({ teamIds: { has: teamId } })),
+        },
+        select: { teamIds: true },
+      });
+      eventsUsingTeams.forEach((row: { teamIds: string[] }) => {
+        normalizeEntityIdList(row.teamIds).forEach((teamId) => {
+          if (candidateTeamIds.includes(teamId)) {
+            referencedTeamIds.add(teamId);
+          }
+        });
+      });
+    }
+    const teamIdsToDelete = candidateTeamIds.filter((teamId) => !referencedTeamIds.has(teamId));
+
+    const localFieldIds = eventFieldIds.length > 0
+      ? (await tx.fields.findMany({
+          where: {
+            id: { in: eventFieldIds },
+            organizationId: null,
+          },
+          select: { id: true },
+        })).map((row: { id: string }) => row.id)
+      : [];
+
+    await tx.matches.deleteMany({ where: { eventId } });
+    await tx.divisions.deleteMany({ where: { eventId } });
+    await tx.eventRegistrations.deleteMany({ where: { eventId } });
+    await tx.refundRequests.deleteMany({ where: { eventId } });
+    await tx.signedDocuments.deleteMany({ where: { eventId } });
+    await tx.invites.deleteMany({ where: { eventId } });
+    await tx.paymentIntents.deleteMany({ where: { eventId } });
+    await tx.templateDocuments.deleteMany({ where: { templateId: eventId } });
+
+    if (billIds.length > 0) {
+      await tx.billPayments.deleteMany({
+        where: {
+          billId: { in: billIds },
+        },
+      });
+      await tx.bills.deleteMany({
+        where: {
+          id: { in: billIds },
+        },
+      });
+    }
+
+    if (eventTimeSlotIds.length > 0) {
+      await tx.timeSlots.deleteMany({
+        where: {
+          id: { in: eventTimeSlotIds },
+        },
+      });
+    }
+
+    if (localFieldIds.length > 0) {
+      await tx.fields.deleteMany({
+        where: {
+          id: { in: localFieldIds },
+          organizationId: null,
+        },
+      });
+    }
+
+    if (teamIdsToDelete.length > 0) {
+      await tx.teams.deleteMany({
+        where: {
+          id: { in: teamIdsToDelete },
+        },
+      });
+    }
+
+    await tx.events.delete({ where: { id: eventId } });
+
+    if (leagueScoringConfigId) {
+      const remainingEventsUsingConfig = await tx.events.count({
+        where: { leagueScoringConfigId },
+      });
+      if (remainingEventsUsingConfig === 0) {
+        await tx.leagueScoringConfigs.deleteMany({
+          where: { id: leagueScoringConfigId },
+        });
+      }
+    }
+  });
+
   return NextResponse.json({ deleted: true }, { status: 200 });
 }

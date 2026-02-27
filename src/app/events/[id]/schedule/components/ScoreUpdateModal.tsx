@@ -23,6 +23,42 @@ interface ScoreUpdateModalProps {
   isOpen: boolean;
 }
 
+const toPositiveInt = (value: unknown): number | null => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.max(1, Math.trunc(parsed));
+};
+
+const normalizePointArray = (values: number[] | undefined, length: number): number[] => {
+  const source = Array.isArray(values) ? values : [];
+  const next = source
+    .slice(0, length)
+    .map((value) => (Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0));
+  while (next.length < length) {
+    next.push(0);
+  }
+  return next;
+};
+
+const normalizeResultArray = (values: number[] | undefined, length: number): number[] => {
+  const source = Array.isArray(values) ? values : [];
+  const next = source
+    .slice(0, length)
+    .map((value) => (value === 1 || value === 2 ? value : 0));
+  while (next.length < length) {
+    next.push(0);
+  }
+  return next;
+};
+
+const resolveTimedSetResult = (team1Score: number, team2Score: number): number => {
+  if (team1Score > team2Score) return 1;
+  if (team2Score > team1Score) return 2;
+  return 0;
+};
+
 export default function ScoreUpdateModal({
   match,
   tournament,
@@ -39,8 +75,13 @@ export default function ScoreUpdateModal({
   const [setResults, setSetResults] = useState<number[]>(match.setResults || []);
   const [currentSet, setCurrentSet] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [showFieldMap, setShowFieldMap] = useState(false);
   const matchCompletionTriggered = useRef(false);
   const sportAllowsDraw = Boolean(tournament?.sport?.usePointsForDraw);
+  const eventUsesSets = typeof tournament.usesSets === 'boolean'
+    ? tournament.usesSets
+    : Boolean(tournament.leagueConfig?.usesSets);
+  const isTimedMatch = !eventUsesSets;
 
   const isPlayoffMatch =
     tournament.eventType === 'TOURNAMENT' ||
@@ -58,18 +99,36 @@ export default function ScoreUpdateModal({
       : tournament.winnerBracketPointsToVictory
     : tournament.pointsToVictory;
 
-  const derivedSetCount = useMemo(() => {
-    const targetLen = Array.isArray(targetPointsConfig) ? targetPointsConfig.length : 0;
-    const bracketConfigured = match.losersBracket ? tournament.loserSetCount : tournament.winnerSetCount;
-    const leagueConfigured =
-      typeof tournament.setsPerMatch === 'number' ? tournament.setsPerMatch : tournament.leagueConfig?.setsPerMatch;
-    const knownLengths = Math.max(setResults.length || 0, team1Points.length || 0, team2Points.length || 0);
-    const base = Math.max(targetLen, bracketConfigured || 0, leagueConfigured || 0, knownLengths, 1);
-    const minSets = sportAllowsDraw ? 1 : 3;
-    return Math.max(base, minSets);
-  }, [match.losersBracket, sportAllowsDraw, targetPointsConfig, tournament.leagueConfig?.setsPerMatch, tournament.loserSetCount, tournament.setsPerMatch, tournament.winnerSetCount, setResults.length, team1Points.length, team2Points.length]);
+  const totalSets = useMemo(() => {
+    if (isTimedMatch) {
+      return 1;
+    }
 
-  const totalSets = derivedSetCount;
+    const fallbackFromPoints = Array.isArray(targetPointsConfig) && targetPointsConfig.length > 0
+      ? targetPointsConfig.length
+      : 1;
+
+    if (isPlayoffMatch) {
+      const configured = toPositiveInt(match.losersBracket ? tournament.loserSetCount : tournament.winnerSetCount);
+      return configured ?? fallbackFromPoints;
+    }
+
+    const configuredLeagueSets = toPositiveInt(
+      typeof tournament.setsPerMatch === 'number'
+        ? tournament.setsPerMatch
+        : tournament.leagueConfig?.setsPerMatch,
+    );
+    return configuredLeagueSets ?? fallbackFromPoints;
+  }, [
+    isPlayoffMatch,
+    isTimedMatch,
+    match.losersBracket,
+    targetPointsConfig,
+    tournament.leagueConfig?.setsPerMatch,
+    tournament.loserSetCount,
+    tournament.setsPerMatch,
+    tournament.winnerSetCount,
+  ]);
 
   const getSetTarget = (index: number): number | null => {
     if (!Array.isArray(targetPointsConfig) || targetPointsConfig.length === 0) return null;
@@ -82,29 +141,25 @@ export default function ScoreUpdateModal({
   // Initialize arrays and determine current set
   useEffect(() => {
     matchCompletionTriggered.current = false;
-    const length = derivedSetCount;
-    if (team1Points.length === 0) setTeam1Points(new Array(length).fill(0));
-    if (team2Points.length === 0) setTeam2Points(new Array(length).fill(0));
-    if (setResults.length === 0) setSetResults(new Array(length).fill(0));
+    const length = totalSets;
+    const nextTeam1 = normalizePointArray(match.team1Points, length);
+    const nextTeam2 = normalizePointArray(match.team2Points, length);
+    const nextResults = normalizeResultArray(match.setResults, length);
 
-    const baseline = setResults.length > 0 ? setResults : new Array(length).fill(0);
-    const idx = baseline.findIndex((r: number) => r === 0);
+    setTeam1Points(nextTeam1);
+    setTeam2Points(nextTeam2);
+    setSetResults(nextResults);
+
+    const idx = nextResults.findIndex((r: number) => r === 0);
     setCurrentSet(idx >= 0 ? idx : 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [match.$id, tournament.$id, derivedSetCount]);
+  }, [match.$id, match.setResults, match.team1Points, match.team2Points, totalSets, tournament.$id]);
 
   useEffect(() => {
-    const length = derivedSetCount;
-    if (team1Points.length < length) {
-      setTeam1Points((prev) => [...prev, ...new Array(length - prev.length).fill(0)]);
-    }
-    if (team2Points.length < length) {
-      setTeam2Points((prev) => [...prev, ...new Array(length - prev.length).fill(0)]);
-    }
-    if (setResults.length < length) {
-      setSetResults((prev) => [...prev, ...new Array(length - prev.length).fill(0)]);
-    }
-  }, [derivedSetCount, setResults.length, team1Points.length, team2Points.length]);
+    setTeam1Points((prev) => normalizePointArray(prev, totalSets));
+    setTeam2Points((prev) => normalizePointArray(prev, totalSets));
+    setSetResults((prev) => normalizeResultArray(prev, totalSets));
+    setCurrentSet((prev) => Math.min(prev, Math.max(totalSets - 1, 0)));
+  }, [totalSets]);
 
   const getTeamName = (teamData: any) => {
     if (teamData?.name) return teamData.name;
@@ -185,6 +240,9 @@ export default function ScoreUpdateModal({
 
   const isMatchComplete = (results?: number[]) => {
     const source = results ?? setResults;
+    if (isTimedMatch) {
+      return source.some((result) => result === 1 || result === 2);
+    }
     if (!sportAllowsDraw && totalSets <= 1) {
       return isWinConditionMet(source);
     }
@@ -248,15 +306,21 @@ export default function ScoreUpdateModal({
   const handleSubmit = async () => {
     setLoading(true);
     const submitFn = onSubmit ?? (async () => {});
+    const nextSetResults = isTimedMatch
+      ? [resolveTimedSetResult(team1Points[0] || 0, team2Points[0] || 0)]
+      : setResults;
     try {
-      await submitFn(match.$id, team1Points, team2Points, setResults);
+      if (isTimedMatch) {
+        setSetResults(nextSetResults);
+      }
+      await submitFn(match.$id, team1Points, team2Points, nextSetResults);
 
-      if (onMatchComplete && !matchCompletionTriggered.current && isMatchComplete()) {
+      if (onMatchComplete && !matchCompletionTriggered.current && isMatchComplete(nextSetResults)) {
         await onMatchComplete({
           matchId: match.$id,
           team1Points,
           team2Points,
-          setResults,
+          setResults: nextSetResults,
           eventId: tournament.$id,
         });
         matchCompletionTriggered.current = true;
@@ -278,10 +342,49 @@ export default function ScoreUpdateModal({
 
   const canConfirmCurrentSet =
     canManage &&
+    !isTimedMatch &&
     !sportAllowsDraw &&
     totalSets > 1 &&
     setResults[currentSet] === 0 &&
     isWinConditionMet();
+
+  const fieldLat = typeof match.field?.lat === 'number' ? match.field.lat : null;
+  const fieldLng = typeof match.field?.long === 'number' ? match.field.long : null;
+  const hasFieldCoords = Number.isFinite(fieldLat) && Number.isFinite(fieldLng);
+
+  const eventLat = Array.isArray(tournament.coordinates) && typeof tournament.coordinates[0] === 'number'
+    ? tournament.coordinates[0]
+    : null;
+  const eventLng = Array.isArray(tournament.coordinates) && typeof tournament.coordinates[1] === 'number'
+    ? tournament.coordinates[1]
+    : null;
+  const hasEventCoords = Number.isFinite(eventLat) && Number.isFinite(eventLng);
+
+  const mapLat = hasFieldCoords ? fieldLat : hasEventCoords ? eventLat : null;
+  const mapLng = hasFieldCoords ? fieldLng : hasEventCoords ? eventLng : null;
+  const hasValidCoords = Number.isFinite(mapLat) && Number.isFinite(mapLng);
+  const locationLabel = (
+    match.field?.location?.trim()
+    || match.field?.name?.trim()
+    || tournament.location?.trim()
+    || ''
+  );
+  const mapQuery = hasValidCoords ? `${mapLat},${mapLng}` : locationLabel;
+  const encodedMapQuery = encodeURIComponent(mapQuery);
+  const googleMapsLink = mapQuery
+    ? `https://www.google.com/maps/search/?api=1&query=${encodedMapQuery}`
+    : null;
+  const mapEmbedSrc = hasValidCoords
+    ? `https://maps.google.com/maps?q=${mapLat},${mapLng}&z=14&output=embed`
+    : mapQuery
+      ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
+      : null;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowFieldMap(false);
+    }
+  }, [isOpen, match.$id]);
 
   return (
     <Modal opened={isOpen} onClose={onClose} title={<Text fw={600}>Update Match Score</Text>} centered>
@@ -293,6 +396,47 @@ export default function ScoreUpdateModal({
           <Badge mt={6} color="orange">Loser Bracket</Badge>
         )}
       </div>
+
+      {googleMapsLink && mapEmbedSrc && (
+        <Paper withBorder p="md" radius="md" mb="md">
+          <Group justify="space-between" align="center">
+            <div>
+              <Text c="dimmed" size="sm">Field</Text>
+              <Text fw={600}>{locationLabel || 'Field location'}</Text>
+            </div>
+            <Group gap="xs">
+              <Button
+                variant="light"
+                size="xs"
+                onClick={() => setShowFieldMap((prev) => !prev)}
+              >
+                {showFieldMap ? 'Hide Field Location' : 'View Field Location'}
+              </Button>
+              <Button
+                component="a"
+                href={googleMapsLink}
+                target="_blank"
+                rel="noreferrer"
+                variant="subtle"
+                size="xs"
+              >
+                Open in Maps
+              </Button>
+            </Group>
+          </Group>
+          {showFieldMap && (
+            <div className="overflow-hidden rounded-md border border-gray-200 mt-3" style={{ aspectRatio: '16 / 9' }}>
+              <iframe
+                title="Match field location preview"
+                src={mapEmbedSrc}
+                className="w-full h-full"
+                loading="lazy"
+                allowFullScreen
+              />
+            </div>
+          )}
+        </Paper>
+      )}
 
       <div className="grid grid-cols-1 gap-6 mb-8">
         {/* Team 1 */}
@@ -314,7 +458,7 @@ export default function ScoreUpdateModal({
           <div style={{ textAlign: 'center' }}>
             <Text fw={700} size="xl">{team1Points[currentSet] || 0}</Text>
             <Group justify="center" gap="xs" mt={6}>
-              {team1Points.map((points, index) => (
+              {team1Points.slice(0, totalSets).map((points, index) => (
                 <Text
                   key={`t1-${index}`}
                   size="sm"
@@ -346,7 +490,7 @@ export default function ScoreUpdateModal({
           <div style={{ textAlign: 'center' }}>
             <Text fw={700} size="xl">{team2Points[currentSet] || 0}</Text>
             <Group justify="center" gap="xs" mt={6}>
-              {team2Points.map((points, index) => (
+              {team2Points.slice(0, totalSets).map((points, index) => (
                 <Text
                   key={`t2-${index}`}
                   size="sm"
@@ -369,7 +513,11 @@ export default function ScoreUpdateModal({
             </Button>
           )}
           {canManage && (
-            <Button onClick={handleSubmit} loading={loading} disabled={!sportAllowsDraw && !isMatchComplete()}>
+            <Button
+              onClick={handleSubmit}
+              loading={loading}
+              disabled={!isTimedMatch && !sportAllowsDraw && !isMatchComplete()}
+            >
               Save Match
             </Button>
           )}

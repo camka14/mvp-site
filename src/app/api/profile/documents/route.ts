@@ -218,6 +218,48 @@ export async function GET(_req: NextRequest) {
         : [],
     ),
   ));
+  const canonicalTeamIdsForSlotLookup = Array.from(new Set([...teamIds, ...linkedChildTeamIds]));
+  const slotTeams = canonicalTeamIdsForSlotLookup.length
+    ? await prisma.teams.findMany({
+        where: { parentTeamId: { in: canonicalTeamIdsForSlotLookup } },
+        select: { id: true, parentTeamId: true },
+      })
+    : [];
+  const slotTeamIdsByParent = new Map<string, string[]>();
+  slotTeams.forEach((team) => {
+    const parentTeamId = normalizeText(team.parentTeamId);
+    const id = normalizeText(team.id);
+    if (!parentTeamId || !id) {
+      return;
+    }
+    const existing = slotTeamIdsByParent.get(parentTeamId) ?? [];
+    existing.push(id);
+    slotTeamIdsByParent.set(parentTeamId, existing);
+  });
+  const slotTeamIds = Array.from(new Set(
+    teamIds.flatMap((teamId) => slotTeamIdsByParent.get(teamId) ?? []),
+  ));
+  const linkedChildSlotTeamIds = Array.from(new Set(
+    linkedChildTeamIds.flatMap((teamId) => slotTeamIdsByParent.get(teamId) ?? []),
+  ));
+  const relevantTeamIds = Array.from(new Set([...teamIds, ...slotTeamIds]));
+  const relevantLinkedChildTeamIds = Array.from(new Set([...linkedChildTeamIds, ...linkedChildSlotTeamIds]));
+  const childTeamIdsByIdWithSlots = new Map<string, string[]>();
+  linkedChildProfiles.forEach((child) => {
+    const childId = normalizeText(child.id);
+    if (!childId) {
+      return;
+    }
+    const childCanonicalTeamIds = Array.from(new Set(
+      Array.isArray(child.teamIds)
+        ? child.teamIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+        : [],
+    ));
+    const childSlots = Array.from(new Set(
+      childCanonicalTeamIds.flatMap((teamId) => slotTeamIdsByParent.get(teamId) ?? []),
+    ));
+    childTeamIdsByIdWithSlots.set(childId, Array.from(new Set([...childCanonicalTeamIds, ...childSlots])));
+  });
   const selfEmail = normalizeText(selfSensitive?.email);
   const userIsLinkedChild = parentLinksForSelf.length > 0;
   const registrationChildIds = registrations
@@ -268,11 +310,11 @@ export async function GET(_req: NextRequest) {
     where: {
       OR: [
         { userIds: { has: userId } },
-        ...(teamIds.length ? [{ teamIds: { hasSome: teamIds } }] : []),
+        ...(relevantTeamIds.length ? [{ teamIds: { hasSome: relevantTeamIds } }] : []),
         { freeAgentIds: { has: userId } },
         ...(registrationEventIds.length ? [{ id: { in: registrationEventIds } }] : []),
         ...(signedEventIds.length ? [{ id: { in: signedEventIds } }] : []),
-        ...(linkedChildTeamIds.length ? [{ teamIds: { hasSome: linkedChildTeamIds } }] : []),
+        ...(relevantLinkedChildTeamIds.length ? [{ teamIds: { hasSome: relevantLinkedChildTeamIds } }] : []),
         ...(linkedChildIds.length ? [{ freeAgentIds: { hasSome: linkedChildIds } }] : []),
       ],
     },
@@ -430,7 +472,9 @@ export async function GET(_req: NextRequest) {
       : [];
 
     linkedChildIds.forEach((childUserId) => {
-      const childTeamIds = childTeamIdsById.get(childUserId) ?? [];
+      const childTeamIds = childTeamIdsByIdWithSlots.get(childUserId)
+        ?? childTeamIdsById.get(childUserId)
+        ?? [];
       const isOnTeam = childTeamIds.some((teamId) => eventTeamIds.includes(teamId));
       const isFreeAgent = eventFreeAgentIds.includes(childUserId);
       if (!isOnTeam && !isFreeAgent) {
@@ -447,7 +491,7 @@ export async function GET(_req: NextRequest) {
     });
 
     if (userIsLinkedChild) {
-      const isOnTeam = teamIds.some((teamId) => eventTeamIds.includes(teamId));
+      const isOnTeam = relevantTeamIds.some((teamId) => eventTeamIds.includes(teamId));
       const isParticipant = eventUserIds.includes(userId);
       const isFreeAgent = eventFreeAgentIds.includes(userId);
       if (isOnTeam || isParticipant || isFreeAgent) {

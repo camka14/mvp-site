@@ -7,6 +7,9 @@ const prismaMock = {
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  teams: {
+    findFirst: jest.fn(),
+  },
   refundRequests: {
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -39,10 +42,12 @@ describe('POST /api/billing/refund', () => {
       id: 'event_1',
       hostId: 'host_1',
       organizationId: 'org_1',
+      teamIds: [],
       userIds: ['user_1'],
       waitListIds: [],
       freeAgentIds: [],
     });
+    prismaMock.teams.findFirst.mockResolvedValue(null);
     prismaMock.refundRequests.findFirst.mockResolvedValue(null);
     prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
     prismaMock.events.update.mockResolvedValue({
@@ -94,6 +99,7 @@ describe('POST /api/billing/refund', () => {
       id: 'event_1',
       hostId: 'host_1',
       organizationId: 'org_1',
+      teamIds: [],
       userIds: ['child_1'],
       waitListIds: [],
       freeAgentIds: [],
@@ -157,5 +163,55 @@ describe('POST /api/billing/refund', () => {
     expect(payload.refundAlreadyPending).toBe(true);
     expect(payload.refundId).toBe('refund_existing');
     expect(prismaMock.refundRequests.create).not.toHaveBeenCalled();
+  });
+
+  it('allows refund requests for users registered through an event team slot', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'team_player_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      organizationId: 'org_1',
+      teamIds: ['slot_team_1'],
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+    prismaMock.teams.findFirst.mockResolvedValueOnce({ id: 'slot_team_1' });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/refund', {
+        payloadEvent: { id: 'event_1' },
+        userId: 'team_player_1',
+        reason: 'Unable to attend',
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.success).toBe(true);
+    expect(payload.targetUserId).toBe('team_player_1');
+    expect(prismaMock.teams.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['slot_team_1'] },
+        OR: [
+          { playerIds: { has: 'team_player_1' } },
+          { captainId: 'team_player_1' },
+          { managerId: 'team_player_1' },
+          { headCoachId: 'team_player_1' },
+          { coachIds: { has: 'team_player_1' } },
+        ],
+      },
+      select: { id: true },
+    });
+    expect(prismaMock.refundRequests.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventId: 'event_1',
+          userId: 'team_player_1',
+          teamId: 'slot_team_1',
+          reason: 'Unable to attend',
+        }),
+      }),
+    );
   });
 });

@@ -122,6 +122,7 @@ export type EventsMinAggregateOutputType = {
   autoCancellation: boolean | null
   eventType: $Enums.EventsEventTypeEnum | null
   doTeamsRef: boolean | null
+  teamRefsMaySwap: boolean | null
   allowPaymentPlans: boolean | null
   installmentCount: number | null
   allowTeamSplitDefault: boolean | null
@@ -172,6 +173,7 @@ export type EventsMaxAggregateOutputType = {
   autoCancellation: boolean | null
   eventType: $Enums.EventsEventTypeEnum | null
   doTeamsRef: boolean | null
+  teamRefsMaySwap: boolean | null
   allowPaymentPlans: boolean | null
   installmentCount: number | null
   allowTeamSplitDefault: boolean | null
@@ -235,6 +237,7 @@ export type EventsCountAggregateOutputType = {
   autoCancellation: number
   eventType: number
   doTeamsRef: number
+  teamRefsMaySwap: number
   refereeIds: number
   allowPaymentPlans: number
   installmentCount: number
@@ -343,6 +346,7 @@ export type EventsMinAggregateInputType = {
   autoCancellation?: true
   eventType?: true
   doTeamsRef?: true
+  teamRefsMaySwap?: true
   allowPaymentPlans?: true
   installmentCount?: true
   allowTeamSplitDefault?: true
@@ -393,6 +397,7 @@ export type EventsMaxAggregateInputType = {
   autoCancellation?: true
   eventType?: true
   doTeamsRef?: true
+  teamRefsMaySwap?: true
   allowPaymentPlans?: true
   installmentCount?: true
   allowTeamSplitDefault?: true
@@ -456,6 +461,7 @@ export type EventsCountAggregateInputType = {
   autoCancellation?: true
   eventType?: true
   doTeamsRef?: true
+  teamRefsMaySwap?: true
   refereeIds?: true
   allowPaymentPlans?: true
   installmentCount?: true
@@ -610,6 +616,7 @@ export type EventsGroupByOutputType = {
   autoCancellation: boolean | null
   eventType: $Enums.EventsEventTypeEnum | null
   doTeamsRef: boolean | null
+  teamRefsMaySwap: boolean | null
   refereeIds: string[]
   allowPaymentPlans: boolean | null
   installmentCount: number | null
@@ -700,6 +707,7 @@ export type EventsWhereInput = {
   autoCancellation?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   eventType?: Prisma.EnumEventsEventTypeEnumNullableFilter<"Events"> | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.BoolNullableFilter<"Events"> | boolean | null
+  teamRefsMaySwap?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   refereeIds?: Prisma.StringNullableListFilter<"Events">
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -767,6 +775,7 @@ export type EventsOrderByWithRelationInput = {
   autoCancellation?: Prisma.SortOrderInput | Prisma.SortOrder
   eventType?: Prisma.SortOrderInput | Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrderInput | Prisma.SortOrder
+  teamRefsMaySwap?: Prisma.SortOrderInput | Prisma.SortOrder
   refereeIds?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -837,6 +846,7 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   autoCancellation?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   eventType?: Prisma.EnumEventsEventTypeEnumNullableFilter<"Events"> | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.BoolNullableFilter<"Events"> | boolean | null
+  teamRefsMaySwap?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   refereeIds?: Prisma.StringNullableListFilter<"Events">
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -904,6 +914,7 @@ export type EventsOrderByWithAggregationInput = {
   autoCancellation?: Prisma.SortOrderInput | Prisma.SortOrder
   eventType?: Prisma.SortOrderInput | Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrderInput | Prisma.SortOrder
+  teamRefsMaySwap?: Prisma.SortOrderInput | Prisma.SortOrder
   refereeIds?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -979,6 +990,7 @@ export type EventsScalarWhereWithAggregatesInput = {
   autoCancellation?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   eventType?: Prisma.EnumEventsEventTypeEnumNullableWithAggregatesFilter<"Events"> | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
+  teamRefsMaySwap?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   refereeIds?: Prisma.StringNullableListFilter<"Events">
   allowPaymentPlans?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
@@ -1046,6 +1058,7 @@ export type EventsCreateInput = {
   autoCancellation?: boolean | null
   eventType?: $Enums.EventsEventTypeEnum | null
   doTeamsRef?: boolean | null
+  teamRefsMaySwap?: boolean | null
   refereeIds?: Prisma.EventsCreaterefereeIdsInput | string[]
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
@@ -1113,6 +1126,7 @@ export type EventsUncheckedCreateInput = {
   autoCancellation?: boolean | null
   eventType?: $Enums.EventsEventTypeEnum | null
   doTeamsRef?: boolean | null
+  teamRefsMaySwap?: boolean | null
   refereeIds?: Prisma.EventsCreaterefereeIdsInput | string[]
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
@@ -1180,6 +1194,7 @@ export type EventsUpdateInput = {
   autoCancellation?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   eventType?: Prisma.NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  teamRefsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   refereeIds?: Prisma.EventsUpdaterefereeIdsInput | string[]
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1247,6 +1262,7 @@ export type EventsUncheckedUpdateInput = {
   autoCancellation?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   eventType?: Prisma.NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  teamRefsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   refereeIds?: Prisma.EventsUpdaterefereeIdsInput | string[]
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1314,6 +1330,7 @@ export type EventsCreateManyInput = {
   autoCancellation?: boolean | null
   eventType?: $Enums.EventsEventTypeEnum | null
   doTeamsRef?: boolean | null
+  teamRefsMaySwap?: boolean | null
   refereeIds?: Prisma.EventsCreaterefereeIdsInput | string[]
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
@@ -1381,6 +1398,7 @@ export type EventsUpdateManyMutationInput = {
   autoCancellation?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   eventType?: Prisma.NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  teamRefsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   refereeIds?: Prisma.EventsUpdaterefereeIdsInput | string[]
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1448,6 +1466,7 @@ export type EventsUncheckedUpdateManyInput = {
   autoCancellation?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   eventType?: Prisma.NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  teamRefsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   refereeIds?: Prisma.EventsUpdaterefereeIdsInput | string[]
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1515,6 +1534,7 @@ export type EventsCountOrderByAggregateInput = {
   autoCancellation?: Prisma.SortOrder
   eventType?: Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrder
+  teamRefsMaySwap?: Prisma.SortOrder
   refereeIds?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
@@ -1595,6 +1615,7 @@ export type EventsMaxOrderByAggregateInput = {
   autoCancellation?: Prisma.SortOrder
   eventType?: Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrder
+  teamRefsMaySwap?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   allowTeamSplitDefault?: Prisma.SortOrder
@@ -1645,6 +1666,7 @@ export type EventsMinOrderByAggregateInput = {
   autoCancellation?: Prisma.SortOrder
   eventType?: Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrder
+  teamRefsMaySwap?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   allowTeamSplitDefault?: Prisma.SortOrder
@@ -1888,6 +1910,7 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   autoCancellation?: boolean
   eventType?: boolean
   doTeamsRef?: boolean
+  teamRefsMaySwap?: boolean
   refereeIds?: boolean
   allowPaymentPlans?: boolean
   installmentCount?: boolean
@@ -1955,6 +1978,7 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   autoCancellation?: boolean
   eventType?: boolean
   doTeamsRef?: boolean
+  teamRefsMaySwap?: boolean
   refereeIds?: boolean
   allowPaymentPlans?: boolean
   installmentCount?: boolean
@@ -2022,6 +2046,7 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   autoCancellation?: boolean
   eventType?: boolean
   doTeamsRef?: boolean
+  teamRefsMaySwap?: boolean
   refereeIds?: boolean
   allowPaymentPlans?: boolean
   installmentCount?: boolean
@@ -2089,6 +2114,7 @@ export type EventsSelectScalar = {
   autoCancellation?: boolean
   eventType?: boolean
   doTeamsRef?: boolean
+  teamRefsMaySwap?: boolean
   refereeIds?: boolean
   allowPaymentPlans?: boolean
   installmentCount?: boolean
@@ -2099,7 +2125,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "registrationIds" | "leagueScoringConfigId" | "organizationId" | "autoCancellation" | "eventType" | "doTeamsRef" | "refereeIds" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "registrationIds" | "leagueScoringConfigId" | "organizationId" | "autoCancellation" | "eventType" | "doTeamsRef" | "teamRefsMaySwap" | "refereeIds" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2161,6 +2187,7 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     autoCancellation: boolean | null
     eventType: $Enums.EventsEventTypeEnum | null
     doTeamsRef: boolean | null
+    teamRefsMaySwap: boolean | null
     refereeIds: string[]
     allowPaymentPlans: boolean | null
     installmentCount: number | null
@@ -2648,6 +2675,7 @@ export interface EventsFieldRefs {
   readonly autoCancellation: Prisma.FieldRef<"Events", 'Boolean'>
   readonly eventType: Prisma.FieldRef<"Events", 'EventsEventTypeEnum'>
   readonly doTeamsRef: Prisma.FieldRef<"Events", 'Boolean'>
+  readonly teamRefsMaySwap: Prisma.FieldRef<"Events", 'Boolean'>
   readonly refereeIds: Prisma.FieldRef<"Events", 'String[]'>
   readonly allowPaymentPlans: Prisma.FieldRef<"Events", 'Boolean'>
   readonly installmentCount: Prisma.FieldRef<"Events", 'Int'>

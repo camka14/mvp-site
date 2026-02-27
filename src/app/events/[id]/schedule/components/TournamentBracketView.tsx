@@ -2,13 +2,292 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
-import { TournamentBracket, Match, UserData } from '@/types';
+import { TournamentBracket, Match, UserData, Division, Team } from '@/types';
 
 import MatchCard from './MatchCard';
 
 import ScoreUpdateModal from './ScoreUpdateModal';
 import { xor } from '@/app/utils';
 import { Paper, Group, Button, ActionIcon, Text, SegmentedControl, Badge } from '@mantine/core';
+
+type BracketTeamSlot = 'team1' | 'team2';
+
+type PlayoffBracketSlot = {
+    matchId: string;
+    slot: BracketTeamSlot;
+    seed: number | null;
+    playoffDivisionId: string;
+};
+
+const normalizeDivisionIdentifier = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+
+const divisionsEquivalent = (left: unknown, right: unknown): boolean => {
+    const normalizedLeft = normalizeDivisionIdentifier(left);
+    const normalizedRight = normalizeDivisionIdentifier(right);
+    return normalizedLeft.length > 0 && normalizedLeft === normalizedRight;
+};
+
+const extractDivisionIdentifier = (value: unknown): string => {
+    if (typeof value === 'string') {
+        return value.trim();
+    }
+    if (!value || typeof value !== 'object') {
+        return '';
+    }
+    const row = value as Record<string, unknown>;
+    const candidates = [row.id, row.$id, row.key];
+    for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.trim().length > 0) {
+            return candidate.trim();
+        }
+    }
+    return '';
+};
+
+const extractEntityId = (value: unknown): string => {
+    if (typeof value === 'string') {
+        return value.trim();
+    }
+    if (!value || typeof value !== 'object') {
+        return '';
+    }
+    const row = value as Record<string, unknown>;
+    const candidates = [row.$id, row.id];
+    for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.trim().length > 0) {
+            return candidate.trim();
+        }
+    }
+    return '';
+};
+
+const normalizeMatchRefId = (value: unknown): string => {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    return value.trim();
+};
+
+const normalizeDivisionDetailsList = (input: unknown): Division[] => {
+    if (!Array.isArray(input)) {
+        return [];
+    }
+    return input
+        .map((entry) => {
+            if (!entry || typeof entry !== 'object') {
+                return null;
+            }
+            const row = entry as Record<string, unknown>;
+            const id = extractDivisionIdentifier(row.id ?? row.$id ?? row.key);
+            const key = typeof row.key === 'string' ? row.key.trim() : undefined;
+            const name = typeof row.name === 'string' ? row.name.trim() : '';
+            const playoffPlacementDivisionIds = Array.isArray(row.playoffPlacementDivisionIds)
+                ? row.playoffPlacementDivisionIds
+                      .map((divisionId) => (typeof divisionId === 'string' ? divisionId.trim() : ''))
+                      .filter((divisionId) => divisionId.length > 0)
+                : [];
+            const playoffTeamCount = typeof row.playoffTeamCount === 'number' && Number.isFinite(row.playoffTeamCount)
+                ? Math.max(0, Math.trunc(row.playoffTeamCount))
+                : undefined;
+            return {
+                ...(row as Partial<Division>),
+                id: id || key || '',
+                key,
+                name,
+                playoffPlacementDivisionIds,
+                playoffTeamCount,
+            } as Division;
+        })
+        .filter((entry): entry is Division => entry !== null);
+};
+
+const extractEventDivisionOrder = (divisions: TournamentBracket['tournament']['divisions'] | undefined): string[] => {
+    if (!Array.isArray(divisions)) {
+        return [];
+    }
+    return divisions
+        .map((division) => extractDivisionIdentifier(division))
+        .filter((divisionId) => divisionId.length > 0);
+};
+
+const collectAllDivisionDetails = (tournament: TournamentBracket['tournament']): Division[] => {
+    const primary = normalizeDivisionDetailsList(tournament.divisionDetails);
+    const playoff = normalizeDivisionDetailsList(tournament.playoffDivisionDetails);
+    const divisionsFromEvent = normalizeDivisionDetailsList(
+        Array.isArray(tournament.divisions)
+            ? tournament.divisions.filter((entry) => entry && typeof entry === 'object')
+            : [],
+    );
+    return [...primary, ...playoff, ...divisionsFromEvent];
+};
+
+const resolveDivisionDisplayName = (detail: Division, allDivisionDetails: Division[]): string => {
+    const explicitName = String(detail.name ?? '').trim();
+    if (explicitName.length > 0) {
+        return explicitName;
+    }
+
+    const fallbackIdentifier = extractDivisionIdentifier(detail);
+    if (fallbackIdentifier.length > 0) {
+        const matched = allDivisionDetails.find((candidate) =>
+            divisionsEquivalent(candidate.id, fallbackIdentifier) ||
+            divisionsEquivalent(candidate.key, fallbackIdentifier),
+        );
+        const matchedName = String(matched?.name ?? '').trim();
+        if (matchedName.length > 0) {
+            return matchedName;
+        }
+        return fallbackIdentifier;
+    }
+
+    return 'TBD';
+};
+
+const orderDivisionDetailsForMappings = (eventDivisionIds: string[], divisionDetails: Division[]): Division[] => {
+    if (divisionDetails.length === 0) {
+        return [];
+    }
+    const remaining = [...divisionDetails];
+    const ordered: Division[] = [];
+
+    eventDivisionIds.forEach((divisionId) => {
+        const matchedIndex = remaining.findIndex((detail) =>
+            divisionsEquivalent(detail.id, divisionId) ||
+            divisionsEquivalent(detail.key, divisionId),
+        );
+        if (matchedIndex >= 0) {
+            ordered.push(remaining.splice(matchedIndex, 1)[0]);
+        }
+    });
+
+    return [...ordered, ...remaining];
+};
+
+const formatOrdinalPlacement = (position: number): string => {
+    const value = Math.max(1, Math.trunc(position || 1));
+    const modHundred = value % 100;
+    if (modHundred >= 11 && modHundred <= 13) {
+        return `${value}th`;
+    }
+    switch (value % 10) {
+        case 1:
+            return `${value}st`;
+        case 2:
+            return `${value}nd`;
+        case 3:
+            return `${value}rd`;
+        default:
+            return `${value}th`;
+    }
+};
+
+const buildMappedPlacementLabelsForPlayoffDivision = (
+    playoffDivisionId: string,
+    mappingDivisionDetails: Division[],
+    allDivisionDetails: Division[],
+    eventPlayoffTeamCount?: number,
+): string[] => {
+    const labels: string[] = [];
+    const maxPlacementIndex = mappingDivisionDetails.reduce((maxValue, detail) => {
+        const mappedLength = Array.isArray(detail.playoffPlacementDivisionIds)
+            ? detail.playoffPlacementDivisionIds.length
+            : 0;
+        const detailTeamCount = typeof detail.playoffTeamCount === 'number'
+            ? Math.max(0, Math.trunc(detail.playoffTeamCount))
+            : undefined;
+        return Math.max(maxValue, Math.max(mappedLength, detailTeamCount ?? eventPlayoffTeamCount ?? 0));
+    }, 0);
+
+    for (let placementIndex = 0; placementIndex < maxPlacementIndex; placementIndex += 1) {
+        for (const detail of mappingDivisionDetails) {
+            const mappedDivisionIds = Array.isArray(detail.playoffPlacementDivisionIds)
+                ? detail.playoffPlacementDivisionIds
+                : [];
+            const detailTeamCount = typeof detail.playoffTeamCount === 'number'
+                ? Math.max(0, Math.trunc(detail.playoffTeamCount))
+                : undefined;
+            const placementLimit = detailTeamCount ?? eventPlayoffTeamCount ?? mappedDivisionIds.length;
+            if (placementIndex >= placementLimit) {
+                continue;
+            }
+            const mappedPlayoffDivisionId = mappedDivisionIds[placementIndex] ?? '';
+            if (!divisionsEquivalent(mappedPlayoffDivisionId, playoffDivisionId)) {
+                continue;
+            }
+            labels.push(
+                `${formatOrdinalPlacement(placementIndex + 1)} place (${resolveDivisionDisplayName(detail, allDivisionDetails)})`,
+            );
+        }
+    }
+
+    return labels;
+};
+
+const buildLeaguePlayoffPlaceholderAssignments = ({
+    eventDivisionIds,
+    divisionDetails,
+    allDivisionDetails,
+    eventPlayoffTeamCount,
+    slots,
+}: {
+    eventDivisionIds: string[];
+    divisionDetails: Division[];
+    allDivisionDetails: Division[];
+    eventPlayoffTeamCount?: number;
+    slots: PlayoffBracketSlot[];
+}): Record<string, string> => {
+    if (divisionDetails.length === 0 || slots.length === 0) {
+        return {};
+    }
+
+    const orderedDetails = orderDivisionDetailsForMappings(eventDivisionIds, divisionDetails).filter((detail) =>
+        Array.isArray(detail.playoffPlacementDivisionIds) &&
+        detail.playoffPlacementDivisionIds.some((divisionId) => normalizeDivisionIdentifier(divisionId).length > 0),
+    );
+
+    if (orderedDetails.length === 0) {
+        return {};
+    }
+
+    const slotsByPlayoffDivision = new Map<string, PlayoffBracketSlot[]>();
+    slots.forEach((slot) => {
+        const normalizedPlayoffDivisionId = normalizeDivisionIdentifier(slot.playoffDivisionId);
+        if (normalizedPlayoffDivisionId.length === 0) {
+            return;
+        }
+        const existing = slotsByPlayoffDivision.get(normalizedPlayoffDivisionId) ?? [];
+        existing.push(slot);
+        slotsByPlayoffDivision.set(normalizedPlayoffDivisionId, existing);
+    });
+    if (slotsByPlayoffDivision.size === 0) {
+        return {};
+    }
+
+    const result: Record<string, string> = {};
+    slotsByPlayoffDivision.forEach((divisionSlots, playoffDivisionId) => {
+        const labels = buildMappedPlacementLabelsForPlayoffDivision(
+            playoffDivisionId,
+            orderedDetails,
+            allDivisionDetails,
+            eventPlayoffTeamCount,
+        );
+        if (labels.length === 0) {
+            return;
+        }
+        divisionSlots.forEach((slot) => {
+            if (typeof slot.seed !== 'number' || !Number.isFinite(slot.seed) || slot.seed < 1) {
+                return;
+            }
+            const label = labels[slot.seed - 1];
+            if (!label) {
+                return;
+            }
+            result[`${slot.matchId}:${slot.slot}`] = label;
+        });
+    });
+
+    return result;
+};
 
 
 interface TournamentBracketViewProps {
@@ -49,17 +328,123 @@ export default function TournamentBracketView({
         () => Object.fromEntries(Object.values(bracket.matches).map((match) => [match.$id, match])),
         [bracket.matches],
     );
+    const resolveLinkFromAll = useCallback((idValue: unknown, relationValue: unknown): Match | undefined => {
+        const id = normalizeMatchRefId(idValue);
+        if (id && matchesById[id]) {
+            return matchesById[id];
+        }
+        // Explicitly blank/null IDs mean "no link"; ignore stale relation objects in draft edit mode.
+        if (idValue === null || (typeof idValue === 'string' && idValue.trim().length === 0)) {
+            return undefined;
+        }
+        const relationId = extractEntityId(relationValue);
+        if (relationId && matchesById[relationId]) {
+            return matchesById[relationId];
+        }
+        return undefined;
+    }, [matchesById]);
+    const teamsById = useMemo<Map<string, Team>>(() => {
+        const map = new Map<string, Team>();
+        const teams = Array.isArray(bracket.teams) ? bracket.teams : [];
+        teams.forEach((team) => {
+            const id = extractEntityId(team);
+            if (!id) {
+                return;
+            }
+            map.set(id, team as Team);
+        });
+        return map;
+    }, [bracket.teams]);
+    const refereesById = useMemo<Map<string, UserData>>(() => {
+        const map = new Map<string, UserData>();
+        const refs = Array.isArray((bracket.tournament as any)?.referees)
+            ? ((bracket.tournament as any).referees as UserData[])
+            : [];
+        refs.forEach((ref) => {
+            const id = extractEntityId(ref);
+            if (!id) {
+                return;
+            }
+            map.set(id, ref);
+        });
+        return map;
+    }, [bracket.tournament]);
+    const leaguePlayoffPlaceholderAssignments = useMemo<Record<string, string>>(() => {
+        const eventDivisionIds = extractEventDivisionOrder(bracket.tournament.divisions);
+        const allDivisionDetails = collectAllDivisionDetails(bracket.tournament);
+        const divisionDetails = (() => {
+            const explicit = normalizeDivisionDetailsList(bracket.tournament.divisionDetails);
+            if (explicit.length > 0) {
+                return explicit;
+            }
+            return allDivisionDetails;
+        })();
+        if (divisionDetails.length === 0) {
+            return {};
+        }
+
+        const slots: PlayoffBracketSlot[] = [];
+        Object.values(bracket.matches).forEach((match) => {
+            if (match.losersBracket) {
+                return;
+            }
+            const playoffDivisionId = extractDivisionIdentifier(match.division);
+            if (playoffDivisionId.length === 0) {
+                return;
+            }
+            const leftEntrantSlot = !(
+                match.previousLeftMatch ||
+                match.previousLeftId
+            );
+            const rightEntrantSlot = !(
+                match.previousRightMatch ||
+                match.previousRightId
+            );
+            if (!leftEntrantSlot && !rightEntrantSlot) {
+                return;
+            }
+            const team1Seed = typeof match.team1Seed === 'number'
+                ? match.team1Seed
+                : null;
+            const team2Seed = typeof match.team2Seed === 'number'
+                ? match.team2Seed
+                : null;
+            if (leftEntrantSlot) {
+                slots.push({ matchId: match.$id, slot: 'team1', seed: team1Seed, playoffDivisionId });
+            }
+            if (rightEntrantSlot) {
+                slots.push({ matchId: match.$id, slot: 'team2', seed: team2Seed, playoffDivisionId });
+            }
+        });
+        if (slots.length === 0) {
+            return {};
+        }
+
+        const eventPlayoffTeamCount = typeof bracket.tournament.playoffTeamCount === 'number' &&
+            Number.isFinite(bracket.tournament.playoffTeamCount)
+            ? Math.max(0, Math.trunc(bracket.tournament.playoffTeamCount))
+            : undefined;
+
+        return buildLeaguePlayoffPlaceholderAssignments({
+            eventDivisionIds,
+            divisionDetails,
+            allDivisionDetails,
+            eventPlayoffTeamCount,
+            slots,
+        });
+    }, [bracket.matches, bracket.tournament]);
 
     // Compute positions based on rounds (x) and yCenterById (y)
-    const CARD_W = 288; // w-72
-    const CARD_H = 200; // standard height (h-50)
+    const CARD_W = 288; // matches MatchCard bracket width
+    const CARD_H = 200; // fixed bracket card height for deterministic connector layout
     const GAP_X = 48;
     const GAP_Y = 12;   // per-level extra spacing
     const LEVEL_STEP = Math.round(CARD_H / 2 + GAP_Y);
     // Padding inside the scroll canvas. Top padding prevents the time badge (-top-3)
     // from being clipped, and bottom padding keeps the last match card from touching the edge.
-    const PAD_LEFT = 0;
-    const PAD_RIGHT = 0;
+    // Side padding keeps edge controls (add buttons) fully visible for leaf/final nodes.
+    const PAD_LEFT = 28;
+    const PAD_RIGHT = 28;
     const PAD_TOP = 16;
     const PAD_BOTTOM = 48;
 
@@ -78,41 +463,62 @@ export default function TournamentBracketView({
 
         // include one-hop children even if from opposite bracket
         Object.values(map).forEach(parent => {
-            const left = parent.previousLeftMatch ?? (parent.previousLeftId ? matchesById[parent.previousLeftId] : undefined);
-            const right = parent.previousRightMatch ?? (parent.previousRightId ? matchesById[parent.previousRightId] : undefined);
+            const left = resolveLinkFromAll(parent.previousLeftId, parent.previousLeftMatch);
+            const right = resolveLinkFromAll(parent.previousRightId, parent.previousRightMatch);
             if (left) map[left.$id] = left;
             if (right) map[right.$id] = right;
         });
 
         const filteredEntries = Object.entries(map).filter(([, match]) => {
             const hasPrevious =
-                Boolean(match.previousLeftMatch) ||
-                Boolean(match.previousRightMatch) ||
-                Boolean(match.previousLeftId && matchesById[match.previousLeftId]) ||
-                Boolean(match.previousRightId && matchesById[match.previousRightId]);
+                Boolean(resolveLinkFromAll(match.previousLeftId, match.previousLeftMatch)) ||
+                Boolean(resolveLinkFromAll(match.previousRightId, match.previousRightMatch));
 
             const hasNext =
-                Boolean(match.winnerNextMatch) ||
-                Boolean(match.winnerNextMatchId && matchesById[match.winnerNextMatchId]) ||
-                Boolean(match.loserNextMatch) ||
-                Boolean(match.loserNextMatchId && matchesById[match.loserNextMatchId]);
+                Boolean(resolveLinkFromAll(match.winnerNextMatchId, match.winnerNextMatch)) ||
+                Boolean(resolveLinkFromAll(match.loserNextMatchId, match.loserNextMatch));
 
             return hasPrevious || hasNext;
         });
 
         return Object.fromEntries(filteredEntries);
-    }, [bracket.matches, isLosersBracket, matchesById]);
+    }, [bracket.matches, isLosersBracket, resolveLinkFromAll]);
+
+    const resolveLinkFromView = useCallback((idValue: unknown, relationValue: unknown): Match | undefined => {
+        const id = normalizeMatchRefId(idValue);
+        if (id && viewById[id]) {
+            return viewById[id];
+        }
+        // Keep layout tied to explicit IDs so partial edit-state links don't over-count children.
+        if (idValue === null || (typeof idValue === 'string' && idValue.trim().length === 0)) {
+            return undefined;
+        }
+        const relationId = extractEntityId(relationValue);
+        if (relationId && viewById[relationId]) {
+            return viewById[relationId];
+        }
+        return undefined;
+    }, [viewById]);
 
     const hasLoserMatches = useMemo(
         () => Object.values(bracket.matches).some(match => match.losersBracket),
         [bracket.matches],
     );
 
+    useEffect(() => {
+        if (isLosersBracket && !hasLoserMatches) {
+            setIsLosersBracket(false);
+        }
+    }, [hasLoserMatches, isLosersBracket]);
+
     // Terminals: no winnerNext within current view's bracket
     const terminalIds = useMemo(() => Object.values(viewById)
         .filter(m => m.losersBracket === isLosersBracket)
-        .filter(m => !m.winnerNextMatch || m.winnerNextMatch.losersBracket !== isLosersBracket)
-        .map(m => m.$id), [viewById, isLosersBracket]);
+        .filter((m) => {
+            const winnerNext = resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
+            return !winnerNext || winnerNext.losersBracket !== isLosersBracket;
+        })
+        .map(m => m.$id), [viewById, isLosersBracket, resolveLinkFromView]);
 
     // Choose a root terminal (prefer highest matchId)
     const rootId = useMemo(() => {
@@ -128,15 +534,15 @@ export default function TournamentBracketView({
 
     // Helper: children of a node with at most one-hop cross-bracket inclusion
     const getChildrenLimited = useCallback((m: Match): Match[] => {
-        const left = m.previousLeftMatch ?? (m.previousLeftId ? viewById[m.previousLeftId] : undefined);
-        const right = m.previousRightMatch ?? (m.previousRightId ? viewById[m.previousRightId] : undefined);
+        const left = resolveLinkFromView(m.previousLeftId, m.previousLeftMatch);
+        const right = resolveLinkFromView(m.previousRightId, m.previousRightMatch);
         const children: Match[] = [];
         if (left) children.push(left);
         if (right && (!left || right.$id !== left.$id)) children.push(right);
         // Do not traverse beyond one hop across brackets
         if (m.losersBracket !== isLosersBracket) return [];
         return children;
-    }, [viewById, isLosersBracket]);
+    }, [resolveLinkFromView, isLosersBracket]);
 
     // Compute round indices from root with one-hop cross-bracket rule, then invert so leaves are round 0
     const roundIndexById = useMemo(() => {
@@ -254,15 +660,15 @@ export default function TournamentBracketView({
         const getNextTarget = (m: Match): Match | undefined => {
             if (!isLosersBracket) {
                 // Winners view: only next winner match
-                const t = m.winnerNextMatch ?? (m.winnerNextMatchId ? viewById[m.winnerNextMatchId] : undefined);
+                const t = resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
                 return t && t.losersBracket === false ? t : undefined;
             } else {
                 if (m.losersBracket === false) {
                     // Losers view: winners matches point to loserNext
-                    return m.loserNextMatch ?? (m.loserNextMatchId ? viewById[m.loserNextMatchId] : undefined);
+                    return resolveLinkFromView(m.loserNextMatchId, m.loserNextMatch);
                 } else {
                     // Losers view: losers matches point to next winner (within losers bracket)
-                    return m.winnerNextMatch ?? (m.winnerNextMatchId ? viewById[m.winnerNextMatchId] : undefined);
+                    return resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
                 }
             }
         };
@@ -285,7 +691,7 @@ export default function TournamentBracketView({
         });
 
         setConnections(conns);
-    }, [positionById, viewById, isLosersBracket]);
+    }, [positionById, viewById, isLosersBracket, resolveLinkFromView, CARD_H]);
 
     useEffect(() => { calculateConnections(); }, [calculateConnections]);
 
@@ -448,7 +854,7 @@ export default function TournamentBracketView({
                     </Group>
 
                     <Group gap="sm">
-                        {(bracket.tournament.doubleElimination || hasLoserMatches) && (
+                        {hasLoserMatches && (
                             <SegmentedControl
                                 value={isLosersBracket ? 'losers' : 'winners'}
                                 onChange={(v: string) => setIsLosersBracket(v === 'losers')}
@@ -486,27 +892,61 @@ export default function TournamentBracketView({
                         <Text c="dimmed">No matches</Text>
 	                    ) : (
 	                        <>
-	                            {Object.values(viewById).map((m) => {
-	                                const pos = positionById.get(m.$id);
-	                                if (!pos) return null;
-                                    const resolvedMatch: Match = {
-                                        ...m,
-                                        previousLeftMatch:
-                                            m.previousLeftMatch ??
-                                            (m.previousLeftId ? matchesById[m.previousLeftId] : undefined),
-                                        previousRightMatch:
-                                            m.previousRightMatch ??
-                                            (m.previousRightId ? matchesById[m.previousRightId] : undefined),
+		                            {Object.values(viewById).map((m) => {
+		                                const pos = positionById.get(m.$id);
+		                                if (!pos) return null;
+                                    const team1Id = extractEntityId((m as any).team1)
+                                        || (typeof m.team1Id === 'string' ? m.team1Id.trim() : '');
+                                    const team2Id = extractEntityId((m as any).team2)
+                                        || (typeof m.team2Id === 'string' ? m.team2Id.trim() : '');
+                                    const teamRefereeId = extractEntityId((m as any).teamReferee)
+                                        || (typeof m.teamRefereeId === 'string' ? m.teamRefereeId.trim() : '');
+                                    const refereeId = extractEntityId((m as any).referee)
+                                        || (typeof m.refereeId === 'string' ? m.refereeId.trim() : '');
+                                    const resolvedTeam1 = (m.team1 && typeof m.team1 === 'object')
+                                        ? m.team1
+                                        : (team1Id ? teamsById.get(team1Id) ?? null : null);
+                                    const resolvedTeam2 = (m.team2 && typeof m.team2 === 'object')
+                                        ? m.team2
+                                        : (team2Id ? teamsById.get(team2Id) ?? null : null);
+                                    const resolvedTeamReferee = (m.teamReferee && typeof m.teamReferee === 'object')
+                                        ? m.teamReferee
+                                        : (teamRefereeId ? teamsById.get(teamRefereeId) ?? null : null);
+                                    const resolvedReferee = (m.referee && typeof m.referee === 'object')
+                                        ? m.referee
+                                        : (refereeId ? refereesById.get(refereeId) ?? null : null);
+	                                    const resolvedMatch: Match = {
+	                                        ...m,
+                                        team1: resolvedTeam1 as Match['team1'],
+                                        team2: resolvedTeam2 as Match['team2'],
+                                        teamReferee: resolvedTeamReferee as Match['teamReferee'],
+                                        referee: resolvedReferee as Match['referee'],
+                                        team1Id: team1Id || m.team1Id || undefined,
+                                        team2Id: team2Id || m.team2Id || undefined,
+                                        teamRefereeId: teamRefereeId || m.teamRefereeId || undefined,
+                                        refereeId: refereeId || m.refereeId || undefined,
+	                                        previousLeftMatch:
+                                            resolveLinkFromAll(m.previousLeftId, m.previousLeftMatch),
+	                                        previousRightMatch:
+                                            resolveLinkFromAll(m.previousRightId, m.previousRightMatch),
                                     };
 	                                const canInternalManage = canManageMatch(resolvedMatch);
 	                                const clickable = hasExternalMatchClick || canInternalManage;
-	                                const manageHint = allowEditing || (!hasExternalMatchClick && canInternalManage);
+	                                // Keep bracket card shape identical between edit and non-edit modes.
+	                                const manageHint = false;
+                                    const team1Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team1`];
+                                    const team2Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team2`];
 	                                return (
 	                                    <div
 	                                        key={m.$id}
                                         ref={(el) => { matchRefs.current[m.$id] = el; }}
-                                        className="absolute w-72 h-50"
-                                        style={{ left: PAD_LEFT + pos.x, top: PAD_TOP + pos.y }}
+                                        className="absolute"
+                                        style={{
+                                            left: PAD_LEFT + pos.x,
+                                            top: PAD_TOP + pos.y,
+                                            width: CARD_W,
+                                            height: CARD_H,
+                                        }}
                                     >
 	                                        <MatchCard
 	                                            match={resolvedMatch}
@@ -514,6 +954,8 @@ export default function TournamentBracketView({
 	                                            canManage={manageHint}
 	                                            className="w-full h-full"
 	                                            showDate={showDateOnMatches}
+                                                team1Placeholder={team1Placeholder}
+                                                team2Placeholder={team2Placeholder}
 	                                        />
 	                                    </div>
 	                                );

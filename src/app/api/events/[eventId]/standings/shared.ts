@@ -10,8 +10,6 @@ export type StandingsRowResponse = {
   position: number;
   teamId: string;
   teamName: string;
-  wins: number;
-  losses: number;
   draws: number;
   goalsFor: number;
   goalsAgainst: number;
@@ -92,8 +90,6 @@ export const buildDivisionStandingsResponse = (
       position: index + 1,
       teamId: row.teamId,
       teamName: row.teamName,
-      wins: row.wins,
-      losses: row.losses,
       draws: row.draws,
       goalsFor: row.goalsFor,
       goalsAgainst: row.goalsAgainst,

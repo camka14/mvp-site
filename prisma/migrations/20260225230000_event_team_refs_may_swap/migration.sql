@@ -1,0 +1,2 @@
+ALTER TABLE "Events"
+  ADD COLUMN IF NOT EXISTS "teamRefsMaySwap" BOOLEAN;

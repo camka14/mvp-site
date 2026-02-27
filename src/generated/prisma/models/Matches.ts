@@ -31,6 +31,8 @@ export type MatchesAvgAggregateOutputType = {
   team2Points: number | null
   setResults: number | null
   matchId: number | null
+  team1Seed: number | null
+  team2Seed: number | null
 }
 
 export type MatchesSumAggregateOutputType = {
@@ -38,6 +40,8 @@ export type MatchesSumAggregateOutputType = {
   team2Points: number[]
   setResults: number[]
   matchId: number | null
+  team1Seed: number | null
+  team2Seed: number | null
 }
 
 export type MatchesMinAggregateOutputType = {
@@ -59,6 +63,8 @@ export type MatchesMinAggregateOutputType = {
   refereeId: string | null
   team1Id: string | null
   team2Id: string | null
+  team1Seed: number | null
+  team2Seed: number | null
   eventId: string | null
   fieldId: string | null
   teamRefereeId: string | null
@@ -83,6 +89,8 @@ export type MatchesMaxAggregateOutputType = {
   refereeId: string | null
   team1Id: string | null
   team2Id: string | null
+  team1Seed: number | null
+  team2Seed: number | null
   eventId: string | null
   fieldId: string | null
   teamRefereeId: string | null
@@ -110,6 +118,8 @@ export type MatchesCountAggregateOutputType = {
   refereeId: number
   team1Id: number
   team2Id: number
+  team1Seed: number
+  team2Seed: number
   eventId: number
   fieldId: number
   teamRefereeId: number
@@ -122,6 +132,8 @@ export type MatchesAvgAggregateInputType = {
   team2Points?: true
   setResults?: true
   matchId?: true
+  team1Seed?: true
+  team2Seed?: true
 }
 
 export type MatchesSumAggregateInputType = {
@@ -129,6 +141,8 @@ export type MatchesSumAggregateInputType = {
   team2Points?: true
   setResults?: true
   matchId?: true
+  team1Seed?: true
+  team2Seed?: true
 }
 
 export type MatchesMinAggregateInputType = {
@@ -150,6 +164,8 @@ export type MatchesMinAggregateInputType = {
   refereeId?: true
   team1Id?: true
   team2Id?: true
+  team1Seed?: true
+  team2Seed?: true
   eventId?: true
   fieldId?: true
   teamRefereeId?: true
@@ -174,6 +190,8 @@ export type MatchesMaxAggregateInputType = {
   refereeId?: true
   team1Id?: true
   team2Id?: true
+  team1Seed?: true
+  team2Seed?: true
   eventId?: true
   fieldId?: true
   teamRefereeId?: true
@@ -201,6 +219,8 @@ export type MatchesCountAggregateInputType = {
   refereeId?: true
   team1Id?: true
   team2Id?: true
+  team1Seed?: true
+  team2Seed?: true
   eventId?: true
   fieldId?: true
   teamRefereeId?: true
@@ -315,6 +335,8 @@ export type MatchesGroupByOutputType = {
   refereeId: string | null
   team1Id: string | null
   team2Id: string | null
+  team1Seed: number | null
+  team2Seed: number | null
   eventId: string | null
   fieldId: string | null
   teamRefereeId: string | null
@@ -365,6 +387,8 @@ export type MatchesWhereInput = {
   refereeId?: Prisma.StringNullableFilter<"Matches"> | string | null
   team1Id?: Prisma.StringNullableFilter<"Matches"> | string | null
   team2Id?: Prisma.StringNullableFilter<"Matches"> | string | null
+  team1Seed?: Prisma.IntNullableFilter<"Matches"> | number | null
+  team2Seed?: Prisma.IntNullableFilter<"Matches"> | number | null
   eventId?: Prisma.StringNullableFilter<"Matches"> | string | null
   fieldId?: Prisma.StringNullableFilter<"Matches"> | string | null
   teamRefereeId?: Prisma.StringNullableFilter<"Matches"> | string | null
@@ -392,6 +416,8 @@ export type MatchesOrderByWithRelationInput = {
   refereeId?: Prisma.SortOrderInput | Prisma.SortOrder
   team1Id?: Prisma.SortOrderInput | Prisma.SortOrder
   team2Id?: Prisma.SortOrderInput | Prisma.SortOrder
+  team1Seed?: Prisma.SortOrderInput | Prisma.SortOrder
+  team2Seed?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   fieldId?: Prisma.SortOrderInput | Prisma.SortOrder
   teamRefereeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -422,6 +448,8 @@ export type MatchesWhereUniqueInput = Prisma.AtLeast<{
   refereeId?: Prisma.StringNullableFilter<"Matches"> | string | null
   team1Id?: Prisma.StringNullableFilter<"Matches"> | string | null
   team2Id?: Prisma.StringNullableFilter<"Matches"> | string | null
+  team1Seed?: Prisma.IntNullableFilter<"Matches"> | number | null
+  team2Seed?: Prisma.IntNullableFilter<"Matches"> | number | null
   eventId?: Prisma.StringNullableFilter<"Matches"> | string | null
   fieldId?: Prisma.StringNullableFilter<"Matches"> | string | null
   teamRefereeId?: Prisma.StringNullableFilter<"Matches"> | string | null
@@ -449,6 +477,8 @@ export type MatchesOrderByWithAggregationInput = {
   refereeId?: Prisma.SortOrderInput | Prisma.SortOrder
   team1Id?: Prisma.SortOrderInput | Prisma.SortOrder
   team2Id?: Prisma.SortOrderInput | Prisma.SortOrder
+  team1Seed?: Prisma.SortOrderInput | Prisma.SortOrder
+  team2Seed?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   fieldId?: Prisma.SortOrderInput | Prisma.SortOrder
   teamRefereeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -484,6 +514,8 @@ export type MatchesScalarWhereWithAggregatesInput = {
   refereeId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   team1Id?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   team2Id?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
+  team1Seed?: Prisma.IntNullableWithAggregatesFilter<"Matches"> | number | null
+  team2Seed?: Prisma.IntNullableWithAggregatesFilter<"Matches"> | number | null
   eventId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   fieldId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   teamRefereeId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
@@ -511,6 +543,8 @@ export type MatchesCreateInput = {
   refereeId?: string | null
   team1Id?: string | null
   team2Id?: string | null
+  team1Seed?: number | null
+  team2Seed?: number | null
   eventId?: string | null
   fieldId?: string | null
   teamRefereeId?: string | null
@@ -538,6 +572,8 @@ export type MatchesUncheckedCreateInput = {
   refereeId?: string | null
   team1Id?: string | null
   team2Id?: string | null
+  team1Seed?: number | null
+  team2Seed?: number | null
   eventId?: string | null
   fieldId?: string | null
   teamRefereeId?: string | null
@@ -565,6 +601,8 @@ export type MatchesUpdateInput = {
   refereeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team2Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  team1Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  team2Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamRefereeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -592,6 +630,8 @@ export type MatchesUncheckedUpdateInput = {
   refereeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team2Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  team1Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  team2Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamRefereeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -619,6 +659,8 @@ export type MatchesCreateManyInput = {
   refereeId?: string | null
   team1Id?: string | null
   team2Id?: string | null
+  team1Seed?: number | null
+  team2Seed?: number | null
   eventId?: string | null
   fieldId?: string | null
   teamRefereeId?: string | null
@@ -646,6 +688,8 @@ export type MatchesUpdateManyMutationInput = {
   refereeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team2Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  team1Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  team2Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamRefereeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -673,6 +717,8 @@ export type MatchesUncheckedUpdateManyInput = {
   refereeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team2Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  team1Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  team2Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   teamRefereeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -708,6 +754,8 @@ export type MatchesCountOrderByAggregateInput = {
   refereeId?: Prisma.SortOrder
   team1Id?: Prisma.SortOrder
   team2Id?: Prisma.SortOrder
+  team1Seed?: Prisma.SortOrder
+  team2Seed?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   fieldId?: Prisma.SortOrder
   teamRefereeId?: Prisma.SortOrder
@@ -718,6 +766,8 @@ export type MatchesAvgOrderByAggregateInput = {
   team2Points?: Prisma.SortOrder
   setResults?: Prisma.SortOrder
   matchId?: Prisma.SortOrder
+  team1Seed?: Prisma.SortOrder
+  team2Seed?: Prisma.SortOrder
 }
 
 export type MatchesMaxOrderByAggregateInput = {
@@ -739,6 +789,8 @@ export type MatchesMaxOrderByAggregateInput = {
   refereeId?: Prisma.SortOrder
   team1Id?: Prisma.SortOrder
   team2Id?: Prisma.SortOrder
+  team1Seed?: Prisma.SortOrder
+  team2Seed?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   fieldId?: Prisma.SortOrder
   teamRefereeId?: Prisma.SortOrder
@@ -763,6 +815,8 @@ export type MatchesMinOrderByAggregateInput = {
   refereeId?: Prisma.SortOrder
   team1Id?: Prisma.SortOrder
   team2Id?: Prisma.SortOrder
+  team1Seed?: Prisma.SortOrder
+  team2Seed?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   fieldId?: Prisma.SortOrder
   teamRefereeId?: Prisma.SortOrder
@@ -773,6 +827,8 @@ export type MatchesSumOrderByAggregateInput = {
   team2Points?: Prisma.SortOrder
   setResults?: Prisma.SortOrder
   matchId?: Prisma.SortOrder
+  team1Seed?: Prisma.SortOrder
+  team2Seed?: Prisma.SortOrder
 }
 
 export type MatchesCreateteam1PointsInput = {
@@ -806,6 +862,14 @@ export type MatchesUpdatesetResultsInput = {
   push?: number | number[]
 }
 
+export type NullableIntFieldUpdateOperationsInput = {
+  set?: number | null
+  increment?: number
+  decrement?: number
+  multiply?: number
+  divide?: number
+}
+
 
 
 export type MatchesSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -830,6 +894,8 @@ export type MatchesSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   refereeId?: boolean
   team1Id?: boolean
   team2Id?: boolean
+  team1Seed?: boolean
+  team2Seed?: boolean
   eventId?: boolean
   fieldId?: boolean
   teamRefereeId?: boolean
@@ -857,6 +923,8 @@ export type MatchesSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   refereeId?: boolean
   team1Id?: boolean
   team2Id?: boolean
+  team1Seed?: boolean
+  team2Seed?: boolean
   eventId?: boolean
   fieldId?: boolean
   teamRefereeId?: boolean
@@ -884,6 +952,8 @@ export type MatchesSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   refereeId?: boolean
   team1Id?: boolean
   team2Id?: boolean
+  team1Seed?: boolean
+  team2Seed?: boolean
   eventId?: boolean
   fieldId?: boolean
   teamRefereeId?: boolean
@@ -911,12 +981,14 @@ export type MatchesSelectScalar = {
   refereeId?: boolean
   team1Id?: boolean
   team2Id?: boolean
+  team1Seed?: boolean
+  team2Seed?: boolean
   eventId?: boolean
   fieldId?: boolean
   teamRefereeId?: boolean
 }
 
-export type MatchesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "start" | "end" | "locked" | "division" | "team1Points" | "team2Points" | "setResults" | "side" | "matchId" | "losersBracket" | "winnerNextMatchId" | "loserNextMatchId" | "previousRightId" | "previousLeftId" | "refereeCheckedIn" | "refereeId" | "team1Id" | "team2Id" | "eventId" | "fieldId" | "teamRefereeId", ExtArgs["result"]["matches"]>
+export type MatchesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "start" | "end" | "locked" | "division" | "team1Points" | "team2Points" | "setResults" | "side" | "matchId" | "losersBracket" | "winnerNextMatchId" | "loserNextMatchId" | "previousRightId" | "previousLeftId" | "refereeCheckedIn" | "refereeId" | "team1Id" | "team2Id" | "team1Seed" | "team2Seed" | "eventId" | "fieldId" | "teamRefereeId", ExtArgs["result"]["matches"]>
 
 export type $MatchesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Matches"
@@ -943,6 +1015,8 @@ export type $MatchesPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     refereeId: string | null
     team1Id: string | null
     team2Id: string | null
+    team1Seed: number | null
+    team2Seed: number | null
     eventId: string | null
     fieldId: string | null
     teamRefereeId: string | null
@@ -1390,6 +1464,8 @@ export interface MatchesFieldRefs {
   readonly refereeId: Prisma.FieldRef<"Matches", 'String'>
   readonly team1Id: Prisma.FieldRef<"Matches", 'String'>
   readonly team2Id: Prisma.FieldRef<"Matches", 'String'>
+  readonly team1Seed: Prisma.FieldRef<"Matches", 'Int'>
+  readonly team2Seed: Prisma.FieldRef<"Matches", 'Int'>
   readonly eventId: Prisma.FieldRef<"Matches", 'String'>
   readonly fieldId: Prisma.FieldRef<"Matches", 'String'>
   readonly teamRefereeId: Prisma.FieldRef<"Matches", 'String'>

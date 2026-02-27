@@ -15,7 +15,6 @@ import {
     EventState,
     Organization,
     getTeamAvatarUrl,
-    getTeamWinRate,
     toEventPayload,
 } from '@/types';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
@@ -133,6 +132,43 @@ class EventService {
             return this.mapRowToEvent(response);
         } catch (error) {
             console.error('Failed to update event participants:', error);
+            throw error;
+        }
+    }
+
+    async addTeamParticipant(eventId: string, params: { teamId: string; divisionId?: string | null }): Promise<Event> {
+        try {
+            await apiRequest<any>(`/api/events/${eventId}/participants`, {
+                method: 'POST',
+                body: {
+                    teamId: params.teamId,
+                    ...(params.divisionId ? { divisionId: params.divisionId } : {}),
+                },
+            });
+            const hydrated = await this.getEventById(eventId);
+            if (!hydrated) {
+                throw new Error('Failed to refresh event after adding team participant');
+            }
+            return hydrated;
+        } catch (error) {
+            console.error('Failed to add team participant:', error);
+            throw error;
+        }
+    }
+
+    async removeTeamParticipant(eventId: string, teamId: string): Promise<Event> {
+        try {
+            await apiRequest<any>(`/api/events/${eventId}/participants`, {
+                method: 'DELETE',
+                body: { teamId },
+            });
+            const hydrated = await this.getEventById(eventId);
+            if (!hydrated) {
+                throw new Error('Failed to refresh event after removing team participant');
+            }
+            return hydrated;
+        } catch (error) {
+            console.error('Failed to remove team participant:', error);
             throw error;
         }
     }
@@ -420,6 +456,7 @@ class EventService {
             restTimeMinutes: row.restTimeMinutes,
             teamSignup: row.teamSignup,
             singleDivision: row.singleDivision,
+            splitLeaguePlayoffDivisions: Boolean(row.splitLeaguePlayoffDivisions),
             registrationByDivisionType: Boolean(row.registrationByDivisionType),
             waitListIds: row.waitListIds,
             freeAgentIds: row.freeAgentIds,
@@ -499,9 +536,46 @@ class EventService {
                     fieldIds: Array.isArray(entry?.fieldIds)
                         ? entry.fieldIds.map((fieldId: unknown) => String(fieldId)).filter(Boolean)
                         : [],
+                    teamIds: Array.isArray(entry?.teamIds)
+                        ? entry.teamIds
+                            .filter((teamId: unknown): teamId is string => typeof teamId === 'string')
+                            .map((teamId: string) => teamId.trim())
+                            .filter((teamId: string) => teamId.length > 0)
+                        : [],
                     ageCutoffDate: typeof entry?.ageCutoffDate === 'string' ? entry.ageCutoffDate : undefined,
                     ageCutoffLabel: typeof entry?.ageCutoffLabel === 'string' ? entry.ageCutoffLabel : undefined,
                     ageCutoffSource: typeof entry?.ageCutoffSource === 'string' ? entry.ageCutoffSource : undefined,
+                })).filter((entry: any) => entry.id.length > 0)
+                : undefined,
+            playoffDivisionDetails: Array.isArray(row.playoffDivisionDetails)
+                ? row.playoffDivisionDetails.map((entry: any) => ({
+                    id: String(entry?.id ?? entry?.$id ?? ''),
+                    name: String(entry?.name ?? entry?.id ?? ''),
+                    key: typeof entry?.key === 'string' ? entry.key : undefined,
+                    kind:
+                        entry?.kind === 'LEAGUE' || entry?.kind === 'PLAYOFF'
+                            ? entry.kind
+                            : 'PLAYOFF',
+                    maxParticipants: typeof entry?.maxParticipants === 'number'
+                        ? entry.maxParticipants
+                        : Number.isFinite(Number(entry?.maxParticipants))
+                            ? Number(entry.maxParticipants)
+                            : undefined,
+                    playoffTeamCount: typeof entry?.playoffTeamCount === 'number'
+                        ? entry.playoffTeamCount
+                        : Number.isFinite(Number(entry?.playoffTeamCount))
+                            ? Number(entry.playoffTeamCount)
+                            : undefined,
+                    teamIds: Array.isArray(entry?.teamIds)
+                        ? entry.teamIds
+                            .filter((teamId: unknown): teamId is string => typeof teamId === 'string')
+                            .map((teamId: string) => teamId.trim())
+                            .filter((teamId: string) => teamId.length > 0)
+                        : [],
+                    playoffConfig:
+                        entry?.playoffConfig && typeof entry.playoffConfig === 'object'
+                            ? entry.playoffConfig
+                            : undefined,
                 })).filter((entry: any) => entry.id.length > 0)
                 : undefined,
             divisionFieldIds:
@@ -531,6 +605,12 @@ class EventService {
             setDurationMinutes: row.setDurationMinutes,
             setsPerMatch: row.setsPerMatch,
             doTeamsRef: typeof row.doTeamsRef === 'boolean' ? row.doTeamsRef : undefined,
+            teamRefsMaySwap:
+                typeof row.doTeamsRef === 'boolean' && row.doTeamsRef
+                    ? typeof row.teamRefsMaySwap === 'boolean'
+                        ? row.teamRefsMaySwap
+                        : false
+                    : false,
             refType: row.refType,
             pointsToVictory: row.pointsToVictory,
             allowPaymentPlans: !!row.allowPaymentPlans,
@@ -750,9 +830,6 @@ class EventService {
                 : Number.isFinite(Number(row.teamSize))
                     ? Number(row.teamSize)
                     : playerIds.length;
-        const wins = typeof row.wins === 'number' ? row.wins : Number(row.wins ?? 0);
-        const losses = typeof row.losses === 'number' ? row.losses : Number(row.losses ?? 0);
-        const seed = typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0);
 
         let division: any = 'Open';
         if (row.division && typeof row.division === 'object' && ('name' in row.division || 'id' in row.division)) {
@@ -764,7 +841,6 @@ class EventService {
         const team: Team = {
             $id: String(row.$id ?? row.id ?? ''),
             name: row.name ?? '',
-            seed,
             division,
             divisionTypeId:
                 typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length > 0
@@ -775,8 +851,6 @@ class EventService {
                     ? row.divisionTypeName
                     : undefined,
             sport: typeof row.sport === 'string' ? row.sport : row.sport?.name ?? '',
-            wins,
-            losses,
             playerIds,
             captainId:
                 typeof row.captainId === 'string'
@@ -817,13 +891,11 @@ class EventService {
             profileImageId: row.profileImage || row.profileImageId || row.profileImageID,
             $createdAt: row.$createdAt,
             $updatedAt: row.$updatedAt,
-            winRate: 0,
             currentSize: playerIds.length,
             isFull: playerIds.length >= teamSize,
             avatarUrl: '',
         };
 
-        team.winRate = getTeamWinRate(team);
         team.avatarUrl = getTeamAvatarUrl(team);
         return team;
     }
@@ -1182,6 +1254,10 @@ class EventService {
             locked: Boolean(input.locked),
             team1Seed: input.team1Seed,
             team2Seed: input.team2Seed,
+            teamRefereeSeed:
+                typeof input.teamRefereeSeed === 'number' && Number.isFinite(input.teamRefereeSeed)
+                    ? input.teamRefereeSeed
+                    : null,
             losersBracket: input.losersBracket,
             matchId: input.matchId,
             team1Points: Array.isArray(input.team1Points) ? (input.team1Points as number[]) : [],
@@ -1216,6 +1292,12 @@ class EventService {
             match.teamReferee = context.teamsById.get(resolvedTeamRefereeId);
         } else if (input.teamReferee && typeof input.teamReferee === 'object') {
             match.teamReferee = input.teamReferee as Team;
+        }
+        if (
+            match.teamReferee
+            && (typeof match.teamRefereeSeed !== 'number' || !Number.isFinite(match.teamRefereeSeed))
+        ) {
+            match.teamRefereeSeed = null;
         }
 
         if (resolvedRefereeId && context?.refereesById?.has(resolvedRefereeId)) {

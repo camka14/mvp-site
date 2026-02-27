@@ -7,6 +7,7 @@ import type { RefundRequest } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { organizationService } from '@/lib/organizationService';
+import { teamService } from '@/lib/teamService';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
 
 type RefundRequestsListProps = {
@@ -31,6 +32,7 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
   const [eventsById, setEventsById] = useState<Record<string, string>>({});
   const [usersById, setUsersById] = useState<Record<string, string>>({});
   const [organizationsById, setOrganizationsById] = useState<Record<string, string>>({});
+  const [teamsById, setTeamsById] = useState<Record<string, string>>({});
 
   const hasFilter = useMemo(() => Boolean(organizationId || userId || hostId), [organizationId, userId, hostId]);
   const isRequesterView = useMemo(
@@ -71,12 +73,20 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
               .filter((id): id is string => typeof id === 'string' && Boolean(id)),
           ),
         );
+        const teamIds = Array.from(
+          new Set(
+            results
+              .map((refund) => refund.teamId)
+              .filter((id): id is string => typeof id === 'string' && Boolean(id)),
+          ),
+        );
 
         try {
-          const [events, users, organizations] = await Promise.all([
+          const [events, users, organizations, teams] = await Promise.all([
             Promise.all(eventIds.map((id) => eventService.getEventById(id))),
             userIds.length ? userService.getUsersByIds(userIds) : Promise.resolve([]),
             organizationIds.length ? organizationService.getOrganizationsByIds(organizationIds) : Promise.resolve([]),
+            teamIds.length ? teamService.getTeamsByIds(teamIds, true) : Promise.resolve([]),
           ]);
 
           if (isMounted) {
@@ -85,6 +95,7 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
               .map((event) => [event.$id, event.name] as const);
             const userEntries = users.map((user) => [user.$id, displayUserName(user)] as const);
             const orgEntries = organizations.map((org) => [org.$id, org.name] as const);
+            const teamEntries = teams.map((team) => [team.$id, team.name || team.$id] as const);
 
             if (eventEntries.length) {
               setEventsById((prev) => ({ ...prev, ...Object.fromEntries(eventEntries) }));
@@ -94,6 +105,9 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
             }
             if (orgEntries.length) {
               setOrganizationsById((prev) => ({ ...prev, ...Object.fromEntries(orgEntries) }));
+            }
+            if (teamEntries.length) {
+              setTeamsById((prev) => ({ ...prev, ...Object.fromEntries(teamEntries) }));
             }
           }
         } catch (lookupError) {
@@ -207,6 +221,7 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
             <Table.Tr>
               <Table.Th>Event</Table.Th>
               <Table.Th>Reason</Table.Th>
+              <Table.Th>Team</Table.Th>
               <Table.Th>Requested By</Table.Th>
               <Table.Th>Host</Table.Th>
               <Table.Th>Organization</Table.Th>
@@ -222,6 +237,9 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
               const hostName = refund.hostId
                 ? usersById[refund.hostId] ?? refund.hostId
                 : null;
+              const teamName = refund.teamId
+                ? teamsById[refund.teamId] ?? refund.teamId
+                : null;
               const organizationName = refund.organizationId
                 ? organizationsById[refund.organizationId] ?? refund.organizationId
                 : null;
@@ -235,6 +253,17 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm">{refund.reason || 'No reason provided'}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    {teamName ? (
+                      <Badge variant="light" color="cyan">
+                        {teamName}
+                      </Badge>
+                    ) : (
+                      <Text size="sm" c="dimmed">
+                        —
+                      </Text>
+                    )}
                   </Table.Td>
                   <Table.Td>
                     <Badge variant="light" color="blue">

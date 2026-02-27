@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 
@@ -16,6 +16,7 @@ import { leagueService } from '@/lib/leagueService';
 import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
+import { userService } from '@/lib/userService';
 import { paymentService } from '@/lib/paymentService';
 import { familyService } from '@/lib/familyService';
 import { apiRequest } from '@/lib/apiClient';
@@ -25,8 +26,11 @@ import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
 import { toEventPayload } from '@/types';
-import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot } from '@/types';
+import { formatBillAmount } from '@/types';
+import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
+import type { EventTeamComplianceResponse, TeamComplianceSummary } from '@/lib/eventTeamCompliance';
+import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
@@ -35,6 +39,7 @@ import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 import TeamCard from '@/components/ui/TeamCard';
+import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 
 const cloneValue = <T,>(value: T): T => {
   if (value === null || typeof value !== 'object') {
@@ -96,6 +101,44 @@ type DivisionOption = {
   label: string;
 };
 
+type MatchCreateContext = 'schedule' | 'bracket';
+
+type StagedMatchCreateMeta = {
+  clientId: string;
+  creationContext: MatchCreateContext;
+  autoPlaceholderTeam: boolean;
+};
+
+const CLIENT_MATCH_PREFIX = 'client:';
+const LOCAL_PLACEHOLDER_PREFIX = 'placeholder-local:';
+
+const isClientMatchId = (id: string | null | undefined): boolean =>
+  typeof id === 'string' && id.startsWith(CLIENT_MATCH_PREFIX);
+
+const getClientIdFromMatchId = (id: string): string =>
+  id.slice(CLIENT_MATCH_PREFIX.length);
+
+const isLocalPlaceholderId = (id: string | null | undefined): boolean =>
+  typeof id === 'string' && id.startsWith(LOCAL_PLACEHOLDER_PREFIX);
+
+const asBulkMatchRef = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const nextMatchSequenceNumber = (matches: Match[]): number => {
+  const maxCurrent = matches.reduce((maxValue, match) => {
+    if (typeof match.matchId !== 'number' || !Number.isFinite(match.matchId)) {
+      return maxValue;
+    }
+    return Math.max(maxValue, Math.trunc(match.matchId));
+  }, 0);
+  return maxCurrent + 1;
+};
+
 const normalizeDivisionToken = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -110,6 +153,34 @@ const normalizeIdToken = (value: unknown): string | null => {
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+};
+
+const clearMatchReferencesToTarget = (match: Match, removedMatchId: string): Match => {
+  const targetId = normalizeIdToken(removedMatchId);
+  if (!targetId) {
+    return match;
+  }
+
+  let next = match;
+  const previousLeftId = normalizeIdToken(next.previousLeftId);
+  const previousRightId = normalizeIdToken(next.previousRightId);
+  const winnerNextMatchId = normalizeIdToken(next.winnerNextMatchId);
+  const loserNextMatchId = normalizeIdToken(next.loserNextMatchId);
+
+  if (previousLeftId === targetId) {
+    next = { ...next, previousLeftId: null, previousLeftMatch: undefined };
+  }
+  if (previousRightId === targetId) {
+    next = { ...next, previousRightId: null, previousRightMatch: undefined };
+  }
+  if (winnerNextMatchId === targetId) {
+    next = { ...next, winnerNextMatchId: null, winnerNextMatch: undefined };
+  }
+  if (loserNextMatchId === targetId) {
+    next = { ...next, loserNextMatchId: null, loserNextMatch: undefined };
+  }
+
+  return next;
 };
 
 const toDivisionKey = (divisionId: string | null | undefined): string | null => {
@@ -171,6 +242,37 @@ const getDivisionKind = (division: unknown): 'LEAGUE' | 'PLAYOFF' | null => {
   return null;
 };
 
+const isDivisionStandingsConfirmed = (division: unknown): boolean => {
+  if (!division || typeof division !== 'object') {
+    return false;
+  }
+  const confirmedAt = (division as { standingsConfirmedAt?: unknown }).standingsConfirmedAt;
+  if (confirmedAt instanceof Date) {
+    return !Number.isNaN(confirmedAt.getTime());
+  }
+  if (typeof confirmedAt === 'string') {
+    return confirmedAt.trim().length > 0;
+  }
+  return false;
+};
+
+const getDivisionTeamIds = (division: unknown): string[] => {
+  if (!division || typeof division !== 'object') {
+    return [];
+  }
+  const rawTeamIds = (division as { teamIds?: unknown }).teamIds;
+  if (!Array.isArray(rawTeamIds)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      rawTeamIds
+        .map((teamId) => normalizeIdToken(teamId))
+        .filter((teamId): teamId is string => Boolean(teamId)),
+    ),
+  );
+};
+
 const getTeamDivision = (team: Match['team1'] | Match['team2']): unknown => {
   if (!team) {
     return null;
@@ -188,6 +290,35 @@ const getMatchDivisionLabel = (match: Match): string | null =>
   getDivisionLabel(match.division) ??
   getDivisionLabel(getTeamDivision(match.team1)) ??
   getDivisionLabel(getTeamDivision(match.team2));
+
+const isPlayoffBracketMatch = (match: Match): boolean =>
+  Boolean(
+    match.previousLeftId ||
+    match.previousRightId ||
+    match.winnerNextMatchId ||
+    match.loserNextMatchId,
+  );
+
+const shouldResetBracketMatchForRebuild = (event: Event, match: Match): boolean => {
+  if (event.eventType === 'TOURNAMENT') {
+    return true;
+  }
+  if (event.eventType === 'LEAGUE' && event.includePlayoffs) {
+    return isPlayoffBracketMatch(match);
+  }
+  return false;
+};
+
+const toClearedBracketMatchUpdate = (match: Match): Partial<Match> & { $id: string } => ({
+  $id: match.$id,
+  refereeId: null,
+  teamRefereeId: null,
+  team1Points: [],
+  team2Points: [],
+  setResults: [],
+  refereeCheckedIn: false,
+  locked: false,
+});
 
 const pickPreferredRootMatch = (matches: Match[]): Match | null => {
   if (matches.length === 0) {
@@ -263,13 +394,11 @@ const collectConnectedMatchIds = (matches: Record<string, Match>, rootMatchId: s
 };
 
 
-type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
+type StandingsSortField = 'team' | 'draws' | 'points';
 
 type StandingsRow = {
   teamId: string;
   teamName: string;
-  wins: number;
-  losses: number;
   draws: number;
   goalsFor: number;
   goalsAgainst: number;
@@ -424,16 +553,27 @@ function EventScheduleContent() {
   const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
   const [selectedStandingsDivision, setSelectedStandingsDivision] = useState<string | null>(null);
   const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
+  const [participantReferees, setParticipantReferees] = useState<UserData[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
   const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
+  const [teamComplianceById, setTeamComplianceById] = useState<Record<string, TeamComplianceSummary>>({});
+  const [teamComplianceLoading, setTeamComplianceLoading] = useState(false);
+  const [teamComplianceError, setTeamComplianceError] = useState<string | null>(null);
+  const [selectedComplianceTeamId, setSelectedComplianceTeamId] = useState<string | null>(null);
+  const [expandedComplianceUserIds, setExpandedComplianceUserIds] = useState<string[]>([]);
   const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
+  const [selectedAddTeamDivisionId, setSelectedAddTeamDivisionId] = useState<string | null>(null);
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
   const [organizationTeamsForPicker, setOrganizationTeamsForPicker] = useState<Team[]>([]);
   const [organizationTeamsLoading, setOrganizationTeamsLoading] = useState(false);
   const [searchTeamPool, setSearchTeamPool] = useState<Team[]>([]);
   const [searchTeamsLoading, setSearchTeamsLoading] = useState(false);
   const [isMatchEditorOpen, setIsMatchEditorOpen] = useState(false);
+  const [matchEditorContext, setMatchEditorContext] = useState<MatchCreateContext>('bracket');
+  const [pendingCreateMatchId, setPendingCreateMatchId] = useState<string | null>(null);
+  const [stagedMatchCreates, setStagedMatchCreates] = useState<Record<string, StagedMatchCreateMeta>>({});
+  const [stagedMatchDeletes, setStagedMatchDeletes] = useState<string[]>([]);
   const [standingsSort, setStandingsSort] = useState<{ field: StandingsSortField; direction: 'asc' | 'desc' }>({
     field: 'points',
     direction: 'desc',
@@ -777,6 +917,41 @@ function EventScheduleContent() {
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
 
+  const isSplitDivisionEvent = Boolean(
+    (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
+      && !activeEvent?.singleDivision
+      && leagueDivisionOptions.length > 0,
+  );
+
+  const participantDivisionColumns = useMemo<Array<{ id: string; label: string; teamIds: string[] }>>(() => {
+    const sourceDivisions = Array.isArray(activeEvent?.divisionDetails)
+      ? activeEvent.divisionDetails
+      : Array.isArray(activeEvent?.divisions)
+        ? activeEvent.divisions
+        : [];
+    const columns: Array<{ id: string; label: string; teamIds: string[] }> = [];
+    sourceDivisions.forEach((division) => {
+      if (getDivisionKind(division) === 'PLAYOFF') {
+        return;
+      }
+      const divisionId = getDivisionId(division);
+      if (!divisionId) {
+        return;
+      }
+      columns.push({
+        id: divisionId,
+        label: getDivisionLabel(division) ?? divisionId,
+        teamIds: getDivisionTeamIds(division),
+      });
+    });
+    return columns;
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
+
+  const participantDivisionSelectData = useMemo(
+    () => participantDivisionColumns.map((column) => ({ value: column.id, label: column.label })),
+    [participantDivisionColumns],
+  );
+
   useEffect(() => {
     if (selectedScheduleDivision === 'all') {
       return;
@@ -787,6 +962,10 @@ function EventScheduleContent() {
     }
   }, [scheduleDivisionOptions, selectedScheduleDivision]);
 
+  const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
+  const isTournament = eventTypeForView === 'TOURNAMENT';
+  const isLeague = eventTypeForView === 'LEAGUE';
+
   const scheduleMatches = useMemo(() => {
     if (selectedScheduleDivision === 'all') {
       return activeMatches;
@@ -795,9 +974,29 @@ function EventScheduleContent() {
     return activeMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedScheduleDivision);
   }, [activeMatches, selectedScheduleDivision]);
 
-  const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
-  const isTournament = eventTypeForView === 'TOURNAMENT';
-  const isLeague = eventTypeForView === 'LEAGUE';
+  const preferredStandingsDivisionId = useMemo(() => {
+    const validOptionIds = new Set(leagueDivisionOptions.map((option) => option.value));
+    const sourceDivisions = Array.isArray(activeEvent?.divisionDetails)
+      ? activeEvent.divisionDetails
+      : Array.isArray(activeEvent?.divisions)
+        ? activeEvent.divisions
+        : [];
+
+    for (const division of sourceDivisions) {
+      if (getDivisionKind(division) === 'PLAYOFF') {
+        continue;
+      }
+      const divisionId = getDivisionId(division);
+      if (!divisionId || !validOptionIds.has(divisionId)) {
+        continue;
+      }
+      if (!isDivisionStandingsConfirmed(division)) {
+        return divisionId;
+      }
+    }
+
+    return leagueDivisionOptions[0]?.value ?? null;
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions, leagueDivisionOptions]);
 
   useEffect(() => {
     if (!isLeague || leagueDivisionOptions.length === 0) {
@@ -816,8 +1015,8 @@ function EventScheduleContent() {
       return;
     }
 
-    setSelectedStandingsDivision(leagueDivisionOptions[0].value);
-  }, [isLeague, leagueDivisionOptions, selectedStandingsDivision]);
+    setSelectedStandingsDivision(preferredStandingsDivisionId ?? leagueDivisionOptions[0].value);
+  }, [isLeague, leagueDivisionOptions, preferredStandingsDivisionId, selectedStandingsDivision]);
 
   const activeEventId = activeEvent?.$id ?? null;
   const activeEventType = activeEvent?.eventType ?? null;
@@ -887,6 +1086,7 @@ function EventScheduleContent() {
       ),
   );
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
+  const canUseTeamCompliance = Boolean(isEditingEvent && canManageEvent && isSplitDivisionEvent);
   const canManageStandings = Boolean(canManageEvent && !isPreview && !isCreateMode);
   const entityLabel = isTemplateEvent
     ? 'Template'
@@ -899,8 +1099,7 @@ function EventScheduleContent() {
   const canEditMatches = Boolean(canManageEvent && isEditingEvent);
   const shouldShowCreationSheet = Boolean(
     isCreateMode
-    || (isEditingEvent && canManageEvent && user)
-    || (isTemplateEvent && user),
+    || (isEditingEvent && canManageEvent && user),
   );
   const createFormId = 'create-event-form';
   const templateSelectData = useMemo(
@@ -1212,6 +1411,96 @@ function EventScheduleContent() {
   }, [activeEvent?.teamIds, activeEvent?.teams]);
 
   const participantTeamIdSet = useMemo(() => new Set(participantTeamIds), [participantTeamIds]);
+  const participantRefereeIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    if (Array.isArray(activeEvent?.refereeIds)) {
+      activeEvent.refereeIds
+        .map((refereeId) => normalizeIdToken(refereeId))
+        .filter((refereeId): refereeId is string => Boolean(refereeId))
+        .forEach((refereeId) => ids.add(refereeId));
+    }
+
+    if (Array.isArray(activeEvent?.referees)) {
+      activeEvent.referees.forEach((refereeEntry) => {
+        const refereeId = normalizeIdToken(refereeEntry?.$id);
+        if (refereeId) {
+          ids.add(refereeId);
+        }
+      });
+    }
+
+    activeMatches.forEach((match) => {
+      const refereeId = normalizeIdToken(match.refereeId ?? match.referee?.$id);
+      if (refereeId) {
+        ids.add(refereeId);
+      }
+    });
+
+    return Array.from(ids);
+  }, [activeEvent?.refereeIds, activeEvent?.referees, activeMatches]);
+
+  const participantTeamsById = useMemo(() => {
+    const teams = new Map<string, Team>();
+    participantTeams.forEach((team) => {
+      if (team?.$id) {
+        teams.set(team.$id, team);
+      }
+    });
+    if (Array.isArray(activeEvent?.teams)) {
+      activeEvent.teams.forEach((team) => {
+        if (team?.$id && !teams.has(team.$id)) {
+          teams.set(team.$id, team);
+        }
+      });
+    }
+    return teams;
+  }, [activeEvent?.teams, participantTeams]);
+
+  const isPlaceholderParticipantTeam = useCallback(
+    (team: Team | null | undefined): boolean => {
+      if (!team) return true;
+      if (!isLeague && !isTournament) return false;
+      return typeof team.parentTeamId !== 'string' || team.parentTeamId.trim().length === 0;
+    },
+    [isLeague, isTournament],
+  );
+
+  const filledParticipantTeams = useMemo(
+    () => participantTeams.filter((team) => !isPlaceholderParticipantTeam(team)),
+    [isPlaceholderParticipantTeam, participantTeams],
+  );
+
+  const assignedParticipantTeamIds = useMemo(() => {
+    const assigned = new Set<string>();
+    participantDivisionColumns.forEach((column) => {
+      column.teamIds.forEach((teamId) => {
+        if (participantTeamIdSet.has(teamId)) {
+          assigned.add(teamId);
+        }
+      });
+    });
+    return assigned;
+  }, [participantDivisionColumns, participantTeamIdSet]);
+
+  const unassignedParticipantTeamIds = useMemo(
+    () => participantTeamIds.filter((teamId) => !assignedParticipantTeamIds.has(teamId)),
+    [assignedParticipantTeamIds, participantTeamIds],
+  );
+
+  const unassignedParticipantTeams = useMemo(
+    () => unassignedParticipantTeamIds
+      .map((teamId) => participantTeamsById.get(teamId))
+      .filter((team): team is Team => Boolean(team)),
+    [participantTeamsById, unassignedParticipantTeamIds],
+  );
+
+  const unassignedFilledParticipantTeams = useMemo(
+    () => unassignedParticipantTeams.filter((team) => !isPlaceholderParticipantTeam(team)),
+    [isPlaceholderParticipantTeam, unassignedParticipantTeams],
+  );
+
+  const hasSplitDivisionUnassignedTeams = isSplitDivisionEvent && unassignedFilledParticipantTeams.length > 0;
 
   const organizationIdForParticipants = useMemo(() => {
     const organizationId = normalizeIdToken(activeEvent?.organizationId);
@@ -1328,6 +1617,128 @@ function EventScheduleContent() {
   }, [participantTeamIds]);
 
   useEffect(() => {
+    if (!canUseTeamCompliance) {
+      setTeamComplianceById({});
+      setTeamComplianceError(null);
+      setTeamComplianceLoading(false);
+      setSelectedComplianceTeamId(null);
+      setExpandedComplianceUserIds([]);
+      return;
+    }
+
+    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+    if (!targetEventId || participantTeamIds.length === 0) {
+      setTeamComplianceById({});
+      setTeamComplianceError(null);
+      setTeamComplianceLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTeamComplianceLoading(true);
+    setTeamComplianceError(null);
+
+    void apiRequest<EventTeamComplianceResponse>(`/api/events/${targetEventId}/teams/compliance`)
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        const byId: Record<string, TeamComplianceSummary> = {};
+        (payload?.teams ?? []).forEach((teamSummary) => {
+          if (teamSummary?.teamId) {
+            byId[teamSummary.teamId] = teamSummary;
+          }
+        });
+        setTeamComplianceById(byId);
+      })
+      .catch((complianceError) => {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load team compliance summaries:', complianceError);
+        setTeamComplianceById({});
+        setTeamComplianceError(
+          complianceError instanceof Error
+            ? complianceError.message
+            : 'Failed to load team payment and document status.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setTeamComplianceLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIds]);
+
+  useEffect(() => {
+    if (!selectedComplianceTeamId) {
+      return;
+    }
+    const stillVisible = participantTeamIdSet.has(selectedComplianceTeamId);
+    if (!stillVisible) {
+      setSelectedComplianceTeamId(null);
+      setExpandedComplianceUserIds([]);
+    }
+  }, [participantTeamIdSet, selectedComplianceTeamId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadParticipantReferees = async () => {
+      if (participantRefereeIds.length === 0) {
+        setParticipantReferees([]);
+        return;
+      }
+
+      try {
+        const hydratedReferees = await userService.getUsersByIds(participantRefereeIds);
+        if (cancelled) {
+          return;
+        }
+        const hydratedById = new Map(hydratedReferees.map((referee) => [referee.$id, referee]));
+        const orderedReferees = participantRefereeIds
+          .map((refereeId) => hydratedById.get(refereeId))
+          .filter((referee): referee is UserData => Boolean(referee));
+        setParticipantReferees(orderedReferees);
+      } catch (refereesError) {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load referees for event:', refereesError);
+      }
+    };
+
+    void loadParticipantReferees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [participantRefereeIds]);
+
+  useEffect(() => {
+    if (!isAddTeamModalOpen) {
+      return;
+    }
+    if (!isSplitDivisionEvent) {
+      if (selectedAddTeamDivisionId !== null) {
+        setSelectedAddTeamDivisionId(null);
+      }
+      return;
+    }
+    if (
+      selectedAddTeamDivisionId
+      && participantDivisionSelectData.some((option) => option.value === selectedAddTeamDivisionId)
+    ) {
+      return;
+    }
+    setSelectedAddTeamDivisionId(participantDivisionSelectData[0]?.value ?? null);
+  }, [isAddTeamModalOpen, isSplitDivisionEvent, participantDivisionSelectData, selectedAddTeamDivisionId]);
+
+  useEffect(() => {
     if (!isAddTeamModalOpen) {
       return;
     }
@@ -1408,50 +1819,93 @@ function EventScheduleContent() {
     };
   }, [activeEvent?.organization, isAddTeamModalOpen, organizationIdForParticipants]);
 
-  const syncParticipantTeams = useCallback(
-    async (nextTeamIds: string[], successMessage: string) => {
-      const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) {
-        return;
+  const refreshParticipantTeamsFromServer = useCallback(
+    async (targetEventId: string) => {
+      const refreshedEvent = await eventService.getEventById(targetEventId);
+      if (!refreshedEvent) {
+        throw new Error('Failed to refresh event participants.');
       }
 
-      const normalizedTeamIds = Array.from(
+      const refreshedTeamIds = Array.from(
         new Set(
-          nextTeamIds
+          (Array.isArray(refreshedEvent.teamIds) ? refreshedEvent.teamIds : [])
             .map((teamId) => normalizeIdToken(teamId))
             .filter((teamId): teamId is string => Boolean(teamId)),
         ),
       );
-      const normalizedUserIds = Array.isArray(activeEvent?.userIds)
-        ? Array.from(new Set(activeEvent.userIds.map((userId) => String(userId)).filter(Boolean)))
+      const refreshedTeams = refreshedTeamIds.length > 0
+        ? await teamService.getTeamsByIds(refreshedTeamIds, true)
         : [];
+      const refreshedTeamsById = new Map(refreshedTeams.map((team) => [team.$id, team]));
+      const orderedTeams = refreshedTeamIds
+        .map((teamId) => refreshedTeamsById.get(teamId))
+        .filter((team): team is Team => Boolean(team));
+
+      setParticipantTeams(orderedTeams);
+      setEvent((prev) => (prev
+        ? {
+            ...prev,
+            teamIds: refreshedTeamIds,
+            teams: orderedTeams,
+            divisions: refreshedEvent.divisions ?? prev.divisions,
+            divisionDetails: refreshedEvent.divisionDetails ?? prev.divisionDetails,
+            playoffDivisionDetails: refreshedEvent.playoffDivisionDetails ?? prev.playoffDivisionDetails,
+          }
+        : prev));
+      setChangesEvent((prev) => (prev
+        ? {
+            ...prev,
+            teamIds: refreshedTeamIds,
+            teams: orderedTeams,
+            divisions: refreshedEvent.divisions ?? prev.divisions,
+            divisionDetails: refreshedEvent.divisionDetails ?? prev.divisionDetails,
+            playoffDivisionDetails: refreshedEvent.playoffDivisionDetails ?? prev.playoffDivisionDetails,
+          }
+        : prev));
+    },
+    [],
+  );
+
+  const mutateTeamParticipantMembership = useCallback(
+    async (params: {
+      team: Team;
+      mode: 'add' | 'remove' | 'move';
+      divisionId?: string | null;
+    }) => {
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) {
+        return;
+      }
+      if (!params.team?.$id) {
+        return;
+      }
 
       setParticipantsError(null);
       setActionError(null);
       try {
-        await eventService.updateEventParticipants(targetEventId, {
-          userIds: normalizedUserIds,
-          teamIds: normalizedTeamIds,
+        if (params.mode === 'remove') {
+          await eventService.removeTeamParticipant(targetEventId, params.team.$id);
+          await refreshParticipantTeamsFromServer(targetEventId);
+          setInfoMessage(`${params.team.name || 'Team'} removed from participants.`);
+          return;
+        }
+
+        await eventService.addTeamParticipant(targetEventId, {
+          teamId: params.team.$id,
+          divisionId: params.divisionId ?? undefined,
         });
-
-        const hydratedTeams = normalizedTeamIds.length > 0
-          ? await teamService.getTeamsByIds(normalizedTeamIds, true)
-          : [];
-        const hydratedById = new Map(hydratedTeams.map((team) => [team.$id, team]));
-        const orderedTeams = normalizedTeamIds
-          .map((teamId) => hydratedById.get(teamId))
-          .filter((team): team is Team => Boolean(team));
-
-        setParticipantTeams(orderedTeams);
-        setEvent((prev) => (prev ? { ...prev, teamIds: normalizedTeamIds, teams: orderedTeams } : prev));
-        setChangesEvent((prev) => (prev ? { ...prev, teamIds: normalizedTeamIds, teams: orderedTeams } : prev));
-        setInfoMessage(successMessage);
+        await refreshParticipantTeamsFromServer(targetEventId);
+        if (params.mode === 'move') {
+          setInfoMessage(`${params.team.name || 'Team'} moved to a new division.`);
+        } else {
+          setInfoMessage(`${params.team.name || 'Team'} added to participants.`);
+        }
       } catch (updateError) {
         console.error('Failed to update event participants:', updateError);
         setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
       }
     },
-    [activeEvent?.$id, activeEvent?.userIds, eventId],
+    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer],
   );
 
   const handleAddTeamToParticipants = useCallback(
@@ -1460,14 +1914,47 @@ function EventScheduleContent() {
         return;
       }
 
+      if (isSplitDivisionEvent && !selectedAddTeamDivisionId) {
+        setParticipantsError('Select a division before adding a team.');
+        return;
+      }
+
       setParticipantsUpdatingTeamId(team.$id);
-      await syncParticipantTeams(
-        [...participantTeamIds, team.$id],
-        `${team.name || 'Team'} added to participants.`,
-      );
+      await mutateTeamParticipantMembership({
+        team,
+        mode: 'add',
+        divisionId: isSplitDivisionEvent ? selectedAddTeamDivisionId : undefined,
+      });
       setParticipantsUpdatingTeamId(null);
     },
-    [participantTeamIdSet, participantTeamIds, participantsUpdatingTeamId, syncParticipantTeams],
+    [
+      isSplitDivisionEvent,
+      mutateTeamParticipantMembership,
+      participantTeamIdSet,
+      participantsUpdatingTeamId,
+      selectedAddTeamDivisionId,
+    ],
+  );
+
+  const handleMoveTeamDivision = useCallback(
+    async (team: Team, nextDivisionId: string | null) => {
+      if (!nextDivisionId || !team?.$id || participantsUpdatingTeamId || !canManageEvent) {
+        return;
+      }
+      const currentDivisionId = participantDivisionColumns.find((column) => column.teamIds.includes(team.$id))?.id ?? null;
+      if (currentDivisionId === nextDivisionId) {
+        return;
+      }
+
+      setParticipantsUpdatingTeamId(team.$id);
+      await mutateTeamParticipantMembership({
+        team,
+        mode: 'move',
+        divisionId: nextDivisionId,
+      });
+      setParticipantsUpdatingTeamId(null);
+    },
+    [canManageEvent, mutateTeamParticipantMembership, participantDivisionColumns, participantsUpdatingTeamId],
   );
 
   const handleRemoveTeamFromParticipants = useCallback(
@@ -1484,27 +1971,40 @@ function EventScheduleContent() {
       }
 
       setParticipantsUpdatingTeamId(team.$id);
-      await syncParticipantTeams(
-        participantTeamIds.filter((teamId) => teamId !== team.$id),
-        `${team.name || 'Team'} removed from participants.`,
-      );
+      await mutateTeamParticipantMembership({
+        team,
+        mode: 'remove',
+      });
       setParticipantsUpdatingTeamId(null);
     },
-    [participantTeamIdSet, participantTeamIds, participantsUpdatingTeamId, syncParticipantTeams],
+    [mutateTeamParticipantMembership, participantTeamIdSet, participantsUpdatingTeamId],
   );
+
+  const toggleComplianceUserExpanded = useCallback((userId: string) => {
+    setExpandedComplianceUserIds((current) => (
+      current.includes(userId)
+        ? current.filter((value) => value !== userId)
+        : [...current, userId]
+    ));
+  }, []);
 
   const resolveTeam = useCallback(
     (value: Match['team1'] | string | null | undefined): Team | null => {
       if (!value) return null;
       if (typeof value === 'string') {
-        return teamsById.get(value) ?? null;
+        return participantTeamsById.get(value) ?? teamsById.get(value) ?? null;
       }
       if (typeof value === 'object') {
-        return (value as Team) ?? null;
+        const team = value as Team & { id?: string };
+        const teamId = normalizeIdToken(team.$id ?? team.id);
+        if (teamId) {
+          return participantTeamsById.get(teamId) ?? teamsById.get(teamId) ?? team;
+        }
+        return team;
       }
       return null;
     },
-    [teamsById],
+    [participantTeamsById, teamsById],
   );
 
   const userOnTeam = useCallback(
@@ -1536,30 +2036,28 @@ function EventScheduleContent() {
     [user?.$id],
   );
 
-  const findUserTeam = useCallback(
-    (match?: Match | null) => {
-      if (!user?.$id) return null;
-      const candidates: (Match['team1'] | string | null | undefined)[] = [];
-      if (match) {
-        candidates.push(match.team1 ?? match.team1Id);
-        candidates.push(match.team2 ?? match.team2Id);
-        candidates.push(match.teamReferee ?? match.teamRefereeId);
-      }
-      for (const candidate of candidates) {
-        const team = resolveTeam(candidate);
-        if (team && userOnTeam(team)) {
-          return team;
-        }
-      }
-      for (const team of teamsById.values()) {
-        if (userOnTeam(team)) {
-          return team;
-        }
-      }
+  const userEventTeamIdFromProfile = useMemo(() => {
+    if (!Array.isArray(user?.teamIds) || user.teamIds.length === 0) {
       return null;
-    },
-    [resolveTeam, teamsById, user?.$id, userOnTeam],
-  );
+    }
+    for (const teamIdRaw of user.teamIds) {
+      const teamId = normalizeIdToken(teamIdRaw);
+      if (teamId && participantTeamIdSet.has(teamId)) {
+        return teamId;
+      }
+    }
+    return null;
+  }, [participantTeamIdSet, user?.teamIds]);
+
+  const findUserEventTeam = useCallback(() => {
+    if (!user?.$id) return null;
+    for (const team of participantTeamsById.values()) {
+      if (team && userOnTeam(team)) {
+        return team;
+      }
+    }
+    return null;
+  }, [participantTeamsById, user?.$id, userOnTeam]);
 
   const hasUnsavedChangesRef = useRef(hasPendingUnsavedChanges);
   const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
@@ -1815,6 +2313,10 @@ function EventScheduleContent() {
   const hydrateEvent = useCallback((loadedEvent: Event) => {
     const eventClone = cloneValue(loadedEvent) as Event;
     setEvent(eventClone);
+    setStagedMatchCreates({});
+    setStagedMatchDeletes([]);
+    setPendingCreateMatchId(null);
+    setMatchEditorContext('bracket');
 
     const normalizedMatches = Array.isArray(eventClone.matches)
       ? (cloneValue(eventClone.matches) as Match[])
@@ -1865,6 +2367,10 @@ function EventScheduleContent() {
     setSubmitError(null);
     setWarningMessage(null);
     setActionError(null);
+    setStagedMatchCreates({});
+    setStagedMatchDeletes([]);
+    setPendingCreateMatchId(null);
+    setMatchEditorContext('bracket');
 
     if (event) {
       const resetEvent = cloneValue(event) as Event;
@@ -2305,8 +2811,6 @@ function EventScheduleContent() {
       return standingsDivisionData.standings.map((row) => ({
         teamId: row.teamId,
         teamName: row.teamName,
-        wins: row.wins,
-        losses: row.losses,
         draws: row.draws,
         goalsFor: row.goalsFor,
         goalsAgainst: row.goalsAgainst,
@@ -2349,8 +2853,6 @@ function EventScheduleContent() {
         rows.set(teamId, {
           teamId,
           teamName: resolved?.name || `Team ${teamId.slice(0, 6)}`,
-          wins: 0,
-          losses: 0,
           draws: 0,
           goalsFor: 0,
           goalsAgainst: 0,
@@ -2436,26 +2938,25 @@ function EventScheduleContent() {
       row1.goalsAgainst += team2Total;
       row2.goalsFor += team2Total;
       row2.goalsAgainst += team1Total;
+      row1.matchesPlayed += 1;
+      row2.matchesPlayed += 1;
 
       if (outcome === 'team1') {
-        row1.wins += 1;
-        row2.losses += 1;
+        row1.points += leagueScoring.pointsForWin;
+        row2.points += leagueScoring.pointsForLoss;
       } else if (outcome === 'team2') {
-        row2.wins += 1;
-        row1.losses += 1;
+        row2.points += leagueScoring.pointsForWin;
+        row1.points += leagueScoring.pointsForLoss;
       } else {
         row1.draws += 1;
         row2.draws += 1;
+        row1.points += leagueScoring.pointsForDraw;
+        row2.points += leagueScoring.pointsForDraw;
       }
     });
 
     rows.forEach((row) => {
-      row.matchesPlayed = row.wins + row.losses + row.draws;
       row.goalDifference = row.goalsFor - row.goalsAgainst;
-      row.points =
-        row.wins * leagueScoring.pointsForWin +
-        row.draws * leagueScoring.pointsForDraw +
-        row.losses * leagueScoring.pointsForLoss;
       row.basePoints = row.points;
       row.finalPoints = row.points;
       row.pointsDelta = 0;
@@ -2471,19 +2972,22 @@ function EventScheduleContent() {
     standingsDivisionData,
   ]);
 
-  function getDraftStandingsPoints(row: StandingsRow): { basePoints: number; finalPoints: number; pointsDelta: number } {
-    const basePoints = typeof row.basePoints === 'number' ? row.basePoints : row.points;
-    const hasDraftOverride = Object.prototype.hasOwnProperty.call(standingsDraftOverrides, row.teamId);
-    const draftOverride = hasDraftOverride ? standingsDraftOverrides[row.teamId] : undefined;
-    const finalPoints = typeof draftOverride === 'number' && Number.isFinite(draftOverride)
-      ? draftOverride
-      : (typeof row.finalPoints === 'number' ? row.finalPoints : row.points);
-    return {
-      basePoints,
-      finalPoints,
-      pointsDelta: finalPoints - basePoints,
-    };
-  }
+  const getDraftStandingsPoints = useCallback(
+    (row: StandingsRow): { basePoints: number; finalPoints: number; pointsDelta: number } => {
+      const basePoints = typeof row.basePoints === 'number' ? row.basePoints : row.points;
+      const hasDraftOverride = Object.prototype.hasOwnProperty.call(standingsDraftOverrides, row.teamId);
+      const draftOverride = hasDraftOverride ? standingsDraftOverrides[row.teamId] : undefined;
+      const finalPoints = typeof draftOverride === 'number' && Number.isFinite(draftOverride)
+        ? draftOverride
+        : (typeof row.finalPoints === 'number' ? row.finalPoints : row.points);
+      return {
+        basePoints,
+        finalPoints,
+        pointsDelta: finalPoints - basePoints,
+      };
+    },
+    [standingsDraftOverrides],
+  );
 
   const standings = useMemo<RankedStandingsRow[]>(() => {
     if (baseStandings.length === 0) {
@@ -2508,12 +3012,6 @@ function EventScheduleContent() {
         case 'team':
           comparison = a.teamName.localeCompare(b.teamName);
           break;
-        case 'wins':
-          comparison = a.wins - b.wins;
-          break;
-        case 'losses':
-          comparison = a.losses - b.losses;
-          break;
         case 'draws':
           comparison = a.draws - b.draws;
           break;
@@ -2529,7 +3027,6 @@ function EventScheduleContent() {
 
       const tieBreakers = [
         (x: StandingsRow, y: StandingsRow) => y.points - x.points,
-        (x: StandingsRow, y: StandingsRow) => y.wins - x.wins,
         (x: StandingsRow, y: StandingsRow) => y.goalDifference - x.goalDifference,
         (x: StandingsRow, y: StandingsRow) => y.goalsFor - x.goalsFor,
         (x: StandingsRow, y: StandingsRow) => x.teamName.localeCompare(y.teamName),
@@ -2549,9 +3046,39 @@ function EventScheduleContent() {
       ...row,
       rank: index + 1,
     }));
-  }, [baseStandings, standingsDraftOverrides, standingsSort]);
+  }, [baseStandings, getDraftStandingsPoints, standingsSort]);
 
   const hasRecordedMatches = standings.some((row) => row.matchesPlayed > 0);
+  const resolvedMatchTeams = useMemo(() => {
+    const teamsById = new Map<string, Team>();
+    const addTeam = (candidate: unknown) => {
+      if (!candidate || typeof candidate !== 'object') {
+        return;
+      }
+      const teamCandidate = candidate as Team & { id?: string };
+      const teamId = normalizeIdToken(teamCandidate.$id ?? teamCandidate.id);
+      if (!teamId || teamsById.has(teamId)) {
+        return;
+      }
+      teamsById.set(teamId, {
+        ...teamCandidate,
+        $id: teamId,
+      } as Team);
+    };
+
+    participantTeams.forEach(addTeam);
+    if (Array.isArray(activeEvent?.teams)) {
+      activeEvent.teams.forEach(addTeam);
+    }
+    activeMatches.forEach((match) => {
+      addTeam(match.team1);
+      addTeam(match.team2);
+      addTeam(match.teamReferee);
+    });
+
+    return Array.from(teamsById.values());
+  }, [participantTeams, activeEvent?.teams, activeMatches]);
+
   const bracketData = useMemo<TournamentBracket | null>(() => {
     if (!activeEvent || !bracketMatchesMap) {
       return null;
@@ -2560,11 +3087,11 @@ function EventScheduleContent() {
     return {
       tournament: activeEvent,
       matches: bracketMatchesMap,
-      teams: Array.isArray(activeEvent.teams) ? activeEvent.teams : [],
+      teams: resolvedMatchTeams,
       isHost: canManageEvent,
       canManage: !isPreview && canManageEvent,
     };
-  }, [activeEvent, bracketMatchesMap, canManageEvent, isPreview]);
+  }, [activeEvent, bracketMatchesMap, resolvedMatchTeams, canManageEvent, isPreview]);
 
   const scheduleDivisionSelectData = useMemo<DivisionOption[]>(
     () => [{ value: 'all', label: 'All divisions' }, ...scheduleDivisionOptions],
@@ -2573,11 +3100,35 @@ function EventScheduleContent() {
   const shouldShowScheduleDivisionFilter = scheduleDivisionOptions.length > 1;
   const shouldShowBracketDivisionFilter = bracketDivisionOptions.length > 1;
 
-  const showScheduleTab = isLeague;
+  const showScheduleTab = isLeague || isTournament;
   const showStandingsTab = isLeague;
   const showParticipantsTab = !isTemplateEvent
     && Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0);
-  const defaultTab = showScheduleTab ? 'schedule' : 'details';
+  const selectedComplianceSummary = selectedComplianceTeamId
+    ? teamComplianceById[selectedComplianceTeamId] ?? null
+    : null;
+  const selectedComplianceTeam = useMemo(() => {
+    if (!selectedComplianceTeamId) {
+      return null;
+    }
+    return participantTeamsById.get(selectedComplianceTeamId)
+      ?? (Array.isArray(activeEvent?.teams)
+        ? activeEvent.teams.find((team) => team?.$id === selectedComplianceTeamId) ?? null
+        : null);
+  }, [activeEvent?.teams, participantTeamsById, selectedComplianceTeamId]);
+
+  const formatCompliancePaymentLabel = useCallback((payment: TeamComplianceSummary['payment']) => {
+    if (!payment.hasBill) {
+      return 'No bill';
+    }
+    if (payment.isPaidInFull) {
+      return `Paid in full (${formatBillAmount(payment.totalAmountCents)})`;
+    }
+    const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
+    return `${prefix}: ${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)} paid`;
+  }, []);
+
+  const defaultTab = isLeague ? 'schedule' : 'details';
   const shouldShowBracketTab = !!bracketData || isPreview;
 
   // Ensure the bracket tab is only active when playoff data exists or preview mode demands it.
@@ -2699,6 +3250,132 @@ function EventScheduleContent() {
     [eventId],
   );
 
+  const buildBracketNodes = useCallback((draftMatches: Match[]): BracketNode[] => (
+    draftMatches
+      .map((match) => {
+        const id = normalizeIdToken(match.$id);
+        if (!id) {
+          return null;
+        }
+        return {
+          id,
+          matchId: typeof match.matchId === 'number' ? match.matchId : null,
+          previousLeftId: asBulkMatchRef(match.previousLeftId),
+          previousRightId: asBulkMatchRef(match.previousRightId),
+          winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
+          loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
+        } satisfies BracketNode;
+      })
+      .filter((entry): entry is BracketNode => entry !== null)
+  ), []);
+
+  const validateDraftMatchGraph = useCallback((draftMatches: Match[]): { ok: true } | { ok: false; message: string } => {
+    const graphValidation = validateAndNormalizeBracketGraph(buildBracketNodes(draftMatches));
+    if (!graphValidation.ok) {
+      return {
+        ok: false,
+        message: graphValidation.errors[0]?.message ?? 'Invalid bracket graph.',
+      };
+    }
+
+    const isTournamentEvent = String(activeEvent?.eventType ?? '').toUpperCase() === 'TOURNAMENT';
+    if (!isTournamentEvent) {
+      return { ok: true };
+    }
+
+    for (const match of draftMatches) {
+      const matchId = normalizeIdToken(match.$id);
+      if (!matchId || !isClientMatchId(matchId)) {
+        continue;
+      }
+      const createMeta = stagedMatchCreates[matchId];
+      if (!createMeta) {
+        continue;
+      }
+      if (createMeta.creationContext === 'schedule') {
+        const fieldId = normalizeIdToken(match.fieldId);
+        const start = parseLocalDateTime(match.start ?? null);
+        const end = parseLocalDateTime(match.end ?? null);
+        if (!fieldId || !start || !end) {
+          return {
+            ok: false,
+            message: `Schedule match ${match.matchId ?? matchId} requires field, start, and end.`,
+          };
+        }
+        if (end.getTime() <= start.getTime()) {
+          return {
+            ok: false,
+            message: `Schedule match ${match.matchId ?? matchId} requires end after start.`,
+          };
+        }
+      }
+
+      const normalizedNode = graphValidation.normalizedById[matchId];
+      const hasAnyLink = Boolean(
+        asBulkMatchRef(match.winnerNextMatchId) ||
+        asBulkMatchRef(match.loserNextMatchId) ||
+        normalizedNode?.previousLeftId ||
+        normalizedNode?.previousRightId,
+      );
+      if (!hasAnyLink) {
+        return {
+          ok: false,
+          message: `Tournament match ${match.matchId ?? matchId} must include at least one link.`,
+        };
+      }
+    }
+
+    return { ok: true };
+  }, [activeEvent?.eventType, buildBracketNodes, stagedMatchCreates]);
+
+  const toBulkMatchUpdatePayload = useCallback((match: Match): Record<string, unknown> => {
+    const normalizeRelationId = (value: unknown): string | null => {
+      if (typeof value === 'string') {
+        const normalized = value.trim();
+        return normalized.length > 0 ? normalized : null;
+      }
+      if (value && typeof value === 'object' && '$id' in (value as Record<string, unknown>)) {
+        const relationId = (value as Record<string, unknown>).$id;
+        if (typeof relationId === 'string' && relationId.trim().length > 0) {
+          return relationId.trim();
+        }
+      }
+      return null;
+    };
+
+    const resolvePersistableTeamId = (explicitId: string | null | undefined, relation: unknown): string | null => {
+      const candidate = normalizeRelationId(explicitId) ?? normalizeRelationId(relation);
+      if (!candidate || isLocalPlaceholderId(candidate)) {
+        return null;
+      }
+      return candidate;
+    };
+
+    return {
+      id: match.$id,
+      matchId: match.matchId ?? null,
+      locked: Boolean(match.locked),
+      team1Points: Array.isArray(match.team1Points) ? match.team1Points : [],
+      team2Points: Array.isArray(match.team2Points) ? match.team2Points : [],
+      setResults: Array.isArray(match.setResults) ? match.setResults : [],
+      team1Id: resolvePersistableTeamId(match.team1Id, match.team1),
+      team2Id: resolvePersistableTeamId(match.team2Id, match.team2),
+      refereeId: normalizeRelationId(match.refereeId) ?? normalizeRelationId(match.referee),
+      teamRefereeId: resolvePersistableTeamId(match.teamRefereeId, match.teamReferee),
+      fieldId: normalizeRelationId(match.fieldId) ?? normalizeRelationId(match.field),
+      previousLeftId: asBulkMatchRef(match.previousLeftId),
+      previousRightId: asBulkMatchRef(match.previousRightId),
+      winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
+      loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
+      side: match.side ?? null,
+      refereeCheckedIn: Boolean(match.refereeCheckedIn),
+      start: match.start ?? null,
+      end: match.end ?? null,
+      division: normalizeIdToken(getDivisionId(match.division) ?? null),
+      losersBracket: Boolean(match.losersBracket),
+    };
+  }, []);
+
   const schedulePreview = useCallback(
     async (draft: Partial<Event>) => {
       if (!draft) {
@@ -2795,14 +3472,22 @@ function EventScheduleContent() {
   }, [closeRentalPaymentModal, scheduleRegularEvent]);
 
   const saveExistingEvent = useCallback(
-    async ({ rescheduleAfterSave = false }: { rescheduleAfterSave?: boolean } = {}) => {
+    async ({
+      postSaveAction = 'none',
+    }: {
+      postSaveAction?: 'none' | 'reschedule' | 'buildBrackets';
+    } = {}) => {
       if (!activeEvent) return;
       if (!event) {
         setError(`Unable to save ${entityLabel.toLowerCase()} changes without the original event context.`);
         return;
       }
 
-      const draft = await getDraftFromForm({ allowCurrentEventFallback: rescheduleAfterSave });
+      const isRescheduleAction = postSaveAction === 'reschedule';
+      const isBuildBracketAction = postSaveAction === 'buildBrackets';
+      const hasSchedulingAction = isRescheduleAction || isBuildBracketAction;
+
+      const draft = await getDraftFromForm({ allowCurrentEventFallback: hasSchedulingAction });
       if (!draft) {
         return;
       }
@@ -2811,7 +3496,7 @@ function EventScheduleContent() {
       setError(null);
       setInfoMessage(null);
       setWarningMessage(null);
-      if (rescheduleAfterSave) {
+      if (hasSchedulingAction) {
         setReschedulingMatches(true);
       } else {
         setPublishing(true);
@@ -2834,35 +3519,158 @@ function EventScheduleContent() {
           delete (nextEvent as Partial<Event>).attendees;
         }
 
-        const lifecycleStatus = selectedLifecycleStatus ?? getEventLifecycleStatus(nextEvent);
-        nextEvent.state = lifecycleStatus === 'DRAFT' ? 'UNPUBLISHED' : 'PUBLISHED';
+        const isTemplateDraft = typeof nextEvent.state === 'string'
+          && nextEvent.state.toUpperCase() === 'TEMPLATE';
+        if (isTemplateDraft) {
+          nextEvent.state = 'TEMPLATE';
+        } else {
+          const lifecycleStatus = selectedLifecycleStatus ?? getEventLifecycleStatus(nextEvent);
+          nextEvent.state = lifecycleStatus === 'DRAFT' ? 'UNPUBLISHED' : 'PUBLISHED';
+        }
 
         let updatedEvent = nextEvent;
         if (nextEvent.$id) {
           updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
         }
 
-        if (updatedEvent.$id && !rescheduleAfterSave && nextMatches.length > 0) {
-          const updatedMatches = await tournamentService.updateMatchesBulk(updatedEvent.$id, nextMatches);
-          if (updatedMatches.length > 0) {
-            updatedEvent.matches = updatedMatches;
+        if (updatedEvent.$id && !hasSchedulingAction && nextMatches.length > 0) {
+          const validation = validateDraftMatchGraph(nextMatches);
+          if (!validation.ok) {
+            throw new Error(validation.message);
+          }
+
+          const updatePayload = nextMatches
+            .filter((match) => !isClientMatchId(match.$id))
+            .map((match) => toBulkMatchUpdatePayload(match));
+          const createPayload = nextMatches
+            .filter((match) => isClientMatchId(match.$id))
+            .map((match) => {
+              const matchId = match.$id;
+              const createMeta = stagedMatchCreates[matchId];
+              const base = toBulkMatchUpdatePayload(match);
+              const { id: _ignored, ...rest } = base;
+              return {
+                clientId: createMeta?.clientId ?? getClientIdFromMatchId(matchId),
+                creationContext: createMeta?.creationContext ?? 'bracket',
+                autoPlaceholderTeam: createMeta?.autoPlaceholderTeam ?? (String(updatedEvent.eventType ?? '').toUpperCase() === 'TOURNAMENT'),
+                ...rest,
+              };
+            });
+          const deletePayload = Array.from(
+            new Set(
+              stagedMatchDeletes
+                .map((value) => normalizeIdToken(value))
+                .filter((value): value is string => Boolean(value))
+                .filter((value) => !isClientMatchId(value)),
+            ),
+          );
+
+          if (updatePayload.length > 0 || createPayload.length > 0 || deletePayload.length > 0) {
+            const matchResponse = await apiRequest<{ matches?: Match[]; created?: Record<string, string>; deleted?: string[] }>(
+              `/api/events/${updatedEvent.$id}/matches`,
+              {
+                method: 'PATCH',
+                body: {
+                  ...(updatePayload.length > 0 ? { matches: updatePayload } : {}),
+                  ...(createPayload.length > 0 ? { creates: createPayload } : {}),
+                  ...(deletePayload.length > 0 ? { deletes: deletePayload } : {}),
+                },
+              },
+            );
+            const resolvePersistedMatchRef = (value: string | null | undefined): string | null => {
+              const normalized = normalizeIdToken(value);
+              if (!normalized) {
+                return null;
+              }
+              if (!isClientMatchId(normalized)) {
+                return normalized;
+              }
+              const clientId = getClientIdFromMatchId(normalized);
+              const persisted = matchResponse?.created?.[clientId];
+              return normalizeIdToken(persisted) ?? normalized;
+            };
+            const updatedMatches = Array.isArray(matchResponse?.matches)
+              ? matchResponse.matches.map((match) => normalizeApiMatch(match))
+              : [];
+            const normalizedDraftMatches = nextMatches.map((match) => (
+              normalizeApiMatch({
+                ...match,
+                $id: resolvePersistedMatchRef(match.$id) ?? match.$id,
+                previousLeftId: resolvePersistedMatchRef(match.previousLeftId),
+                previousRightId: resolvePersistedMatchRef(match.previousRightId),
+                winnerNextMatchId: resolvePersistedMatchRef(match.winnerNextMatchId),
+                loserNextMatchId: resolvePersistedMatchRef(match.loserNextMatchId),
+              })
+            ));
+            const mergedMatchesById = new Map<string, Match>();
+            normalizedDraftMatches.forEach((match) => {
+              if (normalizeIdToken(match.$id)) {
+                mergedMatchesById.set(match.$id, match);
+              }
+            });
+            updatedMatches.forEach((match) => {
+              if (normalizeIdToken(match.$id)) {
+                mergedMatchesById.set(match.$id, match);
+              }
+            });
+            const deletedIds = Array.isArray(matchResponse?.deleted)
+              ? matchResponse.deleted
+                .map((value) => normalizeIdToken(value))
+                .filter((value): value is string => Boolean(value))
+              : deletePayload;
+            deletedIds.forEach((matchId) => {
+              mergedMatchesById.delete(matchId);
+            });
+            updatedEvent.matches = Array.from(mergedMatchesById.values());
+            setStagedMatchCreates({});
+            setStagedMatchDeletes([]);
+            setPendingCreateMatchId(null);
           }
         }
 
-        let rescheduleWarningText: string | null = null;
-        if (rescheduleAfterSave && updatedEvent.$id) {
+        let scheduleWarningText: string | null = null;
+        if (hasSchedulingAction && updatedEvent.$id) {
+          const scheduleEventId = updatedEvent.$id;
+          if (isBuildBracketAction) {
+            await leagueService.deleteMatchesByEvent(scheduleEventId);
+          }
+
           const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
-          const scheduled = await eventService.scheduleEvent(schedulePayload, { eventId: updatedEvent.$id });
+          const scheduleOptions: { eventId: string; participantCount?: number } = { eventId: scheduleEventId };
+          if (isBuildBracketAction) {
+            const participantCount = typeof updatedEvent.maxParticipants === 'number'
+              ? Math.max(2, Math.trunc(updatedEvent.maxParticipants))
+              : undefined;
+            if (participantCount) {
+              scheduleOptions.participantCount = participantCount;
+            }
+          }
+          const scheduled = await eventService.scheduleEvent(schedulePayload, scheduleOptions);
           if (!scheduled?.event) {
-            throw new Error('Failed to reschedule matches.');
+            throw new Error(
+              isBuildBracketAction ? 'Failed to rebuild bracket(s).' : 'Failed to reschedule matches.',
+            );
           }
           if (Array.isArray(scheduled.warnings) && scheduled.warnings.length) {
-            rescheduleWarningText = scheduled.warnings
+            scheduleWarningText = scheduled.warnings
               .map((warning) => warning.message)
               .filter((message) => typeof message === 'string' && message.trim().length > 0)
               .join(' ');
           }
           updatedEvent = scheduled.event;
+
+          if (isBuildBracketAction && Array.isArray(updatedEvent.matches) && updatedEvent.matches.length > 0) {
+            const bracketMatchesToClear = updatedEvent.matches
+              .filter((match) => shouldResetBracketMatchForRebuild(updatedEvent, match))
+              .map((match) => toClearedBracketMatchUpdate(match));
+            if (bracketMatchesToClear.length > 0) {
+              const clearedMatches = await tournamentService.updateMatchesBulk(scheduleEventId, bracketMatchesToClear);
+              if (clearedMatches.length > 0) {
+                const clearedById = new Map(clearedMatches.map((match) => [match.$id, match]));
+                updatedEvent.matches = updatedEvent.matches.map((match) => clearedById.get(match.$id) ?? match);
+              }
+            }
+          }
         }
 
         if (!Array.isArray(updatedEvent.matches) || updatedEvent.matches.length === 0) {
@@ -2883,21 +3691,30 @@ function EventScheduleContent() {
         }
 
         await loadSchedule();
-        if (rescheduleAfterSave) {
+        if (isRescheduleAction) {
           setInfoMessage(`${entityLabel} settings saved and matches rescheduled.`);
-          if (rescheduleWarningText) {
-            setWarningMessage(rescheduleWarningText);
+          if (scheduleWarningText) {
+            setWarningMessage(scheduleWarningText);
+          }
+        } else if (isBuildBracketAction) {
+          setInfoMessage('Bracket(s) rebuilt and playoff/tournament results reset.');
+          if (scheduleWarningText) {
+            setWarningMessage(scheduleWarningText);
           }
         } else {
           setInfoMessage(`${entityLabel} changes saved.`);
         }
       } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : null;
         console.error(`Failed to save ${entityLabel.toLowerCase()} changes:`, err);
-        setError(
-          rescheduleAfterSave
-            ? `Failed to save ${entityLabel.toLowerCase()} and reschedule matches.`
-            : `Failed to save ${entityLabel.toLowerCase()} changes.`,
-        );
+        const baseMessage = isBuildBracketAction
+          ? 'Failed to rebuild bracket(s).'
+          : (
+            isRescheduleAction
+              ? `Failed to save ${entityLabel.toLowerCase()} and reschedule matches.`
+              : `Failed to save ${entityLabel.toLowerCase()} changes.`
+          );
+        setError(errorMessage ? `${baseMessage} ${errorMessage}` : baseMessage);
       } finally {
         setPublishing(false);
         setReschedulingMatches(false);
@@ -2915,6 +3732,10 @@ function EventScheduleContent() {
       router,
       selectedLifecycleStatus,
       searchParams,
+      stagedMatchCreates,
+      toBulkMatchUpdatePayload,
+      stagedMatchDeletes,
+      validateDraftMatchGraph,
     ],
   );
 
@@ -2927,8 +3748,22 @@ function EventScheduleContent() {
   const handleRescheduleMatches = useCallback(async () => {
     if (publishing || reschedulingMatches) return;
     setSubmitError(null);
-    await saveExistingEvent({ rescheduleAfterSave: true });
+    await saveExistingEvent({ postSaveAction: 'reschedule' });
   }, [publishing, reschedulingMatches, saveExistingEvent]);
+
+  const handleBuildBrackets = useCallback(async () => {
+    if (publishing || reschedulingMatches) return;
+    if (!activeEvent) return;
+    const entityNoun = activeEvent.eventType === 'TOURNAMENT' ? 'tournament' : 'playoff';
+    const confirmed = window.confirm(
+      `Build bracket(s)? This will reset the bracket and any match results in the ${entityNoun}.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    setSubmitError(null);
+    await saveExistingEvent({ postSaveAction: 'buildBrackets' });
+  }, [activeEvent, publishing, reschedulingMatches, saveExistingEvent]);
 
   const handlePublish = async () => {
     if (publishing || reschedulingMatches) return;
@@ -3000,6 +3835,34 @@ function EventScheduleContent() {
       await saveExistingEvent();
     }
   };
+
+  const handleDeleteTemplate = useCallback(async () => {
+    if (cancelling) return;
+    const templateEvent = activeEvent ?? event;
+    if (!templateEvent?.$id) return;
+
+    if (!window.confirm('Delete this template? This will remove its saved schedule and cannot be undone.')) {
+      return;
+    }
+
+    setCancelling(true);
+    setError(null);
+    setInfoMessage(null);
+    setWarningMessage(null);
+    setActionError(null);
+
+    try {
+      await leagueService.deleteMatchesByEvent(templateEvent.$id);
+      await leagueService.deleteWeeklySchedulesForEvent(templateEvent.$id);
+      await eventService.deleteEvent(templateEvent);
+      router.push('/events');
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+      setError('Failed to delete template.');
+    } finally {
+      setCancelling(false);
+    }
+  }, [activeEvent, cancelling, event, router]);
 
   const handleCancel = async () => {
     if (isCreateMode) {
@@ -3078,18 +3941,196 @@ function EventScheduleContent() {
     }
   }, [canEditMatches, isMatchEditorOpen]);
 
-  const handleMatchEditRequest = useCallback((match: Match) => {
+  const matchEditorTeams = resolvedMatchTeams;
+
+  const matchEditorReferees = useMemo(() => {
+    const refereesById = new Map<string, UserData>();
+    const addReferee = (candidate: unknown) => {
+      if (!candidate || typeof candidate !== 'object') {
+        return;
+      }
+      const refereeCandidate = candidate as UserData & { id?: string };
+      const refereeId = normalizeIdToken(refereeCandidate.$id ?? refereeCandidate.id);
+      if (!refereeId || refereesById.has(refereeId)) {
+        return;
+      }
+      refereesById.set(refereeId, {
+        ...refereeCandidate,
+        $id: refereeId,
+      } as UserData);
+    };
+
+    participantReferees.forEach(addReferee);
+    if (Array.isArray(activeEvent?.referees)) {
+      activeEvent.referees.forEach(addReferee);
+    }
+    activeMatches.forEach((match) => addReferee(match.referee));
+
+    return Array.from(refereesById.values());
+  }, [participantReferees, activeEvent?.referees, activeMatches]);
+
+  const stageMatchCreate = useCallback((params: {
+    creationContext: MatchCreateContext;
+    seed?: Partial<Match>;
+    openEditor?: boolean;
+  }) => {
+    if (!canEditMatches || !activeEvent?.$id) {
+      return null;
+    }
+
+    const clientId = createClientId();
+    const matchId = `${CLIENT_MATCH_PREFIX}${clientId}`;
+    const now = new Date();
+    const defaultStart = formatLocalDateTime(now);
+    const defaultEnd = formatLocalDateTime(new Date(now.getTime() + 60 * 60 * 1000));
+    const nextMatchId = nextMatchSequenceNumber(activeMatches);
+    const isTournamentEvent = String(activeEvent.eventType ?? '').toUpperCase() === 'TOURNAMENT';
+    const existingPlaceholderCount = activeMatches.reduce((count, match) => {
+      const team1Name = (match.team1 as { name?: string } | null)?.name ?? '';
+      const team2Name = (match.team2 as { name?: string } | null)?.name ?? '';
+      const nameBucket = [team1Name, team2Name].join(' ').toLowerCase();
+      return nameBucket.includes('place holder') ? count + 1 : count;
+    }, 0);
+    const placeholderTeam = isTournamentEvent
+      ? ({
+          $id: `${LOCAL_PLACEHOLDER_PREFIX}${clientId}`,
+          name: `Place Holder ${existingPlaceholderCount + 1}`,
+          division: normalizeIdToken(params.seed?.division as string | undefined) ?? undefined,
+        } as unknown as Team)
+      : undefined;
+
+    const draft: Match = {
+      $id: matchId,
+      matchId: typeof params.seed?.matchId === 'number' ? params.seed.matchId : nextMatchId,
+      eventId: activeEvent.$id,
+      team1Id: null,
+      team2Id: null,
+      refereeId: null,
+      teamRefereeId: null,
+      fieldId: params.creationContext === 'schedule'
+        ? normalizeIdToken(params.seed?.fieldId as string | undefined)
+        : null,
+      locked: false,
+      team1Points: [],
+      team2Points: [],
+      setResults: [],
+      losersBracket: Boolean(params.seed?.losersBracket),
+      winnerNextMatchId: asBulkMatchRef(params.seed?.winnerNextMatchId as string | undefined),
+      loserNextMatchId: asBulkMatchRef(params.seed?.loserNextMatchId as string | undefined),
+      previousLeftId: asBulkMatchRef(params.seed?.previousLeftId as string | undefined),
+      previousRightId: asBulkMatchRef(params.seed?.previousRightId as string | undefined),
+      side: params.seed?.side ?? null,
+      refereeCheckedIn: false,
+      start: params.creationContext === 'schedule' ? defaultStart : null,
+      end: params.creationContext === 'schedule' ? defaultEnd : null,
+      division: (params.seed?.division as string | undefined) ?? null,
+      team1: placeholderTeam,
+    };
+
+    setChangesMatches((prev) => {
+      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
+      base.push(cloneValue(draft) as Match);
+      return base;
+    });
+    setStagedMatchCreates((prev) => ({
+      ...prev,
+      [matchId]: {
+        clientId,
+        creationContext: params.creationContext,
+        autoPlaceholderTeam: isTournamentEvent,
+      },
+    }));
+    setHasUnsavedChanges(true);
+
+    if (params.openEditor) {
+      setMatchEditorContext(params.creationContext);
+      setPendingCreateMatchId(matchId);
+      setMatchBeingEdited(cloneValue(draft) as Match);
+      setIsMatchEditorOpen(true);
+    }
+
+    return draft;
+  }, [activeEvent?.$id, activeEvent?.eventType, activeMatches, canEditMatches, matches]);
+
+  const removeDraftMatch = useCallback((matchId: string, options?: {
+    stageDelete?: boolean;
+    markUnsaved?: boolean;
+  }) => {
+    const normalizedId = normalizeIdToken(matchId);
+    if (!normalizedId) {
+      return;
+    }
+    setChangesMatches((prev) => {
+      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
+      return base
+        .filter((candidate) => candidate.$id !== normalizedId)
+        .map((candidate) => clearMatchReferencesToTarget(candidate, normalizedId));
+    });
+    setStagedMatchCreates((prev) => {
+      const next = { ...prev };
+      delete next[normalizedId];
+      return next;
+    });
+    setStagedMatchDeletes((prev) => {
+      const withoutTarget = prev.filter((candidate) => candidate !== normalizedId);
+      if (options?.stageDelete && !isClientMatchId(normalizedId)) {
+        return [...withoutTarget, normalizedId];
+      }
+      return withoutTarget;
+    });
+    if (options?.markUnsaved !== false) {
+      setHasUnsavedChanges(true);
+    }
+  }, [matches]);
+
+  const removeStagedClientMatch = useCallback((matchId: string) => {
+    removeDraftMatch(matchId, { stageDelete: false, markUnsaved: false });
+  }, [removeDraftMatch]);
+
+  const handleMatchDelete = useCallback((target: Match) => {
+    const targetId = normalizeIdToken(target.$id);
+    if (!targetId) {
+      return;
+    }
+    removeDraftMatch(targetId, {
+      stageDelete: !isClientMatchId(targetId),
+      markUnsaved: true,
+    });
+    if (pendingCreateMatchId === targetId) {
+      setPendingCreateMatchId(null);
+    }
+    setMatchEditorContext('bracket');
+    setIsMatchEditorOpen(false);
+    setMatchBeingEdited(null);
+  }, [pendingCreateMatchId, removeDraftMatch]);
+
+  const handleAddScheduleMatch = useCallback(() => {
+    stageMatchCreate({ creationContext: 'schedule', openEditor: true });
+  }, [stageMatchCreate]);
+
+  const handleAddBracketMatch = useCallback(() => {
+    stageMatchCreate({ creationContext: 'bracket', openEditor: true });
+  }, [stageMatchCreate]);
+
+  const handleMatchEditRequest = useCallback((match: Match, context: MatchCreateContext = 'bracket') => {
     if (!canEditMatches) return;
     const sourceMatch = activeMatches.find((candidate) => candidate.$id === match.$id);
     if (!sourceMatch) return;
+    setMatchEditorContext(context);
+    setPendingCreateMatchId(null);
     setMatchBeingEdited(cloneValue(sourceMatch) as Match);
     setIsMatchEditorOpen(true);
   }, [activeMatches, canEditMatches]);
 
   const handleMatchEditClose = useCallback(() => {
+    if (pendingCreateMatchId) {
+      removeStagedClientMatch(pendingCreateMatchId);
+      setPendingCreateMatchId(null);
+    }
+    setMatchEditorContext('bracket');
     setIsMatchEditorOpen(false);
     setMatchBeingEdited(null);
-  }, []);
+  }, [pendingCreateMatchId, removeStagedClientMatch]);
 
   const handleMatchEditSave = useCallback((updated: Match) => {
     setChangesMatches((prev) => {
@@ -3107,10 +4148,27 @@ function EventScheduleContent() {
       }
       return next;
     });
+    if (isClientMatchId(updated.$id)) {
+      setStagedMatchCreates((prev) => {
+        if (prev[updated.$id]) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [updated.$id]: {
+            clientId: getClientIdFromMatchId(updated.$id),
+            creationContext: matchEditorContext,
+            autoPlaceholderTeam: String(activeEvent?.eventType ?? '').toUpperCase() === 'TOURNAMENT',
+          },
+        };
+      });
+    }
     setHasUnsavedChanges(true);
+    setPendingCreateMatchId(null);
+    setMatchEditorContext('bracket');
     setIsMatchEditorOpen(false);
     setMatchBeingEdited(null);
-  }, [matches]);
+  }, [activeEvent?.eventType, matchEditorContext, matches]);
 
   const handleToggleLockAllMatches = useCallback((locked: boolean, matchIds: string[]) => {
     if (!canEditMatches || matchIds.length === 0) return;
@@ -3160,16 +4218,21 @@ function EventScheduleContent() {
     });
   }, []);
 
+  const isRefereeCheckedIn = useCallback(
+    (match: Match) => Boolean(match.refereeCheckedIn || match.refCheckedIn),
+    [],
+  );
+
   const canUserManageScore = useCallback(
     (match: Match) => {
-      if (!user?.$id) return false;
+      if (!user?.$id || !isRefereeCheckedIn(match)) return false;
       if (match.refereeId === user.$id || match.referee?.$id === user.$id) {
         return true;
       }
       const teamRef = resolveTeam(match.teamReferee ?? match.teamRefereeId);
       return userOnTeam(teamRef);
     },
-    [resolveTeam, user?.$id, userOnTeam],
+    [isRefereeCheckedIn, resolveTeam, user?.$id, userOnTeam],
   );
 
   const handleScoreChange = useCallback(
@@ -3235,35 +4298,24 @@ function EventScheduleContent() {
     [applyMatchUpdate, activeEvent?.$id, eventId],
   );
 
-  const handleMakeUserTeamReferee = useCallback(
-    async (match: Match) => {
-      const userTeam = findUserTeam(match);
-      if (!userTeam) {
-        window.alert('You need to be on a team in this event to referee this match.');
-        return null;
-      }
-
-      const confirm = window.confirm('No referee is assigned. Make your team the referee for this match?');
-      if (!confirm) return null;
-
+  const updateMatchRefereeState = useCallback(
+    async (match: Match, updates: Partial<Match>, failureMessage: string) => {
       const targetEventId = activeEvent?.$id ?? eventId;
-      if (!targetEventId) return null;
+      if (!targetEventId) {
+        return match;
+      }
 
       try {
-        const updated = await tournamentService.updateMatch(targetEventId, match.$id, { teamRefereeId: userTeam.$id });
-        const withTeam = {
-          ...(updated as Match),
-          teamReferee: (updated as Match).teamReferee ?? userTeam,
-        };
-        applyMatchUpdate(withTeam as Match);
-        return withTeam as Match;
+        const updated = await tournamentService.updateMatch(targetEventId, match.$id, updates);
+        applyMatchUpdate(updated as Match);
+        return updated as Match;
       } catch (err) {
-        console.error('Failed to assign team referee:', err);
-        setError('Failed to assign a referee to this match. Please try again.');
-        return null;
+        console.error(failureMessage, err);
+        setError(failureMessage);
+        return match;
       }
     },
-    [applyMatchUpdate, findUserTeam, activeEvent?.$id, eventId],
+    [activeEvent?.$id, applyMatchUpdate, eventId],
   );
 
   const handleMatchClick = useCallback(
@@ -3273,29 +4325,80 @@ function EventScheduleContent() {
         return;
       }
 
-      if (!user) {
-        return;
-      }
+      let modalMatch = activeMatches.find((candidate) => candidate.$id === match.$id) ?? match;
 
-      const isUserReferee = match.refereeId === user.$id || match.referee?.$id === user.$id;
-      const teamRef = resolveTeam(match.teamReferee ?? match.teamRefereeId);
-      const userIsTeamRef = userOnTeam(teamRef);
+      if (user?.$id) {
+        const assignedTeamRef = resolveTeam(modalMatch.teamReferee ?? modalMatch.teamRefereeId);
+        const assignedTeamRefId = normalizeIdToken(modalMatch.teamRefereeId ?? modalMatch.teamReferee?.$id);
+        const currentUserEventTeam = findUserEventTeam();
+        const currentUserEventTeamId = normalizeIdToken(currentUserEventTeam?.$id) ?? userEventTeamIdFromProfile;
+        const isAssignedUserRef = modalMatch.refereeId === user.$id || modalMatch.referee?.$id === user.$id;
+        const isAssignedTeamRef =
+          userOnTeam(assignedTeamRef) ||
+          Boolean(currentUserEventTeamId && assignedTeamRefId && currentUserEventTeamId === assignedTeamRefId);
+        const userIsCurrentRef = isAssignedUserRef || isAssignedTeamRef;
+        const checkedIn = isRefereeCheckedIn(modalMatch);
 
-      if (isUserReferee || userIsTeamRef) {
-        setScoreUpdateMatch(match);
-        setIsScoreModalOpen(true);
-        return;
-      }
+        if (!checkedIn && userIsCurrentRef) {
+          const confirmCheckIn = window.confirm('Would you like to check in and start this match?');
+          if (confirmCheckIn) {
+            modalMatch = await updateMatchRefereeState(
+              modalMatch,
+              { refereeCheckedIn: true },
+              'Failed to check in as referee. Please try again.',
+            );
+          }
+        } else {
+          const canSwapIntoRef =
+            !checkedIn &&
+            Boolean(activeEvent?.doTeamsRef) &&
+            Boolean(activeEvent?.teamRefsMaySwap) &&
+            Boolean(currentUserEventTeamId) &&
+            assignedTeamRefId !== currentUserEventTeamId;
 
-      if (!match.referee && !match.refereeId && teamRef) {
-        const updated = await handleMakeUserTeamReferee(match);
-        if (updated) {
-          setScoreUpdateMatch(updated);
-          setIsScoreModalOpen(true);
+          if (canSwapIntoRef && currentUserEventTeamId) {
+            const confirmSwap = window.confirm(
+              'The referee has not checked in yet. Do you want your team to referee this match?',
+            );
+            if (confirmSwap) {
+              modalMatch = await updateMatchRefereeState(
+                modalMatch,
+                {
+                  teamRefereeId: currentUserEventTeamId,
+                  refereeCheckedIn: false,
+                },
+                'Failed to swap referee for this match. Please try again.',
+              );
+              const confirmCheckIn = window.confirm('Would you like to check in and start this match?');
+              if (confirmCheckIn) {
+                modalMatch = await updateMatchRefereeState(
+                  modalMatch,
+                  { refereeCheckedIn: true },
+                  'Failed to check in as referee. Please try again.',
+                );
+              }
+            }
+          }
         }
       }
+
+      setScoreUpdateMatch(modalMatch);
+      setIsScoreModalOpen(true);
     },
-    [canEditMatches, handleMakeUserTeamReferee, handleMatchEditRequest, resolveTeam, user, userOnTeam],
+    [
+      activeEvent?.doTeamsRef,
+      activeEvent?.teamRefsMaySwap,
+      activeMatches,
+      canEditMatches,
+      findUserEventTeam,
+      handleMatchEditRequest,
+      isRefereeCheckedIn,
+      resolveTeam,
+      updateMatchRefereeState,
+      user,
+      userEventTeamIdFromProfile,
+      userOnTeam,
+    ],
   );
 
   const activeLocationDefaults = useMemo(
@@ -3317,8 +4420,16 @@ function EventScheduleContent() {
     setStandingsActionError(null);
   }, []);
 
+  const standingsActionDivisionId = useMemo(() => {
+    const loadedDivisionId = normalizeIdToken(standingsDivisionData?.divisionId ?? null);
+    if (loadedDivisionId) {
+      return loadedDivisionId;
+    }
+    return normalizeIdToken(selectedStandingsDivision);
+  }, [selectedStandingsDivision, standingsDivisionData?.divisionId]);
+
   const handleSaveStandingsAdjustments = useCallback(async () => {
-    if (!activeEvent?.$id || !selectedStandingsDivision || !standingsDivisionData) {
+    if (!activeEvent?.$id || !standingsActionDivisionId || !standingsDivisionData) {
       return;
     }
 
@@ -3362,7 +4473,7 @@ function EventScheduleContent() {
     try {
       const updatedDivision = await tournamentService.updateLeagueStandingsOverrides(
         activeEvent.$id,
-        selectedStandingsDivision,
+        standingsActionDivisionId,
         updates,
       );
       setStandingsDivisionData(updatedDivision);
@@ -3374,10 +4485,10 @@ function EventScheduleContent() {
     } finally {
       setSavingStandings(false);
     }
-  }, [activeEvent?.$id, selectedStandingsDivision, standingsDivisionData, standingsDraftOverrides]);
+  }, [activeEvent?.$id, standingsActionDivisionId, standingsDivisionData, standingsDraftOverrides]);
 
   const handleConfirmStandings = useCallback(async () => {
-    if (!activeEvent?.$id || !selectedStandingsDivision) {
+    if (!activeEvent?.$id || !standingsActionDivisionId) {
       return;
     }
 
@@ -3389,20 +4500,29 @@ function EventScheduleContent() {
     try {
       const result = await tournamentService.confirmLeagueStandings(
         activeEvent.$id,
-        selectedStandingsDivision,
+        standingsActionDivisionId,
         applyStandingsReassignment,
       );
+      const seededTeamCount = Array.isArray(result.seededTeamIds)
+        ? new Set(
+          result.seededTeamIds
+            .map((teamId) => normalizeIdToken(teamId))
+            .filter((teamId): teamId is string => Boolean(teamId)),
+        ).size
+        : 0;
       setStandingsDivisionData(result.division);
       setStandingsDraftOverrides(result.division.standingsOverrides ? { ...result.division.standingsOverrides } : {});
-      if (applyStandingsReassignment && result.reassignedPlayoffDivisionIds.length > 0) {
-        await loadSchedule();
-      }
       if (applyStandingsReassignment) {
-        setInfoMessage(
-          result.reassignedPlayoffDivisionIds.length
-            ? `Standings confirmed and playoff assignments updated for ${result.reassignedPlayoffDivisionIds.length} division(s).`
-            : 'Standings confirmed.',
-        );
+        await loadSchedule();
+        if (result.reassignedPlayoffDivisionIds.length > 0) {
+          setInfoMessage(
+            seededTeamCount > 0
+              ? `Standings confirmed and seeded ${seededTeamCount} playoff team(s) across ${result.reassignedPlayoffDivisionIds.length} division(s).`
+              : `Standings confirmed and playoff assignments refreshed for ${result.reassignedPlayoffDivisionIds.length} division(s). No teams were seeded yet.`,
+          );
+        } else {
+          setInfoMessage('Standings confirmed. No mapped playoff divisions were updated.');
+        }
       } else {
         setInfoMessage('Standings confirmed without playoff reassignment.');
       }
@@ -3412,7 +4532,7 @@ function EventScheduleContent() {
     } finally {
       setConfirmingStandings(false);
     }
-  }, [activeEvent?.$id, applyStandingsReassignment, loadSchedule, selectedStandingsDivision]);
+  }, [activeEvent?.$id, applyStandingsReassignment, loadSchedule, standingsActionDivisionId]);
 
   const standingsValidationMessages = useMemo(() => {
     if (!standingsDivisionData?.validation) {
@@ -3595,8 +4715,9 @@ function EventScheduleContent() {
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <Paper withBorder shadow="sm" p="xl" radius="md">
             <Stack gap="md" align="center">
-              <Text fw={600} size="lg">{error}</Text>
+              <Text fw={600} size="lg">Something went wrong.</Text>
               <Button variant="default" onClick={() => loadSchedule()}>Try Again</Button>
+              <Text size="sm" c="red" ta="center">{error}</Text>
             </Stack>
           </Paper>
         </div>
@@ -3625,6 +4746,10 @@ function EventScheduleContent() {
   const showEditActionButton = !isTemplateEvent && !isEditingEvent && !isSavingOrRescheduling && !cancelling;
   const showSaveActionButton = isEditingEvent && !publishing && !reschedulingMatches;
   const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament) && !publishing && !reschedulingMatches;
+  const showBuildBracketsActionButton = isEditingEvent && (
+    isTournament || (isLeague && Boolean(activeEvent.includePlayoffs))
+  ) && !publishing && !reschedulingMatches;
+  const showDeleteTemplateActionButton = isTemplateEvent && !isSavingOrRescheduling && !cancelling;
   const showCancelEditActionButton =
     !isCreateMode && isEditingEvent && isUnpublished && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
   const showCancelActionButton = !isTemplateEvent && !cancelling;
@@ -3664,7 +4789,7 @@ function EventScheduleContent() {
                       <Button
                         color="green"
                         onClick={isCreateMode ? handlePublish : handleSaveEvent}
-                        disabled={!hasPendingUnsavedChanges}
+                        disabled={!hasPendingUnsavedChanges || hasSplitDivisionUnassignedTeams}
                       >
                         {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
                       </Button>
@@ -3673,8 +4798,19 @@ function EventScheduleContent() {
                       <Button
                         variant="light"
                         onClick={handleRescheduleMatches}
+                        disabled={hasSplitDivisionUnassignedTeams}
                       >
-                        Reschedule Matches
+                        Reschedule Event
+                      </Button>
+                    )}
+                    {showBuildBracketsActionButton && (
+                      <Button
+                        variant="light"
+                        color="orange"
+                        onClick={handleBuildBrackets}
+                        disabled={hasSplitDivisionUnassignedTeams}
+                      >
+                        Build Bracket(s)
                       </Button>
                     )}
                     {showCancelEditActionButton && (
@@ -3694,6 +4830,15 @@ function EventScheduleContent() {
                     onClick={handleCancel}
                   >
                     {cancelButtonLabel}
+                  </Button>
+                )}
+                {showDeleteTemplateActionButton && (
+                  <Button
+                    color="red"
+                    variant="light"
+                    onClick={handleDeleteTemplate}
+                  >
+                    Delete Template
                   </Button>
                 )}
                 {showCreateTemplateButton && (
@@ -3720,6 +4865,13 @@ function EventScheduleContent() {
             </Alert>
           )}
 
+          {hasSplitDivisionUnassignedTeams && (
+            <Alert color="yellow" radius="md">
+              Split-division leagues require every registered team to be assigned to a division before saving or rescheduling.
+              Unassigned teams: {unassignedFilledParticipantTeams.map((team) => team.$id).join(', ')}.
+            </Alert>
+          )}
+
           {actionError && (
             <Alert color="red" radius="md" onClose={() => setActionError(null)} withCloseButton>
               {actionError}
@@ -3729,7 +4881,7 @@ function EventScheduleContent() {
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tabs.List>
               <Tabs.Tab value="details">Details</Tabs.Tab>
-              {showParticipantsTab && <Tabs.Tab value="participants">Participants</Tabs.Tab>}
+              {showParticipantsTab && <Tabs.Tab value="participants">{isSplitDivisionEvent ? 'Divisions' : 'Participants'}</Tabs.Tab>}
               {showScheduleTab && <Tabs.Tab value="schedule">Schedule</Tabs.Tab>}
               {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
               {showStandingsTab && <Tabs.Tab value="standings">Standings</Tabs.Tab>}
@@ -3766,9 +4918,9 @@ function EventScheduleContent() {
                 <Stack gap="md">
                   <Group justify="space-between" align="center">
                     <Text size="sm" c="dimmed">
-                      {participantTeamIds.length === 1
+                      {filledParticipantTeams.length === 1
                         ? '1 team is currently participating.'
-                        : `${participantTeamIds.length} teams are currently participating.`}
+                        : `${filledParticipantTeams.length} teams are currently participating.`}
                     </Text>
                     {canManageEvent && (
                       <Button
@@ -3776,6 +4928,7 @@ function EventScheduleContent() {
                         onClick={() => {
                           setParticipantsError(null);
                           setTeamSearchQuery('');
+                          setSelectedAddTeamDivisionId(null);
                           setIsAddTeamModalOpen(true);
                         }}
                       >
@@ -3790,6 +4943,12 @@ function EventScheduleContent() {
                     </Alert>
                   )}
 
+                  {canUseTeamCompliance && teamComplianceError && (
+                    <Alert color="yellow" radius="md">
+                      {teamComplianceError}
+                    </Alert>
+                  )}
+
                   {participantsLoading ? (
                     <Paper withBorder radius="md" p="xl">
                       <Group justify="center" gap="sm">
@@ -3801,12 +4960,175 @@ function EventScheduleContent() {
                     <Paper withBorder radius="md" p="xl" ta="center">
                       <Text>No teams have been added yet.</Text>
                     </Paper>
+                  ) : isSplitDivisionEvent ? (
+                    <div className="overflow-x-auto">
+                      <Group align="flex-start" gap="md" wrap="nowrap">
+                        {participantDivisionColumns.map((column) => {
+                          const columnTeams = column.teamIds
+                            .map((teamId) => participantTeamsById.get(teamId))
+                            .filter((team): team is Team => Boolean(team));
+                          const filledColumnTeamsCount = columnTeams.filter((team) => !isPlaceholderParticipantTeam(team)).length;
+                          return (
+                            <Paper key={column.id} withBorder radius="md" p="md" miw={320}>
+                              <Stack gap="sm">
+                                <Group justify="space-between" align="center">
+                                  <Text fw={600}>{column.label}</Text>
+                                  <Text size="xs" c="dimmed">{filledColumnTeamsCount}</Text>
+                                </Group>
+                                {columnTeams.length === 0 ? (
+                                  <Text size="sm" c="dimmed">No teams assigned.</Text>
+                                ) : (
+                                  <Stack gap="sm">
+                                    {columnTeams.map((team) => {
+                                      const teamActions = canManageEvent
+                                        ? (
+                                          participantsUpdatingTeamId === team.$id
+                                            ? <Text size="xs" c="dimmed">Updating...</Text>
+                                            : (
+                                              <Stack gap={6}>
+                                                <Select
+                                                  size="xs"
+                                                  data={participantDivisionSelectData}
+                                                  value={column.id}
+                                                  onChange={(value) => {
+                                                    void handleMoveTeamDivision(team, value);
+                                                  }}
+                                                  allowDeselect={false}
+                                                  w={200}
+                                                />
+                                                <Button
+                                                  size="xs"
+                                                  variant="light"
+                                                  color="red"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    void handleRemoveTeamFromParticipants(team);
+                                                  }}
+                                                >
+                                                  Remove
+                                                </Button>
+                                              </Stack>
+                                            )
+                                        )
+                                        : undefined;
+
+                                      if (canUseTeamCompliance) {
+                                        return (
+                                          <DivisionTeamComplianceCard
+                                            key={`${column.id}:${team.$id}`}
+                                            team={team}
+                                            summary={teamComplianceById[team.$id]}
+                                            loading={teamComplianceLoading}
+                                            className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
+                                            onClick={() => {
+                                              setSelectedComplianceTeamId(team.$id);
+                                              setExpandedComplianceUserIds([]);
+                                            }}
+                                            actions={teamActions}
+                                          />
+                                        );
+                                      }
+
+                                      return (
+                                        <TeamCard
+                                          key={`${column.id}:${team.$id}`}
+                                          team={team}
+                                          className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
+                                          actions={teamActions}
+                                        />
+                                      );
+                                    })}
+                                  </Stack>
+                                )}
+                              </Stack>
+                            </Paper>
+                          );
+                        })}
+                        <Paper withBorder radius="md" p="md" miw={320}>
+                          <Stack gap="sm">
+                            <Group justify="space-between" align="center">
+                              <Text fw={600}>Unassigned</Text>
+                              <Text size="xs" c={unassignedFilledParticipantTeams.length > 0 ? 'red' : 'dimmed'}>
+                                {unassignedFilledParticipantTeams.length}
+                              </Text>
+                            </Group>
+                            {unassignedParticipantTeams.length === 0 ? (
+                              <Text size="sm" c="dimmed">All teams assigned.</Text>
+                            ) : (
+                              <Stack gap="sm">
+                                {unassignedParticipantTeams.map((team) => {
+                                  const teamActions = canManageEvent
+                                    ? (
+                                      participantsUpdatingTeamId === team.$id
+                                        ? <Text size="xs" c="dimmed">Updating...</Text>
+                                        : (
+                                          <Stack gap={6}>
+                                            <Select
+                                              size="xs"
+                                              data={participantDivisionSelectData}
+                                              value={null}
+                                              placeholder="Move to division"
+                                              onChange={(value) => {
+                                                void handleMoveTeamDivision(team, value);
+                                              }}
+                                              allowDeselect
+                                              w={200}
+                                            />
+                                            <Button
+                                              size="xs"
+                                              variant="light"
+                                              color="red"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                void handleRemoveTeamFromParticipants(team);
+                                              }}
+                                            >
+                                              Remove
+                                            </Button>
+                                          </Stack>
+                                        )
+                                    )
+                                    : undefined;
+
+                                  if (canUseTeamCompliance) {
+                                    return (
+                                      <DivisionTeamComplianceCard
+                                        key={`unassigned:${team.$id}`}
+                                        team={team}
+                                        summary={teamComplianceById[team.$id]}
+                                        loading={teamComplianceLoading}
+                                        className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
+                                        onClick={() => {
+                                          setSelectedComplianceTeamId(team.$id);
+                                          setExpandedComplianceUserIds([]);
+                                        }}
+                                        actions={teamActions}
+                                      />
+                                    );
+                                  }
+
+                                  return (
+                                    <TeamCard
+                                      key={`unassigned:${team.$id}`}
+                                      team={team}
+                                      className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
+                                      actions={teamActions}
+                                    />
+                                  );
+                                })}
+                              </Stack>
+                            )}
+                          </Stack>
+                        </Paper>
+                      </Group>
+                    </div>
                   ) : (
                     <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                       {participantTeams.map((team) => (
                         <TeamCard
                           key={team.$id}
                           team={team}
+                          className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
                           actions={
                             canManageEvent
                               ? (
@@ -3839,8 +5161,8 @@ function EventScheduleContent() {
             {showScheduleTab && (
               <Tabs.Panel value="schedule" pt="md">
                 <Stack gap="sm">
-                  {shouldShowScheduleDivisionFilter && (
-                    <Group justify="flex-end">
+                  <Group justify="space-between" align="flex-end" wrap="wrap">
+                    {shouldShowScheduleDivisionFilter ? (
                       <Select
                         label="Division"
                         data={scheduleDivisionSelectData}
@@ -3849,8 +5171,13 @@ function EventScheduleContent() {
                         allowDeselect={false}
                         w={220}
                       />
-                    </Group>
-                  )}
+                    ) : (
+                      <div />
+                    )}
+                    {canEditMatches && (
+                      <Button onClick={handleAddScheduleMatch}>Add Match</Button>
+                    )}
+                  </Group>
 
                   {activeMatches.length === 0 ? (
                     <Paper withBorder radius="md" p="xl" ta="center">
@@ -3863,10 +5190,21 @@ function EventScheduleContent() {
                   ) : (
                     <LeagueCalendarView
                       matches={scheduleMatches}
+                      teams={
+                        participantTeams.length > 0
+                          ? participantTeams
+                          : (Array.isArray(activeEvent.teams) ? activeEvent.teams : [])
+                      }
                       fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
                       eventStart={activeEvent.start}
                       eventEnd={activeEvent.end}
-                      onMatchClick={handleMatchClick}
+                      onMatchClick={(match) => {
+                        if (canEditMatches) {
+                          handleMatchEditRequest(match, 'schedule');
+                          return;
+                        }
+                        void handleMatchClick(match);
+                      }}
                       canManage={canEditMatches}
                       currentUser={user}
                       childUserIds={childUserIds}
@@ -3880,8 +5218,8 @@ function EventScheduleContent() {
             {shouldShowBracketTab && (
               <Tabs.Panel value="bracket" pt="md" pb={0}>
                 <Stack gap="sm">
-                  {shouldShowBracketDivisionFilter && (
-                    <Group justify="flex-end">
+                  <Group justify="space-between" align="flex-end" wrap="wrap">
+                    {shouldShowBracketDivisionFilter ? (
                       <Select
                         label="Division"
                         data={bracketDivisionOptions}
@@ -3890,8 +5228,13 @@ function EventScheduleContent() {
                         allowDeselect={false}
                         w={220}
                       />
-                    </Group>
-                  )}
+                    ) : (
+                      <div />
+                    )}
+                    {canEditMatches && (
+                      <Button onClick={handleAddBracketMatch}>Add Match</Button>
+                    )}
+                  </Group>
 
                   {bracketData ? (
                     <TournamentBracketView
@@ -4020,24 +5363,6 @@ function EventScheduleContent() {
                               <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
                                 <UnstyledButton
                                   className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('wins')}
-                                >
-                                  W
-                                  {renderSortIndicator('wins')}
-                                </UnstyledButton>
-                              </Table.Th>
-                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('losses')}
-                                >
-                                  L
-                                  {renderSortIndicator('losses')}
-                                </UnstyledButton>
-                              </Table.Th>
-                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
                                   onClick={() => handleStandingsSortChange('draws')}
                                 >
                                   D
@@ -4067,8 +5392,6 @@ function EventScheduleContent() {
                                 <Table.Tr key={row.teamId}>
                                   <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
                                   <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
-                                  <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
-                                  <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
                                   <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
                                   <Table.Td className="text-right text-sm font-semibold text-gray-900">
                                     {canManageStandings ? (
@@ -4114,6 +5437,7 @@ function EventScheduleContent() {
         onClose={() => {
           setIsAddTeamModalOpen(false);
           setTeamSearchQuery('');
+          setSelectedAddTeamDivisionId(null);
         }}
         title="Add Team"
         size="xl"
@@ -4127,6 +5451,16 @@ function EventScheduleContent() {
             value={teamSearchQuery}
             onChange={(event) => setTeamSearchQuery(event.currentTarget.value)}
           />
+
+          {isSplitDivisionEvent && (
+            <Select
+              label="Assign to division"
+              data={participantDivisionSelectData}
+              value={selectedAddTeamDivisionId}
+              onChange={(value) => setSelectedAddTeamDivisionId(value)}
+              allowDeselect={false}
+            />
+          )}
 
           {organizationIdForParticipants && (
             <Stack gap="sm">
@@ -4215,6 +5549,148 @@ function EventScheduleContent() {
           </Stack>
         </Stack>
       </Modal>
+      <Modal
+        opened={Boolean(selectedComplianceTeamId)}
+        onClose={() => {
+          setSelectedComplianceTeamId(null);
+          setExpandedComplianceUserIds([]);
+        }}
+        title={selectedComplianceTeam ? `${selectedComplianceTeam.name || 'Team'} users` : 'Team users'}
+        size="xl"
+        centered
+        fullScreen={Boolean(isMobile)}
+      >
+        <Stack gap="md">
+          {selectedComplianceSummary ? (
+            <>
+              <Group justify="space-between" align="flex-start" wrap="wrap">
+                <Stack gap={2}>
+                  <Text size="sm" c="dimmed">Payment</Text>
+                  <Text size="sm">{formatCompliancePaymentLabel(selectedComplianceSummary.payment)}</Text>
+                </Stack>
+                <Stack gap={2}>
+                  <Text size="sm" c="dimmed">Required signatures</Text>
+                  <Text size="sm">
+                    {selectedComplianceSummary.documents.signedCount}/{selectedComplianceSummary.documents.requiredCount} complete
+                  </Text>
+                </Stack>
+              </Group>
+
+              {selectedComplianceSummary.users.length === 0 ? (
+                <Paper withBorder radius="md" p="md">
+                  <Text size="sm" c="dimmed">No users were found on this team.</Text>
+                </Paper>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <Table withTableBorder withColumnBorders highlightOnHover miw={760}>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>User</Table.Th>
+                        <Table.Th>Payment</Table.Th>
+                        <Table.Th>Documents</Table.Th>
+                        <Table.Th style={{ width: 120 }}>Details</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {selectedComplianceSummary.users.map((userSummary) => {
+                        const expanded = expandedComplianceUserIds.includes(userSummary.userId);
+                        return (
+                          <Fragment key={userSummary.userId}>
+                            <Table.Tr>
+                              <Table.Td>
+                                <Text fw={600}>{userSummary.fullName}</Text>
+                                {userSummary.userName ? (
+                                  <Text size="xs" c="dimmed">@{userSummary.userName}</Text>
+                                ) : null}
+                                <Text size="xs" c="dimmed">
+                                  {userSummary.registrationType === 'CHILD'
+                                    ? 'Child registration'
+                                    : 'Adult registration'}
+                                </Text>
+                              </Table.Td>
+                              <Table.Td>
+                                <Text size="sm">{formatCompliancePaymentLabel(userSummary.payment)}</Text>
+                              </Table.Td>
+                              <Table.Td>
+                                {userSummary.documents.requiredCount === 0 ? (
+                                  <Text size="xs" c="dimmed">No required documents</Text>
+                                ) : (
+                                  <Text size="sm">
+                                    {userSummary.documents.signedCount}/{userSummary.documents.requiredCount} signed
+                                  </Text>
+                                )}
+                              </Table.Td>
+                              <Table.Td>
+                                <Button
+                                  size="xs"
+                                  variant="light"
+                                  onClick={() => toggleComplianceUserExpanded(userSummary.userId)}
+                                >
+                                  {expanded ? 'Collapse' : 'Expand'}
+                                </Button>
+                              </Table.Td>
+                            </Table.Tr>
+                            {expanded && (
+                              <Table.Tr>
+                                <Table.Td colSpan={4}>
+                                  {userSummary.requiredDocuments.length === 0 ? (
+                                    <Text size="xs" c="dimmed">No required documents for this user.</Text>
+                                  ) : (
+                                    <Stack gap={6}>
+                                      {userSummary.requiredDocuments.map((document) => (
+                                        <Group key={document.key} justify="space-between" align="center" wrap="wrap">
+                                          <Stack gap={0}>
+                                            <Text size="sm">{document.title}</Text>
+                                            <Text size="xs" c="dimmed">
+                                              {document.signerLabel}
+                                              {document.signOnce ? ' • Sign once' : ' • Event-specific'}
+                                            </Text>
+                                          </Stack>
+                                          <Group gap={6}>
+                                            {document.signedAt ? (
+                                              <Text size="xs" c="dimmed">
+                                                {new Date(document.signedAt).toLocaleString()}
+                                              </Text>
+                                            ) : null}
+                                            <Badge
+                                              size="sm"
+                                              color={document.status === 'SIGNED' ? 'green' : 'yellow'}
+                                              variant="light"
+                                            >
+                                              {document.status === 'SIGNED' ? 'Signed' : 'Needs signature'}
+                                            </Badge>
+                                          </Group>
+                                        </Group>
+                                      ))}
+                                    </Stack>
+                                  )}
+                                </Table.Td>
+                              </Table.Tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </Table.Tbody>
+                  </Table>
+                </div>
+              )}
+            </>
+          ) : teamComplianceLoading ? (
+            <Paper withBorder radius="md" p="md">
+              <Group justify="center" gap="sm">
+                <Loader size="sm" />
+                <Text size="sm" c="dimmed">Loading team users...</Text>
+              </Group>
+            </Paper>
+          ) : (
+            <Paper withBorder radius="md" p="md">
+              <Text size="sm" c="dimmed">
+                Team compliance details are not available yet.
+              </Text>
+            </Paper>
+          )}
+        </Stack>
+      </Modal>
       {scoreUpdateMatch && activeEvent && (
         <ScoreUpdateModal
           match={scoreUpdateMatch}
@@ -4234,12 +5710,18 @@ function EventScheduleContent() {
       <MatchEditModal
         opened={isMatchEditorOpen}
         match={matchBeingEdited}
+        allMatches={activeMatches}
         fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
-        teams={Array.isArray(activeEvent.teams) ? activeEvent.teams : []}
-        referees={Array.isArray(activeEvent.referees) ? activeEvent.referees : []}
+        teams={matchEditorTeams}
+        referees={matchEditorReferees}
         doTeamsRef={Boolean(activeEvent.doTeamsRef)}
+        isCreateMode={Boolean(matchBeingEdited && isClientMatchId(matchBeingEdited.$id))}
+        creationContext={matchEditorContext}
+        eventType={activeEvent.eventType}
+        enforceScheduleFields={matchEditorContext === 'schedule'}
         onClose={handleMatchEditClose}
         onSave={handleMatchEditSave}
+        onDelete={handleMatchDelete}
       />
       <PaymentModal
         isOpen={showRentalPayment && Boolean(rentalPaymentData)}

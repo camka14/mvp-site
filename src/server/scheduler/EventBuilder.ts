@@ -20,7 +20,9 @@ export class EventBuilder {
   event: League | Tournament;
   context: SchedulerContext;
   schedule: Schedule<Match, any, any, Division>;
-  private placeholderIds: Set<string> = new Set();
+  private regularPlaceholderIds: Set<string> = new Set();
+  private playoffPlaceholderIds: Set<string> = new Set();
+  private nextPlaceholderOrdinal: number = 1;
   private participants: Record<string, Team | UserData> = {};
   private refereeCycle: UserData[] = [];
 
@@ -47,7 +49,7 @@ export class EventBuilder {
     if (!(this.event instanceof League)) {
       return false;
     }
-    return Boolean(this.event.splitLeaguePlayoffDivisions && this.event.playoffDivisions.length > 0);
+    return Boolean(this.event.splitLeaguePlayoffDivisions);
   }
 
   private schedulingDivisions(): Division[] {
@@ -141,6 +143,11 @@ export class EventBuilder {
     }
     if (this.useSplitPlayoffDivisions) {
       const league = this.event as League;
+      if (!league.playoffDivisions.length) {
+        throw new Error(
+          'Split playoff divisions are enabled but no playoff divisions are configured. Add at least one playoff division or disable split playoffs.',
+        );
+      }
       return league.playoffDivisions.some((division) => this.resolvePlayoffParticipantCount(division, participantCount) >= 2);
     }
     return participantCount > 1;
@@ -162,7 +169,9 @@ export class EventBuilder {
       }
     }
     this.refereeCycle = [...this.event.referees];
-    this.placeholderIds.clear();
+    this.regularPlaceholderIds.clear();
+    this.playoffPlaceholderIds.clear();
+    this.nextPlaceholderOrdinal = Object.keys(this.event.teams).length + 1;
   }
 
   private ensureFieldsAvailable(): void {
@@ -262,21 +271,19 @@ export class EventBuilder {
   }
 
   private addPlaceholderTeam(division: Division, placeholderCounts: Map<string, number>): void {
-    const safeDivisionId = division.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const placeholderId = this.generatePlaceholderId(`placeholder-${safeDivisionId}`);
+    const placeholderId = createId();
+    const ordinal = this.nextPlaceholderOrdinal;
+    this.nextPlaceholderOrdinal += 1;
     const placeholder = new Team({
       id: placeholderId,
-      seed: 0,
       captainId: '',
       division,
       matches: [],
-      wins: 0,
-      losses: 0,
       playerIds: [],
-      name: '',
+      name: `Place Holder ${ordinal}`,
     });
     this.event.teams[placeholderId] = placeholder;
-    this.placeholderIds.add(placeholderId);
+    this.regularPlaceholderIds.add(placeholderId);
     placeholderCounts.set(division.id, (placeholderCounts.get(division.id) ?? 0) + 1);
   }
 
@@ -284,7 +291,7 @@ export class EventBuilder {
     let index = 1;
     while (true) {
       const candidate = `${prefix}-${index}`;
-      if (!this.event.teams[candidate] && !this.placeholderIds.has(candidate)) {
+      if (!this.event.teams[candidate] && !this.regularPlaceholderIds.has(candidate) && !this.playoffPlaceholderIds.has(candidate)) {
         return candidate;
       }
       index += 1;
@@ -336,17 +343,14 @@ export class EventBuilder {
       const placeholderId = this.generatePlaceholderId(`playoff-${safeDivisionId}`);
       const placeholder = new Team({
         id: placeholderId,
-        seed: count - seedIndex,
         captainId: '',
         division,
         matches: [],
-        wins: 0,
-        losses: 0,
         playerIds: [],
         name: `Seed ${seedIndex + 1}`,
       });
       this.event.teams[placeholderId] = placeholder;
-      this.placeholderIds.add(placeholderId);
+      this.playoffPlaceholderIds.add(placeholderId);
       this.appendPlaceholderToSchedule(placeholder);
       placeholders.push(placeholder);
     }
@@ -640,6 +644,9 @@ export class EventBuilder {
       : 1;
     const rawLoserSetCount = normalizePositiveInt(divisionConfig?.loserSetCount, fallbackLoserSetCount);
     const loserSetCount = doubleElimination ? rawLoserSetCount : 1;
+    const enforceSingleSet = !this.event.usesSets;
+    const normalizedWinnerSetCount = enforceSingleSet ? 1 : winnerSetCount;
+    const normalizedLoserSetCount = enforceSingleSet ? 1 : loserSetCount;
     const winnerPointsFallback = Array.isArray(this.event.winnerBracketPointsToVictory)
       ? this.event.winnerBracketPointsToVictory
       : [];
@@ -649,16 +656,16 @@ export class EventBuilder {
 
     return {
       doubleElimination,
-      winnerSetCount,
-      loserSetCount,
+      winnerSetCount: normalizedWinnerSetCount,
+      loserSetCount: normalizedLoserSetCount,
       winnerBracketPointsToVictory: normalizePoints(
         divisionConfig?.winnerBracketPointsToVictory,
-        winnerSetCount,
+        normalizedWinnerSetCount,
         winnerPointsFallback,
       ),
       loserBracketPointsToVictory: normalizePoints(
         divisionConfig?.loserBracketPointsToVictory,
-        loserSetCount,
+        normalizedLoserSetCount,
         loserPointsFallback,
       ),
       prize: typeof divisionConfig?.prize === 'string'
@@ -708,14 +715,11 @@ export class EventBuilder {
     for (const team of seeded) {
       tournamentTeams[team.id] = new Team({
         id: team.id,
-        seed: team.seed,
         captainId: team.captainId,
         division: team.division,
         name: team.name,
         matches: [],
         playerIds: [...team.playerIds],
-        wins: team.wins,
-        losses: team.losses,
       });
     }
 
@@ -798,10 +802,6 @@ export class EventBuilder {
     return Math.min(fallback, fallbackTeamCount);
   }
 
-  private seedParticipants(participants: Team[], count: number): Team[] {
-    return [...participants].sort((a, b) => b.seed - a.seed).slice(0, count);
-  }
-
   private maxEndTime(matches: Match[]): Date | null {
     if (!matches.length) return null;
     return matches.reduce((latest, match) => (match.end > latest ? match.end : latest), matches[0].end);
@@ -809,14 +809,18 @@ export class EventBuilder {
 
   private stripPlaceholderAssignments(matches: Match[]): void {
     for (const match of matches) {
-      if (match.team1 && this.placeholderIds.has(match.team1.id)) match.team1 = null;
-      if (match.team2 && this.placeholderIds.has(match.team2.id)) match.team2 = null;
-      if (match.teamReferee && this.placeholderIds.has(match.teamReferee.id)) match.teamReferee = null;
+      if (match.team1 && this.playoffPlaceholderIds.has(match.team1.id)) {
+        match.team1 = null;
+      }
+      if (match.team2 && this.playoffPlaceholderIds.has(match.team2.id)) {
+        match.team2 = null;
+      }
+      if (match.teamReferee && this.playoffPlaceholderIds.has(match.teamReferee.id)) match.teamReferee = null;
     }
-    if (this.placeholderIds.size) {
+    if (this.playoffPlaceholderIds.size) {
       const nextTeams: Record<string, Team> = {};
       for (const team of Object.values(this.event.teams)) {
-        if (!this.placeholderIds.has(team.id)) nextTeams[team.id] = team;
+        if (!this.playoffPlaceholderIds.has(team.id)) nextTeams[team.id] = team;
       }
       this.event.teams = nextTeams;
     }
@@ -870,7 +874,7 @@ export class EventBuilder {
   }
 
   private assignTeamReferees(matches: Match[]): void {
-    const teams = Object.values(this.event.teams);
+    const teams = Object.values(this.event.teams).filter((team) => team.captainId.trim().length > 0);
     const unassigned = [...teams];
     const ordered = [...matches].sort((a, b) => {
       const startDiff = a.start.getTime() - b.start.getTime();
@@ -883,7 +887,7 @@ export class EventBuilder {
       this.attachMatchToParticipants(match);
       if (match.teamReferee || !match.division || !(match.team1 && match.team2)) continue;
       const availableTeams = this.schedule.freeParticipants(match.division, match.start, match.end)
-        .filter((participant) => participant instanceof Team) as Team[];
+        .filter((participant) => participant instanceof Team && participant.captainId.trim().length > 0) as Team[];
       const filtered = availableTeams.filter((team) => team !== match.team1 && team !== match.team2);
       let candidate: Team | null = null;
       for (let i = 0; i < unassigned.length; i += 1) {

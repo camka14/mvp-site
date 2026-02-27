@@ -15,8 +15,8 @@ function getOrgLogoUrl(org: Organization, size: number = 56): string {
   if (org.logoId) {
     return `/api/files/${org.logoId}/preview?w=${size}&h=${size}&fit=cover`;
   }
-  const initials = (org.name || 'Org').split(' ').map(w => w.charAt(0)).join('').slice(0, 2).toUpperCase();
-  return `/api/avatars/initials?name=${encodeURIComponent(initials)}&size=${size}`;
+  const label = (org.name || 'Org').trim() || 'Org';
+  return `/api/avatars/initials?name=${encodeURIComponent(label)}&size=${size}`;
 }
 
 export default function OrganizationCard({ organization, onClick, actions }: OrganizationCardProps) {

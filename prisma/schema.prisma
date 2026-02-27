@@ -132,6 +132,8 @@ model Matches {
   refereeId String?
   team1Id String?
   team2Id String?
+  team1Seed Int?
+  team2Seed Int?
   eventId String?
   fieldId String?
   teamRefereeId String?
@@ -176,6 +178,7 @@ model Divisions {
   ageCutoffLabel String?
   ageCutoffSource String?
   fieldIds String[] @default([])
+  teamIds String[] @default([])
 
   @@index([eventId])
   @@index([organizationId])
@@ -348,6 +351,7 @@ model RefundRequests {
   eventId String
   userId String
   hostId String?
+  teamId String?
   reason String
   organizationId String?
   status RefundRequestsStatusEnum?
@@ -421,6 +425,7 @@ model Events {
   autoCancellation Boolean?
   eventType EventsEventTypeEnum?
   doTeamsRef Boolean?
+  teamRefsMaySwap Boolean?
   refereeIds String[]
   allowPaymentPlans Boolean?
   installmentCount Int?
@@ -489,12 +494,14 @@ model TimeSlots {
   createdAt DateTime?
   updatedAt DateTime?
   dayOfWeek Int?
+  daysOfWeek Int[] @default([])
   startTimeMinutes Int?
   endTimeMinutes Int?
   startDate DateTime
   repeating Boolean
   endDate DateTime?
   scheduledFieldId String?
+  scheduledFieldIds String[] @default([])
   price Int?
   divisions String[] @default([])
   requiredTemplateIds String[] @default([])

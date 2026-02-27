@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,148 @@ const withLegacyEvent = (row: any) => {
   return legacy;
 };
 
+const normalizeDivisionKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length ? normalized : null;
+};
+
+const normalizeDivisionKeys = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const keys = value
+    .map((entry) => normalizeDivisionKey(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  return Array.from(new Set(keys));
+};
+
+const getDivisionDetailsForEvents = async (
+  events: Array<{ id: string; divisions: unknown; sportId?: string | null }>,
+): Promise<Map<string, Array<Record<string, unknown>>>> => {
+  const normalizedDivisionsByEventId = new Map<string, string[]>();
+  const eventIds = events
+    .map((event) => {
+      const normalizedDivisions = normalizeDivisionKeys(event.divisions);
+      normalizedDivisionsByEventId.set(event.id, normalizedDivisions);
+      return normalizedDivisions.length > 0 ? event.id : null;
+    })
+    .filter((eventId): eventId is string => Boolean(eventId));
+
+  const detailsByEventId = new Map<string, Array<Record<string, unknown>>>();
+  if (!eventIds.length) {
+    return detailsByEventId;
+  }
+
+  const rawRows = await prisma.divisions.findMany({
+    where: {
+      eventId: { in: eventIds },
+    },
+    select: {
+      eventId: true,
+      id: true,
+      key: true,
+      name: true,
+      sportId: true,
+      maxParticipants: true,
+      divisionTypeId: true,
+      divisionTypeName: true,
+      ratingType: true,
+      gender: true,
+    },
+  });
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+
+  const rowsByEventId = new Map<string, Array<(typeof rows)[number]>>();
+  rows.forEach((row) => {
+    if (!row.eventId) return;
+    const existing = rowsByEventId.get(row.eventId) ?? [];
+    existing.push(row);
+    rowsByEventId.set(row.eventId, existing);
+  });
+
+  events.forEach((event) => {
+    const normalizedDivisions = normalizedDivisionsByEventId.get(event.id) ?? [];
+    if (!normalizedDivisions.length) {
+      detailsByEventId.set(event.id, []);
+      return;
+    }
+
+    const eventRows = rowsByEventId.get(event.id) ?? [];
+    const rowsById = new Map<string, (typeof eventRows)[number]>();
+    const rowsByKey = new Map<string, (typeof eventRows)[number]>();
+    eventRows.forEach((row) => {
+      const rowId = normalizeDivisionKey(row.id);
+      if (rowId) {
+        rowsById.set(rowId, row);
+        const token = extractDivisionTokenFromId(rowId);
+        if (token) {
+          rowsByKey.set(token, row);
+        }
+      }
+      const rowKey = normalizeDivisionKey(row.key);
+      if (rowKey) {
+        rowsByKey.set(rowKey, row);
+      }
+    });
+
+    const details = normalizedDivisions.map((divisionId) => {
+      const row = rowsById.get(divisionId)
+        ?? rowsByKey.get(divisionId)
+        ?? rowsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')
+        ?? null;
+      const inferred = inferDivisionDetails({
+        identifier: row?.key ?? row?.id ?? divisionId,
+        sportInput: row?.sportId ?? event.sportId ?? undefined,
+        fallbackName: row?.name ?? undefined,
+      });
+
+      return {
+        id: row?.id ?? divisionId,
+        key: row?.key ?? inferred.token,
+        name: row?.name ?? inferred.defaultName,
+        divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
+        divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+        ratingType: row?.ratingType ?? inferred.ratingType,
+        gender: row?.gender ?? inferred.gender,
+        sportId: row?.sportId ?? event.sportId ?? null,
+        maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
+      };
+    });
+
+    detailsByEventId.set(event.id, details);
+  });
+
+  return detailsByEventId;
+};
+
+const normalizeQuery = (value: string | undefined): string => (value ?? '').trim().toLowerCase();
+
+const eventNameRank = (value: string | null | undefined, query: string): number => {
+  const normalized = (value ?? '').trim().toLowerCase();
+  if (!normalized) return 5;
+  if (normalized === query) return 0;
+  if (normalized.startsWith(query)) return 1;
+  if (normalized.split(/\s+/).some((segment) => segment.startsWith(query))) return 2;
+  if (normalized.includes(query)) return 3;
+  return 4;
+};
+
+const eventSecondaryRank = (value: string | null | undefined, query: string): number => {
+  const normalized = (value ?? '').trim().toLowerCase();
+  if (!normalized) return 2;
+  if (normalized.includes(query)) return 0;
+  return 1;
+};
+
+const eventRelevanceScore = (
+  event: { name?: string | null; location?: string | null; description?: string | null },
+  query: string,
+): [number, number, number] => {
+  const primary = eventNameRank(event.name, query);
+  const location = eventSecondaryRank(event.location, query);
+  const description = eventSecondaryRank(event.description, query);
+  return [primary, location, description];
+};
+
 const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const R = 3958.8; // miles
@@ -59,6 +202,9 @@ export async function POST(req: NextRequest) {
   const filters = parsed.data.filters ?? {};
   const limit = parsed.data.limit ?? 50;
   const offset = parsed.data.offset ?? 0;
+  const queryTerm = (filters.query ?? '').trim();
+  const normalizedQuery = normalizeQuery(queryTerm);
+  const hasQuery = normalizedQuery.length > 0;
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
@@ -101,31 +247,38 @@ export async function POST(req: NextRequest) {
     }
   }
   const parsedDateFrom = typeof filters.dateFrom === 'string' ? new Date(filters.dateFrom) : null;
-  const effectiveDateFrom =
-    parsedDateFrom && !Number.isNaN(parsedDateFrom.getTime())
-      ? parsedDateFrom
-      : startOfToday;
-  where.start = { ...(where.start ?? {}), gte: effectiveDateFrom };
+  const hasExplicitDateFrom = Boolean(parsedDateFrom && !Number.isNaN(parsedDateFrom.getTime()));
+  if (hasExplicitDateFrom) {
+    where.start = { ...(where.start ?? {}), gte: parsedDateFrom as Date };
+  } else if (!hasQuery) {
+    // Feed/list mode defaults to upcoming events; search-query mode is intentionally broader.
+    where.start = { ...(where.start ?? {}), gte: startOfToday };
+  }
   if (filters.dateTo) {
     const end = new Date(filters.dateTo);
     if (!Number.isNaN(end.getTime())) {
       where.end = { ...(where.end ?? {}), lte: end };
     }
   }
-  if (filters.query) {
+  if (hasQuery) {
     where.OR = [
-      { name: { contains: filters.query, mode: 'insensitive' } },
-      { description: { contains: filters.query, mode: 'insensitive' } },
-      { location: { contains: filters.query, mode: 'insensitive' } },
+      { name: { contains: queryTerm, mode: 'insensitive' } },
+      { description: { contains: queryTerm, mode: 'insensitive' } },
+      { location: { contains: queryTerm, mode: 'insensitive' } },
     ];
   }
 
   const userLocation = filters.userLocation;
   const hasDistanceFilter = Boolean(userLocation && typeof filters.maxDistance === 'number');
+  const candidateTake = hasDistanceFilter
+    ? undefined
+    : hasQuery
+      ? Math.min(Math.max((offset + limit) * 5, 50), 500)
+      : limit;
   let events = await prisma.events.findMany({
     where,
     orderBy: { start: 'asc' },
-    ...(hasDistanceFilter ? {} : { take: limit, skip: offset }),
+    ...(hasDistanceFilter ? {} : { take: candidateTake, skip: hasQuery ? 0 : offset }),
   });
 
   if (userLocation && typeof filters.maxDistance === 'number') {
@@ -143,8 +296,30 @@ export async function POST(req: NextRequest) {
       return haversineMiles(lat, lon, latitude, lng) <= maxDistanceMiles;
     });
     events = events.slice(offset, offset + limit);
+  } else if (hasQuery) {
+    events = events
+      .sort((left, right) => {
+        const leftScore = eventRelevanceScore(left, normalizedQuery);
+        const rightScore = eventRelevanceScore(right, normalizedQuery);
+        if (leftScore[0] !== rightScore[0]) return leftScore[0] - rightScore[0];
+        if (leftScore[1] !== rightScore[1]) return leftScore[1] - rightScore[1];
+        if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
+        return (left.name ?? '').localeCompare(right.name ?? '');
+      })
+      .slice(offset, offset + limit);
   }
 
-  const normalized = events.map((event) => withLegacyEvent(event));
+  const divisionDetailsByEventId = await getDivisionDetailsForEvents(
+    events.map((event) => ({
+      id: event.id,
+      divisions: event.divisions,
+      sportId: event.sportId,
+    })),
+  );
+
+  const normalized = events.map((event) => withLegacyEvent({
+    ...event,
+    divisionDetails: divisionDetailsByEventId.get(event.id) ?? [],
+  }));
   return NextResponse.json({ events: normalized }, { status: 200 });
 }

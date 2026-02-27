@@ -15,6 +15,16 @@ import {
 
 const createId = () => crypto.randomUUID();
 
+type SeededEntrant = {
+  team: Team;
+  seed: number;
+};
+
+type BuiltBracketNode =
+  | { kind: 'empty' }
+  | { kind: 'team'; team: Team; seed: number }
+  | { kind: 'match'; match: Match };
+
 export class Brackets {
   tournament: Tournament;
   context: SchedulerContext;
@@ -28,6 +38,7 @@ export class Brackets {
   currentFields: PlayingField[] = [];
   currentScheduleTime!: Date;
   perfectCount = false;
+  seededEntrants: SeededEntrant[] = [];
   bracketSchedule: Schedule<Match, PlayingField, Team | UserData, Division>;
 
   constructor(tournament: Tournament, context: SchedulerContext) {
@@ -60,11 +71,6 @@ export class Brackets {
       undefined,
       { timeSlots: this.tournament.timeSlots, endTime: this.tournament.end },
     );
-
-    for (const team of Object.values(this.tournament.teams)) {
-      team.losses = 0;
-      team.wins = 0;
-    }
   }
 
   private getMultiplier(match: Match): number {
@@ -145,19 +151,131 @@ export class Brackets {
   }
 
   private prepareTeams(teams: Team[]): Team[] {
-    teams.sort((a, b) => b.seed - a.seed);
-    const byesCount = this.getByes(teams);
-    this.seedsWithByes = teams.slice(0, byesCount);
-    this.remainingTeams = teams.slice(byesCount);
-    return teams;
+    const ordered = [...teams];
+
+    this.seededEntrants = ordered.map((team, index) => {
+      const normalizedSeed = index + 1;
+      return { team, seed: normalizedSeed };
+    });
+
+    // Legacy fields remain available for compatibility with older helper methods.
+    this.seedsWithByes = [];
+    this.remainingTeams = [];
+    return ordered;
   }
 
   private createBracketStructure(): Match {
-    const byesCount = this.seedsWithByes.length;
-    const totalTeams = this.remainingTeams.length + byesCount;
-    this.numberOfRounds = totalTeams > 1 ? Math.ceil(Math.log2(totalTeams)) : 1;
-    this.perfectCount = byesCount === 0;
-    return this.createSubMatches(null, this.numberOfRounds, byesCount, Side.RIGHT);
+    const totalTeams = this.seededEntrants.length;
+    if (totalTeams < 2) {
+      throw new Error('Not enough teams to build a bracket');
+    }
+
+    const bracketSize = this.nextPowerOfTwo(totalTeams);
+    this.numberOfRounds = bracketSize > 1 ? Math.log2(bracketSize) : 1;
+    this.perfectCount = bracketSize === totalTeams;
+
+    const fullSeedOrder = this.buildSeedOrder(bracketSize);
+    const entrantsBySeed = new Map<number, SeededEntrant>(
+      this.seededEntrants.map((entry) => [entry.seed, entry]),
+    );
+    const leaves = fullSeedOrder.map((seed) => entrantsBySeed.get(seed) ?? null);
+    const built = this.buildSeededSubtree(leaves, 0, leaves.length, Side.RIGHT);
+
+    if (built.kind !== 'match') {
+      throw new Error('Failed to build bracket root match');
+    }
+
+    return built.match;
+  }
+
+  private nextPowerOfTwo(value: number): number {
+    let next = 1;
+    while (next < value) {
+      next *= 2;
+    }
+    return next;
+  }
+
+  private buildSeedOrder(size: number): number[] {
+    if (size <= 1) {
+      return [1];
+    }
+    let order = [1, 2];
+    while (order.length < size) {
+      const nextSize = order.length * 2;
+      const nextOrder: number[] = [];
+      for (const seed of order) {
+        nextOrder.push(seed);
+        nextOrder.push(nextSize + 1 - seed);
+      }
+      order = nextOrder;
+    }
+    return order.slice(0, size);
+  }
+
+  private buildSeededSubtree(
+    leaves: Array<SeededEntrant | null>,
+    start: number,
+    end: number,
+    side: Side,
+  ): BuiltBracketNode {
+    if (end - start <= 0) {
+      return { kind: 'empty' };
+    }
+
+    if (end - start === 1) {
+      const entrant = leaves[start];
+      if (!entrant) return { kind: 'empty' };
+      return { kind: 'team', team: entrant.team, seed: entrant.seed };
+    }
+
+    const mid = Math.floor((start + end) / 2);
+    const leftNode = this.buildSeededSubtree(leaves, start, mid, Side.LEFT);
+    const rightNode = this.buildSeededSubtree(leaves, mid, end, Side.RIGHT);
+
+    if (leftNode.kind === 'empty' && rightNode.kind === 'empty') {
+      return { kind: 'empty' };
+    }
+    if (leftNode.kind === 'empty') {
+      return rightNode;
+    }
+    if (rightNode.kind === 'empty') {
+      return leftNode;
+    }
+
+    const team1 = leftNode.kind === 'team' ? leftNode.team : null;
+    const team2 = rightNode.kind === 'team' ? rightNode.team : null;
+    const team1Seed = leftNode.kind === 'team' ? leftNode.seed : null;
+    const team2Seed = rightNode.kind === 'team' ? rightNode.seed : null;
+    const match = this.createMatch(team1, team2, null, null, false, side, team1Seed, team2Seed);
+
+    if (leftNode.kind === 'match') {
+      match.previousLeftMatch = leftNode.match;
+      leftNode.match.winnerNextMatch = match;
+    }
+    if (rightNode.kind === 'match') {
+      match.previousRightMatch = rightNode.match;
+      rightNode.match.winnerNextMatch = match;
+    }
+
+    this.ensureEntrantSeedSlots(match);
+
+    if (this.tournament.doubleElimination) {
+      this.addLoserMatch(match, side);
+    }
+
+    return { kind: 'match', match };
+  }
+
+  private ensureEntrantSeedSlots(match: Match): void {
+    const isLeftEntrantSlot = !match.previousLeftMatch;
+    const isRightEntrantSlot = !match.previousRightMatch;
+    if (isLeftEntrantSlot && typeof match.team1Seed !== 'number') {
+      throw new Error(`Missing team1Seed for entrant slot in match ${match.id}`);
+    }
+    if (isRightEntrantSlot && typeof match.team2Seed !== 'number') {
+      throw new Error(`Missing team2Seed for entrant slot in match ${match.id}`);
+    }
   }
 
   private handleDoubleElimination(rootMatch: Match): Match {
@@ -437,13 +555,23 @@ export class Brackets {
     nextWinnerMatch: Match | null,
     isLoser: boolean,
     side: Side,
+    team1Seed: number | null = null,
+    team2Seed: number | null = null,
   ): Match {
-    const multiplier = isLoser
-      ? (this.tournament.loserSetCount || 1)
-      : (this.tournament.winnerSetCount || 1);
+    const multiplier = this.tournament.usesSets
+      ? (
+          isLoser
+            ? (this.tournament.loserSetCount || 1)
+            : (this.tournament.winnerSetCount || 1)
+        )
+      : 1;
+    const resolvedTeam1Seed = typeof team1Seed === 'number' ? team1Seed : null;
+    const resolvedTeam2Seed = typeof team2Seed === 'number' ? team2Seed : null;
     const newMatch = new Match({
       id: createId(),
       matchId: null,
+      team1Seed: resolvedTeam1Seed,
+      team2Seed: resolvedTeam2Seed,
       team1Points: Array(multiplier).fill(0),
       team2Points: Array(multiplier).fill(0),
       start: this.tournament.start,

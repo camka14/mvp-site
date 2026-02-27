@@ -44,6 +44,7 @@ export interface Division {
   installmentDueDates?: string[];
   installmentAmounts?: number[];
   fieldIds?: string[];
+  teamIds?: string[];
   skillLevel?: string;
   minRating?: number;
   maxRating?: number;
@@ -77,6 +78,9 @@ export interface TournamentConfig {
   prize: string;
   fieldCount: number;
   restTimeMinutes: number;
+  usesSets: boolean;
+  matchDurationMinutes: number;
+  setDurationMinutes?: number;
 }
 
 export interface Sport {
@@ -195,15 +199,16 @@ export interface Match {
   previousRightId?: string;
   winnerNextMatchId?: string;
   loserNextMatchId?: string;
-  start: string;
-  end: string;
+  start: string | null;
+  end: string | null;
   losersBracket?: boolean;
   setResults: number[];
   side?: string;
   refCheckedIn?: boolean;
   refereeCheckedIn?: boolean;
-  team1Seed?: number;
-  team2Seed?: number;
+  team1Seed?: number | null;
+  team2Seed?: number | null;
+  teamRefereeSeed?: number | null;
 
   // Relationship fields - hydrated when selected via Queries
   division?: Division;
@@ -354,13 +359,10 @@ export type FieldPayload = Omit<Field, FieldRelationKeys> & {
 export interface Team {
   $id: string;
   name: string;
-  seed: number;
   division: Division | string; // Can be expanded or just ID
   divisionTypeId?: string;
   divisionTypeName?: string;
   sport: string;
-  wins: number;
-  losses: number;
   playerIds: string[];
   captainId: string;
   managerId?: string;
@@ -385,7 +387,6 @@ export interface Team {
   pendingPlayers?: UserData[];
   matches?: Match[]; // Tournament matches this team participates in
   // Computed properties
-  winRate: number;
   currentSize: number;
   isFull: boolean;
   avatarUrl: string;
@@ -478,6 +479,7 @@ export interface Event {
   setDurationMinutes?: number;
   setsPerMatch?: number;
   doTeamsRef?: boolean;
+  teamRefsMaySwap?: boolean;
   refType?: string;
   pointsToVictory?: number[];
   status?: EventStatus;
@@ -588,6 +590,7 @@ export interface RefundRequest {
   eventId: string;
   userId: string;
   hostId?: string;
+  teamId?: string;
   organizationId?: string;
   reason: string;
   status?: 'WAITING' | 'APPROVED' | 'REJECTED';
@@ -676,6 +679,9 @@ const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig |
     'prize',
     'fieldCount',
     'restTimeMinutes',
+    'usesSets',
+    'matchDurationMinutes',
+    'setDurationMinutes',
   ].some((key) => Object.prototype.hasOwnProperty.call(row, key) && row[key] !== null && row[key] !== undefined);
   if (!hasConfigValue) {
     return undefined;
@@ -707,6 +713,7 @@ const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig |
   const doubleElimination = Boolean(row.doubleElimination);
   const loserSetCount = normalizeNumber(row.loserSetCount, 1, 1);
   const normalizedLoserSetCount = doubleElimination ? loserSetCount : 1;
+  const usesSets = Boolean(row.usesSets);
 
   return {
     doubleElimination,
@@ -717,6 +724,9 @@ const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig |
     prize: typeof row.prize === 'string' ? row.prize : '',
     fieldCount: normalizeNumber(row.fieldCount, 1, 1),
     restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0, 0),
+    usesSets,
+    matchDurationMinutes: normalizeNumber(row.matchDurationMinutes, 60, 0),
+    setDurationMinutes: usesSets ? normalizeNumber(row.setDurationMinutes, 20, 0) : undefined,
   };
 };
 
@@ -974,6 +984,7 @@ export function toEventPayload(event: Event): EventPayload {
           return null;
         }
         const division = entry as Division;
+        const hasTeamIds = Object.prototype.hasOwnProperty.call(division, 'teamIds');
         return {
           id,
           name: typeof division.name === 'string' ? division.name : id,
@@ -998,6 +1009,13 @@ export function toEventPayload(event: Event): EventPayload {
           fieldIds: Array.isArray(division.fieldIds)
             ? uniqueIds(division.fieldIds.map((fieldId) => String(fieldId)))
             : [],
+          ...(hasTeamIds
+            ? {
+                teamIds: Array.isArray(division.teamIds)
+                  ? uniqueIds(division.teamIds.map((teamId) => String(teamId)))
+                  : [],
+              }
+            : {}),
           ageCutoffDate: typeof division.ageCutoffDate === 'string' ? division.ageCutoffDate : undefined,
           ageCutoffLabel: typeof division.ageCutoffLabel === 'string' ? division.ageCutoffLabel : undefined,
           ageCutoffSource: typeof division.ageCutoffSource === 'string' ? division.ageCutoffSource : undefined,
@@ -1072,6 +1090,7 @@ export function toEventPayload(event: Event): EventPayload {
           return null;
         }
         const division = entry as Division;
+        const hasTeamIds = Object.prototype.hasOwnProperty.call(division, 'teamIds');
         const playoffConfig = normalizeTournamentConfigForPayload(
           Object.prototype.hasOwnProperty.call(division, 'playoffConfig')
             ? (division as unknown as { playoffConfig?: unknown }).playoffConfig
@@ -1094,6 +1113,13 @@ export function toEventPayload(event: Event): EventPayload {
               : Number.isFinite(Number(division.playoffTeamCount))
                 ? Number(division.playoffTeamCount)
                 : undefined,
+          ...(hasTeamIds
+            ? {
+                teamIds: Array.isArray(division.teamIds)
+                  ? uniqueIds(division.teamIds.map((teamId) => String(teamId)))
+                  : [],
+              }
+            : {}),
           playoffConfig,
         };
       })
@@ -1129,6 +1155,12 @@ export function toEventPayload(event: Event): EventPayload {
   const normalizedEventType = normalizeEnumValue(payload.eventType);
   if (normalizedEventType) {
     payload.eventType = normalizedEventType as EventType;
+  }
+
+  if (typeof payload.doTeamsRef === 'boolean' && payload.doTeamsRef !== true) {
+    payload.teamRefsMaySwap = false;
+  } else if (typeof payload.teamRefsMaySwap === 'boolean') {
+    payload.teamRefsMaySwap = Boolean(payload.teamRefsMaySwap);
   }
 
   if (payload.eventType && payload.eventType !== 'LEAGUE') {
@@ -1199,12 +1231,7 @@ export function getTeamAvatarUrl(team: Team, size: number = 64): string {
   }
 
   const teamName = team.name || 'Team';
-  const initials = teamName.split(' ')
-    .map(word => word.charAt(0))
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
-  return buildInitialsAvatarUrl(initials, size);
+  return buildInitialsAvatarUrl(teamName, size);
 }
 
 export function getOrganizationAvatarUrl(
@@ -1275,12 +1302,6 @@ export function getEventImageUrl(params: {
     return fallback;
   }
   return buildPreviewUrl(params.imageId, resolvedWidth, resolvedHeight);
-}
-
-export function getTeamWinRate(team: Team): number {
-  const totalGames = team.wins + team.losses;
-  if (totalGames === 0) return 0;
-  return Math.round((team.wins / totalGames) * 100);
 }
 
 export function getEventDateTime(event: Event): { date: string; time: string } {

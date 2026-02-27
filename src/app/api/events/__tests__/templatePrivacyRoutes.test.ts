@@ -7,8 +7,14 @@ const prismaMock = {
     findMany: jest.fn(),
     findUnique: jest.fn(),
   },
+  matches: {
+    findMany: jest.fn(),
+  },
   organizations: {
     findUnique: jest.fn(),
+  },
+  divisions: {
+    findMany: jest.fn(),
   },
 };
 
@@ -23,6 +29,7 @@ import { GET as eventsGet } from '@/app/api/events/route';
 import { GET as eventGet } from '@/app/api/events/[eventId]/route';
 import { POST as searchPost } from '@/app/api/events/search/route';
 import { GET as eventsByFieldGet } from '@/app/api/events/field/[fieldId]/route';
+import { GET as matchesByFieldGet } from '@/app/api/fields/[id]/matches/route';
 
 const jsonPost = (url: string, body: any) =>
   new NextRequest(url, {
@@ -34,6 +41,7 @@ const jsonPost = (url: string, body: any) =>
 describe('event template privacy routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.divisions.findMany.mockResolvedValue([]);
   });
 
   it('excludes templates from GET /api/events when no state filter is provided', async () => {
@@ -179,6 +187,97 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('includes divisionDetails in GET /api/events list responses', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        name: 'Split Division Event',
+        divisions: ['event_1__division__open', 'event_1__division__advanced'],
+        sportId: 'sport_1',
+        userIds: [],
+      },
+    ]);
+    prismaMock.divisions.findMany.mockResolvedValueOnce([
+      {
+        eventId: 'event_1',
+        id: 'event_1__division__open',
+        key: 'open',
+        name: 'Open',
+        maxParticipants: 8,
+        sportId: 'sport_1',
+      },
+      {
+        eventId: 'event_1',
+        id: 'event_1__division__advanced',
+        key: 'advanced',
+        name: 'Advanced',
+        maxParticipants: 10,
+        sportId: 'sport_1',
+      },
+    ]);
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events'));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].divisionDetails).toEqual([
+      expect.objectContaining({ id: 'event_1__division__open', maxParticipants: 8 }),
+      expect.objectContaining({ id: 'event_1__division__advanced', maxParticipants: 10 }),
+    ]);
+    expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventId: { in: ['event_1'] },
+        }),
+      }),
+    );
+  });
+
+  it('includes divisionDetails in POST /api/events/search responses', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_2',
+        name: 'Search Split Division Event',
+        divisions: ['event_2__division__open', 'event_2__division__advanced'],
+        sportId: 'sport_1',
+      },
+    ]);
+    prismaMock.divisions.findMany.mockResolvedValueOnce([
+      {
+        eventId: 'event_2',
+        id: 'event_2__division__open',
+        key: 'open',
+        name: 'Open',
+        maxParticipants: 6,
+        sportId: 'sport_1',
+      },
+      {
+        eventId: 'event_2',
+        id: 'event_2__division__advanced',
+        key: 'advanced',
+        name: 'Advanced',
+        maxParticipants: 8,
+        sportId: 'sport_1',
+      },
+    ]);
+
+    const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].divisionDetails).toEqual([
+      expect.objectContaining({ id: 'event_2__division__open', maxParticipants: 6 }),
+      expect.objectContaining({ id: 'event_2__division__advanced', maxParticipants: 8 }),
+    ]);
+    expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventId: { in: ['event_2'] },
+        }),
+      }),
+    );
+  });
+
   it('defaults POST /api/events/search to today-and-later results', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-02-19T15:45:00.000Z'));
     prismaMock.events.findMany.mockResolvedValueOnce([]);
@@ -215,6 +314,43 @@ describe('event template privacy routes', () => {
     }
   });
 
+  it('treats query search as a separate mode without default date floor and returns relevance-ranked names', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      { id: 'event_4', name: 'The Indoor Finals', location: '', description: '', state: 'PUBLISHED' },
+      { id: 'event_3', name: 'Playindoor Open', location: '', description: '', state: 'PUBLISHED' },
+      { id: 'event_2', name: 'Indoor Soccer Arena League', location: '', description: '', state: 'PUBLISHED' },
+      { id: 'event_1', name: 'Indoor', location: '', description: '', state: 'PUBLISHED' },
+    ]);
+
+    const res = await searchPost(jsonPost('http://localhost/api/events/search', {
+      filters: { query: 'indoor' },
+      limit: 4,
+      offset: 0,
+    }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.any(Array),
+        }),
+        take: 50,
+        skip: 0,
+      }),
+    );
+
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.start).toBeUndefined();
+    expect(json.events.map((event: any) => event.name)).toEqual([
+      'Indoor',
+      'Indoor Soccer Arena League',
+      'The Indoor Finals',
+      'Playindoor Open',
+    ]);
+  });
+
   it('excludes templates from GET /api/events/field/:fieldId results', async () => {
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
@@ -229,5 +365,33 @@ describe('event template privacy routes', () => {
         where: expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
       }),
     );
+  });
+
+  it('excludes template matches from GET /api/fields/:id/matches results', async () => {
+    prismaMock.matches.findMany.mockResolvedValueOnce([
+      { id: 'match_published', eventId: 'event_published', fieldId: 'field_1' },
+      { id: 'match_template', eventId: 'event_template', fieldId: 'field_1' },
+    ]);
+    prismaMock.events.findMany.mockResolvedValueOnce([{ id: 'event_published' }]);
+
+    const res = await matchesByFieldGet(
+      new NextRequest('http://localhost/api/fields/field_1/matches'),
+      { params: Promise.resolve({ id: 'field_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          NOT: { state: 'TEMPLATE' },
+        }),
+      }),
+    );
+
+    const matchIds = (json.matches as Array<{ id?: string; $id?: string }>)
+      .map((row) => row.id ?? row.$id)
+      .filter((id): id is string => Boolean(id));
+    expect(matchIds).toEqual(['match_published']);
   });
 });

@@ -863,22 +863,14 @@ export default function TeamDetailModal({
                     )}
 
                     {/* Team Stats */}
-                    <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md" mb="md">
-                        <Paper withBorder p="md" radius="md" ta="center">
-                            <Title order={3}>{currentTeam.wins}</Title>
-                            <Text c="dimmed">Wins</Text>
-                        </Paper>
-                        <Paper withBorder p="md" radius="md" ta="center">
-                            <Title order={3}>{currentTeam.losses}</Title>
-                            <Text c="dimmed">Losses</Text>
-                        </Paper>
-                        <Paper withBorder p="md" radius="md" ta="center">
-                            <Title order={3}>{currentTeam.winRate}%</Title>
-                            <Text c="dimmed">Win Rate</Text>
-                        </Paper>
+                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mb="md">
                         <Paper withBorder p="md" radius="md" ta="center">
                             <Title order={3}>{teamPlayers.length}/{currentTeam.teamSize}</Title>
                             <Text c="dimmed">Players</Text>
+                        </Paper>
+                        <Paper withBorder p="md" radius="md" ta="center">
+                            <Title order={3}>{pendingPlayers.length}</Title>
+                            <Text c="dimmed">Pending Invites</Text>
                         </Paper>
                     </SimpleGrid>
 

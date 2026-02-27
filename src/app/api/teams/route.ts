@@ -13,13 +13,10 @@ export const dynamic = 'force-dynamic';
 const createSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
-  seed: z.number().optional(),
   division: z.string().optional(),
   divisionTypeId: z.string().optional(),
   divisionTypeName: z.string().optional(),
   sport: z.string().optional(),
-  wins: z.number().optional(),
-  losses: z.number().optional(),
   playerIds: z.array(z.string()).optional(),
   captainId: z.string().optional(),
   managerId: z.string().optional(),
@@ -117,7 +114,10 @@ export async function GET(req: NextRequest) {
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
   if (playerId) where.playerIds = { has: playerId };
-  if (!ids?.length) where.parentTeamId = null;
+  if (!ids?.length) {
+    where.parentTeamId = null;
+    where.captainId = { not: '' };
+  }
 
   const teamsDelegate = getTeamsDelegate(prisma);
   if (!teamsDelegate?.findMany) {
@@ -166,13 +166,10 @@ export async function POST(req: NextRequest) {
   const team = await createTeamWithCompatibility(teamsDelegate, {
     id: data.id,
     name: data.name ?? null,
-    seed: data.seed ?? 0,
     division: normalizedDivision,
     divisionTypeId,
     divisionTypeName,
     sport: sportInput,
-    wins: data.wins ?? 0,
-    losses: data.losses ?? 0,
     playerIds,
     captainId,
     managerId,

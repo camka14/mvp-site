@@ -24,23 +24,79 @@ const createSchema = z.object({
   teamIds: z.array(z.string()).optional(),
 }).passthrough();
 
+const normalizeSearchQuery = (value: string | null): string => (value ?? '').trim();
+
+const nameRank = (name: string | null | undefined, normalizedQuery: string): number => {
+  const normalizedName = (name ?? '').trim().toLowerCase();
+  if (!normalizedName) return 5;
+  if (normalizedName === normalizedQuery) return 0;
+  if (normalizedName.startsWith(normalizedQuery)) return 1;
+  if (normalizedName.split(/\s+/).some((segment) => segment.startsWith(normalizedQuery))) return 2;
+  if (normalizedName.includes(normalizedQuery)) return 3;
+  return 4;
+};
+
+const secondaryRank = (value: string | null | undefined, normalizedQuery: string): number => {
+  const normalizedValue = (value ?? '').trim().toLowerCase();
+  if (!normalizedValue) return 2;
+  if (normalizedValue.includes(normalizedQuery)) return 0;
+  return 1;
+};
+
+const relevanceScore = (
+  organization: { name?: string | null; location?: string | null; description?: string | null },
+  normalizedQuery: string,
+): [number, number, number] => {
+  const primary = nameRank(organization.name, normalizedQuery);
+  const location = secondaryRank(organization.location, normalizedQuery);
+  const description = secondaryRank(organization.description, normalizedQuery);
+  return [primary, location, description];
+};
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const ownerId = params.get('ownerId');
   const limit = Number(params.get('limit') || '100');
+  const query = normalizeSearchQuery(params.get('query'));
+  const normalizedQuery = query.toLowerCase();
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
+  const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 1000) : 100;
 
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
   if (ownerId) where.ownerId = ownerId;
+  if (query.length > 0) {
+    where.OR = [
+      { name: { contains: query, mode: 'insensitive' } },
+      { location: { contains: query, mode: 'insensitive' } },
+      { description: { contains: query, mode: 'insensitive' } },
+    ];
+  }
 
-  const organizations = await prisma.organizations.findMany({
+  const candidateTake = query.length > 0
+    ? Math.min(Math.max(normalizedLimit * 5, 40), 500)
+    : normalizedLimit;
+
+  let organizations = await prisma.organizations.findMany({
     where,
-    take: Number.isFinite(limit) ? limit : 100,
+    take: candidateTake,
     orderBy: { name: 'asc' },
   });
+
+  if (query.length > 0) {
+    organizations = organizations
+      .sort((left, right) => {
+        const leftScore = relevanceScore(left, normalizedQuery);
+        const rightScore = relevanceScore(right, normalizedQuery);
+        if (leftScore[0] !== rightScore[0]) return leftScore[0] - rightScore[0];
+        if (leftScore[1] !== rightScore[1]) return leftScore[1] - rightScore[1];
+        if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
+        return (left.name ?? '').localeCompare(right.name ?? '');
+      })
+      .slice(0, normalizedLimit);
+  }
 
   return NextResponse.json({ organizations: withLegacyList(organizations) }, { status: 200 });
 }

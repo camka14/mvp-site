@@ -4,6 +4,7 @@ const serializeDivision = (division: Division) => ({
   id: division.id,
   name: division.name,
   kind: division.kind,
+  teamIds: [...(division.teamIds ?? [])],
   playoffTeamCount: division.playoffTeamCount,
   playoffPlacementDivisionIds: [...(division.playoffPlacementDivisionIds ?? [])],
   standingsOverrides: division.standingsOverrides ? { ...division.standingsOverrides } : null,
@@ -20,11 +21,8 @@ const serializeDivision = (division: Division) => ({
 
 const serializeTeam = (team: Team) => ({
   id: team.id,
-  seed: team.seed,
   captainId: team.captainId,
   division: team.division?.id ?? team.division,
-  wins: team.wins,
-  losses: team.losses,
   name: team.name,
   playerIds: team.playerIds ?? [],
 });
@@ -37,19 +35,30 @@ const serializeField = (field: PlayingField) => ({
   name: field.name,
 });
 
-const serializeTimeSlot = (slot: TimeSlot) => ({
-  id: slot.id,
-  dayOfWeek: slot.dayOfWeek,
-  startDate: slot.startDate?.toISOString(),
-  endDate: slot.endDate ? slot.endDate.toISOString() : null,
-  repeating: slot.repeating,
-  startTimeMinutes: slot.startTimeMinutes,
-  endTimeMinutes: slot.endTimeMinutes,
-  price: slot.price ?? null,
-  scheduledFieldId: slot.field ?? null,
-  scheduledFieldIds: slot.field ? [slot.field] : [],
-  divisions: slot.divisions.map((division) => division.id),
-});
+const serializeTimeSlot = (slot: TimeSlot) => {
+  const normalizedDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+    ? slot.daysOfWeek
+    : [slot.dayOfWeek];
+  const normalizedFieldIds = Array.isArray(slot.fieldIds) && slot.fieldIds.length
+    ? slot.fieldIds
+    : slot.field
+      ? [slot.field]
+      : [];
+  return {
+    id: slot.id,
+    dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
+    daysOfWeek: normalizedDays,
+    startDate: slot.startDate?.toISOString(),
+    endDate: slot.endDate ? slot.endDate.toISOString() : null,
+    repeating: slot.repeating,
+    startTimeMinutes: slot.startTimeMinutes,
+    endTimeMinutes: slot.endTimeMinutes,
+    price: slot.price ?? null,
+    scheduledFieldId: normalizedFieldIds[0] ?? null,
+    scheduledFieldIds: normalizedFieldIds,
+    divisions: slot.divisions.map((division) => division.id),
+  };
+};
 
 const serializeUser = (user: UserData) => ({
   id: user.id,
@@ -62,15 +71,18 @@ const serializeMatch = (match: Match) => ({
   id: match.id,
   matchId: match.matchId ?? null,
   eventId: match.eventId,
-  start: match.start.toISOString(),
-  end: match.end.toISOString(),
+  start: match.start ? match.start.toISOString() : null,
+  end: match.end ? match.end.toISOString() : null,
   locked: Boolean(match.locked),
   division: match.division?.id ?? null,
   fieldId: match.field?.id ?? null,
   team1Id: match.team1?.id ?? null,
   team2Id: match.team2?.id ?? null,
+  team1Seed: match.team1Seed ?? null,
+  team2Seed: match.team2Seed ?? null,
   refereeId: match.referee?.id ?? null,
   teamRefereeId: match.teamReferee?.id ?? null,
+  teamRefereeSeed: null,
   team1Points: match.team1Points ?? [],
   team2Points: match.team2Points ?? [],
   setResults: match.setResults ?? [],
@@ -112,7 +124,9 @@ const serializeEventBase = (event: Tournament | League) => ({
   singleDivision: event.singleDivision,
   waitListIds: event.waitListIds ?? [],
   freeAgentIds: event.freeAgentIds ?? [],
-  teamIds: Object.keys(event.teams),
+  teamIds: Array.isArray(event.registeredTeamIds) && event.registeredTeamIds.length
+    ? [...event.registeredTeamIds]
+    : Object.keys(event.teams),
   userIds: event.players.map((player) => player.id),
   fieldIds: Object.keys(event.fields),
   timeSlotIds: event.timeSlots.map((slot) => slot.id),
@@ -156,6 +170,7 @@ const serializeTournamentExtras = (event: Tournament) => ({
   setDurationMinutes: event.setDurationMinutes ?? null,
   setsPerMatch: event.setsPerMatch ?? null,
   doTeamsRef: event.doTeamsRef ?? true,
+  teamRefsMaySwap: event.doTeamsRef ? event.teamRefsMaySwap ?? false : false,
 });
 
 const serializeLeagueExtras = (event: League) => ({
@@ -177,11 +192,8 @@ export const serializeMatches = (matches: Match[]) => matches.map(serializeMatch
 const serializeTeamLegacy = (team: Team) => ({
   $id: team.id,
   id: team.id,
-  seed: team.seed,
   captainId: team.captainId,
   division: team.division?.id ?? team.division,
-  wins: team.wins,
-  losses: team.losses,
   name: team.name,
   playerIds: team.playerIds ?? [],
 });
@@ -195,20 +207,31 @@ const serializeFieldLegacy = (field: PlayingField) => ({
   name: field.name,
 });
 
-const serializeTimeSlotLegacy = (slot: TimeSlot) => ({
-  $id: slot.id,
-  id: slot.id,
-  dayOfWeek: slot.dayOfWeek,
-  startDate: slot.startDate?.toISOString(),
-  endDate: slot.endDate ? slot.endDate.toISOString() : null,
-  repeating: slot.repeating,
-  startTimeMinutes: slot.startTimeMinutes,
-  endTimeMinutes: slot.endTimeMinutes,
-  price: slot.price ?? null,
-  scheduledFieldId: slot.field ?? null,
-  scheduledFieldIds: slot.field ? [slot.field] : [],
-  divisions: slot.divisions.map((division) => division.id),
-});
+const serializeTimeSlotLegacy = (slot: TimeSlot) => {
+  const normalizedDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+    ? slot.daysOfWeek
+    : [slot.dayOfWeek];
+  const normalizedFieldIds = Array.isArray(slot.fieldIds) && slot.fieldIds.length
+    ? slot.fieldIds
+    : slot.field
+      ? [slot.field]
+      : [];
+  return {
+    $id: slot.id,
+    id: slot.id,
+    dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
+    daysOfWeek: normalizedDays,
+    startDate: slot.startDate?.toISOString(),
+    endDate: slot.endDate ? slot.endDate.toISOString() : null,
+    repeating: slot.repeating,
+    startTimeMinutes: slot.startTimeMinutes,
+    endTimeMinutes: slot.endTimeMinutes,
+    price: slot.price ?? null,
+    scheduledFieldId: normalizedFieldIds[0] ?? null,
+    scheduledFieldIds: normalizedFieldIds,
+    divisions: slot.divisions.map((division) => division.id),
+  };
+};
 
 const serializeUserLegacy = (user: UserData) => ({
   $id: user.id,
@@ -223,15 +246,18 @@ const serializeMatchLegacy = (match: Match) => ({
   id: match.id,
   matchId: match.matchId ?? null,
   eventId: match.eventId,
-  start: match.start.toISOString(),
-  end: match.end.toISOString(),
+  start: match.start ? match.start.toISOString() : null,
+  end: match.end ? match.end.toISOString() : null,
   locked: Boolean(match.locked),
   division: match.division?.id ?? null,
   fieldId: match.field?.id ?? null,
   team1Id: match.team1?.id ?? null,
   team2Id: match.team2?.id ?? null,
+  team1Seed: match.team1Seed ?? null,
+  team2Seed: match.team2Seed ?? null,
   refereeId: match.referee?.id ?? null,
   teamRefereeId: match.teamReferee?.id ?? null,
+  teamRefereeSeed: null,
   team1Points: match.team1Points ?? [],
   team2Points: match.team2Points ?? [],
   setResults: match.setResults ?? [],
@@ -262,6 +288,7 @@ export const serializeEventLegacy = (event: Tournament | League) => {
       id: division.id,
       name: division.name,
       kind: division.kind,
+      teamIds: [...(division.teamIds ?? [])],
       playoffTeamCount: division.playoffTeamCount,
       playoffPlacementDivisionIds: [...(division.playoffPlacementDivisionIds ?? [])],
       standingsOverrides: division.standingsOverrides ? { ...division.standingsOverrides } : null,
@@ -281,6 +308,7 @@ export const serializeEventLegacy = (event: Tournament | League) => {
           id: division.id,
           name: division.name,
           kind: division.kind,
+          teamIds: [...(division.teamIds ?? [])],
           playoffTeamCount: division.playoffTeamCount,
           playoffPlacementDivisionIds: [...(division.playoffPlacementDivisionIds ?? [])],
           standingsOverrides: division.standingsOverrides ? { ...division.standingsOverrides } : null,

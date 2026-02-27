@@ -1,6 +1,11 @@
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import {
+  buildEventDivisionId,
+  extractDivisionTokenFromId,
+  normalizeDivisionIdToken,
+} from '@/lib/divisionTypes';
 import { createId } from '@/lib/id';
-import type { Event, Field, TimeSlot } from '@/types';
+import type { Division, Event, Field, TimeSlot } from '@/types';
 
 const TEMPLATE_SUFFIX_RE = /\s*\(TEMPLATE\)\s*$/i;
 
@@ -90,6 +95,248 @@ const clearParticipants = (event: Partial<Event>): Partial<Event> => ({
   attendees: 0,
 });
 
+type DivisionRemapParams = {
+  divisionIdMap: Map<string, string>;
+  targetEventId: string;
+  fieldIdMap?: Map<string, string>;
+};
+
+const normalizeDivisionIdentifier = (value: unknown): string | null => normalizeDivisionIdToken(value);
+
+const resolveDivisionToken = (value: unknown): string | null => {
+  const normalized = normalizeDivisionIdentifier(value);
+  if (!normalized) return null;
+  return extractDivisionTokenFromId(normalized) ?? normalized;
+};
+
+const registerDivisionAlias = (
+  divisionIdMap: Map<string, string>,
+  targetEventId: string,
+  value: unknown,
+): void => {
+  const normalized = normalizeDivisionIdentifier(value);
+  if (!normalized) return;
+  const token = resolveDivisionToken(normalized);
+  if (!token) return;
+  const scopedId = buildEventDivisionId(targetEventId, token);
+  divisionIdMap.set(normalized, scopedId);
+  divisionIdMap.set(token, scopedId);
+};
+
+const buildDivisionIdMap = (source: Event, targetEventId: string): Map<string, string> => {
+  const divisionIdMap = new Map<string, string>();
+
+  const registerDivisionDetail = (detail: unknown) => {
+    if (!detail || typeof detail !== 'object') {
+      return;
+    }
+    const row = detail as Record<string, unknown>;
+    registerDivisionAlias(divisionIdMap, targetEventId, row.id);
+    registerDivisionAlias(divisionIdMap, targetEventId, row.key);
+    if (Array.isArray(row.playoffPlacementDivisionIds)) {
+      row.playoffPlacementDivisionIds.forEach((divisionId) =>
+        registerDivisionAlias(divisionIdMap, targetEventId, divisionId),
+      );
+    }
+  };
+
+  if (Array.isArray(source.divisions)) {
+    source.divisions.forEach((entry) => {
+      if (typeof entry === 'string') {
+        registerDivisionAlias(divisionIdMap, targetEventId, entry);
+        return;
+      }
+      if (!entry || typeof entry !== 'object') {
+        return;
+      }
+      const row = entry as Partial<Division>;
+      registerDivisionAlias(divisionIdMap, targetEventId, row.id);
+      registerDivisionAlias(divisionIdMap, targetEventId, row.key);
+    });
+  }
+
+  if (Array.isArray(source.divisionDetails)) {
+    source.divisionDetails.forEach(registerDivisionDetail);
+  }
+  if (Array.isArray(source.playoffDivisionDetails)) {
+    source.playoffDivisionDetails.forEach(registerDivisionDetail);
+  }
+  if (Array.isArray(source.timeSlots)) {
+    source.timeSlots.forEach((slot) => {
+      if (Array.isArray(slot.divisions)) {
+        slot.divisions.forEach((divisionId) =>
+          registerDivisionAlias(divisionIdMap, targetEventId, divisionId),
+        );
+      }
+    });
+  }
+  if (Array.isArray(source.fields)) {
+    source.fields.forEach((field) => {
+      const fieldDivisions = (field as Field & { divisions?: unknown[] }).divisions;
+      if (Array.isArray(fieldDivisions)) {
+        fieldDivisions.forEach((divisionId) =>
+          registerDivisionAlias(divisionIdMap, targetEventId, divisionId),
+        );
+      }
+    });
+  }
+  if (source.divisionFieldIds && typeof source.divisionFieldIds === 'object' && !Array.isArray(source.divisionFieldIds)) {
+    Object.keys(source.divisionFieldIds).forEach((divisionId) => {
+      registerDivisionAlias(divisionIdMap, targetEventId, divisionId);
+    });
+  }
+
+  return divisionIdMap;
+};
+
+const remapDivisionIdentifier = (
+  value: unknown,
+  params: DivisionRemapParams,
+): string | null => {
+  const normalized = normalizeDivisionIdentifier(value);
+  if (!normalized) return null;
+  const token = resolveDivisionToken(normalized);
+  if (!token) return null;
+  return params.divisionIdMap.get(normalized)
+    ?? params.divisionIdMap.get(token)
+    ?? buildEventDivisionId(params.targetEventId, token);
+};
+
+const remapDivisionIdentifierList = (
+  value: unknown,
+  params: DivisionRemapParams,
+): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const next: string[] = [];
+  value.forEach((entry) => {
+    const remapped = remapDivisionIdentifier(entry, params);
+    if (!remapped || seen.has(remapped)) {
+      return;
+    }
+    seen.add(remapped);
+    next.push(remapped);
+  });
+  return next;
+};
+
+const remapPlacementDivisionIds = (
+  value: unknown,
+  params: DivisionRemapParams,
+): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => {
+    if (typeof entry === 'string' && entry.trim().length === 0) {
+      return '';
+    }
+    return remapDivisionIdentifier(entry, params) ?? '';
+  });
+};
+
+const remapDivisionDetails = (
+  details: Event['divisionDetails'],
+  params: DivisionRemapParams,
+): Event['divisionDetails'] => {
+  if (!Array.isArray(details)) {
+    return undefined;
+  }
+  return details.map((detail) => {
+    const token = resolveDivisionToken(detail.id ?? detail.key) ?? 'open';
+    const id = remapDivisionIdentifier(detail.id ?? detail.key ?? token, params)
+      ?? buildEventDivisionId(params.targetEventId, token);
+    return {
+      ...detail,
+      id,
+      key: typeof detail.key === 'string' && detail.key.trim().length > 0 ? detail.key : token,
+      playoffPlacementDivisionIds: Array.isArray(detail.playoffPlacementDivisionIds)
+        ? remapPlacementDivisionIds(detail.playoffPlacementDivisionIds, params)
+        : detail.playoffPlacementDivisionIds,
+    };
+  });
+};
+
+const remapEventDivisionIds = (
+  source: Event,
+  remappedDivisionDetails: Event['divisionDetails'],
+  params: DivisionRemapParams,
+): string[] => {
+  const sourceDivisionIds = Array.isArray(source.divisions)
+    ? source.divisions.flatMap((entry) => {
+      if (typeof entry === 'string') {
+        return [entry];
+      }
+      if (!entry || typeof entry !== 'object') {
+        return [];
+      }
+      const row = entry as Partial<Division>;
+      return [row.id ?? '', row.key ?? ''];
+    })
+    : [];
+  const remappedIds = remapDivisionIdentifierList(sourceDivisionIds, params);
+  if (remappedIds.length > 0) {
+    return remappedIds;
+  }
+  if (Array.isArray(remappedDivisionDetails) && remappedDivisionDetails.length > 0) {
+    return remappedDivisionDetails.map((detail) => detail.id);
+  }
+  return [];
+};
+
+const remapDivisionFieldIds = (
+  value: Event['divisionFieldIds'],
+  params: DivisionRemapParams,
+): Event['divisionFieldIds'] => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+  const next: Record<string, string[]> = {};
+  Object.entries(value).forEach(([divisionId, fieldIds]) => {
+    const remappedDivisionId = remapDivisionIdentifier(divisionId, params);
+    if (!remappedDivisionId) {
+      return;
+    }
+    const normalizedFieldIds = Array.isArray(fieldIds)
+      ? fieldIds
+          .map((fieldId) => String(fieldId))
+          .filter((fieldId) => fieldId.length > 0)
+          .map((fieldId) => params.fieldIdMap?.get(fieldId) ?? fieldId)
+      : [];
+    next[remappedDivisionId] = Array.from(new Set(normalizedFieldIds));
+  });
+  return next;
+};
+
+const remapFieldDivisionLists = (
+  fields: Field[],
+  params: DivisionRemapParams,
+): Field[] => fields.map((field) => {
+  const fieldDivisions = (field as Field & { divisions?: unknown[] }).divisions;
+  if (!Array.isArray(fieldDivisions)) {
+    return field;
+  }
+  return {
+    ...field,
+    divisions: remapDivisionIdentifierList(fieldDivisions, params),
+  } as Field;
+});
+
+const remapTimeSlotDivisionLists = (
+  slots: TimeSlot[],
+  params: DivisionRemapParams,
+): TimeSlot[] => slots.map((slot) => {
+  if (!Array.isArray(slot.divisions)) {
+    return slot;
+  }
+  return {
+    ...slot,
+    divisions: remapDivisionIdentifierList(slot.divisions, params),
+  } as TimeSlot;
+});
+
 export const cloneEventAsTemplate = (
   source: Event,
   options?: { templateId?: string; idFactory?: () => string },
@@ -120,6 +367,20 @@ export const cloneEventAsTemplate = (
     })
     : [];
 
+  const divisionRemapParams: DivisionRemapParams = {
+    divisionIdMap: buildDivisionIdMap(source, templateId),
+    targetEventId: templateId,
+    fieldIdMap: hasLocalFields ? fieldIdMap : undefined,
+  };
+  const remappedDivisionDetails = remapDivisionDetails(source.divisionDetails, divisionRemapParams);
+  const remappedPlayoffDivisionDetails = remapDivisionDetails(source.playoffDivisionDetails, divisionRemapParams);
+  const remappedDivisions = remapEventDivisionIds(source, remappedDivisionDetails, divisionRemapParams);
+  const remappedTimeSlots = remapTimeSlotDivisionLists(timeSlots, divisionRemapParams);
+  const remappedFields = hasLocalFields
+    ? remapFieldDivisionLists(clonedFields, divisionRemapParams)
+    : undefined;
+  const remappedDivisionFieldIds = remapDivisionFieldIds(source.divisionFieldIds, divisionRemapParams);
+
   const template: Event = {
     ...(clearParticipants(source) as Event),
     $id: templateId,
@@ -129,10 +390,14 @@ export const cloneEventAsTemplate = (
     referees: [],
     refereeIds: [],
     matches: [],
-    timeSlots,
-    timeSlotIds: timeSlots.map((slot) => slot.$id),
+    divisions: remappedDivisions,
+    divisionDetails: remappedDivisionDetails,
+    playoffDivisionDetails: remappedPlayoffDivisionDetails,
+    divisionFieldIds: remappedDivisionFieldIds,
+    timeSlots: remappedTimeSlots,
+    timeSlotIds: remappedTimeSlots.map((slot) => slot.$id),
     fieldIds,
-    fields: hasLocalFields ? clonedFields : undefined,
+    fields: remappedFields,
     // Org templates are shared across org managers; host gets chosen when instantiating an event.
     hostId: isOrganizationEvent ? '' : source.hostId,
     $createdAt: '',
@@ -187,6 +452,20 @@ export const seedEventFromTemplate = (
     })
     : [];
 
+  const divisionRemapParams: DivisionRemapParams = {
+    divisionIdMap: buildDivisionIdMap(template, params.newEventId),
+    targetEventId: params.newEventId,
+    fieldIdMap: hasLocalFields ? fieldIdMap : undefined,
+  };
+  const remappedDivisionDetails = remapDivisionDetails(template.divisionDetails, divisionRemapParams);
+  const remappedPlayoffDivisionDetails = remapDivisionDetails(template.playoffDivisionDetails, divisionRemapParams);
+  const remappedDivisions = remapEventDivisionIds(template, remappedDivisionDetails, divisionRemapParams);
+  const remappedTimeSlots = remapTimeSlotDivisionLists(timeSlots, divisionRemapParams);
+  const remappedFields = hasLocalFields
+    ? remapFieldDivisionLists(clonedFields, divisionRemapParams)
+    : undefined;
+  const remappedDivisionFieldIds = remapDivisionFieldIds(template.divisionFieldIds, divisionRemapParams);
+
   const seeded: Event = {
     ...(clearParticipants(template) as Event),
     $id: params.newEventId,
@@ -198,10 +477,14 @@ export const seedEventFromTemplate = (
     referees: [],
     refereeIds: [],
     matches: [],
-    timeSlots,
-    timeSlotIds: timeSlots.map((slot) => slot.$id),
+    divisions: remappedDivisions,
+    divisionDetails: remappedDivisionDetails,
+    playoffDivisionDetails: remappedPlayoffDivisionDetails,
+    divisionFieldIds: remappedDivisionFieldIds,
+    timeSlots: remappedTimeSlots,
+    timeSlotIds: remappedTimeSlots.map((slot) => slot.$id),
     fieldIds,
-    fields: hasLocalFields ? clonedFields : undefined,
+    fields: remappedFields,
     $createdAt: '',
     $updatedAt: '',
     attendees: 0,

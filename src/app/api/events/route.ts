@@ -3,7 +3,14 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
-import { deleteMatchesByEvent, loadEventWithRelations, saveEventSchedule, saveMatches, upsertEventFromPayload } from '@/server/repositories/events';
+import {
+  deleteMatchesByEvent,
+  loadEventWithRelations,
+  persistScheduledRosterTeams,
+  saveEventSchedule,
+  saveMatches,
+  upsertEventFromPayload,
+} from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
@@ -42,6 +49,19 @@ const normalizeDivisionKeys = (value: unknown): string[] => {
 const normalizeFieldIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
+};
+
+const normalizeTeamIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter((entry) => entry.length > 0),
+    ),
+  );
 };
 
 const normalizeOptionalBoolean = (value: unknown): boolean | null => {
@@ -179,6 +199,7 @@ const getDivisionDetailsForEvent = async (
       ageCutoffLabel: true,
       ageCutoffSource: true,
       fieldIds: true,
+      teamIds: true,
     },
   });
   const rows = Array.isArray(rawRows) ? rawRows : [];
@@ -262,10 +283,112 @@ const getDivisionDetailsForEvent = async (
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
       fieldIds: normalizeFieldIds(row?.fieldIds ?? []),
+      teamIds: normalizeTeamIds((row as any)?.teamIds),
     };
   });
 
   return details;
+};
+
+const getDivisionDetailsForEvents = async (
+  events: Array<{ id: string; divisions: unknown; sportId?: string | null }>,
+): Promise<Map<string, Array<Record<string, unknown>>>> => {
+  const normalizedDivisionsByEventId = new Map<string, string[]>();
+  const eventIds = events
+    .map((event) => {
+      const normalizedDivisions = normalizeDivisionKeys(event.divisions);
+      normalizedDivisionsByEventId.set(event.id, normalizedDivisions);
+      return normalizedDivisions.length > 0 ? event.id : null;
+    })
+    .filter((eventId): eventId is string => Boolean(eventId));
+
+  const detailsByEventId = new Map<string, Array<Record<string, unknown>>>();
+  if (!eventIds.length) {
+    return detailsByEventId;
+  }
+
+  const rawRows = await prisma.divisions.findMany({
+    where: {
+      eventId: { in: eventIds },
+    },
+    select: {
+      eventId: true,
+      id: true,
+      key: true,
+      name: true,
+      sportId: true,
+      maxParticipants: true,
+      divisionTypeId: true,
+      divisionTypeName: true,
+      ratingType: true,
+      gender: true,
+    },
+  });
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+
+  const rowsByEventId = new Map<string, Array<(typeof rows)[number]>>();
+  rows.forEach((row) => {
+    if (!row.eventId) {
+      return;
+    }
+    const existing = rowsByEventId.get(row.eventId) ?? [];
+    existing.push(row);
+    rowsByEventId.set(row.eventId, existing);
+  });
+
+  events.forEach((event) => {
+    const normalizedDivisions = normalizedDivisionsByEventId.get(event.id) ?? [];
+    if (!normalizedDivisions.length) {
+      detailsByEventId.set(event.id, []);
+      return;
+    }
+
+    const eventRows = rowsByEventId.get(event.id) ?? [];
+    const rowsById = new Map<string, (typeof eventRows)[number]>();
+    const rowsByKey = new Map<string, (typeof eventRows)[number]>();
+    eventRows.forEach((row) => {
+      const rowId = normalizeDivisionKey(row.id);
+      if (rowId) {
+        rowsById.set(rowId, row);
+        const token = extractDivisionTokenFromId(rowId);
+        if (token) {
+          rowsByKey.set(token, row);
+        }
+      }
+      const rowKey = normalizeDivisionKey(row.key);
+      if (rowKey) {
+        rowsByKey.set(rowKey, row);
+      }
+    });
+
+    const details = normalizedDivisions.map((divisionId) => {
+      const row = rowsById.get(divisionId)
+        ?? rowsByKey.get(divisionId)
+        ?? rowsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')
+        ?? null;
+      const inferred = inferDivisionDetails({
+        identifier: row?.key ?? row?.id ?? divisionId,
+        sportInput: row?.sportId ?? event.sportId ?? undefined,
+        fallbackName: row?.name ?? undefined,
+      });
+
+      return {
+        id: row?.id ?? divisionId,
+        key: row?.key ?? inferred.token,
+        name: row?.name ?? inferred.defaultName,
+        divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
+        divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+        ratingType: row?.ratingType ?? inferred.ratingType,
+        gender: row?.gender ?? inferred.gender,
+        sportId: row?.sportId ?? event.sportId ?? null,
+        maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
+      };
+    });
+
+    detailsByEventId.set(event.id, details);
+  });
+
+  return detailsByEventId;
 };
 
 const withLegacyEvent = (row: any) => {
@@ -296,6 +419,11 @@ const withLegacyEvent = (row: any) => {
       && start.getTime() === end.getTime(),
     );
   }
+  if ((legacy as any).doTeamsRef !== true) {
+    (legacy as any).teamRefsMaySwap = false;
+  } else if (typeof (legacy as any).teamRefsMaySwap !== 'boolean') {
+    (legacy as any).teamRefsMaySwap = false;
+  }
   return legacy;
 };
 
@@ -320,6 +448,13 @@ const isFixedEndValidationError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes('No fixed end date/time')
     || message.includes('End date/time must be after start date/time');
+};
+
+const isDivisionAssignmentValidationError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('assigned to more than one division')
+    || normalized.includes('assigned to multiple divisions');
 };
 
 export async function GET(req: NextRequest) {
@@ -382,11 +517,22 @@ export async function GET(req: NextRequest) {
     orderBy: { start: 'asc' },
   });
 
+  const divisionDetailsByEventId = await getDivisionDetailsForEvents(
+    events.map((event) => ({
+      id: event.id,
+      divisions: event.divisions,
+      sportId: event.sportId,
+    })),
+  );
+
   const normalized = events.map((row) => {
     if (!Array.isArray(row.userIds)) {
       row.userIds = coerceArray(row.userIds) ?? [];
     }
-    return withLegacyEvent(row);
+    return withLegacyEvent({
+      ...row,
+      divisionDetails: divisionDetailsByEventId.get(row.id) ?? [],
+    });
   });
 
   return NextResponse.json({ events: normalized }, { status: 200 });
@@ -421,6 +567,7 @@ export async function POST(req: NextRequest) {
       if (isSchedulableEventType(loaded.eventType)) {
         await acquireEventLock(tx, eventId);
         const scheduled = scheduleEvent({ event: loaded }, context);
+        await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
         await deleteMatchesByEvent(eventId, tx);
         await saveMatches(eventId, scheduled.matches, tx);
         await saveEventSchedule(scheduled.event, tx);
@@ -464,6 +611,10 @@ export async function POST(req: NextRequest) {
     }
     if (isFixedEndValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid schedule window';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isDivisionAssignmentValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid division team assignments';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Create event failed', error);

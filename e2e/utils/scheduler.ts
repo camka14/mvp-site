@@ -10,18 +10,14 @@ export type CanonicalMatch = {
   loserNextMatchId: number | null;
 };
 
-type RawTeam = {
-  seed?: number | null;
-} | null;
-
 type RawMatch = {
   id?: string | null;
   $id?: string | null;
   matchId?: number | null;
   side?: string | null;
   losersBracket?: boolean | null;
-  team1?: RawTeam;
-  team2?: RawTeam;
+  team1Seed?: number | null;
+  team2Seed?: number | null;
   previousLeftId?: string | null;
   previousRightId?: string | null;
   winnerNextMatchId?: string | null;
@@ -66,8 +62,8 @@ export const canonicalizeMatches = (matches: RawMatch[]): CanonicalMatch[] => {
         matchId,
         side: match.side ?? null,
         losersBracket: Boolean(match.losersBracket),
-        team1Seed: match.team1?.seed ?? null,
-        team2Seed: match.team2?.seed ?? null,
+        team1Seed: typeof match.team1Seed === 'number' ? match.team1Seed : null,
+        team2Seed: typeof match.team2Seed === 'number' ? match.team2Seed : null,
         previousLeftMatchId: resolveLink(match.previousLeftId ?? null, idMap),
         previousRightMatchId: resolveLink(match.previousRightId ?? null, idMap),
         winnerNextMatchId: resolveLink(match.winnerNextMatchId ?? null, idMap),
