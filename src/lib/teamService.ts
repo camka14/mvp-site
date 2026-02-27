@@ -1,6 +1,6 @@
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
-import { InviteType, Team, UserData, getTeamWinRate, getTeamAvatarUrl } from '@/types';
+import { InviteType, Team, UserData, getTeamAvatarUrl } from '@/types';
 import { userService } from './userService';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 
@@ -98,7 +98,6 @@ class TeamService {
 
         team.currentSize = team.playerIds.length;
         team.isFull = team.currentSize >= team.teamSize;
-        team.winRate = getTeamWinRate(team);
         team.avatarUrl = getTeamAvatarUrl(team);
     }
 
@@ -121,13 +120,10 @@ class TeamService {
             });
             const teamData = {
                 name,
-                seed: 0,
                 division,
                 divisionTypeId: options?.divisionTypeId ?? inferredDivision.divisionTypeId,
                 divisionTypeName: options?.divisionTypeName ?? inferredDivision.divisionTypeName,
                 sport,
-                wins: 0,
-                losses: 0,
                 playerIds: [captainId],
                 captainId,
                 managerId: captainId,
@@ -215,13 +211,10 @@ class TeamService {
             ? row.pending.filter((value: any): value is string => typeof value === 'string')
             : [];
         const teamSize = typeof row.teamSize === 'number' ? row.teamSize : playerIds.length;
-        const wins = typeof row.wins === 'number' ? row.wins : Number(row.wins ?? 0);
-        const losses = typeof row.losses === 'number' ? row.losses : Number(row.losses ?? 0);
 
         const team: Team = {
             $id: row.$id,
             name: row.name,
-            seed: typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0),
             division: typeof row.division === 'string' ? row.division : (row.division?.name ?? 'Open'),
             divisionTypeId:
                 typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length
@@ -232,8 +225,6 @@ class TeamService {
                     ? row.divisionTypeName
                     : undefined,
             sport: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? 'Indoor Volleyball'),
-            wins,
-            losses,
             playerIds,
             captainId: row.captainId,
             managerId: typeof row.managerId === 'string' && row.managerId.trim().length > 0
@@ -261,13 +252,11 @@ class TeamService {
             profileImageId: row.profileImageId || row.profileImage || row.profileImageID,
             $createdAt: row.$createdAt,
             $updatedAt: row.$updatedAt,
-            winRate: 0,
             currentSize: playerIds.length,
             isFull: playerIds.length >= teamSize,
             avatarUrl: '',
         };
 
-        team.winRate = getTeamWinRate(team);
         team.avatarUrl = getTeamAvatarUrl(team);
 
         return team;
@@ -338,7 +327,7 @@ class TeamService {
 
     async updateTeamDetails(
         teamId: string,
-        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize' | 'seed' | 'wins' | 'losses'>>,
+        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize'>>,
     ): Promise<Team | undefined> {
         try {
             const response = await apiRequest<any>(`/api/teams/${teamId}`, {

@@ -141,13 +141,11 @@ export const applyMatchUpdates = (event: Tournament | League, match: Match, upda
   if (update.team1Id !== undefined) {
     detachMatch(match.team1, match);
     match.team1 = update.team1Id ? event.teams[update.team1Id] ?? null : null;
-    match.team1Seed = match.team1?.seed ?? null;
     if (match.team1) ensureMatchesArray(match.team1).push(match);
   }
   if (update.team2Id !== undefined) {
     detachMatch(match.team2, match);
     match.team2 = update.team2Id ? event.teams[update.team2Id] ?? null : null;
-    match.team2Seed = match.team2?.seed ?? null;
     if (match.team2) ensureMatchesArray(match.team2).push(match);
   }
   if (update.teamRefereeId !== undefined) {
@@ -277,7 +275,7 @@ const reassignTeamReferee = (match: Match, schedule: Schedule<Match, any, any, D
     (participant) => participant instanceof Team && participant !== match.team1 && participant !== match.team2,
   ) as Team[];
   for (const freeTeam of freeTeams) {
-    if (!freeTeam.losses && !isTeamInPreviousMatch(freeTeam, match)) {
+    if (!isTeamInPreviousMatch(freeTeam, match)) {
       match.teamReferee = freeTeam;
       ensureMatchesArray(freeTeam).push(match);
       return;
@@ -407,8 +405,6 @@ export const finalizeMatch = (
   const winner = team1Wins > team2Wins ? teamOne : teamTwo;
   const loser = winner === teamOne ? teamTwo : teamOne;
 
-  winner.wins += 1;
-  loser.losses += 1;
   updatedMatch.advanceTeams(winner, loser);
 
   // League schedules are pre-built (regular season and playoffs). Finalizing a result should advance teams without
@@ -543,7 +539,6 @@ export const finalizeMatch = (
 
     const waitingTeams = teamsWaitingToStart(Object.values(event.teams), currentTime);
     for (const team of waitingTeams) {
-      if (team.losses) continue;
       const lastMatch = team.matches[team.matches.length - 1];
       if (!lastMatch) continue;
       const availableMatches = getUpcomingMatchesInTimeRange(currentTime, lastMatch.start, event.matches, true);

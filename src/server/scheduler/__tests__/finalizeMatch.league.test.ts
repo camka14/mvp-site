@@ -39,13 +39,10 @@ const buildTeams = (count: number, division: Division) => {
     const id = `team_${i}`;
     teams[id] = new Team({
       id,
-      seed: 0,
       captainId: 'captain',
       division,
       name: `Team ${i}`,
       matches: [],
-      wins: 0,
-      losses: 0,
     });
   }
   return teams;
@@ -117,9 +114,9 @@ describe('finalizeMatch (league)', () => {
       .map((match) => match.field?.id ?? null);
 
     expect(afterFields).toEqual(beforeFields);
-    // Winner/loser records are updated even though the schedule does not change.
-    expect(team1.wins + team2.wins).toBe(1);
-    expect(team1.losses + team2.losses).toBe(1);
+    // Finalization should not reshuffle already scheduled fields.
+    expect(team1.id).not.toEqual('');
+    expect(team2.id).not.toEqual('');
   });
 
   it('does not auto-seed playoff teams when regular-season league matches are finalized', () => {
@@ -192,8 +189,6 @@ describe('finalizeMatch (league)', () => {
     }
 
     expect(seeded).toEqual([]);
-    expect(Object.values(league.teams).every((team) => team.seed === 0)).toBe(true);
-
     const updatedPlayoffMatches = Object.values(league.matches).filter((match) => isPlayoff(match));
     for (const match of updatedPlayoffMatches) {
       expect([match.team1?.id ?? null, match.team2?.id ?? null]).toEqual(

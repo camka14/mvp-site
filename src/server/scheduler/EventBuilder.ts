@@ -22,7 +22,7 @@ export class EventBuilder {
   schedule: Schedule<Match, any, any, Division>;
   private regularPlaceholderIds: Set<string> = new Set();
   private playoffPlaceholderIds: Set<string> = new Set();
-  private nextPlaceholderSeed: number = 1;
+  private nextPlaceholderOrdinal: number = 1;
   private participants: Record<string, Team | UserData> = {};
   private refereeCycle: UserData[] = [];
 
@@ -171,12 +171,7 @@ export class EventBuilder {
     this.refereeCycle = [...this.event.referees];
     this.regularPlaceholderIds.clear();
     this.playoffPlaceholderIds.clear();
-    this.nextPlaceholderSeed = Object.values(this.event.teams).reduce((maxSeed, team) => {
-      if (typeof team.seed !== 'number' || !Number.isFinite(team.seed)) {
-        return maxSeed;
-      }
-      return Math.max(maxSeed, Math.trunc(team.seed));
-    }, 0) + 1;
+    this.nextPlaceholderOrdinal = Object.keys(this.event.teams).length + 1;
   }
 
   private ensureFieldsAvailable(): void {
@@ -277,18 +272,15 @@ export class EventBuilder {
 
   private addPlaceholderTeam(division: Division, placeholderCounts: Map<string, number>): void {
     const placeholderId = createId();
-    const seed = this.nextPlaceholderSeed;
-    this.nextPlaceholderSeed += 1;
+    const ordinal = this.nextPlaceholderOrdinal;
+    this.nextPlaceholderOrdinal += 1;
     const placeholder = new Team({
       id: placeholderId,
-      seed,
       captainId: '',
       division,
       matches: [],
-      wins: 0,
-      losses: 0,
       playerIds: [],
-      name: `Place Holder ${seed}`,
+      name: `Place Holder ${ordinal}`,
     });
     this.event.teams[placeholderId] = placeholder;
     this.regularPlaceholderIds.add(placeholderId);
@@ -351,12 +343,9 @@ export class EventBuilder {
       const placeholderId = this.generatePlaceholderId(`playoff-${safeDivisionId}`);
       const placeholder = new Team({
         id: placeholderId,
-        seed: seedIndex + 1,
         captainId: '',
         division,
         matches: [],
-        wins: 0,
-        losses: 0,
         playerIds: [],
         name: `Seed ${seedIndex + 1}`,
       });
@@ -726,14 +715,11 @@ export class EventBuilder {
     for (const team of seeded) {
       tournamentTeams[team.id] = new Team({
         id: team.id,
-        seed: team.seed,
         captainId: team.captainId,
         division: team.division,
         name: team.name,
         matches: [],
         playerIds: [...team.playerIds],
-        wins: team.wins,
-        losses: team.losses,
       });
     }
 
@@ -779,11 +765,9 @@ export class EventBuilder {
       match.unschedule();
       if (match.team1) {
         match.team1 = teamLookup[match.team1.id] ?? match.team1;
-        match.team1Seed = match.team1?.seed ?? match.team1Seed ?? null;
       }
       if (match.team2) {
         match.team2 = teamLookup[match.team2.id] ?? match.team2;
-        match.team2Seed = match.team2?.seed ?? match.team2Seed ?? null;
       }
       if (match.teamReferee) {
         match.teamReferee = teamLookup[match.teamReferee.id] ?? match.teamReferee;
@@ -818,10 +802,6 @@ export class EventBuilder {
     return Math.min(fallback, fallbackTeamCount);
   }
 
-  private seedParticipants(participants: Team[], count: number): Team[] {
-    return [...participants].sort((a, b) => a.seed - b.seed).slice(0, count);
-  }
-
   private maxEndTime(matches: Match[]): Date | null {
     if (!matches.length) return null;
     return matches.reduce((latest, match) => (match.end > latest ? match.end : latest), matches[0].end);
@@ -830,15 +810,9 @@ export class EventBuilder {
   private stripPlaceholderAssignments(matches: Match[]): void {
     for (const match of matches) {
       if (match.team1 && this.playoffPlaceholderIds.has(match.team1.id)) {
-        if (typeof match.team1Seed !== 'number') {
-          match.team1Seed = match.team1.seed;
-        }
         match.team1 = null;
       }
       if (match.team2 && this.playoffPlaceholderIds.has(match.team2.id)) {
-        if (typeof match.team2Seed !== 'number') {
-          match.team2Seed = match.team2.seed;
-        }
         match.team2 = null;
       }
       if (match.teamReferee && this.playoffPlaceholderIds.has(match.teamReferee.id)) match.teamReferee = null;

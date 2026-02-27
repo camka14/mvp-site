@@ -16,13 +16,10 @@ const buildTeams = (count: number, division: Division) => {
     const id = `team_${index}`;
     teams[id] = new Team({
       id,
-      seed: index,
       captainId: `captain_${index}`,
       division,
       name: `Team ${index}`,
       matches: [],
-      wins: 0,
-      losses: 0,
     });
   }
   return teams;

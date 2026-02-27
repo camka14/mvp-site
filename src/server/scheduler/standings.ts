@@ -15,8 +15,6 @@ export type LeagueStanding = {
   teamId: string;
   teamName: string;
   team: Team | null;
-  wins: number;
-  losses: number;
   draws: number;
   goalsFor: number;
   goalsAgainst: number;
@@ -172,6 +170,10 @@ export const computeLeagueStandings = (
   options?: ComputeStandingsOptions,
 ): LeagueStanding[] => {
   const standings = new Map<string, LeagueStanding>();
+  const scoring = league.leagueScoringConfig ?? {};
+  const pointsForWin = resolveLeagueScoringValue((scoring as any).pointsForWin);
+  const pointsForDraw = resolveLeagueScoringValue((scoring as any).pointsForDraw);
+  const pointsForLoss = resolveLeagueScoringValue((scoring as any).pointsForLoss);
 
   const ensureRow = (teamObj: Team | null): LeagueStanding | null => {
     if (!teamObj) {
@@ -185,8 +187,6 @@ export const computeLeagueStandings = (
         teamId: teamObj.id,
         teamName: teamObj.name || teamObj.id,
         team: teamObj,
-        wins: 0,
-        losses: 0,
         draws: 0,
         goalsFor: 0,
         goalsAgainst: 0,
@@ -259,28 +259,25 @@ export const computeLeagueStandings = (
     row1.goalsAgainst += team2Total;
     row2.goalsFor += team2Total;
     row2.goalsAgainst += team1Total;
+    row1.matchesPlayed += 1;
+    row2.matchesPlayed += 1;
 
     if (outcome === 'team1') {
-      row1.wins += 1;
-      row2.losses += 1;
+      row1.basePoints += pointsForWin;
+      row2.basePoints += pointsForLoss;
     } else if (outcome === 'team2') {
-      row2.wins += 1;
-      row1.losses += 1;
+      row2.basePoints += pointsForWin;
+      row1.basePoints += pointsForLoss;
     } else {
       row1.draws += 1;
       row2.draws += 1;
+      row1.basePoints += pointsForDraw;
+      row2.basePoints += pointsForDraw;
     }
   }
 
-  const scoring = league.leagueScoringConfig ?? {};
-  const pointsForWin = resolveLeagueScoringValue((scoring as any).pointsForWin);
-  const pointsForDraw = resolveLeagueScoringValue((scoring as any).pointsForDraw);
-  const pointsForLoss = resolveLeagueScoringValue((scoring as any).pointsForLoss);
-
   for (const row of standings.values()) {
-    row.matchesPlayed = row.wins + row.losses + row.draws;
     row.goalDifference = row.goalsFor - row.goalsAgainst;
-    row.basePoints = row.wins * pointsForWin + row.draws * pointsForDraw + row.losses * pointsForLoss;
 
     const overrideRaw = options?.overridesByTeamId?.[row.teamId];
     const hasOverride = typeof overrideRaw === 'number' && Number.isFinite(overrideRaw);
@@ -290,7 +287,6 @@ export const computeLeagueStandings = (
 
   return Array.from(standings.values()).sort((a, b) => {
     if (b.finalPoints !== a.finalPoints) return b.finalPoints - a.finalPoints;
-    if (b.wins !== a.wins) return b.wins - a.wins;
     if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
     if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
     return a.teamName.toLowerCase().localeCompare(b.teamName.toLowerCase());
@@ -498,16 +494,25 @@ const windowsOverlap = (
   endB: Date,
 ): boolean => startA < endB && endA > startB;
 
-const assignTeamToMatch = (match: Match, attribute: 'team1' | 'team2', team: Team): void => {
+const assignTeamToMatch = (
+  match: Match,
+  attribute: 'team1' | 'team2',
+  team: Team,
+  seed: number | null = null,
+): void => {
   const previousTeam = match[attribute];
   if (previousTeam) {
     detachMatchFromTeam(previousTeam, match);
   }
   match[attribute] = team;
   if (attribute === 'team1') {
-    match.team1Seed = team.seed;
+    if (typeof seed === 'number') {
+      match.team1Seed = seed;
+    }
   } else {
-    match.team2Seed = team.seed;
+    if (typeof seed === 'number') {
+      match.team2Seed = seed;
+    }
   }
   if (!team.matches) {
     team.matches = [];
@@ -551,10 +556,10 @@ const assignTeamRefereesForKnownMatches = (matches: Match[], candidates: Team[])
   });
 
   const orderedCandidates = Array.from(candidatesById.values()).sort((left, right) => {
-    const leftSeed = Number.isFinite(left.seed) ? left.seed : Number.MAX_SAFE_INTEGER;
-    const rightSeed = Number.isFinite(right.seed) ? right.seed : Number.MAX_SAFE_INTEGER;
-    if (leftSeed !== rightSeed) {
-      return leftSeed - rightSeed;
+    const leftName = left.name?.trim().toLowerCase() ?? '';
+    const rightName = right.name?.trim().toLowerCase() ?? '';
+    if (leftName !== rightName) {
+      return leftName.localeCompare(rightName);
     }
     return left.id.localeCompare(right.id);
   });
@@ -727,14 +732,11 @@ const buildTemplateEntrants = (
     const seed = index + 1;
     entrants.push(new Team({
       id: `${league.id}__${playoffDivision.id}__seed_placeholder_${seed}`,
-      seed,
       captainId: '',
       division: playoffDivision,
       name: `Seed ${seed}`,
       matches: [],
       playerIds: [],
-      wins: 0,
-      losses: 0,
     }));
   }
   return entrants;
@@ -772,7 +774,7 @@ const applyTemplateEntrantAssignments = (
       continue;
     }
 
-    assignTeamToMatch(actualSlot.match, actualSlot.attribute, mappedTeam);
+    assignTeamToMatch(actualSlot.match, actualSlot.attribute, mappedTeam, templateSeed);
   }
 };
 
@@ -886,14 +888,11 @@ const buildTemplateBracket = (
   for (const team of seededTeams) {
     clonedTeams[team.id] = new Team({
       id: team.id,
-      seed: team.seed,
       captainId: team.captainId,
       division: playoffDivision,
       name: team.name,
       matches: [],
       playerIds: [...(team.playerIds ?? [])],
-      wins: team.wins,
-      losses: team.losses,
     });
   }
 
@@ -1002,8 +1001,10 @@ export const assignTeamsToPlayoffDivisionMatches = (
       (match) => !match.losersBracket && !match.previousLeftMatch && !match.previousRightMatch,
     );
     if (firstRoundMatch && teams[0] && teams[1]) {
-      assignTeamToMatch(firstRoundMatch, 'team1', teams[0]);
-      assignTeamToMatch(firstRoundMatch, 'team2', teams[1]);
+      const team1Seed = typeof firstRoundMatch.team1Seed === 'number' ? firstRoundMatch.team1Seed : 1;
+      const team2Seed = typeof firstRoundMatch.team2Seed === 'number' ? firstRoundMatch.team2Seed : 2;
+      assignTeamToMatch(firstRoundMatch, 'team1', teams[0], team1Seed);
+      assignTeamToMatch(firstRoundMatch, 'team2', teams[1], team2Seed);
     }
     if (league.doTeamsRef) {
       assignTeamRefereesForKnownMatches(playoffMatches, teams);
@@ -1071,16 +1072,10 @@ export const applyLeagueDivisionPlayoffReassignment = (
       throw new Error(`Playoff division "${playoffDivision.name}" exceeded capacity (${entrants.length}/${capacity}).`);
     }
 
-    const seededEntrants = entrants.map((team, index) => {
-      const nextSeed = index + 1;
-      team.seed = nextSeed;
-      return team;
-    });
-
     const assignedTeamIds = assignTeamsToPlayoffDivisionMatches(
       league,
       playoffDivisionId,
-      seededEntrants,
+      entrants,
       context,
     );
     const normalizedAssignedTeamIds = Array.from(

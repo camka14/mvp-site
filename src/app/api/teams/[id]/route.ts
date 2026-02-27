@@ -16,13 +16,10 @@ const patchEnvelopeSchema = z.object({
 
 const teamPatchSchema = z.object({
   name: z.string().optional(),
-  seed: z.number().optional(),
   division: z.string().optional(),
   divisionTypeId: z.string().optional(),
   divisionTypeName: z.string().optional(),
   sport: z.string().optional(),
-  wins: z.number().optional(),
-  losses: z.number().optional(),
   playerIds: z.array(z.string()).optional(),
   captainId: z.string().optional(),
   managerId: z.string().optional(),
@@ -37,7 +34,6 @@ const teamPatchSchema = z.object({
 
 const VERSIONED_PROFILE_FIELDS: ReadonlySet<string> = new Set([
   'name',
-  'seed',
   'division',
   'divisionTypeId',
   'divisionTypeName',
@@ -96,13 +92,10 @@ const arraysEqual = (a: string[], b: string[]): boolean => (
 
 type TeamState = {
   name: string | null;
-  seed: number;
   division: string;
   divisionTypeId: string;
   divisionTypeName: string;
   sport: string | null;
-  wins: number;
-  losses: number;
   playerIds: string[];
   captainId: string;
   managerId: string;
@@ -163,13 +156,10 @@ const buildTeamState = (
 
   return {
     name: normalizeText(payload.name) ?? normalizeText(existing.name),
-    seed: normalizeNumber(payload.seed, normalizeNumber(existing.seed, 0)),
     division: normalizedDivision,
     divisionTypeId,
     divisionTypeName,
     sport: sportInput,
-    wins: normalizeNumber(payload.wins, normalizeNumber(existing.wins, 0)),
-    losses: normalizeNumber(payload.losses, normalizeNumber(existing.losses, 0)),
     playerIds,
     captainId,
     managerId,
@@ -195,9 +185,6 @@ const hasVersionedProfileChanges = (
     switch (key) {
       case 'name':
         if ((normalizeText(existing.name) ?? null) !== next.name) return true;
-        break;
-      case 'seed':
-        if (normalizeNumber(existing.seed, 0) !== next.seed) return true;
         break;
       case 'division':
         if ((normalizeText(existing.division) ?? 'Open') !== next.division) return true;

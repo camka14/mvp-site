@@ -3035,7 +3035,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                 </div>
                             </div>
                             <div className="text-xs text-gray-400">
-                                {teamRow.winRate}% win rate
+                                Team
                             </div>
                         </div>
                         );

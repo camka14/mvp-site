@@ -498,10 +498,10 @@ async function updateParticipants(
           where: { id: { in: rosterTeamIds } },
           select: {
             id: true,
-            seed: true,
             captainId: true,
             division: true,
             parentTeamId: true,
+            name: true,
           },
         });
 
@@ -513,7 +513,7 @@ async function updateParticipants(
           const placeholderCandidates = slotTeams
             .filter((team) => String(team.captainId ?? '').trim().length === 0)
             .filter((team) => freshEvent.singleDivision ? true : teamDivisionMatchesSelection(team.division, divisionSelection.divisionId))
-            .sort((a, b) => a.seed - b.seed);
+            .sort((a, b) => a.id.localeCompare(b.id));
 
           if (!placeholderCandidates.length) {
             return { ok: false as const, status: 409, error: 'Event/division is full.' };
@@ -554,8 +554,6 @@ async function updateParticipants(
                 division: slotDivisionId,
                 divisionTypeId: canonical.divisionTypeId ?? null,
                 divisionTypeName: canonical.divisionTypeName ?? null,
-                wins: 0,
-                losses: 0,
                 parentTeamId: canonicalTeamId,
                 updatedAt: now,
               },
@@ -627,14 +625,14 @@ async function updateParticipants(
         const slotTeam = normalizedRosterTeamIds.has(inputTeamId)
           ? await tx.teams.findUnique({
             where: { id: inputTeamId },
-            select: { id: true, seed: true, parentTeamId: true },
+            select: { id: true, name: true, parentTeamId: true },
           })
           : await tx.teams.findFirst({
             where: {
               id: { in: rosterTeamIds },
               parentTeamId: inputTeamId,
             },
-            select: { id: true, seed: true, parentTeamId: true },
+            select: { id: true, name: true, parentTeamId: true },
           });
 
         if (!slotTeam?.id) {
@@ -644,12 +642,10 @@ async function updateParticipants(
         await tx.teams.update({
           where: { id: slotTeam.id },
           data: {
-            name: `Place Holder ${slotTeam.seed}`,
+            name: slotTeam.name?.startsWith('Place Holder') ? slotTeam.name : 'Place Holder',
             captainId: '',
             managerId: '',
             playerIds: [],
-            wins: 0,
-            losses: 0,
             parentTeamId: null,
             divisionTypeId: null,
             divisionTypeName: null,

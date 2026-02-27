@@ -71,11 +71,6 @@ export class Brackets {
       undefined,
       { timeSlots: this.tournament.timeSlots, endTime: this.tournament.end },
     );
-
-    for (const team of Object.values(this.tournament.teams)) {
-      team.losses = 0;
-      team.wins = 0;
-    }
   }
 
   private getMultiplier(match: Match): number {
@@ -156,20 +151,10 @@ export class Brackets {
   }
 
   private prepareTeams(teams: Team[]): Team[] {
-    const ordered = [...teams].sort((left, right) => {
-      const leftSeed = Number.isFinite(left.seed) && left.seed > 0 ? Math.trunc(left.seed) : Number.MAX_SAFE_INTEGER;
-      const rightSeed = Number.isFinite(right.seed) && right.seed > 0 ? Math.trunc(right.seed) : Number.MAX_SAFE_INTEGER;
-      if (leftSeed !== rightSeed) return leftSeed - rightSeed;
-      const leftName = left.name?.trim() ?? '';
-      const rightName = right.name?.trim() ?? '';
-      const nameCompare = leftName.localeCompare(rightName);
-      if (nameCompare !== 0) return nameCompare;
-      return left.id.localeCompare(right.id);
-    });
+    const ordered = [...teams];
 
     this.seededEntrants = ordered.map((team, index) => {
       const normalizedSeed = index + 1;
-      team.seed = normalizedSeed;
       return { team, seed: normalizedSeed };
     });
 
@@ -580,8 +565,8 @@ export class Brackets {
             : (this.tournament.winnerSetCount || 1)
         )
       : 1;
-    const resolvedTeam1Seed = typeof team1Seed === 'number' ? team1Seed : team1?.seed ?? null;
-    const resolvedTeam2Seed = typeof team2Seed === 'number' ? team2Seed : team2?.seed ?? null;
+    const resolvedTeam1Seed = typeof team1Seed === 'number' ? team1Seed : null;
+    const resolvedTeam2Seed = typeof team2Seed === 'number' ? team2Seed : null;
     const newMatch = new Match({
       id: createId(),
       matchId: null,

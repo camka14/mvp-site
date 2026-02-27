@@ -256,35 +256,26 @@ export class PlayingField implements Resource {
 
 export class Team implements Participant {
   id: string;
-  seed: number;
   captainId: string;
   name: string;
   division: Division;
   matches: Match[];
   playerIds: string[];
-  wins: number;
-  losses: number;
 
   constructor(params: {
     id: string;
-    seed: number;
     captainId: string;
     division: Division;
     name?: string;
     matches?: Match[];
     playerIds?: string[];
-    wins?: number;
-    losses?: number;
   }) {
     this.id = params.id;
-    this.seed = params.seed;
     this.captainId = params.captainId;
     this.division = params.division;
     this.name = params.name ?? '';
     this.matches = params.matches ?? [];
     this.playerIds = params.playerIds ?? [];
-    this.wins = params.wins ?? 0;
-    this.losses = params.losses ?? 0;
   }
 
   getGroups(): Group[] {
@@ -445,7 +436,40 @@ export class Match implements SchedulableEvent {
     return matches;
   }
 
+  private seedForTeam(team: Team): number | null {
+    if (this.team1?.id === team.id) {
+      return typeof this.team1Seed === 'number' ? this.team1Seed : null;
+    }
+    if (this.team2?.id === team.id) {
+      return typeof this.team2Seed === 'number' ? this.team2Seed : null;
+    }
+    return null;
+  }
+
+  private winnerRequiresReset(winner: Team): boolean {
+    const leftMatch = this.previousLeftMatch;
+    const rightMatch = this.previousRightMatch;
+    if (!leftMatch || !rightMatch) {
+      return true;
+    }
+    const leftFromLosersBracket = Boolean(leftMatch.losersBracket);
+    const rightFromLosersBracket = Boolean(rightMatch.losersBracket);
+    if (leftFromLosersBracket === rightFromLosersBracket) {
+      return true;
+    }
+    if (this.team1?.id === winner.id) {
+      return leftFromLosersBracket;
+    }
+    if (this.team2?.id === winner.id) {
+      return rightFromLosersBracket;
+    }
+    return true;
+  }
+
   advanceTeams(winner: Team, loser: Team): void {
+    const winnerSeed = this.seedForTeam(winner);
+    const loserSeed = this.seedForTeam(loser);
+
     if (this.winnerNextMatch) {
       winner.matches.push(this.winnerNextMatch);
     }
@@ -453,34 +477,34 @@ export class Match implements SchedulableEvent {
       if (this.loserNextMatch) {
         loser.matches.push(this.loserNextMatch);
       }
-      if (winner.losses === 0) {
+      if (!this.winnerRequiresReset(winner)) {
         return;
       }
       if (this.winnerNextMatch) {
         this.winnerNextMatch.team1 = winner;
         this.winnerNextMatch.team2 = loser;
-        this.winnerNextMatch.team1Seed = winner.seed;
-        this.winnerNextMatch.team2Seed = loser.seed;
+        this.winnerNextMatch.team1Seed = winnerSeed;
+        this.winnerNextMatch.team2Seed = loserSeed;
         this.winnerNextMatch.teamReferee = this.teamReferee;
       }
     } else {
       if (this.winnerNextMatch) {
         if (this.side === Side.LEFT && !this.winnerNextMatch.team1) {
           this.winnerNextMatch.team1 = winner;
-          this.winnerNextMatch.team1Seed = winner.seed;
+          this.winnerNextMatch.team1Seed = winnerSeed;
         } else {
           this.winnerNextMatch.team2 = winner;
-          this.winnerNextMatch.team2Seed = winner.seed;
+          this.winnerNextMatch.team2Seed = winnerSeed;
         }
       }
       if (this.loserNextMatch) {
         loser.matches.push(this.loserNextMatch);
         if (this.side === Side.LEFT && !this.loserNextMatch.team1) {
           this.loserNextMatch.team1 = loser;
-          this.loserNextMatch.team1Seed = loser.seed;
+          this.loserNextMatch.team1Seed = loserSeed;
         } else {
           this.loserNextMatch.team2 = loser;
-          this.loserNextMatch.team2Seed = loser.seed;
+          this.loserNextMatch.team2Seed = loserSeed;
         }
       }
     }

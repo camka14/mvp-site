@@ -8,8 +8,6 @@ export type LeagueStandingsDivisionRow = {
     position: number;
     teamId: string;
     teamName: string;
-    wins: number;
-    losses: number;
     draws: number;
     goalsFor: number;
     goalsAgainst: number;

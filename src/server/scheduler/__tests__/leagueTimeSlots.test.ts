@@ -38,13 +38,10 @@ const buildTeams = (count: number, division: Division) => {
     const id = `team_${i}`;
     teams[id] = new Team({
       id,
-      seed: 0,
       captainId: 'captain',
       division,
       name: `Team ${i}`,
       matches: [],
-      wins: 0,
-      losses: 0,
     });
   }
   return teams;
@@ -56,13 +53,10 @@ const buildTeamsForDivision = (prefix: string, count: number, division: Division
     const id = `${prefix}_team_${i}`;
     teams[id] = new Team({
       id,
-      seed: i,
       captainId: `captain_${prefix}_${i}`,
       division,
       name: `${prefix} Team ${i}`,
       matches: [],
-      wins: 0,
-      losses: 0,
     });
   }
   return teams;

@@ -104,13 +104,7 @@ export default function TeamCard({
               {team.isFull && <Badge variant="light" color="red" size="xs">Full</Badge>}
             </Group>
             <Group gap={6} mt={6}>
-              {team.wins > 0 || team.losses > 0 ? (
-                <Badge size="xs" variant="light" color={team.winRate >= 75 ? 'green' : team.winRate >= 50 ? 'yellow' : 'red'}>
-                  {team.winRate}% win rate
-                </Badge>
-              ) : (
-                <Badge size="xs" variant="light" color="gray">New Team</Badge>
-              )}
+              <Badge size="xs" variant="light" color="gray">Team</Badge>
             </Group>
           </div>
         </Group>
@@ -118,15 +112,7 @@ export default function TeamCard({
       </Group>
 
       {showStats && (
-        <SimpleGrid cols={3} spacing="sm" mb="sm">
-          <div style={{ textAlign: 'center' }}>
-            <Text fw={600}>{team.wins}</Text>
-            <Text size="xs" c="dimmed">Wins</Text>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <Text fw={600}>{team.losses}</Text>
-            <Text size="xs" c="dimmed">Losses</Text>
-          </div>
+        <SimpleGrid cols={1} spacing="sm" mb="sm">
           <div style={{ textAlign: 'center' }}>
             <Text fw={600}>{team.currentSize}/{team.teamSize}</Text>
             <Text size="xs" c="dimmed">Players</Text>

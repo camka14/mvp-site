@@ -15,7 +15,6 @@ import {
     EventState,
     Organization,
     getTeamAvatarUrl,
-    getTeamWinRate,
     toEventPayload,
 } from '@/types';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
@@ -831,9 +830,6 @@ class EventService {
                 : Number.isFinite(Number(row.teamSize))
                     ? Number(row.teamSize)
                     : playerIds.length;
-        const wins = typeof row.wins === 'number' ? row.wins : Number(row.wins ?? 0);
-        const losses = typeof row.losses === 'number' ? row.losses : Number(row.losses ?? 0);
-        const seed = typeof row.seed === 'number' ? row.seed : Number(row.seed ?? 0);
 
         let division: any = 'Open';
         if (row.division && typeof row.division === 'object' && ('name' in row.division || 'id' in row.division)) {
@@ -845,7 +841,6 @@ class EventService {
         const team: Team = {
             $id: String(row.$id ?? row.id ?? ''),
             name: row.name ?? '',
-            seed,
             division,
             divisionTypeId:
                 typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length > 0
@@ -856,8 +851,6 @@ class EventService {
                     ? row.divisionTypeName
                     : undefined,
             sport: typeof row.sport === 'string' ? row.sport : row.sport?.name ?? '',
-            wins,
-            losses,
             playerIds,
             captainId:
                 typeof row.captainId === 'string'
@@ -898,13 +891,11 @@ class EventService {
             profileImageId: row.profileImage || row.profileImageId || row.profileImageID,
             $createdAt: row.$createdAt,
             $updatedAt: row.$updatedAt,
-            winRate: 0,
             currentSize: playerIds.length,
             isFull: playerIds.length >= teamSize,
             avatarUrl: '',
         };
 
-        team.winRate = getTeamWinRate(team);
         team.avatarUrl = getTeamAvatarUrl(team);
         return team;
     }
@@ -1306,7 +1297,7 @@ class EventService {
             match.teamReferee
             && (typeof match.teamRefereeSeed !== 'number' || !Number.isFinite(match.teamRefereeSeed))
         ) {
-            match.teamRefereeSeed = match.teamReferee.seed ?? null;
+            match.teamRefereeSeed = null;
         }
 
         if (resolvedRefereeId && context?.refereesById?.has(resolvedRefereeId)) {

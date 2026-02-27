@@ -356,13 +356,10 @@ export type FieldPayload = Omit<Field, FieldRelationKeys> & {
 export interface Team {
   $id: string;
   name: string;
-  seed: number;
   division: Division | string; // Can be expanded or just ID
   divisionTypeId?: string;
   divisionTypeName?: string;
   sport: string;
-  wins: number;
-  losses: number;
   playerIds: string[];
   captainId: string;
   managerId?: string;
@@ -387,7 +384,6 @@ export interface Team {
   pendingPlayers?: UserData[];
   matches?: Match[]; // Tournament matches this team participates in
   // Computed properties
-  winRate: number;
   currentSize: number;
   isFull: boolean;
   avatarUrl: string;
@@ -766,13 +762,6 @@ export function toMatchPayload(match: Match): MatchPayload {
     const teamRefereeId = extractId(teamReferee);
     if (teamRefereeId) {
       payload.teamRefereeId = teamRefereeId;
-    }
-  }
-
-  if (payload.teamRefereeSeed == null) {
-    const teamRefereeSeed = typeof teamReferee?.seed === 'number' ? teamReferee.seed : null;
-    if (teamRefereeSeed !== null) {
-      payload.teamRefereeSeed = teamRefereeSeed;
     }
   }
 
@@ -1303,12 +1292,6 @@ export function getEventImageUrl(params: {
     return fallback;
   }
   return buildPreviewUrl(params.imageId, resolvedWidth, resolvedHeight);
-}
-
-export function getTeamWinRate(team: Team): number {
-  const totalGames = team.wins + team.losses;
-  if (totalGames === 0) return 0;
-  return Math.round((team.wins / totalGames) * 100);
 }
 
 export function getEventDateTime(event: Event): { date: string; time: string } {

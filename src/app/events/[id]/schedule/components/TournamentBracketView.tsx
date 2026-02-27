@@ -383,10 +383,10 @@ export default function TournamentBracketView({
             }
             const team1Seed = typeof match.team1Seed === 'number'
                 ? match.team1Seed
-                : (typeof match.team1?.seed === 'number' ? match.team1.seed : null);
+                : null;
             const team2Seed = typeof match.team2Seed === 'number'
                 ? match.team2Seed
-                : (typeof match.team2?.seed === 'number' ? match.team2.seed : null);
+                : null;
             if (leftEntrantSlot) {
                 slots.push({ matchId: match.$id, slot: 'team1', seed: team1Seed, playoffDivisionId });
             }

@@ -55,7 +55,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const team1 = new Team({
       id: 'team_1',
-      seed: 1,
       captainId: 'captain_1',
       division,
       name: 'Team 1',
@@ -64,7 +63,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const team2 = new Team({
       id: 'team_2',
-      seed: 2,
       captainId: 'captain_2',
       division,
       name: 'Team 2',
@@ -73,7 +71,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const team3 = new Team({
       id: 'team_3',
-      seed: 3,
       captainId: 'captain_3',
       division,
       name: 'Team 3',
@@ -82,7 +79,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const team4 = new Team({
       id: 'team_4',
-      seed: 4,
       captainId: 'captain_4',
       division,
       name: 'Team 4',
@@ -246,7 +242,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
 
     const team1 = new Team({
       id: 'split_team_1',
-      seed: 1,
       captainId: 'split_captain_1',
       division: playoffDivision,
       name: 'Split Team 1',
@@ -255,7 +250,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const team2 = new Team({
       id: 'split_team_2',
-      seed: 2,
       captainId: 'split_captain_2',
       division: playoffDivision,
       name: 'Split Team 2',
@@ -358,7 +352,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
 
     const teamA = new Team({
       id: 'team_a',
-      seed: 1,
       captainId: 'captain_a',
       division,
       name: 'Team A',
@@ -367,7 +360,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const teamB = new Team({
       id: 'team_b',
-      seed: 2,
       captainId: 'captain_b',
       division,
       name: 'Team B',
@@ -376,7 +368,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const teamC = new Team({
       id: 'team_c',
-      seed: 3,
       captainId: 'captain_c',
       division,
       name: 'Team C',
@@ -385,7 +376,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const teamD = new Team({
       id: 'team_d',
-      seed: 4,
       captainId: 'captain_d',
       division,
       name: 'Team D',
@@ -522,7 +512,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
 
     const team1 = new Team({
       id: 'open_team_1',
-      seed: 1,
       captainId: 'open_captain_1',
       division,
       name: 'Open Team 1',
@@ -531,7 +520,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const team2 = new Team({
       id: 'open_team_2',
-      seed: 2,
       captainId: 'open_captain_2',
       division,
       name: 'Open Team 2',
@@ -540,7 +528,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const team3 = new Team({
       id: 'open_team_3',
-      seed: 3,
       captainId: 'open_captain_3',
       division,
       name: 'Open Team 3',
@@ -549,7 +536,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const team4 = new Team({
       id: 'open_team_4',
-      seed: 4,
       captainId: 'open_captain_4',
       division,
       name: 'Open Team 4',

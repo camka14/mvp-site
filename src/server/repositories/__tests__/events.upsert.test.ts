@@ -1054,7 +1054,7 @@ describe('persistScheduledRosterTeams', () => {
     });
   });
 
-  it('updates existing slot teams with scheduled division/seed during rebuild', async () => {
+  it('updates existing slot teams with scheduled division during rebuild', async () => {
     const divisionA = buildEventDivisionId('event_1', 'a');
     const divisionB = buildEventDivisionId('event_1', 'b');
     const scheduled = {
@@ -1067,23 +1067,17 @@ describe('persistScheduledRosterTeams', () => {
       teams: {
         slot_1: {
           id: 'slot_1',
-          seed: 1,
           captainId: '',
           division: { id: divisionA },
           name: 'Place Holder 1',
           playerIds: [],
-          wins: 0,
-          losses: 0,
         },
         slot_2: {
           id: 'slot_2',
-          seed: 2,
           captainId: '',
           division: { id: divisionB },
           name: 'Place Holder 2',
           playerIds: [],
-          wins: 0,
-          losses: 0,
         },
       },
     } as any;
@@ -1098,8 +1092,8 @@ describe('persistScheduledRosterTeams', () => {
       },
       teams: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'slot_1', seed: 9, division: 'open' },
-          { id: 'slot_2', seed: 2, division: divisionB },
+          { id: 'slot_1', division: 'open' },
+          { id: 'slot_2', division: divisionB },
         ]),
         create: jest.fn().mockResolvedValue(undefined),
         update: jest.fn().mockResolvedValue(undefined),
@@ -1123,7 +1117,6 @@ describe('persistScheduledRosterTeams', () => {
     expect(client.teams.update).toHaveBeenCalledWith({
       where: { id: 'slot_1' },
       data: expect.objectContaining({
-        seed: 1,
         division: divisionA,
       }),
     });

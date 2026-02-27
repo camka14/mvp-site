@@ -327,13 +327,11 @@ const collectConnectedMatchIds = (matches: Record<string, Match>, rootMatchId: s
 };
 
 
-type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
+type StandingsSortField = 'team' | 'draws' | 'points';
 
 type StandingsRow = {
   teamId: string;
   teamName: string;
-  wins: number;
-  losses: number;
   draws: number;
   goalsFor: number;
   goalsAgainst: number;
@@ -2734,8 +2732,6 @@ function EventScheduleContent() {
       return standingsDivisionData.standings.map((row) => ({
         teamId: row.teamId,
         teamName: row.teamName,
-        wins: row.wins,
-        losses: row.losses,
         draws: row.draws,
         goalsFor: row.goalsFor,
         goalsAgainst: row.goalsAgainst,
@@ -2778,8 +2774,6 @@ function EventScheduleContent() {
         rows.set(teamId, {
           teamId,
           teamName: resolved?.name || `Team ${teamId.slice(0, 6)}`,
-          wins: 0,
-          losses: 0,
           draws: 0,
           goalsFor: 0,
           goalsAgainst: 0,
@@ -2865,26 +2859,25 @@ function EventScheduleContent() {
       row1.goalsAgainst += team2Total;
       row2.goalsFor += team2Total;
       row2.goalsAgainst += team1Total;
+      row1.matchesPlayed += 1;
+      row2.matchesPlayed += 1;
 
       if (outcome === 'team1') {
-        row1.wins += 1;
-        row2.losses += 1;
+        row1.points += leagueScoring.pointsForWin;
+        row2.points += leagueScoring.pointsForLoss;
       } else if (outcome === 'team2') {
-        row2.wins += 1;
-        row1.losses += 1;
+        row2.points += leagueScoring.pointsForWin;
+        row1.points += leagueScoring.pointsForLoss;
       } else {
         row1.draws += 1;
         row2.draws += 1;
+        row1.points += leagueScoring.pointsForDraw;
+        row2.points += leagueScoring.pointsForDraw;
       }
     });
 
     rows.forEach((row) => {
-      row.matchesPlayed = row.wins + row.losses + row.draws;
       row.goalDifference = row.goalsFor - row.goalsAgainst;
-      row.points =
-        row.wins * leagueScoring.pointsForWin +
-        row.draws * leagueScoring.pointsForDraw +
-        row.losses * leagueScoring.pointsForLoss;
       row.basePoints = row.points;
       row.finalPoints = row.points;
       row.pointsDelta = 0;
@@ -2937,12 +2930,6 @@ function EventScheduleContent() {
         case 'team':
           comparison = a.teamName.localeCompare(b.teamName);
           break;
-        case 'wins':
-          comparison = a.wins - b.wins;
-          break;
-        case 'losses':
-          comparison = a.losses - b.losses;
-          break;
         case 'draws':
           comparison = a.draws - b.draws;
           break;
@@ -2958,7 +2945,6 @@ function EventScheduleContent() {
 
       const tieBreakers = [
         (x: StandingsRow, y: StandingsRow) => y.points - x.points,
-        (x: StandingsRow, y: StandingsRow) => y.wins - x.wins,
         (x: StandingsRow, y: StandingsRow) => y.goalDifference - x.goalDifference,
         (x: StandingsRow, y: StandingsRow) => y.goalsFor - x.goalsFor,
         (x: StandingsRow, y: StandingsRow) => x.teamName.localeCompare(y.teamName),
@@ -4894,24 +4880,6 @@ function EventScheduleContent() {
                               <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
                                 <UnstyledButton
                                   className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('wins')}
-                                >
-                                  W
-                                  {renderSortIndicator('wins')}
-                                </UnstyledButton>
-                              </Table.Th>
-                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
-                                  onClick={() => handleStandingsSortChange('losses')}
-                                >
-                                  L
-                                  {renderSortIndicator('losses')}
-                                </UnstyledButton>
-                              </Table.Th>
-                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <UnstyledButton
-                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
                                   onClick={() => handleStandingsSortChange('draws')}
                                 >
                                   D
@@ -4941,8 +4909,6 @@ function EventScheduleContent() {
                                 <Table.Tr key={row.teamId}>
                                   <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
                                   <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
-                                  <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
-                                  <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
                                   <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
                                   <Table.Td className="text-right text-sm font-semibold text-gray-900">
                                     {canManageStandings ? (

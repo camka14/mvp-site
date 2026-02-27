@@ -952,14 +952,11 @@ const buildTeams = (
       : fallbackDivision);
     teams[row.id] = new Team({
       id: row.id,
-      seed: row.seed ?? 0,
       captainId: row.captainId ?? '',
       division,
       name: row.name ?? '',
       matches: [],
       playerIds: ensureArray(row.playerIds),
-      wins: row.wins ?? 0,
-      losses: row.losses ?? 0,
     });
   }
   return teams;
@@ -1097,10 +1094,10 @@ const buildMatches = (
       locked: Boolean(row.locked),
       team1Seed: typeof row.team1Seed === 'number'
         ? row.team1Seed
-        : (row.team1Id ? teams[row.team1Id]?.seed ?? null : null),
+        : null,
       team2Seed: typeof row.team2Seed === 'number'
         ? row.team2Seed
-        : (row.team2Id ? teams[row.team2Id]?.seed ?? null : null),
+        : null,
       team1Points: ensureArray(row.team1Points),
       team2Points: ensureArray(row.team2Points),
       start: row.start instanceof Date ? row.start : new Date(row.start),
@@ -1333,10 +1330,10 @@ export const saveMatches = async (
       end: match.end,
       locked: Boolean(match.locked),
       team1Seed: isBracketMatch
-        ? (typeof match.team1Seed === 'number' ? match.team1Seed : (match.team1?.seed ?? null))
+        ? (typeof match.team1Seed === 'number' ? match.team1Seed : null)
         : null,
       team2Seed: isBracketMatch
-        ? (typeof match.team2Seed === 'number' ? match.team2Seed : (match.team2?.seed ?? null))
+        ? (typeof match.team2Seed === 'number' ? match.team2Seed : null)
         : null,
       division: match.division?.id ?? null,
       team1Points: match.team1Points ?? [],
@@ -1450,7 +1447,6 @@ export const persistScheduledRosterTeams = async (
     where: { id: { in: rosterTeamIds } },
     select: {
       id: true,
-      seed: true,
       division: true,
     },
   });
@@ -1464,9 +1460,6 @@ export const persistScheduledRosterTeams = async (
     const existingTeam = existingTeamById.get(teamId);
     const captainId = String(scheduledTeam.captainId ?? '');
     const playerIds = ensureStringArray(scheduledTeam.playerIds);
-    const seed = typeof scheduledTeam.seed === 'number' && Number.isFinite(scheduledTeam.seed)
-      ? Math.trunc(scheduledTeam.seed)
-      : 0;
     const divisionId = resolveScheduledTeamDivisionId(scheduledTeam);
     const teamSize = eventTeamSizeLimit ?? playerIds.length;
 
@@ -1476,13 +1469,11 @@ export const persistScheduledRosterTeams = async (
           id: teamId,
           createdAt: now,
           updatedAt: now,
-          seed,
+          seed: 0,
           playerIds,
           division: divisionId,
           divisionTypeId: null,
           divisionTypeName: null,
-          wins: typeof scheduledTeam.wins === 'number' && Number.isFinite(scheduledTeam.wins) ? Math.trunc(scheduledTeam.wins) : 0,
-          losses: typeof scheduledTeam.losses === 'number' && Number.isFinite(scheduledTeam.losses) ? Math.trunc(scheduledTeam.losses) : 0,
           name: scheduledTeam.name ?? '',
           captainId,
           managerId: captainId || '',
@@ -1500,14 +1491,10 @@ export const persistScheduledRosterTeams = async (
 
     const existingDivision = normalizeDivisionKey(existingTeam.division);
     const nextDivision = normalizeDivisionKey(divisionId);
-    const existingSeed = typeof existingTeam.seed === 'number' && Number.isFinite(existingTeam.seed)
-      ? Math.trunc(existingTeam.seed)
-      : 0;
-    if (existingSeed !== seed || existingDivision !== nextDivision) {
+    if (existingDivision !== nextDivision) {
       await client.teams.update({
         where: { id: teamId },
         data: {
-          seed,
           division: divisionId,
           updatedAt: now,
         },
@@ -1580,16 +1567,8 @@ export const saveEventSchedule = async (event: League | Tournament, client: Pris
 };
 
 export const saveTeamRecords = async (teams: Team[], client: PrismaLike = prisma) => {
-  for (const team of teams) {
-    await client.teams.update({
-      where: { id: team.id },
-      data: {
-        wins: team.wins,
-        losses: team.losses,
-        updatedAt: new Date(),
-      },
-    });
-  }
+  void teams;
+  void client;
 };
 
 export const syncEventDivisions = async (
@@ -2569,13 +2548,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: teamId },
       create: {
         id: teamId,
-        seed: team.seed ?? 0,
+        seed: 0,
         playerIds: ensureArray(team.playerIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,
         divisionTypeName: normalizedTeamDivisionTypeName,
-        wins: team.wins ?? 0,
-        losses: team.losses ?? 0,
         name: team.name ?? null,
         captainId: team.captainId ?? '',
         managerId: team.managerId ?? team.captainId ?? '',
@@ -2590,13 +2567,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         updatedAt: new Date(),
       },
       update: {
-        seed: team.seed ?? 0,
         playerIds: ensureArray(team.playerIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,
         divisionTypeName: normalizedTeamDivisionTypeName,
-        wins: team.wins ?? 0,
-        losses: team.losses ?? 0,
         name: team.name ?? null,
         captainId: team.captainId ?? '',
         managerId: team.managerId ?? team.captainId ?? '',
