@@ -115,10 +115,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       )
       : [];
   }
-  if (payload.scheduledFieldIds !== undefined) {
-    const normalized = normalizeFieldIds(payload.scheduledFieldIds);
+  if (payload.scheduledFieldIds !== undefined || payload.scheduledFieldId !== undefined) {
+    const normalized = normalizeFieldIds([
+      ...(Array.isArray(payload.scheduledFieldIds) ? payload.scheduledFieldIds : []),
+      ...(typeof payload.scheduledFieldId === 'string' ? [payload.scheduledFieldId] : []),
+    ]);
+    payload.scheduledFieldIds = normalized;
     payload.scheduledFieldId = normalized[0] ?? null;
-    delete payload.scheduledFieldIds;
   }
   let payloadDivisions: string[] | null = null;
   if (payload.divisions !== undefined) {
@@ -130,9 +133,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       dayOfWeek: typeof payload.dayOfWeek === 'number' ? payload.dayOfWeek : undefined,
       daysOfWeek: Array.isArray(payload.daysOfWeek) ? payload.daysOfWeek : undefined,
     });
+    payload.daysOfWeek = normalizedDays;
     payload.dayOfWeek = normalizedDays[0] ?? null;
   }
-  delete payload.daysOfWeek;
   const updatedAt = new Date();
 
   const updated = await prisma.timeSlots.update({
@@ -146,12 +149,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     dayOfWeek: updated.dayOfWeek ?? undefined,
     daysOfWeek: (updated as any).daysOfWeek ?? undefined,
   });
+  const normalizedFieldIds = normalizeFieldIds(
+    (updated as any).scheduledFieldIds
+      ?? (updated.scheduledFieldId ? [updated.scheduledFieldId] : []),
+  );
   const normalizedDivisions = payloadDivisions ?? normalizeDivisionKeys((updated as any).divisions);
   return NextResponse.json(withLegacyFields({
     ...updated,
     dayOfWeek: normalizedDays[0] ?? updated.dayOfWeek ?? null,
     daysOfWeek: normalizedDays,
-    scheduledFieldIds: updated.scheduledFieldId ? [updated.scheduledFieldId] : [],
+    scheduledFieldId: normalizedFieldIds[0] ?? null,
+    scheduledFieldIds: normalizedFieldIds,
     divisions: normalizedDivisions,
   } as any), { status: 200 });
 }

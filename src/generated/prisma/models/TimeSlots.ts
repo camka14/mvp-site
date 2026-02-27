@@ -28,6 +28,7 @@ export type AggregateTimeSlots = {
 
 export type TimeSlotsAvgAggregateOutputType = {
   dayOfWeek: number | null
+  daysOfWeek: number | null
   startTimeMinutes: number | null
   endTimeMinutes: number | null
   price: number | null
@@ -35,6 +36,7 @@ export type TimeSlotsAvgAggregateOutputType = {
 
 export type TimeSlotsSumAggregateOutputType = {
   dayOfWeek: number | null
+  daysOfWeek: number[]
   startTimeMinutes: number | null
   endTimeMinutes: number | null
   price: number | null
@@ -73,12 +75,14 @@ export type TimeSlotsCountAggregateOutputType = {
   createdAt: number
   updatedAt: number
   dayOfWeek: number
+  daysOfWeek: number
   startTimeMinutes: number
   endTimeMinutes: number
   startDate: number
   repeating: number
   endDate: number
   scheduledFieldId: number
+  scheduledFieldIds: number
   price: number
   divisions: number
   requiredTemplateIds: number
@@ -88,6 +92,7 @@ export type TimeSlotsCountAggregateOutputType = {
 
 export type TimeSlotsAvgAggregateInputType = {
   dayOfWeek?: true
+  daysOfWeek?: true
   startTimeMinutes?: true
   endTimeMinutes?: true
   price?: true
@@ -95,6 +100,7 @@ export type TimeSlotsAvgAggregateInputType = {
 
 export type TimeSlotsSumAggregateInputType = {
   dayOfWeek?: true
+  daysOfWeek?: true
   startTimeMinutes?: true
   endTimeMinutes?: true
   price?: true
@@ -133,12 +139,14 @@ export type TimeSlotsCountAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   dayOfWeek?: true
+  daysOfWeek?: true
   startTimeMinutes?: true
   endTimeMinutes?: true
   startDate?: true
   repeating?: true
   endDate?: true
   scheduledFieldId?: true
+  scheduledFieldIds?: true
   price?: true
   divisions?: true
   requiredTemplateIds?: true
@@ -236,12 +244,14 @@ export type TimeSlotsGroupByOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   dayOfWeek: number | null
+  daysOfWeek: number[]
   startTimeMinutes: number | null
   endTimeMinutes: number | null
   startDate: Date
   repeating: boolean
   endDate: Date | null
   scheduledFieldId: string | null
+  scheduledFieldIds: string[]
   price: number | null
   divisions: string[]
   requiredTemplateIds: string[]
@@ -275,12 +285,14 @@ export type TimeSlotsWhereInput = {
   createdAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   dayOfWeek?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
+  daysOfWeek?: Prisma.IntNullableListFilter<"TimeSlots">
   startTimeMinutes?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   endTimeMinutes?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   startDate?: Prisma.DateTimeFilter<"TimeSlots"> | Date | string
   repeating?: Prisma.BoolFilter<"TimeSlots"> | boolean
   endDate?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   scheduledFieldId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  scheduledFieldIds?: Prisma.StringNullableListFilter<"TimeSlots">
   price?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
@@ -291,12 +303,14 @@ export type TimeSlotsOrderByWithRelationInput = {
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dayOfWeek?: Prisma.SortOrderInput | Prisma.SortOrder
+  daysOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
   endTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
   startDate?: Prisma.SortOrder
   repeating?: Prisma.SortOrder
   endDate?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduledFieldId?: Prisma.SortOrderInput | Prisma.SortOrder
+  scheduledFieldIds?: Prisma.SortOrder
   price?: Prisma.SortOrderInput | Prisma.SortOrder
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
@@ -310,12 +324,14 @@ export type TimeSlotsWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   dayOfWeek?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
+  daysOfWeek?: Prisma.IntNullableListFilter<"TimeSlots">
   startTimeMinutes?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   endTimeMinutes?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   startDate?: Prisma.DateTimeFilter<"TimeSlots"> | Date | string
   repeating?: Prisma.BoolFilter<"TimeSlots"> | boolean
   endDate?: Prisma.DateTimeNullableFilter<"TimeSlots"> | Date | string | null
   scheduledFieldId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
+  scheduledFieldIds?: Prisma.StringNullableListFilter<"TimeSlots">
   price?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
@@ -326,12 +342,14 @@ export type TimeSlotsOrderByWithAggregationInput = {
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dayOfWeek?: Prisma.SortOrderInput | Prisma.SortOrder
+  daysOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
   endTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
   startDate?: Prisma.SortOrder
   repeating?: Prisma.SortOrder
   endDate?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduledFieldId?: Prisma.SortOrderInput | Prisma.SortOrder
+  scheduledFieldIds?: Prisma.SortOrder
   price?: Prisma.SortOrderInput | Prisma.SortOrder
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
@@ -350,12 +368,14 @@ export type TimeSlotsScalarWhereWithAggregatesInput = {
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"TimeSlots"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"TimeSlots"> | Date | string | null
   dayOfWeek?: Prisma.IntNullableWithAggregatesFilter<"TimeSlots"> | number | null
+  daysOfWeek?: Prisma.IntNullableListFilter<"TimeSlots">
   startTimeMinutes?: Prisma.IntNullableWithAggregatesFilter<"TimeSlots"> | number | null
   endTimeMinutes?: Prisma.IntNullableWithAggregatesFilter<"TimeSlots"> | number | null
   startDate?: Prisma.DateTimeWithAggregatesFilter<"TimeSlots"> | Date | string
   repeating?: Prisma.BoolWithAggregatesFilter<"TimeSlots"> | boolean
   endDate?: Prisma.DateTimeNullableWithAggregatesFilter<"TimeSlots"> | Date | string | null
   scheduledFieldId?: Prisma.StringNullableWithAggregatesFilter<"TimeSlots"> | string | null
+  scheduledFieldIds?: Prisma.StringNullableListFilter<"TimeSlots">
   price?: Prisma.IntNullableWithAggregatesFilter<"TimeSlots"> | number | null
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
@@ -366,12 +386,14 @@ export type TimeSlotsCreateInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   dayOfWeek?: number | null
+  daysOfWeek?: Prisma.TimeSlotsCreatedaysOfWeekInput | number[]
   startTimeMinutes?: number | null
   endTimeMinutes?: number | null
   startDate: Date | string
   repeating: boolean
   endDate?: Date | string | null
   scheduledFieldId?: string | null
+  scheduledFieldIds?: Prisma.TimeSlotsCreatescheduledFieldIdsInput | string[]
   price?: number | null
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
@@ -382,12 +404,14 @@ export type TimeSlotsUncheckedCreateInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   dayOfWeek?: number | null
+  daysOfWeek?: Prisma.TimeSlotsCreatedaysOfWeekInput | number[]
   startTimeMinutes?: number | null
   endTimeMinutes?: number | null
   startDate: Date | string
   repeating: boolean
   endDate?: Date | string | null
   scheduledFieldId?: string | null
+  scheduledFieldIds?: Prisma.TimeSlotsCreatescheduledFieldIdsInput | string[]
   price?: number | null
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
@@ -398,12 +422,14 @@ export type TimeSlotsUpdateInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dayOfWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  daysOfWeek?: Prisma.TimeSlotsUpdatedaysOfWeekInput | number[]
   startTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   endTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   startDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repeating?: Prisma.BoolFieldUpdateOperationsInput | boolean
   endDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   scheduledFieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  scheduledFieldIds?: Prisma.TimeSlotsUpdatescheduledFieldIdsInput | string[]
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
@@ -414,12 +440,14 @@ export type TimeSlotsUncheckedUpdateInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dayOfWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  daysOfWeek?: Prisma.TimeSlotsUpdatedaysOfWeekInput | number[]
   startTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   endTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   startDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repeating?: Prisma.BoolFieldUpdateOperationsInput | boolean
   endDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   scheduledFieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  scheduledFieldIds?: Prisma.TimeSlotsUpdatescheduledFieldIdsInput | string[]
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
@@ -430,12 +458,14 @@ export type TimeSlotsCreateManyInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   dayOfWeek?: number | null
+  daysOfWeek?: Prisma.TimeSlotsCreatedaysOfWeekInput | number[]
   startTimeMinutes?: number | null
   endTimeMinutes?: number | null
   startDate: Date | string
   repeating: boolean
   endDate?: Date | string | null
   scheduledFieldId?: string | null
+  scheduledFieldIds?: Prisma.TimeSlotsCreatescheduledFieldIdsInput | string[]
   price?: number | null
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
@@ -446,12 +476,14 @@ export type TimeSlotsUpdateManyMutationInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dayOfWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  daysOfWeek?: Prisma.TimeSlotsUpdatedaysOfWeekInput | number[]
   startTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   endTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   startDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repeating?: Prisma.BoolFieldUpdateOperationsInput | boolean
   endDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   scheduledFieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  scheduledFieldIds?: Prisma.TimeSlotsUpdatescheduledFieldIdsInput | string[]
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
@@ -462,12 +494,14 @@ export type TimeSlotsUncheckedUpdateManyInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dayOfWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  daysOfWeek?: Prisma.TimeSlotsUpdatedaysOfWeekInput | number[]
   startTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   endTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   startDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repeating?: Prisma.BoolFieldUpdateOperationsInput | boolean
   endDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   scheduledFieldId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  scheduledFieldIds?: Prisma.TimeSlotsUpdatescheduledFieldIdsInput | string[]
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
@@ -478,12 +512,14 @@ export type TimeSlotsCountOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   dayOfWeek?: Prisma.SortOrder
+  daysOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrder
   endTimeMinutes?: Prisma.SortOrder
   startDate?: Prisma.SortOrder
   repeating?: Prisma.SortOrder
   endDate?: Prisma.SortOrder
   scheduledFieldId?: Prisma.SortOrder
+  scheduledFieldIds?: Prisma.SortOrder
   price?: Prisma.SortOrder
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
@@ -491,6 +527,7 @@ export type TimeSlotsCountOrderByAggregateInput = {
 
 export type TimeSlotsAvgOrderByAggregateInput = {
   dayOfWeek?: Prisma.SortOrder
+  daysOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrder
   endTimeMinutes?: Prisma.SortOrder
   price?: Prisma.SortOrder
@@ -526,9 +563,18 @@ export type TimeSlotsMinOrderByAggregateInput = {
 
 export type TimeSlotsSumOrderByAggregateInput = {
   dayOfWeek?: Prisma.SortOrder
+  daysOfWeek?: Prisma.SortOrder
   startTimeMinutes?: Prisma.SortOrder
   endTimeMinutes?: Prisma.SortOrder
   price?: Prisma.SortOrder
+}
+
+export type TimeSlotsCreatedaysOfWeekInput = {
+  set: number[]
+}
+
+export type TimeSlotsCreatescheduledFieldIdsInput = {
+  set: string[]
 }
 
 export type TimeSlotsCreatedivisionsInput = {
@@ -537,6 +583,16 @@ export type TimeSlotsCreatedivisionsInput = {
 
 export type TimeSlotsCreaterequiredTemplateIdsInput = {
   set: string[]
+}
+
+export type TimeSlotsUpdatedaysOfWeekInput = {
+  set?: number[]
+  push?: number | number[]
+}
+
+export type TimeSlotsUpdatescheduledFieldIdsInput = {
+  set?: string[]
+  push?: string | string[]
 }
 
 export type TimeSlotsUpdatedivisionsInput = {
@@ -556,12 +612,14 @@ export type TimeSlotsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   createdAt?: boolean
   updatedAt?: boolean
   dayOfWeek?: boolean
+  daysOfWeek?: boolean
   startTimeMinutes?: boolean
   endTimeMinutes?: boolean
   startDate?: boolean
   repeating?: boolean
   endDate?: boolean
   scheduledFieldId?: boolean
+  scheduledFieldIds?: boolean
   price?: boolean
   divisions?: boolean
   requiredTemplateIds?: boolean
@@ -572,12 +630,14 @@ export type TimeSlotsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   createdAt?: boolean
   updatedAt?: boolean
   dayOfWeek?: boolean
+  daysOfWeek?: boolean
   startTimeMinutes?: boolean
   endTimeMinutes?: boolean
   startDate?: boolean
   repeating?: boolean
   endDate?: boolean
   scheduledFieldId?: boolean
+  scheduledFieldIds?: boolean
   price?: boolean
   divisions?: boolean
   requiredTemplateIds?: boolean
@@ -588,12 +648,14 @@ export type TimeSlotsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   createdAt?: boolean
   updatedAt?: boolean
   dayOfWeek?: boolean
+  daysOfWeek?: boolean
   startTimeMinutes?: boolean
   endTimeMinutes?: boolean
   startDate?: boolean
   repeating?: boolean
   endDate?: boolean
   scheduledFieldId?: boolean
+  scheduledFieldIds?: boolean
   price?: boolean
   divisions?: boolean
   requiredTemplateIds?: boolean
@@ -604,18 +666,20 @@ export type TimeSlotsSelectScalar = {
   createdAt?: boolean
   updatedAt?: boolean
   dayOfWeek?: boolean
+  daysOfWeek?: boolean
   startTimeMinutes?: boolean
   endTimeMinutes?: boolean
   startDate?: boolean
   repeating?: boolean
   endDate?: boolean
   scheduledFieldId?: boolean
+  scheduledFieldIds?: boolean
   price?: boolean
   divisions?: boolean
   requiredTemplateIds?: boolean
 }
 
-export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "repeating" | "endDate" | "scheduledFieldId" | "price" | "divisions" | "requiredTemplateIds", ExtArgs["result"]["timeSlots"]>
+export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "daysOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "repeating" | "endDate" | "scheduledFieldId" | "scheduledFieldIds" | "price" | "divisions" | "requiredTemplateIds", ExtArgs["result"]["timeSlots"]>
 
 export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "TimeSlots"
@@ -625,12 +689,14 @@ export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     createdAt: Date | null
     updatedAt: Date | null
     dayOfWeek: number | null
+    daysOfWeek: number[]
     startTimeMinutes: number | null
     endTimeMinutes: number | null
     startDate: Date
     repeating: boolean
     endDate: Date | null
     scheduledFieldId: string | null
+    scheduledFieldIds: string[]
     price: number | null
     divisions: string[]
     requiredTemplateIds: string[]
@@ -1061,12 +1127,14 @@ export interface TimeSlotsFieldRefs {
   readonly createdAt: Prisma.FieldRef<"TimeSlots", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"TimeSlots", 'DateTime'>
   readonly dayOfWeek: Prisma.FieldRef<"TimeSlots", 'Int'>
+  readonly daysOfWeek: Prisma.FieldRef<"TimeSlots", 'Int[]'>
   readonly startTimeMinutes: Prisma.FieldRef<"TimeSlots", 'Int'>
   readonly endTimeMinutes: Prisma.FieldRef<"TimeSlots", 'Int'>
   readonly startDate: Prisma.FieldRef<"TimeSlots", 'DateTime'>
   readonly repeating: Prisma.FieldRef<"TimeSlots", 'Boolean'>
   readonly endDate: Prisma.FieldRef<"TimeSlots", 'DateTime'>
   readonly scheduledFieldId: Prisma.FieldRef<"TimeSlots", 'String'>
+  readonly scheduledFieldIds: Prisma.FieldRef<"TimeSlots", 'String[]'>
   readonly price: Prisma.FieldRef<"TimeSlots", 'Int'>
   readonly divisions: Prisma.FieldRef<"TimeSlots", 'String[]'>
   readonly requiredTemplateIds: Prisma.FieldRef<"TimeSlots", 'String[]'>

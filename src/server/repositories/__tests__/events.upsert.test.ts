@@ -83,7 +83,7 @@ const baseEventPayload = () => ({
 const divisionId = (token: string) => buildEventDivisionId('event_1', token);
 
 describe('upsertEventFromPayload', () => {
-  it('fans out multi-day slot payloads into one persisted slot per day', async () => {
+  it('persists multi-day slot payloads as one canonical row', async () => {
     const client = createMockClient();
     const payload = {
       ...baseEventPayload(),
@@ -107,23 +107,24 @@ describe('upsertEventFromPayload', () => {
     const eventId = await upsertEventFromPayload(payload, client as any);
 
     expect(eventId).toBe('event_1');
-    expect(client.timeSlots.upsert).toHaveBeenCalledTimes(2);
+    expect(client.timeSlots.upsert).toHaveBeenCalledTimes(1);
     const persistedSlotIds = client.timeSlots.upsert.mock.calls
       .map((call) => call[0].where.id)
       .sort();
-    expect(persistedSlotIds).toEqual(['slot_multi__d1', 'slot_multi__d3']);
+    expect(persistedSlotIds).toEqual(['slot_multi']);
 
-    const persistedDays = client.timeSlots.upsert.mock.calls
-      .map((call) => call[0].create.dayOfWeek)
-      .sort((a: number, b: number) => a - b);
-    expect(persistedDays).toEqual([1, 3]);
+    const persistedSlot = client.timeSlots.upsert.mock.calls[0][0].create;
+    expect(persistedSlot.dayOfWeek).toBe(1);
+    expect(persistedSlot.daysOfWeek).toEqual([1, 3]);
+    expect(persistedSlot.scheduledFieldId).toBe('field_1');
+    expect(persistedSlot.scheduledFieldIds).toEqual(['field_1']);
     const persistedDivisions = client.timeSlots.upsert.mock.calls
       .map((_, index) => client.$executeRaw.mock.calls[index]?.[1]);
-    expect(persistedDivisions).toEqual([[divisionId('open')], [divisionId('open')]]);
+    expect(persistedDivisions).toEqual([[divisionId('open')]]);
 
     const eventUpsertArg = client.events.upsert.mock.calls[0][0];
-    expect(eventUpsertArg.create.timeSlotIds).toEqual(['slot_multi__d1', 'slot_multi__d3']);
-    expect(eventUpsertArg.update.timeSlotIds).toEqual(['slot_multi__d1', 'slot_multi__d3']);
+    expect(eventUpsertArg.create.timeSlotIds).toEqual(['slot_multi']);
+    expect(eventUpsertArg.update.timeSlotIds).toEqual(['slot_multi']);
   });
 
   it('persists both slots when incoming payload contains duplicate slot ids', async () => {
@@ -284,7 +285,7 @@ describe('upsertEventFromPayload', () => {
     expect(persistedSlotDivisions).toEqual([targetOpenDivisionId]);
   });
 
-  it('fans out each multi-field slot/day combination and derives event fieldIds from slot assignments', async () => {
+  it('persists each multi-field slot/day selection as one canonical row and derives event fieldIds from slot assignments', async () => {
     const client = createMockClient();
     const payload = {
       ...baseEventPayload(),
@@ -311,26 +312,21 @@ describe('upsertEventFromPayload', () => {
 
     await upsertEventFromPayload(payload, client as any);
 
-    expect(client.timeSlots.upsert).toHaveBeenCalledTimes(4);
+    expect(client.timeSlots.upsert).toHaveBeenCalledTimes(1);
     const persistedSlotIds = client.timeSlots.upsert.mock.calls
       .map((call) => call[0].where.id)
       .sort();
-    expect(persistedSlotIds).toEqual([
-      'slot_multi__d1__ffield_1',
-      'slot_multi__d1__ffield_2',
-      'slot_multi__d3__ffield_1',
-      'slot_multi__d3__ffield_2',
-    ]);
+    expect(persistedSlotIds).toEqual(['slot_multi']);
+    const persistedSlot = client.timeSlots.upsert.mock.calls[0][0].create;
+    expect(persistedSlot.dayOfWeek).toBe(1);
+    expect(persistedSlot.daysOfWeek).toEqual([1, 3]);
+    expect(persistedSlot.scheduledFieldId).toBe('field_1');
+    expect(persistedSlot.scheduledFieldIds).toEqual(['field_1', 'field_2']);
 
     const eventUpsertArg = client.events.upsert.mock.calls[0][0];
     expect(eventUpsertArg.create.fieldIds.sort()).toEqual(['field_1', 'field_2']);
     expect(eventUpsertArg.update.fieldIds.sort()).toEqual(['field_1', 'field_2']);
-    expect(eventUpsertArg.create.timeSlotIds.sort()).toEqual([
-      'slot_multi__d1__ffield_1',
-      'slot_multi__d1__ffield_2',
-      'slot_multi__d3__ffield_1',
-      'slot_multi__d3__ffield_2',
-    ]);
+    expect(eventUpsertArg.create.timeSlotIds).toEqual(['slot_multi']);
   });
 
   it('falls back local field divisions to event divisions when field divisions are omitted', async () => {

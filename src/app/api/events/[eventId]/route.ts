@@ -22,6 +22,7 @@ import {
   extractDivisionTokenFromId,
   inferDivisionDetails,
 } from '@/lib/divisionTypes';
+import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeSlotCanonical';
 
 export const dynamic = 'force-dynamic';
 
@@ -340,17 +341,6 @@ const normalizeTeamIds = (value: unknown): string[] => {
         .filter((entry) => entry.length > 0),
     ),
   );
-};
-
-const normalizeSlotFieldIds = (slot: Record<string, unknown>): string[] => {
-  const fromList = normalizeFieldIds(slot.scheduledFieldIds);
-  if (fromList.length) {
-    return fromList;
-  }
-  if (typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0) {
-    return [slot.scheduledFieldId];
-  }
-  return [];
 };
 
 const normalizeFieldNumber = (value: unknown, fallback: number): number => {
@@ -959,64 +949,6 @@ const getDivisionKeysForEventKind = async (
     .filter((value): value is string => Boolean(value));
 };
 
-const normalizeSlotDays = (input: { dayOfWeek?: unknown; daysOfWeek?: unknown }): number[] => {
-  const source = Array.isArray(input.daysOfWeek) && input.daysOfWeek.length
-    ? input.daysOfWeek
-    : input.dayOfWeek !== undefined
-      ? [input.dayOfWeek]
-      : [];
-
-  return Array.from(
-    new Set(
-      source
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
-    ),
-  ).sort((a, b) => a - b);
-};
-
-const normalizeSlotBaseId = (value: string): string => {
-  return value
-    .replace(/__d[0-6]__f.+$/, '')
-    .replace(/__f.+$/, '')
-    .replace(/__d[0-6](?:_\d+)?$/, '');
-};
-
-const buildExpandedSlotId = (
-  sourceId: string,
-  baseSlotId: string,
-  day: number,
-  fieldId: string | null,
-  dayCount: number,
-  fieldCount: number,
-): string => {
-  if (dayCount === 1 && fieldCount === 1) {
-    return sourceId;
-  }
-  if (dayCount > 1 && fieldCount === 1) {
-    return `${baseSlotId}__d${day}`;
-  }
-  if (dayCount === 1 && fieldCount > 1) {
-    return `${baseSlotId}__f${fieldId}`;
-  }
-  return `${baseSlotId}__d${day}__f${fieldId}`;
-};
-
-const ensureUniqueExpandedSlotIds = <T extends { id: string }>(slots: T[]): T[] => {
-  const seen = new Map<string, number>();
-  return slots.map((slot) => {
-    const count = seen.get(slot.id) ?? 0;
-    seen.set(slot.id, count + 1);
-    if (count === 0) {
-      return slot;
-    }
-    return {
-      ...slot,
-      id: `${slot.id}__dup${count}`,
-    };
-  });
-};
-
 const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   const normalized = message.toLowerCase();
@@ -1047,150 +979,6 @@ const persistTimeSlotDivisions = async (
     }
     throw error;
   }
-};
-
-type ExpandedTimeSlotInput = {
-  id: string;
-  dayOfWeek: number;
-  startTimeMinutes: number | null;
-  endTimeMinutes: number | null;
-  startDate: Date;
-  endDate: Date | null;
-  repeating: boolean;
-  scheduledFieldId: string | null;
-  price: number | null;
-  divisions: string[];
-  requiredTemplateIds: string[];
-};
-
-const expandTimeSlotsForUpdate = (
-  eventId: string,
-  slots: Array<Record<string, any>>,
-  fallbackStartDate: Date,
-  fallbackDivisionKeys: string[],
-  enforceAllDivisions: boolean,
-  useDivisionIds: boolean,
-): ExpandedTimeSlotInput[] => {
-  return ensureUniqueExpandedSlotIds(slots.flatMap((slot, index) => {
-    const sourceId = typeof slot.$id === 'string' && slot.$id.length > 0
-      ? slot.$id
-      : typeof slot.id === 'string' && slot.id.length > 0
-        ? slot.id
-        : `${eventId}__slot_${index + 1}`;
-    const baseSlotId = normalizeSlotBaseId(sourceId);
-    const repeating = typeof slot.repeating === 'boolean' ? slot.repeating : true;
-    const startDate = parseDateInput(slot.startDate) ?? fallbackStartDate;
-    const parsedEndDate = slot.endDate === null ? null : parseDateInput(slot.endDate);
-    const normalizedDays = normalizeSlotDays({
-      dayOfWeek: slot.dayOfWeek,
-      daysOfWeek: slot.daysOfWeek,
-    });
-    const startTimeMinutesInput = typeof slot.startTimeMinutes === 'number'
-      ? slot.startTimeMinutes
-      : Number.isFinite(Number(slot.startTimeMinutes))
-        ? Number(slot.startTimeMinutes)
-        : null;
-    const endTimeMinutesInput = typeof slot.endTimeMinutes === 'number'
-      ? slot.endTimeMinutes
-      : Number.isFinite(Number(slot.endTimeMinutes))
-        ? Number(slot.endTimeMinutes)
-        : null;
-    const derivedStartTimeMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-    const derivedEndTimeMinutes = parsedEndDate
-      ? parsedEndDate.getHours() * 60 + parsedEndDate.getMinutes()
-      : null;
-    const startTimeMinutes = startTimeMinutesInput ?? (repeating ? null : derivedStartTimeMinutes);
-    const endTimeMinutes = endTimeMinutesInput ?? (repeating ? null : derivedEndTimeMinutes);
-    const normalizedFieldIds = normalizeSlotFieldIds(slot);
-    const expandedFieldIds: Array<string | null> = normalizedFieldIds.length ? normalizedFieldIds : [null];
-    const price = typeof slot.price === 'number'
-      ? slot.price
-      : Number.isFinite(Number(slot.price))
-        ? Number(slot.price)
-        : null;
-    const requiredTemplateIds = Array.isArray(slot.requiredTemplateIds)
-      ? Array.from(
-        new Set(
-          slot.requiredTemplateIds
-            .map((entry: unknown) => String(entry))
-            .filter((entry: string) => entry.length > 0),
-        ),
-      )
-      : [];
-    const normalizedSlotDivisions = useDivisionIds
-      ? normalizeDivisionIds(slot.divisions, eventId)
-      : normalizeDivisionKeys(slot.divisions);
-    const divisions = enforceAllDivisions
-      ? fallbackDivisionKeys
-      : normalizedSlotDivisions.length
-      ? normalizedSlotDivisions
-      : fallbackDivisionKeys;
-
-    if (!repeating) {
-      const explicitEndDate = parsedEndDate ?? (() => {
-        if (typeof startTimeMinutes === 'number' && typeof endTimeMinutes === 'number') {
-          const baseDay = new Date(startDate);
-          baseDay.setHours(0, 0, 0, 0);
-          const candidate = new Date(baseDay.getTime() + endTimeMinutes * 60 * 1000);
-          if (candidate.getTime() <= startDate.getTime()) {
-            candidate.setDate(candidate.getDate() + 1);
-          }
-          return candidate;
-        }
-        return null;
-      })();
-      if (!explicitEndDate || explicitEndDate.getTime() <= startDate.getTime()) {
-        return [];
-      }
-      const defaultDay = ((startDate.getDay() + 6) % 7);
-      const slotDay = normalizedDays[0] ?? defaultDay;
-      return expandedFieldIds.map((fieldId): ExpandedTimeSlotInput => ({
-        id: buildExpandedSlotId(
-          sourceId,
-          baseSlotId,
-          slotDay,
-          fieldId,
-          1,
-          expandedFieldIds.length,
-        ),
-        dayOfWeek: slotDay,
-        startTimeMinutes,
-        endTimeMinutes,
-        startDate,
-        endDate: explicitEndDate,
-        repeating: false,
-        scheduledFieldId: fieldId,
-        price,
-        divisions,
-        requiredTemplateIds,
-      }));
-    }
-
-    const days = normalizedDays.length ? normalizedDays : [((startDate.getDay() + 6) % 7)];
-
-    return days.flatMap((day) =>
-      expandedFieldIds.map((fieldId): ExpandedTimeSlotInput => ({
-        id: buildExpandedSlotId(
-          sourceId,
-          baseSlotId,
-          day,
-          fieldId,
-          days.length,
-          expandedFieldIds.length,
-        ),
-        dayOfWeek: day,
-        startTimeMinutes,
-        endTimeMinutes,
-        startDate,
-        endDate: parsedEndDate ?? null,
-        repeating: true,
-        scheduledFieldId: fieldId,
-        price,
-        divisions,
-        requiredTemplateIds,
-      })),
-    );
-  }));
 };
 
 const hasScheduleImpact = (existing: any, payload: Record<string, any>): boolean => {
@@ -1692,7 +1480,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const hasTimeSlotPayload = incomingTimeSlots !== null;
       const slotDerivedFieldIds = hasTimeSlotPayload
         ? normalizeFieldIds(
-          incomingTimeSlots.flatMap((slot) => normalizeSlotFieldIds(slot)),
+          incomingTimeSlots.flatMap((slot) => normalizeTimeSlotFieldIds(slot)),
         )
         : [];
       const nextFieldIds = (() => {
@@ -1798,38 +1586,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         divisionFieldMapChanged = !divisionFieldMapsEqual(currentDivisionFieldMap, nextDivisionFieldMap);
       }
 
-      let expandedTimeSlots: ExpandedTimeSlotInput[] | null = null;
+      let canonicalTimeSlots: ReturnType<typeof canonicalizeTimeSlots> | null = null;
       if (incomingTimeSlots !== null) {
-        expandedTimeSlots = expandTimeSlotsForUpdate(
+        canonicalTimeSlots = canonicalizeTimeSlots({
           eventId,
-          incomingTimeSlots,
-          existing.start,
-          nextDivisionKeys,
-          nextSingleDivision,
-          hasDivisionDetailsInput,
-        );
-        data.timeSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
+          slots: incomingTimeSlots,
+          fallbackStartDate: existing.start,
+          fallbackDivisionKeys: nextDivisionKeys,
+          enforceAllDivisions: nextSingleDivision,
+          normalizeDivisions: (value) => (
+            hasDivisionDetailsInput
+              ? normalizeDivisionIds(value, eventId)
+              : normalizeDivisionKeys(value)
+          ),
+        });
+        data.timeSlotIds = Array.from(new Set(canonicalTimeSlots.map((slot) => slot.id)));
       }
 
       // Keep plain PATCH saves metadata-only; clients must explicitly opt-in to a rebuild.
       const scheduleChanged = hasScheduleImpact(existing, data) || divisionFieldMapChanged || hasTimeSlotPayload;
       const shouldSchedule = parsed.data.reschedule === true && scheduleChanged;
 
-      if (expandedTimeSlots !== null) {
-        const nextSlotIds = Array.from(new Set(expandedTimeSlots.map((slot) => slot.id)));
+      if (canonicalTimeSlots !== null) {
+        const nextSlotIds = Array.from(new Set(canonicalTimeSlots.map((slot) => slot.id)));
         const nextSlotIdSet = new Set(nextSlotIds);
         const staleSlotIds = existingSlotIds.filter((slotId) => !nextSlotIdSet.has(slotId));
 
-        for (const slot of expandedTimeSlots) {
+        for (const slot of canonicalTimeSlots) {
           const now = new Date();
           const upsertData = {
             dayOfWeek: slot.dayOfWeek,
+            daysOfWeek: slot.daysOfWeek,
             startTimeMinutes: slot.startTimeMinutes,
             endTimeMinutes: slot.endTimeMinutes,
             startDate: slot.startDate,
             endDate: slot.endDate,
             repeating: slot.repeating,
             scheduledFieldId: slot.scheduledFieldId,
+            scheduledFieldIds: slot.scheduledFieldIds,
             price: slot.price,
             requiredTemplateIds: slot.requiredTemplateIds,
             updatedAt: now,

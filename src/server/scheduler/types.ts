@@ -137,6 +137,7 @@ export class Division implements Group {
 export class TimeSlot {
   id: string;
   dayOfWeek: number;
+  daysOfWeek: number[];
   startDate: Date;
   endDate: Date | null;
   repeating: boolean;
@@ -144,11 +145,13 @@ export class TimeSlot {
   endTimeMinutes: number;
   price?: number | null;
   field?: string | null;
+  fieldIds: string[];
   divisions: Division[];
 
   constructor(params: {
     id: string;
     dayOfWeek: number;
+    daysOfWeek?: number[];
     startDate: Date;
     endDate?: Date | null;
     repeating: boolean;
@@ -156,17 +159,43 @@ export class TimeSlot {
     endTimeMinutes: number;
     price?: number | null;
     field?: string | null;
+    fieldIds?: string[];
     divisions?: Division[];
   }) {
+    const normalizedDays = Array.from(
+      new Set(
+        (Array.isArray(params.daysOfWeek) && params.daysOfWeek.length
+          ? params.daysOfWeek
+          : [params.dayOfWeek]
+        )
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+      ),
+    ).sort((a, b) => a - b);
+    const normalizedFieldIds = Array.from(
+      new Set(
+        (Array.isArray(params.fieldIds) && params.fieldIds.length
+          ? params.fieldIds
+          : params.field
+            ? [params.field]
+            : []
+        )
+          .map((value) => String(value ?? '').trim())
+          .filter((value) => value.length > 0),
+      ),
+    );
+
     this.id = params.id;
-    this.dayOfWeek = params.dayOfWeek;
+    this.dayOfWeek = normalizedDays[0] ?? params.dayOfWeek;
+    this.daysOfWeek = normalizedDays.length ? normalizedDays : [this.dayOfWeek];
     this.startDate = params.startDate;
     this.endDate = params.endDate ?? null;
     this.repeating = params.repeating;
     this.startTimeMinutes = params.startTimeMinutes;
     this.endTimeMinutes = params.endTimeMinutes;
     this.price = params.price ?? null;
-    this.field = params.field ?? null;
+    this.fieldIds = normalizedFieldIds;
+    this.field = params.field ?? normalizedFieldIds[0] ?? null;
     this.divisions = params.divisions ?? [];
   }
 

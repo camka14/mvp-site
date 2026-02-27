@@ -494,12 +494,14 @@ model TimeSlots {
   createdAt DateTime?
   updatedAt DateTime?
   dayOfWeek Int?
+  daysOfWeek Int[] @default([])
   startTimeMinutes Int?
   endTimeMinutes Int?
   startDate DateTime
   repeating Boolean
   endDate DateTime?
   scheduledFieldId String?
+  scheduledFieldIds String[] @default([])
   price Int?
   divisions String[] @default([])
   requiredTemplateIds String[] @default([])

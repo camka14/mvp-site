@@ -483,7 +483,7 @@ describe('event PATCH route', () => {
     expect(executeRawMock.mock.calls[0]?.[1]).toEqual(['beginner', 'advanced']);
   });
 
-  it('fans out multi-day + multi-field slots and removes local fields that were unassigned', async () => {
+  it('persists multi-day + multi-field slots canonically and removes local fields that were unassigned', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique
       .mockResolvedValueOnce({
@@ -541,15 +541,20 @@ describe('event PATCH route', () => {
     );
 
     expect(res.status).toBe(200);
-    expect(timeSlotsMock.upsert).toHaveBeenCalledTimes(4);
+    expect(timeSlotsMock.upsert).toHaveBeenCalledTimes(1);
     expect(
       timeSlotsMock.upsert.mock.calls.map((call) => call[0].where.id).sort(),
-    ).toEqual([
-      'slot_multi__d1__ffield_keep',
-      'slot_multi__d1__ffield_new',
-      'slot_multi__d3__ffield_keep',
-      'slot_multi__d3__ffield_new',
-    ]);
+    ).toEqual(['slot_multi']);
+    expect(timeSlotsMock.upsert.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          dayOfWeek: 1,
+          daysOfWeek: [1, 3],
+          scheduledFieldId: 'field_keep',
+          scheduledFieldIds: ['field_keep', 'field_new'],
+        }),
+      }),
+    );
     expect(fieldsMock.upsert).toHaveBeenCalledTimes(2);
     expect(matchesMock.deleteMany).toHaveBeenCalledWith({
       where: {

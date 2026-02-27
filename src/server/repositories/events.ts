@@ -24,6 +24,11 @@ import {
   sideFrom,
   MINUTE_MS,
 } from '@/server/scheduler/types';
+import {
+  canonicalizeTimeSlots,
+  normalizeTimeSlotDays,
+  normalizeTimeSlotFieldIds,
+} from '@/server/timeSlotCanonical';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -317,6 +322,77 @@ const persistTimeSlotDivisions = async (
   }
 };
 
+const isMissingTimeSlotArrayColumnError = (error: unknown): boolean => {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'P2022') {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('timeslots')
+    && (
+      normalized.includes('scheduledfieldids')
+      || normalized.includes('daysofweek')
+      || normalized.includes('(not available)')
+    )
+    && normalized.includes('does not exist');
+};
+
+const loadTimeSlotRows = async (client: PrismaLike, timeSlotIds: string[]): Promise<any[]> => {
+  if (!timeSlotIds.length) {
+    return [];
+  }
+  try {
+    return await client.timeSlots.findMany({
+      where: { id: { in: timeSlotIds } },
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        dayOfWeek: true,
+        daysOfWeek: true,
+        startTimeMinutes: true,
+        endTimeMinutes: true,
+        startDate: true,
+        repeating: true,
+        endDate: true,
+        scheduledFieldId: true,
+        scheduledFieldIds: true,
+        price: true,
+        divisions: true,
+        requiredTemplateIds: true,
+      } as any,
+    });
+  } catch (error) {
+    if (!isMissingTimeSlotArrayColumnError(error)) {
+      throw error;
+    }
+    const legacyRows = await client.timeSlots.findMany({
+      where: { id: { in: timeSlotIds } },
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        dayOfWeek: true,
+        startTimeMinutes: true,
+        endTimeMinutes: true,
+        startDate: true,
+        repeating: true,
+        endDate: true,
+        scheduledFieldId: true,
+        price: true,
+      } as any,
+    });
+    return legacyRows.map((row: any) => ({
+      ...row,
+      daysOfWeek: row.dayOfWeek === null || row.dayOfWeek === undefined ? [] : [Number(row.dayOfWeek)],
+      scheduledFieldIds: row.scheduledFieldId ? [String(row.scheduledFieldId)] : [],
+      divisions: [],
+      requiredTemplateIds: [],
+    }));
+  }
+};
+
 const defaultDivisionKeysForSport = (sportId: unknown): string[] => {
   const normalizedSport = typeof sportId === 'string' ? sportId.toLowerCase() : '';
   if (normalizedSport.includes('soccer')) {
@@ -590,17 +666,6 @@ const normalizeFieldIds = (value: unknown): string[] => {
   return Array.from(new Set(value.map((entry) => String(entry)).filter(Boolean)));
 };
 
-const normalizeSlotFieldIds = (slot: Record<string, unknown>): string[] => {
-  const fromList = normalizeFieldIds(slot.scheduledFieldIds);
-  if (fromList.length) {
-    return fromList;
-  }
-  if (typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.length > 0) {
-    return [slot.scheduledFieldId];
-  }
-  return [];
-};
-
 const buildDivisionFieldMap = (
   divisionKeys: string[],
   fieldIds: string[],
@@ -653,62 +718,6 @@ const buildLegacyFieldDivisionMap = (divisionFieldMap: Record<string, string[]>)
   return result;
 };
 
-const normalizeDayValues = (slot: { dayOfWeek?: unknown; daysOfWeek?: unknown }): number[] => {
-  const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
-    ? slot.daysOfWeek
-    : slot.dayOfWeek !== undefined
-      ? [slot.dayOfWeek]
-      : [];
-  return Array.from(
-    new Set(
-      source
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
-    ),
-  ).sort((a, b) => a - b);
-};
-
-const normalizeSlotBaseId = (value: string): string => {
-  return value
-    .replace(/__d[0-6]__f.+$/, '')
-    .replace(/__f.+$/, '')
-    .replace(/__d[0-6](?:_\d+)?$/, '');
-};
-
-const buildExpandedSlotId = (
-  sourceId: string,
-  baseSlotId: string,
-  day: number,
-  fieldId: string | null,
-  dayCount: number,
-  fieldCount: number,
-): string => {
-  if (dayCount === 1 && fieldCount === 1) {
-    return sourceId;
-  }
-  if (dayCount > 1 && fieldCount === 1) {
-    return `${baseSlotId}__d${day}`;
-  }
-  if (dayCount === 1 && fieldCount > 1) {
-    return `${baseSlotId}__f${fieldId}`;
-  }
-  return `${baseSlotId}__d${day}__f${fieldId}`;
-};
-
-const ensureUniqueExpandedSlotIds = <T extends { id: string }>(slots: T[]): T[] => {
-  const seen = new Map<string, number>();
-  return slots.map((slot) => {
-    const count = seen.get(slot.id) ?? 0;
-    seen.set(slot.id, count + 1);
-    if (count === 0) {
-      return slot;
-    }
-    return {
-      ...slot,
-      id: `${slot.id}__dup${count}`,
-    };
-  });
-};
 
 const coerceDate = (value: unknown): Date | null => {
   if (value instanceof Date) return value;
@@ -1000,7 +1009,7 @@ const buildTimeSlots = (
   divisionMap: Map<string, Division>,
   fallbackDivisions: Division[],
 ) => {
-  return rows.flatMap((row) => {
+  return rows.map((row) => {
     const repeating = Boolean(row.repeating);
     const startDate = row.startDate instanceof Date ? row.startDate : new Date(row.startDate);
     const endDate = row.endDate ? new Date(row.endDate) : null;
@@ -1010,44 +1019,33 @@ const buildTimeSlots = (
     const endTimeMinutes = typeof row.endTimeMinutes === 'number'
       ? row.endTimeMinutes
       : (endDate ? endDate.getHours() * 60 + endDate.getMinutes() : 0);
-    const normalizedDays = normalizeDayValues({
+    const normalizedDays = normalizeTimeSlotDays({
       dayOfWeek: row.dayOfWeek,
       daysOfWeek: (row as any).daysOfWeek,
     });
+    const normalizedFieldIds = normalizeTimeSlotFieldIds(row);
     const slotDivisionIds = normalizeDivisionKeys((row as any).divisions);
     const slotDivisions = slotDivisionIds.length
       ? slotDivisionIds.map((id) => divisionMap.get(id) ?? new Division(id, buildDivisionDisplayName(id)))
       : fallbackDivisions;
-    if (!repeating) {
-      const day = normalizedDays.length
-        ? normalizedDays[0]
-        : ((startDate.getDay() + 6) % 7);
-      return [new TimeSlot({
-        id: row.id,
-        dayOfWeek: day,
-        startDate,
-        endDate,
-        repeating: false,
-        startTimeMinutes,
-        endTimeMinutes,
-        price: row.price ?? null,
-        field: row.scheduledFieldId ?? null,
-        divisions: [...slotDivisions],
-      })];
-    }
-    const days = normalizedDays.length ? normalizedDays : [0];
-    return days.map((day, index) => new TimeSlot({
-      id: days.length === 1 ? row.id : `${row.id}__d${day}_${index}`,
-      dayOfWeek: day,
+    const daysOfWeek = normalizedDays.length
+      ? normalizedDays
+      : [((startDate.getDay() + 6) % 7)];
+    const dayOfWeek = daysOfWeek[0] ?? ((startDate.getDay() + 6) % 7);
+    return new TimeSlot({
+      id: row.id,
+      dayOfWeek,
+      daysOfWeek,
       startDate,
       endDate,
-      repeating: true,
+      repeating,
       startTimeMinutes,
       endTimeMinutes,
       price: row.price ?? null,
-      field: row.scheduledFieldId ?? null,
+      field: normalizedFieldIds[0] ?? null,
+      fieldIds: normalizedFieldIds,
       divisions: [...slotDivisions],
-    }));
+    });
   });
 };
 
@@ -1066,7 +1064,14 @@ const buildReferees = (rows: any[], divisions: Division[]) => {
 
 const attachTimeSlotsToFields = (fields: Record<string, PlayingField>, slots: TimeSlot[]) => {
   for (const field of Object.values(fields)) {
-    field.rentalSlots = slots.filter((slot) => slot.field === field.id);
+    field.rentalSlots = slots.filter((slot) =>
+      (Array.isArray(slot.fieldIds) && slot.fieldIds.length
+        ? slot.fieldIds
+        : slot.field
+          ? [slot.field]
+          : []
+      ).includes(field.id),
+    );
   }
 };
 
@@ -1214,7 +1219,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const [fieldRows, teamRows, timeSlotRows, refereeRows, matchRows, leagueConfigRow] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
     teamIdsToLoad.length ? client.teams.findMany({ where: { id: { in: teamIdsToLoad } } }) : Promise.resolve([]),
-    timeSlotIds.length ? client.timeSlots.findMany({ where: { id: { in: timeSlotIds } } }) : Promise.resolve([]),
+    loadTimeSlotRows(client, timeSlotIds),
     refereeIds.length ? client.userData.findMany({ where: { id: { in: refereeIds } } }) : Promise.resolve([]),
     client.matches.findMany({ where: { eventId: event.id } }),
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
@@ -2129,108 +2134,19 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? divisionIdsFromDetails
       : fallbackDivisionIds;
   const singleDivisionEnabled = Boolean(payload.singleDivision);
-
-  const expandedTimeSlots: Array<Record<string, any>> = ensureUniqueExpandedSlotIds(timeSlots.flatMap((slot: any, index: number) => {
-    const sourceSlotId = slot.$id || slot.id || `${id}__slot_${index + 1}`;
-    const baseSlotId = normalizeSlotBaseId(sourceSlotId);
-    const repeating = slot.repeating !== false;
-    const startDate = coerceDate(slot.startDate) ?? new Date();
-    const parsedEndDate = slot.endDate ? coerceDate(slot.endDate) : null;
-    const normalizedDays = normalizeDayValues({
-      dayOfWeek: slot.dayOfWeek,
-      daysOfWeek: slot.daysOfWeek,
-    });
-    const startTimeMinutesInput = typeof slot.startTimeMinutes === 'number'
-      ? slot.startTimeMinutes
-      : Number.isFinite(Number(slot.startTimeMinutes))
-        ? Number(slot.startTimeMinutes)
-        : null;
-    const endTimeMinutesInput = typeof slot.endTimeMinutes === 'number'
-      ? slot.endTimeMinutes
-      : Number.isFinite(Number(slot.endTimeMinutes))
-        ? Number(slot.endTimeMinutes)
-        : null;
-    const startTimeMinutes = startTimeMinutesInput ?? (repeating ? null : (startDate.getHours() * 60 + startDate.getMinutes()));
-    const endTimeMinutes = endTimeMinutesInput ?? (repeating
-      ? null
-      : (parsedEndDate ? parsedEndDate.getHours() * 60 + parsedEndDate.getMinutes() : null));
-    const normalizedFieldIds = normalizeSlotFieldIds(slot);
-    const expandedFieldIds: Array<string | null> = normalizedFieldIds.length ? normalizedFieldIds : [null];
-    const normalizedSlotDivisions = normalizeDivisionIdentifierList(slot.divisions, id);
-    const slotDivisions = singleDivisionEnabled
-      ? normalizedEventDivisionIds
-      : normalizedSlotDivisions.length
-      ? normalizedSlotDivisions
-      : normalizedEventDivisionIds;
-
-    if (!repeating) {
-      const explicitEndDate = parsedEndDate ?? (() => {
-        if (typeof startTimeMinutes === 'number' && typeof endTimeMinutes === 'number') {
-          const startOfDay = new Date(startDate);
-          startOfDay.setHours(0, 0, 0, 0);
-          const candidate = new Date(startOfDay.getTime() + endTimeMinutes * 60 * 1000);
-          if (candidate.getTime() <= startDate.getTime()) {
-            candidate.setDate(candidate.getDate() + 1);
-          }
-          return candidate;
-        }
-        return null;
-      })();
-      if (!explicitEndDate || explicitEndDate.getTime() <= startDate.getTime()) {
-        return [];
-      }
-      const defaultDay = ((startDate.getDay() + 6) % 7);
-      const slotDay = normalizedDays[0] ?? defaultDay;
-      return expandedFieldIds.map((fieldId) => ({
-        ...slot,
-        id: buildExpandedSlotId(
-          sourceSlotId,
-          baseSlotId,
-          slotDay,
-          fieldId,
-          1,
-          expandedFieldIds.length,
-        ),
-        dayOfWeek: slotDay,
-        startDate,
-        endDate: explicitEndDate,
-        startTimeMinutes,
-        endTimeMinutes,
-        repeating: false,
-        scheduledFieldId: fieldId,
-        divisions: slotDivisions,
-      }));
-    }
-
-    const days = normalizedDays.length ? normalizedDays : [((startDate.getDay() + 6) % 7)];
-
-    return days.flatMap((day) =>
-      expandedFieldIds.map((fieldId) => ({
-        ...slot,
-        id: buildExpandedSlotId(
-          sourceSlotId,
-          baseSlotId,
-          day,
-          fieldId,
-          days.length,
-          expandedFieldIds.length,
-        ),
-        dayOfWeek: day,
-        startDate,
-        endDate: parsedEndDate,
-        startTimeMinutes,
-        endTimeMinutes,
-        repeating: true,
-        scheduledFieldId: fieldId,
-        divisions: slotDivisions,
-      })),
-    );
-  }));
+  const start = coerceDate(payload.start) ?? new Date();
+  const end = coerceDate(payload.end) ?? start;
+  const canonicalTimeSlots = canonicalizeTimeSlots({
+    eventId: id,
+    slots: timeSlots,
+    fallbackStartDate: start,
+    fallbackDivisionKeys: normalizedEventDivisionIds,
+    enforceAllDivisions: singleDivisionEnabled,
+    normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
+  });
 
   const slotFieldIds = normalizeFieldIds(
-    expandedTimeSlots
-      .map((slot: any) => slot.scheduledFieldId)
-      .filter(Boolean),
+    canonicalTimeSlots.flatMap((slot) => slot.scheduledFieldIds),
   );
   const fieldIds = slotFieldIds.length
     ? slotFieldIds
@@ -2247,7 +2163,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const teamIds = Array.isArray(payload.teamIds) && payload.teamIds.length
     ? payload.teamIds
     : teams.map((team: any) => team.$id || team.id).filter(Boolean);
-  const derivedTimeSlotIds = expandedTimeSlots.map((slot: any) => slot.id).filter(Boolean);
+  const derivedTimeSlotIds = canonicalTimeSlots.map((slot) => slot.id).filter(Boolean);
   const timeSlotIds = derivedTimeSlotIds.length
     ? derivedTimeSlotIds
     : Array.isArray(payload.timeSlotIds) && payload.timeSlotIds.length
@@ -2262,8 +2178,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   );
   const legacyFieldDivisionMap = buildLegacyFieldDivisionMap(divisionFieldMap);
 
-  const start = coerceDate(payload.start) ?? new Date();
-  const end = coerceDate(payload.end) ?? start;
   const payloadEventType = typeof payload.eventType === 'string'
     ? payload.eventType.toUpperCase()
     : null;
@@ -2609,7 +2523,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     });
   }
 
-  for (const slot of expandedTimeSlots) {
+  for (const slot of canonicalTimeSlots) {
     const slotId = slot.id;
     if (!slotId) continue;
     const startDate = coerceDate(slot.startDate) ?? new Date();
@@ -2625,25 +2539,29 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: slotId },
       create: {
         id: slotId,
-        dayOfWeek: slot.dayOfWeek ?? 0,
+        dayOfWeek: slot.dayOfWeek ?? null,
+        daysOfWeek: slot.daysOfWeek,
         startTimeMinutes: slot.startTimeMinutes ?? null,
         endTimeMinutes: slot.endTimeMinutes ?? null,
         startDate,
         repeating: Boolean(slot.repeating),
         endDate,
         scheduledFieldId: slot.scheduledFieldId ?? null,
+        scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
         createdAt: now,
         updatedAt: now,
       } as any,
       update: {
-        dayOfWeek: slot.dayOfWeek ?? 0,
+        dayOfWeek: slot.dayOfWeek ?? null,
+        daysOfWeek: slot.daysOfWeek,
         startTimeMinutes: slot.startTimeMinutes ?? null,
         endTimeMinutes: slot.endTimeMinutes ?? null,
         startDate,
         repeating: Boolean(slot.repeating),
         endDate,
         scheduledFieldId: slot.scheduledFieldId ?? null,
+        scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
         updatedAt: now,
       } as any,

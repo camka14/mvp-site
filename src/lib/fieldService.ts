@@ -185,6 +185,20 @@ class FieldService {
   private mapRowToTimeSlot(row: any): TimeSlot {
     const startMinutes = this.coerceMinutes(row.startTimeMinutes ?? row.startTime);
     const endMinutes = this.coerceMinutes(row.endTimeMinutes ?? row.endTime);
+    const normalizedFieldIds: string[] = Array.from(
+      new Set(
+        (Array.isArray(row.scheduledFieldIds) && row.scheduledFieldIds.length
+          ? row.scheduledFieldIds
+          : typeof row.scheduledFieldId === 'string'
+            ? [row.scheduledFieldId]
+            : row.fieldId
+              ? [row.fieldId]
+              : []
+        )
+          .map((value: unknown) => String(value).trim())
+          .filter((value: string) => value.length > 0),
+      ),
+    );
     const normalizedDays = Array.from(
       new Set(
         (Array.isArray(row.daysOfWeek) && row.daysOfWeek.length
@@ -206,7 +220,8 @@ class FieldService {
       dayOfWeek: (normalizedDays[0] ?? Number(row.dayOfWeek ?? 0)) as TimeSlot['dayOfWeek'],
       daysOfWeek: normalizedDays,
       repeating: row.repeating === undefined ? false : Boolean(row.repeating),
-      scheduledFieldId: typeof row.scheduledFieldId === 'string' ? row.scheduledFieldId : row.fieldId ?? undefined,
+      scheduledFieldId: normalizedFieldIds[0] ?? undefined,
+      scheduledFieldIds: normalizedFieldIds,
       eventId: typeof row.eventId === 'string' ? row.eventId : undefined,
       requiredTemplateIds,
     };
@@ -293,6 +308,18 @@ class FieldService {
     slot: Partial<TimeSlot> & { dayOfWeek: NonNullable<TimeSlot['dayOfWeek']> },
     options: { slotId?: string; fieldId: string }
   ): Record<string, unknown> {
+    const normalizedFieldIds = Array.from(
+      new Set(
+        (Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+          ? slot.scheduledFieldIds
+          : slot.scheduledFieldId
+            ? [slot.scheduledFieldId]
+            : [options.fieldId]
+        )
+          .map((value) => String(value).trim())
+          .filter((value) => value.length > 0),
+      ),
+    );
     const normalizedDays = Array.from(
       new Set(
         (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length ? slot.daysOfWeek : [slot.dayOfWeek])
@@ -304,7 +331,8 @@ class FieldService {
       dayOfWeek: (normalizedDays[0] ?? slot.dayOfWeek),
       daysOfWeek: normalizedDays,
       repeating: slot.repeating ?? false,
-      scheduledFieldId: options.fieldId,
+      scheduledFieldId: normalizedFieldIds[0] ?? null,
+      scheduledFieldIds: normalizedFieldIds,
       startTimeMinutes: slot.startTimeMinutes ?? null,
       endTimeMinutes: slot.endTimeMinutes ?? null,
       startDate: slot.startDate ?? null,

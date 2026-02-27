@@ -35,19 +35,30 @@ const serializeField = (field: PlayingField) => ({
   name: field.name,
 });
 
-const serializeTimeSlot = (slot: TimeSlot) => ({
-  id: slot.id,
-  dayOfWeek: slot.dayOfWeek,
-  startDate: slot.startDate?.toISOString(),
-  endDate: slot.endDate ? slot.endDate.toISOString() : null,
-  repeating: slot.repeating,
-  startTimeMinutes: slot.startTimeMinutes,
-  endTimeMinutes: slot.endTimeMinutes,
-  price: slot.price ?? null,
-  scheduledFieldId: slot.field ?? null,
-  scheduledFieldIds: slot.field ? [slot.field] : [],
-  divisions: slot.divisions.map((division) => division.id),
-});
+const serializeTimeSlot = (slot: TimeSlot) => {
+  const normalizedDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+    ? slot.daysOfWeek
+    : [slot.dayOfWeek];
+  const normalizedFieldIds = Array.isArray(slot.fieldIds) && slot.fieldIds.length
+    ? slot.fieldIds
+    : slot.field
+      ? [slot.field]
+      : [];
+  return {
+    id: slot.id,
+    dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
+    daysOfWeek: normalizedDays,
+    startDate: slot.startDate?.toISOString(),
+    endDate: slot.endDate ? slot.endDate.toISOString() : null,
+    repeating: slot.repeating,
+    startTimeMinutes: slot.startTimeMinutes,
+    endTimeMinutes: slot.endTimeMinutes,
+    price: slot.price ?? null,
+    scheduledFieldId: normalizedFieldIds[0] ?? null,
+    scheduledFieldIds: normalizedFieldIds,
+    divisions: slot.divisions.map((division) => division.id),
+  };
+};
 
 const serializeUser = (user: UserData) => ({
   id: user.id,
@@ -196,20 +207,31 @@ const serializeFieldLegacy = (field: PlayingField) => ({
   name: field.name,
 });
 
-const serializeTimeSlotLegacy = (slot: TimeSlot) => ({
-  $id: slot.id,
-  id: slot.id,
-  dayOfWeek: slot.dayOfWeek,
-  startDate: slot.startDate?.toISOString(),
-  endDate: slot.endDate ? slot.endDate.toISOString() : null,
-  repeating: slot.repeating,
-  startTimeMinutes: slot.startTimeMinutes,
-  endTimeMinutes: slot.endTimeMinutes,
-  price: slot.price ?? null,
-  scheduledFieldId: slot.field ?? null,
-  scheduledFieldIds: slot.field ? [slot.field] : [],
-  divisions: slot.divisions.map((division) => division.id),
-});
+const serializeTimeSlotLegacy = (slot: TimeSlot) => {
+  const normalizedDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+    ? slot.daysOfWeek
+    : [slot.dayOfWeek];
+  const normalizedFieldIds = Array.isArray(slot.fieldIds) && slot.fieldIds.length
+    ? slot.fieldIds
+    : slot.field
+      ? [slot.field]
+      : [];
+  return {
+    $id: slot.id,
+    id: slot.id,
+    dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
+    daysOfWeek: normalizedDays,
+    startDate: slot.startDate?.toISOString(),
+    endDate: slot.endDate ? slot.endDate.toISOString() : null,
+    repeating: slot.repeating,
+    startTimeMinutes: slot.startTimeMinutes,
+    endTimeMinutes: slot.endTimeMinutes,
+    price: slot.price ?? null,
+    scheduledFieldId: normalizedFieldIds[0] ?? null,
+    scheduledFieldIds: normalizedFieldIds,
+    divisions: slot.divisions.map((division) => division.id),
+  };
+};
 
 const serializeUserLegacy = (user: UserData) => ({
   $id: user.id,

@@ -1,0 +1,200 @@
+/** @jest-environment node */
+
+import { NextRequest } from 'next/server';
+
+const prismaMock = {
+  $executeRaw: jest.fn().mockResolvedValue(1),
+  timeSlots: {
+    findMany: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  },
+};
+
+const requireSessionMock = jest.fn();
+
+jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/legacyFormat', () => ({
+  parseDateInput: (value: unknown) => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const parsed = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  },
+  withLegacyFields: (value: any) => ({ ...value, $id: value.id ?? value.$id ?? null }),
+}));
+
+import { GET, POST } from '@/app/api/time-slots/route';
+import { PATCH } from '@/app/api/time-slots/[id]/route';
+
+const jsonRequest = (url: string, body: unknown, method: 'POST' | 'PATCH' = 'POST') =>
+  new NextRequest(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+describe('time-slots routes', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+  });
+
+  it('GET applies array-aware field/day filters and returns canonical arrays with legacy aliases', async () => {
+    prismaMock.timeSlots.findMany.mockResolvedValueOnce([
+      {
+        id: 'slot_1',
+        dayOfWeek: 1,
+        daysOfWeek: [1, 3],
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1', 'field_2'],
+        divisions: ['open'],
+        startDate: new Date('2026-01-05T00:00:00.000Z'),
+        endDate: null,
+        repeating: true,
+        startTimeMinutes: 540,
+        endTimeMinutes: 600,
+      },
+    ]);
+
+    const res = await GET(new NextRequest('http://localhost/api/time-slots?fieldId=field_2&dayOfWeek=3'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.timeSlots.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [
+                { scheduledFieldId: 'field_2' },
+                { scheduledFieldIds: { has: 'field_2' } },
+              ],
+            },
+            {
+              OR: [
+                { dayOfWeek: 3 },
+                { daysOfWeek: { has: 3 } },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    expect(json.timeSlots[0]).toEqual(expect.objectContaining({
+      id: 'slot_1',
+      dayOfWeek: 1,
+      daysOfWeek: [1, 3],
+      scheduledFieldId: 'field_1',
+      scheduledFieldIds: ['field_1', 'field_2'],
+    }));
+  });
+
+  it('POST persists canonical field/day arrays and keeps scalar aliases', async () => {
+    prismaMock.timeSlots.create.mockResolvedValueOnce({
+      id: 'slot_create',
+      dayOfWeek: 1,
+      daysOfWeek: [1, 3],
+      scheduledFieldId: 'field_2',
+      scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
+      divisions: ['open'],
+      startDate: new Date('2026-01-05T00:00:00.000Z'),
+      endDate: null,
+      repeating: true,
+      startTimeMinutes: 540,
+      endTimeMinutes: 600,
+      price: null,
+      requiredTemplateIds: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await POST(jsonRequest('http://localhost/api/time-slots', {
+      id: 'slot_create',
+      dayOfWeek: 3,
+      daysOfWeek: [3, 1, 3],
+      scheduledFieldId: 'field_3',
+      scheduledFieldIds: ['field_2', 'field_1', 'field_2'],
+      startTimeMinutes: 540,
+      endTimeMinutes: 600,
+      repeating: true,
+      divisions: ['Open'],
+      startDate: '2026-01-05T00:00:00.000Z',
+      endDate: null,
+    }));
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(prismaMock.timeSlots.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          dayOfWeek: 1,
+          daysOfWeek: [1, 3],
+          scheduledFieldId: 'field_2',
+          scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
+        }),
+      }),
+    );
+    expect(json).toEqual(expect.objectContaining({
+      id: 'slot_create',
+      dayOfWeek: 1,
+      daysOfWeek: [1, 3],
+      scheduledFieldId: 'field_2',
+      scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
+    }));
+  });
+
+  it('PATCH persists canonical arrays while preserving legacy aliases in the response', async () => {
+    prismaMock.timeSlots.update.mockResolvedValueOnce({
+      id: 'slot_patch',
+      dayOfWeek: 2,
+      daysOfWeek: [2, 4],
+      scheduledFieldId: 'field_a',
+      scheduledFieldIds: ['field_a', 'field_b'],
+      divisions: ['open'],
+      startDate: new Date('2026-01-05T00:00:00.000Z'),
+      endDate: null,
+      repeating: true,
+      startTimeMinutes: 540,
+      endTimeMinutes: 600,
+      price: null,
+      requiredTemplateIds: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await PATCH(
+      jsonRequest('http://localhost/api/time-slots/slot_patch', {
+        slot: {
+          daysOfWeek: [4, 2, 4],
+          scheduledFieldIds: ['field_a', 'field_b', 'field_a'],
+        },
+      }, 'PATCH'),
+      { params: Promise.resolve({ id: 'slot_patch' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.timeSlots.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'slot_patch' },
+        data: expect.objectContaining({
+          dayOfWeek: 2,
+          daysOfWeek: [2, 4],
+          scheduledFieldId: 'field_a',
+          scheduledFieldIds: ['field_a', 'field_b'],
+        }),
+      }),
+    );
+    expect(json).toEqual(expect.objectContaining({
+      id: 'slot_patch',
+      dayOfWeek: 2,
+      daysOfWeek: [2, 4],
+      scheduledFieldId: 'field_a',
+      scheduledFieldIds: ['field_a', 'field_b'],
+    }));
+  });
+});
