@@ -18,6 +18,7 @@ interface TournamentFieldsProps {
   setTournamentData: React.Dispatch<React.SetStateAction<TournamentConfig>>;
   title?: string;
   sport?: Sport;
+  showDurationControls?: boolean;
 }
 
 const BEST_OF_OPTIONS = [
@@ -38,6 +39,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
   setTournamentData,
   title = 'Tournament Settings',
   sport,
+  showDurationControls = true,
 }) => {
   const comboboxProps = { withinPortal: true, zIndex: 1800 };
   const requiresSets = Boolean(sport?.usePointsPerSetWin);
@@ -47,6 +49,21 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
       setTournamentData((prev) => {
         let changed = false;
         const next: TournamentConfig = { ...prev };
+
+        if (next.usesSets !== true) {
+          next.usesSets = true;
+          changed = true;
+        }
+
+        if (!Number.isFinite(next.setDurationMinutes)) {
+          next.setDurationMinutes = 20;
+          changed = true;
+        }
+
+        if (!Number.isFinite(next.matchDurationMinutes)) {
+          next.matchDurationMinutes = 60;
+          changed = true;
+        }
 
         const winnerCount = prev.winnerSetCount || 1;
         if (next.winnerSetCount !== winnerCount) {
@@ -85,6 +102,21 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
       setTournamentData((prev) => {
         let changed = false;
         const next: TournamentConfig = { ...prev };
+
+        if (next.usesSets !== false) {
+          next.usesSets = false;
+          changed = true;
+        }
+
+        if (next.setDurationMinutes !== undefined) {
+          next.setDurationMinutes = undefined;
+          changed = true;
+        }
+
+        if (!Number.isFinite(next.matchDurationMinutes)) {
+          next.matchDurationMinutes = 60;
+          changed = true;
+        }
 
         if (next.winnerSetCount !== 1) {
           next.winnerSetCount = 1;
@@ -162,6 +194,35 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
             maw={220}
           />
         </Grid.Col>
+
+        {showDurationControls && (
+          <Grid.Col span={{ base: 12, md: 6 }}>
+            <NumberInput
+              label={requiresSets ? 'Set Duration (minutes)' : 'Match Duration (minutes)'}
+              min={requiresSets ? 5 : 15}
+              max={MAX_STANDARD_NUMBER}
+              step={5}
+              value={requiresSets ? tournamentData.setDurationMinutes : tournamentData.matchDurationMinutes}
+              onChange={(value) =>
+                setTournamentData((prev) => {
+                  const numeric = Number(value);
+                  if (requiresSets) {
+                    return {
+                      ...prev,
+                      setDurationMinutes: Number.isFinite(numeric) && numeric >= 5 ? numeric : undefined,
+                    };
+                  }
+                  return {
+                    ...prev,
+                    matchDurationMinutes: Number.isFinite(numeric) && numeric >= 15 ? numeric : 60,
+                  };
+                })
+              }
+              clampBehavior="strict"
+              maw={220}
+            />
+          </Grid.Col>
+        )}
 
         {requiresSets && (
           <Grid.Col span={{ base: 12, md: 6 }}>

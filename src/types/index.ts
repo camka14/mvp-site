@@ -78,6 +78,9 @@ export interface TournamentConfig {
   prize: string;
   fieldCount: number;
   restTimeMinutes: number;
+  usesSets: boolean;
+  matchDurationMinutes: number;
+  setDurationMinutes?: number;
 }
 
 export interface Sport {
@@ -676,6 +679,9 @@ const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig |
     'prize',
     'fieldCount',
     'restTimeMinutes',
+    'usesSets',
+    'matchDurationMinutes',
+    'setDurationMinutes',
   ].some((key) => Object.prototype.hasOwnProperty.call(row, key) && row[key] !== null && row[key] !== undefined);
   if (!hasConfigValue) {
     return undefined;
@@ -707,6 +713,7 @@ const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig |
   const doubleElimination = Boolean(row.doubleElimination);
   const loserSetCount = normalizeNumber(row.loserSetCount, 1, 1);
   const normalizedLoserSetCount = doubleElimination ? loserSetCount : 1;
+  const usesSets = Boolean(row.usesSets);
 
   return {
     doubleElimination,
@@ -717,6 +724,9 @@ const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig |
     prize: typeof row.prize === 'string' ? row.prize : '',
     fieldCount: normalizeNumber(row.fieldCount, 1, 1),
     restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0, 0),
+    usesSets,
+    matchDurationMinutes: normalizeNumber(row.matchDurationMinutes, 60, 0),
+    setDurationMinutes: usesSets ? normalizeNumber(row.setDurationMinutes, 20, 0) : undefined,
   };
 };
 

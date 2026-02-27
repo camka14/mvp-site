@@ -290,6 +290,107 @@ const getDivisionDetailsForEvent = async (
   return details;
 };
 
+const getDivisionDetailsForEvents = async (
+  events: Array<{ id: string; divisions: unknown; sportId?: string | null }>,
+): Promise<Map<string, Array<Record<string, unknown>>>> => {
+  const normalizedDivisionsByEventId = new Map<string, string[]>();
+  const eventIds = events
+    .map((event) => {
+      const normalizedDivisions = normalizeDivisionKeys(event.divisions);
+      normalizedDivisionsByEventId.set(event.id, normalizedDivisions);
+      return normalizedDivisions.length > 0 ? event.id : null;
+    })
+    .filter((eventId): eventId is string => Boolean(eventId));
+
+  const detailsByEventId = new Map<string, Array<Record<string, unknown>>>();
+  if (!eventIds.length) {
+    return detailsByEventId;
+  }
+
+  const rawRows = await prisma.divisions.findMany({
+    where: {
+      eventId: { in: eventIds },
+    },
+    select: {
+      eventId: true,
+      id: true,
+      key: true,
+      name: true,
+      sportId: true,
+      maxParticipants: true,
+      divisionTypeId: true,
+      divisionTypeName: true,
+      ratingType: true,
+      gender: true,
+    },
+  });
+  const rows = Array.isArray(rawRows) ? rawRows : [];
+
+  const rowsByEventId = new Map<string, Array<(typeof rows)[number]>>();
+  rows.forEach((row) => {
+    if (!row.eventId) {
+      return;
+    }
+    const existing = rowsByEventId.get(row.eventId) ?? [];
+    existing.push(row);
+    rowsByEventId.set(row.eventId, existing);
+  });
+
+  events.forEach((event) => {
+    const normalizedDivisions = normalizedDivisionsByEventId.get(event.id) ?? [];
+    if (!normalizedDivisions.length) {
+      detailsByEventId.set(event.id, []);
+      return;
+    }
+
+    const eventRows = rowsByEventId.get(event.id) ?? [];
+    const rowsById = new Map<string, (typeof eventRows)[number]>();
+    const rowsByKey = new Map<string, (typeof eventRows)[number]>();
+    eventRows.forEach((row) => {
+      const rowId = normalizeDivisionKey(row.id);
+      if (rowId) {
+        rowsById.set(rowId, row);
+        const token = extractDivisionTokenFromId(rowId);
+        if (token) {
+          rowsByKey.set(token, row);
+        }
+      }
+      const rowKey = normalizeDivisionKey(row.key);
+      if (rowKey) {
+        rowsByKey.set(rowKey, row);
+      }
+    });
+
+    const details = normalizedDivisions.map((divisionId) => {
+      const row = rowsById.get(divisionId)
+        ?? rowsByKey.get(divisionId)
+        ?? rowsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')
+        ?? null;
+      const inferred = inferDivisionDetails({
+        identifier: row?.key ?? row?.id ?? divisionId,
+        sportInput: row?.sportId ?? event.sportId ?? undefined,
+        fallbackName: row?.name ?? undefined,
+      });
+
+      return {
+        id: row?.id ?? divisionId,
+        key: row?.key ?? inferred.token,
+        name: row?.name ?? inferred.defaultName,
+        divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
+        divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+        ratingType: row?.ratingType ?? inferred.ratingType,
+        gender: row?.gender ?? inferred.gender,
+        sportId: row?.sportId ?? event.sportId ?? null,
+        maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
+      };
+    });
+
+    detailsByEventId.set(event.id, details);
+  });
+
+  return detailsByEventId;
+};
+
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
   if (!Array.isArray(legacy.waitListIds)) {
@@ -416,11 +517,22 @@ export async function GET(req: NextRequest) {
     orderBy: { start: 'asc' },
   });
 
+  const divisionDetailsByEventId = await getDivisionDetailsForEvents(
+    events.map((event) => ({
+      id: event.id,
+      divisions: event.divisions,
+      sportId: event.sportId,
+    })),
+  );
+
   const normalized = events.map((row) => {
     if (!Array.isArray(row.userIds)) {
       row.userIds = coerceArray(row.userIds) ?? [];
     }
-    return withLegacyEvent(row);
+    return withLegacyEvent({
+      ...row,
+      divisionDetails: divisionDetailsByEventId.get(row.id) ?? [],
+    });
   });
 
   return NextResponse.json({ events: normalized }, { status: 200 });

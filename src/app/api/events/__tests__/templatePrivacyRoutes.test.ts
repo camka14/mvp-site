@@ -187,6 +187,97 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('includes divisionDetails in GET /api/events list responses', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        name: 'Split Division Event',
+        divisions: ['event_1__division__open', 'event_1__division__advanced'],
+        sportId: 'sport_1',
+        userIds: [],
+      },
+    ]);
+    prismaMock.divisions.findMany.mockResolvedValueOnce([
+      {
+        eventId: 'event_1',
+        id: 'event_1__division__open',
+        key: 'open',
+        name: 'Open',
+        maxParticipants: 8,
+        sportId: 'sport_1',
+      },
+      {
+        eventId: 'event_1',
+        id: 'event_1__division__advanced',
+        key: 'advanced',
+        name: 'Advanced',
+        maxParticipants: 10,
+        sportId: 'sport_1',
+      },
+    ]);
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events'));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].divisionDetails).toEqual([
+      expect.objectContaining({ id: 'event_1__division__open', maxParticipants: 8 }),
+      expect.objectContaining({ id: 'event_1__division__advanced', maxParticipants: 10 }),
+    ]);
+    expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventId: { in: ['event_1'] },
+        }),
+      }),
+    );
+  });
+
+  it('includes divisionDetails in POST /api/events/search responses', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_2',
+        name: 'Search Split Division Event',
+        divisions: ['event_2__division__open', 'event_2__division__advanced'],
+        sportId: 'sport_1',
+      },
+    ]);
+    prismaMock.divisions.findMany.mockResolvedValueOnce([
+      {
+        eventId: 'event_2',
+        id: 'event_2__division__open',
+        key: 'open',
+        name: 'Open',
+        maxParticipants: 6,
+        sportId: 'sport_1',
+      },
+      {
+        eventId: 'event_2',
+        id: 'event_2__division__advanced',
+        key: 'advanced',
+        name: 'Advanced',
+        maxParticipants: 8,
+        sportId: 'sport_1',
+      },
+    ]);
+
+    const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].divisionDetails).toEqual([
+      expect.objectContaining({ id: 'event_2__division__open', maxParticipants: 6 }),
+      expect.objectContaining({ id: 'event_2__division__advanced', maxParticipants: 8 }),
+    ]);
+    expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventId: { in: ['event_2'] },
+        }),
+      }),
+    );
+  });
+
   it('defaults POST /api/events/search to today-and-later results', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-02-19T15:45:00.000Z'));
     prismaMock.events.findMany.mockResolvedValueOnce([]);
