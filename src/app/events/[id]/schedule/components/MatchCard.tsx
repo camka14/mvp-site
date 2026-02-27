@@ -121,9 +121,10 @@ function MatchCard({
     const isInProgress = match.setResults.some((r) => r === 0) && match.setResults.some((r) => r !== 0);
     const divisionLabel = resolveDivisionLabel(match.division);
 
-    const formatTime = (timeString: string) => {
+    const formatTime = (timeString?: string | null) => {
+        if (!timeString || typeof timeString !== 'string') return 'TBD';
         const date = new Date(timeString);
-        if (Number.isNaN(date.getTime())) return '';
+        if (Number.isNaN(date.getTime())) return 'TBD';
         return showDate
             ? formatDisplayDateTime(date)
             : formatDisplayTime(date);

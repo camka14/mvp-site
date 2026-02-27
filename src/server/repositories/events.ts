@@ -1070,6 +1070,17 @@ const attachTimeSlotsToFields = (fields: Record<string, PlayingField>, slots: Ti
   }
 };
 
+const toOptionalDate = (value: unknown): Date | null => {
+  if (value == null) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const parsed = new Date(value as string | number);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 const buildMatches = (
   rows: any[],
   event: Tournament | League,
@@ -1088,6 +1099,8 @@ const buildMatches = (
       : row.division && divisionLookup.has(row.division)
       ? (divisionLookup.get(row.division) as Division)
       : divisions[0];
+    const start = toOptionalDate(row.start);
+    const end = toOptionalDate(row.end);
     const match = new Match({
       id: row.id,
       matchId: row.matchId ?? null,
@@ -1100,8 +1113,10 @@ const buildMatches = (
         : null,
       team1Points: ensureArray(row.team1Points),
       team2Points: ensureArray(row.team2Points),
-      start: row.start instanceof Date ? row.start : new Date(row.start),
-      end: row.end instanceof Date ? row.end : new Date(row.end),
+      // Match currently expects Date in constructor, but unscheduled matches may be null.
+      // Use a temporary fallback and overwrite below.
+      start: start ?? new Date(0),
+      end: end ?? new Date(0),
       createdAt: row.createdAt ?? null,
       updatedAt: row.updatedAt ?? null,
       losersBracket: Boolean(row.losersBracket),
@@ -1117,6 +1132,12 @@ const buildMatches = (
       team2: row.team2Id ? teams[row.team2Id] ?? null : null,
       eventId: row.eventId,
     });
+    if (!start) {
+      (match as unknown as { start: Date | null }).start = null;
+    }
+    if (!end) {
+      (match as unknown as { end: Date | null }).end = null;
+    }
     matches[row.id] = match;
   }
   // Wire pointers
@@ -1323,11 +1344,13 @@ export const saveMatches = async (
     const isBracketMatch = Boolean(
       match.previousLeftMatch || match.previousRightMatch || match.winnerNextMatch || match.loserNextMatch,
     );
+    const start = (match as unknown as { start: Date | null }).start ?? null;
+    const end = (match as unknown as { end: Date | null }).end ?? null;
     const data = {
       id: match.id,
       matchId: match.matchId ?? 0,
-      start: match.start,
-      end: match.end,
+      start,
+      end,
       locked: Boolean(match.locked),
       team1Seed: isBracketMatch
         ? (typeof match.team1Seed === 'number' ? match.team1Seed : null)

@@ -149,6 +149,15 @@ function BracketDivisionSwitchHarness() {
   );
 }
 
+const getMatchNodeTop = (matchId: string): string => {
+  const label = screen.getByText(`match-${matchId}`);
+  const wrapper = label.closest('div.absolute');
+  if (!wrapper) {
+    throw new Error(`Expected absolute wrapper for match-${matchId}`);
+  }
+  return (wrapper as HTMLDivElement).style.top;
+};
+
 describe('TournamentBracketView', () => {
   it('falls back to winners when switching to a division without loser matches', async () => {
     renderWithMantine(<BracketDivisionSwitchHarness />);
@@ -179,4 +188,36 @@ describe('TournamentBracketView', () => {
     expect(screen.getByText('2nd place (League B)')).toBeInTheDocument();
   });
 
+  it('uses explicit previous IDs for edit-layout child offsets when relation objects are stale', () => {
+    const leftChild = buildMatch('c1', { winnerNextMatchId: 'p1' });
+    const staleRightRelation = buildMatch('c2', { winnerNextMatchId: 'p1' });
+    const parent = buildMatch('p1', {
+      previousLeftId: 'c1',
+      previousRightId: null,
+      previousLeftMatch: leftChild,
+      previousRightMatch: staleRightRelation,
+    });
+
+    const bracket: TournamentBracket = {
+      tournament: { doubleElimination: false } as TournamentBracket['tournament'],
+      matches: {
+        [leftChild.$id]: leftChild,
+        [staleRightRelation.$id]: staleRightRelation,
+        [parent.$id]: parent,
+      },
+      teams: [],
+      isHost: false,
+      canManage: false,
+    };
+
+    renderWithMantine(
+      <TournamentBracketView
+        bracket={bracket}
+        canEditMatches
+        onMatchClick={() => undefined}
+      />,
+    );
+
+    expect(getMatchNodeTop('p1')).toBe(getMatchNodeTop('c1'));
+  });
 });

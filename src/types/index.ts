@@ -196,8 +196,8 @@ export interface Match {
   previousRightId?: string;
   winnerNextMatchId?: string;
   loserNextMatchId?: string;
-  start: string;
-  end: string;
+  start: string | null;
+  end: string | null;
   losersBracket?: boolean;
   setResults: number[];
   side?: string;

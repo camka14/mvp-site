@@ -61,6 +61,13 @@ const extractEntityId = (value: unknown): string => {
     return '';
 };
 
+const normalizeMatchRefId = (value: unknown): string => {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    return value.trim();
+};
+
 const normalizeDivisionDetailsList = (input: unknown): Division[] => {
     if (!Array.isArray(input)) {
         return [];
@@ -321,6 +328,21 @@ export default function TournamentBracketView({
         () => Object.fromEntries(Object.values(bracket.matches).map((match) => [match.$id, match])),
         [bracket.matches],
     );
+    const resolveLinkFromAll = useCallback((idValue: unknown, relationValue: unknown): Match | undefined => {
+        const id = normalizeMatchRefId(idValue);
+        if (id && matchesById[id]) {
+            return matchesById[id];
+        }
+        // Explicitly blank/null IDs mean "no link"; ignore stale relation objects in draft edit mode.
+        if (idValue === null || (typeof idValue === 'string' && idValue.trim().length === 0)) {
+            return undefined;
+        }
+        const relationId = extractEntityId(relationValue);
+        if (relationId && matchesById[relationId]) {
+            return matchesById[relationId];
+        }
+        return undefined;
+    }, [matchesById]);
     const teamsById = useMemo<Map<string, Team>>(() => {
         const map = new Map<string, Team>();
         const teams = Array.isArray(bracket.teams) ? bracket.teams : [];
@@ -413,15 +435,16 @@ export default function TournamentBracketView({
     }, [bracket.matches, bracket.tournament]);
 
     // Compute positions based on rounds (x) and yCenterById (y)
-    const CARD_W = 288; // w-72
-    const CARD_H = 200; // standard height (h-50)
+    const CARD_W = 288; // matches MatchCard bracket width
+    const CARD_H = 200; // fixed bracket card height for deterministic connector layout
     const GAP_X = 48;
     const GAP_Y = 12;   // per-level extra spacing
     const LEVEL_STEP = Math.round(CARD_H / 2 + GAP_Y);
     // Padding inside the scroll canvas. Top padding prevents the time badge (-top-3)
     // from being clipped, and bottom padding keeps the last match card from touching the edge.
-    const PAD_LEFT = 0;
-    const PAD_RIGHT = 0;
+    // Side padding keeps edge controls (add buttons) fully visible for leaf/final nodes.
+    const PAD_LEFT = 28;
+    const PAD_RIGHT = 28;
     const PAD_TOP = 16;
     const PAD_BOTTOM = 48;
 
@@ -440,30 +463,42 @@ export default function TournamentBracketView({
 
         // include one-hop children even if from opposite bracket
         Object.values(map).forEach(parent => {
-            const left = parent.previousLeftMatch ?? (parent.previousLeftId ? matchesById[parent.previousLeftId] : undefined);
-            const right = parent.previousRightMatch ?? (parent.previousRightId ? matchesById[parent.previousRightId] : undefined);
+            const left = resolveLinkFromAll(parent.previousLeftId, parent.previousLeftMatch);
+            const right = resolveLinkFromAll(parent.previousRightId, parent.previousRightMatch);
             if (left) map[left.$id] = left;
             if (right) map[right.$id] = right;
         });
 
         const filteredEntries = Object.entries(map).filter(([, match]) => {
             const hasPrevious =
-                Boolean(match.previousLeftMatch) ||
-                Boolean(match.previousRightMatch) ||
-                Boolean(match.previousLeftId && matchesById[match.previousLeftId]) ||
-                Boolean(match.previousRightId && matchesById[match.previousRightId]);
+                Boolean(resolveLinkFromAll(match.previousLeftId, match.previousLeftMatch)) ||
+                Boolean(resolveLinkFromAll(match.previousRightId, match.previousRightMatch));
 
             const hasNext =
-                Boolean(match.winnerNextMatch) ||
-                Boolean(match.winnerNextMatchId && matchesById[match.winnerNextMatchId]) ||
-                Boolean(match.loserNextMatch) ||
-                Boolean(match.loserNextMatchId && matchesById[match.loserNextMatchId]);
+                Boolean(resolveLinkFromAll(match.winnerNextMatchId, match.winnerNextMatch)) ||
+                Boolean(resolveLinkFromAll(match.loserNextMatchId, match.loserNextMatch));
 
             return hasPrevious || hasNext;
         });
 
         return Object.fromEntries(filteredEntries);
-    }, [bracket.matches, isLosersBracket, matchesById]);
+    }, [bracket.matches, isLosersBracket, resolveLinkFromAll]);
+
+    const resolveLinkFromView = useCallback((idValue: unknown, relationValue: unknown): Match | undefined => {
+        const id = normalizeMatchRefId(idValue);
+        if (id && viewById[id]) {
+            return viewById[id];
+        }
+        // Keep layout tied to explicit IDs so partial edit-state links don't over-count children.
+        if (idValue === null || (typeof idValue === 'string' && idValue.trim().length === 0)) {
+            return undefined;
+        }
+        const relationId = extractEntityId(relationValue);
+        if (relationId && viewById[relationId]) {
+            return viewById[relationId];
+        }
+        return undefined;
+    }, [viewById]);
 
     const hasLoserMatches = useMemo(
         () => Object.values(bracket.matches).some(match => match.losersBracket),
@@ -479,8 +514,11 @@ export default function TournamentBracketView({
     // Terminals: no winnerNext within current view's bracket
     const terminalIds = useMemo(() => Object.values(viewById)
         .filter(m => m.losersBracket === isLosersBracket)
-        .filter(m => !m.winnerNextMatch || m.winnerNextMatch.losersBracket !== isLosersBracket)
-        .map(m => m.$id), [viewById, isLosersBracket]);
+        .filter((m) => {
+            const winnerNext = resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
+            return !winnerNext || winnerNext.losersBracket !== isLosersBracket;
+        })
+        .map(m => m.$id), [viewById, isLosersBracket, resolveLinkFromView]);
 
     // Choose a root terminal (prefer highest matchId)
     const rootId = useMemo(() => {
@@ -496,15 +534,15 @@ export default function TournamentBracketView({
 
     // Helper: children of a node with at most one-hop cross-bracket inclusion
     const getChildrenLimited = useCallback((m: Match): Match[] => {
-        const left = m.previousLeftMatch ?? (m.previousLeftId ? viewById[m.previousLeftId] : undefined);
-        const right = m.previousRightMatch ?? (m.previousRightId ? viewById[m.previousRightId] : undefined);
+        const left = resolveLinkFromView(m.previousLeftId, m.previousLeftMatch);
+        const right = resolveLinkFromView(m.previousRightId, m.previousRightMatch);
         const children: Match[] = [];
         if (left) children.push(left);
         if (right && (!left || right.$id !== left.$id)) children.push(right);
         // Do not traverse beyond one hop across brackets
         if (m.losersBracket !== isLosersBracket) return [];
         return children;
-    }, [viewById, isLosersBracket]);
+    }, [resolveLinkFromView, isLosersBracket]);
 
     // Compute round indices from root with one-hop cross-bracket rule, then invert so leaves are round 0
     const roundIndexById = useMemo(() => {
@@ -622,15 +660,15 @@ export default function TournamentBracketView({
         const getNextTarget = (m: Match): Match | undefined => {
             if (!isLosersBracket) {
                 // Winners view: only next winner match
-                const t = m.winnerNextMatch ?? (m.winnerNextMatchId ? viewById[m.winnerNextMatchId] : undefined);
+                const t = resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
                 return t && t.losersBracket === false ? t : undefined;
             } else {
                 if (m.losersBracket === false) {
                     // Losers view: winners matches point to loserNext
-                    return m.loserNextMatch ?? (m.loserNextMatchId ? viewById[m.loserNextMatchId] : undefined);
+                    return resolveLinkFromView(m.loserNextMatchId, m.loserNextMatch);
                 } else {
                     // Losers view: losers matches point to next winner (within losers bracket)
-                    return m.winnerNextMatch ?? (m.winnerNextMatchId ? viewById[m.winnerNextMatchId] : undefined);
+                    return resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
                 }
             }
         };
@@ -653,7 +691,7 @@ export default function TournamentBracketView({
         });
 
         setConnections(conns);
-    }, [positionById, viewById, isLosersBracket]);
+    }, [positionById, viewById, isLosersBracket, resolveLinkFromView, CARD_H]);
 
     useEffect(() => { calculateConnections(); }, [calculateConnections]);
 
@@ -888,23 +926,27 @@ export default function TournamentBracketView({
                                         teamRefereeId: teamRefereeId || m.teamRefereeId || undefined,
                                         refereeId: refereeId || m.refereeId || undefined,
 	                                        previousLeftMatch:
-	                                            m.previousLeftMatch ??
-	                                            (m.previousLeftId ? matchesById[m.previousLeftId] : undefined),
+                                            resolveLinkFromAll(m.previousLeftId, m.previousLeftMatch),
 	                                        previousRightMatch:
-	                                            m.previousRightMatch ??
-                                            (m.previousRightId ? matchesById[m.previousRightId] : undefined),
+                                            resolveLinkFromAll(m.previousRightId, m.previousRightMatch),
                                     };
 	                                const canInternalManage = canManageMatch(resolvedMatch);
 	                                const clickable = hasExternalMatchClick || canInternalManage;
-	                                const manageHint = allowEditing || (!hasExternalMatchClick && canInternalManage);
+	                                // Keep bracket card shape identical between edit and non-edit modes.
+	                                const manageHint = false;
                                     const team1Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team1`];
                                     const team2Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team2`];
 	                                return (
 	                                    <div
 	                                        key={m.$id}
                                         ref={(el) => { matchRefs.current[m.$id] = el; }}
-                                        className="absolute w-72 h-50"
-                                        style={{ left: PAD_LEFT + pos.x, top: PAD_TOP + pos.y }}
+                                        className="absolute"
+                                        style={{
+                                            left: PAD_LEFT + pos.x,
+                                            top: PAD_TOP + pos.y,
+                                            width: CARD_W,
+                                            height: CARD_H,
+                                        }}
                                     >
 	                                        <MatchCard
 	                                            match={resolvedMatch}

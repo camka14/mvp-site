@@ -5,18 +5,25 @@ import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider,
 import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
 import type { Field, Match, Team, UserData } from '@/types';
 
 interface MatchEditModalProps {
   opened: boolean;
   match: Match | null;
+  allMatches?: Match[];
   fields?: Field[];
   teams?: Team[];
   referees?: UserData[];
   doTeamsRef?: boolean;
+  isCreateMode?: boolean;
+  creationContext?: 'schedule' | 'bracket';
+  eventType?: string | null;
+  enforceScheduleFields?: boolean;
   onClose: () => void;
   onSave: (updated: Match) => void;
+  onDelete?: (target: Match) => void;
 }
 
 const MATCH_TIME_PICKER_PROPS = {
@@ -150,12 +157,18 @@ const extractSetData = (match?: Match | null) => {
 export default function MatchEditModal({
   opened,
   match,
+  allMatches = [],
   fields = [],
   teams = [],
   referees = [],
   doTeamsRef = false,
+  isCreateMode = false,
+  creationContext = 'bracket',
+  eventType = null,
+  enforceScheduleFields = false,
   onClose,
   onSave,
+  onDelete,
 }: MatchEditModalProps) {
   const [startValue, setStartValue] = useState<Date | null>(null);
   const [endValue, setEndValue] = useState<Date | null>(null);
@@ -167,8 +180,11 @@ export default function MatchEditModal({
   const [team1Points, setTeam1Points] = useState<number[]>([0]);
   const [team2Points, setTeam2Points] = useState<number[]>([0]);
   const [setResults, setSetResults] = useState<number[]>([0]);
+  const [winnerNextMatchId, setWinnerNextMatchId] = useState<string | null>(null);
+  const [loserNextMatchId, setLoserNextMatchId] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -183,6 +199,8 @@ export default function MatchEditModal({
       setTeam1Points([0]);
       setTeam2Points([0]);
       setSetResults([0]);
+      setWinnerNextMatchId(null);
+      setLoserNextMatchId(null);
       setLocked(false);
       setError(null);
       return;
@@ -205,10 +223,111 @@ export default function MatchEditModal({
     setTeam1Points(aligned.team1);
     setTeam2Points(aligned.team2);
     setSetResults(aligned.results);
+    setWinnerNextMatchId(normalizeOptionalId(match.winnerNextMatchId) ?? null);
+    setLoserNextMatchId(normalizeOptionalId(match.loserNextMatchId) ?? null);
     setLocked(Boolean(match.locked));
     setError(null);
   }, [match, opened]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  const allMatchOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allMatches.forEach((candidate) => {
+      const id = normalizeOptionalId(candidate.$id);
+      if (!id) {
+        return;
+      }
+      const label = typeof candidate.matchId === 'number'
+        ? `Match #${candidate.matchId}`
+        : id;
+      map.set(id, label);
+    });
+    const currentId = normalizeOptionalId(match?.$id);
+    if (currentId && !map.has(currentId)) {
+      map.set(
+        currentId,
+        typeof match?.matchId === 'number' ? `Match #${match.matchId}` : currentId,
+      );
+    }
+    return map;
+  }, [allMatches, match]);
+
+  const currentMatchId = useMemo(
+    () => normalizeOptionalId(match?.$id),
+    [match?.$id],
+  );
+
+  const bracketNodes = useMemo<BracketNode[]>(() => {
+    const ids = new Set<string>();
+    const candidates: Match[] = [];
+    allMatches.forEach((candidate) => {
+      const id = normalizeOptionalId(candidate.$id);
+      if (!id || ids.has(id)) {
+        return;
+      }
+      ids.add(id);
+      candidates.push(candidate);
+    });
+    if (match && currentMatchId && !ids.has(currentMatchId)) {
+      candidates.push(match);
+    }
+
+    return candidates
+      .map((candidate) => {
+        const id = normalizeOptionalId(candidate.$id);
+        if (!id) return null;
+        const isCurrent = currentMatchId === id;
+        return {
+          id,
+          matchId: typeof candidate.matchId === 'number' ? candidate.matchId : null,
+          previousLeftId: normalizeOptionalId(candidate.previousLeftId) ?? null,
+          previousRightId: normalizeOptionalId(candidate.previousRightId) ?? null,
+          winnerNextMatchId: normalizeOptionalId(isCurrent ? winnerNextMatchId : candidate.winnerNextMatchId) ?? null,
+          loserNextMatchId: normalizeOptionalId(isCurrent ? loserNextMatchId : candidate.loserNextMatchId) ?? null,
+        } satisfies BracketNode;
+      })
+      .filter((entry): entry is BracketNode => entry !== null);
+  }, [allMatches, currentMatchId, loserNextMatchId, match, winnerNextMatchId]);
+
+  const winnerCandidateIds = useMemo(() => {
+    if (!currentMatchId) {
+      return [] as string[];
+    }
+    return filterValidNextMatchCandidates({
+      sourceId: currentMatchId,
+      nodes: bracketNodes,
+      lane: 'winner',
+    });
+  }, [bracketNodes, currentMatchId]);
+
+  const loserCandidateIds = useMemo(() => {
+    if (!currentMatchId) {
+      return [] as string[];
+    }
+    return filterValidNextMatchCandidates({
+      sourceId: currentMatchId,
+      nodes: bracketNodes,
+      lane: 'loser',
+    });
+  }, [bracketNodes, currentMatchId]);
+
+  const winnerNextOptions = useMemo(
+    () => winnerCandidateIds.map((id) => ({ value: id, label: allMatchOptions.get(id) ?? id })),
+    [allMatchOptions, winnerCandidateIds],
+  );
+  const loserNextOptions = useMemo(
+    () => loserCandidateIds.map((id) => ({ value: id, label: allMatchOptions.get(id) ?? id })),
+    [allMatchOptions, loserCandidateIds],
+  );
+
+  const selectedWinnerNextMatchId = useMemo(
+    () => (winnerNextMatchId && winnerCandidateIds.includes(winnerNextMatchId) ? winnerNextMatchId : null),
+    [winnerCandidateIds, winnerNextMatchId],
+  );
+  const selectedLoserNextMatchId = useMemo(
+    () => (loserNextMatchId && loserCandidateIds.includes(loserNextMatchId) ? loserNextMatchId : null),
+    [loserCandidateIds, loserNextMatchId],
+  );
 
   const matchTeam1Id = useMemo(() => resolveMatchTeamId(match, 'team1'), [match]);
   const matchTeam2Id = useMemo(() => resolveMatchTeamId(match, 'team2'), [match]);
@@ -405,12 +524,16 @@ export default function MatchEditModal({
       return;
     }
 
-    if (!startValue || !endValue) {
-      setError('Start and end times are required.');
-      return;
-    }
-
-    if (endValue.getTime() <= startValue.getTime()) {
+    if (requiresScheduleFields) {
+      if (!fieldId || !startValue || !endValue) {
+        setError('Field, start, and end are required for schedule-created matches.');
+        return;
+      }
+      if (endValue.getTime() <= startValue.getTime()) {
+        setError('End time must be after the start time.');
+        return;
+      }
+    } else if (startValue && endValue && endValue.getTime() <= startValue.getTime()) {
       setError('End time must be after the start time.');
       return;
     }
@@ -420,14 +543,46 @@ export default function MatchEditModal({
       return;
     }
 
+    const nodesForValidation = bracketNodes.map((node) => {
+      if (!currentMatchId || node.id !== currentMatchId) {
+        return node;
+      }
+      return {
+        ...node,
+        winnerNextMatchId: selectedWinnerNextMatchId,
+        loserNextMatchId: selectedLoserNextMatchId,
+      } satisfies BracketNode;
+    });
+    const graphValidation = validateAndNormalizeBracketGraph(nodesForValidation);
+    if (!graphValidation.ok) {
+      setError(graphValidation.errors[0]?.message ?? 'Invalid bracket links.');
+      return;
+    }
+
+    if (isCreateMode && String(eventType ?? '').toUpperCase() === 'TOURNAMENT' && currentMatchId) {
+      const normalizedNode = graphValidation.normalizedById[currentMatchId];
+      const hasAnyLink = Boolean(
+        normalizeOptionalId(selectedWinnerNextMatchId)
+        || normalizeOptionalId(selectedLoserNextMatchId)
+        || normalizedNode?.previousLeftId
+        || normalizedNode?.previousRightId,
+      );
+      if (!hasAnyLink) {
+        setError('Tournament match creation requires at least one bracket link.');
+        return;
+      }
+    }
+
     const updated: Match = {
       ...match,
-      start: formatLocalDateTime(startValue),
-      end: formatLocalDateTime(endValue),
+      start: startValue ? formatLocalDateTime(startValue) : null,
+      end: endValue ? formatLocalDateTime(endValue) : null,
       locked,
       team1Points: sanitizePoints(team1Points),
       team2Points: sanitizePoints(team2Points),
       setResults: sanitizeResults(setResults),
+      winnerNextMatchId: selectedWinnerNextMatchId,
+      loserNextMatchId: selectedLoserNextMatchId,
     };
 
     const nextField = findFieldById(fieldId);
@@ -474,8 +629,24 @@ export default function MatchEditModal({
     onSave(updated);
   };
 
+  const handleDelete = () => {
+    if (!match || !onDelete) {
+      return;
+    }
+    const confirmed = window.confirm(
+      isCreateMode
+        ? 'Remove this unsaved match from the draft?'
+        : 'Delete this match from the event? This cannot be undone.',
+    );
+    if (!confirmed) {
+      return;
+    }
+    setError(null);
+    onDelete(match);
+  };
+
   return (
-    <Modal opened={opened} onClose={handleClose} title="Edit Match" centered size="lg">
+    <Modal opened={opened} onClose={handleClose} title={isCreateMode ? 'Add Match' : 'Edit Match'} centered size="lg">
       <Stack gap="md">
         {error && (
           <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
@@ -550,23 +721,46 @@ export default function MatchEditModal({
         )}
 
         <DateTimePicker
-          label="Start time"
+          label={requiresScheduleFields ? 'Start time' : 'Start time (optional)'}
           value={startValue}
           onChange={handleStartDateChange}
           withSeconds
           valueFormat="MM/DD/YYYY hh:mm:ss A"
           timePickerProps={MATCH_TIME_PICKER_PROPS}
-          required
+          required={requiresScheduleFields}
         />
         <DateTimePicker
-          label="End time"
+          label={requiresScheduleFields ? 'End time' : 'End time (optional)'}
           value={endValue}
           onChange={handleEndDateChange}
           withSeconds
           valueFormat="MM/DD/YYYY hh:mm:ss A"
           timePickerProps={MATCH_TIME_PICKER_PROPS}
-          required
+          required={requiresScheduleFields}
           minDate={startValue ?? undefined}
+        />
+
+        <Divider label="Bracket Links" />
+
+        <Select
+          label="Winner advances to"
+          data={winnerNextOptions}
+          value={selectedWinnerNextMatchId}
+          onChange={setWinnerNextMatchId}
+          placeholder="No next winner match"
+          clearable
+          searchable
+          nothingFoundMessage={winnerNextOptions.length ? 'No matches' : 'No valid matches'}
+        />
+        <Select
+          label="Loser advances to"
+          data={loserNextOptions}
+          value={selectedLoserNextMatchId}
+          onChange={setLoserNextMatchId}
+          placeholder="No next loser match"
+          clearable
+          searchable
+          nothingFoundMessage={loserNextOptions.length ? 'No matches' : 'No valid matches'}
         />
 
         <Divider label="Sets" />
@@ -609,9 +803,24 @@ export default function MatchEditModal({
           </Group>
         </Group>
 
-        <Group justify="flex-end" mt="md">
-          <Button variant="default" onClick={handleClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!startValue || !endValue}>Save changes</Button>
+        <Group justify="space-between" mt="md">
+          <Group>
+            {onDelete && (
+              <Button
+                variant="light"
+                color="red"
+                onClick={handleDelete}
+              >
+                {isCreateMode ? 'Discard match' : 'Delete match'}
+              </Button>
+            )}
+          </Group>
+          <Group>
+            <Button variant="default" onClick={handleClose}>Cancel</Button>
+            <Button onClick={handleSave} disabled={requiresScheduleFields && (!startValue || !endValue || !fieldId)}>
+              {isCreateMode ? 'Create match' : 'Save changes'}
+            </Button>
+          </Group>
         </Group>
       </Stack>
     </Modal>

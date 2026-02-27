@@ -30,6 +30,7 @@ import { formatBillAmount } from '@/types';
 import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import type { EventTeamComplianceResponse, TeamComplianceSummary } from '@/lib/eventTeamCompliance';
+import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
@@ -100,6 +101,44 @@ type DivisionOption = {
   label: string;
 };
 
+type MatchCreateContext = 'schedule' | 'bracket';
+
+type StagedMatchCreateMeta = {
+  clientId: string;
+  creationContext: MatchCreateContext;
+  autoPlaceholderTeam: boolean;
+};
+
+const CLIENT_MATCH_PREFIX = 'client:';
+const LOCAL_PLACEHOLDER_PREFIX = 'placeholder-local:';
+
+const isClientMatchId = (id: string | null | undefined): boolean =>
+  typeof id === 'string' && id.startsWith(CLIENT_MATCH_PREFIX);
+
+const getClientIdFromMatchId = (id: string): string =>
+  id.slice(CLIENT_MATCH_PREFIX.length);
+
+const isLocalPlaceholderId = (id: string | null | undefined): boolean =>
+  typeof id === 'string' && id.startsWith(LOCAL_PLACEHOLDER_PREFIX);
+
+const asBulkMatchRef = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const nextMatchSequenceNumber = (matches: Match[]): number => {
+  const maxCurrent = matches.reduce((maxValue, match) => {
+    if (typeof match.matchId !== 'number' || !Number.isFinite(match.matchId)) {
+      return maxValue;
+    }
+    return Math.max(maxValue, Math.trunc(match.matchId));
+  }, 0);
+  return maxCurrent + 1;
+};
+
 const normalizeDivisionToken = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -114,6 +153,34 @@ const normalizeIdToken = (value: unknown): string | null => {
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+};
+
+const clearMatchReferencesToTarget = (match: Match, removedMatchId: string): Match => {
+  const targetId = normalizeIdToken(removedMatchId);
+  if (!targetId) {
+    return match;
+  }
+
+  let next = match;
+  const previousLeftId = normalizeIdToken(next.previousLeftId);
+  const previousRightId = normalizeIdToken(next.previousRightId);
+  const winnerNextMatchId = normalizeIdToken(next.winnerNextMatchId);
+  const loserNextMatchId = normalizeIdToken(next.loserNextMatchId);
+
+  if (previousLeftId === targetId) {
+    next = { ...next, previousLeftId: null, previousLeftMatch: undefined };
+  }
+  if (previousRightId === targetId) {
+    next = { ...next, previousRightId: null, previousRightMatch: undefined };
+  }
+  if (winnerNextMatchId === targetId) {
+    next = { ...next, winnerNextMatchId: null, winnerNextMatch: undefined };
+  }
+  if (loserNextMatchId === targetId) {
+    next = { ...next, loserNextMatchId: null, loserNextMatch: undefined };
+  }
+
+  return next;
 };
 
 const toDivisionKey = (divisionId: string | null | undefined): string | null => {
@@ -503,6 +570,10 @@ function EventScheduleContent() {
   const [searchTeamPool, setSearchTeamPool] = useState<Team[]>([]);
   const [searchTeamsLoading, setSearchTeamsLoading] = useState(false);
   const [isMatchEditorOpen, setIsMatchEditorOpen] = useState(false);
+  const [matchEditorContext, setMatchEditorContext] = useState<MatchCreateContext>('bracket');
+  const [pendingCreateMatchId, setPendingCreateMatchId] = useState<string | null>(null);
+  const [stagedMatchCreates, setStagedMatchCreates] = useState<Record<string, StagedMatchCreateMeta>>({});
+  const [stagedMatchDeletes, setStagedMatchDeletes] = useState<string[]>([]);
   const [standingsSort, setStandingsSort] = useState<{ field: StandingsSortField; direction: 'asc' | 'desc' }>({
     field: 'points',
     direction: 'desc',
@@ -2242,6 +2313,10 @@ function EventScheduleContent() {
   const hydrateEvent = useCallback((loadedEvent: Event) => {
     const eventClone = cloneValue(loadedEvent) as Event;
     setEvent(eventClone);
+    setStagedMatchCreates({});
+    setStagedMatchDeletes([]);
+    setPendingCreateMatchId(null);
+    setMatchEditorContext('bracket');
 
     const normalizedMatches = Array.isArray(eventClone.matches)
       ? (cloneValue(eventClone.matches) as Match[])
@@ -2292,6 +2367,10 @@ function EventScheduleContent() {
     setSubmitError(null);
     setWarningMessage(null);
     setActionError(null);
+    setStagedMatchCreates({});
+    setStagedMatchDeletes([]);
+    setPendingCreateMatchId(null);
+    setMatchEditorContext('bracket');
 
     if (event) {
       const resetEvent = cloneValue(event) as Event;
@@ -2893,19 +2972,22 @@ function EventScheduleContent() {
     standingsDivisionData,
   ]);
 
-  function getDraftStandingsPoints(row: StandingsRow): { basePoints: number; finalPoints: number; pointsDelta: number } {
-    const basePoints = typeof row.basePoints === 'number' ? row.basePoints : row.points;
-    const hasDraftOverride = Object.prototype.hasOwnProperty.call(standingsDraftOverrides, row.teamId);
-    const draftOverride = hasDraftOverride ? standingsDraftOverrides[row.teamId] : undefined;
-    const finalPoints = typeof draftOverride === 'number' && Number.isFinite(draftOverride)
-      ? draftOverride
-      : (typeof row.finalPoints === 'number' ? row.finalPoints : row.points);
-    return {
-      basePoints,
-      finalPoints,
-      pointsDelta: finalPoints - basePoints,
-    };
-  }
+  const getDraftStandingsPoints = useCallback(
+    (row: StandingsRow): { basePoints: number; finalPoints: number; pointsDelta: number } => {
+      const basePoints = typeof row.basePoints === 'number' ? row.basePoints : row.points;
+      const hasDraftOverride = Object.prototype.hasOwnProperty.call(standingsDraftOverrides, row.teamId);
+      const draftOverride = hasDraftOverride ? standingsDraftOverrides[row.teamId] : undefined;
+      const finalPoints = typeof draftOverride === 'number' && Number.isFinite(draftOverride)
+        ? draftOverride
+        : (typeof row.finalPoints === 'number' ? row.finalPoints : row.points);
+      return {
+        basePoints,
+        finalPoints,
+        pointsDelta: finalPoints - basePoints,
+      };
+    },
+    [standingsDraftOverrides],
+  );
 
   const standings = useMemo<RankedStandingsRow[]>(() => {
     if (baseStandings.length === 0) {
@@ -2964,7 +3046,7 @@ function EventScheduleContent() {
       ...row,
       rank: index + 1,
     }));
-  }, [baseStandings, standingsDraftOverrides, standingsSort]);
+  }, [baseStandings, getDraftStandingsPoints, standingsSort]);
 
   const hasRecordedMatches = standings.some((row) => row.matchesPlayed > 0);
   const resolvedMatchTeams = useMemo(() => {
@@ -3018,7 +3100,7 @@ function EventScheduleContent() {
   const shouldShowScheduleDivisionFilter = scheduleDivisionOptions.length > 1;
   const shouldShowBracketDivisionFilter = bracketDivisionOptions.length > 1;
 
-  const showScheduleTab = isLeague;
+  const showScheduleTab = isLeague || isTournament;
   const showStandingsTab = isLeague;
   const showParticipantsTab = !isTemplateEvent
     && Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0);
@@ -3046,7 +3128,7 @@ function EventScheduleContent() {
     return `${prefix}: ${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)} paid`;
   }, []);
 
-  const defaultTab = showScheduleTab ? 'schedule' : 'details';
+  const defaultTab = isLeague ? 'schedule' : 'details';
   const shouldShowBracketTab = !!bracketData || isPreview;
 
   // Ensure the bracket tab is only active when playoff data exists or preview mode demands it.
@@ -3167,6 +3249,132 @@ function EventScheduleContent() {
     },
     [eventId],
   );
+
+  const buildBracketNodes = useCallback((draftMatches: Match[]): BracketNode[] => (
+    draftMatches
+      .map((match) => {
+        const id = normalizeIdToken(match.$id);
+        if (!id) {
+          return null;
+        }
+        return {
+          id,
+          matchId: typeof match.matchId === 'number' ? match.matchId : null,
+          previousLeftId: asBulkMatchRef(match.previousLeftId),
+          previousRightId: asBulkMatchRef(match.previousRightId),
+          winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
+          loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
+        } satisfies BracketNode;
+      })
+      .filter((entry): entry is BracketNode => entry !== null)
+  ), []);
+
+  const validateDraftMatchGraph = useCallback((draftMatches: Match[]): { ok: true } | { ok: false; message: string } => {
+    const graphValidation = validateAndNormalizeBracketGraph(buildBracketNodes(draftMatches));
+    if (!graphValidation.ok) {
+      return {
+        ok: false,
+        message: graphValidation.errors[0]?.message ?? 'Invalid bracket graph.',
+      };
+    }
+
+    const isTournamentEvent = String(activeEvent?.eventType ?? '').toUpperCase() === 'TOURNAMENT';
+    if (!isTournamentEvent) {
+      return { ok: true };
+    }
+
+    for (const match of draftMatches) {
+      const matchId = normalizeIdToken(match.$id);
+      if (!matchId || !isClientMatchId(matchId)) {
+        continue;
+      }
+      const createMeta = stagedMatchCreates[matchId];
+      if (!createMeta) {
+        continue;
+      }
+      if (createMeta.creationContext === 'schedule') {
+        const fieldId = normalizeIdToken(match.fieldId);
+        const start = parseLocalDateTime(match.start ?? null);
+        const end = parseLocalDateTime(match.end ?? null);
+        if (!fieldId || !start || !end) {
+          return {
+            ok: false,
+            message: `Schedule match ${match.matchId ?? matchId} requires field, start, and end.`,
+          };
+        }
+        if (end.getTime() <= start.getTime()) {
+          return {
+            ok: false,
+            message: `Schedule match ${match.matchId ?? matchId} requires end after start.`,
+          };
+        }
+      }
+
+      const normalizedNode = graphValidation.normalizedById[matchId];
+      const hasAnyLink = Boolean(
+        asBulkMatchRef(match.winnerNextMatchId) ||
+        asBulkMatchRef(match.loserNextMatchId) ||
+        normalizedNode?.previousLeftId ||
+        normalizedNode?.previousRightId,
+      );
+      if (!hasAnyLink) {
+        return {
+          ok: false,
+          message: `Tournament match ${match.matchId ?? matchId} must include at least one link.`,
+        };
+      }
+    }
+
+    return { ok: true };
+  }, [activeEvent?.eventType, buildBracketNodes, stagedMatchCreates]);
+
+  const toBulkMatchUpdatePayload = useCallback((match: Match): Record<string, unknown> => {
+    const normalizeRelationId = (value: unknown): string | null => {
+      if (typeof value === 'string') {
+        const normalized = value.trim();
+        return normalized.length > 0 ? normalized : null;
+      }
+      if (value && typeof value === 'object' && '$id' in (value as Record<string, unknown>)) {
+        const relationId = (value as Record<string, unknown>).$id;
+        if (typeof relationId === 'string' && relationId.trim().length > 0) {
+          return relationId.trim();
+        }
+      }
+      return null;
+    };
+
+    const resolvePersistableTeamId = (explicitId: string | null | undefined, relation: unknown): string | null => {
+      const candidate = normalizeRelationId(explicitId) ?? normalizeRelationId(relation);
+      if (!candidate || isLocalPlaceholderId(candidate)) {
+        return null;
+      }
+      return candidate;
+    };
+
+    return {
+      id: match.$id,
+      matchId: match.matchId ?? null,
+      locked: Boolean(match.locked),
+      team1Points: Array.isArray(match.team1Points) ? match.team1Points : [],
+      team2Points: Array.isArray(match.team2Points) ? match.team2Points : [],
+      setResults: Array.isArray(match.setResults) ? match.setResults : [],
+      team1Id: resolvePersistableTeamId(match.team1Id, match.team1),
+      team2Id: resolvePersistableTeamId(match.team2Id, match.team2),
+      refereeId: normalizeRelationId(match.refereeId) ?? normalizeRelationId(match.referee),
+      teamRefereeId: resolvePersistableTeamId(match.teamRefereeId, match.teamReferee),
+      fieldId: normalizeRelationId(match.fieldId) ?? normalizeRelationId(match.field),
+      previousLeftId: asBulkMatchRef(match.previousLeftId),
+      previousRightId: asBulkMatchRef(match.previousRightId),
+      winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
+      loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
+      side: match.side ?? null,
+      refereeCheckedIn: Boolean(match.refereeCheckedIn),
+      start: match.start ?? null,
+      end: match.end ?? null,
+      division: normalizeIdToken(getDivisionId(match.division) ?? null),
+      losersBracket: Boolean(match.losersBracket),
+    };
+  }, []);
 
   const schedulePreview = useCallback(
     async (draft: Partial<Event>) => {
@@ -3326,9 +3534,97 @@ function EventScheduleContent() {
         }
 
         if (updatedEvent.$id && !hasSchedulingAction && nextMatches.length > 0) {
-          const updatedMatches = await tournamentService.updateMatchesBulk(updatedEvent.$id, nextMatches);
-          if (updatedMatches.length > 0) {
-            updatedEvent.matches = updatedMatches;
+          const validation = validateDraftMatchGraph(nextMatches);
+          if (!validation.ok) {
+            throw new Error(validation.message);
+          }
+
+          const updatePayload = nextMatches
+            .filter((match) => !isClientMatchId(match.$id))
+            .map((match) => toBulkMatchUpdatePayload(match));
+          const createPayload = nextMatches
+            .filter((match) => isClientMatchId(match.$id))
+            .map((match) => {
+              const matchId = match.$id;
+              const createMeta = stagedMatchCreates[matchId];
+              const base = toBulkMatchUpdatePayload(match);
+              const { id: _ignored, ...rest } = base;
+              return {
+                clientId: createMeta?.clientId ?? getClientIdFromMatchId(matchId),
+                creationContext: createMeta?.creationContext ?? 'bracket',
+                autoPlaceholderTeam: createMeta?.autoPlaceholderTeam ?? (String(updatedEvent.eventType ?? '').toUpperCase() === 'TOURNAMENT'),
+                ...rest,
+              };
+            });
+          const deletePayload = Array.from(
+            new Set(
+              stagedMatchDeletes
+                .map((value) => normalizeIdToken(value))
+                .filter((value): value is string => Boolean(value))
+                .filter((value) => !isClientMatchId(value)),
+            ),
+          );
+
+          if (updatePayload.length > 0 || createPayload.length > 0 || deletePayload.length > 0) {
+            const matchResponse = await apiRequest<{ matches?: Match[]; created?: Record<string, string>; deleted?: string[] }>(
+              `/api/events/${updatedEvent.$id}/matches`,
+              {
+                method: 'PATCH',
+                body: {
+                  ...(updatePayload.length > 0 ? { matches: updatePayload } : {}),
+                  ...(createPayload.length > 0 ? { creates: createPayload } : {}),
+                  ...(deletePayload.length > 0 ? { deletes: deletePayload } : {}),
+                },
+              },
+            );
+            const resolvePersistedMatchRef = (value: string | null | undefined): string | null => {
+              const normalized = normalizeIdToken(value);
+              if (!normalized) {
+                return null;
+              }
+              if (!isClientMatchId(normalized)) {
+                return normalized;
+              }
+              const clientId = getClientIdFromMatchId(normalized);
+              const persisted = matchResponse?.created?.[clientId];
+              return normalizeIdToken(persisted) ?? normalized;
+            };
+            const updatedMatches = Array.isArray(matchResponse?.matches)
+              ? matchResponse.matches.map((match) => normalizeApiMatch(match))
+              : [];
+            const normalizedDraftMatches = nextMatches.map((match) => (
+              normalizeApiMatch({
+                ...match,
+                $id: resolvePersistedMatchRef(match.$id) ?? match.$id,
+                previousLeftId: resolvePersistedMatchRef(match.previousLeftId),
+                previousRightId: resolvePersistedMatchRef(match.previousRightId),
+                winnerNextMatchId: resolvePersistedMatchRef(match.winnerNextMatchId),
+                loserNextMatchId: resolvePersistedMatchRef(match.loserNextMatchId),
+              })
+            ));
+            const mergedMatchesById = new Map<string, Match>();
+            normalizedDraftMatches.forEach((match) => {
+              if (normalizeIdToken(match.$id)) {
+                mergedMatchesById.set(match.$id, match);
+              }
+            });
+            updatedMatches.forEach((match) => {
+              if (normalizeIdToken(match.$id)) {
+                mergedMatchesById.set(match.$id, match);
+              }
+            });
+            const deletedIds = Array.isArray(matchResponse?.deleted)
+              ? matchResponse.deleted
+                .map((value) => normalizeIdToken(value))
+                .filter((value): value is string => Boolean(value))
+              : deletePayload;
+            deletedIds.forEach((matchId) => {
+              mergedMatchesById.delete(matchId);
+            });
+            updatedEvent.matches = Array.from(mergedMatchesById.values());
+            setStagedMatchCreates({});
+            setStagedMatchDeletes([]);
+            setPendingCreateMatchId(null);
           }
         }
 
@@ -3436,6 +3732,10 @@ function EventScheduleContent() {
       router,
       selectedLifecycleStatus,
       searchParams,
+      stagedMatchCreates,
+      toBulkMatchUpdatePayload,
+      stagedMatchDeletes,
+      validateDraftMatchGraph,
     ],
   );
 
@@ -3669,18 +3969,168 @@ function EventScheduleContent() {
     return Array.from(refereesById.values());
   }, [participantReferees, activeEvent?.referees, activeMatches]);
 
-  const handleMatchEditRequest = useCallback((match: Match) => {
+  const stageMatchCreate = useCallback((params: {
+    creationContext: MatchCreateContext;
+    seed?: Partial<Match>;
+    openEditor?: boolean;
+  }) => {
+    if (!canEditMatches || !activeEvent?.$id) {
+      return null;
+    }
+
+    const clientId = createClientId();
+    const matchId = `${CLIENT_MATCH_PREFIX}${clientId}`;
+    const now = new Date();
+    const defaultStart = formatLocalDateTime(now);
+    const defaultEnd = formatLocalDateTime(new Date(now.getTime() + 60 * 60 * 1000));
+    const nextMatchId = nextMatchSequenceNumber(activeMatches);
+    const isTournamentEvent = String(activeEvent.eventType ?? '').toUpperCase() === 'TOURNAMENT';
+    const existingPlaceholderCount = activeMatches.reduce((count, match) => {
+      const team1Name = (match.team1 as { name?: string } | null)?.name ?? '';
+      const team2Name = (match.team2 as { name?: string } | null)?.name ?? '';
+      const nameBucket = [team1Name, team2Name].join(' ').toLowerCase();
+      return nameBucket.includes('place holder') ? count + 1 : count;
+    }, 0);
+    const placeholderTeam = isTournamentEvent
+      ? ({
+          $id: `${LOCAL_PLACEHOLDER_PREFIX}${clientId}`,
+          name: `Place Holder ${existingPlaceholderCount + 1}`,
+          division: normalizeIdToken(params.seed?.division as string | undefined) ?? undefined,
+        } as unknown as Team)
+      : undefined;
+
+    const draft: Match = {
+      $id: matchId,
+      matchId: typeof params.seed?.matchId === 'number' ? params.seed.matchId : nextMatchId,
+      eventId: activeEvent.$id,
+      team1Id: null,
+      team2Id: null,
+      refereeId: null,
+      teamRefereeId: null,
+      fieldId: params.creationContext === 'schedule'
+        ? normalizeIdToken(params.seed?.fieldId as string | undefined)
+        : null,
+      locked: false,
+      team1Points: [],
+      team2Points: [],
+      setResults: [],
+      losersBracket: Boolean(params.seed?.losersBracket),
+      winnerNextMatchId: asBulkMatchRef(params.seed?.winnerNextMatchId as string | undefined),
+      loserNextMatchId: asBulkMatchRef(params.seed?.loserNextMatchId as string | undefined),
+      previousLeftId: asBulkMatchRef(params.seed?.previousLeftId as string | undefined),
+      previousRightId: asBulkMatchRef(params.seed?.previousRightId as string | undefined),
+      side: params.seed?.side ?? null,
+      refereeCheckedIn: false,
+      start: params.creationContext === 'schedule' ? defaultStart : null,
+      end: params.creationContext === 'schedule' ? defaultEnd : null,
+      division: (params.seed?.division as string | undefined) ?? null,
+      team1: placeholderTeam,
+    };
+
+    setChangesMatches((prev) => {
+      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
+      base.push(cloneValue(draft) as Match);
+      return base;
+    });
+    setStagedMatchCreates((prev) => ({
+      ...prev,
+      [matchId]: {
+        clientId,
+        creationContext: params.creationContext,
+        autoPlaceholderTeam: isTournamentEvent,
+      },
+    }));
+    setHasUnsavedChanges(true);
+
+    if (params.openEditor) {
+      setMatchEditorContext(params.creationContext);
+      setPendingCreateMatchId(matchId);
+      setMatchBeingEdited(cloneValue(draft) as Match);
+      setIsMatchEditorOpen(true);
+    }
+
+    return draft;
+  }, [activeEvent?.$id, activeEvent?.eventType, activeMatches, canEditMatches, matches]);
+
+  const removeDraftMatch = useCallback((matchId: string, options?: {
+    stageDelete?: boolean;
+    markUnsaved?: boolean;
+  }) => {
+    const normalizedId = normalizeIdToken(matchId);
+    if (!normalizedId) {
+      return;
+    }
+    setChangesMatches((prev) => {
+      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
+      return base
+        .filter((candidate) => candidate.$id !== normalizedId)
+        .map((candidate) => clearMatchReferencesToTarget(candidate, normalizedId));
+    });
+    setStagedMatchCreates((prev) => {
+      const next = { ...prev };
+      delete next[normalizedId];
+      return next;
+    });
+    setStagedMatchDeletes((prev) => {
+      const withoutTarget = prev.filter((candidate) => candidate !== normalizedId);
+      if (options?.stageDelete && !isClientMatchId(normalizedId)) {
+        return [...withoutTarget, normalizedId];
+      }
+      return withoutTarget;
+    });
+    if (options?.markUnsaved !== false) {
+      setHasUnsavedChanges(true);
+    }
+  }, [matches]);
+
+  const removeStagedClientMatch = useCallback((matchId: string) => {
+    removeDraftMatch(matchId, { stageDelete: false, markUnsaved: false });
+  }, [removeDraftMatch]);
+
+  const handleMatchDelete = useCallback((target: Match) => {
+    const targetId = normalizeIdToken(target.$id);
+    if (!targetId) {
+      return;
+    }
+    removeDraftMatch(targetId, {
+      stageDelete: !isClientMatchId(targetId),
+      markUnsaved: true,
+    });
+    if (pendingCreateMatchId === targetId) {
+      setPendingCreateMatchId(null);
+    }
+    setMatchEditorContext('bracket');
+    setIsMatchEditorOpen(false);
+    setMatchBeingEdited(null);
+  }, [pendingCreateMatchId, removeDraftMatch]);
+
+  const handleAddScheduleMatch = useCallback(() => {
+    stageMatchCreate({ creationContext: 'schedule', openEditor: true });
+  }, [stageMatchCreate]);
+
+  const handleAddBracketMatch = useCallback(() => {
+    stageMatchCreate({ creationContext: 'bracket', openEditor: true });
+  }, [stageMatchCreate]);
+
+  const handleMatchEditRequest = useCallback((match: Match, context: MatchCreateContext = 'bracket') => {
     if (!canEditMatches) return;
     const sourceMatch = activeMatches.find((candidate) => candidate.$id === match.$id);
     if (!sourceMatch) return;
+    setMatchEditorContext(context);
+    setPendingCreateMatchId(null);
     setMatchBeingEdited(cloneValue(sourceMatch) as Match);
     setIsMatchEditorOpen(true);
   }, [activeMatches, canEditMatches]);
 
   const handleMatchEditClose = useCallback(() => {
+    if (pendingCreateMatchId) {
+      removeStagedClientMatch(pendingCreateMatchId);
+      setPendingCreateMatchId(null);
+    }
+    setMatchEditorContext('bracket');
     setIsMatchEditorOpen(false);
     setMatchBeingEdited(null);
-  }, []);
+  }, [pendingCreateMatchId, removeStagedClientMatch]);
 
   const handleMatchEditSave = useCallback((updated: Match) => {
     setChangesMatches((prev) => {
@@ -3698,10 +4148,27 @@ function EventScheduleContent() {
       }
       return next;
     });
+    if (isClientMatchId(updated.$id)) {
+      setStagedMatchCreates((prev) => {
+        if (prev[updated.$id]) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [updated.$id]: {
+            clientId: getClientIdFromMatchId(updated.$id),
+            creationContext: matchEditorContext,
+            autoPlaceholderTeam: String(activeEvent?.eventType ?? '').toUpperCase() === 'TOURNAMENT',
+          },
+        };
+      });
+    }
     setHasUnsavedChanges(true);
+    setPendingCreateMatchId(null);
+    setMatchEditorContext('bracket');
     setIsMatchEditorOpen(false);
     setMatchBeingEdited(null);
-  }, [matches]);
+  }, [activeEvent?.eventType, matchEditorContext, matches]);
 
   const handleToggleLockAllMatches = useCallback((locked: boolean, matchIds: string[]) => {
     if (!canEditMatches || matchIds.length === 0) return;
@@ -4694,8 +5161,8 @@ function EventScheduleContent() {
             {showScheduleTab && (
               <Tabs.Panel value="schedule" pt="md">
                 <Stack gap="sm">
-                  {shouldShowScheduleDivisionFilter && (
-                    <Group justify="flex-end">
+                  <Group justify="space-between" align="flex-end" wrap="wrap">
+                    {shouldShowScheduleDivisionFilter ? (
                       <Select
                         label="Division"
                         data={scheduleDivisionSelectData}
@@ -4704,8 +5171,13 @@ function EventScheduleContent() {
                         allowDeselect={false}
                         w={220}
                       />
-                    </Group>
-                  )}
+                    ) : (
+                      <div />
+                    )}
+                    {canEditMatches && (
+                      <Button onClick={handleAddScheduleMatch}>Add Match</Button>
+                    )}
+                  </Group>
 
                   {activeMatches.length === 0 ? (
                     <Paper withBorder radius="md" p="xl" ta="center">
@@ -4726,7 +5198,13 @@ function EventScheduleContent() {
                       fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
                       eventStart={activeEvent.start}
                       eventEnd={activeEvent.end}
-                      onMatchClick={handleMatchClick}
+                      onMatchClick={(match) => {
+                        if (canEditMatches) {
+                          handleMatchEditRequest(match, 'schedule');
+                          return;
+                        }
+                        void handleMatchClick(match);
+                      }}
                       canManage={canEditMatches}
                       currentUser={user}
                       childUserIds={childUserIds}
@@ -4740,8 +5218,8 @@ function EventScheduleContent() {
             {shouldShowBracketTab && (
               <Tabs.Panel value="bracket" pt="md" pb={0}>
                 <Stack gap="sm">
-                  {shouldShowBracketDivisionFilter && (
-                    <Group justify="flex-end">
+                  <Group justify="space-between" align="flex-end" wrap="wrap">
+                    {shouldShowBracketDivisionFilter ? (
                       <Select
                         label="Division"
                         data={bracketDivisionOptions}
@@ -4750,8 +5228,13 @@ function EventScheduleContent() {
                         allowDeselect={false}
                         w={220}
                       />
-                    </Group>
-                  )}
+                    ) : (
+                      <div />
+                    )}
+                    {canEditMatches && (
+                      <Button onClick={handleAddBracketMatch}>Add Match</Button>
+                    )}
+                  </Group>
 
                   {bracketData ? (
                     <TournamentBracketView
@@ -5227,12 +5710,18 @@ function EventScheduleContent() {
       <MatchEditModal
         opened={isMatchEditorOpen}
         match={matchBeingEdited}
+        allMatches={activeMatches}
         fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
         teams={matchEditorTeams}
         referees={matchEditorReferees}
         doTeamsRef={Boolean(activeEvent.doTeamsRef)}
+        isCreateMode={Boolean(matchBeingEdited && isClientMatchId(matchBeingEdited.$id))}
+        creationContext={matchEditorContext}
+        eventType={activeEvent.eventType}
+        enforceScheduleFields={matchEditorContext === 'schedule'}
         onClose={handleMatchEditClose}
         onSave={handleMatchEditSave}
+        onDelete={handleMatchDelete}
       />
       <PaymentModal
         isOpen={showRentalPayment && Boolean(rentalPaymentData)}
