@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 
@@ -309,15 +310,17 @@ export async function POST(req: NextRequest) {
       .slice(offset, offset + limit);
   }
 
+  const eventsWithAttendees = await withEventAttendeeCounts(events);
+
   const divisionDetailsByEventId = await getDivisionDetailsForEvents(
-    events.map((event) => ({
+    eventsWithAttendees.map((event) => ({
       id: event.id,
       divisions: event.divisions,
       sportId: event.sportId,
     })),
   );
 
-  const normalized = events.map((event) => withLegacyEvent({
+  const normalized = eventsWithAttendees.map((event) => withLegacyEvent({
     ...event,
     divisionDetails: divisionDetailsByEventId.get(event.id) ?? [],
   }));

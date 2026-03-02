@@ -28,6 +28,7 @@ interface LeagueCalendarViewProps {
   childUserIds?: string[];
   onToggleLockAllMatches?: (locked: boolean, matchIds: string[]) => void | Promise<void>;
   lockingAllMatches?: boolean;
+  conflictMatchIdsById?: Record<string, string[]>;
 }
 
 type CalendarLayoutMode = 'calendar' | 'resource';
@@ -225,6 +226,7 @@ export function LeagueCalendarView({
   childUserIds = [],
   onToggleLockAllMatches,
   lockingAllMatches = false,
+  conflictMatchIdsById = {},
 }: LeagueCalendarViewProps) {
   const userTeamIds = useMemo(() => new Set(currentUser?.teamIds ?? []), [currentUser?.teamIds]);
   const trackedUserIds = useMemo(() => {
@@ -332,6 +334,10 @@ export function LeagueCalendarView({
     [hasTrackedUsers, matchInvolvesCurrentUser, matches],
   );
   const canShowMyMatchesControl = userInvolvedMatchIds.size > 0;
+  const conflictMatchIdSet = useMemo(
+    () => new Set(Object.keys(conflictMatchIdsById).filter((matchId) => conflictMatchIdsById[matchId]?.length)),
+    [conflictMatchIdsById],
+  );
   const allDisplayedLocked = matchesToDisplay.length > 0 && matchesToDisplay.every((match) => Boolean(match.locked));
   const displayedMatchIds = useMemo(
     () => matchesToDisplay.map((match) => match.$id).filter((id) => typeof id === 'string' && id.length > 0),
@@ -475,10 +481,19 @@ export function LeagueCalendarView({
   const eventPropGetter = useCallback(
     (event: CalendarEvent) => {
       const isUsersMatch = userInvolvedMatchIds.has(event.resource.$id);
+      const hasConflict = conflictMatchIdSet.has(event.resource.$id);
       return {
         style: {
-          backgroundColor: isUsersMatch ? 'var(--mantine-color-green-0, #ecfdf3)' : 'transparent',
-          border: isUsersMatch ? '2px solid #bbf7d0' : 'none',
+          backgroundColor: hasConflict
+            ? 'var(--mantine-color-red-0, #fef2f2)'
+            : isUsersMatch
+              ? 'var(--mantine-color-green-0, #ecfdf3)'
+              : 'transparent',
+          border: hasConflict
+            ? '2px solid #f87171'
+            : isUsersMatch
+              ? '2px solid #bbf7d0'
+              : 'none',
           padding: 0,
           cursor: onMatchClick ? 'pointer' : 'default',
           color: 'var(--mantine-color-text, #1f1f1f)',
@@ -486,7 +501,7 @@ export function LeagueCalendarView({
         className: 'p-0',
       };
     },
-    [onMatchClick, userInvolvedMatchIds],
+    [conflictMatchIdSet, onMatchClick, userInvolvedMatchIds],
   );
 
   const MonthEventComponent = useCallback(({ event }: EventProps<CalendarEvent>) => {
@@ -499,39 +514,45 @@ export function LeagueCalendarView({
   }, []);
 
   const WeekDayEventComponent = useCallback(
-    ({ event }: EventProps<CalendarEvent>) => (
-      <MatchCard
-        match={event.resource}
-        canManage={canManage}
-        onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-        className={`h-full ${
-          userInvolvedMatchIds.has(event.resource.$id) ? 'border-green-200 hover:border-green-300' : ''
-        }`}
-        layout="horizontal"
-        hideTimeBadge
-        showRefereeInHeader
-        fieldLabel={event.fieldLabel}
-      />
-    ),
-    [canManage, onMatchClick, userInvolvedMatchIds],
+    ({ event }: EventProps<CalendarEvent>) => {
+      const hasConflict = conflictMatchIdSet.has(event.resource.$id);
+      const shouldHighlightUser = userInvolvedMatchIds.has(event.resource.$id) && !hasConflict;
+      return (
+        <MatchCard
+          match={event.resource}
+          canManage={canManage}
+          onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
+          className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
+          layout="horizontal"
+          hideTimeBadge
+          showRefereeInHeader
+          fieldLabel={event.fieldLabel}
+          hasConflict={hasConflict}
+        />
+      );
+    },
+    [canManage, conflictMatchIdSet, onMatchClick, userInvolvedMatchIds],
   );
 
   const AgendaEventComponent = useCallback(
-    ({ event }: EventProps<CalendarEvent>) => (
-      <MatchCard
-        match={event.resource}
-        canManage={canManage}
-        onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-        className={`max-w-full ${matchCardPaddingY} ${
-          userInvolvedMatchIds.has(event.resource.$id) ? 'border-green-200 hover:border-green-300' : ''
-        }`}
-        layout="horizontal"
-        hideTimeBadge
-        showRefereeInHeader
-        fieldLabel={event.fieldLabel}
-      />
-    ),
-    [canManage, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
+    ({ event }: EventProps<CalendarEvent>) => {
+      const hasConflict = conflictMatchIdSet.has(event.resource.$id);
+      const shouldHighlightUser = userInvolvedMatchIds.has(event.resource.$id) && !hasConflict;
+      return (
+        <MatchCard
+          match={event.resource}
+          canManage={canManage}
+          onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
+          className={`max-w-full ${matchCardPaddingY} ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
+          layout="horizontal"
+          hideTimeBadge
+          showRefereeInHeader
+          fieldLabel={event.fieldLabel}
+          hasConflict={hasConflict}
+        />
+      );
+    },
+    [canManage, conflictMatchIdSet, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
   );
 
   const components = useMemo(

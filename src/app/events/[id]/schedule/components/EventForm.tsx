@@ -691,6 +691,335 @@ const slotsOverlap = (startA: number, endA: number, startB: number, endB: number
 const slotDateTimeRangesOverlap = (startA: Date, endA: Date, startB: Date, endB: Date): boolean =>
     startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime();
 
+const CONFLICT_LOOKUP_START = '1970-01-01T00:00:00.000Z';
+const CONFLICT_LOOKUP_END = '2100-01-01T00:00:00.000Z';
+const AUTO_RESOLVE_STEP_MINUTES = 15;
+const AUTO_RESOLVE_MAX_STEPS = 96;
+const MAX_REPEATING_CONFLICT_SCAN_DAYS = 730;
+
+type SlotConflictSnapshot = {
+    key: string;
+    $id?: string;
+    scheduledFieldId?: string;
+    scheduledFieldIds: string[];
+    dayOfWeek?: number;
+    daysOfWeek: number[];
+    divisions: string[];
+    startDate?: string;
+    endDate?: string;
+    startTimeMinutes?: number;
+    endTimeMinutes?: number;
+    repeating: boolean;
+};
+
+type SlotConflictPayload = {
+    eventId: string;
+    eventType: EventType;
+    eventStart?: string;
+    eventEnd?: string;
+    slots: SlotConflictSnapshot[];
+};
+
+type SlotConflictContext = {
+    eventId: string;
+    eventStart?: string;
+    eventEnd?: string;
+};
+
+const addMinutesToDate = (date: Date, minutes: number): Date => new Date(date.getTime() + minutes * 60 * 1000);
+
+const atStartOfDay = (date: Date): Date =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+
+const withMinutesOnDay = (day: Date, minutes: number): Date =>
+    new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(minutes / 60), minutes % 60, 0, 0);
+
+const mondayFirstDay = (date: Date): number => (date.getDay() + 6) % 7;
+
+const toSlotConflictSignature = (conflict: LeagueSlotForm['conflicts'][number]): string => (
+    `${String(conflict.event?.$id ?? '')}|${String(conflict.schedule?.$id ?? '')}|${conflict.event?.start ?? ''}|${conflict.event?.end ?? ''}`
+);
+
+const slotConflictsEqual = (
+    left: LeagueSlotForm['conflicts'],
+    right: LeagueSlotForm['conflicts'],
+): boolean => {
+    if (left.length !== right.length) {
+        return false;
+    }
+    const leftKeys = left.map(toSlotConflictSignature).sort();
+    const rightKeys = right.map(toSlotConflictSignature).sort();
+    return leftKeys.every((value, index) => value === rightKeys[index]);
+};
+
+const parseEventRange = (event: Event): { start: Date; end: Date } | null => {
+    const start = parseLocalDateTime(event.start ?? null);
+    const end = parseLocalDateTime(event.end ?? null);
+    if (!start || !end || end.getTime() <= start.getTime()) {
+        return null;
+    }
+    return { start, end };
+};
+
+const resolveSlotWindowRange = (
+    slot: Pick<LeagueSlotForm, 'startDate' | 'endDate'>,
+    eventStart?: string,
+    eventEnd?: string,
+): { start: Date; end: Date } | null => {
+    const start = parseLocalDateTime(slot.startDate ?? eventStart ?? null);
+    if (!start) {
+        return null;
+    }
+
+    const end = parseLocalDateTime(slot.endDate ?? eventEnd ?? null)
+        ?? addMinutesToDate(start, 90 * 24 * 60);
+    if (end.getTime() <= start.getTime()) {
+        return null;
+    }
+
+    return { start, end };
+};
+
+const repeatingSlotOverlapsEvent = (
+    slot: Pick<LeagueSlotForm, 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'startDate' | 'endDate'>,
+    eventRange: { start: Date; end: Date },
+    eventStart?: string,
+    eventEnd?: string,
+): boolean => {
+    const slotDays = normalizeWeekdays(slot);
+    if (
+        !slotDays.length ||
+        typeof slot.startTimeMinutes !== 'number' ||
+        typeof slot.endTimeMinutes !== 'number' ||
+        slot.endTimeMinutes <= slot.startTimeMinutes
+    ) {
+        return false;
+    }
+
+    const slotWindow = resolveSlotWindowRange(slot, eventStart, eventEnd);
+    if (!slotWindow || !slotDateTimeRangesOverlap(slotWindow.start, slotWindow.end, eventRange.start, eventRange.end)) {
+        return false;
+    }
+
+    const overlapStart = new Date(Math.max(slotWindow.start.getTime(), eventRange.start.getTime()));
+    const overlapEnd = new Date(Math.min(slotWindow.end.getTime(), eventRange.end.getTime()));
+    if (overlapEnd.getTime() <= overlapStart.getTime()) {
+        return false;
+    }
+
+    let cursor = atStartOfDay(overlapStart);
+    const lastDay = atStartOfDay(overlapEnd);
+    let scannedDays = 0;
+
+    while (cursor.getTime() <= lastDay.getTime() && scannedDays <= MAX_REPEATING_CONFLICT_SCAN_DAYS) {
+        if (slotDays.includes(mondayFirstDay(cursor))) {
+            const slotStart = withMinutesOnDay(cursor, slot.startTimeMinutes);
+            const slotEnd = withMinutesOnDay(cursor, slot.endTimeMinutes);
+            if (slotDateTimeRangesOverlap(slotStart, slotEnd, eventRange.start, eventRange.end)) {
+                return true;
+            }
+        }
+        cursor = addMinutesToDate(cursor, 24 * 60);
+        scannedDays += 1;
+    }
+
+    return false;
+};
+
+const slotOverlapsExistingEvent = (
+    slot: Pick<LeagueSlotForm, 'repeating' | 'startDate' | 'endDate' | 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes'>,
+    event: Event,
+    context: SlotConflictContext,
+): boolean => {
+    if (!event?.$id || event.$id === context.eventId) {
+        return false;
+    }
+
+    const eventRange = parseEventRange(event);
+    if (!eventRange) {
+        return false;
+    }
+
+    if (slot.repeating === false) {
+        const slotStart = parseLocalDateTime(slot.startDate ?? null);
+        const slotEnd = parseLocalDateTime(slot.endDate ?? null);
+        if (!slotStart || !slotEnd || slotEnd.getTime() <= slotStart.getTime()) {
+            return false;
+        }
+        return slotDateTimeRangesOverlap(slotStart, slotEnd, eventRange.start, eventRange.end);
+    }
+
+    return repeatingSlotOverlapsEvent(slot, eventRange, context.eventStart, context.eventEnd);
+};
+
+const snapshotToSlotForm = (slot: SlotConflictSnapshot): LeagueSlotForm => ({
+    key: slot.key,
+    $id: slot.$id,
+    scheduledFieldId: slot.scheduledFieldId,
+    scheduledFieldIds: slot.scheduledFieldIds,
+    dayOfWeek: slot.dayOfWeek as LeagueSlotForm['dayOfWeek'],
+    daysOfWeek: slot.daysOfWeek as LeagueSlotForm['daysOfWeek'],
+    divisions: slot.divisions,
+    startDate: slot.startDate,
+    endDate: slot.endDate,
+    startTimeMinutes: slot.startTimeMinutes,
+    endTimeMinutes: slot.endTimeMinutes,
+    repeating: slot.repeating,
+    conflicts: [],
+    checking: false,
+    error: undefined,
+});
+
+const slotCanCheckExternalConflicts = (
+    slot: LeagueSlotForm,
+    context: SlotConflictContext,
+): boolean => {
+    if (!normalizeSlotFieldIds(slot).length) {
+        return false;
+    }
+
+    if (slot.repeating === false) {
+        const slotStart = parseLocalDateTime(slot.startDate ?? null);
+        const slotEnd = parseLocalDateTime(slot.endDate ?? null);
+        return Boolean(slotStart && slotEnd && slotEnd.getTime() > slotStart.getTime());
+    }
+
+    const hasTimeRange = (
+        typeof slot.startTimeMinutes === 'number' &&
+        typeof slot.endTimeMinutes === 'number' &&
+        slot.endTimeMinutes > slot.startTimeMinutes
+    );
+    if (!hasTimeRange || normalizeWeekdays(slot).length === 0) {
+        return false;
+    }
+
+    return Boolean(resolveSlotWindowRange(slot, context.eventStart, context.eventEnd));
+};
+
+const buildConflictEntry = (event: Event, fieldId: string): LeagueSlotForm['conflicts'][number] => ({
+    event,
+    schedule: {
+        $id: `event-${event.$id}-field-${fieldId}`,
+        repeating: false,
+        startDate: event.start ?? undefined,
+        endDate: event.end ?? undefined,
+        scheduledFieldId: fieldId,
+        scheduledFieldIds: [fieldId],
+    },
+});
+
+const buildExternalSlotConflicts = (
+    slot: LeagueSlotForm,
+    eventsByFieldId: Map<string, Event[]>,
+    context: SlotConflictContext,
+): LeagueSlotForm['conflicts'] => {
+    const seen = new Set<string>();
+    const conflicts: LeagueSlotForm['conflicts'] = [];
+
+    normalizeSlotFieldIds(slot).forEach((fieldId) => {
+        const fieldEvents = eventsByFieldId.get(fieldId) ?? [];
+        fieldEvents.forEach((event) => {
+            if (!slotOverlapsExistingEvent(slot, event, context)) {
+                return;
+            }
+            const key = `${event.$id}:${fieldId}`;
+            if (seen.has(key)) {
+                return;
+            }
+            seen.add(key);
+            conflicts.push(buildConflictEntry(event, fieldId));
+        });
+    });
+
+    return conflicts.sort((left, right) => {
+        const leftStart = parseLocalDateTime(left.event.start ?? null)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const rightStart = parseLocalDateTime(right.event.start ?? null)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return leftStart - rightStart;
+    });
+};
+
+const hasConflictingEvents = (
+    slot: LeagueSlotForm,
+    conflicts: LeagueSlotForm['conflicts'],
+    context: SlotConflictContext,
+): boolean => conflicts.some((conflict) => slotOverlapsExistingEvent(slot, conflict.event, context));
+
+const buildAutoResolvedSlotUpdate = (
+    slot: LeagueSlotForm,
+    context: SlotConflictContext,
+): Partial<LeagueSlotForm> | null => {
+    if (!slot.conflicts.length) {
+        return null;
+    }
+
+    if (slot.repeating === false) {
+        const slotStart = parseLocalDateTime(slot.startDate ?? null);
+        const slotEnd = parseLocalDateTime(slot.endDate ?? null);
+        if (!slotStart || !slotEnd || slotEnd.getTime() <= slotStart.getTime()) {
+            return null;
+        }
+        const durationMinutes = Math.max(
+            AUTO_RESOLVE_STEP_MINUTES,
+            Math.ceil((slotEnd.getTime() - slotStart.getTime()) / (60 * 1000)),
+        );
+        const latestConflictEnd = slot.conflicts
+            .map((conflict) => parseLocalDateTime(conflict.event.end ?? null))
+            .filter((value): value is Date => Boolean(value))
+            .sort((left, right) => right.getTime() - left.getTime())[0];
+        let candidateStart = latestConflictEnd && latestConflictEnd.getTime() > slotStart.getTime()
+            ? addMinutesToDate(latestConflictEnd, AUTO_RESOLVE_STEP_MINUTES)
+            : addMinutesToDate(slotStart, AUTO_RESOLVE_STEP_MINUTES);
+
+        for (let step = 0; step < AUTO_RESOLVE_MAX_STEPS; step += 1) {
+            const candidateEnd = addMinutesToDate(candidateStart, durationMinutes);
+            const candidateSlot: LeagueSlotForm = {
+                ...slot,
+                startDate: formatLocalDateTime(candidateStart) || undefined,
+                endDate: formatLocalDateTime(candidateEnd) || undefined,
+            };
+            if (!hasConflictingEvents(candidateSlot, slot.conflicts, context)) {
+                return {
+                    startDate: candidateSlot.startDate,
+                    endDate: candidateSlot.endDate,
+                };
+            }
+            candidateStart = addMinutesToDate(candidateStart, AUTO_RESOLVE_STEP_MINUTES);
+        }
+
+        return null;
+    }
+
+    if (
+        typeof slot.startTimeMinutes !== 'number' ||
+        typeof slot.endTimeMinutes !== 'number' ||
+        slot.endTimeMinutes <= slot.startTimeMinutes
+    ) {
+        return null;
+    }
+
+    const durationMinutes = slot.endTimeMinutes - slot.startTimeMinutes;
+    for (let step = 1; step < AUTO_RESOLVE_MAX_STEPS; step += 1) {
+        const candidateStart = slot.startTimeMinutes + step * AUTO_RESOLVE_STEP_MINUTES;
+        const candidateEnd = candidateStart + durationMinutes;
+        if (candidateEnd > 24 * 60) {
+            break;
+        }
+        const candidateSlot: LeagueSlotForm = {
+            ...slot,
+            startTimeMinutes: candidateStart,
+            endTimeMinutes: candidateEnd,
+        };
+        if (!hasConflictingEvents(candidateSlot, slot.conflicts, context)) {
+            return {
+                startTimeMinutes: candidateStart,
+                endTimeMinutes: candidateEnd,
+            };
+        }
+    }
+
+    return null;
+};
+
 // Evaluates the current slot against other form slots to surface inline validation errors for schedulable event types.
 const computeSlotError = (
     slots: LeagueSlotForm[],
@@ -786,10 +1115,7 @@ const normalizeSlotState = (slots: LeagueSlotForm[], eventType: EventType): Leag
 
     const normalized = slots.map((slot, index) => {
         const error = computeSlotError(slots, index, eventType);
-        const needsUpdate =
-            slot.error !== error ||
-            slot.checking !== false ||
-            slot.conflicts.length > 0;
+        const needsUpdate = slot.error !== error;
 
         if (!needsUpdate) {
             return slot;
@@ -798,8 +1124,6 @@ const normalizeSlotState = (slots: LeagueSlotForm[], eventType: EventType): Leag
         mutated = true;
         return {
             ...slot,
-            conflicts: [],
-            checking: false,
             error,
         };
     });
@@ -2063,6 +2387,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const open = isOpen ?? true;
     const refsPrefilledRef = useRef<boolean>(false);
     const lastResetEventIdRef = useRef<string | null>(null);
+    const slotConflictRequestRef = useRef(0);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>, fallbackDivisions: string[] = []): LeagueSlotForm => {
         const normalizedDays = normalizeWeekdays({
@@ -3277,6 +3602,37 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => slotDivisionLookup.options,
         [slotDivisionLookup],
     );
+    const slotConflictCheckKey = useMemo(() => JSON.stringify({
+        eventId: activeEditingEvent?.$id ?? eventData.$id ?? '',
+        eventType: eventData.eventType,
+        eventStart: eventData.start ?? undefined,
+        eventEnd: eventData.end ?? undefined,
+        slots: leagueSlots.map((slot) => {
+            const normalizedDays = normalizeWeekdays(slot);
+            const normalizedFieldIds = normalizeSlotFieldIds(slot);
+            return {
+                key: slot.key,
+                $id: slot.$id,
+                scheduledFieldId: normalizedFieldIds[0],
+                scheduledFieldIds: normalizedFieldIds,
+                dayOfWeek: normalizedDays[0],
+                daysOfWeek: normalizedDays,
+                divisions: normalizeDivisionKeys(slot.divisions),
+                startDate: formatLocalDateTime(slot.startDate ?? null) || undefined,
+                endDate: formatLocalDateTime(slot.endDate ?? null) || undefined,
+                startTimeMinutes: typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : undefined,
+                endTimeMinutes: typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : undefined,
+                repeating: slot.repeating !== false,
+            } satisfies SlotConflictSnapshot;
+        }),
+    } satisfies SlotConflictPayload), [
+        activeEditingEvent?.$id,
+        eventData.$id,
+        eventData.end,
+        eventData.eventType,
+        eventData.start,
+        leagueSlots,
+    ]);
     const divisionTypeOptions = useMemo(() => {
         const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
         const catalogOptions = getDivisionTypeOptionsForSport(sportInput);
@@ -4718,6 +5074,146 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }));
     }, [fields, leagueSlots, updateLeagueSlots]);
 
+    useEffect(() => {
+        if (hasImmutableTimeSlots) {
+            return;
+        }
+
+        let payload: SlotConflictPayload;
+        try {
+            payload = JSON.parse(slotConflictCheckKey) as SlotConflictPayload;
+        } catch {
+            return;
+        }
+
+        const clearConflicts = () => {
+            setLeagueSlots((prev) => {
+                let changed = false;
+                const next = prev.map((slot) => {
+                    if (!slot.conflicts.length && slot.checking === false) {
+                        return slot;
+                    }
+                    changed = true;
+                    return {
+                        ...slot,
+                        conflicts: [],
+                        checking: false,
+                    };
+                });
+                return changed ? next : prev;
+            });
+        };
+
+        if (!supportsScheduleSlots(payload.eventType) || payload.slots.length === 0) {
+            clearConflicts();
+            return;
+        }
+
+        const context: SlotConflictContext = {
+            eventId: payload.eventId,
+            eventStart: payload.eventStart,
+            eventEnd: payload.eventEnd,
+        };
+        const slotForms = payload.slots.map((slot) => snapshotToSlotForm(slot));
+        const eligibleSlots = slotForms.filter((slot) => slotCanCheckExternalConflicts(slot, context));
+        const fieldIds = Array.from(
+            new Set(
+                eligibleSlots.flatMap((slot) => normalizeSlotFieldIds(slot)),
+            ),
+        );
+        if (!fieldIds.length) {
+            clearConflicts();
+            return;
+        }
+
+        const requestId = slotConflictRequestRef.current + 1;
+        slotConflictRequestRef.current = requestId;
+        setLeagueSlots((prev) => {
+            let changed = false;
+            const next = prev.map((slot) => {
+                const shouldCheck = slotCanCheckExternalConflicts(slot, context);
+                if (slot.checking === shouldCheck) {
+                    return slot;
+                }
+                changed = true;
+                return {
+                    ...slot,
+                    checking: shouldCheck,
+                };
+            });
+            return changed ? next : prev;
+        });
+
+        let cancelled = false;
+        const loadConflicts = async () => {
+            try {
+                const eventsByFieldRows = await Promise.all(fieldIds.map(async (fieldId) => {
+                    const events = await eventService.getEventsForFieldInRange(
+                        fieldId,
+                        CONFLICT_LOOKUP_START,
+                        CONFLICT_LOOKUP_END,
+                    );
+                    return [fieldId, events] as const;
+                }));
+                if (cancelled || slotConflictRequestRef.current !== requestId) {
+                    return;
+                }
+
+                const eventsByFieldId = new Map(eventsByFieldRows);
+                const conflictsBySlotKey = new Map(
+                    slotForms.map((slot) => [
+                        slot.key,
+                        slotCanCheckExternalConflicts(slot, context)
+                            ? buildExternalSlotConflicts(slot, eventsByFieldId, context)
+                            : [],
+                    ]),
+                );
+
+                setLeagueSlots((prev) => {
+                    let changed = false;
+                    const next = prev.map((slot) => {
+                        const nextConflicts = conflictsBySlotKey.get(slot.key) ?? [];
+                        if (slot.checking === false && slotConflictsEqual(slot.conflicts, nextConflicts)) {
+                            return slot;
+                        }
+                        changed = true;
+                        return {
+                            ...slot,
+                            conflicts: nextConflicts,
+                            checking: false,
+                        };
+                    });
+                    return changed ? next : prev;
+                });
+            } catch (error) {
+                if (cancelled || slotConflictRequestRef.current !== requestId) {
+                    return;
+                }
+                console.warn('Failed to load event scheduling conflicts:', error);
+                setLeagueSlots((prev) => {
+                    let changed = false;
+                    const next = prev.map((slot) => {
+                        if (slot.checking === false) {
+                            return slot;
+                        }
+                        changed = true;
+                        return {
+                            ...slot,
+                            checking: false,
+                        };
+                    });
+                    return changed ? next : prev;
+                });
+            }
+        };
+
+        void loadConflicts();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [hasImmutableTimeSlots, setLeagueSlots, slotConflictCheckKey]);
+
     // Adds a blank slot row in the LeagueFields list when the user taps "Add Timeslot".
     const handleAddSlot = () => {
         if (hasImmutableTimeSlots) {
@@ -4839,6 +5335,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
 
         clearErrors('leagueSlots');
+    };
+
+    const handleAutoResolveSlotConflict = (index: number) => {
+        if (hasImmutableTimeSlots) {
+            return;
+        }
+
+        const slot = leagueSlots[index];
+        if (!slot || slot.conflicts.length === 0) {
+            return;
+        }
+
+        const context: SlotConflictContext = {
+            eventId: activeEditingEvent?.$id ?? eventData.$id ?? '',
+            eventStart: eventData.start ?? undefined,
+            eventEnd: eventData.end ?? undefined,
+        };
+        const updates = buildAutoResolvedSlotUpdate(slot, context);
+        if (!updates) {
+            return;
+        }
+
+        handleUpdateSlot(index, updates);
     };
 
     // Updates locally managed fields when the org lacks saved fields (new event + provisioning).
@@ -7764,6 +8283,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             onAddSlot={handleAddSlot}
                                             onUpdateSlot={handleUpdateSlot}
                                             onRemoveSlot={handleRemoveSlot}
+                                            onAutoResolveSlotConflict={handleAutoResolveSlotConflict}
                                             fields={selectedFields}
                                             fieldsLoading={fieldsLoading}
                                             fieldOptions={leagueFieldOptions}

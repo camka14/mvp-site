@@ -154,8 +154,45 @@ describe('LeagueFields', () => {
       />,
     );
 
-    expect(screen.getByText(/Conflicts detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/There is a conflict on this field/i)).toBeInTheDocument();
     expect(screen.getByText(/Other Event/)).toBeInTheDocument();
+  });
+
+  it('allows auto-resolving a conflicted slot', () => {
+    const onAutoResolveSlotConflict = jest.fn();
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[
+          {
+            ...baseSlot,
+            conflicts: [
+              {
+                schedule: { $id: 'slot-1' } as any,
+                event: { $id: 'evt_1', name: 'Other Event' } as any,
+              },
+            ],
+          },
+        ]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        onAutoResolveSlotConflict={onAutoResolveSlotConflict}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Auto Resolve/i }));
+    expect(onAutoResolveSlotConflict).toHaveBeenCalledWith(0);
   });
 
   it('requires playoff team count when playoffs are enabled', () => {

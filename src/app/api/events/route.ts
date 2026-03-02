@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
+import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import {
   deleteMatchesByEvent,
   loadEventWithRelations,
@@ -517,15 +518,17 @@ export async function GET(req: NextRequest) {
     orderBy: { start: 'asc' },
   });
 
+  const eventsWithAttendees = await withEventAttendeeCounts(events);
+
   const divisionDetailsByEventId = await getDivisionDetailsForEvents(
-    events.map((event) => ({
+    eventsWithAttendees.map((event) => ({
       id: event.id,
       divisions: event.divisions,
       sportId: event.sportId,
     })),
   );
 
-  const normalized = events.map((row) => {
+  const normalized = eventsWithAttendees.map((row) => {
     if (!Array.isArray(row.userIds)) {
       row.userIds = coerceArray(row.userIds) ?? [];
     }

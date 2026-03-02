@@ -11,6 +11,7 @@ interface MatchCardProps {
     onClick?: () => void;
     canManage?: boolean;
     className?: string;
+    highlightCurrentUser?: boolean;
     showDate?: boolean;
     layout?: 'vertical' | 'horizontal';
     hideTimeBadge?: boolean;
@@ -18,6 +19,7 @@ interface MatchCardProps {
     fieldLabel?: string;
     team1Placeholder?: string;
     team2Placeholder?: string;
+    hasConflict?: boolean;
 }
 
 type MatchDivisionInput = Match['division'] | string | null | undefined;
@@ -53,6 +55,7 @@ function MatchCard({
     onClick,
     canManage = false,
     className = '',
+    highlightCurrentUser = false,
     showDate = false,
     layout = 'vertical',
     hideTimeBadge = false,
@@ -60,6 +63,7 @@ function MatchCard({
     fieldLabel,
     team1Placeholder,
     team2Placeholder,
+    hasConflict = false,
 }: MatchCardProps) {
     const isCompactHorizontal = layout === 'horizontal' && hideTimeBadge;
 
@@ -149,6 +153,13 @@ function MatchCard({
     })();
 
     const clickable = typeof onClick === 'function';
+    const borderClass = hasConflict
+        ? 'border-red-400 hover:border-red-500'
+        : highlightCurrentUser
+            ? 'border-green-300 hover:border-green-400'
+            : match.losersBracket
+                ? 'border-orange-200 hover:border-orange-300'
+                : 'border-blue-200 hover:border-blue-300';
 
     const renderTeamRow = ({
         team,
@@ -291,8 +302,7 @@ function MatchCard({
 
     return (
         <div
-            className={`relative bg-white rounded-lg shadow-sm border-2 transition-all duration-200 ${clickable ? 'cursor-pointer hover:shadow-md' : ''} ${match.losersBracket ? 'border-orange-200 hover:border-orange-300' : 'border-blue-200 hover:border-blue-300'
-                } ${isCompleted ? 'opacity-75' : ''} ${className}`}
+            className={`relative bg-white rounded-lg shadow-sm border-2 transition-all duration-200 ${clickable ? 'cursor-pointer hover:shadow-md' : ''} ${isCompleted ? 'opacity-75' : ''} ${className} ${borderClass}`}
             onClick={clickable ? onClick : undefined}
         >
             {!hideTimeBadge && (

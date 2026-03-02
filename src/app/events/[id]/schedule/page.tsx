@@ -35,6 +35,7 @@ import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
 import MatchEditModal from './components/MatchEditModal';
 import EventForm, { EventFormHandle } from './components/EventForm';
+import { detectMatchConflictsById, MATCH_CONFLICT_RESOLUTION_MESSAGE } from './lib/matchConflicts';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
@@ -311,8 +312,6 @@ const shouldResetBracketMatchForRebuild = (event: Event, match: Match): boolean 
 
 const toClearedBracketMatchUpdate = (match: Match): Partial<Match> & { $id: string } => ({
   $id: match.$id,
-  refereeId: null,
-  teamRefereeId: null,
   team1Points: [],
   team2Points: [],
   setResults: [],
@@ -391,6 +390,100 @@ const collectConnectedMatchIds = (matches: Record<string, Match>, rootMatchId: s
   }
 
   return visited;
+};
+
+type MatchConflictPair = {
+  firstId: string;
+  secondId: string;
+};
+
+const listMatchConflictPairs = (conflictsById: Record<string, string[]>): MatchConflictPair[] => {
+  const seenPairs = new Set<string>();
+  const pairs: MatchConflictPair[] = [];
+
+  Object.keys(conflictsById)
+    .sort()
+    .forEach((matchId) => {
+      const conflictIds = Array.isArray(conflictsById[matchId]) ? conflictsById[matchId] : [];
+      conflictIds.forEach((rawConflictId) => {
+        const conflictId = normalizeIdToken(rawConflictId);
+        if (!conflictId || conflictId === matchId) {
+          return;
+        }
+        const [firstId, secondId] = matchId < conflictId
+          ? [matchId, conflictId]
+          : [conflictId, matchId];
+        const pairKey = `${firstId}|${secondId}`;
+        if (seenPairs.has(pairKey)) {
+          return;
+        }
+        seenPairs.add(pairKey);
+        pairs.push({ firstId, secondId });
+      });
+    });
+
+  return pairs.sort((left, right) => {
+    if (left.firstId === right.firstId) {
+      return left.secondId.localeCompare(right.secondId);
+    }
+    return left.firstId.localeCompare(right.firstId);
+  });
+};
+
+const getConflictMatchLabel = (match: Match): string => {
+  if (typeof match.matchId === 'number' && Number.isFinite(match.matchId)) {
+    return `Match #${Math.trunc(match.matchId)}`;
+  }
+  return `Match ${match.$id}`;
+};
+
+const getConflictFieldLabel = (match: Match): string => {
+  const relationFieldName = typeof match.field?.name === 'string' ? match.field.name.trim() : '';
+  if (relationFieldName.length > 0) {
+    return relationFieldName;
+  }
+  if (typeof match.field?.fieldNumber === 'number' && Number.isFinite(match.field.fieldNumber) && match.field.fieldNumber > 0) {
+    return `Field ${match.field.fieldNumber}`;
+  }
+  const relationFieldId = normalizeIdToken(match.field?.$id);
+  if (relationFieldId) {
+    return `field ${relationFieldId}`;
+  }
+  const fieldId = normalizeIdToken(match.fieldId);
+  if (fieldId) {
+    return `field ${fieldId}`;
+  }
+  return 'an unassigned field';
+};
+
+const buildMatchConflictAlertMessage = ({
+  matches,
+  pairs,
+}: {
+  matches: Match[];
+  pairs: MatchConflictPair[];
+}): string => {
+  if (pairs.length === 0) {
+    return MATCH_CONFLICT_RESOLUTION_MESSAGE;
+  }
+
+  const matchesById = new Map<string, Match>();
+  matches.forEach((match) => {
+    const matchId = normalizeIdToken(match.$id);
+    if (matchId) {
+      matchesById.set(matchId, match);
+    }
+  });
+
+  const firstPair = pairs[0];
+  const firstMatch = firstPair ? matchesById.get(firstPair.firstId) : null;
+  const secondMatch = firstPair ? matchesById.get(firstPair.secondId) : null;
+
+  if (!firstMatch || !secondMatch) {
+    return MATCH_CONFLICT_RESOLUTION_MESSAGE;
+  }
+
+  return `${getConflictMatchLabel(firstMatch)} overlaps ${getConflictMatchLabel(secondMatch)} on ${getConflictFieldLabel(firstMatch)} - ${MATCH_CONFLICT_RESOLUTION_MESSAGE}`;
 };
 
 
@@ -542,10 +635,13 @@ function EventScheduleContent() {
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
+  const [dismissedMatchConflictSignature, setDismissedMatchConflictSignature] = useState<string | null>(null);
+  const [matchConflictOverrideMessage, setMatchConflictOverrideMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [reschedulingMatches, setReschedulingMatches] = useState(false);
+  const [pendingScheduleAction, setPendingScheduleAction] = useState<'reschedule' | 'rebuild' | null>(null);
   const [selectedLifecycleStatus, setSelectedLifecycleStatus] = useState<EventLifecycleStatus | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
@@ -832,6 +928,59 @@ function EventScheduleContent() {
   const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
   const isEditingEvent = isTemplateEvent || isPreview || isEditParam;
   const activeMatches = usingChangeCopies ? changesMatches : matches;
+  const matchConflictsById = useMemo<Record<string, string[]>>(
+    () => detectMatchConflictsById(activeMatches),
+    [activeMatches],
+  );
+  const matchConflictPairs = useMemo(
+    () => listMatchConflictPairs(matchConflictsById),
+    [matchConflictsById],
+  );
+  const matchConflictSignature = useMemo(
+    () => matchConflictPairs.map((pair) => `${pair.firstId}|${pair.secondId}`).join(','),
+    [matchConflictPairs],
+  );
+  const hasMatchConflicts = matchConflictPairs.length > 0;
+  const baseMatchConflictMessage = useMemo(
+    () => (
+      hasMatchConflicts
+        ? buildMatchConflictAlertMessage({
+          matches: activeMatches,
+          pairs: matchConflictPairs,
+        })
+        : null
+    ),
+    [activeMatches, hasMatchConflicts, matchConflictPairs],
+  );
+  const visibleMatchConflictMessage = useMemo(() => {
+    if (!hasMatchConflicts) {
+      return null;
+    }
+    if (matchConflictOverrideMessage) {
+      return matchConflictOverrideMessage;
+    }
+    if (dismissedMatchConflictSignature === matchConflictSignature) {
+      return null;
+    }
+    return baseMatchConflictMessage;
+  }, [
+    baseMatchConflictMessage,
+    dismissedMatchConflictSignature,
+    hasMatchConflicts,
+    matchConflictOverrideMessage,
+    matchConflictSignature,
+  ]);
+
+  useEffect(() => {
+    if (!hasMatchConflicts) {
+      setDismissedMatchConflictSignature(null);
+      setMatchConflictOverrideMessage(null);
+      return;
+    }
+    setMatchConflictOverrideMessage(null);
+    setDismissedMatchConflictSignature((current) => (current === matchConflictSignature ? current : null));
+  }, [hasMatchConflicts, matchConflictSignature]);
+
   const divisionLabelsByKey = useMemo(() => {
     const labels = new Map<string, string>();
     if (Array.isArray(activeEvent?.divisionDetails)) {
@@ -2342,7 +2491,7 @@ function EventScheduleContent() {
   const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
     if (isCreateMode) return 'Cancel';
-    if (isUnpublished) return `Delete ${entityLabel}`;
+    if (isUnpublished) return 'Delete';
     if (isPreview) return `Cancel ${entityLabel} Preview`;
     if (isEditingEvent) return 'Cancel Edit';
     return `Cancel ${entityLabel}`;
@@ -2426,7 +2575,13 @@ function EventScheduleContent() {
 
   // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
   // Hydrate event + match data from the API and sync local component state.
-  const loadSchedule = useCallback(async () => {
+  const loadSchedule = useCallback(async ({
+    showPageLoader = true,
+    clearMessages = true,
+  }: {
+    showPageLoader?: boolean;
+    clearMessages?: boolean;
+  } = {}) => {
     if (!eventId) return;
     if (isCreateMode) {
       setLoading(false);
@@ -2434,10 +2589,14 @@ function EventScheduleContent() {
       return;
     }
 
-    setLoading(true);
+    if (showPageLoader) {
+      setLoading(true);
+    }
     setError(null);
-    setInfoMessage(null);
-    setWarningMessage(null);
+    if (clearMessages) {
+      setInfoMessage(null);
+      setWarningMessage(null);
+    }
 
     try {
       const response = await apiRequest<any>(`/api/events/${eventId}`);
@@ -2653,7 +2812,9 @@ function EventScheduleContent() {
       console.error('Failed to load league schedule:', err);
       setError('Failed to load league schedule. Please try again.');
     } finally {
-      setLoading(false);
+      if (showPageLoader) {
+        setLoading(false);
+      }
     }
   }, [eventId, hydrateEvent, isCreateMode]);
 
@@ -3492,9 +3653,26 @@ function EventScheduleContent() {
       }
 
       const mergedDraft = { ...activeEvent, ...(draft as Event) } as Event;
+      const draftConflictsById = detectMatchConflictsById(activeMatches);
+      const draftConflictPairs = listMatchConflictPairs(draftConflictsById);
+      if (draftConflictPairs.length > 0 && !isRescheduleAction) {
+        setInfoMessage(null);
+        setWarningMessage(null);
+        setActionError(null);
+        setDismissedMatchConflictSignature(null);
+        setMatchConflictOverrideMessage(
+          buildMatchConflictAlertMessage({
+            matches: activeMatches,
+            pairs: draftConflictPairs,
+          }),
+        );
+        return;
+      }
+
       setError(null);
       setInfoMessage(null);
       setWarningMessage(null);
+      setActionError(null);
       if (hasSchedulingAction) {
         setReschedulingMatches(true);
       } else {
@@ -3532,7 +3710,8 @@ function EventScheduleContent() {
           updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
         }
 
-        if (updatedEvent.$id && !hasSchedulingAction && nextMatches.length > 0) {
+        const shouldPersistDraftMatches = !isBuildBracketAction;
+        if (updatedEvent.$id && shouldPersistDraftMatches && nextMatches.length > 0) {
           const validation = validateDraftMatchGraph(nextMatches);
           if (!validation.ok) {
             throw new Error(validation.message);
@@ -3690,7 +3869,9 @@ function EventScheduleContent() {
           router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
         }
 
-        await loadSchedule();
+        if (isRescheduleAction || isBuildBracketAction) {
+          await loadSchedule({ showPageLoader: false, clearMessages: false });
+        }
         if (isRescheduleAction) {
           setInfoMessage(`${entityLabel} settings saved and matches rescheduled.`);
           if (scheduleWarningText) {
@@ -3748,7 +3929,12 @@ function EventScheduleContent() {
   const handleRescheduleMatches = useCallback(async () => {
     if (publishing || reschedulingMatches) return;
     setSubmitError(null);
-    await saveExistingEvent({ postSaveAction: 'reschedule' });
+    setPendingScheduleAction('reschedule');
+    try {
+      await saveExistingEvent({ postSaveAction: 'reschedule' });
+    } finally {
+      setPendingScheduleAction((current) => (current === 'reschedule' ? null : current));
+    }
   }, [publishing, reschedulingMatches, saveExistingEvent]);
 
   const handleBuildBrackets = useCallback(async () => {
@@ -3762,7 +3948,12 @@ function EventScheduleContent() {
       return;
     }
     setSubmitError(null);
-    await saveExistingEvent({ postSaveAction: 'buildBrackets' });
+    setPendingScheduleAction('rebuild');
+    try {
+      await saveExistingEvent({ postSaveAction: 'buildBrackets' });
+    } finally {
+      setPendingScheduleAction((current) => (current === 'rebuild' ? null : current));
+    }
   }, [activeEvent, publishing, reschedulingMatches, saveExistingEvent]);
 
   const handlePublish = async () => {
@@ -4133,21 +4324,23 @@ function EventScheduleContent() {
   }, [pendingCreateMatchId, removeStagedClientMatch]);
 
   const handleMatchEditSave = useCallback((updated: Match) => {
-    setChangesMatches((prev) => {
-      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
-      let replaced = false;
-      const next = base.map((item) => {
-        if (item.$id === updated.$id) {
-          replaced = true;
-          return cloneValue(updated) as Match;
-        }
-        return item;
-      });
-      if (!replaced) {
-        next.push(cloneValue(updated) as Match);
+    const base = (changesMatches.length ? changesMatches : (cloneValue(matches) as Match[]))
+      .map((item) => cloneValue(item) as Match);
+    let replaced = false;
+    const nextMatches = base.map((item) => {
+      if (item.$id === updated.$id) {
+        replaced = true;
+        return cloneValue(updated) as Match;
       }
-      return next;
+      return item;
     });
+    if (!replaced) {
+      nextMatches.push(cloneValue(updated) as Match);
+    }
+
+    setChangesMatches(nextMatches);
+    setDismissedMatchConflictSignature(null);
+    setMatchConflictOverrideMessage(null);
     if (isClientMatchId(updated.$id)) {
       setStagedMatchCreates((prev) => {
         if (prev[updated.$id]) {
@@ -4168,7 +4361,7 @@ function EventScheduleContent() {
     setMatchEditorContext('bracket');
     setIsMatchEditorOpen(false);
     setMatchBeingEdited(null);
-  }, [activeEvent?.eventType, matchEditorContext, matches]);
+  }, [activeEvent?.eventType, changesMatches, matchEditorContext, matches]);
 
   const handleToggleLockAllMatches = useCallback((locked: boolean, matchIds: string[]) => {
     if (!canEditMatches || matchIds.length === 0) return;
@@ -4582,7 +4775,7 @@ function EventScheduleContent() {
     return (
       <>
         <Navigation />
-        <Loading fullScreen text="Loading schedule..." />
+        <Loading fullScreen belowNavigation text="Loading schedule..." />
       </>
     );
   }
@@ -4596,22 +4789,22 @@ function EventScheduleContent() {
             <Group justify="space-between" align="center">
               <Title order={2}>Create Event</Title>
               <Group gap="sm">
-                {!publishing && !reschedulingMatches && (
-                  <Button
-                    color="green"
-                    onClick={handlePublish}
-                  >
-                    {createButtonLabel}
-                  </Button>
-                )}
-                {!cancelling && (
-                  <Button
-                    variant="default"
-                    onClick={handleCancel}
-                  >
-                    {cancelButtonLabel}
-                  </Button>
-                )}
+                <Button
+                  color="green"
+                  onClick={handlePublish}
+                  loading={publishing}
+                  disabled={reschedulingMatches || cancelling}
+                >
+                  {createButtonLabel}
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={handleCancel}
+                  loading={cancelling}
+                  disabled={publishing || reschedulingMatches}
+                >
+                  {cancelButtonLabel}
+                </Button>
               </Group>
             </Group>
             <Modal
@@ -4742,19 +4935,19 @@ function EventScheduleContent() {
   }
 
   const leagueConfig = activeEvent.leagueConfig;
-  const isSavingOrRescheduling = publishing || reschedulingMatches;
-  const showEditActionButton = !isTemplateEvent && !isEditingEvent && !isSavingOrRescheduling && !cancelling;
-  const showSaveActionButton = isEditingEvent && !publishing && !reschedulingMatches;
-  const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament) && !publishing && !reschedulingMatches;
+  const hasNetworkActionInFlight = publishing || reschedulingMatches || cancelling || creatingTemplate;
+  const showEditActionButton = !isTemplateEvent && !isEditingEvent;
+  const showSaveActionButton = isEditingEvent;
+  const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament);
   const showBuildBracketsActionButton = isEditingEvent && (
     isTournament || (isLeague && Boolean(activeEvent.includePlayoffs))
-  ) && !publishing && !reschedulingMatches;
-  const showDeleteTemplateActionButton = isTemplateEvent && !isSavingOrRescheduling && !cancelling;
+  );
+  const showDeleteTemplateActionButton = isTemplateEvent;
   const showCancelEditActionButton =
-    !isCreateMode && isEditingEvent && isUnpublished && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
-  const showCancelActionButton = !isTemplateEvent && !cancelling;
-  const showCreateTemplateButton = !creatingTemplate && !publishing && !reschedulingMatches && !cancelling && !isTemplateEvent;
-  const showLifecycleStatusSelect = isEditingEvent && !isSavingOrRescheduling && !cancelling && !isTemplateEvent;
+    !isCreateMode && isEditingEvent && isUnpublished && !isTemplateEvent;
+  const showCancelActionButton = !isTemplateEvent;
+  const showCreateTemplateButton = !isTemplateEvent;
+  const showLifecycleStatusSelect = isEditingEvent && !isTemplateEvent;
   const eventFormRenderKey = isCreateMode
     ? `create:${activeEvent?.$id ?? eventId ?? 'event'}:${templateSeedKey}`
     : `event:${activeEvent?.$id ?? eventId ?? 'event'}`;
@@ -4770,7 +4963,7 @@ function EventScheduleContent() {
             {canManageEvent && (
               <Group gap="sm" wrap="wrap">
                 {showEditActionButton && (
-                  <Button onClick={handleEnterEditMode}>
+                  <Button onClick={handleEnterEditMode} disabled={hasNetworkActionInFlight}>
                     Edit {entityLabel}
                   </Button>
                 )}
@@ -4783,24 +4976,35 @@ function EventScheduleContent() {
                         onChange={handleLifecycleStatusChange}
                         allowDeselect={false}
                         w={160}
+                        disabled={hasNetworkActionInFlight}
                       />
                     )}
                     {showSaveActionButton && (
                       <Button
                         color="green"
                         onClick={isCreateMode ? handlePublish : handleSaveEvent}
-                        disabled={!hasPendingUnsavedChanges || hasSplitDivisionUnassignedTeams}
+                        loading={publishing}
+                        disabled={
+                          (hasNetworkActionInFlight && !publishing)
+                          || !hasPendingUnsavedChanges
+                          || hasSplitDivisionUnassignedTeams
+                          || (!isCreateMode && hasMatchConflicts)
+                        }
                       >
-                        {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
+                        {isCreateMode ? createButtonLabel : 'Save'}
                       </Button>
                     )}
                     {showRescheduleActionButton && (
                       <Button
                         variant="light"
                         onClick={handleRescheduleMatches}
-                        disabled={hasSplitDivisionUnassignedTeams}
+                        loading={reschedulingMatches && pendingScheduleAction === 'reschedule'}
+                        disabled={
+                          (hasNetworkActionInFlight && !(reschedulingMatches && pendingScheduleAction === 'reschedule'))
+                          || hasSplitDivisionUnassignedTeams
+                        }
                       >
-                        Reschedule Event
+                        Reschedule
                       </Button>
                     )}
                     {showBuildBracketsActionButton && (
@@ -4808,15 +5012,20 @@ function EventScheduleContent() {
                         variant="light"
                         color="orange"
                         onClick={handleBuildBrackets}
-                        disabled={hasSplitDivisionUnassignedTeams}
+                        loading={reschedulingMatches && pendingScheduleAction === 'rebuild'}
+                        disabled={
+                          (hasNetworkActionInFlight && !(reschedulingMatches && pendingScheduleAction === 'rebuild'))
+                          || hasSplitDivisionUnassignedTeams
+                        }
                       >
-                        Build Bracket(s)
+                        Rebuild
                       </Button>
                     )}
                     {showCancelEditActionButton && (
                       <Button
                         variant="default"
                         onClick={handleCancelEdit}
+                        disabled={hasNetworkActionInFlight}
                       >
                         Cancel Edit
                       </Button>
@@ -4828,6 +5037,8 @@ function EventScheduleContent() {
                     color="red"
                     variant="light"
                     onClick={handleCancel}
+                    loading={cancelling}
+                    disabled={hasNetworkActionInFlight && !cancelling}
                   >
                     {cancelButtonLabel}
                   </Button>
@@ -4837,6 +5048,8 @@ function EventScheduleContent() {
                     color="red"
                     variant="light"
                     onClick={handleDeleteTemplate}
+                    loading={cancelling}
+                    disabled={hasNetworkActionInFlight && !cancelling}
                   >
                     Delete Template
                   </Button>
@@ -4845,6 +5058,8 @@ function EventScheduleContent() {
                   <Button
                     variant="light"
                     onClick={handleCreateTemplateFromEvent}
+                    loading={creatingTemplate}
+                    disabled={hasNetworkActionInFlight && !creatingTemplate}
                   >
                     Create Template
                   </Button>
@@ -4856,6 +5071,20 @@ function EventScheduleContent() {
           {infoMessage && (
             <Alert color="green" radius="md" onClose={() => setInfoMessage(null)} withCloseButton>
               {infoMessage}
+            </Alert>
+          )}
+
+          {visibleMatchConflictMessage && (
+            <Alert
+              color="red"
+              radius="md"
+              withCloseButton
+              onClose={() => {
+                setDismissedMatchConflictSignature(matchConflictSignature);
+                setMatchConflictOverrideMessage(null);
+              }}
+            >
+              {visibleMatchConflictMessage}
             </Alert>
           )}
 
@@ -5209,6 +5438,7 @@ function EventScheduleContent() {
                       currentUser={user}
                       childUserIds={childUserIds}
                       onToggleLockAllMatches={handleToggleLockAllMatches}
+                      conflictMatchIdsById={matchConflictsById}
                     />
                   )}
                 </Stack>
@@ -5244,6 +5474,7 @@ function EventScheduleContent() {
                       onMatchClick={handleMatchClick}
                       canEditMatches={canEditMatches}
                       showDateOnMatches={showDateOnMatches}
+                      conflictMatchIdsById={matchConflictsById}
                     />
                   ) : (
                     <Paper withBorder radius="md" p="xl" ta="center">

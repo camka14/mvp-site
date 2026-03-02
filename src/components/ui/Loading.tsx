@@ -2,6 +2,7 @@ interface LoadingProps {
   size?: 'sm' | 'md' | 'lg';
   text?: string;
   fullScreen?: boolean;
+  belowNavigation?: boolean;
 }
 
 function LoadingSpinner({ sizeClass, text }: { sizeClass: string; text?: string }) {
@@ -15,7 +16,12 @@ function LoadingSpinner({ sizeClass, text }: { sizeClass: string; text?: string 
   );
 }
 
-export default function Loading({ size = 'md', text, fullScreen = false }: LoadingProps) {
+export default function Loading({
+  size = 'md',
+  text,
+  fullScreen = false,
+  belowNavigation = false,
+}: LoadingProps) {
   const sizeClasses = {
     sm: 'w-4 h-4',
     md: 'w-8 h-8',
@@ -24,8 +30,10 @@ export default function Loading({ size = 'md', text, fullScreen = false }: Loadi
   const sizeClass = sizeClasses[size];
 
   if (fullScreen) {
+    const overlayZIndex = belowNavigation ? 'z-40' : 'z-50';
+
     return (
-      <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className={`fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center ${overlayZIndex}`}>
         <LoadingSpinner sizeClass={sizeClass} text={text} />
       </div>
     );

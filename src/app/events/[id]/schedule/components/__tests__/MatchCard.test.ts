@@ -1,4 +1,21 @@
-import { resolveDivisionLabel } from '../MatchCard';
+import { createElement } from 'react';
+import { screen } from '@testing-library/react';
+
+import type { Match } from '@/types';
+
+import MatchCard, { resolveDivisionLabel } from '../MatchCard';
+import { renderWithMantine } from '../../../../../../../test/utils/renderWithMantine';
+
+const buildMatch = (overrides: Partial<Match> = {}): Match => ({
+  $id: 'match_1',
+  matchId: 1,
+  start: '2026-03-01T10:00:00.000Z',
+  end: '2026-03-01T11:00:00.000Z',
+  team1Points: [],
+  team2Points: [],
+  setResults: [],
+  ...overrides,
+});
 
 describe('resolveDivisionLabel', () => {
   it('returns explicit division names from hydrated objects', () => {
@@ -22,5 +39,19 @@ describe('resolveDivisionLabel', () => {
     expect(resolveDivisionLabel(undefined)).toBe('TBD');
     expect(resolveDivisionLabel(null)).toBe('TBD');
     expect(resolveDivisionLabel('   ')).toBe('TBD');
+  });
+});
+
+describe('MatchCard conflict rendering', () => {
+  it('shows a red border and no inline conflict message when match has a field-time conflict', () => {
+    renderWithMantine(
+      createElement(MatchCard, {
+        match: buildMatch(),
+        hasConflict: true,
+      }),
+    );
+
+    expect(screen.queryByText(/there is a conflict/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('border-red-400');
   });
 });

@@ -169,14 +169,21 @@ const resetScheduleCollections = (event: SchedulerEvent): void => {
   }
 };
 
+const appendMatchToParticipant = (participant: { matches?: Match[] } | null | undefined, match: Match): void => {
+  if (!participant) {
+    return;
+  }
+  if (!participant.matches) {
+    participant.matches = [];
+  }
+  if (!participant.matches.includes(match)) {
+    participant.matches.push(match);
+  }
+};
+
 const attachMatchToParticipants = (match: Match): void => {
   for (const participant of match.getParticipants()) {
-    if (!participant.matches) {
-      participant.matches = [];
-    }
-    if (!participant.matches.includes(match)) {
-      participant.matches.push(match);
-    }
+    appendMatchToParticipant(participant, match);
   }
 };
 
@@ -203,6 +210,16 @@ const compareMatches = (left: Match, right: Match): number => {
   return left.id.localeCompare(right.id);
 };
 
+const compareScheduledOrder = (left: Match, right: Match): number => {
+  const startDiff = left.start.getTime() - right.start.getTime();
+  if (startDiff !== 0) return startDiff;
+  const endDiff = left.end.getTime() - right.end.getTime();
+  if (endDiff !== 0) return endDiff;
+  const fieldDiff = (left.field?.id ?? '').localeCompare(right.field?.id ?? '');
+  if (fieldDiff !== 0) return fieldDiff;
+  return left.id.localeCompare(right.id);
+};
+
 const durationForReschedule = (match: Match): number => {
   const durationMs = match.end.getTime() - match.start.getTime();
   if (durationMs >= MIN_SCHEDULE_DURATION_MS) {
@@ -215,15 +232,67 @@ const normalizeDayOfWeek = (date: Date): number => (date.getDay() + 6) % 7;
 
 const minuteOfDay = (date: Date): number => date.getHours() * 60 + date.getMinutes();
 
+const toValidDayIndex = (value: unknown): number | null => {
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric < 0 || numeric > 6) {
+    return null;
+  }
+  return numeric;
+};
+
+const normalizeSlotDayIndexes = (slot: { daysOfWeek?: unknown; dayOfWeek?: unknown }): number[] => {
+  const rawDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+    ? slot.daysOfWeek
+    : [slot.dayOfWeek];
+  return Array.from(
+    new Set(
+      rawDays
+        .map((value) => toValidDayIndex(value))
+        .filter((value): value is number => value !== null),
+    ),
+  );
+};
+
+const normalizeSlotFieldIds = (slot: {
+  scheduledFieldIds?: unknown;
+  fieldIds?: unknown;
+  field?: unknown;
+  scheduledFieldId?: unknown;
+}): string[] => {
+  const rawFieldIds = Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+    ? slot.scheduledFieldIds
+    : Array.isArray(slot.fieldIds) && slot.fieldIds.length
+      ? slot.fieldIds
+      : [slot.field ?? slot.scheduledFieldId];
+  return Array.from(
+    new Set(
+      rawFieldIds
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value.length > 0),
+    ),
+  );
+};
+
 const startOfDay = (date: Date): Date => {
   const day = new Date(date);
   day.setHours(0, 0, 0, 0);
   return day;
 };
 
-const slotAllowsField = (slot: { field?: string | null }, fieldId: string): boolean => {
-  if (!slot.field) return true;
-  return slot.field === fieldId;
+const slotAllowsField = (
+  slot: {
+    scheduledFieldIds?: unknown;
+    fieldIds?: unknown;
+    field?: unknown;
+    scheduledFieldId?: unknown;
+  },
+  fieldId: string,
+): boolean => {
+  const allowedFieldIds = normalizeSlotFieldIds(slot);
+  if (!allowedFieldIds.length) {
+    return true;
+  }
+  return allowedFieldIds.includes(fieldId);
 };
 
 const slotAllowsDivision = (slot: { divisions?: Division[] }, divisionId: string): boolean => {
@@ -246,11 +315,17 @@ const slotAllowsDate = (
 };
 
 const slotAllowsTime = (
-  slot: { dayOfWeek: number; startTimeMinutes: number; endTimeMinutes: number },
+  slot: {
+    dayOfWeek?: number;
+    daysOfWeek?: number[];
+    startTimeMinutes: number;
+    endTimeMinutes: number;
+  },
   matchStart: Date,
   matchEnd: Date,
 ): boolean => {
-  if (normalizeDayOfWeek(matchStart) !== slot.dayOfWeek) {
+  const allowedDays = normalizeSlotDayIndexes(slot);
+  if (allowedDays.length && !allowedDays.includes(normalizeDayOfWeek(matchStart))) {
     return false;
   }
   if (startOfDay(matchStart).getTime() !== startOfDay(matchEnd).getTime()) {
@@ -414,6 +489,88 @@ const dependenciesAreScheduled = (match: Match, pendingIds: Set<string>): boolea
   return true;
 };
 
+const assignMissingUserReferees = (
+  event: SchedulerEvent,
+  schedule: Schedule<Match, PlayingField, Team | UserData, Division>,
+  matches: Match[],
+): void => {
+  if (!event.referees.length) {
+    matches.forEach(attachMatchToParticipants);
+    return;
+  }
+  const refereeCycle = [...event.referees];
+  const ordered = [...matches].sort(compareScheduledOrder);
+  for (const match of ordered) {
+    attachMatchToParticipants(match);
+    if (match.referee || !match.division) continue;
+    const availableRefs = schedule
+      .freeParticipants(match.division, match.start, match.end)
+      .filter((participant) => participant instanceof UserData) as UserData[];
+    if (!availableRefs.length || !refereeCycle.length) continue;
+    for (let i = 0; i < refereeCycle.length; i += 1) {
+      const candidate = refereeCycle.shift() as UserData;
+      if (availableRefs.some((available) => available.id === candidate.id)) {
+        match.referee = candidate;
+        appendMatchToParticipant(candidate, match);
+        attachMatchToParticipants(match);
+        refereeCycle.push(candidate);
+        break;
+      }
+      refereeCycle.push(candidate);
+    }
+  }
+};
+
+const assignMissingTeamReferees = (
+  event: SchedulerEvent,
+  schedule: Schedule<Match, PlayingField, Team | UserData, Division>,
+  matches: Match[],
+): void => {
+  if (!event.doTeamsRef) {
+    return;
+  }
+  const requireCaptains = isLeagueEvent(event);
+  const teams = Object.values(event.teams).filter((team) => (
+    requireCaptains ? team.captainId.trim().length > 0 : true
+  ));
+  const unassigned = [...teams];
+  const ordered = [...matches].sort(compareScheduledOrder);
+  for (const match of ordered) {
+    attachMatchToParticipants(match);
+    if (match.teamReferee || !match.division || !(match.team1 && match.team2)) continue;
+    const availableTeams = schedule
+      .freeParticipants(match.division, match.start, match.end)
+      .filter(
+        (participant) => (
+          participant instanceof Team
+          && (requireCaptains ? participant.captainId.trim().length > 0 : true)
+        ),
+      ) as Team[];
+    const filtered = availableTeams.filter((team) => team !== match.team1 && team !== match.team2);
+    if (!filtered.length) continue;
+
+    let candidate: Team | null = null;
+    for (let i = 0; i < unassigned.length; i += 1) {
+      const candidateTeam = unassigned[0];
+      unassigned.push(unassigned.shift() as Team);
+      if (filtered.includes(candidateTeam)) {
+        candidate = candidateTeam;
+        const idx = unassigned.indexOf(candidateTeam);
+        if (idx >= 0) unassigned.splice(idx, 1);
+        break;
+      }
+    }
+    if (!candidate) {
+      candidate = filtered[0] ?? null;
+    }
+    if (!candidate) continue;
+
+    match.teamReferee = candidate;
+    appendMatchToParticipant(candidate, match);
+    attachMatchToParticipants(match);
+  }
+};
+
 export const rescheduleEventMatchesPreservingLocks = (
   event: SchedulerEvent,
 ): LockedPreservingRescheduleResult => {
@@ -479,6 +636,9 @@ export const rescheduleEventMatchesPreservingLocks = (
   } finally {
     detachedPendingAssignments.forEach(restorePendingDependencyAssignments);
   }
+
+  assignMissingUserReferees(event, schedule, allMatches);
+  assignMissingTeamReferees(event, schedule, allMatches);
 
   const latestEnd = latestMatchEnd(allMatches);
   if (latestEnd) {

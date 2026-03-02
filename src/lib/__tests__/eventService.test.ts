@@ -245,4 +245,18 @@ describe('eventService', () => {
       }),
     );
   });
+
+  it('prefers explicit attendee counts from API payloads', async () => {
+    apiRequestMock.mockResolvedValue({
+      ...baseEventRow,
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      teamIds: ['slot_1', 'slot_2', 'slot_3'],
+      attendees: 2,
+    });
+
+    const event = await eventService.getEvent('evt_1');
+
+    expect(event?.attendees).toBe(2);
+  });
 });

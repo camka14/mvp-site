@@ -264,7 +264,7 @@ function TeamsPageContent() {
   };
 
   if (authLoading) {
-    return <Loading fullScreen text="Loading teams..." />;
+    return <Loading fullScreen belowNavigation text="Loading teams..." />;
   }
 
   if (!isAuthenticated || !user) {

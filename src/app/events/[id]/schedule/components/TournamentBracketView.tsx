@@ -300,6 +300,7 @@ interface TournamentBracketViewProps {
     onMatchClick?: (match: Match) => void;
     canEditMatches?: boolean;
     showDateOnMatches?: boolean;
+    conflictMatchIdsById?: Record<string, string[]>;
 }
 
 export default function TournamentBracketView({
@@ -312,6 +313,7 @@ export default function TournamentBracketView({
     onMatchClick,
     canEditMatches = false,
     showDateOnMatches = false,
+    conflictMatchIdsById = {},
 }: TournamentBracketViewProps) {
     const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
     const [showScoreModal, setShowScoreModal] = useState(false);
@@ -327,6 +329,10 @@ export default function TournamentBracketView({
     const matchesById = useMemo<Record<string, Match>>(
         () => Object.fromEntries(Object.values(bracket.matches).map((match) => [match.$id, match])),
         [bracket.matches],
+    );
+    const conflictMatchIdSet = useMemo(
+        () => new Set(Object.keys(conflictMatchIdsById).filter((matchId) => conflictMatchIdsById[matchId]?.length)),
+        [conflictMatchIdsById],
     );
     const resolveLinkFromAll = useCallback((idValue: unknown, relationValue: unknown): Match | undefined => {
         const id = normalizeMatchRefId(idValue);
@@ -786,6 +792,64 @@ export default function TournamentBracketView({
     const allowEditing = Boolean(canEditMatches && hasExternalMatchClick);
     // Only use the internal score modal when no parent click handler is provided.
     const allowScoreUpdates = !!onScoreUpdate && !isPreview && !hasExternalMatchClick;
+    const currentUserId = typeof currentUser?.$id === 'string' ? currentUser.$id.trim() : '';
+    const userTeamIds = useMemo(() => {
+        const ids = new Set<string>();
+        (currentUser?.teamIds ?? []).forEach((teamId) => {
+            if (typeof teamId !== 'string') {
+                return;
+            }
+            const normalizedTeamId = teamId.trim();
+            if (normalizedTeamId.length > 0) {
+                ids.add(normalizedTeamId);
+            }
+        });
+        return ids;
+    }, [currentUser?.teamIds]);
+
+    const teamHasCurrentUser = useCallback(
+        (team: Match['team1'], fallbackTeamId?: string | null): boolean => {
+            if (!currentUserId) {
+                return false;
+            }
+
+            const resolvedTeamId = extractEntityId(team)
+                || (typeof fallbackTeamId === 'string' ? fallbackTeamId.trim() : '');
+            if (resolvedTeamId && userTeamIds.has(resolvedTeamId)) {
+                return true;
+            }
+
+            const players = Array.isArray((team as any)?.players) ? (team as any).players : [];
+            if (players.some((player: unknown) => extractEntityId(player) === currentUserId)) {
+                return true;
+            }
+
+            const playerIds = Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : [];
+            if (playerIds.some((playerId: unknown) => (typeof playerId === 'string' ? playerId.trim() : '') === currentUserId)) {
+                return true;
+            }
+
+            const captainId = extractEntityId((team as any)?.captain) || (typeof (team as any)?.captainId === 'string' ? (team as any).captainId.trim() : '');
+            return captainId === currentUserId;
+        },
+        [currentUserId, userTeamIds],
+    );
+
+    const matchInvolvesCurrentUser = useCallback((match: Match): boolean => {
+        if (!currentUserId) {
+            return false;
+        }
+
+        const matchRefereeId = extractEntityId(match.referee)
+            || (typeof match.refereeId === 'string' ? match.refereeId.trim() : '');
+        if (matchRefereeId === currentUserId) {
+            return true;
+        }
+
+        return teamHasCurrentUser(match.team1, match.team1Id)
+            || teamHasCurrentUser(match.team2, match.team2Id)
+            || teamHasCurrentUser(match.teamReferee, match.teamRefereeId);
+    }, [currentUserId, teamHasCurrentUser]);
 
     const canManageMatch = (match: Match) => {
         if (allowEditing) return true;
@@ -931,7 +995,9 @@ export default function TournamentBracketView({
                                             resolveLinkFromAll(m.previousRightId, m.previousRightMatch),
                                     };
 	                                const canInternalManage = canManageMatch(resolvedMatch);
+	                                const highlightCurrentUser = matchInvolvesCurrentUser(resolvedMatch);
 	                                const clickable = hasExternalMatchClick || canInternalManage;
+                                    const hasConflict = conflictMatchIdSet.has(resolvedMatch.$id);
 	                                // Keep bracket card shape identical between edit and non-edit modes.
 	                                const manageHint = false;
                                     const team1Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team1`];
@@ -953,9 +1019,11 @@ export default function TournamentBracketView({
 	                                            onClick={clickable ? () => handleMatchClick(resolvedMatch) : undefined}
 	                                            canManage={manageHint}
 	                                            className="w-full h-full"
-	                                            showDate={showDateOnMatches}
+	                                            highlightCurrentUser={highlightCurrentUser}
+                                                showDate={showDateOnMatches}
                                                 team1Placeholder={team1Placeholder}
                                                 team2Placeholder={team2Placeholder}
+                                                hasConflict={hasConflict}
 	                                        />
 	                                    </div>
 	                                );

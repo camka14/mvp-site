@@ -10,15 +10,18 @@ jest.mock('../MatchCard', () => ({
   __esModule: true,
   default: ({
     match,
+    highlightCurrentUser,
     team1Placeholder,
     team2Placeholder,
   }: {
     match: Match;
+    highlightCurrentUser?: boolean;
     team1Placeholder?: string;
     team2Placeholder?: string;
   }) => (
     <div>
       <span>{`match-${match.$id}`}</span>
+      <span>{highlightCurrentUser ? `highlight-${match.$id}` : `normal-${match.$id}`}</span>
       {team1Placeholder ? <span>{team1Placeholder}</span> : null}
       {team2Placeholder ? <span>{team2Placeholder}</span> : null}
     </div>
@@ -219,5 +222,62 @@ describe('TournamentBracketView', () => {
     );
 
     expect(getMatchNodeTop('p1')).toBe(getMatchNodeTop('c1'));
+  });
+
+  it('highlights matches involving the current user, including referee assignments', () => {
+    const userId = 'user_1';
+    const playerMatch = buildMatch('m1', {
+      winnerNextMatchId: 'm3',
+      team1: {
+        $id: 'team_player',
+        playerIds: [userId],
+      } as Match['team1'],
+    });
+    const refereeMatch = buildMatch('m2', {
+      winnerNextMatchId: 'm3',
+      refereeId: userId,
+    });
+    const teamRefereeMatch = buildMatch('m3', {
+      previousLeftId: 'm1',
+      previousRightId: 'm2',
+      winnerNextMatchId: 'm4',
+      teamReferee: {
+        $id: 'team_ref',
+        playerIds: [userId],
+      } as Match['teamReferee'],
+    });
+    const otherMatch = buildMatch('m4', {
+      previousLeftId: 'm3',
+      team1: {
+        $id: 'team_other',
+        playerIds: ['someone_else'],
+      } as Match['team1'],
+      refereeId: 'ref_other',
+    });
+
+    const bracket: TournamentBracket = {
+      tournament: { doubleElimination: false } as TournamentBracket['tournament'],
+      matches: {
+        [playerMatch.$id]: playerMatch,
+        [refereeMatch.$id]: refereeMatch,
+        [teamRefereeMatch.$id]: teamRefereeMatch,
+        [otherMatch.$id]: otherMatch,
+      },
+      teams: [],
+      isHost: false,
+      canManage: false,
+    };
+
+    renderWithMantine(
+      <TournamentBracketView
+        bracket={bracket}
+        currentUser={{ $id: userId, teamIds: [] } as any}
+      />,
+    );
+
+    expect(screen.getByText('highlight-m1')).toBeInTheDocument();
+    expect(screen.getByText('highlight-m2')).toBeInTheDocument();
+    expect(screen.getByText('highlight-m3')).toBeInTheDocument();
+    expect(screen.getByText('normal-m4')).toBeInTheDocument();
   });
 });

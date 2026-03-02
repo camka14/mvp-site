@@ -7,6 +7,8 @@ import {
   PlayingField,
   Team,
   TimeSlot,
+  Tournament,
+  UserData,
 } from '../types';
 
 const createMatch = (params: {
@@ -206,6 +208,283 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     expect(match3!.start.getTime()).toBeGreaterThanOrEqual(eventStart.getTime());
     expect(match2!.end.getTime()).toBeLessThanOrEqual(eventEnd.getTime());
     expect(match3!.end.getTime()).toBeLessThanOrEqual(eventEnd.getTime());
+  });
+
+  it('does not warn when a locked match is within a secondary day in daysOfWeek', () => {
+    const division = new Division('open', 'Open');
+    const field = new PlayingField({
+      id: 'field_multi_day',
+      fieldNumber: 1,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court Multi Day',
+    });
+    const team1 = new Team({
+      id: 'multi_day_team_1',
+      captainId: 'multi_day_captain_1',
+      division,
+      name: 'Team 1',
+      matches: [],
+      playerIds: [],
+    });
+    const team2 = new Team({
+      id: 'multi_day_team_2',
+      captainId: 'multi_day_captain_2',
+      division,
+      name: 'Team 2',
+      matches: [],
+      playerIds: [],
+    });
+    const team3 = new Team({
+      id: 'multi_day_team_3',
+      captainId: 'multi_day_captain_3',
+      division,
+      name: 'Team 3',
+      matches: [],
+      playerIds: [],
+    });
+    const team4 = new Team({
+      id: 'multi_day_team_4',
+      captainId: 'multi_day_captain_4',
+      division,
+      name: 'Team 4',
+      matches: [],
+      playerIds: [],
+    });
+
+    const eventStart = new Date(2026, 2, 2, 9, 0, 0);
+    const eventEnd = new Date(2026, 2, 4, 18, 0, 0);
+
+    const lockedMatch = createMatch({
+      id: 'match_locked_multi_day',
+      matchId: 1,
+      start: new Date(2026, 2, 3, 10, 0, 0),
+      end: new Date(2026, 2, 3, 11, 0, 0),
+      locked: true,
+      field,
+      division,
+      team1,
+      team2,
+      eventId: 'event_multi_day',
+    });
+    const unlockedMatch = createMatch({
+      id: 'match_unlocked_multi_day',
+      matchId: 2,
+      start: new Date(2026, 2, 2, 10, 0, 0),
+      end: new Date(2026, 2, 2, 11, 0, 0),
+      field,
+      division,
+      team1: team3,
+      team2: team4,
+      eventId: 'event_multi_day',
+    });
+
+    const event = new League({
+      id: 'event_multi_day',
+      name: 'Multi-day lock league',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams: {
+        [team1.id]: team1,
+        [team2.id]: team2,
+        [team3.id]: team3,
+        [team4.id]: team4,
+      },
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [division],
+      fields: { [field.id]: field },
+      matches: {
+        [lockedMatch.id]: lockedMatch,
+        [unlockedMatch.id]: unlockedMatch,
+      },
+      referees: [],
+      registrationIds: [],
+      eventType: 'LEAGUE',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      setsPerMatch: 3,
+      pointsToVictory: [],
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      doTeamsRef: false,
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_multi_day',
+          dayOfWeek: 0,
+          daysOfWeek: [0, 1],
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 18 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(event);
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it('does not warn when a locked match is within a secondary field in slot fieldIds', () => {
+    const division = new Division('open', 'Open');
+    const fieldOne = new PlayingField({
+      id: 'field_multi_1',
+      fieldNumber: 1,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court A',
+    });
+    const fieldTwo = new PlayingField({
+      id: 'field_multi_2',
+      fieldNumber: 2,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court B',
+    });
+    const team1 = new Team({
+      id: 'multi_field_team_1',
+      captainId: 'multi_field_captain_1',
+      division,
+      name: 'Team 1',
+      matches: [],
+      playerIds: [],
+    });
+    const team2 = new Team({
+      id: 'multi_field_team_2',
+      captainId: 'multi_field_captain_2',
+      division,
+      name: 'Team 2',
+      matches: [],
+      playerIds: [],
+    });
+    const team3 = new Team({
+      id: 'multi_field_team_3',
+      captainId: 'multi_field_captain_3',
+      division,
+      name: 'Team 3',
+      matches: [],
+      playerIds: [],
+    });
+    const team4 = new Team({
+      id: 'multi_field_team_4',
+      captainId: 'multi_field_captain_4',
+      division,
+      name: 'Team 4',
+      matches: [],
+      playerIds: [],
+    });
+
+    const eventStart = new Date(2026, 2, 2, 9, 0, 0);
+    const eventEnd = new Date(2026, 2, 2, 18, 0, 0);
+
+    const lockedMatch = createMatch({
+      id: 'match_locked_multi_field',
+      matchId: 1,
+      start: new Date(2026, 2, 2, 10, 0, 0),
+      end: new Date(2026, 2, 2, 11, 0, 0),
+      locked: true,
+      field: fieldTwo,
+      division,
+      team1,
+      team2,
+      eventId: 'event_multi_field',
+    });
+    const unlockedMatch = createMatch({
+      id: 'match_unlocked_multi_field',
+      matchId: 2,
+      start: new Date(2026, 2, 2, 11, 5, 0),
+      end: new Date(2026, 2, 2, 12, 5, 0),
+      field: fieldOne,
+      division,
+      team1: team3,
+      team2: team4,
+      eventId: 'event_multi_field',
+    });
+
+    const event = new League({
+      id: 'event_multi_field',
+      name: 'Multi-field lock league',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams: {
+        [team1.id]: team1,
+        [team2.id]: team2,
+        [team3.id]: team3,
+        [team4.id]: team4,
+      },
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [division],
+      fields: {
+        [fieldOne.id]: fieldOne,
+        [fieldTwo.id]: fieldTwo,
+      },
+      matches: {
+        [lockedMatch.id]: lockedMatch,
+        [unlockedMatch.id]: unlockedMatch,
+      },
+      referees: [],
+      registrationIds: [],
+      eventType: 'LEAGUE',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      setsPerMatch: 3,
+      pointsToVictory: [],
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      doTeamsRef: false,
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_multi_field',
+          dayOfWeek: 0,
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 18 * 60,
+          fieldIds: [fieldOne.id, fieldTwo.id],
+          divisions: [division],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(event);
+    expect(result.warnings).toHaveLength(0);
   });
 
   it('reschedules split-playoff matches when playoff slots are inherited from source divisions', () => {
@@ -638,5 +917,153 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     expect(result.event.end.getTime()).toBe(sorted[1]?.end.getTime());
     expect(result.event.end.getTime()).toBeGreaterThan(originalEventEnd.getTime());
     expect(result.warnings).toHaveLength(0);
+  });
+
+  it('reassigns missing official and team referees when rescheduling tournament matches', () => {
+    const division = new Division('open', 'Open');
+    const field = new PlayingField({
+      id: 'field_tournament_refs',
+      fieldNumber: 1,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court Tournament',
+    });
+
+    const makeTeam = (id: string, name: string) => new Team({
+      id,
+      captainId: '',
+      division,
+      name,
+      matches: [],
+      playerIds: [],
+    });
+
+    const team1 = makeTeam('team_1', 'Team 1');
+    const team2 = makeTeam('team_2', 'Team 2');
+    const team3 = makeTeam('team_3', 'Team 3');
+    const team4 = makeTeam('team_4', 'Team 4');
+    const team5 = makeTeam('team_5', 'Team 5');
+    const team6 = makeTeam('team_6', 'Team 6');
+
+    const ref1 = new UserData({
+      id: 'ref_1',
+      firstName: 'Ref',
+      lastName: 'One',
+      matches: [],
+      divisions: [division],
+    });
+    const ref2 = new UserData({
+      id: 'ref_2',
+      firstName: 'Ref',
+      lastName: 'Two',
+      matches: [],
+      divisions: [division],
+    });
+
+    const eventStart = new Date('2026-03-02T10:00:00.000Z');
+    const eventEnd = new Date('2026-03-02T15:00:00.000Z');
+
+    const match1 = createMatch({
+      id: 'match_tourny_1',
+      matchId: 1,
+      start: new Date('2026-03-02T10:00:00.000Z'),
+      end: new Date('2026-03-02T11:00:00.000Z'),
+      field,
+      division,
+      team1,
+      team2,
+      eventId: 'event_tourny',
+    });
+    const match2 = createMatch({
+      id: 'match_tourny_2',
+      matchId: 2,
+      start: new Date('2026-03-02T11:00:00.000Z'),
+      end: new Date('2026-03-02T12:00:00.000Z'),
+      field,
+      division,
+      team1: team3,
+      team2: team4,
+      eventId: 'event_tourny',
+    });
+    const match3 = createMatch({
+      id: 'match_tourny_3',
+      matchId: 3,
+      start: new Date('2026-03-02T12:00:00.000Z'),
+      end: new Date('2026-03-02T13:00:00.000Z'),
+      field,
+      division,
+      team1: team5,
+      team2: team6,
+      eventId: 'event_tourny',
+    });
+
+    const tournament = new Tournament({
+      id: 'event_tourny',
+      name: 'Tournament Reschedule',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams: {
+        [team1.id]: team1,
+        [team2.id]: team2,
+        [team3.id]: team3,
+        [team4.id]: team4,
+        [team5.id]: team5,
+        [team6.id]: team6,
+      },
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 6,
+      teamSignup: true,
+      divisions: [division],
+      fields: { [field.id]: field },
+      matches: {
+        [match1.id]: match1,
+        [match2.id]: match2,
+        [match3.id]: match3,
+      },
+      referees: [ref1, ref2],
+      registrationIds: [],
+      eventType: 'TOURNAMENT',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      doTeamsRef: true,
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_tournament_refs',
+          dayOfWeek: 0,
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 15 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(tournament);
+    expect(result.warnings).toHaveLength(0);
+
+    const validRefIds = new Set(['ref_1', 'ref_2']);
+    for (const match of result.matches) {
+      expect(match.referee?.id).toBeTruthy();
+      expect(validRefIds.has(match.referee?.id ?? '')).toBe(true);
+      expect(match.teamReferee?.id).toBeTruthy();
+      expect(match.teamReferee?.id).not.toBe(match.team1?.id);
+      expect(match.teamReferee?.id).not.toBe(match.team2?.id);
+    }
   });
 });

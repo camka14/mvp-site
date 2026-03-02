@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { authService } from '@/lib/auth';
+import { getHomePathForUser } from '@/lib/homePage';
 import { NavItem } from '@/types';
 
 const baseNav: NavItem[] = [
@@ -15,7 +16,7 @@ const baseNav: NavItem[] = [
 ];
 
 export default function Navigation() {
-  const { authUser, setUser, setAuthUser, isGuest } = useApp();
+  const { user, authUser, setUser, setAuthUser, isGuest } = useApp();
   const pathname = usePathname();
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -75,13 +76,14 @@ export default function Navigation() {
         ? [...baseNav, { label: 'Admin', href: '/admin' }]
         : baseNav
     );
+  const homeHref = getHomePathForUser(user);
 
   return (
     <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="container-responsive">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href="/discover" className="flex items-center space-x-2">
+          <Link href={homeHref} className="flex items-center space-x-2">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white" style={{ background: 'var(--ocean-primary)' }}>
               <span className="text-white font-bold text-lg">M</span>
             </div>

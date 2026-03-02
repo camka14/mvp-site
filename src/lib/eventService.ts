@@ -622,9 +622,20 @@ class EventService {
             // Computed properties
             organization,
             // Computed properties
-            attendees: row.teamSignup
-                ? (Array.isArray(row.teamIds) ? row.teamIds.length : 0)
-                : (Array.isArray(row.userIds) ? row.userIds.length : 0),
+            attendees: (() => {
+                const explicitAttendees =
+                    typeof row.attendees === 'number'
+                        ? row.attendees
+                        : Number.isFinite(Number(row.attendees))
+                            ? Number(row.attendees)
+                            : null;
+                if (explicitAttendees !== null) {
+                    return Math.max(0, Math.trunc(explicitAttendees));
+                }
+                return row.teamSignup
+                    ? (Array.isArray(row.teamIds) ? row.teamIds.length : 0)
+                    : (Array.isArray(row.userIds) ? row.userIds.length : 0);
+            })(),
             status: row.status as EventStatus | undefined,
             state,
             leagueConfig: this.buildLeagueConfig(row),

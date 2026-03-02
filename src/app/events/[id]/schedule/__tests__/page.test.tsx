@@ -96,7 +96,7 @@ jest.mock('../components/EventForm', () => {
 });
 
 jest.mock('../components/LeagueCalendarView', () => {
-  return function MockCalendarView({ matches, onMatchClick, canManage }: any) {
+  return function MockCalendarView({ matches, onMatchClick, canManage, conflictMatchIdsById }: any) {
     return (
       <div data-testid="league-calendar">
         <span>Calendar View</span>
@@ -105,6 +105,7 @@ jest.mock('../components/LeagueCalendarView', () => {
             {match?.$id ?? match?.id ?? 'unknown'}
           </span>
         ))}
+        <span data-testid="calendar-conflict-count">{Object.keys(conflictMatchIdsById ?? {}).length}</span>
         {canManage && matches?.length > 0 && (
           <button type="button" onClick={() => onMatchClick?.(matches[0])}>
             Edit First Match
@@ -1228,7 +1229,7 @@ describe('League schedule page', () => {
     expect(await screen.findByText(/Summer League/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: /schedule/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /reschedule event/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^reschedule$/i }));
 
     await waitFor(() => {
       expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);
@@ -1240,6 +1241,190 @@ describe('League schedule page', () => {
     expect(
       await screen.findByText(/Locked match is outside the updated start\/time-slot window and was preserved\./i),
     ).toBeInTheDocument();
+  });
+
+  it('persists match lock edits before triggering reschedule', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const baseEvent = buildApiEvent({
+      id: 'event_1',
+      $id: 'event_1',
+    });
+    const persistedMatches = (baseEvent.matches ?? []).map((match: Record<string, any>) => ({
+      ...match,
+      locked: false,
+    }));
+
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      const method = (options as { method?: string } | undefined)?.method;
+      if (path === '/api/events/event_1') {
+        const event = { ...baseEvent };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches' && method === 'PATCH') {
+        const body = (options as { body?: { matches?: Array<Record<string, any>> } } | undefined)?.body;
+        const updates = Array.isArray(body?.matches) ? body.matches : [];
+        const updatesById = new Map(
+          updates
+            .filter((entry) => typeof entry?.id === 'string' && entry.id.length > 0)
+            .map((entry) => [entry.id as string, entry]),
+        );
+        const nextMatches = persistedMatches.map((match) => {
+          const update = updatesById.get(String(match.$id ?? match.id));
+          return update ? { ...match, ...update, id: update.id, $id: update.id } : match;
+        });
+        persistedMatches.splice(0, persistedMatches.length, ...nextMatches);
+        return Promise.resolve({ matches: persistedMatches });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: persistedMatches });
+      }
+      return Promise.resolve({});
+    });
+
+    (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
+      Promise.resolve({
+        ...payload,
+        $id: 'event_1',
+      }),
+    );
+    (eventService.scheduleEvent as jest.Mock).mockResolvedValue({
+      event: buildApiEvent({
+        id: 'event_1',
+        $id: 'event_1',
+      }),
+      preview: false,
+      warnings: [],
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    expect(await screen.findByText(/Summer League/)).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: /edit first match/i }));
+    const lockCheckbox = await screen.findByRole('checkbox', { name: /lock match/i });
+    expect(lockCheckbox).not.toBeChecked();
+
+    fireEvent.click(lockCheckbox);
+    expect(lockCheckbox).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => {
+      expect(screen.queryByText(/Edit Match/)).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: /schedule/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^reschedule$/i }));
+
+    await waitFor(() => {
+      expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);
+    });
+
+    const patchCallIndex = apiRequestMock.mock.calls.findIndex(([path, options]) => (
+      path === '/api/events/event_1/matches'
+      && (options as { method?: string } | undefined)?.method === 'PATCH'
+    ));
+    expect(patchCallIndex).toBeGreaterThanOrEqual(0);
+    const patchCall = apiRequestMock.mock.calls[patchCallIndex];
+    const patchBody = (patchCall?.[1] as { body?: { matches?: Array<Record<string, any>> } } | undefined)?.body;
+    expect(patchBody?.matches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'match_1',
+          locked: true,
+        }),
+      ]),
+    );
+
+    const patchOrder = apiRequestMock.mock.invocationCallOrder[patchCallIndex];
+    const scheduleOrder = (eventService.scheduleEvent as jest.Mock).mock.invocationCallOrder[0];
+    expect(patchOrder).toBeLessThan(scheduleOrder);
+  });
+
+  it('disables Save but allows Reschedule when conflicts exist on the same field', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const baseEvent = buildApiEvent({
+      id: 'event_1',
+      $id: 'event_1',
+    });
+    const conflictingMatches = [
+      {
+        ...baseEvent.matches[0],
+        $id: 'conflict_1',
+        id: 'conflict_1',
+        fieldId: 'field_1',
+        field: undefined,
+        start: '2026-03-01T10:00:00.000Z',
+        end: '2026-03-01T11:00:00.000Z',
+      },
+      {
+        ...baseEvent.matches[1],
+        $id: 'conflict_2',
+        id: 'conflict_2',
+        fieldId: 'field_1',
+        field: undefined,
+        start: '2026-03-01T10:30:00.000Z',
+        end: '2026-03-01T11:30:00.000Z',
+      },
+    ];
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = { ...baseEvent };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: conflictingMatches });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
+      Promise.resolve({
+        ...payload,
+        $id: 'event_1',
+      }),
+    );
+    (eventService.scheduleEvent as jest.Mock).mockResolvedValue({
+      event: buildApiEvent({
+        id: 'event_1',
+        $id: 'event_1',
+      }),
+      preview: false,
+      warnings: [],
+    });
+    mockEventFormDirtyState = true;
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    expect(await screen.findByText(/Summer League/)).toBeInTheDocument();
+    expect(await screen.findByTestId('calendar-conflict-count')).toHaveTextContent('2');
+
+    const saveButton = await screen.findByRole('button', { name: /^save$/i });
+    expect(saveButton).toBeDisabled();
+    expect(eventService.updateEvent).not.toHaveBeenCalled();
+
+    const rescheduleButton = await screen.findByRole('button', { name: /^reschedule$/i });
+    expect(rescheduleButton).toBeEnabled();
+    fireEvent.click(rescheduleButton);
+
+    await waitFor(() => {
+      expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('blocks create publish when form validation fails (for example missing playoff team count)', async () => {

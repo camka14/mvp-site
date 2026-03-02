@@ -7,6 +7,9 @@ const prismaMock = {
     findMany: jest.fn(),
     findUnique: jest.fn(),
   },
+  teams: {
+    findMany: jest.fn(),
+  },
   matches: {
     findMany: jest.fn(),
   },
@@ -42,6 +45,7 @@ describe('event template privacy routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prismaMock.divisions.findMany.mockResolvedValue([]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
   });
 
   it('excludes templates from GET /api/events when no state filter is provided', async () => {
@@ -233,6 +237,31 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('returns attendee counts that exclude placeholder teams in GET /api/events', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        name: 'League Event',
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        teamIds: ['slot_1', 'slot_2', 'slot_3'],
+        userIds: [],
+        divisions: [],
+      },
+    ]);
+    prismaMock.teams.findMany.mockResolvedValueOnce([
+      { id: 'slot_1', parentTeamId: 'team_a', name: 'Alpha Team' },
+      { id: 'slot_2', parentTeamId: null, name: 'Place Holder 2' },
+      { id: 'slot_3', parentTeamId: 'team_b', name: 'Bravo Team' },
+    ]);
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events'));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].attendees).toBe(2);
+  });
+
   it('includes divisionDetails in POST /api/events/search responses', async () => {
     prismaMock.events.findMany.mockResolvedValueOnce([
       {
@@ -276,6 +305,31 @@ describe('event template privacy routes', () => {
         }),
       }),
     );
+  });
+
+  it('returns attendee counts that exclude placeholder teams in POST /api/events/search', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_2',
+        name: 'Search League Event',
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        teamIds: ['slot_1', 'slot_2', 'slot_3'],
+        userIds: [],
+        divisions: [],
+      },
+    ]);
+    prismaMock.teams.findMany.mockResolvedValueOnce([
+      { id: 'slot_1', parentTeamId: 'team_a', name: 'Alpha Team' },
+      { id: 'slot_2', parentTeamId: null, name: 'Place Holder 2' },
+      { id: 'slot_3', parentTeamId: 'team_b', name: 'Bravo Team' },
+    ]);
+
+    const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].attendees).toBe(2);
   });
 
   it('defaults POST /api/events/search to today-and-later results', async () => {

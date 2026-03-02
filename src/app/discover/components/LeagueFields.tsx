@@ -147,6 +147,7 @@ interface LeagueFieldsProps {
   lockSlotDivisions?: boolean;
   lockedDivisionKeys?: string[];
   readOnly?: boolean;
+  onAutoResolveSlotConflict?: (index: number) => void;
   showLeagueConfiguration?: boolean;
   showPlayoffSettings?: boolean;
 }
@@ -168,6 +169,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   lockSlotDivisions = false,
   lockedDivisionKeys = [],
   readOnly = false,
+  onAutoResolveSlotConflict,
   showLeagueConfiguration = true,
   showPlayoffSettings = true,
 }) => {
@@ -577,8 +579,16 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               !TIME_OPTIONS.some((option) => option.value === String(slot.endTimeMinutes))
               ? [...TIME_OPTIONS, { value: String(slot.endTimeMinutes), label: toAmPmLabel(slot.endTimeMinutes) }]
               : TIME_OPTIONS;
+            const hasConflicts = conflictCount > 0;
             return (
-              <Card key={slot.key} shadow="xs" radius="md" padding="lg" withBorder>
+              <Card
+                key={slot.key}
+                shadow="xs"
+                radius="md"
+                padding="lg"
+                withBorder
+                className={hasConflicts ? 'border-red-500 bg-red-50/30' : undefined}
+              >
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-4">
                     <Text fw={600}>Timeslot #{index + 1}</Text>
@@ -791,7 +801,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                 {conflictCount > 0 && (
                   <Alert color="red" radius="md">
                       <Stack gap="xs">
-                        <Text fw={600}>Conflicts detected</Text>
+                        <Text fw={600}>There is a conflict on this field.</Text>
+                        <Text size="sm">
+                          Resolve it manually, or auto resolve it to lock the conflicting event and reschedule this timeslot.
+                        </Text>
                         {slot.conflicts.map(({ event, schedule }, conflictIndex) => (
                           <div key={`${schedule.$id}-${conflictIndex}`} className="flex items-start gap-2 text-sm">
                             <Badge color="red" variant="light">{event.name}</Badge>
@@ -801,6 +814,19 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                             </span>
                           </div>
                         ))}
+                        {onAutoResolveSlotConflict ? (
+                          <Group justify="flex-end">
+                            <Button
+                              size="xs"
+                              color="red"
+                              variant="light"
+                              onClick={() => onAutoResolveSlotConflict(index)}
+                              disabled={readOnly}
+                            >
+                              Auto Resolve
+                            </Button>
+                          </Group>
+                        ) : null}
                       </Stack>
                     </Alert>
                   )}
