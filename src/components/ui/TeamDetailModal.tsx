@@ -154,6 +154,8 @@ export default function TeamDetailModal({
     const [managerUser, setManagerUser] = useState<UserData | null>(null);
     const [headCoachUser, setHeadCoachUser] = useState<UserData | null>(null);
     const [assistantCoachUsers, setAssistantCoachUsers] = useState<UserData[]>([]);
+    const [draftCaptainId, setDraftCaptainId] = useState(currentTeam.captainId || '');
+    const [updatingRoleAction, setUpdatingRoleAction] = useState<string | null>(null);
 
     const isTeamCaptain = currentTeam.captainId === user?.$id || currentTeam.managerId === user?.$id;
     const canManageTeam = canManage ?? isTeamCaptain;
@@ -164,6 +166,13 @@ export default function TeamDetailModal({
             ? currentTeam.assistantCoachIds
             : (Array.isArray(currentTeam.coachIds) ? currentTeam.coachIds : [])
     ), [currentTeam.assistantCoachIds, currentTeam.coachIds]);
+    const assistantCoachEntries = useMemo(() => {
+        const usersById = new Map(assistantCoachUsers.map((assistantCoach) => [assistantCoach.$id, assistantCoach]));
+        return assistantCoachIds.map((assistantCoachId) => ({
+            id: assistantCoachId,
+            user: usersById.get(assistantCoachId),
+        }));
+    }, [assistantCoachIds, assistantCoachUsers]);
     const selectedRoleLabel = (() => {
         switch (selectedInviteRole) {
             case 'team_manager':
@@ -352,6 +361,28 @@ export default function TeamDetailModal({
     }, [isOpen, fetchTeamDetails]);
 
     useEffect(() => {
+        setDraftCaptainId(currentTeam.captainId || '');
+    }, [currentTeam.$id, currentTeam.captainId]);
+
+    useEffect(() => {
+        if (teamPlayers.length === 0) {
+            if (draftCaptainId) {
+                setDraftCaptainId('');
+            }
+            return;
+        }
+        if (draftCaptainId && teamPlayers.some((player) => player.$id === draftCaptainId)) {
+            return;
+        }
+        const nextCaptainId = teamPlayers.find((player) => player.$id === currentTeam.captainId)?.$id
+            ?? teamPlayers[0]?.$id
+            ?? '';
+        if (nextCaptainId !== draftCaptainId) {
+            setDraftCaptainId(nextCaptainId);
+        }
+    }, [currentTeam.captainId, draftCaptainId, teamPlayers]);
+
+    useEffect(() => {
         if (!isOpen || !normalizedSelectedFreeAgentId) {
             return;
         }
@@ -510,6 +541,7 @@ export default function TeamDetailModal({
             divisionTypeName: nextDivisionTypeName,
         });
         const nextTeamSize = Number(draftTeamSize) || 0;
+        const nextCaptainId = draftCaptainId.trim();
 
         if (!nextSport) {
             setError('Sport is required.');
@@ -527,6 +559,14 @@ export default function TeamDetailModal({
             setError('Team size must be at least 1.');
             return;
         }
+        if (teamPlayers.length > 0 && !nextCaptainId) {
+            setError('Select a team captain.');
+            return;
+        }
+        if (nextCaptainId && !teamPlayers.some((player) => player.$id === nextCaptainId)) {
+            setError('Team captain must be selected from current team players.');
+            return;
+        }
 
         const updated = await teamService.updateTeamDetails(currentTeam.$id, {
             sport: nextSport,
@@ -534,6 +574,7 @@ export default function TeamDetailModal({
             divisionTypeId: nextDivisionTypeId,
             divisionTypeName: nextDivisionTypeName,
             teamSize: nextTeamSize,
+            captainId: nextCaptainId,
         });
         if (!updated) {
             setError('Failed to update team details');
@@ -693,6 +734,22 @@ export default function TeamDetailModal({
 
     const handleRemovePlayer = async (playerId: string) => {
         try {
+            if (playerId === currentTeam.captainId) {
+                const nextCaptainId = draftCaptainId.trim();
+                if (!editingDetails || !nextCaptainId || nextCaptainId === currentTeam.captainId) {
+                    setError('Select a new captain in edit mode before removing the current captain.');
+                    return;
+                }
+                const captainUpdated = await teamService.updateTeamRosterAndRoles(currentTeam.$id, {
+                    captainId: nextCaptainId,
+                });
+                if (!captainUpdated) {
+                    setError('Failed to update team captain.');
+                    return;
+                }
+                onTeamUpdated?.(captainUpdated);
+            }
+
             const success = await teamService.removePlayerFromTeam(currentTeam.$id, playerId);
 
             if (success) {
@@ -700,6 +757,10 @@ export default function TeamDetailModal({
 
                 const updatedTeam = {
                     ...currentTeam,
+                    captainId:
+                        playerId === currentTeam.captainId
+                            ? draftCaptainId.trim()
+                            : currentTeam.captainId,
                     playerIds: currentTeam.playerIds.filter(id => id !== playerId)
                 };
                 onTeamUpdated?.(updatedTeam);
@@ -707,6 +768,62 @@ export default function TeamDetailModal({
         } catch (error) {
             console.error('Failed to remove player:', error);
             setError('Failed to remove player');
+        }
+    };
+
+    const handleRemoveManager = async () => {
+        setUpdatingRoleAction('manager');
+        try {
+            const updated = await teamService.updateTeamRosterAndRoles(currentTeam.$id, { managerId: '' });
+            if (!updated) {
+                setError('Failed to remove manager.');
+                return;
+            }
+            onTeamUpdated?.(updated);
+        } catch (roleError) {
+            console.error('Failed to remove manager:', roleError);
+            setError('Failed to remove manager.');
+        } finally {
+            setUpdatingRoleAction(null);
+        }
+    };
+
+    const handleRemoveHeadCoach = async () => {
+        setUpdatingRoleAction('headCoach');
+        try {
+            const updated = await teamService.updateTeamRosterAndRoles(currentTeam.$id, { headCoachId: null });
+            if (!updated) {
+                setError('Failed to remove head coach.');
+                return;
+            }
+            onTeamUpdated?.(updated);
+        } catch (roleError) {
+            console.error('Failed to remove head coach:', roleError);
+            setError('Failed to remove head coach.');
+        } finally {
+            setUpdatingRoleAction(null);
+        }
+    };
+
+    const handleRemoveAssistantCoach = async (assistantCoachId: string) => {
+        const nextAssistantCoachIds = assistantCoachIds.filter((coachId) => coachId !== assistantCoachId);
+        const actionKey = `assistant:${assistantCoachId}`;
+        setUpdatingRoleAction(actionKey);
+        try {
+            const updated = await teamService.updateTeamRosterAndRoles(currentTeam.$id, {
+                assistantCoachIds: nextAssistantCoachIds,
+                coachIds: nextAssistantCoachIds,
+            });
+            if (!updated) {
+                setError('Failed to remove assistant coach.');
+                return;
+            }
+            onTeamUpdated?.(updated);
+        } catch (roleError) {
+            console.error('Failed to remove assistant coach:', roleError);
+            setError('Failed to remove assistant coach.');
+        } finally {
+            setUpdatingRoleAction(null);
         }
     };
 
@@ -854,6 +971,18 @@ export default function TeamDetailModal({
                                     value={draftTeamSize}
                                     onChange={(value) => setDraftTeamSize(Number(value) || 1)}
                                 />
+                                <MantineSelect
+                                    label="Team Captain"
+                                    placeholder={teamPlayers.length > 0 ? 'Select a captain' : 'No team players available'}
+                                    data={teamPlayers.map((player) => ({
+                                        value: player.$id,
+                                        label: getUserFullName(player),
+                                    }))}
+                                    value={draftCaptainId || null}
+                                    onChange={(value) => setDraftCaptainId(value || '')}
+                                    disabled={teamPlayers.length === 0}
+                                    allowDeselect={false}
+                                />
                             </SimpleGrid>
                             <Group justify="flex-end" mt="sm">
                                 <Button variant="default" onClick={() => setEditingDetails(false)}>Cancel</Button>
@@ -893,7 +1022,10 @@ export default function TeamDetailModal({
                                                         )}
                                                     </div>
                                                 </Group>
-                                                {canManageTeam && player.$id !== currentTeam.captainId && (
+                                                {canManageTeam && (
+                                                    (player.$id !== currentTeam.captainId)
+                                                    || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
+                                                ) && (
                                                     <Button color="red" variant="subtle" size="xs" onClick={() => handleRemovePlayer(player.$id)}>Remove</Button>
                                                 )}
                                             </Group>
@@ -994,24 +1126,72 @@ export default function TeamDetailModal({
                         <Paper withBorder radius="md" p="md">
                             <Group justify="space-between" mb="xs">
                                 <Text fw={500}>Manager</Text>
-                                <Text c="dimmed" size="sm">
-                                    {managerUser ? getUserFullName(managerUser) : 'Unassigned'}
-                                </Text>
+                                <Group gap="xs" align="center">
+                                    <Text c="dimmed" size="sm">
+                                        {managerUser ? getUserFullName(managerUser) : 'Unassigned'}
+                                    </Text>
+                                    {canManageTeam && editingDetails && currentTeam.managerId && (
+                                        <Button
+                                            color="red"
+                                            variant="subtle"
+                                            size="xs"
+                                            onClick={() => { void handleRemoveManager(); }}
+                                            loading={updatingRoleAction === 'manager'}
+                                        >
+                                            Remove
+                                        </Button>
+                                    )}
+                                </Group>
                             </Group>
                             <Group justify="space-between" mb="xs">
                                 <Text fw={500}>Head Coach</Text>
-                                <Text c="dimmed" size="sm">
-                                    {headCoachUser ? getUserFullName(headCoachUser) : 'Unassigned'}
-                                </Text>
+                                <Group gap="xs" align="center">
+                                    <Text c="dimmed" size="sm">
+                                        {headCoachUser ? getUserFullName(headCoachUser) : 'Unassigned'}
+                                    </Text>
+                                    {canManageTeam && editingDetails && currentTeam.headCoachId && (
+                                        <Button
+                                            color="red"
+                                            variant="subtle"
+                                            size="xs"
+                                            onClick={() => { void handleRemoveHeadCoach(); }}
+                                            loading={updatingRoleAction === 'headCoach'}
+                                        >
+                                            Remove
+                                        </Button>
+                                    )}
+                                </Group>
                             </Group>
-                            <Group justify="space-between">
-                                <Text fw={500}>Assistant Coaches</Text>
-                                <Text c="dimmed" size="sm">
-                                    {assistantCoachUsers.length
-                                        ? assistantCoachUsers.map((assistantCoach) => getUserFullName(assistantCoach)).join(', ')
-                                        : 'Unassigned'}
-                                </Text>
-                            </Group>
+                            <div>
+                                <Text fw={500} mb={4}>Assistant Coaches</Text>
+                                {assistantCoachEntries.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {assistantCoachEntries.map((entry) => {
+                                            const actionKey = `assistant:${entry.id}`;
+                                            return (
+                                                <Group key={entry.id} justify="space-between" gap="xs">
+                                                    <Text c="dimmed" size="sm">
+                                                        {entry.user ? getUserFullName(entry.user) : entry.id}
+                                                    </Text>
+                                                    {canManageTeam && editingDetails && (
+                                                        <Button
+                                                            color="red"
+                                                            variant="subtle"
+                                                            size="xs"
+                                                            onClick={() => { void handleRemoveAssistantCoach(entry.id); }}
+                                                            loading={updatingRoleAction === actionKey}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    )}
+                                                </Group>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <Text c="dimmed" size="sm">Unassigned</Text>
+                                )}
+                            </div>
                         </Paper>
                     </div>
 

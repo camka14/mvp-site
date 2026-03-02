@@ -111,6 +111,7 @@ class TeamService {
         options?: {
             divisionTypeId?: string;
             divisionTypeName?: string;
+            addSelfAsPlayer?: boolean;
         },
     ): Promise<Team> {
         try {
@@ -118,20 +119,22 @@ class TeamService {
                 identifier: division,
                 sportInput: sport,
             });
+            const addSelfAsPlayer = options?.addSelfAsPlayer ?? true;
             const teamData = {
                 name,
                 division,
                 divisionTypeId: options?.divisionTypeId ?? inferredDivision.divisionTypeId,
                 divisionTypeName: options?.divisionTypeName ?? inferredDivision.divisionTypeName,
                 sport,
-                playerIds: [captainId],
-                captainId,
+                playerIds: addSelfAsPlayer ? [captainId] : [],
+                captainId: addSelfAsPlayer ? captainId : '',
                 managerId: captainId,
                 headCoachId: null,
                 assistantCoachIds: [],
                 pending: [],
                 teamSize: maxPlayers,
-                profileImageId: profileImageId || ''
+                profileImageId: profileImageId || '',
+                addSelfAsPlayer,
             };
 
             const response = await apiRequest<any>('/api/teams', {
@@ -287,6 +290,7 @@ class TeamService {
         try {
             const params = new URLSearchParams();
             params.set('playerId', userId);
+            params.set('managerId', userId);
             params.set('limit', '100');
             const response = await apiRequest<{ teams?: any[] }>(`/api/teams?${params.toString()}`);
 
@@ -327,7 +331,7 @@ class TeamService {
 
     async updateTeamDetails(
         teamId: string,
-        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize'>>,
+        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize' | 'captainId'>>,
     ): Promise<Team | undefined> {
         try {
             const response = await apiRequest<any>(`/api/teams/${teamId}`, {
@@ -337,6 +341,22 @@ class TeamService {
             return this.mapRowToTeam(response);
         } catch (error) {
             console.error('Failed to update team details:', error);
+            return undefined;
+        }
+    }
+
+    async updateTeamRosterAndRoles(
+        teamId: string,
+        updates: Partial<Pick<Team, 'playerIds' | 'captainId' | 'managerId' | 'headCoachId' | 'assistantCoachIds' | 'coachIds'>>,
+    ): Promise<Team | undefined> {
+        try {
+            const response = await apiRequest<any>(`/api/teams/${teamId}`, {
+                method: 'PATCH',
+                body: { team: updates },
+            });
+            return this.mapRowToTeam(response);
+        } catch (error) {
+            console.error('Failed to update team roster and roles:', error);
             return undefined;
         }
     }

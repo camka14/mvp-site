@@ -138,6 +138,86 @@ describe('teamService', () => {
       });
       expect(team.$id).toBe('team_new');
     });
+
+    it('creates a manager-only team when addSelfAsPlayer is false', async () => {
+      apiRequestMock.mockResolvedValue({
+        $id: 'team_manager_only',
+        name: 'Managed Team',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: [],
+        pending: [],
+        teamSize: 6,
+        captainId: '',
+        managerId: 'captain_1',
+      });
+
+      userServiceMock.getUserById.mockResolvedValue(buildUser('captain_1'));
+
+      await teamService.createTeam(
+        'Managed Team',
+        'captain_1',
+        'Open',
+        'Volleyball',
+        6,
+        undefined,
+        { addSelfAsPlayer: false },
+      );
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/teams',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            name: 'Managed Team',
+            addSelfAsPlayer: false,
+            playerIds: [],
+            captainId: '',
+            managerId: 'captain_1',
+          }),
+        }),
+      );
+      expect(userServiceMock.updateUser).toHaveBeenCalledWith('captain_1', {
+        teamIds: ['team_manager_only'],
+      });
+    });
+  });
+
+  describe('getTeamsByUserId', () => {
+    it('requests teams where the user is either a player or a manager', async () => {
+      apiRequestMock.mockResolvedValue({ teams: [] });
+
+      await teamService.getTeamsByUserId('user_1');
+
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams?playerId=user_1&managerId=user_1&limit=100');
+    });
+  });
+
+  describe('updateTeamRosterAndRoles', () => {
+    it('patches captain and roster updates through the teams API', async () => {
+      apiRequestMock.mockResolvedValue({
+        $id: 'team_1',
+        name: 'Roster Team',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: ['user_2'],
+        pending: [],
+        teamSize: 6,
+        captainId: 'user_2',
+      });
+
+      const updated = await teamService.updateTeamRosterAndRoles('team_1', {
+        captainId: 'user_2',
+        playerIds: ['user_2'],
+      });
+
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1', {
+        method: 'PATCH',
+        body: { team: { captainId: 'user_2', playerIds: ['user_2'] } },
+      });
+      expect(updated?.captainId).toBe('user_2');
+      expect(updated?.playerIds).toEqual(['user_2']);
+    });
   });
 
   describe('invitePlayerToTeam', () => {

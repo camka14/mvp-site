@@ -79,6 +79,82 @@ describe('POST /api/documents/record-signature', () => {
     });
   });
 
+  it('stores PDF callback attempts as unsigned until webhook confirmation', async () => {
+    await POST(jsonPost('http://localhost/api/documents/record-signature', {
+      templateId: 'template_1',
+      documentId: 'document_1',
+      eventId: 'event_1',
+      userId: 'parent_1',
+      childUserId: 'child_1',
+      signerContext: 'parent_guardian',
+      user: { email: 'parent@example.com' },
+      type: 'PDF',
+    }));
+
+    expect(prismaMock.signedDocuments.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'UNSIGNED',
+          signedAt: null,
+          signerRole: 'parent_guardian',
+        }),
+      }),
+    );
+  });
+
+  it('stores text acknowledgements as signed immediately', async () => {
+    await POST(jsonPost('http://localhost/api/documents/record-signature', {
+      templateId: 'template_1',
+      documentId: 'document_1',
+      eventId: 'event_1',
+      userId: 'parent_1',
+      childUserId: 'child_1',
+      signerContext: 'parent_guardian',
+      user: { email: 'parent@example.com' },
+      type: 'TEXT',
+    }));
+
+    expect(prismaMock.signedDocuments.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'SIGNED',
+          signedAt: expect.any(String),
+          signerRole: 'parent_guardian',
+        }),
+      }),
+    );
+  });
+
+  it('does not downgrade an already signed row when receiving a PDF callback', async () => {
+    prismaMock.signedDocuments.findFirst.mockResolvedValue({
+      id: 'signed_1',
+      organizationId: 'org_1',
+      status: 'SIGNED',
+      signedAt: '2026-03-01T01:02:03.000Z',
+    });
+
+    await POST(jsonPost('http://localhost/api/documents/record-signature', {
+      templateId: 'template_1',
+      documentId: 'document_1',
+      eventId: 'event_1',
+      userId: 'parent_1',
+      childUserId: 'child_1',
+      signerContext: 'parent_guardian',
+      user: { email: 'parent@example.com' },
+      type: 'PDF',
+    }));
+
+    expect(prismaMock.signedDocuments.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'signed_1' },
+        data: expect.objectContaining({
+          status: 'SIGNED',
+          signedAt: '2026-03-01T01:02:03.000Z',
+        }),
+      }),
+    );
+  });
+
   it('syncs all pending/active child registrations when a sign-once template is signed', async () => {
     prismaMock.templateDocuments.findUnique.mockResolvedValue({ signOnce: true });
     prismaMock.eventRegistrations.findMany.mockResolvedValue([
@@ -118,4 +194,3 @@ describe('POST /api/documents/record-signature', () => {
     });
   });
 });
-

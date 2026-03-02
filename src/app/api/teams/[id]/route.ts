@@ -76,6 +76,10 @@ const normalizeNumber = (value: unknown, fallback: number): number => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const hasOwn = (value: object, key: string): boolean => (
+  Object.prototype.hasOwnProperty.call(value, key)
+);
+
 const replaceTeamId = (ids: string[], fromId: string, toId: string): string[] => (
   Array.from(
     new Set(
@@ -127,15 +131,16 @@ const buildTeamState = (
     ?? normalizeText(existing.divisionTypeName)
     ?? inferredDivision.divisionTypeName;
 
-  const captainId = normalizeText(payload.captainId)
-    ?? normalizeText(existing.captainId)
-    ?? '';
-  const managerId = normalizeText(payload.managerId)
-    ?? normalizeText(existing.managerId)
-    ?? captainId;
-  const headCoachId = normalizeText(payload.headCoachId)
-    ?? normalizeText(existing.headCoachId)
-    ?? null;
+  const captainId = hasOwn(payload, 'captainId')
+    ? (normalizeText(payload.captainId) ?? '')
+    : (normalizeText(existing.captainId) ?? '');
+  const hasStoredManagerId = typeof existing.managerId === 'string';
+  const managerId = hasOwn(payload, 'managerId')
+    ? (normalizeText(payload.managerId) ?? '')
+    : (hasStoredManagerId ? String(existing.managerId).trim() : captainId);
+  const headCoachId = hasOwn(payload, 'headCoachId')
+    ? normalizeText(payload.headCoachId)
+    : (normalizeText(existing.headCoachId) ?? null);
 
   const playerIdsInput = payload.playerIds ?? existing.playerIds;
   const playerIds = toUniqueStrings(playerIdsInput);
@@ -211,7 +216,7 @@ const hasVersionedProfileChanges = (
         if ((normalizeText(existing.captainId) ?? '') !== next.captainId) return true;
         break;
       case 'managerId':
-        if ((normalizeText(existing.managerId) ?? normalizeText(existing.captainId) ?? '') !== next.managerId) return true;
+        if ((normalizeText(existing.managerId) ?? '') !== next.managerId) return true;
         break;
       case 'headCoachId':
         if ((normalizeText(existing.headCoachId) ?? null) !== next.headCoachId) return true;

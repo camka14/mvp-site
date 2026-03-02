@@ -168,6 +168,13 @@ describe('schedule routes', () => {
     expect(saveMatchesMock).toHaveBeenCalled();
     expect(json.event.$id).toBe('event_1');
     expect(json.matches[0].$id).toBe('match_1');
+    expect(prismaMock.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: 10_000,
+        timeout: 20_000,
+      }),
+    );
   });
 
   it('schedules an existing event id using the provided event document payload', async () => {
@@ -275,6 +282,13 @@ describe('schedule routes', () => {
         matchIds: ['match_locked'],
       },
     ]);
+    expect(prismaMock.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: 10_000,
+        timeout: 20_000,
+      }),
+    );
   });
 
   it('preserves populated unlocked matches during event reschedule', async () => {

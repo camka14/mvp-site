@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { userService, type UserSocialGraph } from '@/lib/userService';
@@ -22,8 +22,17 @@ import { productService } from '@/lib/productService';
 import { organizationService } from '@/lib/organizationService';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
-import { profileDocumentService, type ProfileDocumentCard } from '@/lib/profileDocumentService';
+import {
+    profileDocumentService,
+    type ChildUnsignedDocumentCount,
+    type ProfileDocumentCard,
+} from '@/lib/profileDocumentService';
+import {
+    canViewerProxyChildSignature,
+    isChildSignatureRestrictedToChildAccount,
+} from '@/lib/profileDocumentAccess';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/dateUtils';
+import { selectBillOwnerTeams } from '@/lib/profileBilling';
 
 const toDateInputValue = (value?: string | null): string => {
     if (!value) return '';
@@ -144,6 +153,7 @@ export default function ProfilePage() {
     const [restartingSubId, setRestartingSubId] = useState<string | null>(null);
     const [unsignedDocuments, setUnsignedDocuments] = useState<ProfileDocumentCard[]>([]);
     const [signedDocuments, setSignedDocuments] = useState<ProfileDocumentCard[]>([]);
+    const [childUnsignedCounts, setChildUnsignedCounts] = useState<ChildUnsignedDocumentCount[]>([]);
     const [loadingDocuments, setLoadingDocuments] = useState(false);
     const [documentsError, setDocumentsError] = useState<string | null>(null);
     const [eventTemplates, setEventTemplates] = useState<Array<{ id: string; name: string; start?: string; end?: string }>>([]);
@@ -556,10 +566,10 @@ export default function ProfilePage() {
                 teamService.getTeamsByUserId(user.$id),
             ]);
 
-            const captainTeams = fetchedTeams.filter((team) => team.captainId === user.$id);
+            const billOwnerTeams = selectBillOwnerTeams(fetchedTeams, user.$id);
             const teamsMap = Object.fromEntries(fetchedTeams.map((team) => [team.$id, team]));
             const teamBillsNested = await Promise.all(
-                captainTeams.map(async (team) => {
+                billOwnerTeams.map(async (team) => {
                     try {
                         const billsForTeam = await billService.listBills('TEAM', team.$id);
                         return billsForTeam.map((bill) => ({
@@ -728,10 +738,12 @@ export default function ProfilePage() {
             const result = await profileDocumentService.listDocuments();
             setUnsignedDocuments(result.unsigned);
             setSignedDocuments(result.signed);
+            setChildUnsignedCounts(result.childUnsignedCounts);
         } catch (err) {
             setDocumentsError(err instanceof Error ? err.message : 'Failed to load documents.');
             setUnsignedDocuments([]);
             setSignedDocuments([]);
+            setChildUnsignedCounts([]);
         } finally {
             setLoadingDocuments(false);
         }
@@ -824,11 +836,23 @@ export default function ProfilePage() {
             setDocumentsError('Cannot sign this document because the event is missing.');
             return;
         }
-        if (document.signerContext === 'child' && document.childUserId && document.childUserId !== user.$id) {
+        const childMustSignFromOwnAccount = isChildSignatureRestrictedToChildAccount({
+            signerContext: document.signerContext,
+            viewerUserId: user.$id,
+            childUserId: document.childUserId,
+            childEmail: document.childEmail,
+        });
+        const viewerCanProxyChildSignature = canViewerProxyChildSignature({
+            signerContext: document.signerContext,
+            viewerUserId: user.$id,
+            childUserId: document.childUserId,
+            childEmail: document.childEmail,
+        });
+        if (childMustSignFromOwnAccount) {
             setDocumentsError('This signature must be completed from the child account.');
             return;
         }
-        if (document.requiresChildEmail) {
+        if (document.requiresChildEmail && !viewerCanProxyChildSignature) {
             setDocumentsError(document.statusNote || 'Add child email before starting this child-signature document.');
             return;
         }
@@ -1087,6 +1111,56 @@ export default function ProfilePage() {
             loadEventTemplates();
         }
     }, [user, loadBills, loadSubscriptions, loadDocuments, loadEventTemplates]);
+
+    const childNameById = useMemo(() => {
+        const next = new Map<string, string>();
+        children.forEach((child) => {
+            const childId = (child.userId || '').trim();
+            if (!childId) {
+                return;
+            }
+            const displayName = `${child.firstName || ''} ${child.lastName || ''}`.trim();
+            if (displayName) {
+                next.set(childId, displayName);
+            }
+        });
+        return next;
+    }, [children]);
+    const childUnsignedCountById = useMemo(() => {
+        const next = new Map<string, number>();
+        childUnsignedCounts.forEach((row) => {
+            const childUserId = (row.childUserId || '').trim();
+            if (!childUserId) {
+                return;
+            }
+            const current = next.get(childUserId) ?? 0;
+            const unsignedCount = Number.isFinite(row.unsignedCount) ? Math.max(0, row.unsignedCount) : 0;
+            next.set(childUserId, current + unsignedCount);
+        });
+        return next;
+    }, [childUnsignedCounts]);
+    const visibleUnsignedDocuments = useMemo(
+        () =>
+            unsignedDocuments.filter((document) => {
+                if (!user) {
+                    return false;
+                }
+                const childMustSignFromOwnAccount = isChildSignatureRestrictedToChildAccount({
+                    signerContext: document.signerContext,
+                    viewerUserId: user.$id,
+                    childUserId: document.childUserId,
+                    childEmail: document.childEmail,
+                });
+                const viewerCanProxyChildSignature = canViewerProxyChildSignature({
+                    signerContext: document.signerContext,
+                    viewerUserId: user.$id,
+                    childUserId: document.childUserId,
+                    childEmail: document.childEmail,
+                });
+                return !childMustSignFromOwnAccount || viewerCanProxyChildSignature;
+            }),
+        [unsignedDocuments, user],
+    );
 
     if (loading) {
         return <Loading />;
@@ -1746,9 +1820,10 @@ export default function ProfilePage() {
                                     cols={{ base: 1, sm: 2, lg: 3 }}
                                     spacing="md"
                                 >
-                                    {children.map((child) => {
+                                        {children.map((child) => {
                                         const name = `${child.firstName || ''} ${child.lastName || ''}`.trim();
                                         const childHandle = (child.userName || '').trim();
+                                        const childUnsignedCount = childUnsignedCountById.get(child.userId) ?? 0;
                                         const hasEmail = typeof child.hasEmail === 'boolean'
                                             ? child.hasEmail
                                             : Boolean(child.email);
@@ -1776,6 +1851,11 @@ export default function ProfilePage() {
                                                     <Text size="sm" c="dimmed">
                                                         Relationship: {relationship}
                                                     </Text>
+                                                    {childUnsignedCount > 0 && (
+                                                        <Alert color="yellow" variant="light" mt="sm">
+                                                            {childUnsignedCount} unsigned document{childUnsignedCount === 1 ? '' : 's'} pending for child signature.
+                                                        </Alert>
+                                                    )}
                                                     {!hasEmail && (
                                                         <Alert color="yellow" variant="light" mt="sm">
                                                             Missing email. Consent links cannot be sent until an email is added.
@@ -1816,16 +1896,27 @@ export default function ProfilePage() {
                                 <div className="space-y-6">
                                     <div>
                                         <Title order={5} mb="sm">Unsigned</Title>
-                                        {unsignedDocuments.length === 0 ? (
+                                        {visibleUnsignedDocuments.length === 0 ? (
                                             <Text c="dimmed">No unsigned document requests.</Text>
                                         ) : (
                                             <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
-                                                {unsignedDocuments.map((document) => {
-                                                    const childMustSignFromOwnAccount = Boolean(
-                                                        document.signerContext === 'child'
-                                                        && document.childUserId
-                                                        && document.childUserId !== user?.$id,
-                                                    );
+                                                {visibleUnsignedDocuments.map((document) => {
+                                                    const viewerCanProxyChildSignature = canViewerProxyChildSignature({
+                                                        signerContext: document.signerContext,
+                                                        viewerUserId: user.$id,
+                                                        childUserId: document.childUserId,
+                                                        childEmail: document.childEmail,
+                                                    });
+                                                    const childMustSignFromOwnAccount = isChildSignatureRestrictedToChildAccount({
+                                                        signerContext: document.signerContext,
+                                                        viewerUserId: user.$id,
+                                                        childUserId: document.childUserId,
+                                                        childEmail: document.childEmail,
+                                                    });
+                                                    const requiresChildEmail = Boolean(document.requiresChildEmail && !viewerCanProxyChildSignature);
+                                                    const childName = document.childName
+                                                        || (document.childUserId ? childNameById.get(document.childUserId) : undefined)
+                                                        || 'Child';
                                                     return (
                                                     <Paper
                                                         key={document.id}
@@ -1845,6 +1936,11 @@ export default function ProfilePage() {
                                                             <Text size="xs" c="dimmed">
                                                                 Signer: {document.signerContextLabel}
                                                             </Text>
+                                                            {document.signerContext === 'parent_guardian' && document.childUserId && (
+                                                                <Text size="xs" c="dimmed">
+                                                                    Child: {childName}
+                                                                </Text>
+                                                            )}
                                                             <Text size="xs" c="dimmed">
                                                                 Required: {document.requiredSignerLabel}
                                                             </Text>
@@ -1863,10 +1959,10 @@ export default function ProfilePage() {
                                                             size="xs"
                                                             variant="light"
                                                             mt="md"
-                                                            disabled={Boolean(document.requiresChildEmail) || childMustSignFromOwnAccount}
+                                                            disabled={requiresChildEmail || childMustSignFromOwnAccount}
                                                             onClick={() => handleStartSigningDocument(document)}
                                                         >
-                                                            {document.requiresChildEmail
+                                                            {requiresChildEmail
                                                                 ? 'Add child email first'
                                                                 : childMustSignFromOwnAccount
                                                                     ? 'Child must sign'
@@ -1885,7 +1981,11 @@ export default function ProfilePage() {
                                             <Text c="dimmed">No signed documents yet.</Text>
                                         ) : (
                                             <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
-                                                {signedDocuments.map((document) => (
+                                                {signedDocuments.map((document) => {
+                                                    const childName = document.childName
+                                                        || (document.childUserId ? childNameById.get(document.childUserId) : undefined)
+                                                        || 'Child';
+                                                    return (
                                                     <Paper
                                                         key={document.id}
                                                         withBorder
@@ -1904,6 +2004,11 @@ export default function ProfilePage() {
                                                             <Text size="xs" c="dimmed">
                                                                 Signed: {formatDateTimeLabel(document.signedAt)}
                                                             </Text>
+                                                            {document.signerContext === 'parent_guardian' && document.childUserId && (
+                                                                <Text size="xs" c="dimmed">
+                                                                    Child: {childName}
+                                                                </Text>
+                                                            )}
                                                         </div>
                                                         <Button
                                                             size="xs"
@@ -1914,7 +2019,8 @@ export default function ProfilePage() {
                                                             {document.type === 'PDF' ? 'View document' : 'Preview text'}
                                                         </Button>
                                                     </Paper>
-                                                ))}
+                                                    );
+                                                })}
                                             </SimpleGrid>
                                         )}
                                     </div>

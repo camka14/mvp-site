@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import {
+  canViewerProxyChildSignature,
+  isChildSignatureRestrictedToChildAccount,
+} from '@/lib/profileDocumentAccess';
+import {
   getRequiredSignerTypeLabel,
   getSignerContextLabel,
   normalizeRequiredSignerType,
@@ -25,6 +29,7 @@ type ProfileDocumentCard = {
   signerContext: SignerContext;
   signerContextLabel: string;
   childUserId?: string;
+  childName?: string;
   childEmail?: string;
   consentStatus?: string;
   requiresChildEmail?: boolean;
@@ -39,6 +44,14 @@ const normalizeText = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length ? trimmed : undefined;
+};
+
+const formatChildDisplayName = (firstName?: string | null, lastName?: string | null): string | undefined => {
+  const parts = [normalizeText(firstName), normalizeText(lastName)].filter((value): value is string => Boolean(value));
+  if (!parts.length) {
+    return undefined;
+  }
+  return parts.join(' ');
 };
 
 const normalizeTemplateType = (value: unknown): 'PDF' | 'TEXT' => {
@@ -207,6 +220,8 @@ export async function GET(_req: NextRequest) {
       where: { id: { in: linkedChildIds } },
       select: {
         id: true,
+        firstName: true,
+        lastName: true,
         teamIds: true,
       },
     })
@@ -392,6 +407,21 @@ export async function GET(_req: NextRequest) {
   const childEmailById = new Map(
     childEmails.map((row) => [row.userId, normalizeText(row.email) ?? '']),
   );
+  const childProfilesForNames = childIds.length
+    ? await prisma.userData.findMany({
+      where: { id: { in: childIds } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+      },
+    })
+    : [];
+  const childNameById = new Map(
+    childProfilesForNames
+      .map((row) => [row.id, formatChildDisplayName(row.firstName, row.lastName)])
+      .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1])),
+  );
   const childTeamIdsById = new Map(
     linkedChildProfiles.map((child) => [
       child.id,
@@ -403,6 +433,7 @@ export async function GET(_req: NextRequest) {
   const childRegistrationByEventAndChild = new Map<string, { consentStatus?: string; registrationStatus?: string }>();
   const childAssociationsByEvent = new Map<string, Array<{
     childUserId: string;
+    childName?: string;
     childEmail?: string;
     consentStatus?: string;
     registrationStatus?: string;
@@ -414,6 +445,7 @@ export async function GET(_req: NextRequest) {
   const addChildAssociation = (params: {
     eventId: string;
     childUserId: string;
+    childName?: string;
     childEmail?: string;
     consentStatus?: string;
     registrationStatus?: string;
@@ -434,6 +466,7 @@ export async function GET(_req: NextRequest) {
     const next = childAssociationsByEvent.get(params.eventId) ?? [];
     next.push({
       childUserId: params.childUserId,
+      childName: normalizeText(params.childName) ?? undefined,
       childEmail: params.childEmail,
       consentStatus: normalizedConsentStatus,
       registrationStatus: normalizedRegistrationStatus,
@@ -454,6 +487,7 @@ export async function GET(_req: NextRequest) {
     addChildAssociation({
       eventId,
       childUserId,
+      childName: childNameById.get(childUserId),
       childEmail: childEmailById.get(childUserId) || undefined,
       consentStatus: normalizeText(registration.consentStatus),
       registrationStatus: normalizeText(registration.status),
@@ -484,6 +518,7 @@ export async function GET(_req: NextRequest) {
       addChildAssociation({
         eventId: event.id,
         childUserId,
+        childName: childNameById.get(childUserId),
         childEmail: childEmailById.get(childUserId) || undefined,
         consentStatus: registrationMeta?.consentStatus,
         registrationStatus: registrationMeta?.registrationStatus,
@@ -499,6 +534,7 @@ export async function GET(_req: NextRequest) {
         addChildAssociation({
           eventId: event.id,
           childUserId: userId,
+          childName: childNameById.get(userId),
           childEmail: selfEmail ?? undefined,
           consentStatus: registrationMeta?.consentStatus,
           registrationStatus: registrationMeta?.registrationStatus,
@@ -598,6 +634,7 @@ export async function GET(_req: NextRequest) {
   const unsignedCards: ProfileDocumentCard[] = [];
   const unsignedCardKeys = new Set<string>();
   const signOnceUnsignedScopeKeys = new Set<string>();
+  const childUnsignedCountsByChildId = new Map<string, number>();
 
   discoverableEventsSorted.forEach((event) => {
     const templateIds = Array.isArray(event.requiredTemplateIds)
@@ -617,6 +654,7 @@ export async function GET(_req: NextRequest) {
       const signerContexts: Array<{
         signerContext: SignerContext;
         childUserId?: string;
+        childName?: string;
         childEmail?: string;
         consentStatus?: string;
         requiresChildEmail?: boolean;
@@ -632,6 +670,7 @@ export async function GET(_req: NextRequest) {
           signerContexts.push({
             signerContext: 'parent_guardian',
             childUserId: childRow.childUserId,
+            childName: childRow.childName,
             childEmail: childRow.childEmail,
             consentStatus: childRow.consentStatus,
             requiresChildEmail: childRow.requiresChildEmail,
@@ -644,6 +683,7 @@ export async function GET(_req: NextRequest) {
           signerContexts.push({
             signerContext: 'child',
             childUserId: childRow.childUserId,
+            childName: childRow.childName,
             childEmail: childRow.childEmail,
             consentStatus: childRow.consentStatus,
             requiresChildEmail: childRow.requiresChildEmail,
@@ -654,13 +694,6 @@ export async function GET(_req: NextRequest) {
 
       signerContexts.forEach((context) => {
         const scopedChildUserId = context.signerContext === 'participant' ? undefined : context.childUserId;
-        if (!isSignerContextVisibleForViewer({
-          viewerUserId: userId,
-          signerContext: context.signerContext,
-          childUserId: scopedChildUserId,
-        })) {
-          return;
-        }
         const templateScopeKey = buildTemplateScopeKey({
           templateId: template.id,
           signerContext: context.signerContext,
@@ -691,20 +724,48 @@ export async function GET(_req: NextRequest) {
           return;
         }
         unsignedCardKeys.add(cardId);
+        if (context.signerContext === 'child' && scopedChildUserId) {
+          const currentChildUnsignedCount = childUnsignedCountsByChildId.get(scopedChildUserId) ?? 0;
+          childUnsignedCountsByChildId.set(scopedChildUserId, currentChildUnsignedCount + 1);
+        }
+
+        const viewerCanProxyChildSignature = canViewerProxyChildSignature({
+          signerContext: context.signerContext,
+          viewerUserId: userId,
+          childUserId: scopedChildUserId,
+          childEmail: context.childEmail,
+        });
+        if (
+          !viewerCanProxyChildSignature
+          && !isSignerContextVisibleForViewer({
+            viewerUserId: userId,
+            signerContext: context.signerContext,
+            childUserId: scopedChildUserId,
+          })
+        ) {
+          return;
+        }
 
         const organizationDisplay = getDisplayOrganizationName({
           eventOrganizationId: event.organizationId,
           templateOrganizationId: template.organizationId,
           organizationsById,
         });
-        const childMustSignFromOwnAccount = Boolean(
+        const childMustSignFromOwnAccount = isChildSignatureRestrictedToChildAccount({
+          signerContext: context.signerContext,
+          viewerUserId: userId,
+          childUserId: context.childUserId,
+          childEmail: context.childEmail,
+        });
+        const requiresChildEmailForViewer = Boolean(
           context.signerContext === 'child'
-          && context.childUserId
-          && context.childUserId !== userId,
+          && context.requiresChildEmail
+          && !viewerCanProxyChildSignature,
         );
         const statusNotes = [
-          context.statusNote,
+          requiresChildEmailForViewer ? context.statusNote : undefined,
           childMustSignFromOwnAccount ? 'Waiting on child signature from the child account.' : undefined,
+          viewerCanProxyChildSignature ? 'Child email is missing. Parent/guardian can sign on behalf of this child.' : undefined,
         ].filter((value): value is string => Boolean(value && value.trim()));
         const statusNote = statusNotes.length ? statusNotes.join(' ') : undefined;
 
@@ -723,9 +784,10 @@ export async function GET(_req: NextRequest) {
           signerContext: context.signerContext,
           signerContextLabel: getSignerContextLabel(context.signerContext),
           childUserId: context.childUserId,
+          childName: context.childName,
           childEmail: context.childEmail,
           consentStatus: context.consentStatus,
-          requiresChildEmail: context.requiresChildEmail,
+          requiresChildEmail: requiresChildEmailForViewer,
           statusNote,
           content: normalizeTemplateType(template.type) === 'TEXT' ? normalizeText(template.content) : undefined,
         });
@@ -772,6 +834,7 @@ export async function GET(_req: NextRequest) {
         organizationsById,
       });
       const type = normalizeTemplateType(template?.type);
+      const childName = childUserId ? childNameById.get(childUserId) : undefined;
 
       signedCards.push({
         id: document.id,
@@ -788,6 +851,7 @@ export async function GET(_req: NextRequest) {
         signerContext,
         signerContextLabel: getSignerContextLabel(signerContext),
         childUserId,
+        childName,
         signedAt: normalizeText(document.signedAt) ?? (document.createdAt ? document.createdAt.toISOString() : undefined),
         signedDocumentRecordId: document.id,
         viewUrl: type === 'PDF' ? `/api/documents/signed/${document.id}/file` : undefined,
@@ -800,5 +864,9 @@ export async function GET(_req: NextRequest) {
   return NextResponse.json({
     unsigned: unsignedCards,
     signed: signedCards,
+    childUnsignedCounts: Array.from(childUnsignedCountsByChildId.entries()).map(([childUserId, unsignedCount]) => ({
+      childUserId,
+      unsignedCount,
+    })),
   }, { status: 200 });
 }

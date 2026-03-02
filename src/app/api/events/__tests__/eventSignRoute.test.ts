@@ -785,6 +785,103 @@ describe('POST /api/events/[eventId]/sign', () => {
     expect(sendDocumentFromTemplateMock).not.toHaveBeenCalled();
   });
 
+  it('regenerates and retries when a reused pending document rejects signer email', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_parent_child_pdf',
+        templateId: 'bold_tmpl_parent_child',
+        type: 'PDF',
+        title: 'Parent + Child PDF Waiver',
+        description: 'Parent and child must sign',
+        signOnce: true,
+        requiredSignerType: 'PARENT_GUARDIAN_CHILD',
+        roleIndex: 1,
+        roleIndexes: [1, 2],
+        signerRoles: ['Parent/Guardian', 'Child'],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      requiredTemplateIds: ['tmpl_parent_child_pdf'],
+      name: 'Weekend Open',
+      organizationId: 'org_1',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ parentId: 'user_1' });
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue({ parentId: 'user_1' });
+    prismaMock.sensitiveUserData.findFirst.mockImplementation(async ({ where }: { where: { userId?: string } }) => {
+      if (where.userId === 'child_1') {
+        return { email: 'child@example.com' };
+      }
+      return { email: 'parent@example.com' };
+    });
+    prismaMock.signedDocuments.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'signed_doc_parent',
+          signedDocumentId: 'doc_pending_bad',
+          status: 'UNSIGNED',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'signed_doc_parent',
+          userId: 'user_1',
+          signedDocumentId: 'doc_pending_bad',
+          status: 'UNSIGNED',
+          signerRole: 'parent_guardian',
+          signerEmail: 'parent@example.com',
+          roleIndex: 1,
+        },
+        {
+          id: 'signed_doc_child',
+          userId: 'child_1',
+          signedDocumentId: 'doc_pending_bad',
+          status: 'UNSIGNED',
+          signerRole: 'child',
+          signerEmail: 'child@example.com',
+          roleIndex: 2,
+        },
+      ]);
+    isBoldSignConfiguredMock.mockReturnValue(true);
+    getTemplateRolesMock.mockResolvedValue([
+      { roleIndex: 1, signerRole: 'Parent/Guardian' },
+      { roleIndex: 2, signerRole: 'Child' },
+    ]);
+    sendDocumentFromTemplateMock.mockResolvedValue({ documentId: 'doc_fresh_1' });
+    getEmbeddedSignLinkMock
+      .mockRejectedValueOnce(new Error('Invalid signer Email ID or Phone number'))
+      .mockResolvedValueOnce({ signLink: 'https://app.boldsign.com/sign/doc_fresh_1' });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/events/event_1/sign', {
+        signerContext: 'parent_guardian',
+        childUserId: 'child_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toEqual([
+      expect.objectContaining({
+        templateId: 'tmpl_parent_child_pdf',
+        documentId: 'doc_fresh_1',
+        url: 'https://app.boldsign.com/sign/doc_fresh_1',
+      }),
+    ]);
+    expect(sendDocumentFromTemplateMock).toHaveBeenCalledTimes(1);
+    expect(getEmbeddedSignLinkMock).toHaveBeenCalledTimes(2);
+    expect(prismaMock.signedDocuments.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'signed_doc_child' },
+        data: expect.objectContaining({
+          signedDocumentId: 'doc_fresh_1',
+          signerEmail: 'child@example.com',
+        }),
+      }),
+    );
+  });
+
   it('reuses an existing unsigned document instead of creating a new BoldSign document', async () => {
     prismaMock.templateDocuments.findMany.mockResolvedValue([
       {

@@ -24,6 +24,11 @@ const normalizeText = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const isSignedStatus = (value: unknown): boolean => {
+  const normalized = normalizeText(value)?.toLowerCase();
+  return normalized === 'signed' || normalized === 'completed';
+};
+
 const normalizeEmail = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -170,8 +175,11 @@ export async function POST(request: NextRequest) {
     : null;
 
   const scopedChildUserId = childUserId ?? (signerContext === 'child' ? userId : null);
+  const normalizedType = normalizeText(parsed.data.type)?.toUpperCase();
+  const isTextSignature = normalizedType === 'TEXT';
   const now = new Date();
-  const signedAt = now.toISOString();
+  const nextSignedAt = isTextSignature ? now.toISOString() : null;
+  const nextStatus = isTextSignature ? 'SIGNED' : 'UNSIGNED';
   const existing = await prisma.signedDocuments.findFirst({
     where: {
       templateId: parsed.data.templateId,
@@ -184,17 +192,20 @@ export async function POST(request: NextRequest) {
     select: {
       id: true,
       organizationId: true,
+      status: true,
+      signedAt: true,
     },
   });
 
   if (existing) {
+    const existingIsSigned = isSignedStatus(existing.status);
     await prisma.signedDocuments.update({
       where: { id: existing.id },
       data: {
         updatedAt: now,
         signedDocumentId: parsed.data.documentId,
-        status: 'SIGNED',
-        signedAt,
+        status: existingIsSigned ? 'SIGNED' : nextStatus,
+        signedAt: existingIsSigned ? (normalizeText(existing.signedAt) ?? nextSignedAt) : nextSignedAt,
         signerEmail: normalizeText(parsed.data.user?.email) ?? null,
         signerRole: signerContext,
         hostId: scopedChildUserId,
@@ -215,8 +226,8 @@ export async function POST(request: NextRequest) {
         hostId: scopedChildUserId,
         organizationId: event?.organizationId ?? null,
         eventId: eventId ?? null,
-        status: 'SIGNED',
-        signedAt,
+        status: nextStatus,
+        signedAt: nextSignedAt,
         signerEmail: normalizeText(parsed.data.user?.email) ?? null,
         roleIndex: null,
         signerRole: signerContext,

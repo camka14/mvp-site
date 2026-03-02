@@ -19,6 +19,11 @@ import { canManageEvent } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
+const SCHEDULE_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 const scheduleSchema = z.object({
   participantCount: z.number().int().positive().optional(),
   eventDocument: z.record(z.string(), z.any()).optional(),
@@ -105,7 +110,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);
       return { ...scheduled, warnings: [] };
-    });
+    }, SCHEDULE_TRANSACTION_OPTIONS);
 
     return NextResponse.json(
       {

@@ -16,6 +16,7 @@ export type ProfileDocumentCard = {
   signerContext: SignerContext;
   signerContextLabel: string;
   childUserId?: string;
+  childName?: string;
   childEmail?: string;
   consentStatus?: string;
   requiresChildEmail?: boolean;
@@ -26,14 +27,24 @@ export type ProfileDocumentCard = {
   content?: string;
 };
 
+export type ChildUnsignedDocumentCount = {
+  childUserId: string;
+  unsignedCount: number;
+};
+
 type ProfileDocumentsResponse = {
   unsigned?: ProfileDocumentCard[];
   signed?: ProfileDocumentCard[];
+  childUnsignedCounts?: ChildUnsignedDocumentCount[];
   error?: string;
 };
 
 class ProfileDocumentService {
-  async listDocuments(): Promise<{ unsigned: ProfileDocumentCard[]; signed: ProfileDocumentCard[] }> {
+  async listDocuments(): Promise<{
+    unsigned: ProfileDocumentCard[];
+    signed: ProfileDocumentCard[];
+    childUnsignedCounts: ChildUnsignedDocumentCount[];
+  }> {
     const response = await apiRequest<ProfileDocumentsResponse>('/api/profile/documents', {
       method: 'GET',
     });
@@ -43,6 +54,7 @@ class ProfileDocumentService {
     return {
       unsigned: Array.isArray(response?.unsigned) ? response.unsigned : [],
       signed: Array.isArray(response?.signed) ? response.signed : [],
+      childUnsignedCounts: Array.isArray(response?.childUnsignedCounts) ? response.childUnsignedCounts : [],
     };
   }
 }

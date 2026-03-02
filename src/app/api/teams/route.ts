@@ -20,6 +20,7 @@ const createSchema = z.object({
   playerIds: z.array(z.string()).optional(),
   captainId: z.string().optional(),
   managerId: z.string().optional(),
+  addSelfAsPlayer: z.boolean().optional(),
   headCoachId: z.string().nullable().optional(),
   assistantCoachIds: z.array(z.string()).optional(),
   coachIds: z.array(z.string()).optional(),
@@ -107,15 +108,25 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const playerId = params.get('playerId');
+  const managerId = params.get('managerId');
+  const includeChildTeams = params.get('includeChildTeams') === 'true';
   const limit = Number(params.get('limit') || '100');
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
 
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
-  if (playerId) where.playerIds = { has: playerId };
-  if (!ids?.length) {
+  if (playerId && managerId) {
+    where.OR = [{ playerIds: { has: playerId } }, { managerId }];
+  } else if (playerId) {
+    where.playerIds = { has: playerId };
+  } else if (managerId) {
+    where.managerId = managerId;
+  }
+  if (!ids?.length && !includeChildTeams) {
     where.parentTeamId = null;
+  }
+  if (!ids?.length && !playerId && !managerId) {
     where.captainId = { not: '' };
   }
 
@@ -142,9 +153,13 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
-  const captainId = session.userId;
+  const addSelfAsPlayer = data.addSelfAsPlayer !== false;
+  const captainId = addSelfAsPlayer ? session.userId : '';
   const managerId = session.userId;
-  const playerIds = uniqueStrings([captainId, ...uniqueStrings(data.playerIds)]);
+  const playerIds = uniqueStrings([
+    ...(addSelfAsPlayer ? [session.userId] : []),
+    ...uniqueStrings(data.playerIds),
+  ]);
   const assistantCoachIds = uniqueStrings(data.assistantCoachIds ?? data.coachIds);
   const headCoachId = normalizeText(data.headCoachId);
   const pending = uniqueStrings(data.pending).filter((userId) => !playerIds.includes(userId));

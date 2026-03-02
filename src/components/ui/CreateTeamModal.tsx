@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Button, Group, TextInput, Select as MantineSelect, NumberInput, SimpleGrid } from '@mantine/core';
+import { Alert, Modal, Button, Group, TextInput, Select as MantineSelect, NumberInput, SimpleGrid, Checkbox } from '@mantine/core';
 import { Team, UserData, SPORTS_LIST } from '@/types';
 import { teamService } from '@/lib/teamService';
 import {
@@ -94,6 +94,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
   const [ageDivisionTypeId, setAgeDivisionTypeId] = useState(INITIAL_DIVISION_SELECTIONS.ageDivisionTypeId);
   const [divisionPreview, setDivisionPreview] = useState('');
   const [teamSize, setTeamSize] = useState(6);
+  const [addSelfAsPlayer, setAddSelfAsPlayer] = useState(true);
   const [profileImageId, setProfileImageId] = useState('');
 
   const sportOptions = useMemo(() => (
@@ -171,6 +172,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     setAgeDivisionTypeId(defaults.ageDivisionTypeId);
     setDivisionPreview('');
     setTeamSize(6);
+    setAddSelfAsPlayer(true);
     setProfileImageId('');
     setSelectedTeamImageUrl('');
     setError(null);
@@ -220,6 +222,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
         {
           divisionTypeId: nextDivisionTypeId,
           divisionTypeName: nextDivisionTypeName,
+          addSelfAsPlayer,
         },
       );
       if (newTeam) {
@@ -300,6 +303,13 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
             onChange={(value) => setTeamSize(Number(value) || 1)}
           />
         </SimpleGrid>
+
+        <Checkbox
+          label="Add me as a player"
+          description="If enabled, you will also be set as team captain. You will always be set as team manager."
+          checked={addSelfAsPlayer}
+          onChange={(e) => setAddSelfAsPlayer(e.currentTarget.checked)}
+        />
 
         <div>
           <label className="form-label">Team Logo (Optional)</label>

@@ -12,7 +12,6 @@ export type BracketNode = {
 export type BracketValidationErrorCode =
   | 'UNKNOWN_REFERENCE'
   | 'SELF_REFERENCE'
-  | 'DUPLICATE_SOURCE_TARGET'
   | 'TARGET_OVER_CAPACITY'
   | 'CYCLE_DETECTED';
 
@@ -110,15 +109,6 @@ const collectEdges = (
           referenceId: ref,
         });
       }
-    }
-
-    if (winnerNext && loserNext && winnerNext === loserNext) {
-      errors.push({
-        code: 'DUPLICATE_SOURCE_TARGET',
-        message: `Match ${node.id} cannot point both winner and loser to ${winnerNext}.`,
-        nodeId: node.id,
-        referenceId: winnerNext,
-      });
     }
 
     if (winnerNext && nodeById.has(winnerNext)) {
@@ -244,17 +234,10 @@ export const filterValidNextMatchCandidates = ({ sourceId, nodes, lane }: Bracke
     return [];
   }
 
-  const otherLaneTarget = lane === 'winner'
-    ? normalizeRef(sourceNode.loserNextMatchId)
-    : normalizeRef(sourceNode.winnerNextMatchId);
-
   const allNodeIds = nodes.map((node) => node.id);
 
   return allNodeIds.filter((candidateId) => {
     if (candidateId === sourceId) {
-      return false;
-    }
-    if (otherLaneTarget && otherLaneTarget === candidateId) {
       return false;
     }
 
