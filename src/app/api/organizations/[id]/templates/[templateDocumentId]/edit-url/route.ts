@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { getEmbeddedTemplateEditUrl, isBoldSignConfigured } from '@/lib/boldsignServer';
+import {
+  getEmbeddedTemplateEditUrl,
+  isBoldSignConfigured,
+  isBoldSignForbiddenError,
+  isBoldSignInvalidTemplateIdError,
+  isBoldSignNotFoundError,
+} from '@/lib/boldsignServer';
 import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
@@ -46,6 +52,18 @@ export async function GET(
     return NextResponse.json({ editUrl }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to open template editor.';
+    const isOutOfSyncTemplate = isBoldSignNotFoundError(error)
+      || isBoldSignForbiddenError(error)
+      || isBoldSignInvalidTemplateIdError(error);
+    if (isOutOfSyncTemplate) {
+      return NextResponse.json(
+        {
+          error: 'Template is out of sync with BoldSign. Delete and recreate this template.',
+          detail: message,
+        },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

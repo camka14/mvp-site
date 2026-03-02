@@ -16,9 +16,13 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const dispatchRequiredEventDocumentsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/eventConsentDispatch', () => ({
+  dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
+}));
 
 import { DELETE, POST } from '@/app/api/events/[eventId]/free-agents/route';
 
@@ -33,6 +37,12 @@ describe('event free-agent route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    dispatchRequiredEventDocumentsMock.mockResolvedValue({
+      sentDocumentIds: [],
+      firstDocumentId: null,
+      missingChildEmail: false,
+      errors: [],
+    });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       teamSignup: true,
@@ -40,6 +50,7 @@ describe('event free-agent route', () => {
       waitListIds: [],
       freeAgentIds: [],
       requiredTemplateIds: [],
+      organizationId: null,
       start: new Date('2026-03-01T00:00:00.000Z'),
     });
     prismaMock.userData.findUnique.mockResolvedValue({
@@ -82,6 +93,7 @@ describe('event free-agent route', () => {
       waitListIds: ['user_1'],
       freeAgentIds: [],
       requiredTemplateIds: [],
+      organizationId: null,
       start: new Date('2026-03-01T00:00:00.000Z'),
     });
     prismaMock.events.update.mockResolvedValueOnce({
@@ -117,6 +129,7 @@ describe('event free-agent route', () => {
       waitListIds: [],
       freeAgentIds: ['user_1'],
       requiredTemplateIds: [],
+      organizationId: null,
       start: new Date('2026-03-01T00:00:00.000Z'),
     });
 
@@ -137,6 +150,7 @@ describe('event free-agent route', () => {
       teamSignup: false,
       freeAgentIds: [],
       requiredTemplateIds: [],
+      organizationId: null,
       start: new Date('2026-03-01T00:00:00.000Z'),
     });
 

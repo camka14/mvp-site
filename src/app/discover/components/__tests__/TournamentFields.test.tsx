@@ -97,6 +97,27 @@ describe('TournamentFields', () => {
     expect(next?.setDurationMinutes).toBe(30);
   });
 
+  it('keeps set-based controls when tournament config indicates sets even without sport metadata', () => {
+    const setTournamentData = jest.fn();
+
+    renderWithMantine(
+      <TournamentFields
+        tournamentData={{
+          ...baseTournamentData,
+          winnerSetCount: 3,
+          winnerBracketPointsToVictory: [21, 21, 21],
+          usesSets: true,
+          setDurationMinutes: 20,
+        }}
+        setTournamentData={setTournamentData}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Set Duration \(minutes\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Winner Set Count/i })).toHaveValue('Best of 3');
+    expect(screen.getByLabelText(/Set 3/i)).toBeInTheDocument();
+  });
+
   it('hides duration controls when showDurationControls is false', () => {
     const setTournamentData = jest.fn();
 

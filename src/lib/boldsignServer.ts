@@ -73,6 +73,33 @@ const readErrorMessage = (payload: unknown): string | null => {
   return null;
 };
 
+export const isBoldSignNotFoundError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return normalized.includes('404') || normalized.includes('not found');
+};
+
+export const isBoldSignForbiddenError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return normalized.includes('403') || normalized.includes('forbidden');
+};
+
+export const isBoldSignInvalidTemplateIdError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return normalized.includes('invalid template id');
+};
+
 const getBoldSignConfig = () => {
   const apiKey = process.env.BOLDSIGN_API_KEY?.trim();
   if (!apiKey) {
@@ -85,7 +112,7 @@ const getBoldSignConfig = () => {
 
 const boldSignRequest = async <T>(params: {
   path: string;
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   query?: Record<string, string | undefined>;
   body?: JsonRecord;
 }): Promise<T> => {
@@ -320,6 +347,46 @@ export const getTemplateRoles = async (templateId: string): Promise<BoldSignTemp
   return roles;
 };
 
+export const getTemplateProperties = async (templateId: string): Promise<{
+  templateId: string;
+  title?: string;
+  description?: string;
+  status?: string;
+  roles: BoldSignTemplateRole[];
+}> => {
+  const payload = await boldSignRequest<JsonRecord>({
+    path: '/v1/template/properties',
+    method: 'GET',
+    query: { templateId },
+  });
+
+  const roleRows = parseArray((payload as JsonRecord).roles ?? (payload as JsonRecord).Roles);
+  const roles = roleRows
+    .map((row) => {
+      const roleIndex = parseRoleIndex(row.roleIndex ?? row.RoleIndex ?? row.index ?? row.Index);
+      const signerRole = pickString(row.signerRole, row.SignerRole, row.name, row.Name);
+      if (!roleIndex || !signerRole) {
+        return null;
+      }
+      return { roleIndex, signerRole };
+    })
+    .filter((row): row is BoldSignTemplateRole => row !== null)
+    .sort((a, b) => a.roleIndex - b.roleIndex);
+
+  return {
+    templateId: pickString(
+      payload.templateId,
+      payload.TemplateId,
+      payload.id,
+      payload.templateID,
+    ) ?? templateId,
+    title: pickString(payload.title, payload.Title, payload.name, payload.Name),
+    description: pickString(payload.description, payload.Description),
+    status: pickString(payload.status, payload.Status),
+    roles: roles.length > 0 ? roles : [getDefaultTemplateRole()],
+  };
+};
+
 export const sendDocumentFromTemplate = async (params: {
   templateId: string;
   signerEmail: string;
@@ -431,6 +498,84 @@ export const getEmbeddedTemplateEditUrl = async (params: {
   }
 
   return { editUrl };
+};
+
+export const deleteTemplate = async (params: {
+  templateId: string;
+}) => {
+  const attempts: Array<{ method: 'DELETE' | 'POST'; query?: Record<string, string>; body?: JsonRecord }> = [
+    {
+      method: 'DELETE',
+      query: { templateId: params.templateId },
+    },
+    {
+      method: 'POST',
+      query: { templateId: params.templateId },
+    },
+    {
+      method: 'POST',
+      body: {
+        templateId: params.templateId,
+      },
+    },
+    {
+      method: 'POST',
+      body: {
+        TemplateId: params.templateId,
+      },
+    },
+  ];
+
+  let lastError: unknown = null;
+  for (const attempt of attempts) {
+    try {
+      await boldSignRequest<JsonRecord>({
+        path: '/v1/template/delete',
+        method: attempt.method,
+        query: attempt.query,
+        body: attempt.body,
+      });
+      return { deleted: true };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to delete template in BoldSign.');
+};
+
+export const getDocumentProperties = async (params: {
+  documentId: string;
+}) => {
+  const payload = await boldSignRequest<JsonRecord>({
+    path: '/v1/document/properties',
+    method: 'GET',
+    query: { documentId: params.documentId },
+  });
+
+  return {
+    documentId: pickString(
+      payload.documentId,
+      payload.DocumentId,
+      payload.id,
+      payload.documentID,
+    ) ?? params.documentId,
+    status: pickString(payload.status, payload.Status, payload.documentStatus, payload.DocumentStatus) ?? null,
+    templateId: pickString(
+      payload.templateId,
+      payload.TemplateId,
+      payload.templateID,
+    ) ?? null,
+    title: pickString(payload.title, payload.Title, payload.name, payload.Name) ?? null,
+    completedAt: pickString(
+      payload.completedDate,
+      payload.CompletedDate,
+      payload.completedAt,
+      payload.CompletedAt,
+      payload.signedDate,
+      payload.SignedDate,
+    ) ?? null,
+  };
 };
 
 export const downloadSignedDocumentPdf = async (params: {

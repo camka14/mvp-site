@@ -1107,6 +1107,90 @@ describe('League schedule page', () => {
     expect(payload.timeSlots).toHaveLength(1);
   });
 
+  it('persists tournament winner set count from form draft on save', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const baseEvent = buildApiEvent({
+      id: 'event_tournament',
+      $id: 'event_tournament',
+      name: 'Autumn Tournament',
+      eventType: 'TOURNAMENT',
+      state: 'PUBLISHED',
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      winnerBracketPointsToVictory: [21],
+      loserBracketPointsToVictory: [21],
+      usesSets: true,
+    });
+    let persistedWinnerSetCount = 1;
+    const pointsForWinnerSets = (count: number) => Array.from({ length: count }, () => 21);
+
+    mockEventFormDraft = {
+      ...baseEvent,
+      winnerSetCount: 3,
+      loserSetCount: 1,
+      winnerBracketPointsToVictory: [21, 21, 21],
+      loserBracketPointsToVictory: [21],
+      usesSets: true,
+    };
+    mockEventFormDirtyState = true;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = {
+          ...baseEvent,
+          winnerSetCount: persistedWinnerSetCount,
+          winnerBracketPointsToVictory: pointsForWinnerSets(persistedWinnerSetCount),
+        };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: buildApiEvent().matches });
+      }
+      return Promise.resolve({});
+    });
+
+    (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
+      {
+        persistedWinnerSetCount = typeof payload?.winnerSetCount === 'number'
+          ? payload.winnerSetCount
+          : persistedWinnerSetCount;
+        return Promise.resolve({
+          ...payload,
+          $id: 'event_tournament',
+        });
+      },
+    );
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const saveTournamentButton = await screen.findByRole('button', { name: /save tournament/i });
+    await waitFor(() => {
+      expect(saveTournamentButton).toBeEnabled();
+    });
+    fireEvent.click(saveTournamentButton);
+
+    await waitFor(() => {
+      expect(eventService.updateEvent).toHaveBeenCalledTimes(1);
+    });
+
+    const [, payload] = (eventService.updateEvent as jest.Mock).mock.calls[0];
+    expect(payload.winnerSetCount).toBe(3);
+    expect(payload.winnerBracketPointsToVictory).toEqual([21, 21, 21]);
+    expect(payload.usesSets).toBe(true);
+
+    await waitFor(() => {
+      expect(capturedEventFormProps?.event?.winnerSetCount).toBe(3);
+    });
+  });
+
   it('reschedules from non-details tabs and surfaces backend warnings', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {

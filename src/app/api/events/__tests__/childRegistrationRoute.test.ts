@@ -22,9 +22,13 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const dispatchRequiredEventDocumentsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/eventConsentDispatch', () => ({
+  dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
+}));
 
 import { POST } from '@/app/api/events/[eventId]/registrations/child/route';
 
@@ -40,12 +44,19 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
     jest.clearAllMocks();
 
     requireSessionMock.mockResolvedValue({ userId: 'parent_1', isAdmin: false });
+    dispatchRequiredEventDocumentsMock.mockResolvedValue({
+      sentDocumentIds: [],
+      firstDocumentId: null,
+      missingChildEmail: false,
+      errors: [],
+    });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       start: new Date('2026-07-01T12:00:00.000Z'),
       minAge: null,
       maxAge: null,
       requiredTemplateIds: ['tmpl_1'],
+      organizationId: null,
     });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
@@ -61,6 +72,12 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
   });
 
   it('creates pending consent registration when child has no email', async () => {
+    dispatchRequiredEventDocumentsMock.mockResolvedValueOnce({
+      sentDocumentIds: [],
+      firstDocumentId: null,
+      missingChildEmail: true,
+      errors: [],
+    });
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: null });
     prismaMock.eventRegistrations.create.mockResolvedValue({
       id: 'registration_no_email',

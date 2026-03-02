@@ -11,6 +11,7 @@ type OrgEventRow = {
   start: Date;
   end: Date;
   userIds: string[];
+  teamIds: string[];
 };
 
 type EventSummary = {
@@ -65,6 +66,38 @@ const normalizeStatus = (value: string | null | undefined): string | undefined =
   if (!trimmed) return undefined;
   return trimmed.toUpperCase();
 };
+
+const normalizeId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const normalizeIdList = (values: unknown): string[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  const ids = new Set<string>();
+  values.forEach((value) => {
+    const normalized = normalizeId(value);
+    if (normalized) {
+      ids.add(normalized);
+    }
+  });
+  return Array.from(ids);
+};
+
+const isTeamRegistrantType = (value: unknown): boolean => {
+  const normalized = normalizeId(value);
+  if (!normalized) {
+    return false;
+  }
+  return normalized.toUpperCase() === 'TEAM';
+};
+
+const toEventTeamKey = (eventId: string, teamId: string): string => `${eventId}::${teamId}`;
 
 const getSortTimestamp = (value: string | undefined): number => {
   if (!value) return 0;
@@ -136,6 +169,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       start: true,
       end: true,
       userIds: true,
+      teamIds: true,
     },
     orderBy: { start: 'desc' },
   });
@@ -144,7 +178,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     name: event.name,
     start: event.start,
     end: event.end,
-    userIds: Array.isArray(event.userIds) ? event.userIds.filter((entry): entry is string => typeof entry === 'string') : [],
+    userIds: normalizeIdList(event.userIds),
+    teamIds: normalizeIdList(event.teamIds),
   }));
 
   const canAccess = await hasOrganizationUserAccess({
@@ -169,18 +204,94 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       select: {
         eventId: true,
         registrantId: true,
+        registrantType: true,
         status: true,
       },
       orderBy: { updatedAt: 'desc' },
     })
     : [];
 
+  const teamIdsByEventId = new Map<string, Set<string>>();
+  eventRows.forEach((event) => {
+    teamIdsByEventId.set(event.id, new Set(event.teamIds));
+  });
+  registrations.forEach((registration) => {
+    if (!isTeamRegistrantType(registration.registrantType)) {
+      return;
+    }
+    const teamId = normalizeId(registration.registrantId);
+    if (!teamId) {
+      return;
+    }
+    const teamIdsForEvent = teamIdsByEventId.get(registration.eventId);
+    if (teamIdsForEvent) {
+      teamIdsForEvent.add(teamId);
+      return;
+    }
+    teamIdsByEventId.set(registration.eventId, new Set([teamId]));
+  });
+
+  const registeredTeamIds = Array.from(
+    new Set(
+      Array.from(teamIdsByEventId.values())
+        .flatMap((teamIds) => Array.from(teamIds)),
+    ),
+  );
+  const teams = registeredTeamIds.length
+    ? await prisma.teams.findMany({
+      where: { id: { in: registeredTeamIds } },
+      select: {
+        id: true,
+        playerIds: true,
+        captainId: true,
+        managerId: true,
+        headCoachId: true,
+        coachIds: true,
+      },
+    })
+    : [];
+  const teamMemberIdsByTeamId = new Map<string, string[]>();
+  teams.forEach((team) => {
+    const memberIds = normalizeIdList([
+      ...normalizeIdList(team.playerIds),
+      team.captainId,
+      team.managerId,
+      team.headCoachId,
+      ...normalizeIdList(team.coachIds),
+    ]);
+    teamMemberIdsByTeamId.set(team.id, memberIds);
+  });
+
+  const teamRegistrationStatusByEventTeam = new Map<string, string | undefined>();
+  registrations.forEach((registration) => {
+    if (!isTeamRegistrantType(registration.registrantType)) {
+      return;
+    }
+    const teamId = normalizeId(registration.registrantId);
+    if (!teamId) {
+      return;
+    }
+    const key = toEventTeamKey(registration.eventId, teamId);
+    if (!teamRegistrationStatusByEventTeam.has(key)) {
+      teamRegistrationStatusByEventTeam.set(key, normalizeStatus(registration.status));
+    }
+  });
+
   const participantUserIds = new Set<string>();
   eventRows.forEach((event) => {
     event.userIds.forEach((userId) => participantUserIds.add(userId));
   });
   registrations.forEach((registration) => {
-    participantUserIds.add(registration.registrantId);
+    if (isTeamRegistrantType(registration.registrantType)) {
+      return;
+    }
+    const registrantId = normalizeId(registration.registrantId);
+    if (registrantId) {
+      participantUserIds.add(registrantId);
+    }
+  });
+  teamMemberIdsByTeamId.forEach((memberIds) => {
+    memberIds.forEach((memberId) => participantUserIds.add(memberId));
   });
 
   const userIds = Array.from(participantUserIds);
@@ -264,8 +375,43 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   });
 
+  eventRows.forEach((event) => {
+    const teamIds = teamIdsByEventId.get(event.id);
+    if (!teamIds) {
+      return;
+    }
+    teamIds.forEach((teamId) => {
+      const memberIds = teamMemberIdsByTeamId.get(teamId);
+      if (!memberIds) {
+        return;
+      }
+      const teamStatus = teamRegistrationStatusByEventTeam.get(toEventTeamKey(event.id, teamId));
+      memberIds.forEach((userId) => {
+        const summary = summariesByUserId.get(userId);
+        if (!summary) {
+          return;
+        }
+        const existing = summary.eventsById.get(event.id);
+        summary.eventsById.set(event.id, {
+          eventId: event.id,
+          eventName: event.name,
+          start: event.start.toISOString(),
+          end: event.end.toISOString(),
+          status: teamStatus ?? existing?.status,
+        });
+      });
+    });
+  });
+
   registrations.forEach((registration) => {
-    const summary = summariesByUserId.get(registration.registrantId);
+    if (isTeamRegistrantType(registration.registrantType)) {
+      return;
+    }
+    const registrantId = normalizeId(registration.registrantId);
+    if (!registrantId) {
+      return;
+    }
+    const summary = summariesByUserId.get(registrantId);
     const event = eventsById.get(registration.eventId);
     if (!summary || !event) return;
 

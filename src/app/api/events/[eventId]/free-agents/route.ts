@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
+import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +74,7 @@ async function updateFreeAgents(
         waitListIds: true,
         freeAgentIds: true,
         requiredTemplateIds: true,
+        organizationId: true,
         start: true,
       },
     }),
@@ -148,7 +150,7 @@ async function updateFreeAgents(
     },
   });
 
-  let warnings: string[] | undefined;
+  const warningMessages: string[] = [];
   if (mode === 'add' && managingLinkedChild && Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0) {
     const childSensitive = await prisma.sensitiveUserData.findFirst({
       where: { userId: targetUserId },
@@ -157,15 +159,27 @@ async function updateFreeAgents(
     const childEmail = normalizeUserId(childSensitive?.email ?? null);
     if (!childEmail && Number.isFinite(targetUserAgeAtEvent) && targetUserAgeAtEvent < 13) {
       const childName = `${(targetUser.firstName ?? '').trim()} ${(targetUser.lastName ?? '').trim()}`.trim() || targetUserId;
-      warnings = [
+      warningMessages.push(
         `Under-13 child ${childName} is missing an email and cannot complete child signature steps until an email is added.`,
-      ];
+      );
     }
+  }
+
+  if (mode === 'add' && Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0) {
+    const consentDispatch = await dispatchRequiredEventDocuments({
+      eventId,
+      organizationId: event.organizationId ?? null,
+      requiredTemplateIds: event.requiredTemplateIds,
+      participantUserId: isMinorTargetUser ? null : targetUserId,
+      parentUserId: isMinorTargetUser && managingLinkedChild ? session.userId : null,
+      childUserId: isMinorTargetUser && managingLinkedChild ? targetUserId : null,
+    });
+    warningMessages.push(...consentDispatch.errors);
   }
 
   return NextResponse.json({
     event: withLegacyFields(updated),
-    warnings,
+    warnings: warningMessages.length ? warningMessages : undefined,
   }, { status: 200 });
 }
 

@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table } from '@mantine/core';
+import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table, Loader } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import TeamCard from '@/components/ui/TeamCard';
@@ -90,6 +90,19 @@ const mapTemplateRow = (row: Record<string, any>): TemplateDocument => {
     content: row?.content ?? undefined,
     $createdAt: row?.$createdAt ?? undefined,
   };
+};
+
+type PendingTemplateCreateCard = {
+  localId: string;
+  operationId: string;
+  templateId?: string;
+  templateDocumentId?: string;
+  title: string;
+  description?: string;
+  signOnce: boolean;
+  requiredSignerType: 'PARTICIPANT' | 'PARENT_GUARDIAN' | 'CHILD' | 'PARENT_GUARDIAN_CHILD';
+  status: string;
+  error?: string;
 };
 
 type OrganizationTab =
@@ -203,7 +216,7 @@ function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, authUser, loading: authLoading, isAuthenticated } = useApp();
+  const { user, authUser, loading: authLoading, isAuthenticated, updateUser } = useApp();
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<OrganizationTab>('overview');
@@ -239,6 +252,7 @@ function OrganizationDetailContent() {
   const [managingStripe, setManagingStripe] = useState(false);
   const [stripeEmail, setStripeEmail] = useState('');
   const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
+  const [updatingHomePagePreference, setUpdatingHomePagePreference] = useState(false);
   const isOwner = Boolean(
     user
       && org
@@ -247,6 +261,21 @@ function OrganizationDetailContent() {
         || (Array.isArray(org.hostIds) && org.hostIds.includes(user.$id))
       ),
   );
+  const isOrganizationRoleMember = Boolean(
+    user
+      && org
+      && (
+        user.$id === org.ownerId
+        || (Array.isArray(org.hostIds) && org.hostIds.includes(user.$id))
+        || (Array.isArray(org.refIds) && org.refIds.includes(user.$id))
+      ),
+  );
+  const isCurrentOrganizationHomePage = Boolean(
+    user?.homePageOrganizationId
+      && org
+      && user.homePageOrganizationId === org.$id,
+  );
+  const canToggleHomePagePreference = Boolean(isOrganizationRoleMember || isCurrentOrganizationHomePage);
   const availableTabs = useMemo(
     () => {
       const base: { label: string; value: typeof activeTab }[] = [
@@ -480,6 +509,7 @@ function OrganizationDetailContent() {
   const [templateBuilderOpen, setTemplateBuilderOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
+  const [pendingTemplateCreates, setPendingTemplateCreates] = useState<PendingTemplateCreateCard[]>([]);
   const [previewTemplate, setPreviewTemplate] = useState<TemplateDocument | null>(null);
   const [previewMode, setPreviewMode] = useState<'read' | 'sign'>('read');
   const [previewAccepted, setPreviewAccepted] = useState(false);
@@ -493,6 +523,26 @@ function OrganizationDetailContent() {
   const closeTemplateBuilder = useCallback(() => {
     setTemplateBuilderOpen(false);
     setTemplateEmbedUrl(null);
+  }, []);
+
+  const pollBoldSignOperation = useCallback(async (operationId: string) => {
+    const intervalMs = 1_500;
+    const timeoutMs = 90_000;
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const operation = await boldsignService.getOperationStatus(operationId);
+      const status = String(operation.status ?? '').toUpperCase();
+      if (status === 'CONFIRMED') {
+        return operation;
+      }
+      if (status === 'FAILED' || status === 'FAILED_RETRYABLE' || status === 'TIMED_OUT') {
+        throw new Error(operation.error || `Synchronization ${status.toLowerCase().replace('_', ' ')}.`);
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+    }
+
+    throw new Error('Synchronization is delayed. Please refresh in a moment.');
   }, []);
 
   const openTemplatePreview = useCallback((template: TemplateDocument) => {
@@ -519,14 +569,47 @@ function OrganizationDetailContent() {
     }
   }, []);
 
-  const loadTemplates = useCallback(async (orgId: string, options?: { silent?: boolean }) => {
+  const handleSetHomePage = useCallback(async (checked: boolean) => {
+    if (!user?.$id || !org || !canToggleHomePagePreference) {
+      return;
+    }
+
+    setUpdatingHomePagePreference(true);
+    try {
+      const updated = await updateUser({
+        homePageOrganizationId: checked ? org.$id : null,
+      });
+      if (!updated) {
+        throw new Error('Failed to update home page preference.');
+      }
+      notifications.show({
+        color: 'green',
+        message: checked
+          ? `${org.name} is now your home page.`
+          : 'Home page preference cleared.',
+      });
+    } catch (error) {
+      console.error('Failed to update home page preference', error);
+      notifications.show({
+        color: 'red',
+        message: error instanceof Error ? error.message : 'Failed to update home page preference.',
+      });
+    } finally {
+      setUpdatingHomePagePreference(false);
+    }
+  }, [canToggleHomePagePreference, org, updateUser, user?.$id]);
+
+  const loadTemplates = useCallback(async (
+    orgId: string,
+    options?: { silent?: boolean },
+  ): Promise<TemplateDocument[]> => {
     const silent = Boolean(options?.silent);
     if (!silent) {
       setTemplatesLoading(true);
     }
     try {
       if (!user?.$id) {
-        return;
+        return [];
       }
       const response = await fetch(`/api/organizations/${orgId}/templates`, {
         credentials: 'include',
@@ -536,20 +619,84 @@ function OrganizationDetailContent() {
         throw new Error(payload?.error || 'Failed to load templates');
       }
       const rows = Array.isArray(payload?.templates) ? payload.templates : [];
-      setTemplateDocuments(rows.map((row: any) => mapTemplateRow(row)));
+      const mappedRows = rows.map((row: any) => mapTemplateRow(row));
+      setTemplateDocuments(mappedRows);
       if (!silent) {
         setTemplatesError(null);
       }
+      return mappedRows;
     } catch (error) {
       console.error('Failed to load templates', error);
       setTemplateDocuments([]);
       setTemplatesError(error instanceof Error ? error.message : 'Failed to load templates.');
+      return [];
     } finally {
       if (!silent) {
         setTemplatesLoading(false);
       }
     }
   }, [user?.$id]);
+
+  const monitorTemplateCreateOperation = useCallback((params: {
+    organizationId: string;
+    operationId: string;
+    templateId?: string;
+  }) => {
+    void (async () => {
+      try {
+        const operation = await pollBoldSignOperation(params.operationId);
+        const expectedTemplateId = operation.templateId ?? params.templateId;
+        const expectedTemplateDocumentId = operation.templateDocumentId ?? undefined;
+
+        setPendingTemplateCreates((current) => current.map((entry) => (
+          entry.operationId === params.operationId
+            ? {
+              ...entry,
+              status: String(operation.status ?? 'CONFIRMED'),
+              templateId: expectedTemplateId ?? entry.templateId,
+              templateDocumentId: expectedTemplateDocumentId ?? entry.templateDocumentId,
+              error: undefined,
+            }
+            : entry
+        )));
+
+        const projectionTimeoutMs = 90_000;
+        const intervalMs = 1_500;
+        const startedAt = Date.now();
+        let projected = false;
+
+        while (Date.now() - startedAt < projectionTimeoutMs) {
+          const templates = await loadTemplates(params.organizationId, { silent: true });
+          projected = templates.some((template) => (
+            (expectedTemplateDocumentId && template.$id === expectedTemplateDocumentId)
+            || (expectedTemplateId && template.templateId === expectedTemplateId)
+          ));
+
+          if (projected) {
+            setPendingTemplateCreates((current) => current.filter((entry) => entry.operationId !== params.operationId));
+            notifications.show({ color: 'green', message: 'Template synced.' });
+            return;
+          }
+
+          await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+        }
+
+        throw new Error('Template creation is still syncing. Please refresh in a moment.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Template sync failed.';
+        setPendingTemplateCreates((current) => current.map((entry) => (
+          entry.operationId === params.operationId
+            ? {
+              ...entry,
+              status: 'FAILED',
+              error: message,
+            }
+            : entry
+        )));
+        setTemplatesError(message);
+      }
+    })();
+  }, [loadTemplates, pollBoldSignOperation]);
 
   const loadEventTemplates = useCallback(async (orgId: string, options?: { silent?: boolean }) => {
     const silent = Boolean(options?.silent);
@@ -681,10 +828,24 @@ function OrganizationDetailContent() {
   useEffect(() => {
     if (!org || !isOwner || !user) {
       setTemplateDocuments([]);
+      setPendingTemplateCreates([]);
       return;
     }
     loadTemplates(org.$id);
   }, [org, isOwner, user, loadTemplates]);
+
+  useEffect(() => {
+    if (pendingTemplateCreates.length === 0 || templateDocuments.length === 0) {
+      return;
+    }
+
+    setPendingTemplateCreates((current) => current.filter((entry) => {
+      return !templateDocuments.some((template) => (
+        (entry.templateDocumentId && template.$id === entry.templateDocumentId)
+        || (entry.templateId && template.templateId === entry.templateId)
+      ));
+    }));
+  }, [pendingTemplateCreates.length, templateDocuments]);
 
   useEffect(() => {
     if (!org || !isOwner || !user) {
@@ -801,6 +962,7 @@ function OrganizationDetailContent() {
     try {
       setCreatingTemplate(true);
       setTemplatesError(null);
+      const createdTemplateType = templateType;
       const result = await boldsignService.createTemplate({
         organizationId: org.$id,
         userId: user.$id,
@@ -822,7 +984,34 @@ function OrganizationDetailContent() {
       setTemplatePdfFile(null);
       setTemplateSignOnce(true);
       setTemplateRequiredSignerType('PARTICIPANT');
-      await loadTemplates(org.$id, { silent: true });
+
+      if (createdTemplateType === 'PDF') {
+        if (!result.operationId) {
+          throw new Error('Template creation response is missing operation id.');
+        }
+        setPendingTemplateCreates((current) => [
+          {
+            localId: `pending-template:${result.operationId}`,
+            operationId: result.operationId,
+            templateId: result.templateId,
+            title: trimmedTitle,
+            description: templateDescription.trim() || undefined,
+            signOnce: templateSignOnce,
+            requiredSignerType: templateRequiredSignerType,
+            status: String(result.syncStatus ?? 'PENDING_WEBHOOK'),
+          },
+          ...current.filter((entry) => entry.operationId !== result.operationId),
+        ]);
+        notifications.show({ color: 'blue', message: 'Template creation submitted. Syncing…' });
+        monitorTemplateCreateOperation({
+          organizationId: org.$id,
+          operationId: result.operationId,
+          templateId: result.templateId,
+        });
+      } else {
+        await loadTemplates(org.$id, { silent: true });
+        notifications.show({ color: 'green', message: 'Template synced.' });
+      }
     } catch (error) {
       setTemplatesError(
         error instanceof Error ? error.message : 'Failed to create template.',
@@ -841,6 +1030,7 @@ function OrganizationDetailContent() {
     templateContent,
     templatePdfFile,
     loadTemplates,
+    monitorTemplateCreateOperation,
   ]);
 
   const handleEditPdfTemplate = useCallback(async (template: TemplateDocument) => {
@@ -878,10 +1068,14 @@ function OrganizationDetailContent() {
     try {
       setDeletingTemplateId(template.$id);
       setTemplatesError(null);
-      await boldsignService.deleteTemplate({
+      const result = await boldsignService.deleteTemplate({
         organizationId: org.$id,
         templateDocumentId: template.$id,
       });
+      if (result.operationId) {
+        notifications.show({ color: 'blue', message: 'Template delete submitted. Syncing…' });
+        await pollBoldSignOperation(result.operationId);
+      }
       if (previewTemplate?.$id === template.$id) {
         setPreviewTemplate(null);
         setPreviewAccepted(false);
@@ -896,7 +1090,7 @@ function OrganizationDetailContent() {
     } finally {
       setDeletingTemplateId(null);
     }
-  }, [loadTemplates, org, previewTemplate?.$id]);
+  }, [loadTemplates, org, pollBoldSignOperation, previewTemplate?.$id]);
 
   const toggleOrganizationUserExpanded = useCallback((userId: string) => {
     setExpandedOrganizationUserIds((previous) => (
@@ -1464,7 +1658,17 @@ function OrganizationDetailContent() {
                   />
                 )}
                 <div>
-                  <Title order={2} mb={2} className="discover-title">{org.name}</Title>
+                  <Group gap="md" align="center" mb={2}>
+                    <Title order={2} className="discover-title">{org.name}</Title>
+                    {canToggleHomePagePreference && (
+                      <Checkbox
+                        label="Set as home page"
+                        checked={isCurrentOrganizationHomePage}
+                        disabled={updatingHomePagePreference}
+                        onChange={(event) => { void handleSetHomePage(event.currentTarget.checked); }}
+                      />
+                    )}
+                  </Group>
                   <Group gap="md">
                     {org.website && (
                       <a href={org.website} target="_blank" rel="noreferrer"><Text c="blue">{org.website}</Text></a>
@@ -1919,8 +2123,33 @@ function OrganizationDetailContent() {
 
                 {templatesLoading ? (
                   <Text size="sm" c="dimmed">Loading templates...</Text>
-                ) : templateDocuments.length > 0 ? (
+                ) : (pendingTemplateCreates.length > 0 || templateDocuments.length > 0) ? (
                   <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+                    {pendingTemplateCreates.map((pendingTemplate) => (
+                      <Paper key={pendingTemplate.localId} withBorder p="sm" radius="md">
+                        <Text fw={600}>{pendingTemplate.title || 'Untitled Template'}</Text>
+                        <Text size="sm" c="dimmed">
+                          {pendingTemplate.signOnce ? 'Sign once per participant' : 'Sign for every event'}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Required signer: {getRequiredSignerTypeLabel(pendingTemplate.requiredSignerType)}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Type: PDF
+                        </Text>
+                        <Text size="xs" c={pendingTemplate.error ? 'red' : 'blue'}>
+                          Status: {pendingTemplate.error ? pendingTemplate.error : `Syncing (${pendingTemplate.status})`}
+                        </Text>
+                        {!pendingTemplate.error && (
+                          <Group gap="xs" mt="xs">
+                            <Loader size="xs" />
+                            <Text size="xs" c="dimmed">
+                              Creating template and waiting for projection…
+                            </Text>
+                          </Group>
+                        )}
+                      </Paper>
+                    ))}
                     {templateDocuments.map((template) => (
                       <Paper key={template.$id} withBorder p="sm" radius="md">
                         <Text fw={600}>{template.title || 'Untitled Template'}</Text>

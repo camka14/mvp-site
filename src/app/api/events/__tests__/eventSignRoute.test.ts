@@ -32,9 +32,20 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const createDocumentSendOperationMock = jest.fn();
+const findLatestBoldSignOperationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/boldsignWebhookSync', () => ({
+  createDocumentSendOperation: (...args: any[]) => createDocumentSendOperationMock(...args),
+}));
+jest.mock('@/lib/boldsignSyncOperations', () => ({
+  BOLDSIGN_OPERATION_STATUSES: {
+    PENDING_WEBHOOK: 'PENDING_WEBHOOK',
+  },
+  findLatestBoldSignOperation: (...args: any[]) => findLatestBoldSignOperationMock(...args),
+}));
 jest.mock('@/lib/boldsignServer', () => ({
   isBoldSignConfigured: jest.fn(),
   getTemplateRoles: jest.fn(),
@@ -90,6 +101,11 @@ describe('POST /api/events/[eventId]/sign', () => {
     });
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'player@example.com' });
     prismaMock.authUser.findUnique.mockResolvedValue(null);
+    createDocumentSendOperationMock.mockResolvedValue({
+      id: 'op_1',
+      status: 'PENDING_WEBHOOK',
+    });
+    findLatestBoldSignOperationMock.mockResolvedValue(null);
   });
 
   it('returns text sign step for TEXT templates', async () => {
@@ -571,14 +587,10 @@ describe('POST /api/events/[eventId]/sign', () => {
       }),
     ]);
     expect(sendDocumentFromTemplateMock).not.toHaveBeenCalled();
-    expect(prismaMock.signedDocuments.create).toHaveBeenCalledWith(
+    expect(prismaMock.signedDocuments.create).not.toHaveBeenCalled();
+    expect(createDocumentSendOperationMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          signedDocumentId: 'doc_parent_child_1',
-          userId: 'child_1',
-          signerRole: 'child',
-          signerEmail: 'child@example.com',
-        }),
+        documentId: 'doc_parent_child_1',
       }),
     );
   });
@@ -871,13 +883,12 @@ describe('POST /api/events/[eventId]/sign', () => {
     ]);
     expect(sendDocumentFromTemplateMock).toHaveBeenCalledTimes(1);
     expect(getEmbeddedSignLinkMock).toHaveBeenCalledTimes(2);
-    expect(prismaMock.signedDocuments.update).toHaveBeenCalledWith(
+    expect(prismaMock.signedDocuments.update).not.toHaveBeenCalled();
+    expect(createDocumentSendOperationMock).toHaveBeenCalledTimes(2);
+    expect(createDocumentSendOperationMock).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
-        where: { id: 'signed_doc_child' },
-        data: expect.objectContaining({
-          signedDocumentId: 'doc_fresh_1',
-          signerEmail: 'child@example.com',
-        }),
+        documentId: 'doc_fresh_1',
       }),
     );
   });

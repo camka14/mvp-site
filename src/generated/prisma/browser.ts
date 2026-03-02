@@ -143,6 +143,16 @@ export type TemplateDocuments = Prisma.TemplateDocumentsModel
  */
 export type SignedDocuments = Prisma.SignedDocumentsModel
 /**
+ * Model BoldSignWebhookEvents
+ * 
+ */
+export type BoldSignWebhookEvents = Prisma.BoldSignWebhookEventsModel
+/**
+ * Model BoldSignSyncOperations
+ * 
+ */
+export type BoldSignSyncOperations = Prisma.BoldSignSyncOperationsModel
+/**
  * Model ParentChildLinks
  * 
  */

@@ -201,6 +201,45 @@ class PaymentService {
     }
   }
 
+  async requestTeamRefund(
+    eventId: string,
+    teamId: string,
+    reason?: string,
+  ): Promise<{
+    success: boolean;
+    refundId?: string;
+    refundAlreadyPending?: boolean;
+  }> {
+    try {
+      const result = await apiRequest<{
+        error?: string;
+        success: boolean;
+        refundId?: string;
+        refundAlreadyPending?: boolean;
+      }>('/api/billing/refund-all', {
+        method: 'POST',
+        body: {
+          eventId,
+          teamId,
+          reason: reason || 'team_refund_requested',
+        },
+      });
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      if (!result || !result.success) {
+        throw new Error('Failed to request team refund');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Failed to request team refund:', error);
+      throw new Error(error instanceof Error ? error.message : 'Failed to request team refund');
+    }
+  }
+
   async connectStripeAccount(
     {
       user,

@@ -3676,6 +3676,7 @@ function EventScheduleContent() {
           updatedEvent.matches = nextMatches;
         }
 
+        hasUnsavedChangesRef.current = false;
         hydrateEvent(updatedEvent);
         setHasUnsavedChanges(false);
         setFormHasUnsavedChanges(false);

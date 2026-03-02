@@ -28,6 +28,8 @@ import {
     resolveOrganizationEventFieldIds,
 } from './eventFieldSelection';
 import { applyLeagueScoringConfigFieldChange } from './leagueScoringConfigForm';
+import { resolveDraftSportForScoring } from './eventDraftSport';
+import { resolveTournamentSetMode } from './tournamentSetMode';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import UserCard from '@/components/ui/UserCard';
@@ -5243,11 +5245,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const selectedSportId = source.sportId?.trim() || '';
         const fallbackSportId = (sportSelection?.$id && String(sportSelection.$id)) || '';
         const sportId = selectedSportId || fallbackSportId;
-        const resolvedSport = (
-            sportId ? sportsById.get(sportId) : undefined
-        ) ?? (
-            sportSelection && typeof sportSelection === 'object' ? sportSelection : null
-        );
+        const resolvedSport = resolveDraftSportForScoring({
+            sportId,
+            sportConfig: sportSelection,
+            sportsById,
+        });
         const baseCoordinates: [number, number] = source.coordinates;
         const toIdList = <T extends { $id?: string | undefined }>(items: T[] | undefined): string[] => {
             if (!Array.isArray(items)) {
@@ -5364,6 +5366,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return normalizeDivisionKeys(source.divisions);
         })();
         const sportRequiresSets = Boolean(resolvedSport?.usePointsPerSetWin);
+        const tournamentRequiresSets = resolveTournamentSetMode(
+            sportRequiresSets,
+            source.tournamentData,
+        );
+        const playoffRequiresSets = resolveTournamentSetMode(
+            sportRequiresSets,
+            source.playoffData,
+        );
         const splitLeaguePlayoffDivisions = Boolean(
             source.eventType === 'LEAGUE'
             && source.leagueData.includePlayoffs
@@ -5528,7 +5538,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 maxParticipants: Math.max(2, Math.trunc(division.maxParticipants || 2)),
                 playoffConfig: normalizeTournamentConfigForSetMode(
                     division.playoffConfig,
-                    sportRequiresSets,
+                    resolveTournamentSetMode(
+                        sportRequiresSets,
+                        division.playoffConfig,
+                    ),
                 ),
             })),
             cancellationRefundHours: source.cancellationRefundHours,
@@ -5701,7 +5714,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (source.leagueData.includePlayoffs && source.playoffData && !splitLeaguePlayoffDivisions) {
                 const normalizedPlayoffConfig = normalizeTournamentConfigForSetMode(
                     source.playoffData,
-                    sportRequiresSets,
+                    playoffRequiresSets,
                 );
                 draft.doubleElimination = normalizedPlayoffConfig.doubleElimination;
                 draft.winnerSetCount = normalizedPlayoffConfig.winnerSetCount;
@@ -5715,7 +5728,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (source.eventType === 'TOURNAMENT') {
             const normalizedTournamentConfig = normalizeTournamentConfigForSetMode(
                 source.tournamentData,
-                sportRequiresSets,
+                tournamentRequiresSets,
             );
             draft.doubleElimination = normalizedTournamentConfig.doubleElimination;
             draft.winnerSetCount = normalizedTournamentConfig.winnerSetCount;
@@ -5725,7 +5738,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             draft.prize = normalizedTournamentConfig.prize;
             draft.fieldCount = normalizedTournamentConfig.fieldCount;
             draft.restTimeMinutes = normalizeNumber(normalizedTournamentConfig.restTimeMinutes, 0) ?? 0;
-            if (sportRequiresSets) {
+            if (tournamentRequiresSets) {
                 draft.usesSets = true;
                 draft.setDurationMinutes = normalizeNumber(normalizedTournamentConfig.setDurationMinutes, 20) ?? 20;
                 draft.matchDurationMinutes = undefined;

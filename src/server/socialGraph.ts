@@ -20,6 +20,7 @@ export const publicUserSelect = {
   friendRequestSentIds: true,
   uploadedImages: true,
   profileImageId: true,
+  homePageOrganizationId: true,
 } as const;
 
 export type PublicUser = Prisma.UserDataGetPayload<{ select: typeof publicUserSelect }>;

@@ -28,6 +28,7 @@ const publicUserSelect = {
   friendRequestSentIds: true,
   uploadedImages: true,
   profileImageId: true,
+  homePageOrganizationId: true,
 };
 
 const updateSchema = z.object({
@@ -65,6 +66,46 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
     }
     nextData.userName = normalizedUserName;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(nextData, 'homePageOrganizationId')) {
+    const rawHomePageOrganizationId = nextData.homePageOrganizationId;
+
+    if (rawHomePageOrganizationId == null || rawHomePageOrganizationId === '') {
+      nextData.homePageOrganizationId = null;
+    } else if (typeof rawHomePageOrganizationId !== 'string') {
+      return NextResponse.json({ error: 'homePageOrganizationId must be a string or null.' }, { status: 400 });
+    } else {
+      const homePageOrganizationId = rawHomePageOrganizationId.trim();
+      if (!homePageOrganizationId) {
+        nextData.homePageOrganizationId = null;
+      } else {
+        const organization = await prisma.organizations.findUnique({
+          where: { id: homePageOrganizationId },
+          select: {
+            id: true,
+            ownerId: true,
+            hostIds: true,
+            refIds: true,
+          },
+        });
+        if (!organization) {
+          return NextResponse.json({ error: 'Organization not found.' }, { status: 404 });
+        }
+
+        const isOrganizationRoleMember = organization.ownerId === id
+          || organization.hostIds.includes(id)
+          || organization.refIds.includes(id);
+        if (!isOrganizationRoleMember) {
+          return NextResponse.json(
+            { error: 'Only organization owners, hosts, or referees can set this organization as home page.' },
+            { status: 403 },
+          );
+        }
+
+        nextData.homePageOrganizationId = homePageOrganizationId;
+      }
+    }
   }
 
   try {

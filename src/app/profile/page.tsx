@@ -169,6 +169,7 @@ export default function ProfilePage() {
     const [signLinks, setSignLinks] = useState<SignStep[]>([]);
     const [currentSignIndex, setCurrentSignIndex] = useState(0);
     const [pendingSignedDocumentId, setPendingSignedDocumentId] = useState<string | null>(null);
+    const [pendingSignatureOperationId, setPendingSignatureOperationId] = useState<string | null>(null);
     const [recordingSignature, setRecordingSignature] = useState(false);
     const [textAccepted, setTextAccepted] = useState(false);
 
@@ -815,6 +816,7 @@ export default function ProfilePage() {
         setSignLinks([]);
         setCurrentSignIndex(0);
         setPendingSignedDocumentId(null);
+        setPendingSignatureOperationId(null);
         setRecordingSignature(false);
         setTextAccepted(false);
         setActiveSigningDocument(null);
@@ -914,6 +916,7 @@ export default function ProfilePage() {
             setSignLinks(links);
             setCurrentSignIndex(0);
             setPendingSignedDocumentId(null);
+            setPendingSignatureOperationId(null);
             setSignPassword('');
             setShowSignPasswordModal(false);
             setShowSignModal(true);
@@ -928,7 +931,7 @@ export default function ProfilePage() {
         templateId: string;
         documentId: string;
         type: SignStep['type'];
-    }) => {
+    }): Promise<{ operationId?: string; syncStatus?: string }> => {
         if (!activeSigningDocument?.eventId || !user) {
             throw new Error('Event and user are required to record signatures.');
         }
@@ -955,6 +958,10 @@ export default function ProfilePage() {
         if (!response.ok || result?.error) {
             throw new Error(result?.error || 'Failed to record signature.');
         }
+        return {
+            operationId: typeof result?.operationId === 'string' ? result.operationId : undefined,
+            syncStatus: typeof result?.syncStatus === 'string' ? result.syncStatus : undefined,
+        };
     }, [activeSigningDocument, user]);
 
     const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
@@ -965,7 +972,7 @@ export default function ProfilePage() {
         if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
             return;
         }
-        if (pendingSignedDocumentId || recordingSignature) {
+        if (pendingSignedDocumentId || pendingSignatureOperationId || recordingSignature) {
             return;
         }
         if (!currentLink.documentId) {
@@ -975,27 +982,30 @@ export default function ProfilePage() {
 
         setRecordingSignature(true);
         try {
-            await recordSignature({
+            const signatureResult = await recordSignature({
                 templateId: currentLink.templateId,
                 documentId: currentLink.documentId,
                 type: currentLink.type,
             });
             setShowSignModal(false);
             setPendingSignedDocumentId(currentLink.documentId);
+            setPendingSignatureOperationId(
+                signatureResult.operationId || currentLink.operationId || null,
+            );
         } catch (error) {
             setDocumentsError(error instanceof Error ? error.message : 'Failed to record signature.');
             resetSigningState();
         } finally {
             setRecordingSignature(false);
         }
-    }, [currentSignIndex, pendingSignedDocumentId, recordSignature, recordingSignature, resetSigningState, signLinks]);
+    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, resetSigningState, signLinks]);
 
     const handleTextAcceptance = useCallback(async () => {
         const currentLink = signLinks[currentSignIndex];
         if (!currentLink || currentLink.type !== 'TEXT') {
             return;
         }
-        if (!textAccepted || pendingSignedDocumentId || recordingSignature) {
+        if (!textAccepted || pendingSignedDocumentId || pendingSignatureOperationId || recordingSignature) {
             return;
         }
 
@@ -1006,20 +1016,23 @@ export default function ProfilePage() {
         );
         setRecordingSignature(true);
         try {
-            await recordSignature({
+            const signatureResult = await recordSignature({
                 templateId: currentLink.templateId,
                 documentId,
                 type: currentLink.type,
             });
             setShowSignModal(false);
             setPendingSignedDocumentId(documentId);
+            setPendingSignatureOperationId(
+                signatureResult.operationId || currentLink.operationId || null,
+            );
         } catch (error) {
             setDocumentsError(error instanceof Error ? error.message : 'Failed to record signature.');
             resetSigningState();
         } finally {
             setRecordingSignature(false);
         }
-    }, [currentSignIndex, pendingSignedDocumentId, recordSignature, recordingSignature, resetSigningState, signLinks, textAccepted]);
+    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, resetSigningState, signLinks, textAccepted]);
 
     useEffect(() => {
         setTextAccepted(false);
@@ -1060,7 +1073,70 @@ export default function ProfilePage() {
     }, [handleSignedDocument, showSignModal]);
 
     useEffect(() => {
+        if (!pendingSignatureOperationId) {
+            return;
+        }
+
+        let cancelled = false;
+        const startedAt = Date.now();
+        const intervalMs = 1500;
+        const timeoutMs = 90_000;
+
+        const poll = async () => {
+            try {
+                const operation = await boldsignService.getOperationStatus(pendingSignatureOperationId);
+                if (cancelled) {
+                    return;
+                }
+
+                const status = String(operation.status ?? '').toUpperCase();
+                if (status === 'CONFIRMED') {
+                    const nextIndex = currentSignIndex + 1;
+                    if (nextIndex < signLinks.length) {
+                        setCurrentSignIndex(nextIndex);
+                        setPendingSignedDocumentId(null);
+                        setPendingSignatureOperationId(null);
+                        setShowSignModal(true);
+                        return;
+                    }
+
+                    resetSigningState();
+                    await loadDocuments();
+                    notifications.show({ color: 'green', message: 'Document signed.' });
+                    return;
+                }
+
+                if (status === 'FAILED' || status === 'FAILED_RETRYABLE' || status === 'TIMED_OUT') {
+                    throw new Error(operation.error || 'Failed to synchronize signature status.');
+                }
+
+                if (Date.now() - startedAt > timeoutMs) {
+                    throw new Error('Signature sync is delayed. Please try again shortly.');
+                }
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+                setDocumentsError(error instanceof Error ? error.message : 'Failed to confirm signature.');
+                resetSigningState();
+            }
+        };
+
+        const interval = window.setInterval(() => {
+            void poll();
+        }, intervalMs);
+        void poll();
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [currentSignIndex, loadDocuments, pendingSignatureOperationId, resetSigningState, signLinks.length]);
+
+    useEffect(() => {
         if (!pendingSignedDocumentId) {
+            return;
+        }
+        if (pendingSignatureOperationId) {
             return;
         }
 
@@ -1101,7 +1177,7 @@ export default function ProfilePage() {
             cancelled = true;
             window.clearInterval(interval);
         };
-    }, [activeSigningDocument, currentSignIndex, loadDocuments, pendingSignedDocumentId, resetSigningState, signLinks, user?.$id]);
+    }, [activeSigningDocument, currentSignIndex, loadDocuments, pendingSignatureOperationId, pendingSignedDocumentId, resetSigningState, signLinks, user?.$id]);
 
     useEffect(() => {
         if (user) {

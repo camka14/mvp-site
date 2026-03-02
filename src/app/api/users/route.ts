@@ -29,6 +29,7 @@ const publicUserSelect = {
   friendRequestSentIds: true,
   uploadedImages: true,
   profileImageId: true,
+  homePageOrganizationId: true,
 };
 
 const createSchema = z.object({

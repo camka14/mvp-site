@@ -1,113 +1,133 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { syncChildRegistrationConsentStatus } from '@/lib/childConsentProgress';
+import {
+  isAuthEventType,
+  isVerificationEvent,
+  parseBoldSignWebhookEvent,
+  processBoldSignWebhookEvent,
+  shouldProcessBoldSignEvent,
+  verifyBoldSignWebhookSignature,
+} from '@/lib/boldsignWebhookSync';
+import {
+  createBoldSignWebhookEvent,
+  updateBoldSignWebhookEventStatus,
+} from '@/lib/boldsignSyncOperations';
 
 export const dynamic = 'force-dynamic';
 
-const extractString = (value: unknown): string | null => (typeof value === 'string' && value ? value : null);
-
-const extractDocumentId = (payload: Record<string, any>): string | null => {
-  const direct = extractString(payload.documentId)
-    ?? extractString(payload.documentID)
-    ?? extractString(payload.DocumentId)
-    ?? extractString(payload.DocumentID);
-  if (direct) return direct;
-
-  const containers = ['data', 'payload', 'document', 'documentDetails', 'event'];
-  for (const key of containers) {
-    const container = payload[key];
-    if (container && typeof container === 'object') {
-      const value = extractString(container.documentId)
-        ?? extractString(container.documentID)
-        ?? extractString(container.DocumentId)
-        ?? extractString(container.DocumentID)
-        ?? extractString(container.id);
-      if (value) return value;
-    }
+const toRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
   }
-
-  return null;
-};
-
-const extractStatus = (payload: Record<string, any>): string | null => {
-  const candidates = [
-    payload.status,
-    payload.documentStatus,
-    payload.documentstatus,
-    payload.event?.status,
-    payload.data?.status,
-    payload.payload?.status,
-  ];
-  for (const value of candidates) {
-    const result = extractString(value);
-    if (result) return result.toLowerCase();
-  }
-  return null;
+  return value as Record<string, unknown>;
 };
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body !== 'object') {
+  const rawBody = await req.text().catch(() => '');
+  let parsedBody: unknown = null;
+  if (rawBody) {
+    try {
+      parsedBody = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+  }
+  const payload = toRecord(parsedBody);
+  if (!payload) {
     return NextResponse.json({ received: true }, { status: 200 });
   }
 
-  const payload = body as Record<string, any>;
-  const documentId = extractDocumentId(payload);
-  if (!documentId) {
-    return NextResponse.json({ received: true }, { status: 200 });
+  const signatureHeader = req.headers.get('x-boldsign-signature');
+  const signatureVerification = verifyBoldSignWebhookSignature({
+    rawBody,
+    signatureHeader,
+  });
+
+  if (!signatureVerification.valid) {
+    console.error('Rejected BoldSign webhook signature', {
+      reason: signatureVerification.error ?? 'Invalid signature',
+      hasSignatureHeader: Boolean(signatureHeader),
+      eventTypeHeader: req.headers.get('x-boldsign-event'),
+    });
+    const status = signatureVerification.error?.toLowerCase().includes('not configured') ? 500 : 400;
+    return NextResponse.json(
+      {
+        received: false,
+        error: signatureVerification.error ?? 'Invalid webhook signature.',
+      },
+      { status },
+    );
   }
 
-  const status = extractStatus(payload) ?? 'signed';
-  const now = new Date();
-  const normalized = status.toLowerCase();
-  const isSigned = ['signed', 'completed'].includes(normalized);
-  const isFailed = ['declined', 'expired', 'cancelled', 'canceled'].includes(normalized);
+  const eventTypeHeader = req.headers.get('x-boldsign-event');
+  const parsedEvent = parseBoldSignWebhookEvent({
+    payload,
+    rawBody,
+    headerEventType: eventTypeHeader,
+  });
+
+  if (isVerificationEvent(eventTypeHeader, parsedEvent.eventType)) {
+    return NextResponse.json({ received: true, verification: true }, { status: 200 });
+  }
+
+  const eventRecord = await createBoldSignWebhookEvent({
+    boldSignEventId: parsedEvent.eventId,
+    eventType: parsedEvent.eventType,
+    objectType: parsedEvent.objectType,
+    templateId: parsedEvent.templateId,
+    documentId: parsedEvent.documentId,
+    eventTimestamp: parsedEvent.eventTimestamp,
+    signatureTimestamp: signatureVerification.signatureTimestamp,
+    payload,
+    headers: {
+      event: eventTypeHeader,
+      signature: signatureHeader,
+    },
+  });
+
+  if (eventRecord.duplicate) {
+    return NextResponse.json({ received: true, duplicate: true }, { status: 200 });
+  }
+
+  if (isAuthEventType(parsedEvent.eventType) || !shouldProcessBoldSignEvent(parsedEvent.eventType)) {
+    if (eventRecord.event?.id) {
+      await updateBoldSignWebhookEventStatus({
+        id: eventRecord.event.id,
+        status: 'PROCESSED',
+      });
+    }
+    return NextResponse.json({ received: true, ignored: true }, { status: 200 });
+  }
 
   try {
-    if (isSigned) {
-      await prisma.signedDocuments.updateMany({
-        where: { signedDocumentId: documentId },
-        data: { status: 'SIGNED', signedAt: now.toISOString(), updatedAt: now },
+    await processBoldSignWebhookEvent(parsedEvent);
+    if (eventRecord.event?.id) {
+      await updateBoldSignWebhookEventStatus({
+        id: eventRecord.event.id,
+        status: 'PROCESSED',
       });
-
-      const signedRows = await prisma.signedDocuments.findMany({
-        where: { signedDocumentId: documentId },
-        select: {
-          eventId: true,
-          hostId: true,
-          signerRole: true,
-        },
-      });
-      for (const row of signedRows) {
-        if (!row.eventId || !row.hostId) {
-          continue;
-        }
-        if (row.signerRole !== 'parent_guardian' && row.signerRole !== 'child') {
-          continue;
-        }
-        await syncChildRegistrationConsentStatus({
-          eventId: row.eventId,
-          childUserId: row.hostId,
-        });
-      }
     }
-
-    const registrationUpdate: Record<string, any> = {
-      consentStatus: normalized,
-      updatedAt: now,
-    };
-    if (isSigned) {
-      registrationUpdate.status = 'ACTIVE';
-    } else if (isFailed) {
-      registrationUpdate.status = 'CONSENTFAILED';
-    }
-    await prisma.eventRegistrations.updateMany({
-      where: { consentDocumentId: documentId },
-      data: registrationUpdate,
-    });
+    return NextResponse.json({ received: true }, { status: 200 });
   } catch (error) {
-    console.error('Failed to process document webhook', error);
-  }
+    console.error('Failed to process BoldSign webhook event', {
+      eventId: parsedEvent.eventId,
+      eventType: parsedEvent.eventType,
+      error,
+    });
 
-  return NextResponse.json({ received: true }, { status: 200 });
+    if (eventRecord.event?.id) {
+      await updateBoldSignWebhookEventStatus({
+        id: eventRecord.event.id,
+        status: 'FAILED',
+        error: error instanceof Error ? error.message : 'Failed to process webhook event.',
+      });
+    }
+
+    return NextResponse.json(
+      {
+        received: false,
+        error: 'Failed to process webhook event.',
+      },
+      { status: 500 },
+    );
+  }
 }

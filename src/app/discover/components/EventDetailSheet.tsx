@@ -335,6 +335,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [currentSignIndex, setCurrentSignIndex] = useState(0);
     const [pendingJoin, setPendingJoin] = useState<JoinIntent | null>(null);
     const [pendingSignedDocumentId, setPendingSignedDocumentId] = useState<string | null>(null);
+    const [pendingSignatureOperationId, setPendingSignatureOperationId] = useState<string | null>(null);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [password, setPassword] = useState('');
     const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -695,8 +696,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                         (team) => (team.sport || '').trim().toLowerCase() === normalizedTargetSport
                     )
                     : userTeamsAll;
+                const managerTeams = relevantTeams.filter((team) => normalizeUserId(team.managerId) === user.$id);
                 if (!cancelled) {
-                    setUserTeams(relevantTeams);
+                    setUserTeams(managerTeams);
                 }
             } catch (error) {
                 console.error('Failed to load user teams:', error);
@@ -845,6 +847,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setCurrentSignIndex(0);
             setPendingJoin(null);
             setPendingSignedDocumentId(null);
+            setPendingSignatureOperationId(null);
             setShowPasswordModal(false);
             setShowJoinChoiceModal(false);
             setShowCapacityBreakdown(false);
@@ -981,6 +984,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setPassword('');
         setPasswordError(null);
         setPendingSignedDocumentId(null);
+        setPendingSignatureOperationId(null);
         setShowPasswordModal(true);
         return true;
     }, [authUser?.email, currentEvent, user]);
@@ -1286,6 +1290,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setSignLinks(links);
             setCurrentSignIndex(0);
             setPendingSignedDocumentId(null);
+            setPendingSignatureOperationId(null);
             setShowPasswordModal(false);
             setPassword('');
             setShowSignModal(true);
@@ -1311,7 +1316,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         documentId: string;
         type: SignStep['type'];
         signerContext?: SignStep['signerContext'];
-    }) => {
+    }): Promise<{ operationId?: string; syncStatus?: string }> => {
         if (!user || !currentEvent) {
             throw new Error('User and event are required to sign documents.');
         }
@@ -1343,6 +1348,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!response.ok || result?.error) {
             throw new Error(result?.error || 'Failed to record signature.');
         }
+        return {
+            operationId: typeof result?.operationId === 'string' ? result.operationId : undefined,
+            syncStatus: typeof result?.syncStatus === 'string' ? result.syncStatus : undefined,
+        };
     }, [currentEvent, pendingJoin?.childId, pendingJoin?.mode, user]);
 
     const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
@@ -1353,7 +1362,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
             return;
         }
-        if (pendingSignedDocumentId || recordingSignature) {
+        if (pendingSignedDocumentId || pendingSignatureOperationId || recordingSignature) {
             return;
         }
         if (!currentLink.documentId) {
@@ -1364,7 +1373,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setRecordingSignature(true);
         setJoinNotice('Confirming signature...');
         try {
-            await recordSignature({
+            const signatureResult = await recordSignature({
                 templateId: currentLink.templateId,
                 documentId: currentLink.documentId,
                 type: currentLink.type,
@@ -1372,6 +1381,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             });
             setShowSignModal(false);
             setPendingSignedDocumentId(currentLink.documentId);
+            setPendingSignatureOperationId(
+                signatureResult.operationId || currentLink.operationId || null,
+            );
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to record signature.');
             setShowSignModal(false);
@@ -1382,14 +1394,14 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         } finally {
             setRecordingSignature(false);
         }
-    }, [currentSignIndex, pendingSignedDocumentId, recordSignature, recordingSignature, signLinks]);
+    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, signLinks]);
 
     const handleTextAcceptance = useCallback(async () => {
         const currentLink = signLinks[currentSignIndex];
         if (!currentLink || currentLink.type !== 'TEXT') {
             return;
         }
-        if (!textAccepted || pendingSignedDocumentId || recordingSignature) {
+        if (!textAccepted || pendingSignedDocumentId || pendingSignatureOperationId || recordingSignature) {
             return;
         }
 
@@ -1397,7 +1409,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setRecordingSignature(true);
         setJoinNotice('Confirming signature...');
         try {
-            await recordSignature({
+            const signatureResult = await recordSignature({
                 templateId: currentLink.templateId,
                 documentId,
                 type: currentLink.type,
@@ -1405,6 +1417,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             });
             setShowSignModal(false);
             setPendingSignedDocumentId(documentId);
+            setPendingSignatureOperationId(
+                signatureResult.operationId || currentLink.operationId || null,
+            );
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to record signature.');
             setShowSignModal(false);
@@ -1415,7 +1430,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         } finally {
             setRecordingSignature(false);
         }
-    }, [currentSignIndex, pendingSignedDocumentId, recordSignature, recordingSignature, signLinks, textAccepted]);
+    }, [currentSignIndex, pendingSignatureOperationId, pendingSignedDocumentId, recordSignature, recordingSignature, signLinks, textAccepted]);
 
     useEffect(() => {
         setTextAccepted(false);
@@ -1456,7 +1471,92 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     }, [handleSignedDocument, showSignModal]);
 
     useEffect(() => {
+        if (!pendingSignatureOperationId) {
+            return;
+        }
+        if (!currentEvent || !user) {
+            return;
+        }
+
+        let cancelled = false;
+        const startedAt = Date.now();
+        const intervalMs = 1500;
+        const timeoutMs = 90_000;
+
+        const poll = async () => {
+            try {
+                const operation = await boldsignService.getOperationStatus(pendingSignatureOperationId);
+                if (cancelled) {
+                    return;
+                }
+
+                const status = String(operation.status ?? '').toUpperCase();
+                if (status === 'CONFIRMED') {
+                    const nextIndex = currentSignIndex + 1;
+                    if (nextIndex < signLinks.length) {
+                        setCurrentSignIndex(nextIndex);
+                        setPendingSignedDocumentId(null);
+                        setPendingSignatureOperationId(null);
+                        setShowSignModal(true);
+                        setJoinNotice(null);
+                        return;
+                    }
+
+                    setPendingSignedDocumentId(null);
+                    setPendingSignatureOperationId(null);
+                    setSignLinks([]);
+                    setCurrentSignIndex(0);
+                    setShowSignModal(false);
+                    setJoinNotice(null);
+                    const intent = pendingJoin;
+                    setPendingJoin(null);
+                    if (intent) {
+                        await finalizeJoin(intent);
+                    }
+                    setJoining(false);
+                    setJoiningChildFreeAgent(false);
+                    return;
+                }
+
+                if (status === 'FAILED' || status === 'FAILED_RETRYABLE' || status === 'TIMED_OUT') {
+                    throw new Error(operation.error || 'Failed to synchronize signature status.');
+                }
+
+                if (Date.now() - startedAt > timeoutMs) {
+                    throw new Error('Signature sync is delayed. Please try again shortly.');
+                }
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+                const message = error instanceof Error ? error.message : 'Failed to confirm signature.';
+                setJoinError(message || 'Failed to confirm signature.');
+                setPendingSignedDocumentId(null);
+                setPendingSignatureOperationId(null);
+                setShowSignModal(false);
+                setSignLinks([]);
+                setCurrentSignIndex(0);
+                setPendingJoin(null);
+                setJoining(false);
+                setJoiningChildFreeAgent(false);
+            }
+        };
+
+        const interval = window.setInterval(() => {
+            void poll();
+        }, intervalMs);
+        void poll();
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [currentEvent, currentSignIndex, finalizeJoin, pendingJoin, pendingSignatureOperationId, signLinks.length, user]);
+
+    useEffect(() => {
         if (!pendingSignedDocumentId || !currentEvent || !user) {
+            return;
+        }
+        if (pendingSignatureOperationId) {
             return;
         }
 
@@ -1515,7 +1615,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             cancelled = true;
             window.clearInterval(interval);
         };
-    }, [currentEvent, currentSignIndex, finalizeJoin, pendingJoin, pendingSignedDocumentId, signLinks, user]);
+    }, [currentEvent, currentSignIndex, finalizeJoin, pendingJoin, pendingSignatureOperationId, pendingSignedDocumentId, signLinks, user]);
 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;
@@ -1832,12 +1932,56 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
     };
 
+    const handleWithdrawTeam = async () => {
+        if (!user || !currentEvent || !selectedTeamId) return;
+        if (eventHasStarted) {
+            setJoinError('This event has already started. Joining is closed.');
+            return;
+        }
+
+        setJoining(true);
+        setJoinError(null);
+        setJoinNotice(null);
+
+        const selectedTeam = userTeams.find((team) => team.$id === selectedTeamId) || ({ $id: selectedTeamId } as Team);
+        const registeredTeam = teams.find((team) => team.$id === selectedTeamId || team.parentTeamId === selectedTeamId) || null;
+        const shouldRequestRefund = !isFreeForUser && selectedDivisionBilling.priceCents > 0;
+
+        try {
+            if (shouldRequestRefund) {
+                await paymentService.requestTeamRefund(currentEvent.$id, registeredTeam?.$id ?? selectedTeamId);
+            }
+
+            await paymentService.leaveEvent(
+                user,
+                currentEvent,
+                selectedTeam,
+                undefined,
+                undefined,
+                undefined,
+                JOIN_API_TIMEOUT_MS,
+            );
+
+            setJoinNotice(
+                shouldRequestRefund
+                    ? 'Team withdrawn and refund request submitted.'
+                    : 'Team withdrawn from this event.',
+            );
+            await loadEventDetails();
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to withdraw team');
+        } finally {
+            setJoining(false);
+        }
+    };
+
     const cancelSigning = useCallback(() => {
         setShowSignModal(false);
         setSignLinks([]);
         setCurrentSignIndex(0);
         setPendingJoin(null);
         setPendingSignedDocumentId(null);
+        setPendingSignatureOperationId(null);
         setShowPasswordModal(false);
         setPassword('');
         setPasswordError(null);
@@ -2000,14 +2144,21 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         : null;
     const canShowScheduleButton = isEventHost && !renderInline;
     const scheduleButtonLabel = isEventHost ? 'Manage Event' : 'View Schedule';
-    const selectedTeam = selectedTeamId
-        ? userTeams.find((team) => team.$id === selectedTeamId) ?? null
+    const selectedTeamRegistration = selectedTeamId
+        ? teams.find((team) => team.$id === selectedTeamId || team.parentTeamId === selectedTeamId) ?? null
         : null;
+    const selectedTeamIsRegistered = Boolean(
+        selectedTeamRegistration
+        || (
+            selectedTeamId
+            && collectUniqueUserIds(currentEvent.teamIds).includes(selectedTeamId)
+        ),
+    );
     const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
     const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
     const showSelfWaitlistActions = joinAtCapacity || isUserWaitlisted;
     const childWaitlistMode = !isTeamSignup && (joinAtCapacity || selectedChildIsWaitlisted);
-    const showTeamWaitlistActions = joinAtCapacity || selectedTeamIsWaitlisted;
+    const showTeamWaitlistActions = !selectedTeamIsRegistered && (joinAtCapacity || selectedTeamIsWaitlisted);
     const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
     const selfWaitlistJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
     const selfWaitlistLeaveDisabled = joining || eventHasStarted;
@@ -2693,7 +2844,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                     </Alert>
                                                 )}
                                                 <Button fullWidth disabled={eventHasStarted} onClick={() => setShowTeamJoinOptions(prev => !prev)}>
-                                                    {showTeamJoinOptions ? 'Hide Team Options' : 'Join as Team'}
+                                                    {showTeamJoinOptions ? 'Hide Team Options' : 'View Team Options'}
                                                 </Button>
 
                                                 {showTeamJoinOptions && (
@@ -2732,7 +2883,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 </div>
 
                                                                 {/* Join/Waitlist Button Section - Matching Hide/Show button height */}
-                                                                <div className="flex justify-center pt-2">
+                                                                <div className="flex flex-col items-center gap-2 pt-2">
                                                                     {showTeamWaitlistActions ? (
                                                                         <Button
                                                                             onClick={() => { void handleJoinTeamWaitlist(); }}
@@ -2753,11 +2904,20 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                     ) : (
                                                                         <Button
                                                                             onClick={handleJoinAsTeam}
-                                                                            disabled={joining || eventHasStarted || !selectedTeamId || confirmingPurchase || isDivisionSelectionMissing}
-                                                                            color="green"
+                                                                            disabled={
+                                                                                joining
+                                                                                || eventHasStarted
+                                                                                || !selectedTeamId
+                                                                                || confirmingPurchase
+                                                                                || isDivisionSelectionMissing
+                                                                                || selectedTeamIsRegistered
+                                                                            }
+                                                                            color={selectedTeamIsRegistered ? 'gray' : 'green'}
                                                                         >
                                                                             {eventHasStarted
                                                                                 ? 'Unavailable'
+                                                                                : selectedTeamIsRegistered
+                                                                                ? 'Already in Event'
                                                                                 : confirmingPurchase
                                                                                 ? 'Confirming purchase...'
                                                                                 : joining
@@ -2767,12 +2927,26 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                                         : 'Join Event'}
                                                                         </Button>
                                                                     )}
+                                                                    {selectedTeamIsRegistered && (
+                                                                        <Button
+                                                                            onClick={() => { void handleWithdrawTeam(); }}
+                                                                            disabled={joining || eventHasStarted || !selectedTeamId}
+                                                                            color={!isFreeForUser && selectedDivisionBilling.priceCents > 0 ? 'orange' : 'red'}
+                                                                            variant="light"
+                                                                        >
+                                                                            {joining
+                                                                                ? 'Withdrawing...'
+                                                                                : (!isFreeForUser && selectedDivisionBilling.priceCents > 0)
+                                                                                    ? 'Withdraw Team and Request Refund'
+                                                                                    : 'Withdraw Team'}
+                                                                        </Button>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         ) : (
                                                             <div className="text-center space-y-3">
                                                                 <p className="text-sm text-gray-600">
-                                                                    You have no teams for {currentEvent.sport?.name}.
+                                                                    You have no managed teams for {currentEvent.sport?.name}.
                                                                 </p>
                                                                 <Button variant="default"
                                                                     onClick={() => {

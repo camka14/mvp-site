@@ -10,6 +10,7 @@ import {
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import { canManageEvent } from '@/server/accessControl';
 import { extractDivisionTokenFromId } from '@/lib/divisionTypes';
+import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,13 @@ const normalizeEmail = (value: unknown): string | null => {
     return null;
   }
   const normalized = value.trim().toLowerCase();
+  return normalized.length ? normalized : null;
+};
+const normalizeId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
   return normalized.length ? normalized : null;
 };
 const normalizeSportKey = (value: unknown): string => {
@@ -355,10 +363,11 @@ async function updateParticipants(
       divisionTypeId: string | null;
       sport: string | null;
       playerIds: string[];
+      managerId: string | null;
     }
     | null = null;
 
-  if (teamId && mode === 'add') {
+  if (teamId) {
     const team = await prisma.teams.findUnique({
       where: { id: teamId },
       select: {
@@ -367,16 +376,26 @@ async function updateParticipants(
         divisionTypeId: true,
         sport: true,
         playerIds: true,
+        managerId: true,
       },
     });
 
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
-    teamForRegistration = {
-      ...team,
-      playerIds: normalizeUserIdList(team.playerIds),
-    };
+    const teamManagerId = normalizeId(team.managerId);
+    if (!session.isAdmin && teamManagerId !== session.userId) {
+      return NextResponse.json(
+        { error: 'Only the team manager can register or withdraw this team.' },
+        { status: 403 },
+      );
+    }
+    if (mode === 'add') {
+      teamForRegistration = {
+        ...team,
+        playerIds: normalizeUserIdList(team.playerIds),
+      };
+    }
   }
 
   if (teamForRegistration && mode === 'add') {
@@ -753,6 +772,16 @@ async function updateParticipants(
       updatedAt: new Date(),
     },
   });
+
+  if (mode === 'add' && userId && !teamId && requiredTemplateIds.length > 0) {
+    const consentDispatch = await dispatchRequiredEventDocuments({
+      eventId,
+      organizationId: event.organizationId ?? null,
+      requiredTemplateIds,
+      participantUserId: userId,
+    });
+    warnings.push(...consentDispatch.errors);
+  }
 
   if (teamId) {
     if (mode === 'add') {

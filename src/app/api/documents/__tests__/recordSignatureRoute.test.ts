@@ -30,11 +30,25 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const syncChildRegistrationConsentStatusMock = jest.fn();
+const findLatestBoldSignOperationMock = jest.fn();
+const createOrUpdateBoldSignOperationMock = jest.fn();
+const updateBoldSignOperationByIdMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/lib/childConsentProgress', () => ({
   syncChildRegistrationConsentStatus: syncChildRegistrationConsentStatusMock,
+}));
+jest.mock('@/lib/boldsignSyncOperations', () => ({
+  BOLDSIGN_OPERATION_STATUSES: {
+    PENDING_WEBHOOK: 'PENDING_WEBHOOK',
+  },
+  BOLDSIGN_OPERATION_TYPES: {
+    DOCUMENT_SEND: 'DOCUMENT_SEND',
+  },
+  findLatestBoldSignOperation: (...args: any[]) => findLatestBoldSignOperationMock(...args),
+  createOrUpdateBoldSignOperation: (...args: any[]) => createOrUpdateBoldSignOperationMock(...args),
+  updateBoldSignOperationById: (...args: any[]) => updateBoldSignOperationByIdMock(...args),
 }));
 
 import { POST } from '@/app/api/documents/record-signature/route';
@@ -57,9 +71,24 @@ describe('POST /api/documents/record-signature', () => {
     prismaMock.templateDocuments.findUnique.mockResolvedValue({ signOnce: false });
     prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     syncChildRegistrationConsentStatusMock.mockResolvedValue(undefined);
+    findLatestBoldSignOperationMock.mockResolvedValue({
+      id: 'op_1',
+      status: 'PENDING_WEBHOOK',
+      payload: {},
+      templateDocumentId: 'template_1',
+      eventId: 'event_1',
+    });
+    createOrUpdateBoldSignOperationMock.mockResolvedValue({
+      id: 'op_1',
+      status: 'PENDING_WEBHOOK',
+      payload: {},
+      templateDocumentId: 'template_1',
+      eventId: 'event_1',
+    });
+    updateBoldSignOperationByIdMock.mockResolvedValue(undefined);
   });
 
-  it('syncs consent status for the current event for non sign-once templates', async () => {
+  it('acknowledges PDF callbacks without mutating signedDocuments directly', async () => {
     const response = await POST(jsonPost('http://localhost/api/documents/record-signature', {
       templateId: 'template_1',
       documentId: 'document_1',
@@ -70,36 +99,18 @@ describe('POST /api/documents/record-signature', () => {
       user: { email: 'parent@example.com' },
       type: 'PDF',
     }));
+    const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(syncChildRegistrationConsentStatusMock).toHaveBeenCalledTimes(1);
-    expect(syncChildRegistrationConsentStatusMock).toHaveBeenCalledWith({
-      eventId: 'event_1',
-      childUserId: 'child_1',
-    });
-  });
-
-  it('stores PDF callback attempts as unsigned until webhook confirmation', async () => {
-    await POST(jsonPost('http://localhost/api/documents/record-signature', {
-      templateId: 'template_1',
-      documentId: 'document_1',
-      eventId: 'event_1',
-      userId: 'parent_1',
-      childUserId: 'child_1',
-      signerContext: 'parent_guardian',
-      user: { email: 'parent@example.com' },
-      type: 'PDF',
+    expect(json).toEqual(expect.objectContaining({
+      ok: true,
+      operationId: 'op_1',
+      syncStatus: 'PENDING_WEBHOOK',
     }));
-
-    expect(prismaMock.signedDocuments.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          status: 'UNSIGNED',
-          signedAt: null,
-          signerRole: 'parent_guardian',
-        }),
-      }),
-    );
+    expect(prismaMock.signedDocuments.create).not.toHaveBeenCalled();
+    expect(prismaMock.signedDocuments.update).not.toHaveBeenCalled();
+    expect(syncChildRegistrationConsentStatusMock).not.toHaveBeenCalled();
+    expect(updateBoldSignOperationByIdMock).toHaveBeenCalled();
   });
 
   it('stores text acknowledgements as signed immediately', async () => {
@@ -125,7 +136,7 @@ describe('POST /api/documents/record-signature', () => {
     );
   });
 
-  it('does not downgrade an already signed row when receiving a PDF callback', async () => {
+  it('does not downgrade an already signed text row when receiving another text callback', async () => {
     prismaMock.signedDocuments.findFirst.mockResolvedValue({
       id: 'signed_1',
       organizationId: 'org_1',
@@ -141,7 +152,7 @@ describe('POST /api/documents/record-signature', () => {
       childUserId: 'child_1',
       signerContext: 'parent_guardian',
       user: { email: 'parent@example.com' },
-      type: 'PDF',
+      type: 'TEXT',
     }));
 
     expect(prismaMock.signedDocuments.update).toHaveBeenCalledWith(
@@ -155,7 +166,7 @@ describe('POST /api/documents/record-signature', () => {
     );
   });
 
-  it('syncs all pending/active child registrations when a sign-once template is signed', async () => {
+  it('syncs all pending/active child registrations when a sign-once text template is signed', async () => {
     prismaMock.templateDocuments.findUnique.mockResolvedValue({ signOnce: true });
     prismaMock.eventRegistrations.findMany.mockResolvedValue([
       { eventId: 'event_1', parentId: 'parent_1' },
@@ -172,7 +183,7 @@ describe('POST /api/documents/record-signature', () => {
       childUserId: 'child_1',
       signerContext: 'parent_guardian',
       user: { email: 'parent@example.com' },
-      type: 'PDF',
+      type: 'TEXT',
     }));
 
     expect(response.status).toBe(200);

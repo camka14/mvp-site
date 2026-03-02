@@ -25,10 +25,14 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const withLegacyFieldsMock = jest.fn((row) => ({ ...row, $id: row.id }));
+const dispatchRequiredEventDocumentsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/legacyFormat', () => ({ withLegacyFields: withLegacyFieldsMock }));
+jest.mock('@/lib/eventConsentDispatch', () => ({
+  dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
+}));
 
 import { GET } from '@/app/api/family/join-requests/route';
 import { PATCH } from '@/app/api/family/join-requests/[registrationId]/route';
@@ -44,6 +48,12 @@ describe('family join requests routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'parent_1', isAdmin: false });
+    dispatchRequiredEventDocumentsMock.mockResolvedValue({
+      sentDocumentIds: [],
+      firstDocumentId: null,
+      missingChildEmail: false,
+      errors: [],
+    });
   });
 
   it('lists pending guardian approval requests', async () => {
@@ -93,6 +103,12 @@ describe('family join requests routes', () => {
   });
 
   it('approves a pending request and marks child email requirement when missing', async () => {
+    dispatchRequiredEventDocumentsMock.mockResolvedValueOnce({
+      sentDocumentIds: [],
+      firstDocumentId: null,
+      missingChildEmail: true,
+      errors: [],
+    });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue({
       id: 'reg_1',
       eventId: 'event_1',

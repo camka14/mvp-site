@@ -7,6 +7,7 @@ import {
   resolveEventDivisionSelection,
   validateRegistrantAgeForSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
+import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       registrationByDivisionType: true,
       divisions: true,
       requiredTemplateIds: true,
+      organizationId: true,
     },
   });
   if (!event) {
@@ -152,22 +154,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     );
   }
 
+  const needsConsent = Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0;
+  const consentDispatch = needsConsent
+    ? await dispatchRequiredEventDocuments({
+      eventId,
+      organizationId: event.organizationId ?? null,
+      requiredTemplateIds: event.requiredTemplateIds,
+      participantUserId: session.userId,
+    })
+    : null;
+  const consentStatus = !needsConsent
+    ? null
+    : (consentDispatch?.errors.length ?? 0) > 0
+      ? 'send_failed'
+      : 'sent';
+
   const registration = await prisma.eventRegistrations.create({
     data: {
       id: crypto.randomUUID(),
       eventId,
       registrantId: session.userId,
       registrantType: 'SELF',
-      status: Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0 ? 'PENDINGCONSENT' : 'ACTIVE',
+      status: needsConsent ? 'PENDINGCONSENT' : 'ACTIVE',
       ageAtEvent,
       divisionId: divisionSelection.selection.divisionId,
       divisionTypeId: divisionSelection.selection.divisionTypeId,
       divisionTypeKey: divisionSelection.selection.divisionTypeKey,
+      consentDocumentId: consentDispatch?.firstDocumentId ?? null,
+      consentStatus,
       createdBy: session.userId,
       createdAt: new Date(),
       updatedAt: new Date(),
     },
   });
 
-  return NextResponse.json({ registration: withLegacyFields(registration) }, { status: 200 });
+  return NextResponse.json({
+    registration: withLegacyFields(registration),
+    warnings: consentDispatch?.errors.length ? consentDispatch.errors : undefined,
+  }, { status: 200 });
 }

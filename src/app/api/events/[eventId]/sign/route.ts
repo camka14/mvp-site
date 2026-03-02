@@ -8,6 +8,8 @@ import {
   isBoldSignConfigured,
   sendDocumentFromTemplate,
 } from '@/lib/boldsignServer';
+import { createDocumentSendOperation } from '@/lib/boldsignWebhookSync';
+import { BOLDSIGN_OPERATION_STATUSES, findLatestBoldSignOperation } from '@/lib/boldsignSyncOperations';
 import {
   getRequiredSignerTypeLabel,
   normalizeRequiredSignerType,
@@ -432,6 +434,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     requiredSignerType: string;
     requiredSignerLabel: string;
     signerContext: SignerContext;
+    operationId?: string;
+    syncStatus?: string;
   }> = [];
 
   try {
@@ -481,6 +485,50 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           })
           : Promise.resolve([]),
       ]);
+      let operationDocumentId: string | undefined;
+      const operationDelegate = (prisma as unknown as {
+        boldSignSyncOperations?: {
+          findFirst?: (args: unknown) => Promise<{ documentId?: string | null } | null>;
+        };
+      }).boldSignSyncOperations;
+      if (operationDelegate?.findFirst) {
+        const activeStatuses = [
+          BOLDSIGN_OPERATION_STATUSES.PENDING_WEBHOOK,
+          BOLDSIGN_OPERATION_STATUSES.PENDING_RECONCILE,
+          BOLDSIGN_OPERATION_STATUSES.CONFIRMED,
+        ];
+        const strictScopeOperation = await operationDelegate.findFirst({
+          where: {
+            operationType: 'DOCUMENT_SEND',
+            eventId,
+            templateDocumentId: template.id,
+            userId: signerUserId,
+            childUserId: scopedChildUserId,
+            signerRole: signerContext,
+            status: { in: activeStatuses },
+            documentId: { not: null },
+          },
+          orderBy: { updatedAt: 'desc' },
+          select: { documentId: true },
+        });
+        operationDocumentId = pickString(strictScopeOperation?.documentId);
+
+        if (!operationDocumentId && scopedChildUserId) {
+          const sharedScopeOperation = await operationDelegate.findFirst({
+            where: {
+              operationType: 'DOCUMENT_SEND',
+              eventId,
+              templateDocumentId: template.id,
+              childUserId: scopedChildUserId,
+              status: { in: activeStatuses },
+              documentId: { not: null },
+            },
+            orderBy: { updatedAt: 'desc' },
+            select: { documentId: true },
+          });
+          operationDocumentId = pickString(sharedScopeOperation?.documentId);
+        }
+      }
       const signedRow = existingSignerRows.find((row) => isSignedDocumentStatus(row.status));
       if (signedRow) {
         continue;
@@ -491,6 +539,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       const pendingDocumentId = pickString(
         signerRowWithDocument?.signedDocumentId,
         sharedRowWithDocument?.signedDocumentId,
+        operationDocumentId,
       );
 
       const templateType = template.type === 'TEXT' ? 'TEXT' : 'PDF';
@@ -677,58 +726,50 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         return sent.documentId;
       };
 
-      let signerRowIdToUpdate = signerRowToReuse?.id;
-      const upsertSignerRow = async (nextDocumentId: string): Promise<void> => {
-        const now = new Date();
-        if (signerRowIdToUpdate) {
-          await prisma.signedDocuments.update({
-            where: { id: signerRowIdToUpdate },
-            data: {
-              updatedAt: now,
-              signedDocumentId: nextDocumentId,
-              status: 'UNSIGNED',
-              userId: signerUserId,
-              hostId: scopedChildUserId,
-              organizationId: event.organizationId ?? null,
-              eventId,
-              signerEmail: selectedRoleAssignment.signerEmail,
-              roleIndex: selectedRoleAssignment.roleIndex,
-              signerRole: signerContext,
-            },
-          });
-          return;
-        }
-
-        const createdRow = await prisma.signedDocuments.create({
-          data: {
-            id: crypto.randomUUID(),
-            createdAt: now,
-            updatedAt: now,
-            signedDocumentId: nextDocumentId,
-            templateId: template.id,
-            userId: signerUserId,
-            documentName: template.title ?? 'Signed Document',
-            hostId: scopedChildUserId,
-            organizationId: event.organizationId ?? null,
-            eventId,
-            status: 'UNSIGNED',
-            signedAt: null,
-            signerEmail: selectedRoleAssignment.signerEmail,
-            roleIndex: selectedRoleAssignment.roleIndex,
-            signerRole: signerContext,
-            ipAddress: null,
-            requestId: null,
-          },
-          select: { id: true },
-        });
-        signerRowIdToUpdate = createdRow.id;
-      };
-
       let documentId = pendingDocumentId;
       if (!documentId) {
         documentId = await sendFreshDocument();
       }
-      await upsertSignerRow(documentId);
+
+      const buildOperationIdempotencyKey = (nextDocumentId: string): string => {
+        return [
+          'document-send',
+          eventId,
+          template.id,
+          nextDocumentId,
+          signerContext,
+          signerUserId,
+          scopedChildUserId ?? '',
+        ].join(':');
+      };
+
+      let operation = await findLatestBoldSignOperation({
+        documentId,
+      });
+      if (!operation) {
+        operation = await createDocumentSendOperation({
+          idempotencyKey: buildOperationIdempotencyKey(documentId),
+          organizationId: event.organizationId ?? null,
+          eventId,
+          templateDocumentId: template.id,
+          templateId: boldSignTemplateId,
+          documentId,
+          userId: signerUserId,
+          childUserId: scopedChildUserId,
+          signerRole: signerContext,
+          signerEmail: selectedRoleAssignment.signerEmail,
+          roleIndex: selectedRoleAssignment.roleIndex,
+          payload: {
+            templateDocumentId: template.id,
+            templateTitle: template.title,
+            requiredSignerType,
+            requiredSignerLabel,
+            signOnce: template.signOnce ?? false,
+            signerContext,
+            roleAssignments,
+          },
+        });
+      }
 
       let embedded;
       try {
@@ -742,31 +783,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           throw embeddedError;
         }
 
-        // Recover from stale/incorrect signer metadata by issuing a fresh document and
-        // re-pointing all unsigned rows in this child/template scope.
         documentId = await sendFreshDocument();
-        const now = new Date();
-        const unsignedSharedRows = existingSharedRows.filter((row) => !isSignedDocumentStatus(row.status));
-        if (unsignedSharedRows.length > 0) {
-          await Promise.all(unsignedSharedRows.map((row) => {
-            const rowContext = resolveSignerContext(row.signerRole);
-            const rowAssignment = roleAssignments.find((assignment) => (
-              roleMatchesSignerContext(assignment.signerRole, rowContext)
-            )) ?? selectedRoleAssignment;
-            return prisma.signedDocuments.update({
-              where: { id: row.id },
-              data: {
-                updatedAt: now,
-                signedDocumentId: documentId,
-                status: 'UNSIGNED',
-                signerEmail: rowAssignment.signerEmail,
-                roleIndex: rowAssignment.roleIndex,
-                signerRole: rowContext,
-              },
-            });
-          }));
-        }
-        await upsertSignerRow(documentId);
+        operation = await createDocumentSendOperation({
+          idempotencyKey: buildOperationIdempotencyKey(documentId),
+          organizationId: event.organizationId ?? null,
+          eventId,
+          templateDocumentId: template.id,
+          templateId: boldSignTemplateId,
+          documentId,
+          userId: signerUserId,
+          childUserId: scopedChildUserId,
+          signerRole: signerContext,
+          signerEmail: selectedRoleAssignment.signerEmail,
+          roleIndex: selectedRoleAssignment.roleIndex,
+          payload: {
+            templateDocumentId: template.id,
+            templateTitle: template.title,
+            requiredSignerType,
+            requiredSignerLabel,
+            signOnce: template.signOnce ?? false,
+            signerContext,
+            roleAssignments,
+          },
+        });
         embedded = await getEmbeddedSignLink({
           documentId,
           signerEmail: selectedRoleAssignment.signerEmail,
@@ -784,6 +823,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         requiredSignerType,
         requiredSignerLabel,
         signerContext,
+        operationId: operation?.id,
+        syncStatus: operation?.status ?? BOLDSIGN_OPERATION_STATUSES.PENDING_WEBHOOK,
       });
     }
   } catch (error) {

@@ -43,10 +43,14 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
+const dispatchRequiredEventDocumentsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/accessControl', () => ({ canManageEvent: (...args: any[]) => canManageEventMock(...args) }));
+jest.mock('@/lib/eventConsentDispatch', () => ({
+  dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
+}));
 
 import { DELETE, POST } from '@/app/api/events/[eventId]/participants/route';
 
@@ -68,6 +72,12 @@ describe('POST /api/events/[eventId]/participants', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    dispatchRequiredEventDocumentsMock.mockResolvedValue({
+      sentDocumentIds: [],
+      firstDocumentId: null,
+      missingChildEmail: false,
+      errors: [],
+    });
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
@@ -163,6 +173,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisionTypeId: 'open',
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
+      managerId: 'user_1',
     });
 
     const response = await POST(
@@ -175,6 +186,43 @@ describe('POST /api/events/[eventId]/participants', () => {
 
     expect(response.status).toBe(409);
     expect(payload.error).toBe('Team is already registered for this event.');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('forbids team registration when session user is not the team manager', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'captain_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['captain_1', 'user_2'],
+      managerId: 'manager_1',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        teamId: 'team_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Only the team manager can register or withdraw this team.');
     expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
@@ -337,6 +385,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisionTypeId: 'advanced',
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
+      managerId: 'user_1',
     });
     prismaMock.events.update.mockResolvedValue({
       id: 'event_1',
@@ -424,6 +473,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisionTypeId: 'open',
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
+      managerId: 'user_1',
     });
     prismaMock.events.update.mockResolvedValueOnce({
       id: 'event_1',
@@ -468,6 +518,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisionTypeId: null,
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
+      managerId: 'user_1',
     });
     prismaMock.events.update.mockResolvedValue({
       id: 'event_1',
@@ -500,6 +551,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisionTypeId: 'open',
       sport: 'soccer',
       playerIds: ['user_1', 'user_2'],
+      managerId: 'user_1',
     });
 
     const response = await POST(
@@ -524,6 +576,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisionTypeId: 'open',
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
+      managerId: 'user_1',
     });
     prismaMock.events.update.mockResolvedValue({
       id: 'event_1',
@@ -582,6 +635,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisionTypeId: 'open',
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
+      managerId: 'user_1',
     });
     prismaMock.userData.findMany.mockResolvedValueOnce([
       {
@@ -750,6 +804,44 @@ describe('DELETE /api/events/[eventId]/participants', () => {
 
     expect(response.status).toBe(403);
     expect(payload.error).toBe('Forbidden');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('forbids removing a team when session user is not the team manager', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'captain_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      eventType: 'EVENT',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['team_1'],
+      waitListIds: [],
+      freeAgentIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['captain_1'],
+      managerId: 'manager_1',
+    });
+
+    const response = await DELETE(
+      jsonDelete('http://localhost/api/events/event_1/participants', { teamId: 'team_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Only the team manager can register or withdraw this team.');
     expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import {
   resolveEventDivisionSelection,
   validateRegistrantAgeForSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
+import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       registrationByDivisionType: true,
       divisions: true,
       requiredTemplateIds: true,
+      organizationId: true,
     },
   });
   if (!event) {
@@ -109,12 +111,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   const childAgeAtEvent = childAgeCheck.ageAtEvent;
 
   const needsConsent = Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0;
-  const consentDocumentId = needsConsent ? crypto.randomUUID() : null;
+  const consentDispatch = needsConsent
+    ? await dispatchRequiredEventDocuments({
+      eventId,
+      organizationId: event.organizationId ?? null,
+      requiredTemplateIds: event.requiredTemplateIds,
+      parentUserId: session.userId,
+      childUserId: childId,
+    })
+    : null;
+  const consentDocumentId = consentDispatch?.firstDocumentId ?? null;
   const consentStatus = !needsConsent
     ? null
-    : childEmail
-      ? 'sent'
-      : 'child_email_required';
+    : consentDispatch?.missingChildEmail
+      ? 'child_email_required'
+      : (consentDispatch?.errors.length ?? 0) > 0
+        ? 'send_failed'
+        : 'sent';
 
   const existingRegistration = await prisma.eventRegistrations.findFirst({
     where: {
@@ -130,11 +143,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   });
 
   if (existingRegistration) {
+    const warnings = [
+      ...(!childEmail && childAgeAtEvent < 13
+        ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
+        : []),
+      ...(consentDispatch?.errors ?? []),
+    ].filter((value) => value.trim().length > 0);
+
     return NextResponse.json({
       registration: withLegacyFields(existingRegistration),
       consent: needsConsent
         ? {
-            documentId: existingRegistration.consentDocumentId ?? consentDocumentId,
+            documentId: existingRegistration.consentDocumentId ?? consentDocumentId ?? null,
             status: existingRegistration.consentStatus ?? consentStatus ?? 'sent',
             parentSignLink: null,
             childSignLink: null,
@@ -142,9 +162,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
             requiresChildEmail: !childEmail,
           }
         : undefined,
-      warnings: !childEmail && childAgeAtEvent < 13
-        ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
-        : undefined,
+      warnings: warnings.length ? warnings : undefined,
     }, { status: 200 });
   }
 
@@ -168,11 +186,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     },
   });
 
+  const warnings = [
+    ...(!childEmail && childAgeAtEvent < 13
+      ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
+      : []),
+    ...(consentDispatch?.errors ?? []),
+  ].filter((value) => value.trim().length > 0);
+
   return NextResponse.json({
     registration: withLegacyFields(registration),
     consent: needsConsent
         ? {
-          documentId: consentDocumentId,
+          documentId: consentDocumentId ?? null,
           status: consentStatus ?? 'sent',
           parentSignLink: null,
           childSignLink: null,
@@ -180,8 +205,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           requiresChildEmail: !childEmail,
         }
       : undefined,
-    warnings: !childEmail && childAgeAtEvent < 13
-      ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
-      : undefined,
+    warnings: warnings.length ? warnings : undefined,
   }, { status: 200 });
 }

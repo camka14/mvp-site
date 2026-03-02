@@ -9,6 +9,11 @@ import {
   isBoldSignConfigured,
 } from '@/lib/boldsignServer';
 import {
+  BOLDSIGN_OPERATION_STATUSES,
+  BOLDSIGN_OPERATION_TYPES,
+  createOrUpdateBoldSignOperation,
+} from '@/lib/boldsignSyncOperations';
+import {
   getBoldSignRolesForRequiredSignerType,
   normalizeRequiredSignerType,
   type TemplateRequiredSignerType,
@@ -223,29 +228,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? templateSession.roles
     : presetRoles;
 
-  const record = await prisma.templateDocuments.create({
-    data: {
-      id: crypto.randomUUID(),
-      templateId: templateSession.templateId,
-      type: 'PDF',
+  const projectedTemplateDocumentId = crypto.randomUUID();
+  const operation = await createOrUpdateBoldSignOperation({
+    operationType: BOLDSIGN_OPERATION_TYPES.TEMPLATE_CREATE,
+    status: BOLDSIGN_OPERATION_STATUSES.PENDING_WEBHOOK,
+    idempotencyKey: `template-create:${templateSession.templateId}`,
+    organizationId: id,
+    templateDocumentId: projectedTemplateDocumentId,
+    templateId: templateSession.templateId,
+    userId: session.userId,
+    payload: {
+      templateDocumentId: projectedTemplateDocumentId,
       organizationId: id,
       title,
       description,
       signOnce,
       requiredSignerType,
-      status: 'ACTIVE',
       createdBy,
-      roleIndex: storedRoles[0]?.roleIndex ?? null,
-      roleIndexes: storedRoles.map((role) => role.roleIndex),
-      signerRoles: storedRoles.map((role) => role.signerRole),
-      content: null,
-      createdAt: now,
-      updatedAt: now,
+      roles: storedRoles,
+      type: 'PDF',
+      createUrl: templateSession.createUrl,
     },
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
 
   return NextResponse.json(
-    { template: withLegacyFields(record), createUrl: templateSession.createUrl },
-    { status: 201 },
+    {
+      operationId: operation.id,
+      syncStatus: BOLDSIGN_OPERATION_STATUSES.PENDING_WEBHOOK,
+      createUrl: templateSession.createUrl,
+      templateId: templateSession.templateId,
+    },
+    { status: 202 },
   );
 }

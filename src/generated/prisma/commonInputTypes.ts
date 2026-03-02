@@ -531,6 +531,40 @@ export type EnumTemplateDocumentsTypeEnumNullableWithAggregatesFilter<$PrismaMod
   _max?: Prisma.NestedEnumTemplateDocumentsTypeEnumNullableFilter<$PrismaModel>
 }
 
+export type EnumBoldSignSyncOperationTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.BoldSignSyncOperationTypeEnum | Prisma.EnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.BoldSignSyncOperationTypeEnum[] | Prisma.ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.BoldSignSyncOperationTypeEnum[] | Prisma.ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumBoldSignSyncOperationTypeEnumFilter<$PrismaModel> | $Enums.BoldSignSyncOperationTypeEnum
+}
+
+export type EnumBoldSignSyncOperationStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.BoldSignSyncOperationStatusEnum | Prisma.EnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.BoldSignSyncOperationStatusEnum[] | Prisma.ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.BoldSignSyncOperationStatusEnum[] | Prisma.ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumBoldSignSyncOperationStatusEnumFilter<$PrismaModel> | $Enums.BoldSignSyncOperationStatusEnum
+}
+
+export type EnumBoldSignSyncOperationTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.BoldSignSyncOperationTypeEnum | Prisma.EnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.BoldSignSyncOperationTypeEnum[] | Prisma.ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.BoldSignSyncOperationTypeEnum[] | Prisma.ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumBoldSignSyncOperationTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.BoldSignSyncOperationTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumBoldSignSyncOperationTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumBoldSignSyncOperationTypeEnumFilter<$PrismaModel>
+}
+
+export type EnumBoldSignSyncOperationStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.BoldSignSyncOperationStatusEnum | Prisma.EnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.BoldSignSyncOperationStatusEnum[] | Prisma.ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.BoldSignSyncOperationStatusEnum[] | Prisma.ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumBoldSignSyncOperationStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.BoldSignSyncOperationStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumBoldSignSyncOperationStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumBoldSignSyncOperationStatusEnumFilter<$PrismaModel>
+}
+
 export type EnumParentChildLinksStatusEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.ParentChildLinksStatusEnum | Prisma.EnumParentChildLinksStatusEnumFieldRefInput<$PrismaModel>
   in?: $Enums.ParentChildLinksStatusEnum[] | Prisma.ListEnumParentChildLinksStatusEnumFieldRefInput<$PrismaModel>
@@ -1045,6 +1079,40 @@ export type NestedEnumTemplateDocumentsTypeEnumNullableWithAggregatesFilter<$Pri
   _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
   _min?: Prisma.NestedEnumTemplateDocumentsTypeEnumNullableFilter<$PrismaModel>
   _max?: Prisma.NestedEnumTemplateDocumentsTypeEnumNullableFilter<$PrismaModel>
+}
+
+export type NestedEnumBoldSignSyncOperationTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.BoldSignSyncOperationTypeEnum | Prisma.EnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.BoldSignSyncOperationTypeEnum[] | Prisma.ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.BoldSignSyncOperationTypeEnum[] | Prisma.ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumBoldSignSyncOperationTypeEnumFilter<$PrismaModel> | $Enums.BoldSignSyncOperationTypeEnum
+}
+
+export type NestedEnumBoldSignSyncOperationStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.BoldSignSyncOperationStatusEnum | Prisma.EnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.BoldSignSyncOperationStatusEnum[] | Prisma.ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.BoldSignSyncOperationStatusEnum[] | Prisma.ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumBoldSignSyncOperationStatusEnumFilter<$PrismaModel> | $Enums.BoldSignSyncOperationStatusEnum
+}
+
+export type NestedEnumBoldSignSyncOperationTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.BoldSignSyncOperationTypeEnum | Prisma.EnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.BoldSignSyncOperationTypeEnum[] | Prisma.ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.BoldSignSyncOperationTypeEnum[] | Prisma.ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumBoldSignSyncOperationTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.BoldSignSyncOperationTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumBoldSignSyncOperationTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumBoldSignSyncOperationTypeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumBoldSignSyncOperationStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.BoldSignSyncOperationStatusEnum | Prisma.EnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.BoldSignSyncOperationStatusEnum[] | Prisma.ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.BoldSignSyncOperationStatusEnum[] | Prisma.ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumBoldSignSyncOperationStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.BoldSignSyncOperationStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumBoldSignSyncOperationStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumBoldSignSyncOperationStatusEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumParentChildLinksStatusEnumFilter<$PrismaModel = never> = {

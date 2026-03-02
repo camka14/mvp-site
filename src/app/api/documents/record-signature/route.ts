@@ -4,6 +4,13 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeSignerContext, type SignerContext } from '@/lib/templateSignerTypes';
 import { syncChildRegistrationConsentStatus } from '@/lib/childConsentProgress';
+import {
+  BOLDSIGN_OPERATION_STATUSES,
+  BOLDSIGN_OPERATION_TYPES,
+  createOrUpdateBoldSignOperation,
+  findLatestBoldSignOperation,
+  updateBoldSignOperationById,
+} from '@/lib/boldsignSyncOperations';
 
 const schema = z.object({
   templateId: z.string(),
@@ -177,6 +184,59 @@ export async function POST(request: NextRequest) {
   const scopedChildUserId = childUserId ?? (signerContext === 'child' ? userId : null);
   const normalizedType = normalizeText(parsed.data.type)?.toUpperCase();
   const isTextSignature = normalizedType === 'TEXT';
+  if (!isTextSignature) {
+    const requestId = request.headers.get('x-request-id') ?? null;
+    const ipAddress = resolveIpAddress(request);
+    const existingOperation = await findLatestBoldSignOperation({
+      operationType: BOLDSIGN_OPERATION_TYPES.DOCUMENT_SEND,
+      documentId: parsed.data.documentId,
+    });
+
+    const operation = existingOperation ?? await createOrUpdateBoldSignOperation({
+      operationType: BOLDSIGN_OPERATION_TYPES.DOCUMENT_SEND,
+      status: BOLDSIGN_OPERATION_STATUSES.PENDING_WEBHOOK,
+      idempotencyKey: `record-signature:${parsed.data.documentId}:${userId}:${signerContext}`,
+      documentId: parsed.data.documentId,
+      templateDocumentId: parsed.data.templateId,
+      eventId: eventId ?? null,
+      userId,
+      childUserId: scopedChildUserId,
+      signerRole: signerContext,
+      requestId,
+      ipAddress,
+      payload: {
+        templateId: parsed.data.templateId,
+        eventId: eventId ?? null,
+        signerContext,
+      },
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+
+    await updateBoldSignOperationById(operation.id, {
+      eventId: eventId ?? operation.eventId ?? null,
+      templateDocumentId: operation.templateDocumentId ?? parsed.data.templateId,
+      documentId: parsed.data.documentId,
+      userId,
+      childUserId: scopedChildUserId,
+      signerRole: signerContext,
+      requestId,
+      ipAddress,
+      payload: {
+        ...(operation.payload ?? {}),
+        templateId: parsed.data.templateId,
+        eventId: eventId ?? null,
+        signerContext,
+        acknowledgedAt: new Date().toISOString(),
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      operationId: operation.id,
+      syncStatus: operation.status,
+    }, { status: 200 });
+  }
+
   const now = new Date();
   const nextSignedAt = isTextSignature ? now.toISOString() : null;
   const nextStatus = isTextSignature ? 'SIGNED' : 'UNSIGNED';

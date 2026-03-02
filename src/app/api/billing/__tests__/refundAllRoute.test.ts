@@ -63,7 +63,7 @@ describe('POST /api/billing/refund-all', () => {
     prismaMock.refundRequests.createMany.mockResolvedValue({ count: 0 });
   });
 
-  it('allows event managers to create a team-level waiting refund request', async () => {
+  it('rejects team-level refunds from event managers who are not team managers', async () => {
     canManageEventMock.mockResolvedValueOnce(true);
 
     const response = await POST(
@@ -74,19 +74,9 @@ describe('POST /api/billing/refund-all', () => {
     );
     const payload = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(payload.refundAlreadyPending).toBe(false);
-    expect(prismaMock.refundRequests.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          eventId: 'event_1',
-          teamId: 'team_1',
-          userId: 'requester_1',
-          reason: 'team_refund_requested',
-          status: 'WAITING',
-        }),
-      }),
-    );
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Forbidden');
+    expect(prismaMock.refundRequests.create).not.toHaveBeenCalled();
   });
 
   it('allows a team manager to create a team-level request without event management permissions', async () => {
@@ -104,7 +94,7 @@ describe('POST /api/billing/refund-all', () => {
   });
 
   it('dedupes an existing waiting team-level request', async () => {
-    canManageEventMock.mockResolvedValueOnce(true);
+    requireSessionMock.mockResolvedValueOnce({ userId: 'manager_1', isAdmin: false });
     prismaMock.refundRequests.findFirst.mockResolvedValueOnce({ id: 'refund_existing' });
 
     const response = await POST(
@@ -121,7 +111,7 @@ describe('POST /api/billing/refund-all', () => {
     expect(prismaMock.refundRequests.create).not.toHaveBeenCalled();
   });
 
-  it('rejects team-level requests from non-admins who cannot manage the event or team', async () => {
+  it('rejects team-level requests from non-admins who are not the team manager', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'random_user', isAdmin: false });
 
     const response = await POST(

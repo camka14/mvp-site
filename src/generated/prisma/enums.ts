@@ -133,3 +133,24 @@ export const DivisionsKindEnum = {
 } as const
 
 export type DivisionsKindEnum = (typeof DivisionsKindEnum)[keyof typeof DivisionsKindEnum]
+
+
+export const BoldSignSyncOperationTypeEnum = {
+  TEMPLATE_CREATE: 'TEMPLATE_CREATE',
+  TEMPLATE_DELETE: 'TEMPLATE_DELETE',
+  DOCUMENT_SEND: 'DOCUMENT_SEND'
+} as const
+
+export type BoldSignSyncOperationTypeEnum = (typeof BoldSignSyncOperationTypeEnum)[keyof typeof BoldSignSyncOperationTypeEnum]
+
+
+export const BoldSignSyncOperationStatusEnum = {
+  PENDING_WEBHOOK: 'PENDING_WEBHOOK',
+  PENDING_RECONCILE: 'PENDING_RECONCILE',
+  CONFIRMED: 'CONFIRMED',
+  FAILED: 'FAILED',
+  FAILED_RETRYABLE: 'FAILED_RETRYABLE',
+  TIMED_OUT: 'TIMED_OUT'
+} as const
+
+export type BoldSignSyncOperationStatusEnum = (typeof BoldSignSyncOperationStatusEnum)[keyof typeof BoldSignSyncOperationStatusEnum]

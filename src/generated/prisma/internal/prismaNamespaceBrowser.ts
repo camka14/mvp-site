@@ -76,6 +76,8 @@ export const ModelName = {
   Sports: 'Sports',
   TemplateDocuments: 'TemplateDocuments',
   SignedDocuments: 'SignedDocuments',
+  BoldSignWebhookEvents: 'BoldSignWebhookEvents',
+  BoldSignSyncOperations: 'BoldSignSyncOperations',
   ParentChildLinks: 'ParentChildLinks',
   EventRegistrations: 'EventRegistrations',
   AuthUser: 'AuthUser',
@@ -204,7 +206,8 @@ export const UserDataScalarFieldEnum = {
   friendRequestIds: 'friendRequestIds',
   friendRequestSentIds: 'friendRequestSentIds',
   uploadedImages: 'uploadedImages',
-  profileImageId: 'profileImageId'
+  profileImageId: 'profileImageId',
+  homePageOrganizationId: 'homePageOrganizationId'
 } as const
 
 export type UserDataScalarFieldEnum = (typeof UserDataScalarFieldEnum)[keyof typeof UserDataScalarFieldEnum]
@@ -696,6 +699,55 @@ export const SignedDocumentsScalarFieldEnum = {
 } as const
 
 export type SignedDocumentsScalarFieldEnum = (typeof SignedDocumentsScalarFieldEnum)[keyof typeof SignedDocumentsScalarFieldEnum]
+
+
+export const BoldSignWebhookEventsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  boldSignEventId: 'boldSignEventId',
+  eventType: 'eventType',
+  objectType: 'objectType',
+  templateId: 'templateId',
+  documentId: 'documentId',
+  eventTimestamp: 'eventTimestamp',
+  signatureTimestamp: 'signatureTimestamp',
+  processingStatus: 'processingStatus',
+  processingError: 'processingError',
+  payload: 'payload',
+  headers: 'headers'
+} as const
+
+export type BoldSignWebhookEventsScalarFieldEnum = (typeof BoldSignWebhookEventsScalarFieldEnum)[keyof typeof BoldSignWebhookEventsScalarFieldEnum]
+
+
+export const BoldSignSyncOperationsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  operationType: 'operationType',
+  status: 'status',
+  idempotencyKey: 'idempotencyKey',
+  organizationId: 'organizationId',
+  eventId: 'eventId',
+  templateDocumentId: 'templateDocumentId',
+  signedDocumentRecordId: 'signedDocumentRecordId',
+  templateId: 'templateId',
+  documentId: 'documentId',
+  userId: 'userId',
+  childUserId: 'childUserId',
+  signerRole: 'signerRole',
+  signerEmail: 'signerEmail',
+  roleIndex: 'roleIndex',
+  requestId: 'requestId',
+  ipAddress: 'ipAddress',
+  payload: 'payload',
+  lastError: 'lastError',
+  completedAt: 'completedAt',
+  expiresAt: 'expiresAt'
+} as const
+
+export type BoldSignSyncOperationsScalarFieldEnum = (typeof BoldSignSyncOperationsScalarFieldEnum)[keyof typeof BoldSignSyncOperationsScalarFieldEnum]
 
 
 export const ParentChildLinksScalarFieldEnum = {

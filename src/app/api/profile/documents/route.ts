@@ -63,6 +63,11 @@ const isSignedStatus = (value: unknown): boolean => {
   return status === 'signed' || status === 'completed';
 };
 
+const isRevokedStatus = (value: unknown): boolean => {
+  const status = normalizeText(value)?.toLowerCase();
+  return status === 'revoked';
+};
+
 const toTimestamp = (value?: string | Date | null): number => {
   if (!value) return 0;
   const parsed = value instanceof Date ? value : new Date(value);
@@ -572,7 +577,7 @@ export async function GET(_req: NextRequest) {
   const signedByEventScope = new Map<string, { id: string; signedAt?: string; createdAt?: Date; status?: string | null }>();
 
   signedDocuments.forEach((document) => {
-    if (!isSignedStatus(document.status)) {
+    if (!isSignedStatus(document.status) && !isRevokedStatus(document.status)) {
       return;
     }
     const templateId = normalizeText(document.templateId);
@@ -819,6 +824,26 @@ export async function GET(_req: NextRequest) {
             : 'participant'
       );
       const childUserId = signerContext === 'participant' ? undefined : normalizeText(document.hostId);
+      const latestTemplateScopeStatus = signedByTemplateScope.get(buildTemplateScopeKey({
+        templateId: document.templateId,
+        signerContext,
+        childUserId,
+      }))?.status;
+      const scopedEventId = normalizeText(document.eventId);
+      const latestEventScopeStatus = scopedEventId
+        ? signedByEventScope.get(buildEventScopeKey({
+          eventId: scopedEventId,
+          templateId: document.templateId,
+          signerContext,
+          childUserId,
+        }))?.status
+        : undefined;
+      const latestScopeStatus = (template?.signOnce ?? false)
+        ? latestTemplateScopeStatus
+        : (latestEventScopeStatus ?? latestTemplateScopeStatus);
+      if (isRevokedStatus(latestScopeStatus)) {
+        return;
+      }
       const signerUserId = normalizeText(document.userId);
       if (!isSignerContextVisibleForViewer({
         viewerUserId: userId,

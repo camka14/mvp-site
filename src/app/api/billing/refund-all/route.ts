@@ -81,15 +81,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    const teamManagerIds = new Set<string>([
-      ...normalizeIdList(team.coachIds),
-      normalizeId(team.captainId),
-      normalizeId(team.managerId),
-      normalizeId(team.headCoachId),
-    ].filter((entry): entry is string => Boolean(entry)));
-    const canManageTeam = teamManagerIds.has(session.userId);
+    const canManageTeam = normalizeId(team.managerId) === session.userId;
 
-    if (!session.isAdmin && !canManageCurrentEvent && !canManageTeam) {
+    if (!session.isAdmin && !canManageTeam) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

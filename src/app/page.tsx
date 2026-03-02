@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from './providers';
 import Loading from '@/components/ui/Loading';
+import { getHomePathForUser } from '@/lib/homePage';
 
 export default function HomePage() {
   const { user, loading } = useApp();
@@ -12,7 +13,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!loading) {
       if (user) {
-        router.push('/discover');
+        router.push(getHomePathForUser(user));
       } else {
         router.push('/login');
       }

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { authService } from '@/lib/auth';
 import { userService } from '@/lib/userService';
+import { getHomePathForUser } from '@/lib/homePage';
 import Loading from '@/components/ui/Loading';
 
 interface FormData {
@@ -30,7 +31,7 @@ function LoginPageContent() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && user) {
-      router.push('/discover');
+      router.push(getHomePathForUser(user));
     }
   }, [user, authLoading, router]);
 
@@ -83,7 +84,7 @@ function LoginPageContent() {
 
       setUser(extendedUser);
       setAuthUser(authUser as any);
-      router.push('/discover');
+      router.push(getHomePathForUser(extendedUser));
 
     } catch (error: any) {
       console.error('Auth error:', error);

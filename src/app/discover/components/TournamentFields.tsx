@@ -34,6 +34,41 @@ const syncArrayLength = (arr: number[], len: number, fill = 21) => {
   return next;
 };
 
+const toFiniteNumber = (value: unknown): number | null => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const hasSetBasedSignals = (config?: Partial<TournamentConfig> | null): boolean => {
+  if (!config || typeof config !== 'object') {
+    return false;
+  }
+
+  if (config.usesSets === true) {
+    return true;
+  }
+
+  const winnerSetCount = toFiniteNumber(config.winnerSetCount);
+  if (winnerSetCount !== null && winnerSetCount > 1) {
+    return true;
+  }
+
+  const loserSetCount = toFiniteNumber(config.loserSetCount);
+  if (loserSetCount !== null && loserSetCount > 1) {
+    return true;
+  }
+
+  if (
+    (Array.isArray(config.winnerBracketPointsToVictory) && config.winnerBracketPointsToVictory.length > 1)
+    || (Array.isArray(config.loserBracketPointsToVictory) && config.loserBracketPointsToVictory.length > 1)
+  ) {
+    return true;
+  }
+
+  const setDuration = toFiniteNumber(config.setDurationMinutes);
+  return setDuration !== null && setDuration > 0;
+};
+
 const TournamentFields: React.FC<TournamentFieldsProps> = ({
   tournamentData,
   setTournamentData,
@@ -42,7 +77,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
   showDurationControls = true,
 }) => {
   const comboboxProps = { withinPortal: true, zIndex: 1800 };
-  const requiresSets = Boolean(sport?.usePointsPerSetWin);
+  const requiresSets = Boolean(sport?.usePointsPerSetWin) || hasSetBasedSignals(tournamentData);
 
   useEffect(() => {
     if (requiresSets) {

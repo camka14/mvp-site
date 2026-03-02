@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
+import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
         userIds: true,
         freeAgentIds: true,
         requiredTemplateIds: true,
+        organizationId: true,
         start: true,
       },
     }),
@@ -94,18 +96,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
     ? event.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
     : [];
   const needsConsent = requiredTemplateIds.length > 0;
+  const consentDispatch = needsConsent
+    ? await dispatchRequiredEventDocuments({
+      eventId: event.id,
+      organizationId: event.organizationId ?? null,
+      requiredTemplateIds,
+      parentUserId: session.userId,
+      childUserId: registration.registrantId,
+    })
+    : null;
 
   const approvedStatus = needsConsent ? 'PENDINGCONSENT' : 'ACTIVE';
   const approvedConsentStatus = !needsConsent
     ? null
-    : childEmail
-      ? 'sent'
-      : 'child_email_required';
+    : consentDispatch?.missingChildEmail
+      ? 'child_email_required'
+      : (consentDispatch?.errors.length ?? 0) > 0
+        ? 'send_failed'
+        : 'sent';
 
   const approved = await prisma.eventRegistrations.update({
     where: { id: registration.id },
     data: {
       status: approvedStatus,
+      consentDocumentId: consentDispatch?.firstDocumentId ?? registration.consentDocumentId ?? null,
       consentStatus: approvedConsentStatus,
       updatedAt: new Date(),
     },
@@ -138,6 +152,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
   const childAgeAtEvent = childProfile?.dateOfBirth
     ? calculateAgeOnDate(childProfile.dateOfBirth, event.start)
     : Number.NaN;
+  const warnings = [
+    ...(needsConsent
+      && approvedConsentStatus === 'child_email_required'
+      && Number.isFinite(childAgeAtEvent)
+      && childAgeAtEvent < 13
+      ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
+      : []),
+    ...(consentDispatch?.errors ?? []),
+  ].filter((value) => value.trim().length > 0);
 
   return NextResponse.json({
     registration: withLegacyFields(approved),
@@ -149,8 +172,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
           requiresChildEmail: !childEmail,
         }
       : undefined,
-    warnings: needsConsent && !childEmail && Number.isFinite(childAgeAtEvent) && childAgeAtEvent < 13
-      ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
-      : undefined,
+    warnings: warnings.length ? warnings : undefined,
   }, { status: 200 });
 }

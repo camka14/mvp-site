@@ -37,6 +37,7 @@ export type UserDataMinAggregateOutputType = {
   userName: string | null
   hasStripeAccount: boolean | null
   profileImageId: string | null
+  homePageOrganizationId: string | null
 }
 
 export type UserDataMaxAggregateOutputType = {
@@ -52,6 +53,7 @@ export type UserDataMaxAggregateOutputType = {
   userName: string | null
   hasStripeAccount: boolean | null
   profileImageId: string | null
+  homePageOrganizationId: string | null
 }
 
 export type UserDataCountAggregateOutputType = {
@@ -73,6 +75,7 @@ export type UserDataCountAggregateOutputType = {
   friendRequestSentIds: number
   uploadedImages: number
   profileImageId: number
+  homePageOrganizationId: number
   _all: number
 }
 
@@ -90,6 +93,7 @@ export type UserDataMinAggregateInputType = {
   userName?: true
   hasStripeAccount?: true
   profileImageId?: true
+  homePageOrganizationId?: true
 }
 
 export type UserDataMaxAggregateInputType = {
@@ -105,6 +109,7 @@ export type UserDataMaxAggregateInputType = {
   userName?: true
   hasStripeAccount?: true
   profileImageId?: true
+  homePageOrganizationId?: true
 }
 
 export type UserDataCountAggregateInputType = {
@@ -126,6 +131,7 @@ export type UserDataCountAggregateInputType = {
   friendRequestSentIds?: true
   uploadedImages?: true
   profileImageId?: true
+  homePageOrganizationId?: true
   _all?: true
 }
 
@@ -220,6 +226,7 @@ export type UserDataGroupByOutputType = {
   friendRequestSentIds: string[]
   uploadedImages: string[]
   profileImageId: string | null
+  homePageOrganizationId: string | null
   _count: UserDataCountAggregateOutputType | null
   _min: UserDataMinAggregateOutputType | null
   _max: UserDataMaxAggregateOutputType | null
@@ -262,6 +269,7 @@ export type UserDataWhereInput = {
   friendRequestSentIds?: Prisma.StringNullableListFilter<"UserData">
   uploadedImages?: Prisma.StringNullableListFilter<"UserData">
   profileImageId?: Prisma.StringNullableFilter<"UserData"> | string | null
+  homePageOrganizationId?: Prisma.StringNullableFilter<"UserData"> | string | null
 }
 
 export type UserDataOrderByWithRelationInput = {
@@ -283,6 +291,7 @@ export type UserDataOrderByWithRelationInput = {
   friendRequestSentIds?: Prisma.SortOrder
   uploadedImages?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrderInput | Prisma.SortOrder
+  homePageOrganizationId?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type UserDataWhereUniqueInput = Prisma.AtLeast<{
@@ -307,6 +316,7 @@ export type UserDataWhereUniqueInput = Prisma.AtLeast<{
   friendRequestSentIds?: Prisma.StringNullableListFilter<"UserData">
   uploadedImages?: Prisma.StringNullableListFilter<"UserData">
   profileImageId?: Prisma.StringNullableFilter<"UserData"> | string | null
+  homePageOrganizationId?: Prisma.StringNullableFilter<"UserData"> | string | null
 }, "id">
 
 export type UserDataOrderByWithAggregationInput = {
@@ -328,6 +338,7 @@ export type UserDataOrderByWithAggregationInput = {
   friendRequestSentIds?: Prisma.SortOrder
   uploadedImages?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrderInput | Prisma.SortOrder
+  homePageOrganizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.UserDataCountOrderByAggregateInput
   _max?: Prisma.UserDataMaxOrderByAggregateInput
   _min?: Prisma.UserDataMinOrderByAggregateInput
@@ -355,6 +366,7 @@ export type UserDataScalarWhereWithAggregatesInput = {
   friendRequestSentIds?: Prisma.StringNullableListFilter<"UserData">
   uploadedImages?: Prisma.StringNullableListFilter<"UserData">
   profileImageId?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
+  homePageOrganizationId?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
 }
 
 export type UserDataCreateInput = {
@@ -376,6 +388,7 @@ export type UserDataCreateInput = {
   friendRequestSentIds?: Prisma.UserDataCreatefriendRequestSentIdsInput | string[]
   uploadedImages?: Prisma.UserDataCreateuploadedImagesInput | string[]
   profileImageId?: string | null
+  homePageOrganizationId?: string | null
 }
 
 export type UserDataUncheckedCreateInput = {
@@ -397,6 +410,7 @@ export type UserDataUncheckedCreateInput = {
   friendRequestSentIds?: Prisma.UserDataCreatefriendRequestSentIdsInput | string[]
   uploadedImages?: Prisma.UserDataCreateuploadedImagesInput | string[]
   profileImageId?: string | null
+  homePageOrganizationId?: string | null
 }
 
 export type UserDataUpdateInput = {
@@ -418,6 +432,7 @@ export type UserDataUpdateInput = {
   friendRequestSentIds?: Prisma.UserDataUpdatefriendRequestSentIdsInput | string[]
   uploadedImages?: Prisma.UserDataUpdateuploadedImagesInput | string[]
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  homePageOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type UserDataUncheckedUpdateInput = {
@@ -439,6 +454,7 @@ export type UserDataUncheckedUpdateInput = {
   friendRequestSentIds?: Prisma.UserDataUpdatefriendRequestSentIdsInput | string[]
   uploadedImages?: Prisma.UserDataUpdateuploadedImagesInput | string[]
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  homePageOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type UserDataCreateManyInput = {
@@ -460,6 +476,7 @@ export type UserDataCreateManyInput = {
   friendRequestSentIds?: Prisma.UserDataCreatefriendRequestSentIdsInput | string[]
   uploadedImages?: Prisma.UserDataCreateuploadedImagesInput | string[]
   profileImageId?: string | null
+  homePageOrganizationId?: string | null
 }
 
 export type UserDataUpdateManyMutationInput = {
@@ -481,6 +498,7 @@ export type UserDataUpdateManyMutationInput = {
   friendRequestSentIds?: Prisma.UserDataUpdatefriendRequestSentIdsInput | string[]
   uploadedImages?: Prisma.UserDataUpdateuploadedImagesInput | string[]
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  homePageOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type UserDataUncheckedUpdateManyInput = {
@@ -502,6 +520,7 @@ export type UserDataUncheckedUpdateManyInput = {
   friendRequestSentIds?: Prisma.UserDataUpdatefriendRequestSentIdsInput | string[]
   uploadedImages?: Prisma.UserDataUpdateuploadedImagesInput | string[]
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  homePageOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type UserDataCountOrderByAggregateInput = {
@@ -523,6 +542,7 @@ export type UserDataCountOrderByAggregateInput = {
   friendRequestSentIds?: Prisma.SortOrder
   uploadedImages?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
+  homePageOrganizationId?: Prisma.SortOrder
 }
 
 export type UserDataMaxOrderByAggregateInput = {
@@ -538,6 +558,7 @@ export type UserDataMaxOrderByAggregateInput = {
   userName?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
+  homePageOrganizationId?: Prisma.SortOrder
 }
 
 export type UserDataMinOrderByAggregateInput = {
@@ -553,6 +574,7 @@ export type UserDataMinOrderByAggregateInput = {
   userName?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
+  homePageOrganizationId?: Prisma.SortOrder
 }
 
 export type UserDataCreateteamIdsInput = {
@@ -634,6 +656,7 @@ export type UserDataSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   friendRequestSentIds?: boolean
   uploadedImages?: boolean
   profileImageId?: boolean
+  homePageOrganizationId?: boolean
 }, ExtArgs["result"]["userData"]>
 
 export type UserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -655,6 +678,7 @@ export type UserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   friendRequestSentIds?: boolean
   uploadedImages?: boolean
   profileImageId?: boolean
+  homePageOrganizationId?: boolean
 }, ExtArgs["result"]["userData"]>
 
 export type UserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -676,6 +700,7 @@ export type UserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   friendRequestSentIds?: boolean
   uploadedImages?: boolean
   profileImageId?: boolean
+  homePageOrganizationId?: boolean
 }, ExtArgs["result"]["userData"]>
 
 export type UserDataSelectScalar = {
@@ -697,9 +722,10 @@ export type UserDataSelectScalar = {
   friendRequestSentIds?: boolean
   uploadedImages?: boolean
   profileImageId?: boolean
+  homePageOrganizationId?: boolean
 }
 
-export type UserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "firstName" | "lastName" | "dateOfBirth" | "dobVerified" | "dobVerifiedAt" | "ageVerificationProvider" | "teamIds" | "friendIds" | "userName" | "hasStripeAccount" | "followingIds" | "friendRequestIds" | "friendRequestSentIds" | "uploadedImages" | "profileImageId", ExtArgs["result"]["userData"]>
+export type UserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "firstName" | "lastName" | "dateOfBirth" | "dobVerified" | "dobVerifiedAt" | "ageVerificationProvider" | "teamIds" | "friendIds" | "userName" | "hasStripeAccount" | "followingIds" | "friendRequestIds" | "friendRequestSentIds" | "uploadedImages" | "profileImageId" | "homePageOrganizationId", ExtArgs["result"]["userData"]>
 
 export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "UserData"
@@ -723,6 +749,7 @@ export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     friendRequestSentIds: string[]
     uploadedImages: string[]
     profileImageId: string | null
+    homePageOrganizationId: string | null
   }, ExtArgs["result"]["userData"]>
   composites: {}
 }
@@ -1164,6 +1191,7 @@ export interface UserDataFieldRefs {
   readonly friendRequestSentIds: Prisma.FieldRef<"UserData", 'String[]'>
   readonly uploadedImages: Prisma.FieldRef<"UserData", 'String[]'>
   readonly profileImageId: Prisma.FieldRef<"UserData", 'String'>
+  readonly homePageOrganizationId: Prisma.FieldRef<"UserData", 'String'>
 }
     
 

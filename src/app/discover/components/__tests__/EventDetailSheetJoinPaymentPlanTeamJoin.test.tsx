@@ -49,6 +49,7 @@ jest.mock('@/lib/paymentService', () => ({
     createPaymentIntent: jest.fn(),
     joinEvent: jest.fn(),
     leaveEvent: jest.fn(),
+    requestTeamRefund: jest.fn(),
   },
 }));
 
@@ -122,6 +123,7 @@ describe('EventDetailSheet payment-plan team join', () => {
       name: 'Camka Team',
       division: 'U17',
       sport: 'Volleyball',
+      managerId: 'user_1',
     });
 
     const user = buildUser({
@@ -153,7 +155,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     }
     fireEvent.click(divisionOption);
 
-    const joinAsTeamButton = await screen.findByRole('button', { name: /Join as Team/i });
+    const joinAsTeamButton = await screen.findByRole('button', { name: /View Team Options/i });
     fireEvent.click(joinAsTeamButton);
 
     const teamSelect = await screen.findByPlaceholderText(/Choose a team/i);
@@ -200,5 +202,72 @@ describe('EventDetailSheet payment-plan team join', () => {
       expect.objectContaining({ divisionId: 'u17' }),
       5000,
     );
+  });
+
+  it('shows an already-in-event disabled join button and a withdraw action for registered teams', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+
+    const event = buildEvent({
+      $id: 'event_2',
+      teamSignup: true,
+      start: futureStart,
+      end: futureEnd,
+      price: 0,
+      requiredTemplateIds: [],
+      divisions: ['u17'],
+      divisionDetails: [{ id: 'u17', name: 'U17' }] as any,
+      teams: [
+        buildTeam({
+          $id: 'slot_1',
+          name: 'Camka Team',
+          parentTeamId: 'team_1',
+          managerId: 'user_1',
+          sport: 'Volleyball',
+        }),
+      ],
+    });
+
+    const managedTeam = buildTeam({
+      $id: 'team_1',
+      name: 'Camka Team',
+      division: 'U17',
+      sport: 'Volleyball',
+      managerId: 'user_1',
+    });
+
+    const user = buildUser({
+      $id: 'user_1',
+      dateOfBirth: '1990-01-01',
+      teamIds: [managedTeam.$id],
+    });
+    const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([managedTeam]);
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    const joinAsTeamButton = await screen.findByRole('button', { name: /View Team Options/i });
+    fireEvent.click(joinAsTeamButton);
+
+    const teamSelect = await screen.findByPlaceholderText(/Choose a team/i);
+    fireEvent.click(teamSelect);
+    const teamOption = Array.from(document.querySelectorAll('[data-combobox-option]')).find((element) =>
+      /Camka Team/i.test(element.textContent ?? ''),
+    );
+    if (!teamOption) {
+      throw new Error('Expected a combobox option for Camka Team.');
+    }
+    fireEvent.click(teamOption);
+
+    const disabledJoinButton = await screen.findByRole('button', { name: /Already in Event/i });
+    expect(disabledJoinButton).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Withdraw Team/i })).toBeInTheDocument();
   });
 });

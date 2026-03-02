@@ -2,6 +2,15 @@ import { apiRequest } from '@/lib/apiClient';
 import type { TemplateDocument, TemplateDocumentType, UserData } from '@/types';
 import type { TemplateRequiredSignerType } from '@/types';
 
+export type BoldSignSyncStatus =
+  | 'PENDING_WEBHOOK'
+  | 'PENDING_RECONCILE'
+  | 'CONFIRMED'
+  | 'FAILED'
+  | 'FAILED_RETRYABLE'
+  | 'TIMED_OUT'
+  | string;
+
 export type SignStep = {
   templateId: string;
   type: TemplateDocumentType;
@@ -13,11 +22,16 @@ export type SignStep = {
   requiredSignerType?: TemplateRequiredSignerType;
   requiredSignerLabel?: string;
   signerContext?: 'participant' | 'parent_guardian' | 'child';
+  operationId?: string;
+  syncStatus?: BoldSignSyncStatus;
 };
 
 type CreateTemplateResponse = {
   createUrl?: string;
   template?: TemplateDocument;
+  operationId?: string;
+  syncStatus?: BoldSignSyncStatus;
+  templateId?: string;
   error?: string;
 };
 
@@ -33,7 +47,21 @@ type SignLinksResponse = {
 
 type DeleteTemplateResponse = {
   deleted?: boolean;
+  operationId?: string;
+  syncStatus?: BoldSignSyncStatus;
   error?: string;
+};
+
+export type BoldSignOperationStatus = {
+  operationId: string;
+  operationType: string;
+  status: BoldSignSyncStatus;
+  error?: string | null;
+  templateDocumentId?: string | null;
+  signedDocumentRecordId?: string | null;
+  templateId?: string | null;
+  documentId?: string | null;
+  updatedAt?: string | null;
 };
 
 class BoldSignService {
@@ -47,7 +75,13 @@ class BoldSignService {
     type: TemplateDocumentType;
     content?: string;
     file?: File;
-  }): Promise<{ createUrl?: string; template: TemplateDocument }> {
+  }): Promise<{
+    createUrl?: string;
+    template?: TemplateDocument;
+    operationId?: string;
+    syncStatus?: BoldSignSyncStatus;
+    templateId?: string;
+  }> {
     let result: CreateTemplateResponse;
     if (params.type === 'PDF') {
       if (!params.file) {
@@ -92,10 +126,17 @@ class BoldSignService {
     if (result?.error) {
       throw new Error(result.error);
     }
-    if (!result?.template) {
+
+    if (params.type === 'TEXT' && !result?.template) {
       throw new Error('Template creation response is missing data.');
     }
-    return { createUrl: result.createUrl, template: result.template };
+    return {
+      createUrl: result.createUrl,
+      template: result.template,
+      operationId: result.operationId,
+      syncStatus: result.syncStatus,
+      templateId: result.templateId,
+    };
   }
 
   async getTemplateEditUrl(params: {
@@ -120,7 +161,7 @@ class BoldSignService {
   async deleteTemplate(params: {
     organizationId: string;
     templateDocumentId: string;
-  }): Promise<void> {
+  }): Promise<DeleteTemplateResponse> {
     const result = await apiRequest<DeleteTemplateResponse>(
       `/api/organizations/${params.organizationId}/templates/${params.templateDocumentId}`,
       {
@@ -130,9 +171,10 @@ class BoldSignService {
     if (result?.error) {
       throw new Error(result.error);
     }
-    if (!result?.deleted) {
+    if (!result?.deleted && !result?.operationId) {
       throw new Error('Failed to delete template.');
     }
+    return result;
   }
 
   async createSignLinks(params: {
@@ -175,6 +217,7 @@ class BoldSignService {
     }));
   }
 
+  /** @deprecated Use webhook-driven operation polling instead. */
   async markSigned(params: {
     documentId: string;
     templateId: string;
@@ -196,6 +239,20 @@ class BoldSignService {
     if (result?.error) {
       throw new Error(result.error);
     }
+  }
+
+  async getOperationStatus(operationId: string): Promise<BoldSignOperationStatus> {
+    const result = await apiRequest<BoldSignOperationStatus>(
+      `/api/boldsign/operations/${operationId}`,
+      {
+        method: 'GET',
+      },
+    );
+
+    if (!result?.operationId) {
+      throw new Error('Operation status response is missing operation id.');
+    }
+    return result;
   }
 }
 

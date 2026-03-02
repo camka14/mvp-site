@@ -409,6 +409,8 @@ export const ModelName = {
   Sports: 'Sports',
   TemplateDocuments: 'TemplateDocuments',
   SignedDocuments: 'SignedDocuments',
+  BoldSignWebhookEvents: 'BoldSignWebhookEvents',
+  BoldSignSyncOperations: 'BoldSignSyncOperations',
   ParentChildLinks: 'ParentChildLinks',
   EventRegistrations: 'EventRegistrations',
   AuthUser: 'AuthUser',
@@ -428,7 +430,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -2282,6 +2284,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    BoldSignWebhookEvents: {
+      payload: Prisma.$BoldSignWebhookEventsPayload<ExtArgs>
+      fields: Prisma.BoldSignWebhookEventsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BoldSignWebhookEventsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BoldSignWebhookEventsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>
+        }
+        findFirst: {
+          args: Prisma.BoldSignWebhookEventsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BoldSignWebhookEventsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>
+        }
+        findMany: {
+          args: Prisma.BoldSignWebhookEventsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>[]
+        }
+        create: {
+          args: Prisma.BoldSignWebhookEventsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>
+        }
+        createMany: {
+          args: Prisma.BoldSignWebhookEventsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BoldSignWebhookEventsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>[]
+        }
+        delete: {
+          args: Prisma.BoldSignWebhookEventsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>
+        }
+        update: {
+          args: Prisma.BoldSignWebhookEventsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>
+        }
+        deleteMany: {
+          args: Prisma.BoldSignWebhookEventsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BoldSignWebhookEventsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BoldSignWebhookEventsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>[]
+        }
+        upsert: {
+          args: Prisma.BoldSignWebhookEventsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignWebhookEventsPayload>
+        }
+        aggregate: {
+          args: Prisma.BoldSignWebhookEventsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBoldSignWebhookEvents>
+        }
+        groupBy: {
+          args: Prisma.BoldSignWebhookEventsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BoldSignWebhookEventsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BoldSignWebhookEventsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BoldSignWebhookEventsCountAggregateOutputType> | number
+        }
+      }
+    }
+    BoldSignSyncOperations: {
+      payload: Prisma.$BoldSignSyncOperationsPayload<ExtArgs>
+      fields: Prisma.BoldSignSyncOperationsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BoldSignSyncOperationsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BoldSignSyncOperationsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>
+        }
+        findFirst: {
+          args: Prisma.BoldSignSyncOperationsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BoldSignSyncOperationsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>
+        }
+        findMany: {
+          args: Prisma.BoldSignSyncOperationsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>[]
+        }
+        create: {
+          args: Prisma.BoldSignSyncOperationsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>
+        }
+        createMany: {
+          args: Prisma.BoldSignSyncOperationsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BoldSignSyncOperationsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>[]
+        }
+        delete: {
+          args: Prisma.BoldSignSyncOperationsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>
+        }
+        update: {
+          args: Prisma.BoldSignSyncOperationsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>
+        }
+        deleteMany: {
+          args: Prisma.BoldSignSyncOperationsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BoldSignSyncOperationsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BoldSignSyncOperationsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>[]
+        }
+        upsert: {
+          args: Prisma.BoldSignSyncOperationsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BoldSignSyncOperationsPayload>
+        }
+        aggregate: {
+          args: Prisma.BoldSignSyncOperationsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBoldSignSyncOperations>
+        }
+        groupBy: {
+          args: Prisma.BoldSignSyncOperationsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BoldSignSyncOperationsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BoldSignSyncOperationsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BoldSignSyncOperationsCountAggregateOutputType> | number
+        }
+      }
+    }
     ParentChildLinks: {
       payload: Prisma.$ParentChildLinksPayload<ExtArgs>
       fields: Prisma.ParentChildLinksFieldRefs
@@ -2723,7 +2873,8 @@ export const UserDataScalarFieldEnum = {
   friendRequestIds: 'friendRequestIds',
   friendRequestSentIds: 'friendRequestSentIds',
   uploadedImages: 'uploadedImages',
-  profileImageId: 'profileImageId'
+  profileImageId: 'profileImageId',
+  homePageOrganizationId: 'homePageOrganizationId'
 } as const
 
 export type UserDataScalarFieldEnum = (typeof UserDataScalarFieldEnum)[keyof typeof UserDataScalarFieldEnum]
@@ -3217,6 +3368,55 @@ export const SignedDocumentsScalarFieldEnum = {
 export type SignedDocumentsScalarFieldEnum = (typeof SignedDocumentsScalarFieldEnum)[keyof typeof SignedDocumentsScalarFieldEnum]
 
 
+export const BoldSignWebhookEventsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  boldSignEventId: 'boldSignEventId',
+  eventType: 'eventType',
+  objectType: 'objectType',
+  templateId: 'templateId',
+  documentId: 'documentId',
+  eventTimestamp: 'eventTimestamp',
+  signatureTimestamp: 'signatureTimestamp',
+  processingStatus: 'processingStatus',
+  processingError: 'processingError',
+  payload: 'payload',
+  headers: 'headers'
+} as const
+
+export type BoldSignWebhookEventsScalarFieldEnum = (typeof BoldSignWebhookEventsScalarFieldEnum)[keyof typeof BoldSignWebhookEventsScalarFieldEnum]
+
+
+export const BoldSignSyncOperationsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  operationType: 'operationType',
+  status: 'status',
+  idempotencyKey: 'idempotencyKey',
+  organizationId: 'organizationId',
+  eventId: 'eventId',
+  templateDocumentId: 'templateDocumentId',
+  signedDocumentRecordId: 'signedDocumentRecordId',
+  templateId: 'templateId',
+  documentId: 'documentId',
+  userId: 'userId',
+  childUserId: 'childUserId',
+  signerRole: 'signerRole',
+  signerEmail: 'signerEmail',
+  roleIndex: 'roleIndex',
+  requestId: 'requestId',
+  ipAddress: 'ipAddress',
+  payload: 'payload',
+  lastError: 'lastError',
+  completedAt: 'completedAt',
+  expiresAt: 'expiresAt'
+} as const
+
+export type BoldSignSyncOperationsScalarFieldEnum = (typeof BoldSignSyncOperationsScalarFieldEnum)[keyof typeof BoldSignSyncOperationsScalarFieldEnum]
+
+
 export const ParentChildLinksScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -3570,6 +3770,34 @@ export type ListEnumTemplateDocumentsTypeEnumFieldRefInput<$PrismaModel> = Field
 
 
 /**
+ * Reference to a field of type 'BoldSignSyncOperationTypeEnum'
+ */
+export type EnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BoldSignSyncOperationTypeEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'BoldSignSyncOperationTypeEnum[]'
+ */
+export type ListEnumBoldSignSyncOperationTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BoldSignSyncOperationTypeEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'BoldSignSyncOperationStatusEnum'
+ */
+export type EnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BoldSignSyncOperationStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'BoldSignSyncOperationStatusEnum[]'
+ */
+export type ListEnumBoldSignSyncOperationStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BoldSignSyncOperationStatusEnum[]'>
+    
+
+
+/**
  * Reference to a field of type 'ParentChildLinksStatusEnum'
  */
 export type EnumParentChildLinksStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ParentChildLinksStatusEnum'>
@@ -3730,6 +3958,8 @@ export type GlobalOmitConfig = {
   sports?: Prisma.SportsOmit
   templateDocuments?: Prisma.TemplateDocumentsOmit
   signedDocuments?: Prisma.SignedDocumentsOmit
+  boldSignWebhookEvents?: Prisma.BoldSignWebhookEventsOmit
+  boldSignSyncOperations?: Prisma.BoldSignSyncOperationsOmit
   parentChildLinks?: Prisma.ParentChildLinksOmit
   eventRegistrations?: Prisma.EventRegistrationsOmit
   authUser?: Prisma.AuthUserOmit

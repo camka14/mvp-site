@@ -39,16 +39,9 @@ const canManageLinkedChildWaitlist = async (params: {
 
 const canManageTeamWaitlist = (params: {
   sessionUserId: string;
-  team: { captainId: string | null; managerId: string | null; playerIds: unknown };
+  team: { managerId: string | null };
 }): boolean => {
-  const players = Array.isArray(params.team.playerIds)
-    ? params.team.playerIds.filter((id): id is string => typeof id === 'string')
-    : [];
-  return (
-    params.team.captainId === params.sessionUserId
-    || params.team.managerId === params.sessionUserId
-    || players.includes(params.sessionUserId)
-  );
+  return params.team.managerId === params.sessionUserId;
 };
 
 async function updateWaitlist(
@@ -104,9 +97,7 @@ async function updateWaitlist(
       where: { id: teamId },
       select: {
         id: true,
-        captainId: true,
         managerId: true,
-        playerIds: true,
       },
     });
     if (!team) {

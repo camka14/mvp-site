@@ -13,6 +13,9 @@ const prismaMock = {
     findFirst: jest.fn(),
     findMany: jest.fn(),
   },
+  teams: {
+    findMany: jest.fn(),
+  },
   userData: {
     findMany: jest.fn(),
   },
@@ -90,14 +93,17 @@ describe('GET /api/organizations/[id]/users', () => {
       {
         eventId: 'event_1',
         registrantId: 'player_1',
+        registrantType: 'SELF',
         status: 'ACTIVE',
       },
       {
         eventId: 'event_2',
         registrantId: 'player_1',
+        registrantType: 'SELF',
         status: 'PENDINGCONSENT',
       },
     ]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.userData.findMany.mockResolvedValue([
       {
         id: 'player_1',
@@ -174,5 +180,74 @@ describe('GET /api/organizations/[id]/users', () => {
         content: 'I agree to follow the code of conduct.',
       }),
     ]));
+  });
+
+  it('includes users from teams registered for organization events', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      refIds: [],
+      hostIds: [],
+    });
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'event_1',
+        name: 'Test League',
+        start: new Date('2026-03-01T18:00:00.000Z'),
+        end: new Date('2026-03-01T20:00:00.000Z'),
+        userIds: [],
+        teamIds: ['team_slot_1'],
+      },
+    ]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        eventId: 'event_1',
+        registrantId: 'team_slot_1',
+        registrantType: 'TEAM',
+        status: 'ACTIVE',
+      },
+    ]);
+    prismaMock.teams.findMany.mockResolvedValue([
+      {
+        id: 'team_slot_1',
+        playerIds: ['player_1', 'player_2'],
+        captainId: 'captain_1',
+        managerId: 'manager_1',
+        headCoachId: null,
+        coachIds: [],
+      },
+    ]);
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'player_1', firstName: 'Alex', lastName: 'Brown', userName: 'abrown' },
+      { id: 'player_2', firstName: 'Sam', lastName: 'Fox', userName: 'sfox' },
+      { id: 'captain_1', firstName: 'Casey', lastName: 'Ng', userName: 'cng' },
+      { id: 'manager_1', firstName: 'Morgan', lastName: 'Diaz', userName: 'mdiaz' },
+    ]);
+    prismaMock.templateDocuments.findMany.mockResolvedValue([]);
+    prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1/users'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.users).toHaveLength(4);
+    expect(payload.users.map((row: { userId: string }) => row.userId)).toEqual(expect.arrayContaining([
+      'captain_1',
+      'manager_1',
+      'player_1',
+      'player_2',
+    ]));
+    payload.users.forEach((row: { events: Array<{ eventId: string; status?: string }> }) => {
+      expect(row.events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          eventId: 'event_1',
+          status: 'ACTIVE',
+        }),
+      ]));
+    });
   });
 });

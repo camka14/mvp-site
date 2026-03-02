@@ -22,9 +22,13 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const dispatchRequiredEventDocumentsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/eventConsentDispatch', () => ({
+  dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
+}));
 
 import { POST } from '@/app/api/events/[eventId]/registrations/self/route';
 
@@ -39,6 +43,12 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    dispatchRequiredEventDocumentsMock.mockResolvedValue({
+      sentDocumentIds: [],
+      firstDocumentId: null,
+      missingChildEmail: false,
+      errors: [],
+    });
     prismaMock.userData.findUnique.mockResolvedValue({
       dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
     });
@@ -56,6 +66,7 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
       registrationByDivisionType: false,
       divisions: ['div_a', 'div_b'],
       requiredTemplateIds: [],
+      organizationId: null,
     });
     prismaMock.divisions.findMany.mockResolvedValue([
       {
@@ -107,6 +118,7 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
       registrationByDivisionType: true,
       divisions: ['div_a', 'div_b'],
       requiredTemplateIds: [],
+      organizationId: null,
     });
     prismaMock.divisions.findMany.mockResolvedValue([
       {
@@ -176,6 +188,7 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
       registrationByDivisionType: true,
       divisions: ['div_a'],
       requiredTemplateIds: ['tmpl_1'],
+      organizationId: null,
     });
     prismaMock.divisions.findMany.mockResolvedValueOnce([
       {

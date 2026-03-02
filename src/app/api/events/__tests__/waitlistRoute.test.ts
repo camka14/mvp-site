@@ -109,12 +109,11 @@ describe('event waitlist route', () => {
     expect(prismaMock.events.findUnique).not.toHaveBeenCalled();
   });
 
-  it('adds a team when session user is on that team', async () => {
+  it('adds a team when session user is the team manager', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'manager_1', isAdmin: false });
     prismaMock.teams.findUnique.mockResolvedValueOnce({
       id: 'team_1',
-      captainId: 'captain_1',
       managerId: 'manager_1',
-      playerIds: ['user_1'],
     });
     prismaMock.events.update.mockResolvedValueOnce({
       id: 'event_1',
@@ -134,6 +133,24 @@ describe('event waitlist route', () => {
     );
   });
 
+  it('forbids team waitlist updates for non-managers', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'captain_1', isAdmin: false });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      managerId: 'manager_1',
+    });
+
+    const response = await POST(
+      jsonRequest('POST', 'http://localhost/api/events/event_1/waitlist', { teamId: 'team_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Forbidden');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
   it('blocks team waitlist joins for non-team events', async () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({
       id: 'event_1',
@@ -141,11 +158,10 @@ describe('event waitlist route', () => {
       teamSignup: false,
       waitListIds: [],
     });
+    requireSessionMock.mockResolvedValueOnce({ userId: 'manager_1', isAdmin: false });
     prismaMock.teams.findUnique.mockResolvedValueOnce({
       id: 'team_1',
-      captainId: 'captain_1',
       managerId: 'manager_1',
-      playerIds: ['user_1'],
     });
 
     const response = await POST(

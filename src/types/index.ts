@@ -282,6 +282,7 @@ export interface UserData {
   hasStripeAccount?: boolean;
   uploadedImages: string[];
   profileImageId?: string;
+  homePageOrganizationId?: string | null;
   stripeAccountId?: string | null;
   $createdAt?: string;
   $updatedAt?: string;
