@@ -989,10 +989,11 @@ function OrganizationDetailContent() {
         if (!result.operationId) {
           throw new Error('Template creation response is missing operation id.');
         }
+        const operationId = result.operationId;
         setPendingTemplateCreates((current) => [
           {
-            localId: `pending-template:${result.operationId}`,
-            operationId: result.operationId,
+            localId: `pending-template:${operationId}`,
+            operationId,
             templateId: result.templateId,
             title: trimmedTitle,
             description: templateDescription.trim() || undefined,
@@ -1000,12 +1001,12 @@ function OrganizationDetailContent() {
             requiredSignerType: templateRequiredSignerType,
             status: String(result.syncStatus ?? 'PENDING_WEBHOOK'),
           },
-          ...current.filter((entry) => entry.operationId !== result.operationId),
+          ...current.filter((entry) => entry.operationId !== operationId),
         ]);
         notifications.show({ color: 'blue', message: 'Template creation submitted. Syncing…' });
         monitorTemplateCreateOperation({
           organizationId: org.$id,
-          operationId: result.operationId,
+          operationId,
           templateId: result.templateId,
         });
       } else {
