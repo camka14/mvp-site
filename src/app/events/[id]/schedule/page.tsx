@@ -2241,7 +2241,7 @@ function EventScheduleContent() {
         maxParticipants: 10,
         teamSizeLimit: 2,
         teamSignup: false,
-        singleDivision: false,
+        singleDivision: true,
         divisions: [],
         cancellationRefundHours: 24,
         registrationCutoffHours: 2,

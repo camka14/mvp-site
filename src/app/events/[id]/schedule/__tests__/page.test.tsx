@@ -509,6 +509,30 @@ describe('League schedule page', () => {
     expect(eventService.getEventWithRelations).not.toHaveBeenCalled();
   });
 
+  it('defaults create mode events to single division', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return 'edit';
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path.startsWith('/api/events?state=TEMPLATE')) {
+        return Promise.resolve({ events: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(capturedEventFormProps?.event?.eventType).toBe('EVENT');
+      expect(capturedEventFormProps?.event?.singleDivision).toBe(true);
+    });
+  });
+
   it('creates a template from persisted edit data and preserves complex divisions/time slots', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
