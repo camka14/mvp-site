@@ -22,7 +22,6 @@
       }
     ],
     "types": [
-      "jest",
       "node"
     ],
     "baseUrl": "./src",
@@ -60,6 +59,13 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "e2e",
+    "test",
+    "jest.config.ts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ]
 }
