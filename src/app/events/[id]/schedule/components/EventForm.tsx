@@ -94,6 +94,14 @@ const MAX_STANDARD_NUMBER = 99_999;
 const MAX_PRICE_NUMBER = 9_999_999;
 const SECTION_SCROLL_OFFSET = 140;
 const SECTION_ANIMATION_DURATION_MS = 220;
+const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
+    'section-basic-information': false,
+    'section-event-details': true,
+    'section-referees': true,
+    'section-division-settings': true,
+    'section-league-scoring-config': true,
+    'section-schedule-config': true,
+};
 const MAX_EVENT_NAME_LENGTH = 120;
 const MAX_SHORT_TEXT_LENGTH = 80;
 const MAX_MEDIUM_TEXT_LENGTH = 160;
@@ -6439,8 +6447,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [sectionNavItems],
     );
     const [activeSectionId, setActiveSectionId] = useState<string>(visibleSectionNavItems[0]?.id ?? 'section-basic-information');
+    const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(SECTION_COLLAPSE_DEFAULTS);
     const sectionNavTargetRef = useRef<string | null>(null);
     const sectionNavSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const toggleSectionCollapse = useCallback((sectionId: string) => {
+        setCollapsedSections((previous) => ({
+            ...previous,
+            [sectionId]: !previous[sectionId],
+        }));
+    }, []);
+
+    const expandSection = useCallback((sectionId: string) => {
+        setCollapsedSections((previous) => (
+            previous[sectionId]
+                ? { ...previous, [sectionId]: false }
+                : previous
+        ));
+    }, []);
 
     useEffect(() => {
         const firstVisibleSection = visibleSectionNavItems[0]?.id;
@@ -6468,19 +6492,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setActiveSectionId((previous) => (previous === pendingTarget ? previous : pendingTarget));
                 return;
             }
-            let currentSection = visibleSectionNavItems[0]?.id;
+            const viewportMiddle = window.innerHeight / 2;
+            let currentSection: string | null = null;
+            let closestSection: string | null = visibleSectionNavItems[0]?.id ?? null;
+            let closestDistance = Number.POSITIVE_INFINITY;
             for (const section of visibleSectionNavItems) {
                 const sectionElement = document.getElementById(section.id);
                 if (!sectionElement) continue;
-                const top = sectionElement.getBoundingClientRect().top;
-                if (top - SECTION_SCROLL_OFFSET <= 0) {
+                const rect = sectionElement.getBoundingClientRect();
+                if (rect.top <= viewportMiddle && rect.bottom >= viewportMiddle) {
                     currentSection = section.id;
-                } else {
                     break;
                 }
+                const distanceToMiddle = Math.min(
+                    Math.abs(rect.top - viewportMiddle),
+                    Math.abs(rect.bottom - viewportMiddle),
+                );
+                if (distanceToMiddle < closestDistance) {
+                    closestDistance = distanceToMiddle;
+                    closestSection = section.id;
+                }
             }
-            if (currentSection) {
-                setActiveSectionId((previous) => (previous === currentSection ? previous : currentSection));
+            const nextActiveSection = currentSection ?? closestSection;
+            if (nextActiveSection) {
+                setActiveSectionId((previous) => (previous === nextActiveSection ? previous : nextActiveSection));
             }
         };
 
@@ -6498,6 +6533,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, []);
 
     const scrollToSection = useCallback((sectionId: string) => {
+        expandSection(sectionId);
         const target = document.getElementById(sectionId);
         if (!target) return;
         if (sectionNavSettleTimerRef.current) {
@@ -6513,7 +6549,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             sectionNavTargetRef.current = null;
             sectionNavSettleTimerRef.current = null;
         }, settleMs);
-    }, []);
+    }, [expandSection]);
 
     const sheetContent = (
         <div className="mx-auto max-w-[1320px] space-y-6">
@@ -6582,8 +6618,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             p="lg"
                             className="scroll-mt-28 bg-gray-50"
                         >
-                            <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
-                            <div className="mb-6">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-lg font-semibold">Basic Information</h3>
+                                <Button
+                                    type="button"
+                                    variant="subtle"
+                                    size="xs"
+                                    aria-expanded={!collapsedSections['section-basic-information']}
+                                    aria-controls="section-basic-information-content"
+                                    onClick={() => toggleSectionCollapse('section-basic-information')}
+                                >
+                                    {collapsedSections['section-basic-information'] ? 'Expand' : 'Collapse'}
+                                </Button>
+                            </div>
+                            <Collapse in={!collapsedSections['section-basic-information']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                            <div id="section-basic-information-content" className="mt-4 mb-6">
                                 <div className="block text-sm font-medium mb-2">Event Image</div>
                                 <ImageUploader
                                     currentImageUrl={selectedImageUrl}
@@ -6663,7 +6712,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 maxLength={MAX_DESCRIPTION_LENGTH}
                                 {...register('description')}
                             />
-
+                            </Collapse>
                         </Paper>
 
                         {/* Event Details */}
@@ -6675,9 +6724,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             p="lg"
                             className="scroll-mt-28 bg-gray-50"
                         >
-                            <h3 className="text-lg font-semibold mb-4">Event Details</h3>
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-lg font-semibold">Event Details</h3>
+                                <Button
+                                    type="button"
+                                    variant="subtle"
+                                    size="xs"
+                                    aria-expanded={!collapsedSections['section-event-details']}
+                                    aria-controls="section-event-details-content"
+                                    onClick={() => toggleSectionCollapse('section-event-details')}
+                                >
+                                    {collapsedSections['section-event-details'] ? 'Expand' : 'Collapse'}
+                                </Button>
+                            </div>
+                            <Collapse in={!collapsedSections['section-event-details']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
 
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-end">
+                            <div id="section-event-details-content" className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-end">
                                 <div className="md:col-span-3">
                                     <Controller
                                         name="eventType"
@@ -6715,6 +6777,31 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
+                                    <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs} className="mt-3">
+                                        <NumberInput
+                                            label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
+                                            min={2}
+                                            max={MAX_STANDARD_NUMBER}
+                                            maw={220}
+                                            value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                                            disabled={isImmutableField('playoffTeamCount')}
+                                            clampBehavior="strict"
+                                            onChange={(value) => {
+                                                if (isImmutableField('playoffTeamCount')) return;
+                                                const numeric = typeof value === 'number' ? value : Number(value);
+                                                setLeagueData((prev) => ({
+                                                    ...prev,
+                                                    playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
+                                                }));
+                                            }}
+                                            error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
+                                        />
+                                        <AnimatedSection in={!eventData.singleDivision}>
+                                            <Text size="xs" c="dimmed" mt="xs">
+                                                Existing divisions keep their own playoff counts. This value is used as the default for new divisions.
+                                            </Text>
+                                        </AnimatedSection>
+                                    </AnimatedSection>
                                 </div>
                                 <div className="md:col-span-3">
                                     <Controller
@@ -6780,31 +6867,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 }}
                                             />
                                         </Group>
-                                        <AnimatedSection in={leagueData.includePlayoffs} className="mt-3 border-l-2 border-slate-200 pl-3">
-                                            <NumberInput
-                                                label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
-                                                min={2}
-                                                max={MAX_STANDARD_NUMBER}
-                                                maw={220}
-                                                value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-                                                disabled={isImmutableField('playoffTeamCount')}
-                                                clampBehavior="strict"
-                                                onChange={(value) => {
-                                                    if (isImmutableField('playoffTeamCount')) return;
-                                                    const numeric = typeof value === 'number' ? value : Number(value);
-                                                    setLeagueData((prev) => ({
-                                                        ...prev,
-                                                        playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
-                                                    }));
-                                                }}
-                                                error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
-                                            />
-                                            <AnimatedSection in={!eventData.singleDivision}>
-                                                <Text size="xs" c="dimmed" mt="xs">
-                                                    Existing divisions keep their own playoff counts. This value is used as the default for new divisions.
-                                                </Text>
-                                            </AnimatedSection>
-                                        </AnimatedSection>
                                     </AnimatedSection>
                                 </div>
                             </div>
@@ -7334,7 +7396,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </div>
                                 </div>
                             )}
-
+                            </Collapse>
                         </Paper>
 
                         <Paper
@@ -7345,8 +7407,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             p="lg"
                             className="scroll-mt-28 bg-gray-50"
                         >
-                            <h3 className="text-lg font-semibold mb-4">Referees</h3>
-                            <Stack gap="sm">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-lg font-semibold">Referees</h3>
+                                <Button
+                                    type="button"
+                                    variant="subtle"
+                                    size="xs"
+                                    aria-expanded={!collapsedSections['section-referees']}
+                                    aria-controls="section-referees-content"
+                                    onClick={() => toggleSectionCollapse('section-referees')}
+                                >
+                                    {collapsedSections['section-referees'] ? 'Expand' : 'Collapse'}
+                                </Button>
+                            </div>
+                            <Collapse in={!collapsedSections['section-referees']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                            <Stack id="section-referees-content" gap="sm" mt="md">
                                 <Controller
                                     name="doTeamsRef"
                                     control={control}
@@ -7531,6 +7606,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </div>
                                 </div>
                             </Stack>
+                            </Collapse>
                         </Paper>
 
                         {/* Division Settings */}
@@ -7542,9 +7618,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             p="lg"
                             className="scroll-mt-28 bg-gray-50"
                         >
-                            <h3 className="text-lg font-semibold mb-4">Division Settings</h3>
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-lg font-semibold">Division Settings</h3>
+                                <Button
+                                    type="button"
+                                    variant="subtle"
+                                    size="xs"
+                                    aria-expanded={!collapsedSections['section-division-settings']}
+                                    aria-controls="section-division-settings-content"
+                                    onClick={() => toggleSectionCollapse('section-division-settings')}
+                                >
+                                    {collapsedSections['section-division-settings'] ? 'Expand' : 'Collapse'}
+                                </Button>
+                            </div>
+                            <Collapse in={!collapsedSections['section-division-settings']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
 
-                            <div className="space-y-4">
+                            <div id="section-division-settings-content" className="mt-4 space-y-4">
                                 <Text size="sm" fw={600}>
                                     {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && eventData.splitLeaguePlayoffDivisions
                                         ? 'League Divisions'
@@ -8206,6 +8295,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </Text>
                                 </div>
                             </AnimatedSection>
+                            </Collapse>
                         </Paper>
 
                         <AnimatedSection in={eventData.eventType === 'LEAGUE'}>
@@ -8217,13 +8307,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 p="lg"
                                 className="scroll-mt-28 bg-gray-50"
                             >
-                                <h3 className="text-lg font-semibold mb-4">League Scoring Config</h3>
-                                <LeagueScoringConfigPanel
-                                    value={eventData.leagueScoringConfig}
-                                    sport={eventData.sportConfig ?? undefined}
-                                    editable={!isImmutableField('leagueScoringConfig')}
-                                    onChange={handleLeagueScoringConfigChange}
-                                />
+                                <div className="flex items-center justify-between gap-3">
+                                    <h3 className="text-lg font-semibold">League Scoring Config</h3>
+                                    <Button
+                                        type="button"
+                                        variant="subtle"
+                                        size="xs"
+                                        aria-expanded={!collapsedSections['section-league-scoring-config']}
+                                        aria-controls="section-league-scoring-config-content"
+                                        onClick={() => toggleSectionCollapse('section-league-scoring-config')}
+                                    >
+                                        {collapsedSections['section-league-scoring-config'] ? 'Expand' : 'Collapse'}
+                                    </Button>
+                                </div>
+                                <Collapse in={!collapsedSections['section-league-scoring-config']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                    <div id="section-league-scoring-config-content" className="mt-4">
+                                        <LeagueScoringConfigPanel
+                                            value={eventData.leagueScoringConfig}
+                                            sport={eventData.sportConfig ?? undefined}
+                                            editable={!isImmutableField('leagueScoringConfig')}
+                                            onChange={handleLeagueScoringConfigChange}
+                                        />
+                                    </div>
+                                </Collapse>
                             </Paper>
                         </AnimatedSection>
 
@@ -8236,9 +8342,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 p="lg"
                                 className="scroll-mt-28 bg-gray-50"
                             >
-                                <h3 className="text-lg font-semibold mb-4">Schedule Config</h3>
-
-                                <div className="space-y-6">
+                                <div className="flex items-center justify-between gap-3">
+                                    <h3 className="text-lg font-semibold">Schedule Config</h3>
+                                    <Button
+                                        type="button"
+                                        variant="subtle"
+                                        size="xs"
+                                        aria-expanded={!collapsedSections['section-schedule-config']}
+                                        aria-controls="section-schedule-config-content"
+                                        onClick={() => toggleSectionCollapse('section-schedule-config')}
+                                    >
+                                        {collapsedSections['section-schedule-config'] ? 'Expand' : 'Collapse'}
+                                    </Button>
+                                </div>
+                                <Collapse in={!collapsedSections['section-schedule-config']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                <div id="section-schedule-config-content" className="mt-4 space-y-6">
                                     <AnimatedSection in={!isSchedulableEventType && usesRentalSlots}>
                                         <div className="rounded-lg border border-gray-200 bg-white p-4">
                                             <Text fw={600} size="sm">Rental Slot Schedule</Text>
@@ -8308,6 +8426,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </div>
                                     </AnimatedSection>
                                 </div>
+                                </Collapse>
                             </Paper>
                         </AnimatedSection>
                     </form>
