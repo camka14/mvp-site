@@ -250,7 +250,6 @@ model Teams {
   id               String    @id
   createdAt        DateTime?
   updatedAt        DateTime?
-  seed             Int
   playerIds        String[]
   division         String?
   divisionTypeId   String?

@@ -407,7 +407,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
               id: placeholderTeamId,
               createdAt: new Date(),
               updatedAt: new Date(),
-              seed: 0,
               playerIds: [],
               division: matchDivision.id,
               divisionTypeId: null,

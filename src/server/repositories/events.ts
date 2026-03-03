@@ -1497,7 +1497,6 @@ export const persistScheduledRosterTeams = async (
           id: teamId,
           createdAt: now,
           updatedAt: now,
-          seed: 0,
           playerIds,
           division: divisionId,
           divisionTypeId: null,
@@ -2485,7 +2484,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: teamId },
       create: {
         id: teamId,
-        seed: 0,
         playerIds: ensureArray(team.playerIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,

@@ -267,7 +267,6 @@ const seed = async (): Promise<void> => {
     await prisma.teams.createMany({
       data: SEED_TEAM_IDS.map((id, index) => ({
         id,
-        seed: index + 1,
         playerIds: [],
         division: SEED_DIVISION.id,
         wins: 0,

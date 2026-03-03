@@ -2914,7 +2914,6 @@ export const TeamsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
-  seed: 'seed',
   playerIds: 'playerIds',
   division: 'division',
   divisionTypeId: 'divisionTypeId',
