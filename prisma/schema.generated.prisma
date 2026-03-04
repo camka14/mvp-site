@@ -263,6 +263,7 @@ model Bills {
   status BillsStatusEnum?
   paymentPlanEnabled Boolean?
   createdBy String?
+  lineItems Json?
 }
 
 model BillPayments {
@@ -277,6 +278,7 @@ model BillPayments {
   paidAt DateTime?
   paymentIntentId String?
   payerUserId String?
+  refundedAmountCents Int @default(0)
 }
 
 model RefundRequests {

@@ -7,6 +7,7 @@ type DivisionTeamComplianceCardProps = {
   team: Team;
   summary?: TeamComplianceSummary;
   loading?: boolean;
+  showComplianceDetails?: boolean;
   className?: string;
   actions?: React.ReactNode;
   onClick?: () => void;
@@ -57,6 +58,7 @@ export default function DivisionTeamComplianceCard({
   team,
   summary,
   loading = false,
+  showComplianceDetails = true,
   className = '',
   actions,
   onClick,
@@ -79,14 +81,18 @@ export default function DivisionTeamComplianceCard({
           <Group gap={6}>
             <Badge variant="light" color="blue" size="sm">{team.currentSize}/{team.teamSize} players</Badge>
             {team.sport ? <Badge variant="outline" color="gray" size="sm">{team.sport}</Badge> : null}
-            {loading ? <Badge variant="light" color="gray" size="sm">Loading</Badge> : null}
+            {loading && showComplianceDetails ? <Badge variant="light" color="gray" size="sm">Loading</Badge> : null}
           </Group>
-          <Text size="sm" c={payment.color}>{payment.label}</Text>
-          <Text size="sm" c={documents.color}>{documents.label}</Text>
-          {summary?.users?.length ? (
-            <Text size="xs" c="dimmed">
-              {summary.users.length === 1 ? '1 rostered user' : `${summary.users.length} rostered users`}
-            </Text>
+          {showComplianceDetails ? (
+            <>
+              <Text size="sm" c={payment.color}>{payment.label}</Text>
+              <Text size="sm" c={documents.color}>{documents.label}</Text>
+              {summary?.users?.length ? (
+                <Text size="xs" c="dimmed">
+                  {summary.users.length === 1 ? '1 rostered user' : `${summary.users.length} rostered users`}
+                </Text>
+              ) : null}
+            </>
           ) : null}
         </Stack>
         {actions ? (

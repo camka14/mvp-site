@@ -23,6 +23,36 @@ const calculateChargeAmount = (goalAmountCents: number, fixedFeeCents = 30, perc
   return Math.round(numerator / denominator);
 };
 
+const normalizeString = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized.length ? normalized : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+};
+
+const extractEntityId = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object') {
+    return normalizeString(value);
+  }
+  const row = value as Record<string, unknown>;
+  return normalizeString(row.$id ?? row.id);
+};
+
+const appendMetadata = (
+  metadata: Record<string, string>,
+  key: string,
+  value: unknown,
+  maxLength = 200,
+) => {
+  const normalized = normalizeString(value);
+  if (!normalized) return;
+  metadata[key] = normalized.slice(0, maxLength);
+};
+
 export async function POST(req: NextRequest) {
   await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -34,9 +64,27 @@ export async function POST(req: NextRequest) {
   const payload = parsed.data;
   let amountCents = 0;
   let purchaseType = 'event';
+  let product: {
+    id: string;
+    name: string;
+    description: string | null;
+    priceCents: number;
+    period: string;
+    organizationId: string;
+  } | null = null;
 
   if (payload.productId) {
-    const product = await prisma.products.findUnique({ where: { id: payload.productId } });
+    product = await prisma.products.findUnique({
+      where: { id: payload.productId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        priceCents: true,
+        period: true,
+        organizationId: true,
+      },
+    });
     if (!product) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
@@ -83,15 +131,40 @@ export async function POST(req: NextRequest) {
 
   const stripe = new Stripe(secretKey);
   try {
-    const userId = payload.user?.$id ?? payload.user?.id ?? null;
+    const userId = extractEntityId(payload.user);
+    const teamId = extractEntityId(payload.team);
+    const eventId = extractEntityId(payload.event);
+    const organizationId =
+      extractEntityId(payload.organization)
+      ?? normalizeString(payload.event?.organizationId)
+      ?? (product?.organizationId ?? null);
+
     const metadata: Record<string, string> = {
       purchase_type: purchaseType,
     };
-    if (userId) metadata.user_id = String(userId);
-    if (payload.productId) metadata.product_id = payload.productId;
-    if (payload.event?.$id || payload.event?.id) {
-      metadata.event_id = String(payload.event?.$id ?? payload.event?.id);
-    }
+
+    appendMetadata(metadata, 'user_id', userId);
+    appendMetadata(metadata, 'team_id', teamId);
+    appendMetadata(metadata, 'event_id', eventId);
+    appendMetadata(metadata, 'product_id', payload.productId ?? product?.id);
+    appendMetadata(metadata, 'organization_id', organizationId);
+    appendMetadata(metadata, 'organization_name', payload.organization?.name);
+    appendMetadata(metadata, 'team_name', payload.team?.name);
+    appendMetadata(metadata, 'amount_cents', amountCents);
+    appendMetadata(metadata, 'total_charge_cents', totalCharge);
+    appendMetadata(metadata, 'processing_fee_cents', applicationFee);
+    appendMetadata(metadata, 'stripe_fee_cents', stripeFee);
+    appendMetadata(metadata, 'event_name', payload.event?.name);
+    appendMetadata(metadata, 'event_location', payload.event?.location);
+    appendMetadata(metadata, 'event_start', payload.event?.start);
+    appendMetadata(metadata, 'host_id', payload.event?.hostId);
+    appendMetadata(metadata, 'time_slot_id', extractEntityId(payload.timeSlot));
+    appendMetadata(metadata, 'time_slot_start', payload.timeSlot?.startDate);
+    appendMetadata(metadata, 'time_slot_end', payload.timeSlot?.endDate);
+    appendMetadata(metadata, 'product_name', product?.name);
+    appendMetadata(metadata, 'product_description', product?.description);
+    appendMetadata(metadata, 'product_period', product?.period);
+
     const intent = await stripe.paymentIntents.create({
       amount: totalCharge,
       currency: 'usd',

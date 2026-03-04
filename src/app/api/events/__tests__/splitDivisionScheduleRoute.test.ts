@@ -6,6 +6,7 @@ const prismaMock = {
   $transaction: jest.fn(),
   events: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn(),
   },
   divisions: {
@@ -58,6 +59,7 @@ describe('event schedule route - split divisions regression', () => {
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     acquireEventLockMock.mockResolvedValue(undefined);
+    prismaMock.events.findMany.mockResolvedValue([]);
     prismaMock.events.update.mockResolvedValue(undefined);
     prismaMock.matches.findMany.mockResolvedValue([]);
     prismaMock.matches.deleteMany.mockResolvedValue(undefined);

@@ -515,6 +515,60 @@ type EventLifecycleStatus = 'DRAFT' | 'PUBLISHED';
 type NotificationAudienceKey = 'managers' | 'players' | 'parents' | 'referees' | 'hosts';
 type NotificationAudienceState = Record<NotificationAudienceKey, boolean>;
 
+type TeamBillingUserOption = {
+  id: string;
+  displayName: string;
+};
+
+type TeamBillingPaymentSnapshot = {
+  $id: string;
+  billId: string;
+  sequence: number;
+  status: string | null;
+  amountCents: number;
+  refundedAmountCents: number;
+  refundableAmountCents: number;
+  paidAt?: string | null;
+  paymentIntentId?: string | null;
+  isRefundable: boolean;
+};
+
+type TeamBillingBillSnapshot = {
+  $id: string;
+  ownerType: 'TEAM' | 'USER';
+  ownerId: string;
+  ownerName: string;
+  totalAmountCents: number;
+  paidAmountCents: number;
+  refundedAmountCents: number;
+  refundableAmountCents: number;
+  status: string | null;
+  allowSplit?: boolean | null;
+  lineItems?: Array<{
+    id?: string;
+    type?: string;
+    label?: string;
+    amountCents?: number;
+    quantity?: number;
+  }>;
+  payments: TeamBillingPaymentSnapshot[];
+};
+
+type TeamBillingSnapshot = {
+  team: {
+    id: string;
+    name?: string | null;
+    playerIds?: string[];
+  };
+  users: TeamBillingUserOption[];
+  bills: TeamBillingBillSnapshot[];
+  totals: {
+    paidAmountCents: number;
+    refundedAmountCents: number;
+    refundableAmountCents: number;
+  };
+};
+
 const DEFAULT_NOTIFICATION_AUDIENCE: NotificationAudienceState = {
   managers: false,
   players: false,
@@ -667,8 +721,24 @@ function EventScheduleContent() {
   const [teamComplianceById, setTeamComplianceById] = useState<Record<string, TeamComplianceSummary>>({});
   const [teamComplianceLoading, setTeamComplianceLoading] = useState(false);
   const [teamComplianceError, setTeamComplianceError] = useState<string | null>(null);
+  const [teamComplianceRefreshKey, setTeamComplianceRefreshKey] = useState(0);
   const [selectedComplianceTeamId, setSelectedComplianceTeamId] = useState<string | null>(null);
   const [expandedComplianceUserIds, setExpandedComplianceUserIds] = useState<string[]>([]);
+  const [selectedRefundTeam, setSelectedRefundTeam] = useState<Team | null>(null);
+  const [refundSnapshot, setRefundSnapshot] = useState<TeamBillingSnapshot | null>(null);
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [refundError, setRefundError] = useState<string | null>(null);
+  const [refundAmountDraftByPaymentId, setRefundAmountDraftByPaymentId] = useState<Record<string, number>>({});
+  const [refundingPaymentId, setRefundingPaymentId] = useState<string | null>(null);
+  const [createBillTeam, setCreateBillTeam] = useState<Team | null>(null);
+  const [createBillError, setCreateBillError] = useState<string | null>(null);
+  const [creatingBill, setCreatingBill] = useState(false);
+  const [createBillOwnerType, setCreateBillOwnerType] = useState<'TEAM' | 'USER'>('TEAM');
+  const [createBillOwnerId, setCreateBillOwnerId] = useState<string | null>(null);
+  const [createBillAmountDollars, setCreateBillAmountDollars] = useState<number>(0);
+  const [createBillTaxDollars, setCreateBillTaxDollars] = useState<number>(0);
+  const [createBillAllowSplit, setCreateBillAllowSplit] = useState(false);
+  const [createBillLabel, setCreateBillLabel] = useState('Event registration');
   const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
   const [selectedAddTeamDivisionId, setSelectedAddTeamDivisionId] = useState<string | null>(null);
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
@@ -1964,7 +2034,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIds]);
+  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIds, teamComplianceRefreshKey]);
 
   useEffect(() => {
     if (!selectedComplianceTeamId) {
@@ -2271,6 +2341,321 @@ function EventScheduleContent() {
     },
     [mutateTeamParticipantMembership, participantTeamIdSet, participantsUpdatingTeamId],
   );
+
+  const refreshTeamCompliance = useCallback(() => {
+    setTeamComplianceRefreshKey((current) => current + 1);
+  }, []);
+
+  const loadTeamBillingSnapshot = useCallback(
+    async (teamId: string): Promise<TeamBillingSnapshot> => {
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) {
+        throw new Error('Event context is unavailable.');
+      }
+      return apiRequest<TeamBillingSnapshot>(`/api/events/${targetEventId}/teams/${teamId}/billing`);
+    },
+    [activeEvent?.$id, eventId],
+  );
+
+  const closeRefundModal = useCallback(() => {
+    setSelectedRefundTeam(null);
+    setRefundSnapshot(null);
+    setRefundError(null);
+    setRefundLoading(false);
+    setRefundAmountDraftByPaymentId({});
+    setRefundingPaymentId(null);
+  }, []);
+
+  const openRefundModal = useCallback(
+    async (team: Team) => {
+      if (!team?.$id) {
+        return;
+      }
+      setSelectedRefundTeam(team);
+      setRefundLoading(true);
+      setRefundError(null);
+      setRefundSnapshot(null);
+      try {
+        const snapshot = await loadTeamBillingSnapshot(team.$id);
+        setRefundSnapshot(snapshot);
+        const defaults: Record<string, number> = {};
+        snapshot.bills.forEach((bill) => {
+          bill.payments.forEach((payment) => {
+            defaults[payment.$id] = payment.refundableAmountCents / 100;
+          });
+        });
+        setRefundAmountDraftByPaymentId(defaults);
+      } catch (error) {
+        console.error('Failed to load team billing snapshot:', error);
+        setRefundError(error instanceof Error ? error.message : 'Failed to load billing details.');
+      } finally {
+        setRefundLoading(false);
+      }
+    },
+    [loadTeamBillingSnapshot],
+  );
+
+  const submitRefund = useCallback(
+    async (paymentId: string) => {
+      const team = selectedRefundTeam;
+      if (!team?.$id) {
+        return;
+      }
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) {
+        return;
+      }
+      const payment = refundSnapshot?.bills
+        .flatMap((bill) => bill.payments)
+        .find((entry) => entry.$id === paymentId);
+      if (!payment) {
+        return;
+      }
+      const amountDollars = refundAmountDraftByPaymentId[paymentId] ?? (payment.refundableAmountCents / 100);
+      const amountCents = Math.round((Number(amountDollars) || 0) * 100);
+      if (!Number.isFinite(amountCents) || amountCents <= 0) {
+        setRefundError('Enter a refund amount greater than $0.00.');
+        return;
+      }
+
+      setRefundingPaymentId(paymentId);
+      setRefundError(null);
+      try {
+        await apiRequest(`/api/events/${targetEventId}/teams/${team.$id}/billing/refunds`, {
+          method: 'POST',
+          body: {
+            billPaymentId: paymentId,
+            amountCents,
+          },
+        });
+        const snapshot = await loadTeamBillingSnapshot(team.$id);
+        setRefundSnapshot(snapshot);
+        const nextDefaults: Record<string, number> = {};
+        snapshot.bills.forEach((bill) => {
+          bill.payments.forEach((entry) => {
+            nextDefaults[entry.$id] = entry.refundableAmountCents / 100;
+          });
+        });
+        setRefundAmountDraftByPaymentId(nextDefaults);
+        setInfoMessage('Refund processed successfully.');
+        refreshTeamCompliance();
+      } catch (error) {
+        console.error('Failed to process refund:', error);
+        setRefundError(error instanceof Error ? error.message : 'Failed to process refund.');
+      } finally {
+        setRefundingPaymentId(null);
+      }
+    },
+    [
+      activeEvent?.$id,
+      eventId,
+      loadTeamBillingSnapshot,
+      refreshTeamCompliance,
+      refundAmountDraftByPaymentId,
+      refundSnapshot?.bills,
+      selectedRefundTeam,
+    ],
+  );
+
+  const closeCreateBillModal = useCallback(() => {
+    setCreateBillTeam(null);
+    setCreateBillError(null);
+    setCreatingBill(false);
+    setCreateBillOwnerType('TEAM');
+    setCreateBillOwnerId(null);
+    setCreateBillAmountDollars(0);
+    setCreateBillTaxDollars(0);
+    setCreateBillAllowSplit(false);
+    setCreateBillLabel('Event registration');
+  }, []);
+
+  const openCreateBillModal = useCallback((team: Team) => {
+    if (!team?.$id) {
+      return;
+    }
+    setCreateBillTeam(team);
+    setCreateBillError(null);
+    setCreatingBill(false);
+    setCreateBillOwnerType('TEAM');
+    setCreateBillOwnerId(team.$id);
+    setCreateBillAmountDollars(0);
+    setCreateBillTaxDollars(0);
+    setCreateBillAllowSplit(false);
+    setCreateBillLabel('Event registration');
+  }, []);
+
+  const createBillUserOptions = useMemo(() => {
+    if (!createBillTeam) {
+      return [] as Array<{ value: string; label: string }>;
+    }
+    const fromPlayers = Array.isArray(createBillTeam.players)
+      ? createBillTeam.players
+          .map((player) => {
+            const playerId = normalizeIdToken(player?.$id);
+            if (!playerId) {
+              return null;
+            }
+            const fullName = typeof player.fullName === 'string' && player.fullName.trim().length > 0
+              ? player.fullName.trim()
+              : `${player.firstName ?? ''} ${player.lastName ?? ''}`.trim();
+            return {
+              value: playerId,
+              label: fullName || player.userName || playerId,
+            };
+          })
+          .filter((option): option is { value: string; label: string } => Boolean(option))
+      : [];
+    if (fromPlayers.length > 0) {
+      return fromPlayers;
+    }
+    const fallbackPlayerIds = Array.isArray(createBillTeam.playerIds)
+      ? createBillTeam.playerIds
+        .map((playerId) => normalizeIdToken(playerId))
+        .filter((playerId): playerId is string => Boolean(playerId))
+      : [];
+    return fallbackPlayerIds.map((playerId) => ({
+      value: playerId,
+      label: playerId,
+    }));
+  }, [createBillTeam]);
+
+  useEffect(() => {
+    if (!createBillTeam) {
+      return;
+    }
+    if (createBillOwnerType === 'TEAM') {
+      if (createBillOwnerId !== createBillTeam.$id) {
+        setCreateBillOwnerId(createBillTeam.$id);
+      }
+      return;
+    }
+    const firstUserId = createBillUserOptions[0]?.value ?? null;
+    if (firstUserId && createBillOwnerId !== firstUserId) {
+      setCreateBillOwnerId(firstUserId);
+    }
+  }, [createBillOwnerId, createBillOwnerType, createBillTeam, createBillUserOptions]);
+
+  const createBillEventAmountCents = Math.max(0, Math.round((Number(createBillAmountDollars) || 0) * 100));
+  const createBillFeeAmountCents = Math.max(0, Math.round(createBillEventAmountCents * 0.01));
+  const createBillTaxAmountCents = Math.max(0, Math.round((Number(createBillTaxDollars) || 0) * 100));
+  const createBillTotalCents = createBillEventAmountCents + createBillFeeAmountCents + createBillTaxAmountCents;
+  const createBillPreviewLineItems = useMemo(
+    () => [
+      {
+        id: 'line_1',
+        label: createBillLabel.trim().length > 0 ? createBillLabel.trim() : 'Event registration',
+        amountCents: createBillEventAmountCents,
+      },
+      ...(createBillFeeAmountCents > 0
+        ? [
+            {
+              id: 'line_2',
+              label: 'Processing fee',
+              amountCents: createBillFeeAmountCents,
+            },
+          ]
+        : []),
+      ...(createBillTaxAmountCents > 0
+        ? [
+            {
+              id: 'line_3',
+              label: 'Tax',
+              amountCents: createBillTaxAmountCents,
+            },
+          ]
+        : []),
+    ],
+    [createBillEventAmountCents, createBillFeeAmountCents, createBillLabel, createBillTaxAmountCents],
+  );
+
+  const submitCreateBill = useCallback(async () => {
+    const team = createBillTeam;
+    if (!team?.$id) {
+      return;
+    }
+    const targetEventId = activeEvent?.$id ?? eventId;
+    if (!targetEventId) {
+      return;
+    }
+    if (createBillEventAmountCents <= 0) {
+      setCreateBillError('Enter an amount greater than $0.00.');
+      return;
+    }
+    if (createBillOwnerType === 'USER' && !createBillOwnerId) {
+      setCreateBillError('Select a user to bill.');
+      return;
+    }
+
+    setCreatingBill(true);
+    setCreateBillError(null);
+    try {
+      await apiRequest(`/api/events/${targetEventId}/teams/${team.$id}/billing/bills`, {
+        method: 'POST',
+        body: {
+          ownerType: createBillOwnerType,
+          ownerId: createBillOwnerType === 'TEAM' ? team.$id : createBillOwnerId,
+          eventAmountCents: createBillEventAmountCents,
+          feeAmountCents: createBillFeeAmountCents,
+          taxAmountCents: createBillTaxAmountCents,
+          allowSplit: createBillOwnerType === 'TEAM' ? createBillAllowSplit : false,
+          label: createBillLabel,
+        },
+      });
+      setInfoMessage('Bill created successfully.');
+      closeCreateBillModal();
+      refreshTeamCompliance();
+    } catch (error) {
+      console.error('Failed to create bill:', error);
+      setCreateBillError(error instanceof Error ? error.message : 'Failed to create bill.');
+    } finally {
+      setCreatingBill(false);
+    }
+  }, [
+    activeEvent?.$id,
+    closeCreateBillModal,
+    createBillAllowSplit,
+    createBillEventAmountCents,
+    createBillFeeAmountCents,
+    createBillLabel,
+    createBillOwnerId,
+    createBillOwnerType,
+    createBillTaxAmountCents,
+    createBillTeam,
+    eventId,
+    refreshTeamCompliance,
+  ]);
+
+  const renderEditBillingActions = useCallback((team: Team) => {
+    if (!isEditingEvent || !canManageEvent) {
+      return null;
+    }
+    return (
+      <Group gap={6} wrap="nowrap">
+        <Button
+          size="xs"
+          variant="light"
+          color="blue"
+          onClick={(event) => {
+            event.stopPropagation();
+            void openRefundModal(team);
+          }}
+        >
+          Refund
+        </Button>
+        <Button
+          size="xs"
+          variant="light"
+          color="grape"
+          onClick={(event) => {
+            event.stopPropagation();
+            openCreateBillModal(team);
+          }}
+        >
+          Send Bill
+        </Button>
+      </Group>
+    );
+  }, [canManageEvent, isEditingEvent, openCreateBillModal, openRefundModal]);
 
   const toggleComplianceUserExpanded = useCallback((userId: string) => {
     setExpandedComplianceUserIds((current) => (
@@ -2634,7 +3019,7 @@ function EventScheduleContent() {
   const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
     if (isCreateMode) return 'Cancel';
-    if (isUnpublished) return 'Delete';
+    if (isUnpublished) return `Delete ${entityLabel}`;
     if (isPreview) return `Cancel ${entityLabel} Preview`;
     if (isEditingEvent) return 'Cancel Edit';
     return `Cancel ${entityLabel}`;
@@ -3420,6 +3805,47 @@ function EventScheduleContent() {
         ? activeEvent.teams.find((team) => team?.$id === selectedComplianceTeamId) ?? null
         : null);
   }, [activeEvent?.teams, participantTeamsById, selectedComplianceTeamId]);
+
+  const renderParticipantTeamCard = ({
+    cardKey,
+    team,
+    actions,
+    className = '',
+    showComplianceDetails = canUseTeamCompliance,
+  }: {
+    cardKey: string;
+    team: Team;
+    actions?: React.ReactNode;
+    className?: string;
+    showComplianceDetails?: boolean;
+  }) => {
+    if (isEditingEvent) {
+      return (
+        <DivisionTeamComplianceCard
+          key={cardKey}
+          team={team}
+          summary={showComplianceDetails ? teamComplianceById[team.$id] : undefined}
+          loading={showComplianceDetails ? teamComplianceLoading : false}
+          showComplianceDetails={showComplianceDetails}
+          className={className}
+          onClick={showComplianceDetails ? () => {
+            setSelectedComplianceTeamId(team.$id);
+            setExpandedComplianceUserIds([]);
+          } : undefined}
+          actions={actions}
+        />
+      );
+    }
+
+    return (
+      <TeamCard
+        key={cardKey}
+        team={team}
+        className={className}
+        actions={actions}
+      />
+    );
+  };
 
   const formatCompliancePaymentLabel = useCallback((payment: TeamComplianceSummary['payment']) => {
     if (!payment.hasBill) {
@@ -5147,7 +5573,7 @@ function EventScheduleContent() {
                           || (!isCreateMode && hasMatchConflicts)
                         }
                       >
-                        {isCreateMode ? createButtonLabel : 'Save'}
+                        {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
                       </Button>
                     )}
                     {showRescheduleActionButton && (
@@ -5365,22 +5791,26 @@ function EventScheduleContent() {
                                 ) : (
                                   <Stack gap="sm">
                                     {columnTeams.map((team) => {
+                                      const canMoveTeamBetweenDivisions = canManageEvent && !isEditingEvent;
                                       const teamActions = canManageEvent
                                         ? (
                                           participantsUpdatingTeamId === team.$id
                                             ? <Text size="xs" c="dimmed">Updating...</Text>
                                             : (
                                               <Stack gap={6}>
-                                                <Select
-                                                  size="xs"
-                                                  data={participantDivisionSelectData}
-                                                  value={column.id}
-                                                  onChange={(value) => {
-                                                    void handleMoveTeamDivision(team, value);
-                                                  }}
-                                                  allowDeselect={false}
-                                                  w={200}
-                                                />
+                                                {renderEditBillingActions(team)}
+                                                {canMoveTeamBetweenDivisions ? (
+                                                  <Select
+                                                    size="xs"
+                                                    data={participantDivisionSelectData}
+                                                    value={column.id}
+                                                    onChange={(value) => {
+                                                      void handleMoveTeamDivision(team, value);
+                                                    }}
+                                                    allowDeselect={false}
+                                                    w={200}
+                                                  />
+                                                ) : null}
                                                 <Button
                                                   size="xs"
                                                   variant="light"
@@ -5397,31 +5827,12 @@ function EventScheduleContent() {
                                         )
                                         : undefined;
 
-                                      if (canUseTeamCompliance) {
-                                        return (
-                                          <DivisionTeamComplianceCard
-                                            key={`${column.id}:${team.$id}`}
-                                            team={team}
-                                            summary={teamComplianceById[team.$id]}
-                                            loading={teamComplianceLoading}
-                                            className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
-                                            onClick={() => {
-                                              setSelectedComplianceTeamId(team.$id);
-                                              setExpandedComplianceUserIds([]);
-                                            }}
-                                            actions={teamActions}
-                                          />
-                                        );
-                                      }
-
-                                      return (
-                                        <TeamCard
-                                          key={`${column.id}:${team.$id}`}
-                                          team={team}
-                                          className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
-                                          actions={teamActions}
-                                        />
-                                      );
+                                      return renderParticipantTeamCard({
+                                        cardKey: `${column.id}:${team.$id}`,
+                                        team,
+                                        className: isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : '',
+                                        actions: teamActions,
+                                      });
                                     })}
                                   </Stack>
                                 )}
@@ -5442,23 +5853,27 @@ function EventScheduleContent() {
                             ) : (
                               <Stack gap="sm">
                                 {unassignedParticipantTeams.map((team) => {
+                                  const canMoveTeamBetweenDivisions = canManageEvent && !isEditingEvent;
                                   const teamActions = canManageEvent
                                     ? (
                                       participantsUpdatingTeamId === team.$id
                                         ? <Text size="xs" c="dimmed">Updating...</Text>
                                         : (
                                           <Stack gap={6}>
-                                            <Select
-                                              size="xs"
-                                              data={participantDivisionSelectData}
-                                              value={null}
-                                              placeholder="Move to division"
-                                              onChange={(value) => {
-                                                void handleMoveTeamDivision(team, value);
-                                              }}
-                                              allowDeselect
-                                              w={200}
-                                            />
+                                            {renderEditBillingActions(team)}
+                                            {canMoveTeamBetweenDivisions ? (
+                                              <Select
+                                                size="xs"
+                                                data={participantDivisionSelectData}
+                                                value={null}
+                                                placeholder="Move to division"
+                                                onChange={(value) => {
+                                                  void handleMoveTeamDivision(team, value);
+                                                }}
+                                                allowDeselect
+                                                w={200}
+                                              />
+                                            ) : null}
                                             <Button
                                               size="xs"
                                               variant="light"
@@ -5475,31 +5890,12 @@ function EventScheduleContent() {
                                     )
                                     : undefined;
 
-                                  if (canUseTeamCompliance) {
-                                    return (
-                                      <DivisionTeamComplianceCard
-                                        key={`unassigned:${team.$id}`}
-                                        team={team}
-                                        summary={teamComplianceById[team.$id]}
-                                        loading={teamComplianceLoading}
-                                        className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
-                                        onClick={() => {
-                                          setSelectedComplianceTeamId(team.$id);
-                                          setExpandedComplianceUserIds([]);
-                                        }}
-                                        actions={teamActions}
-                                      />
-                                    );
-                                  }
-
-                                  return (
-                                    <TeamCard
-                                      key={`unassigned:${team.$id}`}
-                                      team={team}
-                                      className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
-                                      actions={teamActions}
-                                    />
-                                  );
+                                  return renderParticipantTeamCard({
+                                    cardKey: `unassigned:${team.$id}`,
+                                    team,
+                                    className: isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : '',
+                                    actions: teamActions,
+                                  });
                                 })}
                               </Stack>
                             )}
@@ -5509,34 +5905,33 @@ function EventScheduleContent() {
                     </div>
                   ) : (
                     <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
-                      {participantTeams.map((team) => (
-                        <TeamCard
-                          key={team.$id}
-                          team={team}
-                          className={isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : ''}
-                          actions={
-                            canManageEvent
-                              ? (
-                                participantsUpdatingTeamId
-                                  ? <Text size="xs" c="dimmed">Updating...</Text>
-                                  : (
-                                    <Button
-                                      size="xs"
-                                      variant="light"
-                                      color="red"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        void handleRemoveTeamFromParticipants(team);
-                                      }}
-                                    >
-                                      Remove
-                                    </Button>
-                                  )
+                      {participantTeams.map((team) => renderParticipantTeamCard({
+                        cardKey: team.$id,
+                        team,
+                        className: isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : '',
+                        actions: canManageEvent
+                          ? (
+                            participantsUpdatingTeamId === team.$id
+                              ? <Text size="xs" c="dimmed">Updating...</Text>
+                              : (
+                                <Stack gap={6}>
+                                  {renderEditBillingActions(team)}
+                                  <Button
+                                    size="xs"
+                                    variant="light"
+                                    color="red"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleRemoveTeamFromParticipants(team);
+                                    }}
+                                  >
+                                    Remove
+                                  </Button>
+                                </Stack>
                               )
-                              : undefined
-                          }
-                        />
-                      ))}
+                          )
+                          : undefined,
+                      }))}
                     </SimpleGrid>
                   )}
                 </Stack>
@@ -5961,27 +6356,24 @@ function EventScheduleContent() {
                 </Paper>
               ) : (
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                  {availableOrganizationTeams.map((team) => (
-                    <TeamCard
-                      key={`org-team-${team.$id}`}
-                      team={team}
-                      actions={
-                        participantsUpdatingTeamId
-                          ? <Text size="xs" c="dimmed">Adding...</Text>
-                          : (
-                            <Button
-                              size="xs"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void handleAddTeamToParticipants(team);
-                              }}
-                            >
-                              Add
-                            </Button>
-                          )
-                      }
-                    />
-                  ))}
+                  {availableOrganizationTeams.map((team) => renderParticipantTeamCard({
+                    cardKey: `org-team-${team.$id}`,
+                    team,
+                    showComplianceDetails: false,
+                    actions: participantsUpdatingTeamId === team.$id
+                      ? <Text size="xs" c="dimmed">Adding...</Text>
+                      : (
+                        <Button
+                          size="xs"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleAddTeamToParticipants(team);
+                          }}
+                        >
+                          Add
+                        </Button>
+                      ),
+                  }))}
                 </SimpleGrid>
               )}
             </Stack>
@@ -6004,30 +6396,282 @@ function EventScheduleContent() {
               </Paper>
             ) : (
               <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                {searchResultTeams.map((team) => (
-                  <TeamCard
-                    key={`search-team-${team.$id}`}
-                    team={team}
-                    actions={
-                      participantsUpdatingTeamId
-                        ? <Text size="xs" c="dimmed">Adding...</Text>
-                        : (
-                          <Button
-                            size="xs"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void handleAddTeamToParticipants(team);
-                            }}
-                          >
-                            Add
-                          </Button>
-                        )
-                    }
-                  />
-                ))}
+                {searchResultTeams.map((team) => renderParticipantTeamCard({
+                  cardKey: `search-team-${team.$id}`,
+                  team,
+                  showComplianceDetails: false,
+                  actions: participantsUpdatingTeamId === team.$id
+                    ? <Text size="xs" c="dimmed">Adding...</Text>
+                    : (
+                      <Button
+                        size="xs"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleAddTeamToParticipants(team);
+                        }}
+                      >
+                        Add
+                      </Button>
+                    ),
+                }))}
               </SimpleGrid>
             )}
           </Stack>
+        </Stack>
+      </Modal>
+      <Modal
+        opened={Boolean(selectedRefundTeam)}
+        onClose={closeRefundModal}
+        title={selectedRefundTeam ? `Refunds • ${selectedRefundTeam.name || 'Team'}` : 'Refunds'}
+        size="xl"
+        centered
+        fullScreen={Boolean(isMobile)}
+      >
+        <Stack gap="md">
+          {refundError ? (
+            <Alert color="red" radius="md">
+              {refundError}
+            </Alert>
+          ) : null}
+
+          {refundLoading ? (
+            <Paper withBorder radius="md" p="md">
+              <Group justify="center" gap="sm">
+                <Loader size="sm" />
+                <Text size="sm" c="dimmed">Loading bill payments...</Text>
+              </Group>
+            </Paper>
+          ) : refundSnapshot ? (
+            <>
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                <Paper withBorder radius="md" p="sm">
+                  <Text size="xs" c="dimmed">Paid</Text>
+                  <Text fw={600}>{formatBillAmount(refundSnapshot.totals.paidAmountCents)}</Text>
+                </Paper>
+                <Paper withBorder radius="md" p="sm">
+                  <Text size="xs" c="dimmed">Refunded</Text>
+                  <Text fw={600}>{formatBillAmount(refundSnapshot.totals.refundedAmountCents)}</Text>
+                </Paper>
+                <Paper withBorder radius="md" p="sm">
+                  <Text size="xs" c="dimmed">Refundable</Text>
+                  <Text fw={600}>{formatBillAmount(refundSnapshot.totals.refundableAmountCents)}</Text>
+                </Paper>
+              </SimpleGrid>
+
+              {refundSnapshot.bills.length === 0 ? (
+                <Paper withBorder radius="md" p="md">
+                  <Text size="sm" c="dimmed">No bills were found for this team on this event.</Text>
+                </Paper>
+              ) : (
+                <Stack gap="sm">
+                  {refundSnapshot.bills.map((bill) => (
+                    <Paper key={bill.$id} withBorder radius="md" p="md">
+                      <Stack gap="xs">
+                        <Group justify="space-between" align="flex-start" wrap="wrap">
+                          <Stack gap={2}>
+                            <Text fw={600}>
+                              {bill.ownerType === 'TEAM' ? 'Team bill' : 'User bill'} • {bill.ownerName}
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              {bill.status ?? 'OPEN'} • Total {formatBillAmount(bill.totalAmountCents)}
+                            </Text>
+                          </Stack>
+                          <Text size="xs" c="dimmed">
+                            Refunded {formatBillAmount(bill.refundedAmountCents)} / Refundable {formatBillAmount(bill.refundableAmountCents)}
+                          </Text>
+                        </Group>
+
+                        {Array.isArray(bill.lineItems) && bill.lineItems.length > 0 ? (
+                          <Stack gap={2}>
+                            {bill.lineItems.map((item, index) => (
+                              <Text key={`${bill.$id}:line:${item.id ?? index}`} size="xs" c="dimmed">
+                                {(item.label ?? 'Line item')} • {formatBillAmount(Number(item.amountCents ?? 0))}
+                              </Text>
+                            ))}
+                          </Stack>
+                        ) : null}
+
+                        <Stack gap="xs" mt={4}>
+                          {bill.payments.length === 0 ? (
+                            <Text size="sm" c="dimmed">No bill payments found.</Text>
+                          ) : bill.payments.map((payment) => {
+                            const draftAmount = refundAmountDraftByPaymentId[payment.$id] ?? (payment.refundableAmountCents / 100);
+                            const maxDollars = payment.refundableAmountCents / 100;
+                            const canRefundPayment = payment.isRefundable && Boolean(payment.paymentIntentId);
+                            return (
+                              <Paper key={payment.$id} withBorder radius="sm" p="sm">
+                                <Stack gap="xs">
+                                  <Group justify="space-between" align="center" wrap="wrap">
+                                    <Text size="sm" fw={500}>Payment #{payment.sequence}</Text>
+                                    <Text size="xs" c="dimmed">
+                                      Amount {formatBillAmount(payment.amountCents)} • Refunded {formatBillAmount(payment.refundedAmountCents)}
+                                    </Text>
+                                  </Group>
+                                  <Text size="xs" c="dimmed">
+                                    Refundable: {formatBillAmount(payment.refundableAmountCents)}
+                                  </Text>
+                                  {canRefundPayment ? (
+                                    <Group align="flex-end" wrap="wrap">
+                                      <NumberInput
+                                        label="Refund amount"
+                                        min={0}
+                                        max={maxDollars}
+                                        decimalScale={2}
+                                        fixedDecimalScale
+                                        prefix="$"
+                                        value={draftAmount}
+                                        onChange={(value) => {
+                                          const numeric = typeof value === 'number' ? value : Number(value);
+                                          setRefundAmountDraftByPaymentId((current) => ({
+                                            ...current,
+                                            [payment.$id]: Number.isFinite(numeric) ? Math.max(0, numeric) : 0,
+                                          }));
+                                        }}
+                                        w={180}
+                                      />
+                                      <Button
+                                        loading={refundingPaymentId === payment.$id}
+                                        disabled={refundingPaymentId !== null && refundingPaymentId !== payment.$id}
+                                        onClick={() => {
+                                          void submitRefund(payment.$id);
+                                        }}
+                                      >
+                                        Refund
+                                      </Button>
+                                    </Group>
+                                  ) : (
+                                    <Text size="xs" c="dimmed">
+                                      {payment.paymentIntentId
+                                        ? 'This payment has no refundable balance.'
+                                        : 'This payment cannot be refunded because it is not linked to Stripe.'}
+                                    </Text>
+                                  )}
+                                </Stack>
+                              </Paper>
+                            );
+                          })}
+                        </Stack>
+                      </Stack>
+                    </Paper>
+                  ))}
+                </Stack>
+              )}
+            </>
+          ) : (
+            <Paper withBorder radius="md" p="md">
+              <Text size="sm" c="dimmed">No billing details loaded yet.</Text>
+            </Paper>
+          )}
+        </Stack>
+      </Modal>
+      <Modal
+        opened={Boolean(createBillTeam)}
+        onClose={closeCreateBillModal}
+        title={createBillTeam ? `Send Bill • ${createBillTeam.name || 'Team'}` : 'Send Bill'}
+        size="lg"
+        centered
+      >
+        <Stack gap="md">
+          {createBillError ? (
+            <Alert color="red" radius="md">
+              {createBillError}
+            </Alert>
+          ) : null}
+
+          <Group align="flex-end" wrap="wrap">
+            <Select
+              label="Bill owner"
+              data={[
+                { value: 'TEAM', label: 'Team' },
+                { value: 'USER', label: 'User' },
+              ]}
+              value={createBillOwnerType}
+              onChange={(value) => {
+                setCreateBillOwnerType(value === 'USER' ? 'USER' : 'TEAM');
+              }}
+              allowDeselect={false}
+              w={180}
+            />
+            {createBillOwnerType === 'USER' ? (
+              <Select
+                label="User"
+                data={createBillUserOptions}
+                value={createBillOwnerId}
+                onChange={(value) => setCreateBillOwnerId(value ?? null)}
+                placeholder="Select user"
+                searchable
+                allowDeselect={false}
+                w={260}
+              />
+            ) : null}
+          </Group>
+
+          <Group align="flex-end" wrap="wrap">
+            <NumberInput
+              label="Amount"
+              min={0}
+              decimalScale={2}
+              fixedDecimalScale
+              prefix="$"
+              value={createBillAmountDollars}
+              onChange={(value) => {
+                const numeric = typeof value === 'number' ? value : Number(value);
+                setCreateBillAmountDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
+              }}
+              w={180}
+            />
+            <NumberInput
+              label="Tax"
+              min={0}
+              decimalScale={2}
+              fixedDecimalScale
+              prefix="$"
+              value={createBillTaxDollars}
+              onChange={(value) => {
+                const numeric = typeof value === 'number' ? value : Number(value);
+                setCreateBillTaxDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
+              }}
+              w={180}
+            />
+            <TextInput
+              label="Primary line item label"
+              value={createBillLabel}
+              onChange={(event) => setCreateBillLabel(event.currentTarget.value)}
+              placeholder="Event registration"
+              w={280}
+            />
+          </Group>
+
+          {createBillOwnerType === 'TEAM' ? (
+            <Checkbox
+              label="Allow team members to split this bill"
+              checked={createBillAllowSplit}
+              onChange={(event) => setCreateBillAllowSplit(event.currentTarget.checked)}
+            />
+          ) : null}
+
+          <Paper withBorder radius="md" p="md">
+            <Stack gap={6}>
+              <Text size="sm" fw={600}>Bill preview</Text>
+              {createBillPreviewLineItems.map((item) => (
+                <Group key={item.id} justify="space-between" align="center">
+                  <Text size="sm">{item.label}</Text>
+                  <Text size="sm">{formatBillAmount(item.amountCents)}</Text>
+                </Group>
+              ))}
+              <Group justify="space-between" align="center" pt={6} style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+                <Text fw={600}>Total bill</Text>
+                <Text fw={600}>{formatBillAmount(createBillTotalCents)}</Text>
+              </Group>
+            </Stack>
+          </Paper>
+
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeCreateBillModal}>Cancel</Button>
+            <Button loading={creatingBill} onClick={() => { void submitCreateBill(); }}>
+              Create Bill
+            </Button>
+          </Group>
         </Stack>
       </Modal>
       <Modal

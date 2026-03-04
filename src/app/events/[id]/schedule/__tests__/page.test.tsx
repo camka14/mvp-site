@@ -1464,7 +1464,7 @@ describe('League schedule page', () => {
     expect(await screen.findByText(/Summer League/)).toBeInTheDocument();
     expect(await screen.findByTestId('calendar-conflict-count')).toHaveTextContent('2');
 
-    const saveButton = await screen.findByRole('button', { name: /^save$/i });
+    const saveButton = await screen.findByRole('button', { name: /save league/i });
     expect(saveButton).toBeDisabled();
     expect(eventService.updateEvent).not.toHaveBeenCalled();
 

@@ -1,5 +1,5 @@
 import { apiRequest } from '@/lib/apiClient';
-import { Bill, BillPayment, PaymentIntent, UserData } from '@/types';
+import { Bill, BillLineItem, BillPayment, PaymentIntent, UserData } from '@/types';
 
 class BillService {
     async listBills(ownerType: 'USER' | 'TEAM', ownerId: string): Promise<Bill[]> {
@@ -30,6 +30,7 @@ class BillService {
         installmentDueDates?: string[];
         allowSplit?: boolean;
         paymentPlanEnabled?: boolean;
+        lineItems?: BillLineItem[];
         event?: any;
         user?: any;
         timeoutMs?: number;
@@ -47,6 +48,7 @@ class BillService {
                 installmentDueDates: params.installmentDueDates,
                 allowSplit: params.allowSplit,
                 paymentPlanEnabled: params.paymentPlanEnabled,
+                lineItems: params.lineItems,
                 event: params.event,
                 user: params.user,
             },
@@ -119,6 +121,20 @@ class BillService {
                   .filter((p: any) => p && typeof p === 'object')
                   .map((p: any) => this.mapRowToBillPayment(p))
             : [];
+        const lineItems: BillLineItem[] = Array.isArray(row.lineItems)
+            ? row.lineItems
+                .filter((item: any) => item && typeof item === 'object')
+                .map((item: any) => {
+                    const amount = toNumber(item.amountCents);
+                    return {
+                        id: typeof item.id === 'string' ? item.id : undefined,
+                        type: typeof item.type === 'string' ? item.type : 'OTHER',
+                        label: typeof item.label === 'string' ? item.label : 'Line item',
+                        amountCents: amount,
+                        quantity: toOptionalNumber(item.quantity) ?? undefined,
+                    };
+                })
+            : [];
 
         return {
             $id: row.$id,
@@ -135,6 +151,7 @@ class BillService {
             status: row.status ?? 'OPEN',
             paymentPlanEnabled: Boolean(row.paymentPlanEnabled),
             createdBy: row.createdBy ?? null,
+            lineItems,
             payments,
         };
     }
@@ -155,6 +172,7 @@ class BillService {
             paidAt: row.paidAt,
             paymentIntentId: row.paymentIntentId,
             payerUserId: row.payerUserId,
+            refundedAmountCents: toNumber(row.refundedAmountCents),
         };
     }
 

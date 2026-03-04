@@ -13,6 +13,7 @@ import {
   type DivisionRatingType,
 } from '@/lib/divisionTypes';
 import {
+  BlockingEvent,
   Division,
   League,
   Match,
@@ -99,6 +100,9 @@ const isSchedulableEventType = (value: unknown): boolean => {
   const normalized = typeof value === 'string' ? value.toUpperCase() : '';
   return normalized === 'LEAGUE' || normalized === 'TOURNAMENT';
 };
+const FIELD_CONFLICT_LOOKAHEAD_WEEKS = 52;
+const FIELD_MATCH_BLOCK_PREFIX = '__field_match_block__';
+const FIELD_EVENT_BLOCK_PREFIX = '__field_event_block__';
 const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
   if (typeof value === 'boolean') {
     return value;
@@ -1075,6 +1079,130 @@ const attachTimeSlotsToFields = (fields: Record<string, PlayingField>, slots: Ti
   }
 };
 
+const resolveFieldConflictWindowEnd = (params: {
+  start: Date;
+  end: Date;
+  noFixedEndDateTime: boolean;
+}): Date => {
+  const baselineEndMs = Math.max(params.start.getTime(), params.end.getTime());
+  if (!params.noFixedEndDateTime) {
+    return new Date(baselineEndMs);
+  }
+  return new Date(baselineEndMs + FIELD_CONFLICT_LOOKAHEAD_WEEKS * 7 * 24 * 60 * MINUTE_MS);
+};
+
+const clearManagedFieldBlockingEvents = (fields: Record<string, PlayingField>): void => {
+  for (const field of Object.values(fields)) {
+    field.events = field.events.filter((event) => {
+      const id = String(event.id ?? '');
+      return !id.startsWith(FIELD_MATCH_BLOCK_PREFIX) && !id.startsWith(FIELD_EVENT_BLOCK_PREFIX);
+    });
+  }
+};
+
+const attachFieldSchedulingConflicts = async (params: {
+  client: PrismaLike;
+  eventId: string;
+  fields: Record<string, PlayingField>;
+  windowStart: Date;
+  windowEnd: Date;
+}): Promise<void> => {
+  const fieldIds = Object.keys(params.fields);
+  if (!fieldIds.length) {
+    return;
+  }
+  if (params.windowEnd.getTime() <= params.windowStart.getTime()) {
+    return;
+  }
+
+  clearManagedFieldBlockingEvents(params.fields);
+
+  const [externalMatchRows, externalEventRows] = await Promise.all([
+    params.client.matches.findMany({
+      where: {
+        fieldId: { in: fieldIds },
+        eventId: { not: params.eventId },
+        start: { not: null, lt: params.windowEnd },
+        end: { not: null, gt: params.windowStart },
+      } as any,
+      select: {
+        id: true,
+        eventId: true,
+        fieldId: true,
+        start: true,
+        end: true,
+      },
+    }),
+    params.client.events.findMany({
+      where: {
+        id: { not: params.eventId },
+        fieldIds: { hasSome: fieldIds },
+        NOT: { state: 'TEMPLATE' },
+        start: { lt: params.windowEnd },
+        end: { gt: params.windowStart },
+      } as any,
+      select: {
+        id: true,
+        eventType: true,
+        start: true,
+        end: true,
+        fieldIds: true,
+      },
+    }),
+  ]);
+
+  for (const row of externalMatchRows) {
+    const fieldId = typeof row.fieldId === 'string' ? row.fieldId : '';
+    const field = fieldId ? params.fields[fieldId] : undefined;
+    if (!field) {
+      continue;
+    }
+    const start = toOptionalDate(row.start);
+    const end = toOptionalDate(row.end);
+    if (!start || !end || end.getTime() <= start.getTime()) {
+      continue;
+    }
+    field.events.push(
+      new BlockingEvent({
+        id: `${FIELD_MATCH_BLOCK_PREFIX}${row.id}`,
+        start,
+        end,
+        participants: [],
+        field,
+        parentId: row.eventId ?? '',
+      }),
+    );
+  }
+
+  for (const row of externalEventRows) {
+    if (isSchedulableEventType(row.eventType)) {
+      continue;
+    }
+    const start = toOptionalDate(row.start);
+    const end = toOptionalDate(row.end);
+    if (!start || !end || end.getTime() <= start.getTime()) {
+      continue;
+    }
+    const eventFieldIds = normalizeFieldIds(row.fieldIds);
+    for (const fieldId of eventFieldIds) {
+      const field = params.fields[fieldId];
+      if (!field) {
+        continue;
+      }
+      field.events.push(
+        new BlockingEvent({
+          id: `${FIELD_EVENT_BLOCK_PREFIX}${row.id}__${fieldId}`,
+          start,
+          end,
+          participants: [],
+          field,
+          parentId: row.id,
+        }),
+      );
+    }
+  }
+};
+
 const toOptionalDate = (value: unknown): Date | null => {
   if (value == null) {
     return null;
@@ -1245,6 +1373,23 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const timeSlots = buildTimeSlots(timeSlotRows, divisionMap, divisions);
   const referees = buildReferees(refereeRows, allDivisions);
   attachTimeSlotsToFields(fields, timeSlots);
+  const eventStart = event.start instanceof Date ? event.start : new Date(event.start);
+  const eventEnd = event.end instanceof Date ? event.end : new Date(event.end);
+  const noFixedEndDateTime = typeof (event as any).noFixedEndDateTime === 'boolean'
+    ? (event as any).noFixedEndDateTime
+    : eventStart.getTime() === eventEnd.getTime();
+  const conflictWindowEnd = resolveFieldConflictWindowEnd({
+    start: eventStart,
+    end: eventEnd,
+    noFixedEndDateTime,
+  });
+  await attachFieldSchedulingConflicts({
+    client,
+    eventId: event.id,
+    fields,
+    windowStart: eventStart,
+    windowEnd: conflictWindowEnd,
+  });
 
   const coordinates = Array.isArray(event.coordinates)
     ? event.coordinates.filter((value): value is number => typeof value === 'number')
@@ -1252,8 +1397,8 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
 
   const baseParams = {
     id: event.id,
-    start: event.start instanceof Date ? event.start : new Date(event.start),
-    end: event.end instanceof Date ? event.end : new Date(event.end),
+    start: eventStart,
+    end: eventEnd,
     createdAt: event.createdAt ?? null,
     updatedAt: event.updatedAt ?? null,
     name: event.name,
@@ -1290,13 +1435,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
     assistantHostIds: ensureStringArray((event as any).assistantHostIds),
-    noFixedEndDateTime: typeof (event as any).noFixedEndDateTime === 'boolean'
-      ? (event as any).noFixedEndDateTime
-      : (
-        event.start instanceof Date
-        && event.end instanceof Date
-        && event.start.getTime() === event.end.getTime()
-      ),
+    noFixedEndDateTime,
     imageId: event.imageId ?? '',
     loserBracketPointsToVictory: ensureNumberArray(event.loserBracketPointsToVictory),
     winnerBracketPointsToVictory: ensureNumberArray(event.winnerBracketPointsToVictory),

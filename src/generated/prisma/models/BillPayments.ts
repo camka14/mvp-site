@@ -29,11 +29,13 @@ export type AggregateBillPayments = {
 export type BillPaymentsAvgAggregateOutputType = {
   sequence: number | null
   amountCents: number | null
+  refundedAmountCents: number | null
 }
 
 export type BillPaymentsSumAggregateOutputType = {
   sequence: number | null
   amountCents: number | null
+  refundedAmountCents: number | null
 }
 
 export type BillPaymentsMinAggregateOutputType = {
@@ -48,6 +50,7 @@ export type BillPaymentsMinAggregateOutputType = {
   paidAt: Date | null
   paymentIntentId: string | null
   payerUserId: string | null
+  refundedAmountCents: number | null
 }
 
 export type BillPaymentsMaxAggregateOutputType = {
@@ -62,6 +65,7 @@ export type BillPaymentsMaxAggregateOutputType = {
   paidAt: Date | null
   paymentIntentId: string | null
   payerUserId: string | null
+  refundedAmountCents: number | null
 }
 
 export type BillPaymentsCountAggregateOutputType = {
@@ -76,6 +80,7 @@ export type BillPaymentsCountAggregateOutputType = {
   paidAt: number
   paymentIntentId: number
   payerUserId: number
+  refundedAmountCents: number
   _all: number
 }
 
@@ -83,11 +88,13 @@ export type BillPaymentsCountAggregateOutputType = {
 export type BillPaymentsAvgAggregateInputType = {
   sequence?: true
   amountCents?: true
+  refundedAmountCents?: true
 }
 
 export type BillPaymentsSumAggregateInputType = {
   sequence?: true
   amountCents?: true
+  refundedAmountCents?: true
 }
 
 export type BillPaymentsMinAggregateInputType = {
@@ -102,6 +109,7 @@ export type BillPaymentsMinAggregateInputType = {
   paidAt?: true
   paymentIntentId?: true
   payerUserId?: true
+  refundedAmountCents?: true
 }
 
 export type BillPaymentsMaxAggregateInputType = {
@@ -116,6 +124,7 @@ export type BillPaymentsMaxAggregateInputType = {
   paidAt?: true
   paymentIntentId?: true
   payerUserId?: true
+  refundedAmountCents?: true
 }
 
 export type BillPaymentsCountAggregateInputType = {
@@ -130,6 +139,7 @@ export type BillPaymentsCountAggregateInputType = {
   paidAt?: true
   paymentIntentId?: true
   payerUserId?: true
+  refundedAmountCents?: true
   _all?: true
 }
 
@@ -231,6 +241,7 @@ export type BillPaymentsGroupByOutputType = {
   paidAt: Date | null
   paymentIntentId: string | null
   payerUserId: string | null
+  refundedAmountCents: number
   _count: BillPaymentsCountAggregateOutputType | null
   _avg: BillPaymentsAvgAggregateOutputType | null
   _sum: BillPaymentsSumAggregateOutputType | null
@@ -268,6 +279,7 @@ export type BillPaymentsWhereInput = {
   paidAt?: Prisma.DateTimeNullableFilter<"BillPayments"> | Date | string | null
   paymentIntentId?: Prisma.StringNullableFilter<"BillPayments"> | string | null
   payerUserId?: Prisma.StringNullableFilter<"BillPayments"> | string | null
+  refundedAmountCents?: Prisma.IntFilter<"BillPayments"> | number
 }
 
 export type BillPaymentsOrderByWithRelationInput = {
@@ -282,6 +294,7 @@ export type BillPaymentsOrderByWithRelationInput = {
   paidAt?: Prisma.SortOrderInput | Prisma.SortOrder
   paymentIntentId?: Prisma.SortOrderInput | Prisma.SortOrder
   payerUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  refundedAmountCents?: Prisma.SortOrder
 }
 
 export type BillPaymentsWhereUniqueInput = Prisma.AtLeast<{
@@ -299,6 +312,7 @@ export type BillPaymentsWhereUniqueInput = Prisma.AtLeast<{
   paidAt?: Prisma.DateTimeNullableFilter<"BillPayments"> | Date | string | null
   paymentIntentId?: Prisma.StringNullableFilter<"BillPayments"> | string | null
   payerUserId?: Prisma.StringNullableFilter<"BillPayments"> | string | null
+  refundedAmountCents?: Prisma.IntFilter<"BillPayments"> | number
 }, "id">
 
 export type BillPaymentsOrderByWithAggregationInput = {
@@ -313,6 +327,7 @@ export type BillPaymentsOrderByWithAggregationInput = {
   paidAt?: Prisma.SortOrderInput | Prisma.SortOrder
   paymentIntentId?: Prisma.SortOrderInput | Prisma.SortOrder
   payerUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  refundedAmountCents?: Prisma.SortOrder
   _count?: Prisma.BillPaymentsCountOrderByAggregateInput
   _avg?: Prisma.BillPaymentsAvgOrderByAggregateInput
   _max?: Prisma.BillPaymentsMaxOrderByAggregateInput
@@ -335,6 +350,7 @@ export type BillPaymentsScalarWhereWithAggregatesInput = {
   paidAt?: Prisma.DateTimeNullableWithAggregatesFilter<"BillPayments"> | Date | string | null
   paymentIntentId?: Prisma.StringNullableWithAggregatesFilter<"BillPayments"> | string | null
   payerUserId?: Prisma.StringNullableWithAggregatesFilter<"BillPayments"> | string | null
+  refundedAmountCents?: Prisma.IntWithAggregatesFilter<"BillPayments"> | number
 }
 
 export type BillPaymentsCreateInput = {
@@ -349,6 +365,7 @@ export type BillPaymentsCreateInput = {
   paidAt?: Date | string | null
   paymentIntentId?: string | null
   payerUserId?: string | null
+  refundedAmountCents?: number
 }
 
 export type BillPaymentsUncheckedCreateInput = {
@@ -363,6 +380,7 @@ export type BillPaymentsUncheckedCreateInput = {
   paidAt?: Date | string | null
   paymentIntentId?: string | null
   payerUserId?: string | null
+  refundedAmountCents?: number
 }
 
 export type BillPaymentsUpdateInput = {
@@ -377,6 +395,7 @@ export type BillPaymentsUpdateInput = {
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   paymentIntentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payerUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  refundedAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
 }
 
 export type BillPaymentsUncheckedUpdateInput = {
@@ -391,6 +410,7 @@ export type BillPaymentsUncheckedUpdateInput = {
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   paymentIntentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payerUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  refundedAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
 }
 
 export type BillPaymentsCreateManyInput = {
@@ -405,6 +425,7 @@ export type BillPaymentsCreateManyInput = {
   paidAt?: Date | string | null
   paymentIntentId?: string | null
   payerUserId?: string | null
+  refundedAmountCents?: number
 }
 
 export type BillPaymentsUpdateManyMutationInput = {
@@ -419,6 +440,7 @@ export type BillPaymentsUpdateManyMutationInput = {
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   paymentIntentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payerUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  refundedAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
 }
 
 export type BillPaymentsUncheckedUpdateManyInput = {
@@ -433,6 +455,7 @@ export type BillPaymentsUncheckedUpdateManyInput = {
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   paymentIntentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payerUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  refundedAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
 }
 
 export type BillPaymentsCountOrderByAggregateInput = {
@@ -447,11 +470,13 @@ export type BillPaymentsCountOrderByAggregateInput = {
   paidAt?: Prisma.SortOrder
   paymentIntentId?: Prisma.SortOrder
   payerUserId?: Prisma.SortOrder
+  refundedAmountCents?: Prisma.SortOrder
 }
 
 export type BillPaymentsAvgOrderByAggregateInput = {
   sequence?: Prisma.SortOrder
   amountCents?: Prisma.SortOrder
+  refundedAmountCents?: Prisma.SortOrder
 }
 
 export type BillPaymentsMaxOrderByAggregateInput = {
@@ -466,6 +491,7 @@ export type BillPaymentsMaxOrderByAggregateInput = {
   paidAt?: Prisma.SortOrder
   paymentIntentId?: Prisma.SortOrder
   payerUserId?: Prisma.SortOrder
+  refundedAmountCents?: Prisma.SortOrder
 }
 
 export type BillPaymentsMinOrderByAggregateInput = {
@@ -480,11 +506,13 @@ export type BillPaymentsMinOrderByAggregateInput = {
   paidAt?: Prisma.SortOrder
   paymentIntentId?: Prisma.SortOrder
   payerUserId?: Prisma.SortOrder
+  refundedAmountCents?: Prisma.SortOrder
 }
 
 export type BillPaymentsSumOrderByAggregateInput = {
   sequence?: Prisma.SortOrder
   amountCents?: Prisma.SortOrder
+  refundedAmountCents?: Prisma.SortOrder
 }
 
 export type NullableEnumBillPaymentsStatusEnumFieldUpdateOperationsInput = {
@@ -505,6 +533,7 @@ export type BillPaymentsSelect<ExtArgs extends runtime.Types.Extensions.Internal
   paidAt?: boolean
   paymentIntentId?: boolean
   payerUserId?: boolean
+  refundedAmountCents?: boolean
 }, ExtArgs["result"]["billPayments"]>
 
 export type BillPaymentsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -519,6 +548,7 @@ export type BillPaymentsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.
   paidAt?: boolean
   paymentIntentId?: boolean
   payerUserId?: boolean
+  refundedAmountCents?: boolean
 }, ExtArgs["result"]["billPayments"]>
 
 export type BillPaymentsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -533,6 +563,7 @@ export type BillPaymentsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.
   paidAt?: boolean
   paymentIntentId?: boolean
   payerUserId?: boolean
+  refundedAmountCents?: boolean
 }, ExtArgs["result"]["billPayments"]>
 
 export type BillPaymentsSelectScalar = {
@@ -547,9 +578,10 @@ export type BillPaymentsSelectScalar = {
   paidAt?: boolean
   paymentIntentId?: boolean
   payerUserId?: boolean
+  refundedAmountCents?: boolean
 }
 
-export type BillPaymentsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "billId" | "sequence" | "dueDate" | "amountCents" | "status" | "paidAt" | "paymentIntentId" | "payerUserId", ExtArgs["result"]["billPayments"]>
+export type BillPaymentsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "billId" | "sequence" | "dueDate" | "amountCents" | "status" | "paidAt" | "paymentIntentId" | "payerUserId" | "refundedAmountCents", ExtArgs["result"]["billPayments"]>
 
 export type $BillPaymentsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "BillPayments"
@@ -566,6 +598,7 @@ export type $BillPaymentsPayload<ExtArgs extends runtime.Types.Extensions.Intern
     paidAt: Date | null
     paymentIntentId: string | null
     payerUserId: string | null
+    refundedAmountCents: number
   }, ExtArgs["result"]["billPayments"]>
   composites: {}
 }
@@ -1000,6 +1033,7 @@ export interface BillPaymentsFieldRefs {
   readonly paidAt: Prisma.FieldRef<"BillPayments", 'DateTime'>
   readonly paymentIntentId: Prisma.FieldRef<"BillPayments", 'String'>
   readonly payerUserId: Prisma.FieldRef<"BillPayments", 'String'>
+  readonly refundedAmountCents: Prisma.FieldRef<"BillPayments", 'Int'>
 }
     
 

@@ -3014,7 +3014,8 @@ export const BillsScalarFieldEnum = {
   allowSplit: 'allowSplit',
   status: 'status',
   paymentPlanEnabled: 'paymentPlanEnabled',
-  createdBy: 'createdBy'
+  createdBy: 'createdBy',
+  lineItems: 'lineItems'
 } as const
 
 export type BillsScalarFieldEnum = (typeof BillsScalarFieldEnum)[keyof typeof BillsScalarFieldEnum]
@@ -3031,7 +3032,8 @@ export const BillPaymentsScalarFieldEnum = {
   status: 'status',
   paidAt: 'paidAt',
   paymentIntentId: 'paymentIntentId',
-  payerUserId: 'payerUserId'
+  payerUserId: 'payerUserId',
+  refundedAmountCents: 'refundedAmountCents'
 } as const
 
 export type BillPaymentsScalarFieldEnum = (typeof BillPaymentsScalarFieldEnum)[keyof typeof BillPaymentsScalarFieldEnum]
