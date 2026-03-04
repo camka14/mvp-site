@@ -5,6 +5,7 @@ import { userService } from '@/lib/userService';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
 import { Modal, TextInput, Button, Group, Paper, Avatar, Text, Alert, ScrollArea } from '@mantine/core';
+import { MOBILE_APP_THEME_TOKENS } from '@/app/theme/mobilePalette';
 
 interface User {
     $id: string;
@@ -92,7 +93,7 @@ export function InviteUsersModal() {
         const initials = `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase();
         return `data:image/svg+xml,${encodeURIComponent(
             `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
-        <rect width="40" height="40" fill="#3B82F6"/>
+        <rect width="40" height="40" fill="${MOBILE_APP_THEME_TOKENS.primary}"/>
         <text x="20" y="26" font-family="Arial" font-size="16" fill="white" text-anchor="middle">${initials}</text>
       </svg>`
         )}`;

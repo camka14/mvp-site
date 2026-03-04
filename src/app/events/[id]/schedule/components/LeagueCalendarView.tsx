@@ -485,18 +485,18 @@ export function LeagueCalendarView({
       return {
         style: {
           backgroundColor: hasConflict
-            ? 'var(--mantine-color-red-0, #fef2f2)'
+            ? 'var(--mantine-color-red-0, var(--mvp-danger-soft))'
             : isUsersMatch
-              ? 'var(--mantine-color-green-0, #ecfdf3)'
+              ? 'var(--mantine-color-green-0, var(--mvp-success-soft))'
               : 'transparent',
           border: hasConflict
-            ? '2px solid #f87171'
+            ? '2px solid var(--mvp-danger)'
             : isUsersMatch
-              ? '2px solid #bbf7d0'
+              ? '2px solid var(--mvp-success)'
               : 'none',
           padding: 0,
           cursor: onMatchClick ? 'pointer' : 'default',
-          color: 'var(--mantine-color-text, #1f1f1f)',
+          color: 'var(--mantine-color-text, var(--mvp-text))',
         },
         className: 'p-0',
       };

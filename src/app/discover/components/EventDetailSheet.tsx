@@ -2305,7 +2305,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                         aria-label="Close"
                         onClick={onClose}
                         style={{
-                            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                            boxShadow: 'var(--mvp-shadow-overlay)',
                         }}
                     >
                         ×

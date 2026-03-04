@@ -57,7 +57,7 @@ describe('Home landing page', () => {
     });
   });
 
-  it('redirects active guest sessions to discover', async () => {
+  it('renders landing content for active guest sessions', () => {
     useAppMock.mockReturnValue({
       user: null,
       loading: false,
@@ -66,9 +66,12 @@ describe('Home landing page', () => {
 
     render(<HomePage />);
 
-    await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith('/discover');
-    });
+    expect(
+      screen.getByRole('heading', {
+        name: /run leagues, tournaments, and sports events in one platform/i,
+      }),
+    ).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('starts a guest session and routes to discover when continue as guest is clicked', async () => {

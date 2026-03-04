@@ -1272,7 +1272,7 @@ export default function ProfilePage() {
                                         size={128}
                                         radius="xl"
                                         bg="white"
-                                        style={{ backgroundColor: '#fff', border: '4px solid #fff', boxShadow: 'var(--mantine-shadow-lg)' }}
+                                        style={{ backgroundColor: 'var(--mvp-surface)', border: '4px solid var(--mvp-surface)', boxShadow: 'var(--mantine-shadow-lg)' }}
                                     />
                                 </div>
                                 <div className="ml-6 flex-1">
@@ -2552,7 +2552,7 @@ export default function ProfilePage() {
                                     <iframe
                                         src={signLinks[currentSignIndex]?.url}
                                         title="BoldSign Signing"
-                                        style={{ width: '100%', height: 520, border: '1px solid #E5E7EB', borderRadius: 8 }}
+                                        style={{ width: '100%', height: 520, border: '1px solid var(--mvp-border)', borderRadius: 8 }}
                                     />
                                     <Group justify="flex-end">
                                         <Button variant="default" onClick={resetSigningState}>

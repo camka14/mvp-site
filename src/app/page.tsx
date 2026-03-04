@@ -81,7 +81,7 @@ const useCases = [
 ];
 
 export default function HomePage() {
-  const { user, loading, isGuest } = useApp();
+  const { user, loading } = useApp();
   const router = useRouter();
   const [startingGuestSession, setStartingGuestSession] = useState(false);
   const [guestError, setGuestError] = useState('');
@@ -90,12 +90,8 @@ export default function HomePage() {
     if (loading) return;
     if (user) {
       router.push(getHomePathForUser(user));
-      return;
     }
-    if (isGuest) {
-      router.push('/discover');
-    }
-  }, [isGuest, loading, router, user]);
+  }, [loading, router, user]);
 
   const handleContinueAsGuest = async () => {
     if (startingGuestSession) return;
@@ -111,41 +107,41 @@ export default function HomePage() {
     }
   };
 
-  if (loading || user || isGuest) {
+  if (loading || user) {
     return <Loading fullScreen text="Loading..." />;
   }
 
   return (
-    <div className="landing-root min-h-screen bg-slate-950 text-slate-100">
+    <div className="landing-root min-h-screen">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="landing-aura landing-aura-left" />
         <div className="landing-aura landing-aura-right" />
         <div className="landing-grid-pattern" />
       </div>
 
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur-lg">
+      <header className="landing-header sticky top-0 z-20 backdrop-blur-lg">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/" className="text-lg font-semibold tracking-wide text-cyan-300">
+          <Link href="/" className="landing-brand text-lg font-semibold tracking-wide">
             MVP
           </Link>
 
-          <nav className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
-            <a href="#product" className="transition hover:text-white">Product</a>
-            <a href="#use-cases" className="transition hover:text-white">Use Cases</a>
-            <a href="#pricing" className="transition hover:text-white">Pricing</a>
-            <a href="#resources" className="transition hover:text-white">Resources</a>
+          <nav className="landing-nav hidden items-center gap-6 text-sm md:flex">
+            <a href="#product" className="landing-nav-link transition">Product</a>
+            <a href="#use-cases" className="landing-nav-link transition">Use Cases</a>
+            <a href="#pricing" className="landing-nav-link transition">Pricing</a>
+            <a href="#resources" className="landing-nav-link transition">Resources</a>
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
               href="/login"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-500/60 px-4 text-sm font-semibold text-slate-100 transition hover:border-slate-300"
+              className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
             >
               Sign in
             </Link>
             <Link
               href="/login"
-              className="inline-flex min-h-11 items-center justify-center rounded-full bg-cyan-400 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+              className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
             >
               Sign up
             </Link>
@@ -156,26 +152,26 @@ export default function HomePage() {
       <main className="relative">
         <section className="mx-auto grid w-full max-w-7xl gap-10 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pt-24">
           <div className="space-y-7" data-reveal>
-            <p className="inline-flex rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+            <p className="landing-kicker inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
               Combined Platform: Web + Mobile
             </p>
-            <h1 className="max-w-xl text-4xl font-semibold leading-tight text-white sm:text-5xl">
+            <h1 className="landing-title max-w-xl text-4xl font-semibold leading-tight sm:text-5xl">
               Run leagues, tournaments, and sports events in one platform.
             </h1>
-            <p className="max-w-2xl text-base text-slate-200 sm:text-lg">
+            <p className="landing-copy max-w-2xl text-base sm:text-lg">
               Create events, place fields, manage teams, collect payments, send updates, and keep everyone in sync across the web dashboard and mobile app.
             </p>
 
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/login"
-                className="inline-flex min-h-11 items-center justify-center rounded-full bg-cyan-400 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+                className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
               >
                 Sign up
               </Link>
               <Link
                 href="/login"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-500/60 px-5 text-sm font-semibold text-slate-100 transition hover:border-slate-300"
+                className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
               >
                 Sign in
               </Link>
@@ -183,36 +179,36 @@ export default function HomePage() {
                 type="button"
                 onClick={handleContinueAsGuest}
                 disabled={startingGuestSession}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-cyan-300/40 px-5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+                className="landing-btn-outline inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {startingGuestSession ? 'Opening discover...' : 'Continue as guest'}
               </button>
             </div>
 
-            <p className="text-sm text-cyan-100/90">
+            <p className="landing-support text-sm">
               Payments, chat, notifications, and waivers included.
             </p>
             {guestError ? (
-              <p className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              <p className="landing-error rounded-xl px-4 py-3 text-sm">
                 {guestError}
               </p>
             ) : null}
           </div>
 
           <div className="relative" data-reveal data-delay="1">
-            <div className="landing-shot rounded-3xl border border-white/20 bg-slate-900/85 p-4 shadow-[0_18px_50px_-20px_rgba(56,189,248,0.6)]">
-              <div className="aspect-[16/10] rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-cyan-500/25 via-blue-500/10 to-slate-900 p-6">
-                <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/80">Image A</p>
-                <h2 className="mt-3 text-xl font-semibold text-white">Web dashboard + mobile app mockup</h2>
-                <p className="mt-2 max-w-md text-sm text-slate-200">
+            <div className="landing-shot landing-surface-strong rounded-3xl p-4">
+              <div className="landing-hero-media aspect-[16/10] rounded-2xl p-6">
+                <p className="landing-label text-xs uppercase tracking-[0.16em]">Image A</p>
+                <h2 className="landing-section-title mt-3 text-xl font-semibold">Web dashboard + mobile app mockup</h2>
+                <p className="landing-section-copy mt-2 max-w-md text-sm">
                   Front: mobile event details with Join/Pay/Chat. Background: web admin schedule and participant controls.
                 </p>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs text-cyan-50">
+                <div className="landing-note-primary rounded-xl p-3 text-xs">
                   Mobile screen: Event details + CTA actions
                 </div>
-                <div className="rounded-xl border border-blue-300/20 bg-blue-300/10 p-3 text-xs text-blue-50">
+                <div className="landing-note-secondary rounded-xl p-3 text-xs">
                   Web screen: Event admin and scheduling
                 </div>
               </div>
@@ -220,12 +216,12 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="border-y border-white/10 bg-slate-900/70">
-          <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-sm text-slate-300 sm:px-6 lg:px-8">
+        <section className="landing-band">
+          <div className="landing-section-copy mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-sm sm:px-6 lg:px-8">
             <p>Built for tournament hosts, leagues, and facilities.</p>
             <div className="flex flex-wrap gap-2">
               {['Community Sports', 'Regional Leagues', 'Tournament Ops', 'Club Networks'].map((label) => (
-                <span key={label} className="rounded-full border border-white/15 px-3 py-1 text-xs">
+                <span key={label} className="landing-tag rounded-full px-3 py-1 text-xs">
                   {label}
                 </span>
               ))}
@@ -235,36 +231,36 @@ export default function HomePage() {
 
         <section id="product" className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
           <div className="mb-8">
-            <h2 className="text-3xl font-semibold text-white sm:text-4xl">Two sides of the platform</h2>
-            <p className="mt-3 max-w-3xl text-slate-300">
+            <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Two sides of the platform</h2>
+            <p className="landing-section-copy mt-3 max-w-3xl">
               Organizers run operations from the web dashboard while players and parents stay aligned from mobile.
             </p>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
-            <article className="rounded-3xl border border-white/15 bg-slate-900/70 p-6">
-              <p className="text-xs uppercase tracking-[0.16em] text-cyan-200">For Organizers (Web)</p>
-              <ul className="mt-4 space-y-2 text-sm text-slate-200">
+            <article className="landing-surface rounded-3xl p-6">
+              <p className="landing-label text-xs uppercase tracking-[0.16em]">For Organizers (Web)</p>
+              <ul className="landing-section-copy mt-4 space-y-2 text-sm">
                 <li>Create events, leagues, and tournaments</li>
                 <li>Manage teams, divisions, schedules</li>
                 <li>Handle payments, payouts, and billing</li>
                 <li>Broadcast updates and announcements</li>
                 <li>Track documents and waivers</li>
               </ul>
-              <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-xs text-cyan-50">
+              <div className="landing-note-primary mt-5 rounded-2xl p-4 text-xs">
                 Image B: Web organizer dashboard screenshot
               </div>
             </article>
 
-            <article className="rounded-3xl border border-white/15 bg-slate-900/70 p-6">
-              <p className="text-xs uppercase tracking-[0.16em] text-blue-200">For Players and Parents (Mobile)</p>
-              <ul className="mt-4 space-y-2 text-sm text-slate-200">
+            <article className="landing-surface rounded-3xl p-6">
+              <p className="landing-label-alt text-xs uppercase tracking-[0.16em]">For Players and Parents (Mobile)</p>
+              <ul className="landing-section-copy mt-4 space-y-2 text-sm">
                 <li>Discover and join events quickly</li>
                 <li>Pay fees and track registration status</li>
                 <li>Chat in team and group channels</li>
                 <li>Receive push notifications instantly</li>
                 <li>View schedules, locations, and updates</li>
               </ul>
-              <div className="mt-5 rounded-2xl border border-blue-300/20 bg-blue-300/10 p-4 text-xs text-blue-50">
+              <div className="landing-note-secondary mt-5 rounded-2xl p-4 text-xs">
                 Image C: Mobile participant app screenshot
               </div>
             </article>
@@ -277,19 +273,19 @@ export default function HomePage() {
             return (
               <article
                 key={feature.id}
-                className={`grid gap-6 rounded-3xl border border-white/15 bg-slate-900/65 p-6 lg:grid-cols-2 lg:items-center ${reverse ? 'lg:[&>*:first-child]:order-2' : ''}`}
+                className={`landing-surface grid gap-6 rounded-3xl p-6 lg:grid-cols-2 lg:items-center ${reverse ? 'lg:[&>*:first-child]:order-2' : ''}`}
               >
                 <div className="space-y-4">
-                  <h3 className="text-2xl font-semibold text-white">{feature.title}</h3>
-                  <ul className="space-y-2 text-sm text-slate-200 sm:text-base">
+                  <h3 className="landing-section-title text-2xl font-semibold">{feature.title}</h3>
+                  <ul className="landing-section-copy space-y-2 text-sm sm:text-base">
                     {feature.points.map((point) => (
                       <li key={point}>{point}</li>
                     ))}
                   </ul>
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-slate-900/80 p-5 text-sm text-slate-200">
-                  <div className="aspect-[4/3] rounded-xl border border-cyan-300/25 bg-gradient-to-br from-cyan-500/20 via-transparent to-blue-500/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/80">Screenshot placement</p>
+                <div className="landing-surface-soft landing-section-copy rounded-2xl p-5 text-sm">
+                  <div className="landing-feature-media aspect-[4/3] rounded-xl p-4">
+                    <p className="landing-label text-xs uppercase tracking-[0.16em]">Screenshot placement</p>
                     <p className="mt-3">{feature.imageLabel}</p>
                   </div>
                 </div>
@@ -299,17 +295,17 @@ export default function HomePage() {
         </section>
 
         <section className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-          <div className="rounded-3xl border border-white/15 bg-slate-900/70 p-6">
-            <h2 className="text-3xl font-semibold text-white sm:text-4xl">How it works</h2>
+          <div className="landing-surface rounded-3xl p-6">
+            <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">How it works</h2>
             <div className="mt-6 grid gap-4 md:grid-cols-3">
               {[
                 'Create your event and set up fields and schedules',
                 'Teams and players join, sign docs, and pay',
                 'Run game day with updates, chat, and notifications',
               ].map((step, index) => (
-                <div key={step} className="rounded-2xl border border-white/15 bg-slate-900/80 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">Step {index + 1}</p>
-                  <p className="mt-2 text-sm text-slate-200">{step}</p>
+                <div key={step} className="landing-surface-soft rounded-2xl p-4">
+                  <p className="landing-step text-xs font-semibold uppercase tracking-[0.14em]">Step {index + 1}</p>
+                  <p className="landing-section-copy mt-2 text-sm">{step}</p>
                 </div>
               ))}
             </div>
@@ -317,10 +313,10 @@ export default function HomePage() {
         </section>
 
         <section id="use-cases" className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-semibold text-white sm:text-4xl">Use cases</h2>
+          <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Use cases</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {useCases.map((useCase) => (
-              <article key={useCase} className="rounded-2xl border border-white/15 bg-slate-900/70 p-5 text-slate-200">
+              <article key={useCase} className="landing-surface landing-section-copy rounded-2xl p-5">
                 <p className="font-medium">{useCase}</p>
               </article>
             ))}
@@ -328,11 +324,11 @@ export default function HomePage() {
         </section>
 
         <section id="resources" className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-          <div className="rounded-3xl border border-white/15 bg-slate-900/70 p-6">
-            <h2 className="text-2xl font-semibold text-white sm:text-3xl">Integrations and platform stack</h2>
-            <div className="mt-5 flex flex-wrap gap-3 text-sm text-slate-200">
+          <div className="landing-surface rounded-3xl p-6">
+            <h2 className="landing-section-title text-2xl font-semibold sm:text-3xl">Integrations and platform stack</h2>
+            <div className="landing-section-copy mt-5 flex flex-wrap gap-3 text-sm">
               {['Stripe Payments', 'Firebase Push', 'BoldSign E-Sign', 'Google Maps'].map((integration) => (
-                <span key={integration} className="rounded-full border border-white/20 px-4 py-2">
+                <span key={integration} className="landing-pill rounded-full px-4 py-2">
                   {integration}
                 </span>
               ))}
@@ -341,7 +337,7 @@ export default function HomePage() {
         </section>
 
         <section id="pricing" className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-semibold text-white sm:text-4xl">Pricing preview</h2>
+          <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Pricing preview</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {[
               {
@@ -357,24 +353,24 @@ export default function HomePage() {
                 detail: 'Multi-location operations and advanced controls.',
               },
             ].map((plan) => (
-              <article key={plan.tier} className="rounded-2xl border border-white/15 bg-slate-900/70 p-5">
-                <h3 className="text-lg font-semibold text-white">{plan.tier}</h3>
-                <p className="mt-2 text-sm text-slate-200">{plan.detail}</p>
+              <article key={plan.tier} className="landing-surface rounded-2xl p-5">
+                <h3 className="landing-section-title text-lg font-semibold">{plan.tier}</h3>
+                <p className="landing-section-copy mt-2 text-sm">{plan.detail}</p>
               </article>
             ))}
           </div>
         </section>
 
         <section className="mx-auto w-full max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-          <div className="rounded-3xl border border-cyan-300/35 bg-gradient-to-r from-cyan-400/20 via-blue-500/20 to-slate-900 p-8">
-            <h2 className="text-3xl font-semibold text-white sm:text-4xl">Ready to run your next event on MVP?</h2>
-            <p className="mt-3 max-w-2xl text-slate-100">
+          <div className="landing-cta rounded-3xl p-8">
+            <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Ready to run your next event on MVP?</h2>
+            <p className="landing-cta-copy mt-3 max-w-2xl">
               Start with your first league, tournament, or event and invite your teams immediately.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href="/login"
-                className="inline-flex min-h-11 items-center justify-center rounded-full bg-cyan-400 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+                className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
               >
                 Sign up
               </Link>
@@ -382,7 +378,7 @@ export default function HomePage() {
                 type="button"
                 onClick={handleContinueAsGuest}
                 disabled={startingGuestSession}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-cyan-100/45 px-5 text-sm font-semibold text-cyan-50 transition hover:border-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="landing-btn-outline inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Continue as guest
               </button>

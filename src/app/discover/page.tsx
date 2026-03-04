@@ -99,7 +99,7 @@ function DiscoverPageContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchParamsString = searchParams.toString();
-  const { user, loading: authLoading, isAuthenticated } = useApp();
+  const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
   const { location, requestLocation } = useLocation();
 
   const [activeTab, setActiveTab] = useState<'events' | 'rentals' | 'organizations'>('events');
@@ -146,6 +146,10 @@ function DiscoverPageContent() {
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState<string | null>(null);
   const [organizationsMaxDistance, setOrganizationsMaxDistance] = useState<number | null>(null);
+
+  const hasGuestSession = isGuest || (
+    typeof window !== 'undefined' && window.localStorage.getItem('guest-session') === '1'
+  );
 
   /**
    * Helpers
@@ -371,24 +375,24 @@ function DiscoverPageContent() {
     if (authLoading) {
       return;
     }
-    if (!isAuthenticated && !(typeof window !== 'undefined' && window.localStorage.getItem('guest-session') === '1')) {
+    if (!isAuthenticated && !hasGuestSession) {
       router.push('/login');
       return;
     }
-  }, [isAuthenticated, authLoading, router]);
+  }, [isAuthenticated, hasGuestSession, authLoading, router]);
 
   useEffect(() => {
     if (authLoading) {
       return;
     }
-    if (!isAuthenticated && !(typeof window !== 'undefined' && window.localStorage.getItem('guest-session') === '1')) {
+    if (!isAuthenticated && !hasGuestSession) {
       return;
     }
     if (activeTab !== 'events') {
       return;
     }
     loadFirstPage();
-  }, [isAuthenticated, authLoading, activeTab, loadFirstPage]);
+  }, [isAuthenticated, hasGuestSession, authLoading, activeTab, loadFirstPage]);
 
   const locationRequestAttemptedRef = useRef(false);
   useEffect(() => {
@@ -618,7 +622,7 @@ function DiscoverPageContent() {
     return <Loading fullScreen text="Loading discover feed..." />;
   }
 
-  if (!isAuthenticated && !(typeof window !== 'undefined' && window.localStorage.getItem('guest-session') === '1')) {
+  if (!isAuthenticated && !hasGuestSession) {
     return <Loading fullScreen text="Redirecting to login..." />;
   }
 

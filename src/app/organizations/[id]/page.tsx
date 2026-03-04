@@ -1655,7 +1655,7 @@ function OrganizationDetailContent() {
                     width={64}
                     height={64}
                     unoptimized
-                    style={{ width: 64, height: 64, borderRadius: '9999px', border: '1px solid #e5e7eb' }}
+                    style={{ width: 64, height: 64, borderRadius: '9999px', border: '1px solid var(--mvp-border)' }}
                   />
                 )}
                 <div>
