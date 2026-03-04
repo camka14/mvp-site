@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import type { Team } from '@/types';
-import type { TeamComplianceSummary } from '@/lib/eventTeamCompliance';
+import type { TeamComplianceSummary, TeamComplianceUserSummary } from '@/lib/eventTeamCompliance';
 import { renderWithMantine } from '../../../../../../../test/utils/renderWithMantine';
 import DivisionTeamComplianceCard from '../DivisionTeamComplianceCard';
 
@@ -79,5 +79,53 @@ describe('DivisionTeamComplianceCard', () => {
     expect(screen.queryByText(/Paid in full/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/signatures complete/i)).not.toBeInTheDocument();
     expect(screen.getByText('Sandstorm Syndicate')).toBeInTheDocument();
+  });
+
+  it('uses participant copy without team/player references for participant cards', () => {
+    const participantUser: TeamComplianceUserSummary = {
+      userId: 'user_1',
+      fullName: 'Casey Rivers',
+      userName: 'crivers',
+      isMinorAtEvent: false,
+      registrationType: 'ADULT',
+      payment: {
+        hasBill: false,
+        billId: null,
+        totalAmountCents: 0,
+        paidAmountCents: 0,
+        status: null,
+        isPaidInFull: false,
+      },
+      documents: {
+        signedCount: 0,
+        requiredCount: 0,
+      },
+      requiredDocuments: [],
+    };
+
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam({ name: 'Casey Rivers', currentSize: 1, teamSize: 1 })}
+        summary={{
+          ...createSummary(),
+          payment: {
+            ...createSummary().payment,
+            hasBill: false,
+            billId: null,
+            totalAmountCents: 0,
+            paidAmountCents: 0,
+            status: null,
+            isPaidInFull: false,
+          },
+          users: [participantUser],
+        }}
+        cardKind="participant"
+      />,
+    );
+
+    expect(screen.getByText('No bill yet')).toBeInTheDocument();
+    expect(screen.queryByText('No team bill yet')).not.toBeInTheDocument();
+    expect(screen.queryByText(/players/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/rostered user/i)).not.toBeInTheDocument();
   });
 });

@@ -51,6 +51,7 @@ export async function GET(
       assistantHostIds: true,
       organizationId: true,
       teamIds: true,
+      userIds: true,
       teamSignup: true,
     },
   });
@@ -60,13 +61,150 @@ export async function GET(
   if (!(await canManageEvent(session, event))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  if (!event.teamSignup) {
-    return NextResponse.json({ error: 'This event does not use team participants.' }, { status: 400 });
-  }
 
   const normalizedTeamId = normalizeId(teamId);
   if (!normalizedTeamId) {
     return NextResponse.json({ error: 'Invalid team id' }, { status: 400 });
+  }
+
+  if (!event.teamSignup) {
+    const participantUserIds = normalizeIdList(event.userIds);
+    if (!participantUserIds.includes(normalizedTeamId)) {
+      return NextResponse.json({ error: 'User is not a participant of this event.' }, { status: 404 });
+    }
+
+    const user = await prisma.userData.findUnique({
+      where: { id: normalizedTeamId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        userName: true,
+      },
+    });
+    if (!user) {
+      return NextResponse.json({ error: 'Participant user not found.' }, { status: 404 });
+    }
+
+    const userBills = await prisma.bills.findMany({
+      where: {
+        eventId,
+        ownerType: 'USER',
+        ownerId: normalizedTeamId,
+      },
+      select: {
+        id: true,
+        ownerType: true,
+        ownerId: true,
+        parentBillId: true,
+        totalAmountCents: true,
+        paidAmountCents: true,
+        status: true,
+        allowSplit: true,
+        lineItems: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const billIds = userBills.map((bill) => bill.id);
+    const billPayments = billIds.length > 0
+      ? await prisma.billPayments.findMany({
+        where: { billId: { in: billIds } },
+        select: {
+          id: true,
+          billId: true,
+          sequence: true,
+          dueDate: true,
+          amountCents: true,
+          status: true,
+          paidAt: true,
+          paymentIntentId: true,
+          payerUserId: true,
+          refundedAmountCents: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: [{ sequence: 'asc' }, { createdAt: 'asc' }],
+      })
+      : [];
+
+    const paymentsByBillId = new Map<string, typeof billPayments>();
+    billPayments.forEach((payment) => {
+      const existing = paymentsByBillId.get(payment.billId);
+      if (existing) {
+        existing.push(payment);
+      } else {
+        paymentsByBillId.set(payment.billId, [payment]);
+      }
+    });
+
+    const ownerDisplayName = toDisplayName(user);
+    const bills = userBills.map((bill) => {
+      const payments = (paymentsByBillId.get(bill.id) ?? []).map((payment) => {
+        const refundedAmountCents = Math.max(0, Number(payment.refundedAmountCents ?? 0));
+        const refundableAmountCents = Math.max(0, payment.amountCents - refundedAmountCents);
+        return {
+          ...payment,
+          $id: payment.id,
+          refundedAmountCents,
+          refundableAmountCents,
+          isRefundable: refundableAmountCents > 0 && payment.status === 'PAID',
+        };
+      });
+
+      const paidAmountCents = payments.reduce((sum, payment) => (
+        payment.status === 'PAID' ? sum + payment.amountCents : sum
+      ), 0);
+      const refundedAmountCents = payments.reduce((sum, payment) => sum + payment.refundedAmountCents, 0);
+      const refundableAmountCents = Math.max(0, paidAmountCents - refundedAmountCents);
+
+      return {
+        ...bill,
+        $id: bill.id,
+        ownerName: ownerDisplayName,
+        paidAmountCents,
+        refundedAmountCents,
+        refundableAmountCents,
+        payments,
+      };
+    });
+
+    const totals = bills.reduce(
+      (aggregate, bill) => ({
+        paidAmountCents: aggregate.paidAmountCents + bill.paidAmountCents,
+        refundedAmountCents: aggregate.refundedAmountCents + bill.refundedAmountCents,
+        refundableAmountCents: aggregate.refundableAmountCents + bill.refundableAmountCents,
+      }),
+      {
+        paidAmountCents: 0,
+        refundedAmountCents: 0,
+        refundableAmountCents: 0,
+      },
+    );
+
+    return NextResponse.json(
+      {
+        event: {
+          id: event.id,
+        },
+        team: {
+          id: user.id,
+          name: ownerDisplayName,
+          playerIds: [user.id],
+        },
+        users: [
+          {
+            id: user.id,
+            displayName: ownerDisplayName,
+          },
+        ],
+        bills,
+        totals,
+      },
+      { status: 200 },
+    );
   }
 
   const eventTeamIds = normalizeIdList(event.teamIds);

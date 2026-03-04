@@ -3,6 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { calculateMvpAndStripeFees } from '@/lib/billingFees';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +17,6 @@ const schema = z.object({
   billId: z.string().optional(),
   billPaymentId: z.string().optional(),
 }).passthrough();
-
-const calculateChargeAmount = (goalAmountCents: number, fixedFeeCents = 30, percentFee = 0.029) => {
-  const numerator = goalAmountCents + fixedFeeCents;
-  const denominator = 1 - percentFee;
-  return Math.round(numerator / denominator);
-};
 
 const normalizeString = (value: unknown): string | null => {
   if (typeof value === 'string') {
@@ -103,18 +98,24 @@ export async function POST(req: NextRequest) {
   }
 
   const eventType = payload.event?.eventType;
-  const appFeePercentage = eventType === 'LEAGUE' || eventType === 'TOURNAMENT' ? 0.03 : 0.01;
-  const applicationFee = Math.round(amountCents * appFeePercentage);
-  const totalCharge = calculateChargeAmount(amountCents + applicationFee);
-  const stripeFee = totalCharge - amountCents - applicationFee;
+  const {
+    mvpFeeCents,
+    stripeFeeCents,
+    totalChargeCents,
+    mvpFeePercentage,
+  } = calculateMvpAndStripeFees({
+    eventAmountCents: amountCents,
+    eventType,
+  });
 
   const feeBreakdown = {
     eventPrice: amountCents,
-    stripeFee,
-    processingFee: applicationFee,
-    totalCharge,
+    stripeFee: stripeFeeCents,
+    processingFee: mvpFeeCents,
+    mvpFee: mvpFeeCents,
+    totalCharge: totalChargeCents,
     hostReceives: amountCents,
-    feePercentage: appFeePercentage * 100,
+    feePercentage: mvpFeePercentage * 100,
     purchaseType,
   };
 
@@ -151,9 +152,10 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'organization_name', payload.organization?.name);
     appendMetadata(metadata, 'team_name', payload.team?.name);
     appendMetadata(metadata, 'amount_cents', amountCents);
-    appendMetadata(metadata, 'total_charge_cents', totalCharge);
-    appendMetadata(metadata, 'processing_fee_cents', applicationFee);
-    appendMetadata(metadata, 'stripe_fee_cents', stripeFee);
+    appendMetadata(metadata, 'total_charge_cents', totalChargeCents);
+    appendMetadata(metadata, 'processing_fee_cents', mvpFeeCents);
+    appendMetadata(metadata, 'mvp_fee_cents', mvpFeeCents);
+    appendMetadata(metadata, 'stripe_fee_cents', stripeFeeCents);
     appendMetadata(metadata, 'event_name', payload.event?.name);
     appendMetadata(metadata, 'event_location', payload.event?.location);
     appendMetadata(metadata, 'event_start', payload.event?.start);
@@ -166,7 +168,7 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'product_period', product?.period);
 
     const intent = await stripe.paymentIntents.create({
-      amount: totalCharge,
+      amount: totalChargeCents,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
       metadata,

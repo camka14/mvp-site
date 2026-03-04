@@ -8,18 +8,22 @@ type DivisionTeamComplianceCardProps = {
   summary?: TeamComplianceSummary;
   loading?: boolean;
   showComplianceDetails?: boolean;
+  cardKind?: 'team' | 'participant';
   className?: string;
   actions?: React.ReactNode;
   onClick?: () => void;
 };
 
-const getPaymentLabel = (summary?: TeamComplianceSummary): { label: string; color: string } => {
+const getPaymentLabel = (
+  summary?: TeamComplianceSummary,
+  cardKind: 'team' | 'participant' = 'team',
+): { label: string; color: string } => {
   if (!summary) {
     return { label: 'Payment details unavailable', color: 'gray' };
   }
 
   if (!summary.payment.hasBill) {
-    return { label: 'No team bill yet', color: 'gray' };
+    return { label: cardKind === 'participant' ? 'No bill yet' : 'No team bill yet', color: 'gray' };
   }
 
   if (summary.payment.isPaidInFull) {
@@ -59,11 +63,12 @@ export default function DivisionTeamComplianceCard({
   summary,
   loading = false,
   showComplianceDetails = true,
+  cardKind = 'team',
   className = '',
   actions,
   onClick,
 }: DivisionTeamComplianceCardProps) {
-  const payment = getPaymentLabel(summary);
+  const payment = getPaymentLabel(summary, cardKind);
   const documents = getDocumentLabel(summary);
 
   return (
@@ -77,9 +82,11 @@ export default function DivisionTeamComplianceCard({
     >
       <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
-          <Text fw={600} size="md" truncate>{team.name || 'Unnamed Team'}</Text>
+          <Text fw={600} size="md" truncate>{team.name || (cardKind === 'participant' ? 'Unnamed Participant' : 'Unnamed Team')}</Text>
           <Group gap={6}>
-            <Badge variant="light" color="blue" size="sm">{team.currentSize}/{team.teamSize} players</Badge>
+            {cardKind === 'team' ? (
+              <Badge variant="light" color="blue" size="sm">{team.currentSize}/{team.teamSize} players</Badge>
+            ) : null}
             {team.sport ? <Badge variant="outline" color="gray" size="sm">{team.sport}</Badge> : null}
             {loading && showComplianceDetails ? <Badge variant="light" color="gray" size="sm">Loading</Badge> : null}
           </Group>
@@ -87,7 +94,7 @@ export default function DivisionTeamComplianceCard({
             <>
               <Text size="sm" c={payment.color}>{payment.label}</Text>
               <Text size="sm" c={documents.color}>{documents.label}</Text>
-              {summary?.users?.length ? (
+              {cardKind === 'team' && summary?.users?.length ? (
                 <Text size="xs" c="dimmed">
                   {summary.users.length === 1 ? '1 rostered user' : `${summary.users.length} rostered users`}
                 </Text>

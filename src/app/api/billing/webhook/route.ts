@@ -291,7 +291,12 @@ const buildInstantLineItems = ({
   effectiveAmountCents: number;
 } => {
   const purchaseAmountCents = toIntOrNull(metadata.amount_cents ?? metadata.amountCents);
-  const processingFeeCents = toIntOrNull(metadata.processing_fee_cents ?? metadata.processingFeeCents) ?? 0;
+  const mvpFeeCents = toIntOrNull(
+    metadata.mvp_fee_cents
+    ?? metadata.mvpFeeCents
+    ?? metadata.processing_fee_cents
+    ?? metadata.processingFeeCents,
+  ) ?? 0;
   const stripeFeeCents = toIntOrNull(metadata.stripe_fee_cents ?? metadata.stripeFeeCents) ?? 0;
   const taxCents = toIntOrNull(metadata.tax_cents ?? metadata.taxCents) ?? 0;
   const productName = toStringOrNull(metadata.product_name ?? metadata.productName);
@@ -310,7 +315,7 @@ const buildInstantLineItems = ({
 
   const initialBaseAmount = purchaseAmountCents && purchaseAmountCents > 0
     ? purchaseAmountCents
-    : Math.max(fallbackAmountCents - processingFeeCents - stripeFeeCents - taxCents, 0);
+    : Math.max(fallbackAmountCents - mvpFeeCents - stripeFeeCents - taxCents, 0);
 
   const lineItems: Array<{
     id: string;
@@ -327,12 +332,20 @@ const buildInstantLineItems = ({
       amountCents: initialBaseAmount,
     });
   }
-  if (processingFeeCents > 0) {
+  if (mvpFeeCents > 0) {
     lineItems.push({
       id: `line_${lineItems.length + 1}`,
       type: 'FEE',
-      label: 'Processing fee',
-      amountCents: processingFeeCents,
+      label: 'MVP fee',
+      amountCents: mvpFeeCents,
+    });
+  }
+  if (stripeFeeCents > 0) {
+    lineItems.push({
+      id: `line_${lineItems.length + 1}`,
+      type: 'FEE',
+      label: 'Stripe fee',
+      amountCents: stripeFeeCents,
     });
   }
   if (taxCents > 0) {
@@ -341,14 +354,6 @@ const buildInstantLineItems = ({
       type: 'TAX',
       label: 'Tax',
       amountCents: taxCents,
-    });
-  }
-  if (stripeFeeCents > 0) {
-    lineItems.push({
-      id: `line_${lineItems.length + 1}`,
-      type: 'FEE',
-      label: 'Card processing fee',
-      amountCents: stripeFeeCents,
     });
   }
 
@@ -668,7 +673,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (shouldSendReceipt) {
-      await sendPurchaseReceiptEmail({
+      void sendPurchaseReceiptEmail({
         purchaseType,
         paymentIntentId,
         userId,

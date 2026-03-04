@@ -80,6 +80,7 @@ export async function POST(
       assistantHostIds: true,
       organizationId: true,
       teamIds: true,
+      userIds: true,
       teamSignup: true,
     },
   });
@@ -89,32 +90,10 @@ export async function POST(
   if (!(await canManageEvent(session, event))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  if (!event.teamSignup) {
-    return NextResponse.json({ error: 'This event does not use team participants.' }, { status: 400 });
-  }
 
   const normalizedTeamId = normalizeId(teamId);
   if (!normalizedTeamId) {
     return NextResponse.json({ error: 'Invalid team id' }, { status: 400 });
-  }
-  const eventTeamIds = normalizeIdList(event.teamIds);
-  if (!eventTeamIds.includes(normalizedTeamId)) {
-    return NextResponse.json({ error: 'Team is not a participant of this event.' }, { status: 404 });
-  }
-
-  const team = await prisma.teams.findUnique({
-    where: { id: normalizedTeamId },
-    select: {
-      id: true,
-      playerIds: true,
-      captainId: true,
-      managerId: true,
-      headCoachId: true,
-      parentTeamId: true,
-    },
-  });
-  if (!team) {
-    return NextResponse.json({ error: 'Team not found' }, { status: 404 });
   }
 
   const requestedAmountCents = Math.round(parsed.data.amountCents);
@@ -162,22 +141,53 @@ export async function POST(
     return NextResponse.json({ error: 'Bill payment does not have a Stripe payment intent.' }, { status: 400 });
   }
 
-  const teamOwnerIds = Array.from(
-    new Set(
-      [team.id, normalizeId(team.parentTeamId)].filter((value): value is string => Boolean(value)),
-    ),
-  );
-  const teamMemberIds = Array.from(
-    new Set([
-      ...normalizeIdList(team.playerIds),
-      ...normalizeIdList([team.captainId, team.managerId, team.headCoachId]),
-    ]),
-  );
-  const ownerIsOnTeam = bill.ownerType === 'TEAM'
-    ? teamOwnerIds.includes(bill.ownerId)
-    : teamMemberIds.includes(bill.ownerId);
-  if (!ownerIsOnTeam) {
-    return NextResponse.json({ error: 'Bill payment does not belong to this participant team.' }, { status: 400 });
+  if (!event.teamSignup) {
+    const participantUserIds = normalizeIdList(event.userIds);
+    if (!participantUserIds.includes(normalizedTeamId)) {
+      return NextResponse.json({ error: 'User is not a participant of this event.' }, { status: 404 });
+    }
+    const ownerMatchesUser = bill.ownerType === 'USER' && bill.ownerId === normalizedTeamId;
+    if (!ownerMatchesUser) {
+      return NextResponse.json({ error: 'Bill payment does not belong to this participant user.' }, { status: 400 });
+    }
+  } else {
+    const eventTeamIds = normalizeIdList(event.teamIds);
+    if (!eventTeamIds.includes(normalizedTeamId)) {
+      return NextResponse.json({ error: 'Team is not a participant of this event.' }, { status: 404 });
+    }
+
+    const team = await prisma.teams.findUnique({
+      where: { id: normalizedTeamId },
+      select: {
+        id: true,
+        playerIds: true,
+        captainId: true,
+        managerId: true,
+        headCoachId: true,
+        parentTeamId: true,
+      },
+    });
+    if (!team) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+    }
+
+    const teamOwnerIds = Array.from(
+      new Set(
+        [team.id, normalizeId(team.parentTeamId)].filter((value): value is string => Boolean(value)),
+      ),
+    );
+    const teamMemberIds = Array.from(
+      new Set([
+        ...normalizeIdList(team.playerIds),
+        ...normalizeIdList([team.captainId, team.managerId, team.headCoachId]),
+      ]),
+    );
+    const ownerIsOnTeam = bill.ownerType === 'TEAM'
+      ? teamOwnerIds.includes(bill.ownerId)
+      : teamMemberIds.includes(bill.ownerId);
+    if (!ownerIsOnTeam) {
+      return NextResponse.json({ error: 'Bill payment does not belong to this participant team.' }, { status: 400 });
+    }
   }
 
   const refundedAmountCents = Math.max(0, Number(payment.refundedAmountCents ?? 0));

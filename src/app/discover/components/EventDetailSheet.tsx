@@ -643,7 +643,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const isEventHost = !!user && currentEvent && user.$id === currentEvent.hostId;
     const isFreeEvent = Boolean(currentEvent) && selectedDivisionBilling.priceCents === 0;
-    const isFreeForUser = isFreeEvent || isEventHost;
+    const shouldBypassHostPayment = Boolean(currentEvent && isEventHost && !currentEvent.teamSignup);
+    const isFreeForUser = isFreeEvent || shouldBypassHostPayment;
 
     const isActive = renderInline ? Boolean(isOpen) : isOpen;
 
@@ -1944,14 +1945,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setJoinNotice(null);
 
         const selectedTeam = userTeams.find((team) => team.$id === selectedTeamId) || ({ $id: selectedTeamId } as Team);
-        const registeredTeam = teams.find((team) => team.$id === selectedTeamId || team.parentTeamId === selectedTeamId) || null;
-        const shouldRequestRefund = !isFreeForUser && selectedDivisionBilling.priceCents > 0;
 
         try {
-            if (shouldRequestRefund) {
-                await paymentService.requestTeamRefund(currentEvent.$id, registeredTeam?.$id ?? selectedTeamId);
-            }
-
             await paymentService.leaveEvent(
                 user,
                 currentEvent,
@@ -1962,11 +1957,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 JOIN_API_TIMEOUT_MS,
             );
 
-            setJoinNotice(
-                shouldRequestRefund
-                    ? 'Team withdrawn and refund request submitted.'
-                    : 'Team withdrawn from this event.',
-            );
+            setJoinNotice('Team withdrawn from this event.');
             await loadEventDetails();
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to withdraw team');
@@ -2001,8 +1992,38 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         const deadline = Date.now() + 30_000; // 30 seconds
         const pollIntervalMs = 2000; // 2 seconds
         const targetTeamId = selectedTeamId || null;
+        const selection = divisionSelectionPayload;
 
         try {
+            const joinTeam = currentEvent.teamSignup
+                ? (
+                    targetTeamId
+                        ? userTeams.find((team) => team.$id === targetTeamId) ?? ({ $id: targetTeamId } as Team)
+                        : undefined
+                )
+                : undefined;
+
+            if (currentEvent.teamSignup && !joinTeam?.$id) {
+                throw new Error('Team is required to complete registration.');
+            }
+
+            try {
+                await paymentService.joinEvent(
+                    user,
+                    checkoutEvent ?? currentEvent,
+                    joinTeam,
+                    undefined,
+                    undefined,
+                    selection,
+                    JOIN_API_TIMEOUT_MS,
+                );
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Failed to join event after payment.';
+                if (!message.toLowerCase().includes('already registered')) {
+                    throw error;
+                }
+            }
+
             while (Date.now() < deadline) {
                 const latest = await eventService.getEventWithRelations(currentEvent.$id);
                 if (latest) {
@@ -2026,7 +2047,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             // Timed out
             setJoinError('Timed out');
         } catch (e) {
-            setJoinError('Error confirming purchase.');
+            setJoinError(e instanceof Error ? e.message : 'Error confirming purchase.');
         } finally {
             setConfirmingPurchase(false);
         }
@@ -2936,9 +2957,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                         >
                                                                             {joining
                                                                                 ? 'Withdrawing...'
-                                                                                : (!isFreeForUser && selectedDivisionBilling.priceCents > 0)
-                                                                                    ? 'Withdraw Team and Request Refund'
-                                                                                    : 'Withdraw Team'}
+                                                                                : 'Withdraw Team'}
                                                                         </Button>
                                                                     )}
                                                                 </div>

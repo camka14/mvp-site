@@ -23,6 +23,7 @@ import { familyService } from '@/lib/familyService';
 import { apiRequest } from '@/lib/apiClient';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { calculateMvpAndStripeFees } from '@/lib/billingFees';
 import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
@@ -30,7 +31,12 @@ import { toEventPayload } from '@/types';
 import { formatBillAmount } from '@/types';
 import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
-import type { EventTeamComplianceResponse, TeamComplianceSummary } from '@/lib/eventTeamCompliance';
+import type {
+  EventTeamComplianceResponse,
+  EventUserComplianceResponse,
+  TeamComplianceSummary,
+  TeamComplianceUserSummary,
+} from '@/lib/eventTeamCompliance';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import LeagueCalendarView from './components/LeagueCalendarView';
 import TournamentBracketView from './components/TournamentBracketView';
@@ -41,6 +47,7 @@ import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 import TeamCard from '@/components/ui/TeamCard';
+import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 
 const cloneValue = <T,>(value: T): T => {
@@ -714,6 +721,7 @@ function EventScheduleContent() {
   const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
   const [selectedStandingsDivision, setSelectedStandingsDivision] = useState<string | null>(null);
   const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
+  const [participantUsers, setParticipantUsers] = useState<UserData[]>([]);
   const [participantReferees, setParticipantReferees] = useState<UserData[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
@@ -721,6 +729,9 @@ function EventScheduleContent() {
   const [teamComplianceById, setTeamComplianceById] = useState<Record<string, TeamComplianceSummary>>({});
   const [teamComplianceLoading, setTeamComplianceLoading] = useState(false);
   const [teamComplianceError, setTeamComplianceError] = useState<string | null>(null);
+  const [userComplianceById, setUserComplianceById] = useState<Record<string, TeamComplianceUserSummary>>({});
+  const [userComplianceLoading, setUserComplianceLoading] = useState(false);
+  const [userComplianceError, setUserComplianceError] = useState<string | null>(null);
   const [teamComplianceRefreshKey, setTeamComplianceRefreshKey] = useState(0);
   const [selectedComplianceTeamId, setSelectedComplianceTeamId] = useState<string | null>(null);
   const [expandedComplianceUserIds, setExpandedComplianceUserIds] = useState<string[]>([]);
@@ -1322,7 +1333,8 @@ function EventScheduleContent() {
       ),
   );
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
-  const canUseTeamCompliance = Boolean(isEditingEvent && canManageEvent && isSplitDivisionEvent);
+  const canUseTeamCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup);
+  const canUseUserCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup === false);
   const canManageStandings = Boolean(canManageEvent && !isPreview && !isCreateMode);
   const entityLabel = isTemplateEvent
     ? 'Template'
@@ -1772,7 +1784,30 @@ function EventScheduleContent() {
     return Array.from(ids);
   }, [activeEvent?.teamIds, activeEvent?.teams]);
 
+  const participantUserIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    if (Array.isArray(activeEvent?.userIds)) {
+      activeEvent.userIds
+        .map((userId) => normalizeIdToken(userId))
+        .filter((userId): userId is string => Boolean(userId))
+        .forEach((userId) => ids.add(userId));
+    }
+
+    if (Array.isArray(activeEvent?.players)) {
+      activeEvent.players.forEach((player) => {
+        const userId = normalizeIdToken(player?.$id);
+        if (userId) {
+          ids.add(userId);
+        }
+      });
+    }
+
+    return Array.from(ids);
+  }, [activeEvent?.players, activeEvent?.userIds]);
+
   const participantTeamIdSet = useMemo(() => new Set(participantTeamIds), [participantTeamIds]);
+  const participantUserIdSet = useMemo(() => new Set(participantUserIds), [participantUserIds]);
   const participantRefereeIds = useMemo(() => {
     const ids = new Set<string>();
 
@@ -1939,8 +1974,15 @@ function EventScheduleContent() {
     let cancelled = false;
 
     const loadParticipantTeams = async () => {
+      if (!activeEvent?.teamSignup) {
+        setParticipantTeams([]);
+        setParticipantsLoading(false);
+        return;
+      }
+
       if (participantTeamIds.length === 0) {
         setParticipantTeams([]);
+        setParticipantUsers([]);
         setParticipantsError(null);
         setParticipantsLoading(false);
         return;
@@ -1958,6 +2000,7 @@ function EventScheduleContent() {
           .map((teamId) => hydratedById.get(teamId))
           .filter((team): team is Team => Boolean(team));
         setParticipantTeams(orderedTeams);
+        setParticipantUsers([]);
       } catch (participantError) {
         if (cancelled) {
           return;
@@ -1976,7 +2019,56 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [participantTeamIds]);
+  }, [activeEvent?.teamSignup, participantTeamIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadParticipantUsers = async () => {
+      if (activeEvent?.teamSignup !== false) {
+        setParticipantUsers([]);
+        return;
+      }
+
+      if (participantUserIds.length === 0) {
+        setParticipantUsers([]);
+        setParticipantsError(null);
+        setParticipantsLoading(false);
+        return;
+      }
+
+      setParticipantsLoading(true);
+      setParticipantsError(null);
+      try {
+        const hydratedUsers = await userService.getUsersByIds(participantUserIds);
+        if (cancelled) {
+          return;
+        }
+        const hydratedById = new Map(hydratedUsers.map((participant) => [participant.$id, participant]));
+        const orderedUsers = participantUserIds
+          .map((userId) => hydratedById.get(userId))
+          .filter((participant): participant is UserData => Boolean(participant));
+        setParticipantUsers(orderedUsers);
+        setParticipantTeams([]);
+      } catch (participantError) {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load participant users:', participantError);
+        setParticipantsError(participantError instanceof Error ? participantError.message : 'Failed to load participants.');
+      } finally {
+        if (!cancelled) {
+          setParticipantsLoading(false);
+        }
+      }
+    };
+
+    void loadParticipantUsers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent?.teamSignup, participantUserIds]);
 
   useEffect(() => {
     if (!canUseTeamCompliance) {
@@ -2035,6 +2127,62 @@ function EventScheduleContent() {
       cancelled = true;
     };
   }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIds, teamComplianceRefreshKey]);
+
+  useEffect(() => {
+    if (!canUseUserCompliance) {
+      setUserComplianceById({});
+      setUserComplianceError(null);
+      setUserComplianceLoading(false);
+      return;
+    }
+
+    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+    if (!targetEventId || participantUserIds.length === 0) {
+      setUserComplianceById({});
+      setUserComplianceError(null);
+      setUserComplianceLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setUserComplianceLoading(true);
+    setUserComplianceError(null);
+
+    void apiRequest<EventUserComplianceResponse>(`/api/events/${targetEventId}/users/compliance`)
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        const byId: Record<string, TeamComplianceUserSummary> = {};
+        (payload?.users ?? []).forEach((userSummary) => {
+          if (userSummary?.userId) {
+            byId[userSummary.userId] = userSummary;
+          }
+        });
+        setUserComplianceById(byId);
+      })
+      .catch((complianceError) => {
+        if (cancelled) {
+          return;
+        }
+        console.error('Failed to load participant user compliance summaries:', complianceError);
+        setUserComplianceById({});
+        setUserComplianceError(
+          complianceError instanceof Error
+            ? complianceError.message
+            : 'Failed to load participant payment and document status.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setUserComplianceLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent?.$id, canUseUserCompliance, eventId, participantUserIds, teamComplianceRefreshKey]);
 
   useEffect(() => {
     if (!selectedComplianceTeamId) {
@@ -2202,13 +2350,30 @@ function EventScheduleContent() {
       const orderedTeams = refreshedTeamIds
         .map((teamId) => refreshedTeamsById.get(teamId))
         .filter((team): team is Team => Boolean(team));
+      const refreshedUserIds = Array.from(
+        new Set(
+          (Array.isArray(refreshedEvent.userIds) ? refreshedEvent.userIds : [])
+            .map((userId) => normalizeIdToken(userId))
+            .filter((userId): userId is string => Boolean(userId)),
+        ),
+      );
+      const refreshedUsers = refreshedUserIds.length > 0
+        ? await userService.getUsersByIds(refreshedUserIds)
+        : [];
+      const refreshedUsersById = new Map(refreshedUsers.map((participant) => [participant.$id, participant]));
+      const orderedUsers = refreshedUserIds
+        .map((userId) => refreshedUsersById.get(userId))
+        .filter((participant): participant is UserData => Boolean(participant));
 
       setParticipantTeams(orderedTeams);
+      setParticipantUsers(orderedUsers);
       setEvent((prev) => (prev
         ? {
             ...prev,
             teamIds: refreshedTeamIds,
             teams: orderedTeams,
+            userIds: refreshedUserIds,
+            players: orderedUsers,
             divisions: refreshedEvent.divisions ?? prev.divisions,
             divisionDetails: refreshedEvent.divisionDetails ?? prev.divisionDetails,
             playoffDivisionDetails: refreshedEvent.playoffDivisionDetails ?? prev.playoffDivisionDetails,
@@ -2219,6 +2384,8 @@ function EventScheduleContent() {
             ...prev,
             teamIds: refreshedTeamIds,
             teams: orderedTeams,
+            userIds: refreshedUserIds,
+            players: orderedUsers,
             divisions: refreshedEvent.divisions ?? prev.divisions,
             divisionDetails: refreshedEvent.divisionDetails ?? prev.divisionDetails,
             playoffDivisionDetails: refreshedEvent.playoffDivisionDetails ?? prev.playoffDivisionDetails,
@@ -2248,7 +2415,7 @@ function EventScheduleContent() {
         if (params.mode === 'remove') {
           await eventService.removeTeamParticipant(targetEventId, params.team.$id);
           await refreshParticipantTeamsFromServer(targetEventId);
-          setInfoMessage(`${params.team.name || 'Team'} removed from participants.`);
+          setInfoMessage(`${params.team.name || 'Team'} removed from participants. A refund has been queued.`);
           return;
         }
 
@@ -2264,6 +2431,42 @@ function EventScheduleContent() {
         }
       } catch (updateError) {
         console.error('Failed to update event participants:', updateError);
+        setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
+      }
+    },
+    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer],
+  );
+
+  const mutateUserParticipantMembership = useCallback(
+    async (params: {
+      user: UserData;
+      mode: 'add' | 'remove';
+    }) => {
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId) {
+        return;
+      }
+      if (!params.user?.$id) {
+        return;
+      }
+
+      setParticipantsError(null);
+      setActionError(null);
+      try {
+        await apiRequest(`/api/events/${targetEventId}/participants`, {
+          method: params.mode === 'add' ? 'POST' : 'DELETE',
+          body: {
+            userId: params.user.$id,
+          },
+        });
+        await refreshParticipantTeamsFromServer(targetEventId);
+        if (params.mode === 'remove') {
+          setInfoMessage(`${params.user.fullName || params.user.userName || 'Participant'} removed from participants.`);
+        } else {
+          setInfoMessage(`${params.user.fullName || params.user.userName || 'Participant'} added to participants.`);
+        }
+      } catch (updateError) {
+        console.error('Failed to update user participants:', updateError);
         setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
       }
     },
@@ -2327,7 +2530,7 @@ function EventScheduleContent() {
 
       const shouldRemove = typeof window === 'undefined'
         ? true
-        : window.confirm(`Remove ${team.name || 'this team'} from participants?`);
+        : window.confirm(`Remove ${team.name || 'this team'} from participants? They will be unregistered and refunded.`);
       if (!shouldRemove) {
         return;
       }
@@ -2340,6 +2543,30 @@ function EventScheduleContent() {
       setParticipantsUpdatingTeamId(null);
     },
     [mutateTeamParticipantMembership, participantTeamIdSet, participantsUpdatingTeamId],
+  );
+
+  const handleRemoveUserFromParticipants = useCallback(
+    async (participant: UserData) => {
+      if (participantsUpdatingTeamId || !participant?.$id || !participantUserIdSet.has(participant.$id)) {
+        return;
+      }
+
+      const displayName = participant.fullName || participant.userName || 'this participant';
+      const shouldRemove = typeof window === 'undefined'
+        ? true
+        : window.confirm(`Remove ${displayName} from participants? They will be unregistered and refunded.`);
+      if (!shouldRemove) {
+        return;
+      }
+
+      setParticipantsUpdatingTeamId(participant.$id);
+      await mutateUserParticipantMembership({
+        user: participant,
+        mode: 'remove',
+      });
+      setParticipantsUpdatingTeamId(null);
+    },
+    [mutateUserParticipantMembership, participantUserIdSet, participantsUpdatingTeamId],
   );
 
   const refreshTeamCompliance = useCallback(() => {
@@ -2473,16 +2700,22 @@ function EventScheduleContent() {
     if (!team?.$id) {
       return;
     }
+    const userOnlyBilling = activeEvent?.teamSignup === false;
+    const defaultOwnerType: 'TEAM' | 'USER' = userOnlyBilling ? 'USER' : 'TEAM';
+    const defaultOwnerId = defaultOwnerType === 'TEAM'
+      ? team.$id
+      : (Array.isArray(team.playerIds) && team.playerIds.length > 0 ? team.playerIds[0] : team.$id);
+
     setCreateBillTeam(team);
     setCreateBillError(null);
     setCreatingBill(false);
-    setCreateBillOwnerType('TEAM');
-    setCreateBillOwnerId(team.$id);
+    setCreateBillOwnerType(defaultOwnerType);
+    setCreateBillOwnerId(defaultOwnerId);
     setCreateBillAmountDollars(0);
     setCreateBillTaxDollars(0);
     setCreateBillAllowSplit(false);
     setCreateBillLabel('Event registration');
-  }, []);
+  }, [activeEvent?.teamSignup]);
 
   const createBillUserOptions = useMemo(() => {
     if (!createBillTeam) {
@@ -2519,7 +2752,20 @@ function EventScheduleContent() {
     }));
   }, [createBillTeam]);
 
+  const createBillIsUserOnly = Boolean(createBillTeam && activeEvent?.teamSignup === false);
+
   useEffect(() => {
+    if (createBillIsUserOnly) {
+      if (createBillOwnerType !== 'USER') {
+        setCreateBillOwnerType('USER');
+      }
+      const firstUserId = createBillUserOptions[0]?.value ?? createBillTeam?.$id ?? null;
+      if (firstUserId && createBillOwnerId !== firstUserId) {
+        setCreateBillOwnerId(firstUserId);
+      }
+      return;
+    }
+
     if (!createBillTeam) {
       return;
     }
@@ -2533,40 +2779,62 @@ function EventScheduleContent() {
     if (firstUserId && createBillOwnerId !== firstUserId) {
       setCreateBillOwnerId(firstUserId);
     }
-  }, [createBillOwnerId, createBillOwnerType, createBillTeam, createBillUserOptions]);
+  }, [createBillIsUserOnly, createBillOwnerId, createBillOwnerType, createBillTeam, createBillUserOptions]);
 
   const createBillEventAmountCents = Math.max(0, Math.round((Number(createBillAmountDollars) || 0) * 100));
-  const createBillFeeAmountCents = Math.max(0, Math.round(createBillEventAmountCents * 0.01));
+  const createBillFeeBreakdown = useMemo(
+    () => calculateMvpAndStripeFees({
+      eventAmountCents: createBillEventAmountCents,
+      eventType: activeEvent?.eventType,
+    }),
+    [activeEvent?.eventType, createBillEventAmountCents],
+  );
+  const createBillMvpFeeAmountCents = createBillFeeBreakdown.mvpFeeCents;
+  const createBillStripeFeeAmountCents = createBillFeeBreakdown.stripeFeeCents;
   const createBillTaxAmountCents = Math.max(0, Math.round((Number(createBillTaxDollars) || 0) * 100));
-  const createBillTotalCents = createBillEventAmountCents + createBillFeeAmountCents + createBillTaxAmountCents;
-  const createBillPreviewLineItems = useMemo(
-    () => [
+  const createBillTotalCents = (
+    createBillEventAmountCents
+    + createBillMvpFeeAmountCents
+    + createBillStripeFeeAmountCents
+    + createBillTaxAmountCents
+  );
+  const createBillPreviewLineItems = useMemo(() => {
+    const lineItems: Array<{ id: string; label: string; amountCents: number }> = [
       {
         id: 'line_1',
         label: createBillLabel.trim().length > 0 ? createBillLabel.trim() : 'Event registration',
         amountCents: createBillEventAmountCents,
       },
-      ...(createBillFeeAmountCents > 0
-        ? [
-            {
-              id: 'line_2',
-              label: 'Processing fee',
-              amountCents: createBillFeeAmountCents,
-            },
-          ]
-        : []),
-      ...(createBillTaxAmountCents > 0
-        ? [
-            {
-              id: 'line_3',
-              label: 'Tax',
-              amountCents: createBillTaxAmountCents,
-            },
-          ]
-        : []),
-    ],
-    [createBillEventAmountCents, createBillFeeAmountCents, createBillLabel, createBillTaxAmountCents],
-  );
+    ];
+    if (createBillMvpFeeAmountCents > 0) {
+      lineItems.push({
+        id: `line_${lineItems.length + 1}`,
+        label: 'MVP fee',
+        amountCents: createBillMvpFeeAmountCents,
+      });
+    }
+    if (createBillStripeFeeAmountCents > 0) {
+      lineItems.push({
+        id: `line_${lineItems.length + 1}`,
+        label: 'Stripe fee',
+        amountCents: createBillStripeFeeAmountCents,
+      });
+    }
+    if (createBillTaxAmountCents > 0) {
+      lineItems.push({
+        id: `line_${lineItems.length + 1}`,
+        label: 'Tax',
+        amountCents: createBillTaxAmountCents,
+      });
+    }
+    return lineItems;
+  }, [
+    createBillEventAmountCents,
+    createBillLabel,
+    createBillMvpFeeAmountCents,
+    createBillStripeFeeAmountCents,
+    createBillTaxAmountCents,
+  ]);
 
   const submitCreateBill = useCallback(async () => {
     const team = createBillTeam;
@@ -2595,7 +2863,6 @@ function EventScheduleContent() {
           ownerType: createBillOwnerType,
           ownerId: createBillOwnerType === 'TEAM' ? team.$id : createBillOwnerId,
           eventAmountCents: createBillEventAmountCents,
-          feeAmountCents: createBillFeeAmountCents,
           taxAmountCents: createBillTaxAmountCents,
           allowSplit: createBillOwnerType === 'TEAM' ? createBillAllowSplit : false,
           label: createBillLabel,
@@ -2615,10 +2882,11 @@ function EventScheduleContent() {
     closeCreateBillModal,
     createBillAllowSplit,
     createBillEventAmountCents,
-    createBillFeeAmountCents,
     createBillLabel,
+    createBillMvpFeeAmountCents,
     createBillOwnerId,
     createBillOwnerType,
+    createBillStripeFeeAmountCents,
     createBillTaxAmountCents,
     createBillTeam,
     eventId,
@@ -3019,9 +3287,9 @@ function EventScheduleContent() {
   const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
     if (isCreateMode) return 'Cancel';
-    if (isUnpublished) return `Delete ${entityLabel}`;
+    if (isUnpublished) return 'Delete';
     if (isPreview) return `Cancel ${entityLabel} Preview`;
-    if (isEditingEvent) return 'Cancel Edit';
+    if (isEditingEvent) return 'Cancel Manage';
     return `Cancel ${entityLabel}`;
   })();
 
@@ -3792,7 +4060,7 @@ function EventScheduleContent() {
   const showScheduleTab = isLeague || isTournament;
   const showStandingsTab = isLeague;
   const showParticipantsTab = !isTemplateEvent
-    && Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0);
+    && Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0 || participantUserIds.length > 0);
   const selectedComplianceSummary = selectedComplianceTeamId
     ? teamComplianceById[selectedComplianceTeamId] ?? null
     : null;
@@ -3841,6 +4109,75 @@ function EventScheduleContent() {
       <TeamCard
         key={cardKey}
         team={team}
+        className={className}
+        actions={actions}
+      />
+    );
+  };
+
+  const toParticipantDisplayName = useCallback((participant: UserData): string => (
+    participant.fullName
+    || `${participant.firstName ?? ''} ${participant.lastName ?? ''}`.trim()
+    || participant.userName
+    || participant.$id
+  ), []);
+
+  const toUserParticipantPseudoTeam = useCallback((participant: UserData): Team => ({
+    $id: participant.$id,
+    name: toParticipantDisplayName(participant),
+    division: 'Participant',
+    sport: typeof activeEvent?.sport === 'object' ? activeEvent.sport.name : '',
+    playerIds: [participant.$id],
+    captainId: participant.$id,
+    pending: [],
+    teamSize: 1,
+    currentSize: 1,
+    isFull: true,
+    avatarUrl: '',
+  }), [activeEvent?.sport, toParticipantDisplayName]);
+
+  const renderParticipantUserCard = ({
+    cardKey,
+    participant,
+    actions,
+    className = '',
+  }: {
+    cardKey: string;
+    participant: UserData;
+    actions?: React.ReactNode;
+    className?: string;
+  }) => {
+    const pseudoTeam = toUserParticipantPseudoTeam(participant);
+    const userSummary = userComplianceById[participant.$id];
+    const summaryForCard: TeamComplianceSummary | undefined = userSummary
+      ? {
+          teamId: participant.$id,
+          teamName: toParticipantDisplayName(participant),
+          payment: userSummary.payment,
+          documents: userSummary.documents,
+          users: [userSummary],
+        }
+      : undefined;
+
+    if (isEditingEvent) {
+      return (
+        <DivisionTeamComplianceCard
+          key={cardKey}
+          team={pseudoTeam}
+          summary={canUseUserCompliance ? summaryForCard : undefined}
+          loading={canUseUserCompliance ? userComplianceLoading : false}
+          showComplianceDetails={canUseUserCompliance}
+          cardKind="participant"
+          className={className}
+          actions={actions}
+        />
+      );
+    }
+
+    return (
+      <UserCard
+        key={cardKey}
+        user={participant}
         className={className}
         actions={actions}
       />
@@ -5546,7 +5883,7 @@ function EventScheduleContent() {
               <Group gap="sm" wrap="wrap">
                 {showEditActionButton && (
                   <Button onClick={handleEnterEditMode} disabled={hasNetworkActionInFlight}>
-                    Edit {entityLabel}
+                    Manage
                   </Button>
                 )}
                 {isEditingEvent && (
@@ -5573,7 +5910,7 @@ function EventScheduleContent() {
                           || (!isCreateMode && hasMatchConflicts)
                         }
                       >
-                        {isCreateMode ? createButtonLabel : `Save ${entityLabel}`}
+                        {isCreateMode ? createButtonLabel : 'Save'}
                       </Button>
                     )}
                     {showRescheduleActionButton && (
@@ -5609,7 +5946,7 @@ function EventScheduleContent() {
                         onClick={handleCancelEdit}
                         disabled={hasNetworkActionInFlight}
                       >
-                        Cancel Edit
+                        Cancel Manage
                       </Button>
                     )}
                   </>
@@ -5633,7 +5970,7 @@ function EventScheduleContent() {
                     loading={cancelling}
                     disabled={hasNetworkActionInFlight && !cancelling}
                   >
-                    Delete Template
+                    Delete
                   </Button>
                 )}
                 {showCreateTemplateButton && (
@@ -5729,11 +6066,19 @@ function EventScheduleContent() {
                 <Stack gap="md">
                   <Group justify="space-between" align="center">
                     <Text size="sm" c="dimmed">
-                      {filledParticipantTeams.length === 1
-                        ? '1 team is currently participating.'
-                        : `${filledParticipantTeams.length} teams are currently participating.`}
+                      {activeEvent?.teamSignup === false
+                        ? (
+                          participantUsers.length === 1
+                            ? '1 participant is currently registered.'
+                            : `${participantUsers.length} participants are currently registered.`
+                        )
+                        : (
+                          filledParticipantTeams.length === 1
+                            ? '1 team is currently participating.'
+                            : `${filledParticipantTeams.length} teams are currently participating.`
+                        )}
                     </Text>
-                    {canManageEvent && (
+                    {canManageEvent && activeEvent?.teamSignup !== false && (
                       <Button
                         variant="light"
                         onClick={() => {
@@ -5760,6 +6105,12 @@ function EventScheduleContent() {
                     </Alert>
                   )}
 
+                  {canUseUserCompliance && userComplianceError && (
+                    <Alert color="yellow" radius="md">
+                      {userComplianceError}
+                    </Alert>
+                  )}
+
                   {participantsLoading ? (
                     <Paper withBorder radius="md" p="xl">
                       <Group justify="center" gap="sm">
@@ -5767,6 +6118,44 @@ function EventScheduleContent() {
                         <Text size="sm" c="dimmed">Loading participants...</Text>
                       </Group>
                     </Paper>
+                  ) : activeEvent?.teamSignup === false ? (
+                    participantUsers.length === 0 ? (
+                      <Paper withBorder radius="md" p="xl" ta="center">
+                        <Text>No participants have been added yet.</Text>
+                      </Paper>
+                    ) : (
+                      <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+                        {participantUsers.map((participant) => {
+                          const pseudoTeam = toUserParticipantPseudoTeam(participant);
+                          return renderParticipantUserCard({
+                            cardKey: participant.$id,
+                            participant,
+                            actions: canManageEvent
+                              ? (
+                                participantsUpdatingTeamId === participant.$id
+                                  ? <Text size="xs" c="dimmed">Updating...</Text>
+                                  : (
+                                    <Stack gap={6}>
+                                      {renderEditBillingActions(pseudoTeam)}
+                                      <Button
+                                        size="xs"
+                                        variant="light"
+                                        color="red"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleRemoveUserFromParticipants(participant);
+                                        }}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </Stack>
+                                  )
+                              )
+                              : undefined,
+                          });
+                        })}
+                      </SimpleGrid>
+                    )
                   ) : participantTeams.length === 0 ? (
                     <Paper withBorder radius="md" p="xl" ta="center">
                       <Text>No teams have been added yet.</Text>
@@ -5792,7 +6181,8 @@ function EventScheduleContent() {
                                   <Stack gap="sm">
                                     {columnTeams.map((team) => {
                                       const canMoveTeamBetweenDivisions = canManageEvent && !isEditingEvent;
-                                      const teamActions = canManageEvent
+                                      const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
+                                      const teamActions = canManageEvent && !isPlaceholderTeam
                                         ? (
                                           participantsUpdatingTeamId === team.$id
                                             ? <Text size="xs" c="dimmed">Updating...</Text>
@@ -5830,7 +6220,7 @@ function EventScheduleContent() {
                                       return renderParticipantTeamCard({
                                         cardKey: `${column.id}:${team.$id}`,
                                         team,
-                                        className: isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : '',
+                                        className: isPlaceholderTeam ? '!bg-gray-100' : '',
                                         actions: teamActions,
                                       });
                                     })}
@@ -5854,7 +6244,8 @@ function EventScheduleContent() {
                               <Stack gap="sm">
                                 {unassignedParticipantTeams.map((team) => {
                                   const canMoveTeamBetweenDivisions = canManageEvent && !isEditingEvent;
-                                  const teamActions = canManageEvent
+                                  const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
+                                  const teamActions = canManageEvent && !isPlaceholderTeam
                                     ? (
                                       participantsUpdatingTeamId === team.$id
                                         ? <Text size="xs" c="dimmed">Updating...</Text>
@@ -5893,7 +6284,7 @@ function EventScheduleContent() {
                                   return renderParticipantTeamCard({
                                     cardKey: `unassigned:${team.$id}`,
                                     team,
-                                    className: isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : '',
+                                    className: isPlaceholderTeam ? '!bg-gray-100' : '',
                                     actions: teamActions,
                                   });
                                 })}
@@ -5905,33 +6296,36 @@ function EventScheduleContent() {
                     </div>
                   ) : (
                     <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
-                      {participantTeams.map((team) => renderParticipantTeamCard({
-                        cardKey: team.$id,
-                        team,
-                        className: isPlaceholderParticipantTeam(team) ? '!bg-gray-100' : '',
-                        actions: canManageEvent
-                          ? (
-                            participantsUpdatingTeamId === team.$id
-                              ? <Text size="xs" c="dimmed">Updating...</Text>
-                              : (
-                                <Stack gap={6}>
-                                  {renderEditBillingActions(team)}
-                                  <Button
-                                    size="xs"
-                                    variant="light"
-                                    color="red"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void handleRemoveTeamFromParticipants(team);
-                                    }}
-                                  >
-                                    Remove
-                                  </Button>
-                                </Stack>
-                              )
-                          )
-                          : undefined,
-                      }))}
+                      {participantTeams.map((team) => {
+                        const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
+                        return renderParticipantTeamCard({
+                          cardKey: team.$id,
+                          team,
+                          className: isPlaceholderTeam ? '!bg-gray-100' : '',
+                          actions: canManageEvent && !isPlaceholderTeam
+                            ? (
+                              participantsUpdatingTeamId === team.$id
+                                ? <Text size="xs" c="dimmed">Updating...</Text>
+                                : (
+                                  <Stack gap={6}>
+                                    {renderEditBillingActions(team)}
+                                    <Button
+                                      size="xs"
+                                      variant="light"
+                                      color="red"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void handleRemoveTeamFromParticipants(team);
+                                      }}
+                                    >
+                                      Remove
+                                    </Button>
+                                  </Stack>
+                                )
+                            )
+                            : undefined,
+                        });
+                      })}
                     </SimpleGrid>
                   )}
                 </Stack>
@@ -6581,18 +6975,21 @@ function EventScheduleContent() {
           <Group align="flex-end" wrap="wrap">
             <Select
               label="Bill owner"
-              data={[
-                { value: 'TEAM', label: 'Team' },
-                { value: 'USER', label: 'User' },
-              ]}
+              data={createBillIsUserOnly
+                ? [{ value: 'USER', label: 'User' }]
+                : [
+                    { value: 'TEAM', label: 'Team' },
+                    { value: 'USER', label: 'User' },
+                  ]}
               value={createBillOwnerType}
               onChange={(value) => {
                 setCreateBillOwnerType(value === 'USER' ? 'USER' : 'TEAM');
               }}
               allowDeselect={false}
+              disabled={createBillIsUserOnly}
               w={180}
             />
-            {createBillOwnerType === 'USER' ? (
+            {createBillOwnerType === 'USER' && !createBillIsUserOnly ? (
               <Select
                 label="User"
                 data={createBillUserOptions}
@@ -6642,7 +7039,7 @@ function EventScheduleContent() {
             />
           </Group>
 
-          {createBillOwnerType === 'TEAM' ? (
+          {createBillOwnerType === 'TEAM' && !createBillIsUserOnly ? (
             <Checkbox
               label="Allow team members to split this bill"
               checked={createBillAllowSplit}
