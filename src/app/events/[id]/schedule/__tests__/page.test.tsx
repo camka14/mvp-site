@@ -1,5 +1,5 @@
 import { renderWithMantine } from '../../../../../../test/utils/renderWithMantine';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import LeagueSchedulePage from '../page';
 import { apiRequest } from '@/lib/apiClient';
 import { eventService } from '@/lib/eventService';
@@ -216,6 +216,32 @@ describe('League schedule page', () => {
     expect(screen.queryByText(/Edit Match/)).not.toBeInTheDocument();
     expect(capturedEventFormProps?.event?.$id).toBe('event_1');
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
+  });
+
+  it('shows the send notification action next to the event title for managers', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const notifyButton = await screen.findByLabelText(/send notification/i);
+    expect(notifyButton).toBeInTheDocument();
+
+    fireEvent.click(notifyButton);
+    const dialog = await screen.findByRole('dialog', { name: /send notification/i });
+    const scoped = within(dialog);
+    expect(scoped.getByLabelText(/title/i)).toBeInTheDocument();
+    expect(scoped.getByLabelText(/message/i)).toBeInTheDocument();
+    expect(scoped.getByLabelText(/^managers$/i)).toBeInTheDocument();
+    expect(scoped.getByLabelText(/^players$/i)).toBeInTheDocument();
+    expect(scoped.getByLabelText(/^parents \(of players\)$/i)).toBeInTheDocument();
+    expect(scoped.getByLabelText(/^referees$/i)).toBeInTheDocument();
+    expect(scoped.getByLabelText(/^hosts$/i)).toBeInTheDocument();
   });
 
   it('includes playoff matches in the league schedule tab', async () => {

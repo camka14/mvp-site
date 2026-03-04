@@ -5,6 +5,7 @@ import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
 import { useApp } from '@/app/providers';
 import { formatDisplayTime } from '@/lib/dateUtils';
+import { resolveChatGroupInitial, resolveChatGroupTitle } from './chatGroupDisplay';
 
 interface ChatDetailProps {
     chatId: string;
@@ -20,6 +21,9 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
 
     const chatMessages = useMemo(() => messages[chatId] || [], [messages, chatId]);
     const chatGroup = chatGroups.find(chat => chat.$id === chatId);
+    const chatTitle = resolveChatGroupTitle(chatGroup, 'Chat');
+    const chatInitial = resolveChatGroupInitial(chatGroup, 'C');
+    const chatMemberCount = Array.isArray(chatGroup?.userIds) ? chatGroup.userIds.length : 0;
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -54,14 +58,14 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
             <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
                 <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium">
-                        {chatGroup?.displayName?.[0]?.toUpperCase() || chatGroup?.name[0]?.toUpperCase() || 'C'}
+                        {chatInitial}
                     </div>
                     <div>
                         <div className="font-medium text-sm text-gray-900">
-                            {chatGroup?.displayName || chatGroup?.name || 'Chat'}
+                            {chatTitle}
                         </div>
                         <div className="text-xs text-gray-500">
-                            {chatGroup?.userIds.length || 0} members
+                            {chatMemberCount} members
                         </div>
                     </div>
                 </div>
@@ -83,11 +87,11 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
                         <div className="text-xs">Start the conversation!</div>
                     </div>
                 ) : (
-                    chatMessages.map((message) => {
+                    chatMessages.map((message, index) => {
                         const isCurrentUser = message.userId === user?.$id;
                         return (
                             <div
-                                key={message.$id}
+                                key={`${message.$id || 'message'}-${message.sentTime || ''}-${index}`}
                                 className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                             >
                                 <div

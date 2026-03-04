@@ -100,3 +100,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json(withLegacyFields(updated), { status: 200 });
 }
 
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireSession(req);
+  const { id } = await params;
+
+  const existing = await prisma.chatGroup.findUnique({ where: { id } });
+  if (!existing) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const canDelete = session.isAdmin || existing.hostId === session.userId;
+  if (!canDelete) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const [, deletedGroup] = await prisma.$transaction([
+    prisma.messages.deleteMany({ where: { chatId: id } }),
+    prisma.chatGroup.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json(withLegacyFields(deletedGroup), { status: 200 });
+}

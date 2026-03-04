@@ -3,11 +3,11 @@ import { createId } from '@/lib/id';
 
 export interface ChatGroup {
     $id: string;
-    name: string;
+    name: string | null;
     userIds: string[];
     hostId: string;
-    displayName?: string;
-    imageUrl?: string;
+    displayName?: string | null;
+    imageUrl?: string | null;
     lastMessage?: {
         body: string;
         sentTime: string;
@@ -159,6 +159,38 @@ class ChatService {
             };
         } catch (error) {
             console.error('Failed to create chat group:', error);
+            throw error;
+        }
+    }
+
+    async renameChatGroup(chatId: string, name: string | null): Promise<ChatGroup> {
+        try {
+            const response = await apiRequest<any>(`/api/chat/groups/${chatId}`, {
+                method: 'PATCH',
+                body: { name },
+            });
+
+            return {
+                $id: response.$id,
+                name: response.name,
+                userIds: response.userIds,
+                hostId: response.hostId,
+                displayName: response.displayName,
+                imageUrl: response.imageUrl,
+            };
+        } catch (error) {
+            console.error('Failed to rename chat group:', error);
+            throw error;
+        }
+    }
+
+    async deleteChatGroup(chatId: string): Promise<void> {
+        try {
+            await apiRequest(`/api/chat/groups/${chatId}`, {
+                method: 'DELETE',
+            });
+        } catch (error) {
+            console.error('Failed to delete chat group:', error);
             throw error;
         }
     }

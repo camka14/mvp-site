@@ -3,6 +3,7 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { ChatGroup, chatService, Message } from '@/lib/chatService';
 import { useApp } from '@/app/providers';
+import { dedupeChatMessages } from '@/lib/chatMessages';
 
 
 interface ChatContextType {
@@ -53,7 +54,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const loadMessages = async (chatId: string) => {
         try {
-            const chatMessages = await chatService.getMessages(chatId);
+            const chatMessages = dedupeChatMessages(await chatService.getMessages(chatId));
             setMessages(prev => ({
                 ...prev,
                 [chatId]: chatMessages
@@ -77,7 +78,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             const newMessage = await chatService.sendMessage(chatId, messageBody, user.$id);
             setMessages(prev => ({
                 ...prev,
-                [chatId]: [...(prev[chatId] || []), newMessage]
+                [chatId]: dedupeChatMessages([...(prev[chatId] || []), newMessage])
             }));
             // Update lastMessage on chat group
             setChatGroups(prev => prev.map(g => g.$id === chatId ? {

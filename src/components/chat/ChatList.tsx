@@ -1,20 +1,68 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
-import { useApp } from '@/app/providers';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
+import { chatService } from '@/lib/chatService';
+import { resolveChatGroupInitial, resolveChatGroupTitle } from './chatGroupDisplay';
 
 export function ChatList() {
-    const { chatGroups, loading } = useChat();
-    const { openChatWindow, openChatWindows, closeChatList, setInviteModalOpen } = useChatUI();
-    const { user } = useApp();
+    const { chatGroups, loading, loadChatGroups } = useChat();
+    const { openChatWindow, openChatWindows, closeChatList, closeChatWindow, setInviteModalOpen } = useChatUI();
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [openActionsChatId, setOpenActionsChatId] = useState<string | null>(null);
 
     const handleChatSelect = (chatId: string) => {
+        setOpenActionsChatId(null);
         // Only open if not already open
         if (!openChatWindows.includes(chatId)) {
             openChatWindow(chatId);
+        }
+    };
+
+    const handleRenameChat = async (chatId: string, currentTitle: string) => {
+        const nextLabel = window.prompt('Rename chat', currentTitle === 'Unnamed Chat' ? '' : currentTitle);
+        if (nextLabel === null) {
+            setOpenActionsChatId(null);
+            return;
+        }
+
+        const trimmed = nextLabel.trim();
+        const nextName = trimmed.length > 0 ? trimmed : null;
+        if (nextName === currentTitle || (currentTitle === 'Unnamed Chat' && nextName === null)) {
+            return;
+        }
+
+        try {
+            setActionError(null);
+            await chatService.renameChatGroup(chatId, nextName);
+            await loadChatGroups();
+            setOpenActionsChatId(null);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to rename chat.';
+            setActionError(message);
+        }
+    };
+
+    const handleDeleteChat = async (chatId: string, currentTitle: string) => {
+        const confirmed = window.confirm(
+            `Delete "${currentTitle}"? This action cannot be undone and will remove all messages in this chat.`,
+        );
+        if (!confirmed) {
+            setOpenActionsChatId(null);
+            return;
+        }
+
+        try {
+            setActionError(null);
+            await chatService.deleteChatGroup(chatId);
+            closeChatWindow(chatId);
+            await loadChatGroups();
+            setOpenActionsChatId(null);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to delete chat.';
+            setActionError(message);
         }
     };
 
@@ -44,7 +92,7 @@ export function ChatList() {
     }
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full" onClick={() => setOpenActionsChatId(null)}>
             {/* Header */}
             <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
                 <h2 className="font-semibold text-gray-900">Messages</h2>
@@ -68,6 +116,11 @@ export function ChatList() {
                     </button>
                 </div>
             </div>
+            {actionError && (
+                <div className="px-3 py-2 text-xs text-red-600 border-b border-red-100 bg-red-50">
+                    {actionError}
+                </div>
+            )}
 
             {/* Chat Groups List */}
             <div className="flex-1 overflow-y-auto">
@@ -85,6 +138,9 @@ export function ChatList() {
                     <div className="divide-y divide-gray-100">
                         {chatGroups.map((chatGroup) => {
                             const isOpen = openChatWindows.includes(chatGroup.$id);
+                            const chatTitle = resolveChatGroupTitle(chatGroup, 'Unnamed Chat');
+                            const chatInitial = resolveChatGroupInitial(chatGroup, 'C');
+                            const isActionsOpen = openActionsChatId === chatGroup.$id;
 
                             return (
                                 <div
@@ -97,13 +153,13 @@ export function ChatList() {
                                 >
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${isOpen ? 'bg-gray-400' : 'bg-blue-500'
                                         }`}>
-                                        {chatGroup.displayName?.[0]?.toUpperCase() || chatGroup.name[0]?.toUpperCase() || 'C'}
+                                        {chatInitial}
                                     </div>
 
                                     <div className={`flex-1 min-w-0 ${isOpen ? 'text-gray-400' : 'text-gray-900'}`}>
                                         <div className="flex items-center justify-between">
                                             <p className={`text-sm font-medium truncate ${isOpen ? 'text-gray-400' : 'text-gray-900'}`}>
-                                                {chatGroup.displayName || chatGroup.name || 'Unnamed Chat'}
+                                                {chatTitle}
                                             </p>
                                             {chatGroup.lastMessage && (
                                                 <span className={`text-xs ml-2 flex-shrink-0 ${isOpen ? 'text-gray-300' : 'text-gray-500'}`}>
@@ -120,6 +176,48 @@ export function ChatList() {
                                                 {chatGroup.userIds.length} members
                                             </span>
                                         </div>
+                                    </div>
+
+                                    <div className="relative z-10" onClick={(event) => event.stopPropagation()}>
+                                        <button
+                                            type="button"
+                                            aria-label={`Chat actions for ${chatTitle}`}
+                                            className={`p-1 rounded-full transition-colors ${
+                                                isOpen ? 'text-gray-300 hover:bg-gray-200' : 'text-gray-500 hover:bg-gray-100'
+                                            }`}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                setOpenActionsChatId((previous) => (previous === chatGroup.$id ? null : chatGroup.$id));
+                                            }}
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6h.01M12 12h.01M12 18h.01" />
+                                            </svg>
+                                        </button>
+                                        {isActionsOpen && (
+                                            <div className="absolute right-0 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                                                <button
+                                                    type="button"
+                                                    className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleRenameChat(chatGroup.$id, chatTitle);
+                                                    }}
+                                                >
+                                                    Rename chat
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleDeleteChat(chatGroup.$id, chatTitle);
+                                                    }}
+                                                >
+                                                    Delete chat
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Visual indicator for open chats */}

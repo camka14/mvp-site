@@ -8,6 +8,10 @@ const prismaMock = {
     update: jest.fn(),
     create: jest.fn(),
   },
+  pushDeviceTarget: {
+    count: jest.fn(),
+    findUnique: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -21,7 +25,7 @@ jest.mock('@/server/pushNotifications', () => ({
   unregisterPushDeviceTarget: (...args: any[]) => unregisterPushDeviceTargetMock(...args),
 }));
 
-import { DELETE, POST } from '@/app/api/messaging/topics/[topicId]/subscriptions/route';
+import { DELETE, GET, POST } from '@/app/api/messaging/topics/[topicId]/subscriptions/route';
 
 const postRequest = (body: unknown) => new NextRequest('http://localhost/api/messaging/topics/user_user_1/subscriptions', {
   method: 'POST',
@@ -35,12 +39,18 @@ const deleteRequest = (body: unknown) => new NextRequest('http://localhost/api/m
   body: JSON.stringify(body),
 });
 
+const getRequest = (query = '') => new NextRequest(`http://localhost/api/messaging/topics/user_user_1/subscriptions${query}`, {
+  method: 'GET',
+});
+
 describe('/api/messaging/topics/[topicId]/subscriptions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     registerPushDeviceTargetMock.mockResolvedValue(undefined);
     unregisterPushDeviceTargetMock.mockResolvedValue(undefined);
+    prismaMock.pushDeviceTarget.count.mockResolvedValue(0);
+    prismaMock.pushDeviceTarget.findUnique.mockResolvedValue(null);
   });
 
   it('registers push token metadata when subscribing', async () => {
@@ -97,5 +107,45 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
       pushToken: 'push_token_1',
       pushTarget: 'user_user_1',
     });
+  });
+
+  it('returns push target debug status for the current user', async () => {
+    prismaMock.pushDeviceTarget.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1);
+    prismaMock.pushDeviceTarget.findUnique.mockResolvedValue({
+      id: 'target_1',
+      userId: 'user_1',
+      pushToken: 'push_token_1',
+      pushTarget: 'user_user_1',
+      pushPlatform: 'android',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-02T00:00:00.000Z'),
+      lastSeenAt: new Date('2024-01-03T00:00:00.000Z'),
+    });
+
+    const res = await GET(getRequest('?userId=user_1&pushToken=push_token_1'), {
+      params: Promise.resolve({ topicId: 'user_user_1' }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      topicId: 'user_user_1',
+      userId: 'user_1',
+      hasAnyTargetForUser: true,
+      hasTopicTargetForUser: true,
+      hasProvidedTokenForUser: true,
+      hasProvidedTokenOnTopic: true,
+      tokenRecordPushTarget: 'user_user_1',
+      tokenRecordPushPlatform: 'android',
+    });
+  });
+
+  it('rejects non-admin user debug checks for another user id', async () => {
+    const res = await GET(getRequest('?userId=another_user'), {
+      params: Promise.resolve({ topicId: 'user_user_1' }),
+    });
+
+    expect(res.status).toBe(403);
   });
 });

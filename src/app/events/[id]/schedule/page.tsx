@@ -2,9 +2,10 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
+import { Megaphone } from 'lucide-react';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -511,6 +512,16 @@ type LocationDefaults = {
 };
 
 type EventLifecycleStatus = 'DRAFT' | 'PUBLISHED';
+type NotificationAudienceKey = 'managers' | 'players' | 'parents' | 'referees' | 'hosts';
+type NotificationAudienceState = Record<NotificationAudienceKey, boolean>;
+
+const DEFAULT_NOTIFICATION_AUDIENCE: NotificationAudienceState = {
+  managers: false,
+  players: false,
+  parents: false,
+  referees: false,
+  hosts: false,
+};
 
 const EVENT_LIFECYCLE_OPTIONS: Array<{ value: EventLifecycleStatus; label: string }> = [
   { value: 'DRAFT', label: 'Draft' },
@@ -698,6 +709,12 @@ function EventScheduleContent() {
   const [selectedTemplateStartDate, setSelectedTemplateStartDate] = useState<Date | null>(null);
   const [templateSeedKey, setTemplateSeedKey] = useState(0);
   const [childUserIds, setChildUserIds] = useState<string[]>([]);
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [notificationTitle, setNotificationTitle] = useState('');
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [notificationAudience, setNotificationAudience] = useState<NotificationAudienceState>({ ...DEFAULT_NOTIFICATION_AUDIENCE });
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [sendingNotification, setSendingNotification] = useState(false);
   const templatePromptResolvedRef = useRef(false);
   const templateIdSeedResolvedRef = useRef<string | null>(null);
   const [failedTemplateSeedId, setFailedTemplateSeedId] = useState<string | null>(null);
@@ -1256,6 +1273,132 @@ function EventScheduleContent() {
     [templateSummaries],
   );
   const defaultSport = DEFAULT_SPORT;
+  const hasSelectedNotificationAudience = useMemo(
+    () => Object.values(notificationAudience).some(Boolean),
+    [notificationAudience],
+  );
+
+  const resetNotificationComposer = useCallback(() => {
+    setNotificationTitle('');
+    setNotificationMessage('');
+    setNotificationAudience({ ...DEFAULT_NOTIFICATION_AUDIENCE });
+    setNotificationError(null);
+  }, []);
+
+  const handleOpenNotificationModal = useCallback(() => {
+    resetNotificationComposer();
+    setIsNotificationModalOpen(true);
+  }, [resetNotificationComposer]);
+
+  const handleCloseNotificationModal = useCallback(() => {
+    if (sendingNotification) {
+      return;
+    }
+    setIsNotificationModalOpen(false);
+  }, [sendingNotification]);
+
+  const handleNotificationAudienceToggle = useCallback((key: NotificationAudienceKey, checked: boolean) => {
+    setNotificationAudience((prev) => ({
+      ...prev,
+      [key]: checked,
+    }));
+  }, []);
+
+  const handleSendNotification = useCallback(async () => {
+    if (!activeEvent?.$id || sendingNotification) {
+      return;
+    }
+
+    const normalizedTitle = notificationTitle.trim();
+    const normalizedMessage = notificationMessage.trim();
+    if (!normalizedTitle || !normalizedMessage) {
+      setNotificationError('Title and message are required.');
+      return;
+    }
+    if (!hasSelectedNotificationAudience) {
+      setNotificationError('Select at least one audience group.');
+      return;
+    }
+
+    setSendingNotification(true);
+    setNotificationError(null);
+    try {
+      const response = await apiRequest<{
+        recipients?: {
+          selectedCount?: number;
+          pushRecipients?: number;
+          emailFallbackRecipients?: number;
+          noChannelRecipients?: number;
+        };
+        delivery?: {
+          push?: {
+            attempted?: boolean;
+            reason?: string;
+            recipientCount?: number;
+            tokenCount?: number;
+            successCount?: number;
+            failureCount?: number;
+            prunedTokenCount?: number;
+          };
+          emailSentCount?: number;
+          emailFailedCount?: number;
+          emailTimedOutCount?: number;
+          emailDisabledRecipientCount?: number;
+        };
+      }>(`/api/events/${encodeURIComponent(activeEvent.$id)}/notifications`, {
+        method: 'POST',
+        timeoutMs: 60_000,
+        body: {
+          title: normalizedTitle,
+          message: normalizedMessage,
+          audience: notificationAudience,
+        },
+      });
+
+      const selectedCount = response.recipients?.selectedCount ?? 0;
+      const pushRecipients = response.recipients?.pushRecipients ?? 0;
+      const pushDeliveredCount = response.delivery?.push?.successCount ?? 0;
+      const pushFailedCountFromProvider = response.delivery?.push?.failureCount ?? 0;
+      const pushWasAttempted = response.delivery?.push?.attempted ?? false;
+      const pushFailedCount = (!pushWasAttempted && pushRecipients > 0)
+        ? Math.max(pushFailedCountFromProvider, pushRecipients)
+        : pushFailedCountFromProvider;
+      const emailSentCount = response.delivery?.emailSentCount ?? 0;
+      const emailTimedOutCount = response.delivery?.emailTimedOutCount ?? 0;
+      const noChannelRecipients = response.recipients?.noChannelRecipients ?? 0;
+      const emailDisabledRecipients = response.delivery?.emailDisabledRecipientCount ?? 0;
+      const emailFailedCount = response.delivery?.emailFailedCount ?? 0;
+
+      const skippedCount = noChannelRecipients
+        + emailDisabledRecipients
+        + emailFailedCount
+        + emailTimedOutCount
+        + pushFailedCount;
+      const summaryParts = [
+        `${selectedCount} selected`,
+        `${pushDeliveredCount} push delivered`,
+        `${emailSentCount} email`,
+      ];
+      if (skippedCount > 0) {
+        summaryParts.push(`${skippedCount} skipped`);
+      }
+      setInfoMessage(`Notification sent (${summaryParts.join(', ')}).`);
+      setIsNotificationModalOpen(false);
+      resetNotificationComposer();
+    } catch (error) {
+      setNotificationError(error instanceof Error ? error.message : 'Failed to send notification.');
+    } finally {
+      setSendingNotification(false);
+    }
+  }, [
+    activeEvent?.$id,
+    hasSelectedNotificationAudience,
+    notificationAudience,
+    notificationMessage,
+    notificationTitle,
+    resetNotificationComposer,
+    sendingNotification,
+  ]);
 
   useEffect(() => {
     if (!isCreateMode && !isEditingEvent) {
@@ -4958,7 +5101,20 @@ function EventScheduleContent() {
       <Container size="xl" pt="xl" pb={0}>
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start">
-            <Title order={2} mb="xs">{activeEvent.name}</Title>
+            <Group gap="xs" align="center">
+              <Title order={2} mb="xs">{activeEvent.name}</Title>
+              {canManageEvent && !isCreateMode && (
+                <ActionIcon
+                  variant="subtle"
+                  size="lg"
+                  onClick={handleOpenNotificationModal}
+                  aria-label="Send notification"
+                  title="Send notification"
+                >
+                  <Megaphone size={18} />
+                </ActionIcon>
+              )}
+            </Group>
 
             {canManageEvent && (
               <Group gap="sm" wrap="wrap">
@@ -5663,6 +5819,100 @@ function EventScheduleContent() {
           </Tabs>
         </Stack>
       </Container>
+      <Modal
+        opened={isNotificationModalOpen}
+        onClose={handleCloseNotificationModal}
+        title="Send notification"
+        size="lg"
+        centered
+        fullScreen={Boolean(isMobile)}
+        closeOnClickOutside={!sendingNotification}
+        closeOnEscape={!sendingNotification}
+        withCloseButton={!sendingNotification}
+      >
+        <Stack gap="md">
+          <TextInput
+            label="Title"
+            placeholder="Notification title"
+            value={notificationTitle}
+            onChange={(event) => setNotificationTitle(event.currentTarget.value)}
+            maxLength={160}
+            required
+            disabled={sendingNotification}
+          />
+          <Textarea
+            label="Message"
+            placeholder="Write your message"
+            value={notificationMessage}
+            onChange={(event) => setNotificationMessage(event.currentTarget.value)}
+            minRows={4}
+            autosize
+            maxLength={2000}
+            required
+            disabled={sendingNotification}
+          />
+          <Stack gap={6}>
+            <Text size="sm" fw={500}>Send to</Text>
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+              <Checkbox
+                label="Managers"
+                checked={notificationAudience.managers}
+                onChange={(event) => handleNotificationAudienceToggle('managers', event.currentTarget.checked)}
+                disabled={sendingNotification}
+              />
+              <Checkbox
+                label="Players"
+                checked={notificationAudience.players}
+                onChange={(event) => handleNotificationAudienceToggle('players', event.currentTarget.checked)}
+                disabled={sendingNotification}
+              />
+              <Checkbox
+                label="Parents (of players)"
+                checked={notificationAudience.parents}
+                onChange={(event) => handleNotificationAudienceToggle('parents', event.currentTarget.checked)}
+                disabled={sendingNotification}
+              />
+              <Checkbox
+                label="Referees"
+                checked={notificationAudience.referees}
+                onChange={(event) => handleNotificationAudienceToggle('referees', event.currentTarget.checked)}
+                disabled={sendingNotification}
+              />
+              <Checkbox
+                label="Hosts"
+                checked={notificationAudience.hosts}
+                onChange={(event) => handleNotificationAudienceToggle('hosts', event.currentTarget.checked)}
+                disabled={sendingNotification}
+              />
+            </SimpleGrid>
+          </Stack>
+
+          {notificationError && (
+            <Alert color="red" radius="md">
+              {notificationError}
+            </Alert>
+          )}
+
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={handleCloseNotificationModal}
+              disabled={sendingNotification}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                void handleSendNotification();
+              }}
+              loading={sendingNotification}
+              disabled={!notificationTitle.trim() || !notificationMessage.trim() || !hasSelectedNotificationAudience}
+            >
+              Confirm
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Modal
         opened={isAddTeamModalOpen}
         onClose={() => {

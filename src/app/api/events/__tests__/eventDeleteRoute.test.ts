@@ -244,8 +244,8 @@ describe('event DELETE route', () => {
       return Promise.resolve([]);
     });
     teamsMock.findMany.mockResolvedValue([
-      { id: 'team_slot_1' },
-      { id: 'team_slot_1_child' },
+      { id: 'team_slot_1', parentTeamId: 'team_canonical_1', captainId: 'captain_1', name: 'Slot Team 1' },
+      { id: 'team_slot_1_child', parentTeamId: 'team_slot_1', captainId: 'captain_2', name: 'Slot Team 1 Child' },
     ]);
 
     const response = await eventDelete(
@@ -354,5 +354,61 @@ describe('event DELETE route', () => {
     expect(String(payload?.error ?? '')).toContain('Stripe is not configured');
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(eventsMock.delete).not.toHaveBeenCalled();
+  });
+
+  it('deletes copied and placeholder teams even when those team ids are referenced elsewhere', async () => {
+    eventsMock.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+      fieldIds: [],
+      timeSlotIds: [],
+      teamIds: ['team_copy_1', 'team_placeholder_1', 'team_canonical_keep'],
+      state: 'UNPUBLISHED',
+      leagueScoringConfigId: null,
+    });
+    eventsMock.findMany.mockImplementation((args: any) => {
+      if (Array.isArray(args?.where?.OR)) {
+        return Promise.resolve([
+          {
+            teamIds: ['team_copy_1', 'team_placeholder_1', 'team_canonical_keep'],
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    billsMock.findMany.mockResolvedValue([]);
+    eventRegistrationsMock.findMany.mockImplementation((args: any) => {
+      if (args?.where?.eventId === 'event_1') {
+        return Promise.resolve([]);
+      }
+      if (args?.where?.eventId?.not === 'event_1') {
+        return Promise.resolve([
+          { registrantId: 'team_copy_1' },
+          { registrantId: 'team_placeholder_1' },
+          { registrantId: 'team_canonical_keep' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    teamsMock.findMany.mockResolvedValue([
+      { id: 'team_copy_1', parentTeamId: 'team_parent_1', captainId: 'captain_copy_1', name: 'Copy Team 1' },
+      { id: 'team_placeholder_1', parentTeamId: null, captainId: '', name: 'Place Holder 1' },
+      { id: 'team_canonical_keep', parentTeamId: null, captainId: 'captain_keep_1', name: 'Canonical Team' },
+    ]);
+
+    const response = await eventDelete(
+      deleteRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ deleted: true });
+    expect(teamsMock.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['team_copy_1', 'team_placeholder_1'] },
+      },
+    });
   });
 });

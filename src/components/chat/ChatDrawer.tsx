@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
@@ -8,22 +8,56 @@ import { ChatList } from './ChatList';
 import { ChatDetail } from './ChatDetail';
 import Lottie, { LottieRefCurrentProps } from 'lottie-react';
 
+const CHAT_POLL_INTERVAL_MS = 2000;
+
 export function ChatDrawer() {
     const { loadMessages } = useChat();
     const { isChatListOpen, openChatWindows, openChatList, isFloatingButtonVisible } = useChatUI();
     const [mounted, setMounted] = useState(false);
+    const pollingRef = useRef(false);
+    const uniqueOpenChatWindows = useMemo(
+        () => Array.from(new Set(openChatWindows)),
+        [openChatWindows],
+    );
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true);
     }, []);
 
     // Load messages for each open chat window
     useEffect(() => {
-        openChatWindows.forEach(chatId => {
+        uniqueOpenChatWindows.forEach(chatId => {
             loadMessages(chatId);
         });
-    }, [openChatWindows, loadMessages]);
+    }, [uniqueOpenChatWindows, loadMessages]);
+
+    useEffect(() => {
+        if (!mounted || uniqueOpenChatWindows.length === 0) {
+            return;
+        }
+
+        const pollOpenChats = async () => {
+            if (pollingRef.current) {
+                return;
+            }
+            pollingRef.current = true;
+            try {
+                await Promise.all(uniqueOpenChatWindows.map((chatId) => loadMessages(chatId)));
+            } finally {
+                pollingRef.current = false;
+            }
+        };
+
+        void pollOpenChats();
+        const interval = window.setInterval(() => {
+            void pollOpenChats();
+        }, CHAT_POLL_INTERVAL_MS);
+
+        return () => {
+            window.clearInterval(interval);
+            pollingRef.current = false;
+        };
+    }, [mounted, uniqueOpenChatWindows, loadMessages]);
 
     if (!mounted) return null;
 
@@ -47,7 +81,7 @@ export function ChatDrawer() {
             )}
 
             {/* Chat Windows - Half height, stacked to the left of chat list */}
-            {openChatWindows.map((chatId, index) => {
+            {uniqueOpenChatWindows.map((chatId, index) => {
                 const rightPosition = (isChatListOpen ? chatListWidth : 0) + (index * chatWindowWidth);
 
                 return (

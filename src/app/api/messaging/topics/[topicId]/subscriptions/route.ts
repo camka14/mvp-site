@@ -15,6 +15,62 @@ const schema = z.object({
 }).passthrough();
 
 const uniqueIds = (ids: string[]) => Array.from(new Set(ids.filter(Boolean)));
+const normalizeOptional = (value?: string | null): string | null => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
+  const session = await requireSession(req);
+  const { topicId } = await params;
+  const requestedUserId = normalizeOptional(req.nextUrl.searchParams.get('userId'));
+  const pushToken = normalizeOptional(req.nextUrl.searchParams.get('pushToken'));
+
+  if (!session.isAdmin && requestedUserId && requestedUserId !== session.userId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const targetUserId = session.isAdmin
+    ? (requestedUserId ?? session.userId)
+    : session.userId;
+
+  const [hasAnyTargetForUser, hasTopicTargetForUser, tokenRecord] = await Promise.all([
+    prisma.pushDeviceTarget.count({
+      where: {
+        userId: targetUserId,
+      },
+    }).then((count) => count > 0),
+    prisma.pushDeviceTarget.count({
+      where: {
+        userId: targetUserId,
+        pushTarget: topicId,
+      },
+    }).then((count) => count > 0),
+    pushToken
+      ? prisma.pushDeviceTarget.findUnique({
+        where: {
+          pushToken,
+        },
+      })
+      : Promise.resolve(null),
+  ]);
+
+  const tokenBelongsToTargetUser = !!tokenRecord && tokenRecord.userId === targetUserId;
+  const canReadTokenRecord = !!tokenRecord && (session.isAdmin || tokenBelongsToTargetUser);
+
+  return NextResponse.json({
+    topicId,
+    userId: targetUserId,
+    hasAnyTargetForUser,
+    hasTopicTargetForUser,
+    hasProvidedTokenForUser: tokenBelongsToTargetUser,
+    hasProvidedTokenOnTopic: tokenBelongsToTargetUser && tokenRecord?.pushTarget === topicId,
+    tokenRecordPushTarget: canReadTokenRecord ? tokenRecord?.pushTarget ?? null : null,
+    tokenRecordPushPlatform: canReadTokenRecord ? tokenRecord?.pushPlatform ?? null : null,
+    tokenRecordUpdatedAt: canReadTokenRecord ? tokenRecord?.updatedAt?.toISOString() ?? null : null,
+    tokenRecordLastSeenAt: canReadTokenRecord ? tokenRecord?.lastSeenAt?.toISOString() ?? null : null,
+  }, { status: 200 });
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
   const session = await requireSession(req);

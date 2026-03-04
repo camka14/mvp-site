@@ -523,6 +523,13 @@ async function updateParticipants(
             name: true,
           },
         });
+        const usesSlotProvisioning = slotTeams.some((team) => (
+          String(team.captainId ?? '').trim().length === 0
+          || normalizeId(team.parentTeamId) !== null
+        ));
+        if (!usesSlotProvisioning) {
+          return { ok: 'fallback' as const };
+        }
 
         if (mode === 'add') {
           if (slotTeams.some((team) => team.parentTeamId === canonicalTeamId)) {
@@ -705,14 +712,16 @@ async function updateParticipants(
         return { ok: true as const, event: updatedEvent };
       });
 
-      if (!result.ok) {
+      if (result.ok === 'fallback') {
+        // Event has no scheduler slot teams yet (or uses direct team IDs), so use legacy direct registration.
+      } else if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: result.status });
+      } else {
+        return NextResponse.json({
+          event: withLegacyEvent(result.event),
+          warnings: warnings.length ? warnings : undefined,
+        }, { status: 200 });
       }
-
-      return NextResponse.json({
-        event: withLegacyEvent(result.event),
-        warnings: warnings.length ? warnings : undefined,
-      }, { status: 200 });
     } catch (error) {
       console.error('Event participant update failed', error);
       return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

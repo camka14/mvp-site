@@ -1067,6 +1067,10 @@ const normalizeEntityIdList = (value: unknown): string[] => (
     : []
 );
 
+const isPlaceholderTeamName = (value: unknown): boolean => (
+  typeof value === 'string' && value.trim().toLowerCase().startsWith('place holder')
+);
+
 const normalizeStripeSecretKey = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -1972,7 +1976,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
               { parentTeamId: { in: seedTeamIds } },
             ],
           },
-          select: { id: true },
+          select: {
+            id: true,
+            parentTeamId: true,
+            captainId: true,
+            name: true,
+          },
         })
       : [];
     const candidateTeamIds = Array.from(
@@ -2007,7 +2016,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
         });
       });
     }
-    const teamIdsToDelete = candidateTeamIds.filter((teamId) => !referencedTeamIds.has(teamId));
+    const forcedTeamIdsToDelete = new Set(
+      linkedTeams
+        .filter((team: { parentTeamId: string | null; captainId: string; name: string | null }) => (
+          normalizeEntityId(team.parentTeamId) !== null
+          || normalizeEntityId(team.captainId) === null
+          || isPlaceholderTeamName(team.name)
+        ))
+        .map((team: { id: string }) => team.id),
+    );
+
+    const teamIdsToDelete = candidateTeamIds.filter(
+      (teamId) => forcedTeamIdsToDelete.has(teamId) || !referencedTeamIds.has(teamId),
+    );
 
     const localFieldIds = eventFieldIds.length > 0
       ? (await tx.fields.findMany({
