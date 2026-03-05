@@ -1,19 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
+import { MOBILE_APP_AVATAR_PALETTE } from '@/app/theme/mobilePalette';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const palette = [
-  { bg: '#FDE68A', text: '#92400E' },
-  { bg: '#BFDBFE', text: '#1D4ED8' },
-  { bg: '#BBF7D0', text: '#166534' },
-  { bg: '#FED7AA', text: '#9A3412' },
-  { bg: '#E9D5FF', text: '#6B21A8' },
-  { bg: '#FBCFE8', text: '#9D174D' },
-  { bg: '#BAE6FD', text: '#0C4A6E' },
-  { bg: '#C7D2FE', text: '#3730A3' },
-];
+const palette = MOBILE_APP_AVATAR_PALETTE;
 
 const hashString = (value: string): number => {
   let hash = 0;

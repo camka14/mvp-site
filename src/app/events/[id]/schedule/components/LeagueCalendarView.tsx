@@ -485,18 +485,18 @@ export function LeagueCalendarView({
       return {
         style: {
           backgroundColor: hasConflict
-            ? 'var(--mantine-color-red-0, #fef2f2)'
+            ? 'var(--mantine-color-red-0, var(--mvp-danger-soft))'
             : isUsersMatch
-              ? 'var(--mantine-color-green-0, #ecfdf3)'
+              ? 'var(--mantine-color-green-0, var(--mvp-success-soft))'
               : 'transparent',
           border: hasConflict
-            ? '2px solid #f87171'
+            ? '2px solid var(--mvp-danger)'
             : isUsersMatch
-              ? '2px solid #bbf7d0'
+              ? '2px solid var(--mvp-success)'
               : 'none',
           padding: 0,
           cursor: onMatchClick ? 'pointer' : 'default',
-          color: 'var(--mantine-color-text, #1f1f1f)',
+          color: 'var(--mantine-color-text, var(--mvp-text))',
         },
         className: 'p-0',
       };
@@ -671,23 +671,25 @@ export function LeagueCalendarView({
             <Text size="sm" fw={600} mb={8}>
               Visible hours: {formatHourLabel(timeRange[0])} – {formatHourLabel(timeRange[1])}
             </Text>
-            <RangeSlider
-              min={0}
-              max={24}
-              step={1}
-              minRange={MIN_VISIBLE_HOUR_SLOTS}
-              value={timeRange}
-              onChange={(value) => setTimeRange(ensureMinimumHourSpan(value as [number, number]))}
-              marks={[
-                { value: 0, label: formatHourLabel(0) },
-                { value: 6, label: formatHourLabel(6) },
-                { value: 12, label: formatHourLabel(12) },
-                { value: 18, label: formatHourLabel(18) },
-                { value: 24, label: formatHourLabel(24) },
-              ]}
-              label={(value) => formatHourLabel(value)}
-              size="sm"
-            />
+            <div className="px-2 sm:px-3">
+              <RangeSlider
+                min={0}
+                max={24}
+                step={1}
+                minRange={MIN_VISIBLE_HOUR_SLOTS}
+                value={timeRange}
+                onChange={(value) => setTimeRange(ensureMinimumHourSpan(value as [number, number]))}
+                marks={[
+                  { value: 0, label: formatHourLabel(0) },
+                  { value: 6, label: formatHourLabel(6) },
+                  { value: 12, label: formatHourLabel(12) },
+                  { value: 18, label: formatHourLabel(18) },
+                  { value: 24, label: formatHourLabel(24) },
+                ]}
+                label={(value) => formatHourLabel(value)}
+                size="sm"
+              />
+            </div>
           </div>
         )}
         <BigCalendar

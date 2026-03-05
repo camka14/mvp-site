@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
+import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,17 @@ const toStringOrNull = (value: unknown): string | null => {
   }
   if (typeof value === 'number' && Number.isFinite(value)) {
     return String(value);
+  }
+  return null;
+};
+
+const toIntOrNull = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.round(value);
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
 };
@@ -226,6 +238,264 @@ const resolveWebhookSecrets = (): string[] => {
   return Array.from(new Set(all));
 };
 
+const resolveAmountCents = ({
+  metadata,
+  paymentIntent,
+}: {
+  metadata: Record<string, unknown>;
+  paymentIntent: Stripe.PaymentIntent & Record<string, unknown>;
+}): number | null => {
+  const metadataAmount = toIntOrNull(metadata.amount_cents ?? metadata.amountCents);
+  if (metadataAmount && metadataAmount > 0) {
+    return metadataAmount;
+  }
+
+  const amountReceived = toIntOrNull(paymentIntent.amount_received);
+  if (amountReceived && amountReceived > 0) {
+    return amountReceived;
+  }
+
+  const amount = toIntOrNull(paymentIntent.amount);
+  if (amount && amount > 0) {
+    return amount;
+  }
+
+  return null;
+};
+
+const resolveInstantLineItemLabel = (purchaseType: string | null): string => {
+  const normalized = (purchaseType ?? '').trim().toLowerCase();
+  if (normalized === 'product') return 'Product purchase';
+  if (normalized === 'rental') return 'Field rental';
+  if (normalized === 'event') return 'Event registration';
+  return 'Purchase';
+};
+
+const buildInstantLineItems = ({
+  purchaseType,
+  metadata,
+  fallbackAmountCents,
+  totalChargeCents,
+}: {
+  purchaseType: string | null;
+  metadata: Record<string, unknown>;
+  fallbackAmountCents: number;
+  totalChargeCents: number | null;
+}): {
+  lineItems: Array<{
+    id: string;
+    type: 'EVENT' | 'FEE' | 'TAX' | 'PRODUCT' | 'RENTAL' | 'OTHER';
+    label: string;
+    amountCents: number;
+  }>;
+  effectiveAmountCents: number;
+} => {
+  const purchaseAmountCents = toIntOrNull(metadata.amount_cents ?? metadata.amountCents);
+  const mvpFeeCents = toIntOrNull(
+    metadata.mvp_fee_cents
+    ?? metadata.mvpFeeCents
+    ?? metadata.processing_fee_cents
+    ?? metadata.processingFeeCents,
+  ) ?? 0;
+  const stripeFeeCents = toIntOrNull(metadata.stripe_fee_cents ?? metadata.stripeFeeCents) ?? 0;
+  const taxCents = toIntOrNull(metadata.tax_cents ?? metadata.taxCents) ?? 0;
+  const productName = toStringOrNull(metadata.product_name ?? metadata.productName);
+  const eventName = toStringOrNull(metadata.event_name ?? metadata.eventName);
+
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  const primaryType: 'EVENT' | 'PRODUCT' | 'RENTAL' | 'OTHER' =
+    normalizedPurchaseType === 'product'
+      ? 'PRODUCT'
+      : normalizedPurchaseType === 'rental'
+        ? 'RENTAL'
+        : normalizedPurchaseType === 'event'
+          ? 'EVENT'
+          : 'OTHER';
+  const baseLabel = productName ?? eventName ?? resolveInstantLineItemLabel(purchaseType);
+
+  const initialBaseAmount = purchaseAmountCents && purchaseAmountCents > 0
+    ? purchaseAmountCents
+    : Math.max(fallbackAmountCents - mvpFeeCents - stripeFeeCents - taxCents, 0);
+
+  const lineItems: Array<{
+    id: string;
+    type: 'EVENT' | 'FEE' | 'TAX' | 'PRODUCT' | 'RENTAL' | 'OTHER';
+    label: string;
+    amountCents: number;
+  }> = [];
+
+  if (initialBaseAmount > 0) {
+    lineItems.push({
+      id: 'line_1',
+      type: primaryType,
+      label: baseLabel,
+      amountCents: initialBaseAmount,
+    });
+  }
+  if (mvpFeeCents > 0) {
+    lineItems.push({
+      id: `line_${lineItems.length + 1}`,
+      type: 'FEE',
+      label: 'MVP fee',
+      amountCents: mvpFeeCents,
+    });
+  }
+  if (stripeFeeCents > 0) {
+    lineItems.push({
+      id: `line_${lineItems.length + 1}`,
+      type: 'FEE',
+      label: 'Stripe fee',
+      amountCents: stripeFeeCents,
+    });
+  }
+  if (taxCents > 0) {
+    lineItems.push({
+      id: `line_${lineItems.length + 1}`,
+      type: 'TAX',
+      label: 'Tax',
+      amountCents: taxCents,
+    });
+  }
+
+  const computedTotal = lineItems.reduce((sum, item) => sum + item.amountCents, 0);
+  let effectiveAmountCents = totalChargeCents && totalChargeCents > 0
+    ? totalChargeCents
+    : (computedTotal > 0 ? computedTotal : fallbackAmountCents);
+  if (effectiveAmountCents <= 0) {
+    effectiveAmountCents = fallbackAmountCents;
+  }
+
+  if (lineItems.length === 0 && effectiveAmountCents > 0) {
+    lineItems.push({
+      id: 'line_1',
+      type: primaryType,
+      label: baseLabel,
+      amountCents: effectiveAmountCents,
+    });
+    return { lineItems, effectiveAmountCents };
+  }
+
+  const delta = effectiveAmountCents - computedTotal;
+  if (delta > 0) {
+    lineItems.push({
+      id: `line_${lineItems.length + 1}`,
+      type: 'OTHER',
+      label: 'Additional charges',
+      amountCents: delta,
+    });
+  } else if (delta < 0) {
+    effectiveAmountCents = computedTotal;
+  }
+
+  return { lineItems, effectiveAmountCents };
+};
+
+const createInstantBillAndPayment = async ({
+  purchaseType,
+  paymentIntentId,
+  userId,
+  teamId,
+  eventId,
+  organizationId,
+  amountCents,
+  totalChargeCents,
+  metadata,
+  now,
+}: {
+  purchaseType: string | null;
+  paymentIntentId: string | null;
+  userId: string | null;
+  teamId: string | null;
+  eventId: string | null;
+  organizationId: string | null;
+  amountCents: number | null;
+  totalChargeCents: number | null;
+  metadata: Record<string, unknown>;
+  now: Date;
+}): Promise<{ billId: string | null; billPaymentId: string | null; created: boolean }> => {
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  if (!paymentIntentId || !amountCents || amountCents <= 0 || normalizedPurchaseType === 'bill') {
+    return { billId: null, billPaymentId: null, created: false };
+  }
+
+  const ownerId = teamId ?? userId;
+  const ownerType: 'TEAM' | 'USER' = teamId ? 'TEAM' : 'USER';
+  if (!ownerId) {
+    return { billId: null, billPaymentId: null, created: false };
+  }
+
+  const instantBreakdown = buildInstantLineItems({
+    purchaseType,
+    metadata,
+    fallbackAmountCents: amountCents,
+    totalChargeCents,
+  });
+  const effectiveAmountCents = instantBreakdown.effectiveAmountCents;
+  if (effectiveAmountCents <= 0) {
+    return { billId: null, billPaymentId: null, created: false };
+  }
+
+  const existingPayment = await prisma.billPayments.findFirst({
+    where: { paymentIntentId },
+    select: { id: true, billId: true },
+  });
+  if (existingPayment) {
+    return { billId: existingPayment.billId, billPaymentId: existingPayment.id, created: false };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const duplicatePayment = await tx.billPayments.findFirst({
+      where: { paymentIntentId },
+      select: { id: true, billId: true },
+    });
+    if (duplicatePayment) {
+      return { billId: duplicatePayment.billId, billPaymentId: duplicatePayment.id, created: false };
+    }
+
+    const bill = await tx.bills.create({
+      data: {
+        id: crypto.randomUUID(),
+        ownerType,
+        ownerId,
+        organizationId: organizationId ?? null,
+        eventId: eventId ?? null,
+        totalAmountCents: effectiveAmountCents,
+        paidAmountCents: effectiveAmountCents,
+        nextPaymentDue: null,
+        nextPaymentAmountCents: null,
+        parentBillId: null,
+        allowSplit: false,
+        status: 'PAID',
+        paymentPlanEnabled: false,
+        createdBy: userId ?? null,
+        lineItems: instantBreakdown.lineItems,
+        createdAt: now,
+        updatedAt: now,
+      },
+      select: { id: true },
+    });
+
+    const payment = await tx.billPayments.create({
+      data: {
+        id: crypto.randomUUID(),
+        billId: bill.id,
+        sequence: 1,
+        dueDate: now,
+        amountCents: effectiveAmountCents,
+        status: 'PAID',
+        paidAt: now,
+        paymentIntentId,
+        payerUserId: userId ?? null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      select: { id: true },
+    });
+
+    return { billId: bill.id, billPaymentId: payment.id, created: true };
+  });
+};
+
 export async function POST(req: NextRequest) {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const stripeForPaymentIntentSync = secretKey ? new Stripe(secretKey) : null;
@@ -293,44 +563,89 @@ export async function POST(req: NextRequest) {
   );
   const purchaseType = toStringOrNull(metadata.purchase_type ?? metadata.purchaseType ?? null);
   const userId = toStringOrNull(metadata.user_id ?? metadata.userId ?? null);
+  const teamId = toStringOrNull(metadata.team_id ?? metadata.teamId ?? null);
+  const eventId = toStringOrNull(metadata.event_id ?? metadata.eventId ?? null);
+  const productId = toStringOrNull(metadata.product_id ?? metadata.productId ?? null);
+  const organizationId = toStringOrNull(metadata.organization_id ?? metadata.organizationId ?? null);
+  const paymentIntentId = toStringOrNull(dataObject.id);
+  const receiptEmail = toStringOrNull(
+    dataObject.receipt_email ?? metadata.receipt_email ?? metadata.receiptEmail ?? null,
+  );
+  const amountCents = resolveAmountCents({ metadata, paymentIntent: dataObject });
+  const totalChargeCents = toIntOrNull(
+    dataObject.amount_received
+    ?? dataObject.amount
+    ?? metadata.total_charge_cents
+    ?? metadata.totalChargeCents,
+  );
 
   try {
-    if (billId && billPaymentId) {
-      const now = new Date();
-      const payment = await prisma.billPayments.findUnique({
-        where: { id: billPaymentId },
-        select: { id: true, billId: true, status: true },
-      });
+    const now = new Date();
+    let resolvedBillId = billId;
+    let resolvedBillPaymentId = billPaymentId;
+    let shouldSendReceipt = false;
 
-      if (!payment || payment.billId !== billId) {
+    if (billId || billPaymentId) {
+      if (!billId || !billPaymentId) {
         console.warn(
-          `Stripe webhook bill metadata mismatch (billId=${billId}, billPaymentId=${billPaymentId}).`,
+          `Stripe webhook bill metadata incomplete (billId=${billId ?? 'null'}, billPaymentId=${billPaymentId ?? 'null'}).`,
         );
       } else {
-        if (payment.status !== 'PAID') {
-          await prisma.billPayments.update({
-            where: { id: billPaymentId },
-            data: { status: 'PAID', paidAt: now, payerUserId: userId ?? undefined, updatedAt: now },
-          });
-        }
-
-        const reconciledBill = await reconcileBill({
-          billId,
-          now,
-          stripe: stripeForPaymentIntentSync,
+        const payment = await prisma.billPayments.findUnique({
+          where: { id: billPaymentId },
+          select: { id: true, billId: true, status: true },
         });
-        if (reconciledBill?.parentBillId) {
-          await reconcileBill({
-            billId: reconciledBill.parentBillId,
+
+        if (!payment || payment.billId !== billId) {
+          console.warn(
+            `Stripe webhook bill metadata mismatch (billId=${billId}, billPaymentId=${billPaymentId}).`,
+          );
+        } else {
+          if (payment.status !== 'PAID') {
+            await prisma.billPayments.update({
+              where: { id: billPaymentId },
+              data: { status: 'PAID', paidAt: now, payerUserId: userId ?? undefined, updatedAt: now },
+            });
+            shouldSendReceipt = true;
+          }
+
+          const reconciledBill = await reconcileBill({
+            billId,
             now,
             stripe: stripeForPaymentIntentSync,
           });
+          if (reconciledBill?.parentBillId) {
+            await reconcileBill({
+              billId: reconciledBill.parentBillId,
+              now,
+              stripe: stripeForPaymentIntentSync,
+            });
+          }
         }
       }
+    } else {
+      const instantBill = await createInstantBillAndPayment({
+        purchaseType,
+        paymentIntentId,
+        userId,
+        teamId,
+        eventId,
+        organizationId,
+        amountCents,
+        totalChargeCents,
+        metadata,
+        now,
+      });
+      if (instantBill.billId) {
+        resolvedBillId = instantBill.billId;
+      }
+      if (instantBill.billPaymentId) {
+        resolvedBillPaymentId = instantBill.billPaymentId;
+      }
+      shouldSendReceipt = instantBill.created;
     }
 
     if (purchaseType === 'product') {
-      const productId = toStringOrNull(metadata.product_id ?? metadata.productId ?? null);
       if (productId && userId) {
         const existing = await prisma.subscriptions.findFirst({
           where: { productId, userId, status: 'ACTIVE' },
@@ -355,6 +670,32 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+    }
+
+    if (shouldSendReceipt) {
+      void sendPurchaseReceiptEmail({
+        purchaseType,
+        paymentIntentId,
+        userId,
+        teamId,
+        eventId,
+        productId,
+        organizationId,
+        billId: resolvedBillId,
+        billPaymentId: resolvedBillPaymentId,
+        amountCents,
+        totalChargeCents,
+        paidAt: now,
+        receiptEmail,
+        metadata,
+      }).catch((error) => {
+        console.warn('Failed to send purchase receipt email', {
+          paymentIntentId,
+          billId: resolvedBillId,
+          billPaymentId: resolvedBillPaymentId,
+          error,
+        });
+      });
     }
   } catch (error) {
     console.error('Stripe webhook handling failed', error);

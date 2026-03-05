@@ -56,8 +56,11 @@ type CalendarEventData = FieldCalendarEntry | SelectionCalendarEntry;
 
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
 const MIN_SELECTION_MS = 60 * 60 * 1000;
-const SELECTION_COLOR = '#FED7AA';
-const SELECTION_BORDER_COLOR = '#FDBA74';
+const SELECTION_COLOR = 'var(--mvp-primary-100)';
+const SELECTION_BORDER_COLOR = 'var(--mvp-primary-300)';
+const SELECTION_TEXT_COLOR = 'var(--mvp-primary-900)';
+const RENTAL_COLOR = 'var(--mvp-success)';
+const RENTAL_TEXT_COLOR = 'var(--mvp-success-soft)';
 const FIELD_CALENDAR_FORMATS = {
   dayFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
   dayHeaderFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
@@ -374,16 +377,16 @@ export default function FieldsTabContent({ organization, organizationId, current
           style: {
             backgroundColor: SELECTION_COLOR,
             border: `1px solid ${SELECTION_BORDER_COLOR}`,
-            color: '#7C2D12',
+            color: SELECTION_TEXT_COLOR,
           },
         };
       }
       if (event.metaType === 'rental') {
         return {
           style: {
-            backgroundColor: '#15803d',
-            border: '1px solid #166534',
-            color: '#ECFDF3',
+            backgroundColor: RENTAL_COLOR,
+            border: `1px solid ${RENTAL_COLOR}`,
+            color: RENTAL_TEXT_COLOR,
           },
         };
       }

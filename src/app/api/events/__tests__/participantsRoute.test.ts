@@ -39,6 +39,16 @@ const prismaMock = {
     upsert: jest.fn(),
     deleteMany: jest.fn(),
   },
+  refundRequests: {
+    findFirst: jest.fn(),
+    create: jest.fn(),
+  },
+  bills: {
+    findMany: jest.fn(),
+  },
+  billPayments: {
+    findMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -123,6 +133,10 @@ describe('POST /api/events/[eventId]/participants', () => {
     prismaMock.teams.findFirst.mockResolvedValue(null);
     prismaMock.teams.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.teams.update.mockResolvedValue({});
+    prismaMock.refundRequests.findFirst.mockResolvedValue(null);
+    prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
+    prismaMock.bills.findMany.mockResolvedValue([]);
+    prismaMock.billPayments.findMany.mockResolvedValue([]);
   });
 
   it('rejects direct user participant joins for team-signup events', async () => {
@@ -720,6 +734,7 @@ describe('DELETE /api/events/[eventId]/participants', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    canManageEventMock.mockResolvedValue(false);
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       requiredTemplateIds: [],
@@ -741,6 +756,11 @@ describe('DELETE /api/events/[eventId]/participants', () => {
       waitListIds: [],
       freeAgentIds: [],
     });
+    prismaMock.eventRegistrations.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.refundRequests.findFirst.mockResolvedValue(null);
+    prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
+    prismaMock.bills.findMany.mockResolvedValue([]);
+    prismaMock.billPayments.findMany.mockResolvedValue([]);
   });
 
   it('allows a parent to remove a linked child participant', async () => {
@@ -843,5 +863,128 @@ describe('DELETE /api/events/[eventId]/participants', () => {
     expect(response.status).toBe(403);
     expect(payload.error).toBe('Only the team manager can register or withdraw this team.');
     expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('allows event managers to unregister a team and creates a refund request when payments exist', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    canManageEventMock.mockResolvedValueOnce(true);
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      eventType: 'EVENT',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['team_1'],
+      waitListIds: [],
+      freeAgentIds: [],
+      registrationByDivisionType: true,
+      divisions: [],
+      singleDivision: true,
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['captain_1'],
+      captainId: 'captain_1',
+      managerId: 'manager_1',
+      headCoachId: null,
+      parentTeamId: null,
+    });
+    prismaMock.bills.findMany.mockResolvedValueOnce([{ id: 'bill_1' }]);
+    prismaMock.billPayments.findMany.mockResolvedValueOnce([
+      { amountCents: 5000, refundedAmountCents: 0 },
+    ]);
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      userIds: [],
+      teamIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+
+    const response = await DELETE(
+      jsonDelete('http://localhost/api/events/event_1/participants', { teamId: 'team_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.event).toEqual(expect.objectContaining({ teamIds: [] }));
+    expect(prismaMock.refundRequests.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventId: 'event_1',
+          teamId: 'team_1',
+          userId: 'host_1',
+          hostId: 'host_1',
+          organizationId: 'org_1',
+          reason: 'team_unregistered_by_host',
+          status: 'WAITING',
+        }),
+      }),
+    );
+  });
+
+  it('allows event managers to unregister a team without creating a refund request when no payments exist', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    canManageEventMock.mockResolvedValueOnce(true);
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      eventType: 'EVENT',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['team_1'],
+      waitListIds: [],
+      freeAgentIds: [],
+      registrationByDivisionType: true,
+      divisions: [],
+      singleDivision: true,
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['captain_1'],
+      captainId: 'captain_1',
+      managerId: 'manager_1',
+      headCoachId: null,
+      parentTeamId: null,
+    });
+    prismaMock.bills.findMany.mockResolvedValueOnce([]);
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      userIds: [],
+      teamIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+
+    const response = await DELETE(
+      jsonDelete('http://localhost/api/events/event_1/participants', { teamId: 'team_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.event).toEqual(expect.objectContaining({ teamIds: [] }));
+    expect(prismaMock.refundRequests.create).not.toHaveBeenCalled();
   });
 });

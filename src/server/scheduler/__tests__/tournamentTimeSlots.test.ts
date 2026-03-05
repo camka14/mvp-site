@@ -107,4 +107,57 @@ describe('tournament scheduling (time slots)', () => {
     const maxStart = Math.max(...scheduled.matches.map((match) => match.start.getTime()));
     expect(maxStart).toBeGreaterThanOrEqual(start.getTime() + twoWeeksMs);
   });
+
+  it('schedules non-repeating slots even when fields contain mirrored rental slot records', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(8, division);
+
+    const slotStart = new Date('2026-03-08T16:00:00.000Z');
+    const slotEnd = new Date('2026-03-09T02:00:00.000Z');
+    const nonRepeatingSlot = new TimeSlot({
+      id: 'slot_non_repeating',
+      dayOfWeek: 6,
+      daysOfWeek: [6],
+      startDate: slotStart,
+      endDate: slotEnd,
+      repeating: false,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 19 * 60,
+      field: field.id,
+      fieldIds: [field.id],
+      divisions: [division],
+    });
+    // Repository hydration mirrors event time slots onto field rental slots.
+    field.rentalSlots = [nonRepeatingSlot];
+
+    const tournament = new Tournament({
+      id: 'tournament_non_repeating_slots',
+      name: 'Non-Repeating Tournament',
+      start: slotStart,
+      end: new Date('2026-03-08T16:18:00.000Z'),
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams,
+      divisions: [division],
+      fields: { [field.id]: field },
+      timeSlots: [nonRepeatingSlot],
+      doTeamsRef: false,
+      noFixedEndDateTime: true,
+      doubleElimination: false,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      usesSets: true,
+      setDurationMinutes: 20,
+      restTimeMinutes: 0,
+    });
+
+    const scheduled = scheduleEvent({ event: tournament }, context);
+    expect(scheduled.matches).toHaveLength(7);
+    expect(scheduled.matches.every((match) => Boolean(match.field))).toBe(true);
+    expect(scheduled.matches.every((match) => match.end.getTime() > match.start.getTime())).toBe(true);
+    expect(scheduled.matches.every((match) => match.start.getTime() >= slotStart.getTime())).toBe(true);
+    expect(scheduled.matches.every((match) => match.end.getTime() <= slotEnd.getTime())).toBe(true);
+  });
 });

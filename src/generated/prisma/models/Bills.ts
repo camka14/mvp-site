@@ -93,6 +93,7 @@ export type BillsCountAggregateOutputType = {
   status: number
   paymentPlanEnabled: number
   createdBy: number
+  lineItems: number
   _all: number
 }
 
@@ -164,6 +165,7 @@ export type BillsCountAggregateInputType = {
   status?: true
   paymentPlanEnabled?: true
   createdBy?: true
+  lineItems?: true
   _all?: true
 }
 
@@ -270,6 +272,7 @@ export type BillsGroupByOutputType = {
   status: $Enums.BillsStatusEnum | null
   paymentPlanEnabled: boolean | null
   createdBy: string | null
+  lineItems: runtime.JsonValue | null
   _count: BillsCountAggregateOutputType | null
   _avg: BillsAvgAggregateOutputType | null
   _sum: BillsSumAggregateOutputType | null
@@ -312,6 +315,7 @@ export type BillsWhereInput = {
   status?: Prisma.EnumBillsStatusEnumNullableFilter<"Bills"> | $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: Prisma.BoolNullableFilter<"Bills"> | boolean | null
   createdBy?: Prisma.StringNullableFilter<"Bills"> | string | null
+  lineItems?: Prisma.JsonNullableFilter<"Bills">
 }
 
 export type BillsOrderByWithRelationInput = {
@@ -331,6 +335,7 @@ export type BillsOrderByWithRelationInput = {
   status?: Prisma.SortOrderInput | Prisma.SortOrder
   paymentPlanEnabled?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
+  lineItems?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type BillsWhereUniqueInput = Prisma.AtLeast<{
@@ -353,6 +358,7 @@ export type BillsWhereUniqueInput = Prisma.AtLeast<{
   status?: Prisma.EnumBillsStatusEnumNullableFilter<"Bills"> | $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: Prisma.BoolNullableFilter<"Bills"> | boolean | null
   createdBy?: Prisma.StringNullableFilter<"Bills"> | string | null
+  lineItems?: Prisma.JsonNullableFilter<"Bills">
 }, "id">
 
 export type BillsOrderByWithAggregationInput = {
@@ -372,6 +378,7 @@ export type BillsOrderByWithAggregationInput = {
   status?: Prisma.SortOrderInput | Prisma.SortOrder
   paymentPlanEnabled?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
+  lineItems?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.BillsCountOrderByAggregateInput
   _avg?: Prisma.BillsAvgOrderByAggregateInput
   _max?: Prisma.BillsMaxOrderByAggregateInput
@@ -399,6 +406,7 @@ export type BillsScalarWhereWithAggregatesInput = {
   status?: Prisma.EnumBillsStatusEnumNullableWithAggregatesFilter<"Bills"> | $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: Prisma.BoolNullableWithAggregatesFilter<"Bills"> | boolean | null
   createdBy?: Prisma.StringNullableWithAggregatesFilter<"Bills"> | string | null
+  lineItems?: Prisma.JsonNullableWithAggregatesFilter<"Bills">
 }
 
 export type BillsCreateInput = {
@@ -418,6 +426,7 @@ export type BillsCreateInput = {
   status?: $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: boolean | null
   createdBy?: string | null
+  lineItems?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
 
 export type BillsUncheckedCreateInput = {
@@ -437,6 +446,7 @@ export type BillsUncheckedCreateInput = {
   status?: $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: boolean | null
   createdBy?: string | null
+  lineItems?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
 
 export type BillsUpdateInput = {
@@ -456,6 +466,7 @@ export type BillsUpdateInput = {
   status?: Prisma.NullableEnumBillsStatusEnumFieldUpdateOperationsInput | $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lineItems?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
 
 export type BillsUncheckedUpdateInput = {
@@ -475,6 +486,7 @@ export type BillsUncheckedUpdateInput = {
   status?: Prisma.NullableEnumBillsStatusEnumFieldUpdateOperationsInput | $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lineItems?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
 
 export type BillsCreateManyInput = {
@@ -494,6 +506,7 @@ export type BillsCreateManyInput = {
   status?: $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: boolean | null
   createdBy?: string | null
+  lineItems?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
 
 export type BillsUpdateManyMutationInput = {
@@ -513,6 +526,7 @@ export type BillsUpdateManyMutationInput = {
   status?: Prisma.NullableEnumBillsStatusEnumFieldUpdateOperationsInput | $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lineItems?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
 
 export type BillsUncheckedUpdateManyInput = {
@@ -532,6 +546,7 @@ export type BillsUncheckedUpdateManyInput = {
   status?: Prisma.NullableEnumBillsStatusEnumFieldUpdateOperationsInput | $Enums.BillsStatusEnum | null
   paymentPlanEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lineItems?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
 
 export type BillsCountOrderByAggregateInput = {
@@ -551,6 +566,7 @@ export type BillsCountOrderByAggregateInput = {
   status?: Prisma.SortOrder
   paymentPlanEnabled?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
+  lineItems?: Prisma.SortOrder
 }
 
 export type BillsAvgOrderByAggregateInput = {
@@ -630,6 +646,7 @@ export type BillsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   status?: boolean
   paymentPlanEnabled?: boolean
   createdBy?: boolean
+  lineItems?: boolean
 }, ExtArgs["result"]["bills"]>
 
 export type BillsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -649,6 +666,7 @@ export type BillsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensi
   status?: boolean
   paymentPlanEnabled?: boolean
   createdBy?: boolean
+  lineItems?: boolean
 }, ExtArgs["result"]["bills"]>
 
 export type BillsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -668,6 +686,7 @@ export type BillsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensi
   status?: boolean
   paymentPlanEnabled?: boolean
   createdBy?: boolean
+  lineItems?: boolean
 }, ExtArgs["result"]["bills"]>
 
 export type BillsSelectScalar = {
@@ -687,9 +706,10 @@ export type BillsSelectScalar = {
   status?: boolean
   paymentPlanEnabled?: boolean
   createdBy?: boolean
+  lineItems?: boolean
 }
 
-export type BillsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "ownerType" | "ownerId" | "organizationId" | "eventId" | "totalAmountCents" | "paidAmountCents" | "nextPaymentDue" | "nextPaymentAmountCents" | "parentBillId" | "allowSplit" | "status" | "paymentPlanEnabled" | "createdBy", ExtArgs["result"]["bills"]>
+export type BillsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "ownerType" | "ownerId" | "organizationId" | "eventId" | "totalAmountCents" | "paidAmountCents" | "nextPaymentDue" | "nextPaymentAmountCents" | "parentBillId" | "allowSplit" | "status" | "paymentPlanEnabled" | "createdBy" | "lineItems", ExtArgs["result"]["bills"]>
 
 export type $BillsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Bills"
@@ -711,6 +731,7 @@ export type $BillsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs 
     status: $Enums.BillsStatusEnum | null
     paymentPlanEnabled: boolean | null
     createdBy: string | null
+    lineItems: runtime.JsonValue | null
   }, ExtArgs["result"]["bills"]>
   composites: {}
 }
@@ -1150,6 +1171,7 @@ export interface BillsFieldRefs {
   readonly status: Prisma.FieldRef<"Bills", 'BillsStatusEnum'>
   readonly paymentPlanEnabled: Prisma.FieldRef<"Bills", 'Boolean'>
   readonly createdBy: Prisma.FieldRef<"Bills", 'String'>
+  readonly lineItems: Prisma.FieldRef<"Bills", 'Json'>
 }
     
 

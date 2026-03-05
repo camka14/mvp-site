@@ -42,7 +42,17 @@ export async function POST(req: NextRequest) {
   }
 
   const amountCents = payment.amountCents;
-  const appFeePercentage = 0.01;
+  const billLineItems = Array.isArray(bill.lineItems) ? bill.lineItems : [];
+  const billIncludesFeeLineItems = billLineItems.some((item) => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+    const type = typeof (item as { type?: unknown }).type === 'string'
+      ? (item as { type: string }).type.trim().toUpperCase()
+      : '';
+    return type === 'FEE' || type === 'TAX';
+  });
+  const appFeePercentage = billIncludesFeeLineItems ? 0 : 0.01;
   const applicationFee = Math.round(amountCents * appFeePercentage);
   const totalCharge = calculateChargeAmount(amountCents + applicationFee);
   const stripeFee = totalCharge - amountCents - applicationFee;
@@ -81,6 +91,12 @@ export async function POST(req: NextRequest) {
         purchase_type: 'bill',
         bill_id: bill.id,
         bill_payment_id: payment.id,
+        amount_cents: String(amountCents),
+        total_charge_cents: String(totalCharge),
+        processing_fee_cents: String(applicationFee),
+        stripe_fee_cents: String(stripeFee),
+        ...(bill.eventId ? { event_id: bill.eventId } : {}),
+        ...(bill.organizationId ? { organization_id: bill.organizationId } : {}),
         ...(userId ? { user_id: String(userId) } : {}),
       },
     });

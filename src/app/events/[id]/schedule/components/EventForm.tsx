@@ -8356,76 +8356,76 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </Button>
                                 </div>
                                 <Collapse in={!collapsedSections['section-schedule-config']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                <div id="section-schedule-config-content" className="mt-4 space-y-6">
-                                    <AnimatedSection in={!isSchedulableEventType && usesRentalSlots}>
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                            <Text fw={600} size="sm">Rental Slot Schedule</Text>
-                                            <Text size="sm" c="dimmed">
-                                                This event uses pre-booked rental slots. Slot scheduling is managed by the rental reservation.
-                                            </Text>
-                                            <Text size="sm" c="dimmed" mt="xs">
-                                                Linked slots: {immutableTimeSlots.length}
-                                            </Text>
-                                        </div>
-                                    </AnimatedSection>
+                                    <div id="section-schedule-config-content" className="mt-4 space-y-6">
+                                        {!isSchedulableEventType && usesRentalSlots ? (
+                                            <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                                <Text fw={600} size="sm">Rental Slot Schedule</Text>
+                                                <Text size="sm" c="dimmed">
+                                                    This event uses pre-booked rental slots. Slot scheduling is managed by the rental reservation.
+                                                </Text>
+                                                <Text size="sm" c="dimmed" mt="xs">
+                                                    Linked slots: {immutableTimeSlots.length}
+                                                </Text>
+                                            </div>
+                                        ) : null}
 
-                                    <AnimatedSection in={isSchedulableEventType}>
-                                    <div className="space-y-4">
-                                        <AnimatedSection in={eventData.eventType === 'TOURNAMENT'}>
-                                            <TournamentFields
-                                                tournamentData={tournamentData}
-                                                setTournamentData={setTournamentData}
-                                                sport={eventData.sportConfig ?? undefined}
-                                            />
-                                        </AnimatedSection>
+                                        {isSchedulableEventType ? (
+                                            <div className="space-y-4">
+                                                <AnimatedSection in={eventData.eventType === 'TOURNAMENT'}>
+                                                    <TournamentFields
+                                                        tournamentData={tournamentData}
+                                                        setTournamentData={setTournamentData}
+                                                        sport={eventData.sportConfig ?? undefined}
+                                                    />
+                                                </AnimatedSection>
 
-                                        <AnimatedSection in={isOrganizationManagedEvent}>
-                                            <Text size="xs" c="dimmed">
-                                                Select event fields directly inside each timeslot.
-                                            </Text>
-                                        </AnimatedSection>
+                                                <AnimatedSection in={isOrganizationManagedEvent}>
+                                                    <Text size="xs" c="dimmed">
+                                                        Select event fields directly inside each timeslot.
+                                                    </Text>
+                                                </AnimatedSection>
 
-                                        <LeagueFields
-                                            leagueData={leagueData}
-                                            sport={eventData.sportConfig ?? undefined}
-                                            participantCount={eventData.singleDivision
-                                                ? eventData.maxParticipants
-                                                : (() => {
-                                                    const total = (eventData.divisionDetails || []).reduce((sum, detail) => (
-                                                        sum + Math.max(0, Math.trunc(detail.maxParticipants || 0))
-                                                    ), 0);
-                                                    return total > 0 ? total : eventData.maxParticipants;
-                                                })()}
-                                            onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
-                                            slots={leagueSlots}
-                                            onAddSlot={handleAddSlot}
-                                            onUpdateSlot={handleUpdateSlot}
-                                            onRemoveSlot={handleRemoveSlot}
-                                            onAutoResolveSlotConflict={handleAutoResolveSlotConflict}
-                                            fields={selectedFields}
-                                            fieldsLoading={fieldsLoading}
-                                            fieldOptions={leagueFieldOptions}
-                                            divisionOptions={divisionOptions}
-                                            eventStartDate={eventData.start}
-                                            lockSlotDivisions={Boolean(eventData.singleDivision)}
-                                            lockedDivisionKeys={slotDivisionKeys}
-                                            readOnly={hasImmutableTimeSlots}
-                                            showPlayoffSettings={false}
-                                            showLeagueConfiguration={eventData.eventType === 'LEAGUE'}
-                                        />
+                                                <LeagueFields
+                                                    leagueData={leagueData}
+                                                    sport={eventData.sportConfig ?? undefined}
+                                                    participantCount={eventData.singleDivision
+                                                        ? eventData.maxParticipants
+                                                        : (() => {
+                                                            const total = (eventData.divisionDetails || []).reduce((sum, detail) => (
+                                                                sum + Math.max(0, Math.trunc(detail.maxParticipants || 0))
+                                                            ), 0);
+                                                            return total > 0 ? total : eventData.maxParticipants;
+                                                        })()}
+                                                    onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
+                                                    slots={leagueSlots}
+                                                    onAddSlot={handleAddSlot}
+                                                    onUpdateSlot={handleUpdateSlot}
+                                                    onRemoveSlot={handleRemoveSlot}
+                                                    onAutoResolveSlotConflict={handleAutoResolveSlotConflict}
+                                                    fields={selectedFields}
+                                                    fieldsLoading={fieldsLoading}
+                                                    fieldOptions={leagueFieldOptions}
+                                                    divisionOptions={divisionOptions}
+                                                    eventStartDate={eventData.start}
+                                                    lockSlotDivisions={Boolean(eventData.singleDivision)}
+                                                    lockedDivisionKeys={slotDivisionKeys}
+                                                    readOnly={hasImmutableTimeSlots}
+                                                    showPlayoffSettings={false}
+                                                    showLeagueConfiguration={eventData.eventType === 'LEAGUE'}
+                                                />
 
-                                        <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions}>
-                                            <TournamentFields
-                                                title="Playoffs Configuration"
-                                                tournamentData={playoffData}
-                                                setTournamentData={setPlayoffData}
-                                                sport={eventData.sportConfig ?? undefined}
-                                                showDurationControls={false}
-                                            />
-                                        </AnimatedSection>
+                                                <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions}>
+                                                    <TournamentFields
+                                                        title="Playoffs Configuration"
+                                                        tournamentData={playoffData}
+                                                        setTournamentData={setPlayoffData}
+                                                        sport={eventData.sportConfig ?? undefined}
+                                                        showDurationControls={false}
+                                                    />
+                                                </AnimatedSection>
+                                            </div>
+                                        ) : null}
                                     </div>
-                                    </AnimatedSection>
-                                </div>
                                 </Collapse>
                             </Paper>
                         </AnimatedSection>

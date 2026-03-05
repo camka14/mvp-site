@@ -82,6 +82,10 @@ export type EventTeamComplianceResponse = {
   teams: TeamComplianceSummary[];
 };
 
+export type EventUserComplianceResponse = {
+  users: TeamComplianceUserSummary[];
+};
+
 const normalizeString = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;

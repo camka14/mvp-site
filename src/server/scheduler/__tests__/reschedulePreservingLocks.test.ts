@@ -210,6 +210,146 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     expect(match3!.end.getTime()).toBeLessThanOrEqual(eventEnd.getTime());
   });
 
+  it('reschedules non-repeating slots when field rental slots mirror event availability', () => {
+    const division = new Division('open', 'Open');
+    const field = new PlayingField({
+      id: 'field_non_repeating',
+      fieldNumber: 1,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court Non-Repeating',
+    });
+
+    const team1 = new Team({
+      id: 'nr_team_1',
+      captainId: 'nr_captain_1',
+      division,
+      name: 'Team 1',
+      matches: [],
+      playerIds: [],
+    });
+    const team2 = new Team({
+      id: 'nr_team_2',
+      captainId: 'nr_captain_2',
+      division,
+      name: 'Team 2',
+      matches: [],
+      playerIds: [],
+    });
+    const team3 = new Team({
+      id: 'nr_team_3',
+      captainId: 'nr_captain_3',
+      division,
+      name: 'Team 3',
+      matches: [],
+      playerIds: [],
+    });
+    const team4 = new Team({
+      id: 'nr_team_4',
+      captainId: 'nr_captain_4',
+      division,
+      name: 'Team 4',
+      matches: [],
+      playerIds: [],
+    });
+
+    const slotStart = new Date('2026-03-08T16:00:00.000Z');
+    const slotEnd = new Date('2026-03-09T02:00:00.000Z');
+    const mirroredSlot = new TimeSlot({
+      id: 'slot_non_repeating',
+      dayOfWeek: 6,
+      daysOfWeek: [6],
+      startDate: slotStart,
+      endDate: slotEnd,
+      repeating: false,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 19 * 60,
+      field: field.id,
+      fieldIds: [field.id],
+      divisions: [division],
+    });
+    field.rentalSlots = [mirroredSlot];
+
+    const unscheduledStart = new Date('2026-03-08T16:18:00.000Z');
+    const matchOne = createMatch({
+      id: 'nr_match_1',
+      matchId: 1,
+      start: unscheduledStart,
+      end: unscheduledStart,
+      field,
+      division,
+      team1,
+      team2,
+      eventId: 'event_non_repeating',
+    });
+    const matchTwo = createMatch({
+      id: 'nr_match_2',
+      matchId: 2,
+      start: unscheduledStart,
+      end: unscheduledStart,
+      field,
+      division,
+      team1: team3,
+      team2: team4,
+      eventId: 'event_non_repeating',
+    });
+
+    const event = new League({
+      id: 'event_non_repeating',
+      name: 'Non-Repeating League',
+      description: '',
+      start: slotStart,
+      end: unscheduledStart,
+      location: '',
+      organizationId: null,
+      teams: {
+        [team1.id]: team1,
+        [team2.id]: team2,
+        [team3.id]: team3,
+        [team4.id]: team4,
+      },
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [division],
+      fields: { [field.id]: field },
+      matches: {
+        [matchOne.id]: matchOne,
+        [matchTwo.id]: matchTwo,
+      },
+      referees: [],
+      registrationIds: [],
+      eventType: 'LEAGUE',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      setsPerMatch: 3,
+      pointsToVictory: [],
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      doTeamsRef: false,
+      noFixedEndDateTime: true,
+      restTimeMinutes: 5,
+      timeSlots: [mirroredSlot],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(event);
+    expect(result.warnings).toEqual([]);
+    expect(result.matches).toHaveLength(2);
+    expect(result.matches.every((match) => match.field?.id === field.id)).toBe(true);
+    expect(result.matches.every((match) => match.end.getTime() - match.start.getTime() >= 5 * MINUTE_MS)).toBe(true);
+    expect(result.matches.every((match) => match.start.getTime() >= slotStart.getTime())).toBe(true);
+    expect(result.matches.every((match) => match.end.getTime() <= slotEnd.getTime())).toBe(true);
+  });
+
   it('does not warn when a locked match is within a secondary day in daysOfWeek', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({

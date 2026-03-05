@@ -16,6 +16,15 @@ const createSchema = z.object({
   installmentDueDates: z.array(z.string()).optional(),
   allowSplit: z.boolean().optional(),
   paymentPlanEnabled: z.boolean().optional(),
+  lineItems: z.array(
+    z.object({
+      id: z.string().optional(),
+      type: z.enum(['EVENT', 'FEE', 'TAX', 'PRODUCT', 'RENTAL', 'OTHER']).optional(),
+      label: z.string(),
+      amountCents: z.number(),
+      quantity: z.number().optional(),
+    }).passthrough(),
+  ).optional(),
   event: z.record(z.string(), z.any()).optional(),
   user: z.record(z.string(), z.any()).optional(),
 }).passthrough();
@@ -62,6 +71,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'totalAmountCents must be greater than 0' }, { status: 400 });
   }
 
+  const normalizedLineItems = Array.isArray(parsed.data.lineItems)
+    ? parsed.data.lineItems
+      .map((item, index) => {
+        const amountCents = Math.round(item.amountCents);
+        const quantity = item.quantity !== undefined ? Math.round(item.quantity) : undefined;
+        if (!Number.isFinite(amountCents) || amountCents <= 0) {
+          return null;
+        }
+        const label = item.label.trim();
+        if (!label.length) {
+          return null;
+        }
+        return {
+          id: item.id?.trim() || `line_${index + 1}`,
+          type: item.type ?? 'OTHER',
+          label,
+          amountCents,
+          ...(quantity && quantity > 1 ? { quantity } : {}),
+        };
+      })
+      .filter((item): item is {
+        id: string;
+        type: 'EVENT' | 'FEE' | 'TAX' | 'PRODUCT' | 'RENTAL' | 'OTHER';
+        label: string;
+        amountCents: number;
+        quantity?: number;
+      } => Boolean(item))
+    : [];
+  const lineItemsTotalAmountCents = normalizedLineItems.reduce((sum, item) => sum + item.amountCents, 0);
+  const effectiveTotalAmountCents = lineItemsTotalAmountCents > 0 ? lineItemsTotalAmountCents : totalAmountCents;
+
   const eventId = parsed.data.eventId?.trim() || null;
   const organizationId = parsed.data.organizationId?.trim() || null;
   const paymentPlanEnabled = parsed.data.paymentPlanEnabled ?? false;
@@ -69,7 +109,7 @@ export async function POST(req: NextRequest) {
 
   const amounts = Array.isArray(parsed.data.installmentAmounts) && parsed.data.installmentAmounts.length
     ? parsed.data.installmentAmounts.map((amount) => Math.round(amount))
-    : [totalAmountCents];
+    : [effectiveTotalAmountCents];
   if (amounts.some((amount) => !Number.isFinite(amount) || amount <= 0)) {
     return NextResponse.json({ error: 'installmentAmounts must contain positive numbers' }, { status: 400 });
   }
@@ -101,7 +141,7 @@ export async function POST(req: NextRequest) {
         id: crypto.randomUUID(),
         ownerType: parsed.data.ownerType,
         ownerId,
-        totalAmountCents,
+        totalAmountCents: effectiveTotalAmountCents,
         paidAmountCents: 0,
         eventId,
         organizationId,
@@ -109,6 +149,16 @@ export async function POST(req: NextRequest) {
         status: 'OPEN',
         paymentPlanEnabled,
         createdBy: parsed.data.user?.$id ?? session.userId ?? null,
+        lineItems: normalizedLineItems.length > 0
+          ? normalizedLineItems
+          : [
+              {
+                id: 'line_1',
+                type: 'EVENT',
+                label: 'Event registration',
+                amountCents: effectiveTotalAmountCents,
+              },
+            ],
         createdAt: now,
         updatedAt: now,
       },

@@ -1390,6 +1390,17 @@ export interface BillPayment {
   paidAt?: string;
   paymentIntentId?: string;
   payerUserId?: string;
+  refundedAmountCents?: number;
+}
+
+export type BillLineItemType = 'EVENT' | 'FEE' | 'TAX' | 'PRODUCT' | 'RENTAL' | 'OTHER';
+
+export interface BillLineItem {
+  id?: string;
+  type: BillLineItemType;
+  label: string;
+  amountCents: number;
+  quantity?: number;
 }
 
 export interface Bill {
@@ -1407,6 +1418,7 @@ export interface Bill {
   status: 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED';
   paymentPlanEnabled?: boolean;
   createdBy?: string | null;
+  lineItems?: BillLineItem[];
   payments?: BillPayment[];
 }
 

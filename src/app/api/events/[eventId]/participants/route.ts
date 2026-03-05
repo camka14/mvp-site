@@ -223,6 +223,119 @@ const canManageLinkedChildParticipant = async (params: {
   return Boolean(link);
 };
 
+const hasRefundablePaidTeamEventPayments = async (
+  params: {
+    eventId: string;
+    teamOwnerIds?: string[];
+    participantUserIds?: string[];
+  },
+  client: PrismaLike = prisma,
+): Promise<boolean> => {
+  const teamOwnerIds = normalizeUserIdList(params.teamOwnerIds ?? []);
+  const participantUserIds = normalizeUserIdList(params.participantUserIds ?? []);
+
+  const ownerFilters: Prisma.BillsWhereInput[] = [];
+  if (teamOwnerIds.length > 0) {
+    ownerFilters.push({
+      ownerType: 'TEAM',
+      ownerId: { in: teamOwnerIds },
+    });
+  }
+  if (participantUserIds.length > 0) {
+    ownerFilters.push({
+      ownerType: 'USER',
+      ownerId: { in: participantUserIds },
+    });
+  }
+  if (!ownerFilters.length) {
+    return false;
+  }
+
+  const bills = await client.bills.findMany({
+    where: {
+      eventId: params.eventId,
+      OR: ownerFilters,
+    },
+    select: {
+      id: true,
+    },
+  });
+  if (!bills.length) {
+    return false;
+  }
+
+  const billPayments = await client.billPayments.findMany({
+    where: {
+      billId: { in: bills.map((bill) => bill.id) },
+      status: 'PAID',
+    },
+    select: {
+      amountCents: true,
+      refundedAmountCents: true,
+    },
+  });
+
+  return billPayments.some((payment) => {
+    const amountCents = Number.isFinite(Number(payment.amountCents))
+      ? Math.max(0, Number(payment.amountCents))
+      : 0;
+    const refundedAmountCents = Number.isFinite(Number(payment.refundedAmountCents))
+      ? Math.max(0, Number(payment.refundedAmountCents))
+      : 0;
+    return amountCents > refundedAmountCents;
+  });
+};
+
+const ensureTeamRefundRequest = async (
+  params: {
+    eventId: string;
+    hostId: string;
+    organizationId: string | null;
+    teamId: string;
+    requestedByUserId: string;
+    reason: string;
+    teamOwnerIds?: string[];
+    participantUserIds?: string[];
+  },
+  client: PrismaLike = prisma,
+): Promise<void> => {
+  const hasRefundablePayments = await hasRefundablePaidTeamEventPayments({
+    eventId: params.eventId,
+    teamOwnerIds: params.teamOwnerIds,
+    participantUserIds: params.participantUserIds,
+  }, client);
+  if (!hasRefundablePayments) {
+    return;
+  }
+
+  const existing = await client.refundRequests.findFirst({
+    where: {
+      eventId: params.eventId,
+      teamId: params.teamId,
+      status: 'WAITING',
+    },
+    select: { id: true },
+  });
+  if (existing?.id) {
+    return;
+  }
+  const now = new Date();
+  await client.refundRequests.create({
+    data: {
+      id: crypto.randomUUID(),
+      eventId: params.eventId,
+      userId: params.requestedByUserId,
+      hostId: params.hostId,
+      organizationId: params.organizationId,
+      teamId: params.teamId,
+      reason: params.reason,
+      status: 'WAITING',
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+};
+
 async function updateParticipants(
   req: NextRequest,
   params: Promise<{ eventId: string }>,
@@ -242,6 +355,7 @@ async function updateParticipants(
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
+  const canManageCurrentEvent = await canManageEvent(session, event);
 
   const userId = parsed.data.userId ?? extractId(parsed.data.user);
   const teamId = parsed.data.teamId ?? extractId(parsed.data.team);
@@ -366,6 +480,9 @@ async function updateParticipants(
       managerId: string | null;
     }
     | null = null;
+  let teamRefundReason = 'team_refund_requested';
+  let teamRefundOwnerIds: string[] = [];
+  let teamRefundParticipantUserIds: string[] = [];
 
   if (teamId) {
     const team = await prisma.teams.findUnique({
@@ -376,7 +493,10 @@ async function updateParticipants(
         divisionTypeId: true,
         sport: true,
         playerIds: true,
+        captainId: true,
         managerId: true,
+        headCoachId: true,
+        parentTeamId: true,
       },
     });
 
@@ -384,12 +504,25 @@ async function updateParticipants(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
     const teamManagerId = normalizeId(team.managerId);
-    if (!session.isAdmin && teamManagerId !== session.userId) {
+    const isTeamManager = teamManagerId === session.userId;
+    if (!session.isAdmin && !isTeamManager && !canManageCurrentEvent) {
       return NextResponse.json(
         { error: 'Only the team manager can register or withdraw this team.' },
         { status: 403 },
       );
     }
+    teamRefundReason = (!isTeamManager && canManageCurrentEvent)
+      ? 'team_unregistered_by_host'
+      : 'team_refund_requested';
+    teamRefundOwnerIds = ensureUnique(
+      [team.id, normalizeId(team.parentTeamId) ?? ''].filter(Boolean),
+    );
+    teamRefundParticipantUserIds = ensureUnique(
+      [
+        ...normalizeUserIdList(team.playerIds),
+        ...normalizeUserIdList([team.captainId, team.managerId, team.headCoachId]),
+      ],
+    );
     if (mode === 'add') {
       teamForRegistration = {
         ...team,
@@ -709,6 +842,25 @@ async function updateParticipants(
           data: { updatedAt: now },
         });
 
+        const refundTeamOwnerIds = ensureUnique(
+          [
+            ...teamRefundOwnerIds,
+            slotTeam.id,
+            normalizeId(slotTeam.parentTeamId) ?? '',
+            inputTeamId,
+          ].filter(Boolean),
+        );
+        await ensureTeamRefundRequest({
+          eventId,
+          hostId: event.hostId,
+          organizationId: event.organizationId ?? null,
+          teamId: slotTeam.id,
+          requestedByUserId: session.userId,
+          reason: teamRefundReason,
+          teamOwnerIds: refundTeamOwnerIds,
+          participantUserIds: teamRefundParticipantUserIds,
+        }, tx);
+
         return { ok: true as const, event: updatedEvent };
       });
 
@@ -729,15 +881,7 @@ async function updateParticipants(
   }
 
   if (mode === 'add' && teamId && nextTeamIds.includes(teamId)) {
-    const canManageExistingTeamRegistration = await canManageEvent(
-      session,
-      {
-        hostId: event.hostId,
-        assistantHostIds: event.assistantHostIds,
-        organizationId: event.organizationId,
-      },
-    );
-    if (!canManageExistingTeamRegistration) {
+    if (!canManageCurrentEvent) {
       return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
     }
   }
@@ -847,6 +991,16 @@ async function updateParticipants(
         teamId,
         mode,
         targetDivisionId: null,
+      });
+      await ensureTeamRefundRequest({
+        eventId,
+        hostId: event.hostId,
+        organizationId: event.organizationId ?? null,
+        teamId,
+        requestedByUserId: session.userId,
+        reason: teamRefundReason,
+        teamOwnerIds: teamRefundOwnerIds,
+        participantUserIds: teamRefundParticipantUserIds,
       });
     }
   }

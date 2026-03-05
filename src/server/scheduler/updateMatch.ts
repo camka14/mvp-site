@@ -11,6 +11,7 @@ import {
   TIMES,
   MINUTE_MS,
 } from './types';
+import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
 
 export type MatchUpdate = {
   locked?: boolean;
@@ -390,6 +391,7 @@ export const finalizeMatch = (
   _context: SchedulerContext = noopContext,
   currentTime: Date,
 ): FinalizeResult => {
+  stripEventAvailabilityFromFieldRentalSlots(event);
   syncMatchParticipants(Object.values(event.matches));
 
   const seededTeamIds: string[] = [];

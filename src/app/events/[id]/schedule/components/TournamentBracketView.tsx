@@ -1035,14 +1035,14 @@ export default function TournamentBracketView({
                     <svg className="pointer-events-none absolute inset-0 z-10" width="100%" height="100%">
                         <defs>
                             <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-                                <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+                                <polygon points="0 0, 10 3.5, 0 7" fill="var(--mvp-neutral-400)" />
                             </marker>
                         </defs>
                         {connections.map((c) => {
                             const midX = (c.x1 + c.x2) / 2;
                             const d = `M ${c.x1} ${c.y1} L ${midX} ${c.y1} L ${midX} ${c.y2} L ${c.x2} ${c.y2}`;
                             return (
-                                <path key={`${c.fromId}-${c.toId}`} d={d} stroke="#94a3b8" strokeWidth="2" fill="none" strokeLinecap="square" markerEnd="url(#arrowhead)" />
+                                <path key={`${c.fromId}-${c.toId}`} d={d} stroke="var(--mvp-neutral-400)" strokeWidth="2" fill="none" strokeLinecap="square" markerEnd="url(#arrowhead)" />
                             );
                         })}
                     </svg>

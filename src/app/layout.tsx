@@ -5,13 +5,22 @@ import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import { ReactNode } from 'react';
 import { Providers } from './providers';
-import { MantineProvider } from '@mantine/core';
+import { createTheme, MantineColorsTuple, MantineProvider } from '@mantine/core';
 import { ChatProvider } from '@/context/ChatContext';
 import { ChatUIProvider } from '@/context/ChatUIContext';
 import { ChatComponents } from '@/components/chat/ChatComponents';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
+import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
 
 const inter = Inter({ subsets: ['latin'] });
+const mvpPrimary = [...MOBILE_APP_MANTINE_PRIMARY_SCALE] as MantineColorsTuple;
+const theme = createTheme({
+  primaryColor: 'mvpPrimary',
+  colors: {
+    mvpPrimary,
+  },
+  defaultRadius: 'md',
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://mvp.razumly.com'),
@@ -56,7 +65,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className="min-h-screen bg-background text-foreground">
-        <MantineProvider>
+        <MantineProvider theme={theme} defaultColorScheme="light">
           <Providers>
             {disableChat ? (
               children

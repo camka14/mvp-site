@@ -49,11 +49,17 @@ export function Providers({ children }: ProvidersProps) {
   const setUser = useCallback((value: UserData | null) => {
     setUserState(value);
     authService.setCurrentUserData(value);
+    if (value) {
+      setIsGuest(false);
+    }
   }, []);
 
   const setAuthUser = useCallback((value: UserAccount | null) => {
     setAuthUserState(value);
     authService.setCurrentAuthUser(value);
+    if (value) {
+      setIsGuest(false);
+    }
   }, []);
 
   const checkAuth = useCallback(async () => {

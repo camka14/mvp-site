@@ -6,6 +6,7 @@ import { Elements } from '@stripe/react-stripe-js';
 import { Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
 import PaymentForm from './PaymentForm';
 import { Modal, Button, Group, Alert, Loader, Text } from '@mantine/core';
+import { MOBILE_APP_THEME_TOKENS } from '@/app/theme/mobilePalette';
 
 // Initialize Stripe with publishable key from environment; may be overridden by payment response
 const envPublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
@@ -170,7 +171,7 @@ export default function PaymentModal({
                             appearance: {
                                 theme: 'stripe',
                                 variables: {
-                                    colorPrimary: '#2563eb',
+                                    colorPrimary: MOBILE_APP_THEME_TOKENS.primary,
                                 },
                             },
                         }}

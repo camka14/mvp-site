@@ -475,7 +475,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    expect(await screen.findByRole('button', { name: /save template/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^save$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /save league/i })).not.toBeInTheDocument();
   });
 
@@ -966,7 +966,7 @@ describe('League schedule page', () => {
       expect(screen.getByText(/Summer League/)).toBeInTheDocument();
     });
 
-    const cancelButton = await screen.findByRole('button', { name: /delete league/i });
+    const cancelButton = await screen.findByRole('button', { name: /^delete$/i });
     fireEvent.click(cancelButton);
 
     await waitFor(() => {
@@ -1055,7 +1055,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    const publishButton = await screen.findByRole('button', { name: /save league/i });
+    const publishButton = await screen.findByRole('button', { name: /^save$/i });
     await waitFor(() => {
       expect(publishButton).toBeEnabled();
     });
@@ -1141,7 +1141,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    const saveTemplateButton = await screen.findByRole('button', { name: /save template/i });
+    const saveTemplateButton = await screen.findByRole('button', { name: /^save$/i });
     await waitFor(() => {
       expect(saveTemplateButton).toBeEnabled();
     });
@@ -1222,7 +1222,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    const saveTournamentButton = await screen.findByRole('button', { name: /save tournament/i });
+    const saveTournamentButton = await screen.findByRole('button', { name: /^save$/i });
     await waitFor(() => {
       expect(saveTournamentButton).toBeEnabled();
     });
@@ -1690,6 +1690,244 @@ describe('League schedule page', () => {
       divisions: ['open'],
       scheduledFieldId: 'field_tournament_1',
     });
+  });
+
+  it('hides participant actions for placeholder teams', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const event = buildApiEvent({
+      eventType: 'TOURNAMENT',
+      singleDivision: true,
+      teamSignup: true,
+      teams: [],
+      teamIds: ['team_real', 'team_placeholder'],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path.startsWith('/api/teams?ids=')) {
+        return Promise.resolve({
+          teams: [
+            {
+              $id: 'team_real',
+              id: 'team_real',
+              name: 'Sand Strikers',
+              division: 'Open',
+              sport: 'Volleyball',
+              playerIds: [],
+              captainId: '',
+              pending: [],
+              teamSize: 2,
+              parentTeamId: 'parent_real',
+            },
+            {
+              $id: 'team_placeholder',
+              id: 'team_placeholder',
+              name: 'Place Holder 1',
+              division: 'Open',
+              sport: 'Volleyball',
+              playerIds: [],
+              captainId: '',
+              pending: [],
+              teamSize: 2,
+            },
+          ],
+        });
+      }
+      if (path === '/api/events/event_1/teams/compliance') {
+        return Promise.resolve({ teams: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const participantsTab = await screen.findByRole('tab', { name: /participants/i });
+    fireEvent.click(participantsTab);
+
+    await screen.findByText('Sand Strikers');
+    await screen.findByText('Place Holder 1');
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: /^remove$/i })).toHaveLength(1);
+    });
+  });
+
+  it('renders non-team participant user cards with billing and document status in manage mode', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const event = buildApiEvent({
+      eventType: 'EVENT',
+      teamSignup: false,
+      teams: [],
+      teamIds: [],
+      userIds: ['user_1'],
+      players: [],
+    });
+    delete (event as any).matches;
+
+    const originalFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        users: [
+          {
+            $id: 'user_1',
+            firstName: 'Casey',
+            lastName: 'Rivers',
+            userName: 'crivers',
+            teamIds: [],
+            friendIds: [],
+            friendRequestIds: [],
+            friendRequestSentIds: [],
+            followingIds: [],
+            uploadedImages: [],
+            fullName: 'Casey Rivers',
+            avatarUrl: '',
+          },
+        ],
+      }),
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path === '/api/events/event_1/users/compliance') {
+        return Promise.resolve({
+          users: [
+            {
+              userId: 'user_1',
+              fullName: 'Casey Rivers',
+              userName: 'crivers',
+              isMinorAtEvent: false,
+              registrationType: 'ADULT',
+              payment: {
+                hasBill: true,
+                billId: 'bill_1',
+                totalAmountCents: 5000,
+                paidAmountCents: 3000,
+                status: 'OPEN',
+                isPaidInFull: false,
+              },
+              documents: {
+                signedCount: 1,
+                requiredCount: 2,
+              },
+              requiredDocuments: [],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    try {
+      renderWithMantine(<LeagueSchedulePage />);
+
+      const participantsTab = await screen.findByRole('tab', { name: /participants/i });
+      fireEvent.click(participantsTab);
+
+      await screen.findByText('Casey Rivers');
+      await screen.findByText('$30.00 of $50.00 paid');
+      await screen.findByText('1/2 signatures complete');
+      expect(screen.queryByText(/no team bill yet/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/rostered user/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/1\/1 players/i)).not.toBeInTheDocument();
+
+      expect(screen.queryByRole('button', { name: /add team/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /refund/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /send bill/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^remove$/i })).toBeInTheDocument();
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+    }
+  });
+
+  it('does not show team fullness labels for non-team participants in non-edit mode', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const event = buildApiEvent({
+      eventType: 'EVENT',
+      teamSignup: false,
+      teams: [],
+      teamIds: [],
+      userIds: ['user_1'],
+      players: [],
+    });
+    delete (event as any).matches;
+    const originalFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        users: [
+          {
+            $id: 'user_1',
+            firstName: 'Casey',
+            lastName: 'Rivers',
+            userName: 'crivers',
+            teamIds: [],
+            friendIds: [],
+            friendRequestIds: [],
+            friendRequestSentIds: [],
+            followingIds: [],
+            uploadedImages: [],
+            fullName: 'Casey Rivers',
+            avatarUrl: '',
+          },
+        ],
+      }),
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    try {
+      renderWithMantine(<LeagueSchedulePage />);
+
+      const participantsTab = await screen.findByRole('tab', { name: /participants/i });
+      fireEvent.click(participantsTab);
+
+      await screen.findByText('Casey Rivers');
+      expect(screen.queryByText(/team full/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/spots left/i)).not.toBeInTheDocument();
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+    }
   });
 
   it('does not pass a host organization when creating a rental as self', async () => {

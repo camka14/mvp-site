@@ -1,0 +1,58 @@
+const DEFAULT_MVP_FEE_PERCENTAGE = 0.01;
+const LEAGUE_OR_TOURNAMENT_MVP_FEE_PERCENTAGE = 0.03;
+const STRIPE_FIXED_FEE_CENTS = 30;
+const STRIPE_PERCENT_FEE = 0.029;
+
+const normalizeEventType = (eventType: unknown): string => {
+  if (typeof eventType !== 'string') {
+    return '';
+  }
+  return eventType.trim().toUpperCase();
+};
+
+export const resolveMvpFeePercentage = (eventType: unknown): number => {
+  const normalized = normalizeEventType(eventType);
+  if (normalized === 'LEAGUE' || normalized === 'TOURNAMENT') {
+    return LEAGUE_OR_TOURNAMENT_MVP_FEE_PERCENTAGE;
+  }
+  return DEFAULT_MVP_FEE_PERCENTAGE;
+};
+
+export const calculateChargeAmount = (
+  goalAmountCents: number,
+  fixedFeeCents = STRIPE_FIXED_FEE_CENTS,
+  percentFee = STRIPE_PERCENT_FEE,
+): number => {
+  const numerator = goalAmountCents + fixedFeeCents;
+  const denominator = 1 - percentFee;
+  return Math.round(numerator / denominator);
+};
+
+export const calculateMvpAndStripeFees = ({
+  eventAmountCents,
+  eventType,
+}: {
+  eventAmountCents: number;
+  eventType?: unknown;
+}): {
+  mvpFeeCents: number;
+  stripeFeeCents: number;
+  totalChargeCents: number;
+  mvpFeePercentage: number;
+} => {
+  const normalizedEventAmount = Number.isFinite(Number(eventAmountCents))
+    ? Math.max(0, Math.round(Number(eventAmountCents)))
+    : 0;
+  const mvpFeePercentage = resolveMvpFeePercentage(eventType);
+  const mvpFeeCents = Math.round(normalizedEventAmount * mvpFeePercentage);
+  const totalChargeCents = calculateChargeAmount(normalizedEventAmount + mvpFeeCents);
+  const stripeFeeCents = Math.max(0, totalChargeCents - normalizedEventAmount - mvpFeeCents);
+
+  return {
+    mvpFeeCents,
+    stripeFeeCents,
+    totalChargeCents,
+    mvpFeePercentage,
+  };
+};
+
