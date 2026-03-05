@@ -354,7 +354,55 @@ describe('league scheduling (time slots)', () => {
       leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
     });
 
-    expect(() => scheduleEvent({ event: league }, context)).toThrow(/provided time slots/i);
+    const runSchedule = () => scheduleEvent({ event: league }, context);
+    expect(runSchedule).toThrow(/not enough time is allotted/i);
+    expect(runSchedule).toThrow(/provided time slots/i);
+  });
+
+  it('errors when weekly slots have a fixed end date and the schedule overruns that window', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const eventStart = new Date(2026, 0, 3, 8, 0, 0);
+    const eventEnd = new Date(2026, 0, 25, 20, 0, 0);
+    const slotStartDate = new Date(2026, 0, 3, 0, 0, 0);
+    const slotEndDate = new Date(2026, 0, 4, 0, 0, 0);
+
+    const league = new League({
+      id: 'league_weekly_fixed_end_overflow',
+      name: 'Weekly Slot Fixed End Overflow',
+      start: eventStart,
+      end: eventEnd,
+      noFixedEndDateTime: false,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      referees: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_weekly_fixed_end',
+          dayOfWeek: 5,
+          startDate: slotStartDate,
+          endDate: slotEndDate,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 12 * 60,
+        }),
+      ],
+      doTeamsRef: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    expect(() => scheduleEvent({ event: league }, context)).toThrow(/not enough time is allotted/i);
   });
 
   it('schedules weekend-only league matches across multiple weekends when weekend slots are limited', () => {

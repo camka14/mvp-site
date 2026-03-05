@@ -217,6 +217,8 @@ const ensureSplitPlayoffTimeSlotCoverage = (league: League): void => {
 
 const OPEN_ENDED_WEEKS = 52;
 const NO_FIELDS_MESSAGE_REGEX = /^Unable to schedule event because no fields are available(?: for divisions:\s*(.+))?\.$/i;
+const SCHEDULE_OVERRUN_MESSAGE = 'Not enough time is allotted in the configured time slots to schedule this event.';
+const SCHEDULE_OVERRUN_DETAIL = 'No available time slots remaining for scheduling';
 
 const isOpenEndedSchedule = (event: League | Tournament): boolean => {
   if (typeof event.noFixedEndDateTime === 'boolean') {
@@ -228,6 +230,27 @@ const isOpenEndedSchedule = (event: League | Tournament): boolean => {
 const extendOpenEndedWindow = (event: League | Tournament): void => {
   const baseEndMs = Math.max(event.start.getTime(), event.end.getTime());
   event.end = new Date(baseEndMs + OPEN_ENDED_WEEKS * 7 * 24 * 60 * MINUTE_MS);
+};
+
+const hasValidDate = (value: unknown): value is Date => {
+  return value instanceof Date && !Number.isNaN(value.getTime());
+};
+
+const isExtendableRecurringSlot = (slot: { repeating?: boolean; endDate?: Date | null }): boolean => {
+  if (slot.repeating === false) {
+    return false;
+  }
+  return !hasValidDate(slot.endDate ?? null);
+};
+
+const hasExtendableRecurringSlots = (event: League | Tournament): boolean => {
+  return event.timeSlots.some((slot) => isExtendableRecurringSlot(slot));
+};
+
+const isScheduleOverrunError = (message: string): boolean => {
+  const normalized = message.toLowerCase();
+  return normalized.includes(SCHEDULE_OVERRUN_DETAIL.toLowerCase())
+    || normalized.includes('not enough time is allotted');
 };
 
 export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContext): ScheduleResult => {
@@ -314,6 +337,7 @@ const buildLeagueSchedule = (
   let extensionAttempt = 0;
   const maxExtensions = 3;
   const baseTeams = { ...league.teams };
+  const canExtendWindow = openEndedSchedule && hasExtendableRecurringSlots(league);
 
   while (!updated) {
     // Retry attempts must start from the original roster. Placeholder teams
@@ -340,7 +364,7 @@ const buildLeagueSchedule = (
       if (errMsg.toLowerCase().includes('split playoff divisions are enabled')) {
         throw new ScheduleError(errMsg);
       }
-      if (openEndedSchedule && extensionAttempt < maxExtensions) {
+      if (canExtendWindow && extensionAttempt < maxExtensions) {
         extensionAttempt += 1;
         const extraWeeks = Math.max(2, extensionAttempt * 2);
         league.end = new Date(league.end.getTime() + extraWeeks * 7 * 24 * 60 * MINUTE_MS);
@@ -358,6 +382,9 @@ const buildLeagueSchedule = (
         league,
         Math.max(league.maxParticipants ?? 0, baselineTeamCount),
       );
+      if (isScheduleOverrunError(errMsg)) {
+        throw new ScheduleError(`${SCHEDULE_OVERRUN_MESSAGE} ${message}`);
+      }
       throw new ScheduleError(message);
     }
   }
@@ -437,9 +464,19 @@ const formatNoFieldsErrorForUser = (message: string, league: League): string => 
 
 const buildTournamentSchedule = (tournament: Tournament, context: SchedulerContext): ScheduleResult => {
   const builder = new EventBuilder(tournament, context);
-  const scheduled = builder.buildSchedule();
-  if (!(scheduled instanceof Tournament)) {
-    throw new ScheduleError('Builder returned unexpected event type');
+  let scheduled: Tournament;
+  try {
+    const result = builder.buildSchedule();
+    if (!(result instanceof Tournament)) {
+      throw new ScheduleError('Builder returned unexpected event type');
+    }
+    scheduled = result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isScheduleOverrunError(message)) {
+      throw new ScheduleError(SCHEDULE_OVERRUN_MESSAGE);
+    }
+    throw error;
   }
   const latestEnd = latestMatchEnd(Object.values(scheduled.matches));
   if (latestEnd) {
@@ -627,6 +664,25 @@ const calculateSlotMinutes = (event: League): number => {
     const reference = new Date(start.getTime() + weekIndex * 7 * 24 * 60 * MINUTE_MS);
     for (const slot of recurringSlots) {
       const [slotStart, slotEnd] = slot.asDateRange(reference);
+      const slotDay = new Date(slotStart);
+      slotDay.setHours(0, 0, 0, 0);
+      const slotDayMs = slotDay.getTime();
+      const slotStartDate = hasValidDate(slot.startDate) ? slot.startDate : null;
+      const slotEndDate = hasValidDate(slot.endDate) ? slot.endDate : null;
+      if (slotStartDate) {
+        const slotStartDay = new Date(slotStartDate);
+        slotStartDay.setHours(0, 0, 0, 0);
+        if (slotDayMs < slotStartDay.getTime()) {
+          continue;
+        }
+      }
+      if (slotEndDate) {
+        const slotEndDay = new Date(slotEndDate);
+        slotEndDay.setHours(0, 0, 0, 0);
+        if (slotDayMs > slotEndDay.getTime()) {
+          continue;
+        }
+      }
       if (slotEnd.getTime() <= start.getTime() || slotStart.getTime() >= end.getTime()) continue;
       const windowStart = slotStart.getTime() < start.getTime() ? start : slotStart;
       const windowEnd = slotEnd.getTime() > end.getTime() ? end : slotEnd;
@@ -641,8 +697,9 @@ const calculateSlotMinutes = (event: League): number => {
 const prepareScheduleWindow = (event: Tournament | League, allowExtension: boolean): void => {
   if (!allowExtension) return;
   if (!event.timeSlots.length) return;
+  if (!hasExtendableRecurringSlots(event)) return;
   const expectedTeams = projectedTeamCount(event);
-  const weeklyMinutes = weeklySlotMinutes(event.timeSlots);
+  const weeklyMinutes = weeklySlotMinutes(event.timeSlots.filter((slot) => isExtendableRecurringSlot(slot)));
   if (weeklyMinutes <= 0) return;
   const matchMinutes = estimatedMatchMinutes(event, expectedTeams);
   if (matchMinutes <= 0) return;

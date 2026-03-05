@@ -6,6 +6,8 @@ type SlotWindow = {
   groupIds: Set<string> | null;
 };
 
+const NOT_ENOUGH_TIME_ALLOTTED_MESSAGE = 'Not enough time is allotted in the configured time slots to schedule this event.';
+
 const overlaps = (startA: Date, endA: Date, startB: Date, endB: Date): boolean => {
   return !(startA >= endB && endA > endB) && !(startA < startB && endA <= startB);
 };
@@ -170,6 +172,9 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
       const adjustedStart = this.nextValidStartTime(earliestStart, durationMs);
       if (adjustedStart.getTime() > earliestStart.getTime()) {
         earliestStart = adjustedStart;
+      }
+      if (this.hasSlots && earliestStart.getTime() + durationMs > this.endTime.getTime()) {
+        throw new Error(`${NOT_ENOUGH_TIME_ALLOTTED_MESSAGE} No available time slots remaining for scheduling.`);
       }
       if (this.checkAvailabilityOfParticipants(earliestStart, new Date(earliestStart.getTime() + durationMs), event.getParticipants().length)) {
         const resource = this.findAvailableResource(earliestStart, durationMs);
@@ -402,7 +407,17 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     );
     const startMinutes = slot.startTimeMinutes ?? slot.start_time_minutes ?? 0;
     const endMinutes = slot.endTimeMinutes ?? slot.end_time_minutes ?? 0;
-    return normalizedDays.map((dayOfWeek) => {
+    const recurringStartDate = parseDate(slot.startDate);
+    const recurringEndDate = parseDate(slot.endDate);
+    const recurringStartDayMs = recurringStartDate
+      ? new Date(recurringStartDate.getFullYear(), recurringStartDate.getMonth(), recurringStartDate.getDate()).getTime()
+      : null;
+    const recurringEndDayMs = recurringEndDate
+      ? new Date(recurringEndDate.getFullYear(), recurringEndDate.getMonth(), recurringEndDate.getDate()).getTime()
+      : null;
+
+    const ranges: Array<[Date, Date]> = [];
+    for (const dayOfWeek of normalizedDays) {
       // Time slots are stored as Monday-based indexes (0=Mon ... 6=Sun),
       // while JS Date#getDay() uses Sunday-based indexes (0=Sun ... 6=Sat).
       const referenceDay = (reference.getDay() + 6) % 7;
@@ -410,10 +425,21 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
       const slotDate = new Date(reference);
       slotDate.setHours(0, 0, 0, 0);
       slotDate.setDate(slotDate.getDate() + daysAhead);
+      const slotDayMs = slotDate.getTime();
+      if (recurringStartDayMs !== null && slotDayMs < recurringStartDayMs) {
+        continue;
+      }
+      if (recurringEndDayMs !== null && slotDayMs > recurringEndDayMs) {
+        continue;
+      }
       const start = new Date(slotDate.getTime() + startMinutes * MINUTE_MS);
       const end = new Date(slotDate.getTime() + endMinutes * MINUTE_MS);
-      return [start, end];
-    });
+      if (end.getTime() <= start.getTime()) {
+        continue;
+      }
+      ranges.push([start, end]);
+    }
+    return ranges;
   }
 
   private nextValidStartTime(candidate: Date, durationMs: number): Date {
@@ -455,7 +481,7 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
       const suffix = groupIds.length ? ` for divisions: ${groupIds.join(', ')}` : '';
       throw new Error(`Unable to schedule event because no fields are available${suffix}.`);
     }
-    throw new Error('No available time slots remaining for scheduling');
+    throw new Error(`${NOT_ENOUGH_TIME_ALLOTTED_MESSAGE} No available time slots remaining for scheduling.`);
   }
 
   private slotsForResource(resource: R): SlotWindow[] {

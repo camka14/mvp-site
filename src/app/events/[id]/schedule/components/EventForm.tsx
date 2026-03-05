@@ -38,6 +38,7 @@ import { resolveDraftSportForScoring } from './eventDraftSport';
 import { resolveTournamentSetMode } from './tournamentSetMode';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
+import { hasExternalRentalFieldForEvent } from './externalRentalField';
 import UserCard from '@/components/ui/UserCard';
 import {
     buildDivisionName,
@@ -68,6 +69,7 @@ interface EventFormProps {
     defaultLocation?: DefaultLocation;
     isCreateMode?: boolean;
     rentalPurchase?: RentalPurchaseContext;
+    templateOrganizationId?: string;
     onDirtyStateChange?: (hasChanges: boolean) => void;
 }
 
@@ -1273,18 +1275,6 @@ const sanitizeFieldForForm = (field: Field): Field => {
 const sanitizeFieldsForForm = (fields?: Field[] | null): Field[] =>
     Array.isArray(fields) ? fields.map(sanitizeFieldForForm) : [];
 
-const getFieldOrganizationId = (field?: Field | null): string | undefined => {
-    if (!field) return undefined;
-    const org = (field as any).organization;
-    if (org && typeof org === 'object' && '$id' in org) {
-        return (org as Organization).$id;
-    }
-    if (typeof (field as any).organizationId === 'string') {
-        return (field as any).organizationId;
-    }
-    return undefined;
-};
-
 type EventFormState = {
     $id: string;
     name: string;
@@ -2413,6 +2403,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     defaultLocation,
     isCreateMode = false,
     rentalPurchase,
+    templateOrganizationId: templateOrganizationIdProp,
     onDirtyStateChange,
 }, ref) => {
     const open = isOpen ?? true;
@@ -3060,6 +3051,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
     const joinAsParticipant = formValues.joinAsParticipant;
     const organizationId = organization?.$id ?? eventData.organizationId;
+    const templateOrganizationId = templateOrganizationIdProp ?? organizationId;
 
     useEffect(() => {
         if (!isCreateMode || hasStripeAccount) {
@@ -3157,7 +3149,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
 
     useEffect(() => {
-        if (!organizationId) {
+        if (!templateOrganizationId) {
             setTemplateDocuments([]);
             setTemplatesError(null);
             return;
@@ -3169,7 +3161,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setTemplatesLoading(true);
                 setTemplatesError(null);
                 const response = await apiRequest<{ templates?: any[] }>(
-                    `/api/organizations/${organizationId}/templates`,
+                    `/api/organizations/${templateOrganizationId}/templates`,
                 );
                 const rows = Array.isArray(response.templates) ? response.templates : [];
                 if (!cancelled) {
@@ -3194,7 +3186,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return () => {
             cancelled = true;
         };
-    }, [organizationId]);
+    }, [templateOrganizationId]);
 
     const setEventData = useCallback(
         (updater: React.SetStateAction<EventFormValues>) => {
@@ -5485,7 +5477,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     // Applies granular updates coming back from LeagueFields inputs before revalidating the array.
     const handleUpdateSlot = (index: number, updates: Partial<LeagueSlotForm>) => {
-        if (hasImmutableTimeSlots) {
+        const isDivisionOnlyUpdate = Object.keys(updates).every((key) => key === 'divisions');
+        const allowRentalDivisionEditOnLockedSlots = hasExternalRentalField && !eventData.singleDivision;
+        const allowUpdateOnLockedSlots = hasImmutableTimeSlots && allowRentalDivisionEditOnLockedSlots && isDivisionOnlyUpdate;
+        if (hasImmutableTimeSlots && !allowUpdateOnLockedSlots) {
             return;
         }
         const current = leagueSlots[index];
@@ -5577,11 +5572,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
         }
 
-        updateLeagueSlots(prev => {
-            const next = [...prev];
-            next[index] = updated;
-            return next;
-        });
+        if (allowUpdateOnLockedSlots) {
+            setLeagueSlots(prev => {
+                const next = [...prev];
+                next[index] = updated;
+                return normalizeSlotState(next, eventData.eventType);
+            });
+        } else {
+            updateLeagueSlots(prev => {
+                const next = [...prev];
+                next[index] = updated;
+                return next;
+            });
+        }
 
         clearErrors('leagueSlots');
     };
@@ -5811,15 +5814,46 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const eventOrganizationId = organizationHostedEventId;
 
     const hasExternalRentalField = useMemo(() => {
-        if (!eventOrganizationId) {
-            return false;
-        }
         const sourceFields = fields.length ? fields : (activeEditingEvent?.fields ?? []);
-        return sourceFields.some((field) => {
-            const orgId = getFieldOrganizationId(field);
-            return orgId && orgId !== eventOrganizationId;
+        const referencedFieldIds = new Set<string>();
+        sourceFields.forEach((field) => {
+            if (typeof field?.$id === 'string' && field.$id.trim().length > 0) {
+                referencedFieldIds.add(field.$id.trim());
+            }
         });
-    }, [activeEditingEvent?.fields, eventOrganizationId, fields]);
+        normalizeFieldIds(activeEditingEvent?.fieldIds).forEach((fieldId) => referencedFieldIds.add(fieldId));
+        normalizeFieldIds(eventData.selectedFieldIds).forEach((fieldId) => referencedFieldIds.add(fieldId));
+        immutableFields.forEach((field) => {
+            if (typeof field?.$id === 'string' && field.$id.trim().length > 0) {
+                referencedFieldIds.add(field.$id.trim());
+            }
+        });
+        (activeEditingEvent?.timeSlots ?? []).forEach((slot) => {
+            normalizeSlotFieldIds(slot).forEach((fieldId) => referencedFieldIds.add(fieldId));
+        });
+
+        return hasExternalRentalFieldForEvent({
+            eventOrganizationId,
+            sourceFields,
+            organizationFieldIds: [
+                ...normalizeFieldIds(organization?.fieldIds),
+                ...normalizeFieldIds((organization?.fields ?? []).map((field) => field?.$id)),
+            ],
+            referencedFieldIds: Array.from(referencedFieldIds),
+            isEditMode,
+        });
+    }, [
+        activeEditingEvent?.fieldIds,
+        activeEditingEvent?.fields,
+        activeEditingEvent?.timeSlots,
+        eventData.selectedFieldIds,
+        eventOrganizationId,
+        fields,
+        immutableFields,
+        isEditMode,
+        organization?.fieldIds,
+        organization?.fields,
+    ]);
 
     useEffect(() => {
         if (!hasExternalRentalField) {
@@ -5844,6 +5878,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             .filter((slot): slot is TimeSlot => Boolean(slot));
         setRentalLockedTimeSlots(lockedSlots);
     }, [activeEditingEvent?.fields, activeEditingEvent?.timeSlots, hasExternalRentalField, immutableFields]);
+
+    useEffect(() => {
+        if (!eventData.singleDivision || hasExternalRentalField) {
+            return;
+        }
+        if (!eventData.splitLeaguePlayoffDivisions) {
+            return;
+        }
+        setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
+    }, [eventData.singleDivision, eventData.splitLeaguePlayoffDivisions, hasExternalRentalField, setValue]);
 
     const fieldsReferencedInSlots = useMemo(() => {
         const availableFields = isOrganizationManagedEvent ? selectedFields : fields;
@@ -5896,15 +5940,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
 
     const eventTypeOptions = useMemo(
-        () =>
-            hasExternalRentalField
-                ? [{ value: 'EVENT', label: 'Pickup Game' }]
-                : [
-                    { value: 'EVENT', label: 'Pickup Game' },
-                    { value: 'TOURNAMENT', label: 'Tournament' },
-                    { value: 'LEAGUE', label: 'League' },
-                ],
-        [hasExternalRentalField],
+        () => [
+            { value: 'EVENT', label: 'Pickup Game' },
+            { value: 'TOURNAMENT', label: 'Tournament' },
+            { value: 'LEAGUE', label: 'League' },
+        ],
+        [],
     );
     const supportsNoFixedEndDateTime = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
 
@@ -5951,9 +5992,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     useEffect(() => {
         if (!hasExternalRentalField) {
             return;
-        }
-        if (eventData.eventType !== 'EVENT') {
-            setValue('eventType', 'EVENT', { shouldDirty: true, shouldValidate: true });
         }
         if (eventData.noFixedEndDateTime) {
             setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
@@ -6723,6 +6761,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const allowImageEdit = !isImmutableField('imageId');
     const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates') || hasExternalRentalField;
+    const splitLeaguePlayoffDivisionsLocked = isImmutableField('splitLeaguePlayoffDivisions') && !hasExternalRentalField;
     const isSchedulableEventType = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
     const showScheduleConfig = isSchedulableEventType || usesRentalSlots;
@@ -7046,7 +7085,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 data={eventTypeOptions}
                                                 value={field.value}
                                                 comboboxProps={sharedComboboxProps}
-                                                disabled={isImmutableField('eventType') || hasExternalRentalField}
+                                                disabled={isImmutableField('eventType')}
                                                 onChange={(value) => {
                                                     if (isImmutableField('eventType')) return;
                                                     if (!value) return;
@@ -7496,7 +7535,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         data={templateOptions}
                                         value={field.value ?? []}
                                         maw={560}
-                                        disabled={!organizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
+                                        disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
                                         comboboxProps={sharedComboboxProps}
                                         onChange={(vals) => {
                                             if (isImmutableField('requiredTemplateIds')) return;
@@ -7512,7 +7551,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     {templatesError}
                                 </Text>
                             </AnimatedSection>
-                            <AnimatedSection in={!templatesLoading && Boolean(organizationId) && templateOptions.length === 0}>
+                            <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
                                 <Text size="sm" c="dimmed">
                                     No templates yet. Create one in your organization Document Templates tab.
                                 </Text>
@@ -7736,7 +7775,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                             </div>
 
-                            {shouldManageLocalFields && (
+                            {shouldManageLocalFields && !hasExternalRentalField && (
                                 <div className="mt-4 space-y-4">
                                     <div>
                                         <MantineSelect
@@ -8532,7 +8571,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </div>
 
                             {/* Team Settings */}
-                            <AnimatedSection in={eventData.eventType === 'EVENT'}>
+                            {eventData.eventType === 'EVENT' ? (
                                 <div className="mt-6 space-y-3">
                                     <Controller
                                         name="teamSignup"
@@ -8580,7 +8619,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
-                                    <AnimatedSection in={isOrganizationManagedEvent}>
+                                    {isOrganizationManagedEvent ? (
                                         <Controller
                                             name="selectedFieldIds"
                                             control={control}
@@ -8603,10 +8642,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 />
                                             )}
                                         />
-                                    </AnimatedSection>
+                                    ) : null}
                                 </div>
-                            </AnimatedSection>
-                            <AnimatedSection in={eventData.eventType !== 'EVENT'}>
+                            ) : (
                                 <div className="mt-6 space-y-2">
                                     <Switch
                                         label="Team Event (teams compete rather than individuals)"
@@ -8644,7 +8682,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
-                                    <AnimatedSection in={eventData.eventType === 'LEAGUE'}>
+                                    {eventData.eventType === 'LEAGUE' ? (
                                         <Controller
                                             name="splitLeaguePlayoffDivisions"
                                             control={control}
@@ -8655,9 +8693,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         ? 'Configure league divisions separately from playoff bracket divisions.'
                                                         : 'Enable playoffs to configure split league/playoff divisions.'}
                                                     checked={field.value}
-                                                    disabled={isImmutableField('splitLeaguePlayoffDivisions') || !leagueData.includePlayoffs}
+                                                    disabled={
+                                                        splitLeaguePlayoffDivisionsLocked
+                                                        || !leagueData.includePlayoffs
+                                                        || (eventData.singleDivision && !hasExternalRentalField)
+                                                    }
                                                     onChange={(event) => {
-                                                        if (isImmutableField('splitLeaguePlayoffDivisions')) return;
+                                                        if (
+                                                            splitLeaguePlayoffDivisionsLocked
+                                                            || (eventData.singleDivision && !hasExternalRentalField)
+                                                        ) {
+                                                            return;
+                                                        }
                                                         const checked = event.currentTarget.checked;
                                                         field.onChange(checked);
                                                         if (checked && (eventData.playoffDivisionDetails || []).length === 0) {
@@ -8671,13 +8718,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 />
                                             )}
                                         />
-                                    </AnimatedSection>
+                                    ) : null}
                                     <Text size="sm" c="dimmed">
                                         Leagues and tournaments are always team events. When single division is enabled,
                                         each timeslot is automatically assigned all selected divisions.
                                     </Text>
                                 </div>
-                            </AnimatedSection>
+                            )}
                             </Collapse>
                         </Paper>
 
@@ -8792,7 +8839,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     eventStartDate={eventData.start}
                                                     lockSlotDivisions={Boolean(eventData.singleDivision)}
                                                     lockedDivisionKeys={slotDivisionKeys}
-                                                    readOnly={hasImmutableTimeSlots}
+                                                    readOnly={hasImmutableTimeSlots || hasExternalRentalField}
+                                                    allowDivisionEditsWhenReadOnly={hasExternalRentalField && !eventData.singleDivision}
                                                     showPlayoffSettings={false}
                                                     showLeagueConfiguration={eventData.eventType === 'LEAGUE'}
                                                 />

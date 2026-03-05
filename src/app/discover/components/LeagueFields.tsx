@@ -147,6 +147,7 @@ interface LeagueFieldsProps {
   lockSlotDivisions?: boolean;
   lockedDivisionKeys?: string[];
   readOnly?: boolean;
+  allowDivisionEditsWhenReadOnly?: boolean;
   onAutoResolveSlotConflict?: (index: number) => void;
   showLeagueConfiguration?: boolean;
   showPlayoffSettings?: boolean;
@@ -169,6 +170,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   lockSlotDivisions = false,
   lockedDivisionKeys = [],
   readOnly = false,
+  allowDivisionEditsWhenReadOnly = false,
   onAutoResolveSlotConflict,
   showLeagueConfiguration = true,
   showPlayoffSettings = true,
@@ -571,6 +573,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               slotEndDate &&
               slotEndDate.getTime() <= slotStartDate.getTime(),
             );
+            const divisionsReadOnly = readOnly && !allowDivisionEditsWhenReadOnly;
             const startTimeOptions = typeof slot.startTimeMinutes === 'number' &&
               !TIME_OPTIONS.some((option) => option.value === String(slot.startTimeMinutes))
               ? [...TIME_OPTIONS, { value: String(slot.startTimeMinutes), label: toAmPmLabel(slot.startTimeMinutes) }]
@@ -671,8 +674,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           });
                         }}
                         searchable
-                        clearable={!lockSlotDivisions}
-                        disabled={readOnly || lockSlotDivisions}
+                        clearable={!lockSlotDivisions && !divisionsReadOnly}
+                        disabled={divisionsReadOnly || lockSlotDivisions}
                         maw={360}
                       />
 
