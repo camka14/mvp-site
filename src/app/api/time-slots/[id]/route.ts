@@ -115,6 +115,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       )
       : [];
   }
+  if (payload.rentalDocumentTemplateId !== undefined) {
+    payload.rentalDocumentTemplateId =
+      typeof payload.rentalDocumentTemplateId === 'string' && payload.rentalDocumentTemplateId.trim().length > 0
+        ? payload.rentalDocumentTemplateId.trim()
+        : null;
+  }
   if (payload.scheduledFieldIds !== undefined || payload.scheduledFieldId !== undefined) {
     const normalized = normalizeFieldIds([
       ...(Array.isArray(payload.scheduledFieldIds) ? payload.scheduledFieldIds : []),

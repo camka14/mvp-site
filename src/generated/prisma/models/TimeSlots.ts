@@ -54,6 +54,7 @@ export type TimeSlotsMinAggregateOutputType = {
   endDate: Date | null
   scheduledFieldId: string | null
   price: number | null
+  rentalDocumentTemplateId: string | null
 }
 
 export type TimeSlotsMaxAggregateOutputType = {
@@ -68,6 +69,7 @@ export type TimeSlotsMaxAggregateOutputType = {
   endDate: Date | null
   scheduledFieldId: string | null
   price: number | null
+  rentalDocumentTemplateId: string | null
 }
 
 export type TimeSlotsCountAggregateOutputType = {
@@ -86,6 +88,7 @@ export type TimeSlotsCountAggregateOutputType = {
   price: number
   divisions: number
   requiredTemplateIds: number
+  rentalDocumentTemplateId: number
   _all: number
 }
 
@@ -118,6 +121,7 @@ export type TimeSlotsMinAggregateInputType = {
   endDate?: true
   scheduledFieldId?: true
   price?: true
+  rentalDocumentTemplateId?: true
 }
 
 export type TimeSlotsMaxAggregateInputType = {
@@ -132,6 +136,7 @@ export type TimeSlotsMaxAggregateInputType = {
   endDate?: true
   scheduledFieldId?: true
   price?: true
+  rentalDocumentTemplateId?: true
 }
 
 export type TimeSlotsCountAggregateInputType = {
@@ -150,6 +155,7 @@ export type TimeSlotsCountAggregateInputType = {
   price?: true
   divisions?: true
   requiredTemplateIds?: true
+  rentalDocumentTemplateId?: true
   _all?: true
 }
 
@@ -255,6 +261,7 @@ export type TimeSlotsGroupByOutputType = {
   price: number | null
   divisions: string[]
   requiredTemplateIds: string[]
+  rentalDocumentTemplateId: string | null
   _count: TimeSlotsCountAggregateOutputType | null
   _avg: TimeSlotsAvgAggregateOutputType | null
   _sum: TimeSlotsSumAggregateOutputType | null
@@ -296,6 +303,7 @@ export type TimeSlotsWhereInput = {
   price?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
+  rentalDocumentTemplateId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
 }
 
 export type TimeSlotsOrderByWithRelationInput = {
@@ -314,6 +322,7 @@ export type TimeSlotsOrderByWithRelationInput = {
   price?: Prisma.SortOrderInput | Prisma.SortOrder
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
+  rentalDocumentTemplateId?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type TimeSlotsWhereUniqueInput = Prisma.AtLeast<{
@@ -335,6 +344,7 @@ export type TimeSlotsWhereUniqueInput = Prisma.AtLeast<{
   price?: Prisma.IntNullableFilter<"TimeSlots"> | number | null
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
+  rentalDocumentTemplateId?: Prisma.StringNullableFilter<"TimeSlots"> | string | null
 }, "id">
 
 export type TimeSlotsOrderByWithAggregationInput = {
@@ -353,6 +363,7 @@ export type TimeSlotsOrderByWithAggregationInput = {
   price?: Prisma.SortOrderInput | Prisma.SortOrder
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
+  rentalDocumentTemplateId?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.TimeSlotsCountOrderByAggregateInput
   _avg?: Prisma.TimeSlotsAvgOrderByAggregateInput
   _max?: Prisma.TimeSlotsMaxOrderByAggregateInput
@@ -379,6 +390,7 @@ export type TimeSlotsScalarWhereWithAggregatesInput = {
   price?: Prisma.IntNullableWithAggregatesFilter<"TimeSlots"> | number | null
   divisions?: Prisma.StringNullableListFilter<"TimeSlots">
   requiredTemplateIds?: Prisma.StringNullableListFilter<"TimeSlots">
+  rentalDocumentTemplateId?: Prisma.StringNullableWithAggregatesFilter<"TimeSlots"> | string | null
 }
 
 export type TimeSlotsCreateInput = {
@@ -397,6 +409,7 @@ export type TimeSlotsCreateInput = {
   price?: number | null
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
+  rentalDocumentTemplateId?: string | null
 }
 
 export type TimeSlotsUncheckedCreateInput = {
@@ -415,6 +428,7 @@ export type TimeSlotsUncheckedCreateInput = {
   price?: number | null
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
+  rentalDocumentTemplateId?: string | null
 }
 
 export type TimeSlotsUpdateInput = {
@@ -433,6 +447,7 @@ export type TimeSlotsUpdateInput = {
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
+  rentalDocumentTemplateId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type TimeSlotsUncheckedUpdateInput = {
@@ -451,6 +466,7 @@ export type TimeSlotsUncheckedUpdateInput = {
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
+  rentalDocumentTemplateId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type TimeSlotsCreateManyInput = {
@@ -469,6 +485,7 @@ export type TimeSlotsCreateManyInput = {
   price?: number | null
   divisions?: Prisma.TimeSlotsCreatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsCreaterequiredTemplateIdsInput | string[]
+  rentalDocumentTemplateId?: string | null
 }
 
 export type TimeSlotsUpdateManyMutationInput = {
@@ -487,6 +504,7 @@ export type TimeSlotsUpdateManyMutationInput = {
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
+  rentalDocumentTemplateId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type TimeSlotsUncheckedUpdateManyInput = {
@@ -505,6 +523,7 @@ export type TimeSlotsUncheckedUpdateManyInput = {
   price?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisions?: Prisma.TimeSlotsUpdatedivisionsInput | string[]
   requiredTemplateIds?: Prisma.TimeSlotsUpdaterequiredTemplateIdsInput | string[]
+  rentalDocumentTemplateId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type TimeSlotsCountOrderByAggregateInput = {
@@ -523,6 +542,7 @@ export type TimeSlotsCountOrderByAggregateInput = {
   price?: Prisma.SortOrder
   divisions?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
+  rentalDocumentTemplateId?: Prisma.SortOrder
 }
 
 export type TimeSlotsAvgOrderByAggregateInput = {
@@ -545,6 +565,7 @@ export type TimeSlotsMaxOrderByAggregateInput = {
   endDate?: Prisma.SortOrder
   scheduledFieldId?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  rentalDocumentTemplateId?: Prisma.SortOrder
 }
 
 export type TimeSlotsMinOrderByAggregateInput = {
@@ -559,6 +580,7 @@ export type TimeSlotsMinOrderByAggregateInput = {
   endDate?: Prisma.SortOrder
   scheduledFieldId?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  rentalDocumentTemplateId?: Prisma.SortOrder
 }
 
 export type TimeSlotsSumOrderByAggregateInput = {
@@ -623,6 +645,7 @@ export type TimeSlotsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   price?: boolean
   divisions?: boolean
   requiredTemplateIds?: boolean
+  rentalDocumentTemplateId?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -641,6 +664,7 @@ export type TimeSlotsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   price?: boolean
   divisions?: boolean
   requiredTemplateIds?: boolean
+  rentalDocumentTemplateId?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -659,6 +683,7 @@ export type TimeSlotsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   price?: boolean
   divisions?: boolean
   requiredTemplateIds?: boolean
+  rentalDocumentTemplateId?: boolean
 }, ExtArgs["result"]["timeSlots"]>
 
 export type TimeSlotsSelectScalar = {
@@ -677,9 +702,10 @@ export type TimeSlotsSelectScalar = {
   price?: boolean
   divisions?: boolean
   requiredTemplateIds?: boolean
+  rentalDocumentTemplateId?: boolean
 }
 
-export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "daysOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "repeating" | "endDate" | "scheduledFieldId" | "scheduledFieldIds" | "price" | "divisions" | "requiredTemplateIds", ExtArgs["result"]["timeSlots"]>
+export type TimeSlotsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "dayOfWeek" | "daysOfWeek" | "startTimeMinutes" | "endTimeMinutes" | "startDate" | "repeating" | "endDate" | "scheduledFieldId" | "scheduledFieldIds" | "price" | "divisions" | "requiredTemplateIds" | "rentalDocumentTemplateId", ExtArgs["result"]["timeSlots"]>
 
 export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "TimeSlots"
@@ -700,6 +726,7 @@ export type $TimeSlotsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     price: number | null
     divisions: string[]
     requiredTemplateIds: string[]
+    rentalDocumentTemplateId: string | null
   }, ExtArgs["result"]["timeSlots"]>
   composites: {}
 }
@@ -1138,6 +1165,7 @@ export interface TimeSlotsFieldRefs {
   readonly price: Prisma.FieldRef<"TimeSlots", 'Int'>
   readonly divisions: Prisma.FieldRef<"TimeSlots", 'String[]'>
   readonly requiredTemplateIds: Prisma.FieldRef<"TimeSlots", 'String[]'>
+  readonly rentalDocumentTemplateId: Prisma.FieldRef<"TimeSlots", 'String'>
 }
     
 

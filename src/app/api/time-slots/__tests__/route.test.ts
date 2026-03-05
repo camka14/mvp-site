@@ -4,6 +4,9 @@ import { NextRequest } from 'next/server';
 
 const prismaMock = {
   $executeRaw: jest.fn().mockResolvedValue(1),
+  fields: {
+    findMany: jest.fn(),
+  },
   timeSlots: {
     findMany: jest.fn(),
     create: jest.fn(),
@@ -70,8 +73,8 @@ describe('time-slots routes', () => {
           AND: [
             {
               OR: [
-                { scheduledFieldId: 'field_2' },
-                { scheduledFieldIds: { has: 'field_2' } },
+                { scheduledFieldId: { in: ['field_2'] } },
+                { scheduledFieldIds: { hasSome: ['field_2'] } },
               ],
             },
             {
@@ -93,6 +96,75 @@ describe('time-slots routes', () => {
     }));
   });
 
+  it('GET accepts fieldIds csv and filters across scalar and array field references', async () => {
+    prismaMock.timeSlots.findMany.mockResolvedValueOnce([]);
+
+    const res = await GET(new NextRequest('http://localhost/api/time-slots?fieldIds=field_1,field_2'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.timeSlots.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [
+                { scheduledFieldId: { in: ['field_1', 'field_2'] } },
+                { scheduledFieldIds: { hasSome: ['field_1', 'field_2'] } },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('GET with rentalOnly scopes field lookups to field.rentalSlotIds', async () => {
+    prismaMock.fields.findMany.mockResolvedValueOnce([
+      { rentalSlotIds: ['slot_rental'] },
+    ]);
+    prismaMock.timeSlots.findMany.mockResolvedValueOnce([
+      {
+        id: 'slot_rental',
+        dayOfWeek: 1,
+        daysOfWeek: [1],
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+        divisions: ['open'],
+        startDate: new Date('2026-01-05T00:00:00.000Z'),
+        endDate: null,
+        repeating: true,
+        startTimeMinutes: 540,
+        endTimeMinutes: 600,
+      },
+    ]);
+
+    const res = await GET(new NextRequest('http://localhost/api/time-slots?fieldId=field_1&rentalOnly=1'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.fields.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['field_1'] } },
+      select: { rentalSlotIds: true },
+    });
+    expect(prismaMock.timeSlots.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [
+                { scheduledFieldId: { in: ['field_1'] } },
+                { scheduledFieldIds: { hasSome: ['field_1'] } },
+              ],
+            },
+            { id: { in: ['slot_rental'] } },
+          ],
+        },
+      }),
+    );
+    expect(json.timeSlots).toHaveLength(1);
+    expect(json.timeSlots[0].id).toBe('slot_rental');
+  });
+
   it('POST persists canonical field/day arrays and keeps scalar aliases', async () => {
     prismaMock.timeSlots.create.mockResolvedValueOnce({
       id: 'slot_create',
@@ -108,6 +180,7 @@ describe('time-slots routes', () => {
       endTimeMinutes: 600,
       price: null,
       requiredTemplateIds: [],
+      rentalDocumentTemplateId: 'tmpl_rental_doc',
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -122,6 +195,7 @@ describe('time-slots routes', () => {
       endTimeMinutes: 600,
       repeating: true,
       divisions: ['Open'],
+      rentalDocumentTemplateId: 'tmpl_rental_doc',
       startDate: '2026-01-05T00:00:00.000Z',
       endDate: null,
     }));
@@ -135,6 +209,7 @@ describe('time-slots routes', () => {
           daysOfWeek: [1, 3],
           scheduledFieldId: 'field_2',
           scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
+          rentalDocumentTemplateId: 'tmpl_rental_doc',
         }),
       }),
     );
@@ -144,6 +219,7 @@ describe('time-slots routes', () => {
       daysOfWeek: [1, 3],
       scheduledFieldId: 'field_2',
       scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
+      rentalDocumentTemplateId: 'tmpl_rental_doc',
     }));
   });
 
@@ -162,6 +238,7 @@ describe('time-slots routes', () => {
       endTimeMinutes: 600,
       price: null,
       requiredTemplateIds: [],
+      rentalDocumentTemplateId: 'tmpl_patch_doc',
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -171,6 +248,7 @@ describe('time-slots routes', () => {
         slot: {
           daysOfWeek: [4, 2, 4],
           scheduledFieldIds: ['field_a', 'field_b', 'field_a'],
+          rentalDocumentTemplateId: '  tmpl_patch_doc  ',
         },
       }, 'PATCH'),
       { params: Promise.resolve({ id: 'slot_patch' }) },
@@ -186,6 +264,7 @@ describe('time-slots routes', () => {
           daysOfWeek: [2, 4],
           scheduledFieldId: 'field_a',
           scheduledFieldIds: ['field_a', 'field_b'],
+          rentalDocumentTemplateId: 'tmpl_patch_doc',
         }),
       }),
     );
@@ -195,6 +274,7 @@ describe('time-slots routes', () => {
       daysOfWeek: [2, 4],
       scheduledFieldId: 'field_a',
       scheduledFieldIds: ['field_a', 'field_b'],
+      rentalDocumentTemplateId: 'tmpl_patch_doc',
     }));
   });
 });

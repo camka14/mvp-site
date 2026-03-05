@@ -1942,6 +1942,7 @@ describe('League schedule page', () => {
         if (key === 'rentalFieldId') return 'field_1';
         if (key === 'rentalOrgId') return 'org_rental';
         if (key === 'rentalRequiredTemplateIds') return 'tmpl_waiver,tmpl_release';
+        if (key === 'rentalDocumentTemplateId') return 'tmpl_rental_contract';
         if (key === 'mode') return 'edit';
         return null;
       },
@@ -1964,5 +1965,6 @@ describe('League schedule page', () => {
       'tmpl_waiver',
       'tmpl_release',
     ]);
+    expect(capturedEventFormProps?.rentalPurchase?.rentalDocumentTemplateId).toBe('tmpl_rental_contract');
   });
 });

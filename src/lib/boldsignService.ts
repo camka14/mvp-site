@@ -217,6 +217,45 @@ class BoldSignService {
     }));
   }
 
+  async createRentalSignLinks(params: {
+    user: UserData;
+    userEmail?: string;
+    eventId?: string;
+    organizationId?: string;
+    templateId?: string;
+    templateIds?: string[];
+    redirectUrl?: string;
+    timeoutMs?: number;
+  }): Promise<SignStep[]> {
+    const result = await apiRequest<SignLinksResponse>(
+      '/api/rentals/sign',
+      {
+        method: 'POST',
+        timeoutMs: params.timeoutMs,
+        body: {
+          user: params.user,
+          userId: params.user.$id,
+          userEmail: params.userEmail,
+          eventId: params.eventId,
+          organizationId: params.organizationId,
+          templateId: params.templateId,
+          templateIds: params.templateIds,
+          redirectUrl: params.redirectUrl,
+        },
+      },
+    );
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    if (!Array.isArray(result?.signLinks)) {
+      return [];
+    }
+    return result.signLinks.map((link) => ({
+      ...link,
+      type: (link.type ?? 'PDF') as TemplateDocumentType,
+    }));
+  }
+
   /** @deprecated Use webhook-driven operation polling instead. */
   async markSigned(params: {
     documentId: string;

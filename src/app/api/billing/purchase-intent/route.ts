@@ -48,6 +48,14 @@ const appendMetadata = (
   metadata[key] = normalized.slice(0, maxLength);
 };
 
+const isSignedStatus = (value: unknown): boolean => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'signed' || normalized === 'completed';
+};
+
 export async function POST(req: NextRequest) {
   await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -57,6 +65,44 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = parsed.data;
+  const userId = extractEntityId(payload.user);
+  const eventId = extractEntityId(payload.event);
+  const rentalDocumentTemplateId = normalizeString(payload.timeSlot?.rentalDocumentTemplateId);
+
+  if (payload.timeSlot && rentalDocumentTemplateId) {
+    if (!userId) {
+      return NextResponse.json({ error: 'Sign in to complete rental document signing before payment.' }, { status: 403 });
+    }
+    const template = await prisma.templateDocuments.findUnique({
+      where: { id: rentalDocumentTemplateId },
+      select: { id: true, signOnce: true },
+    });
+    if (!template) {
+      return NextResponse.json({ error: 'Rental document template not found.' }, { status: 400 });
+    }
+    if (!template.signOnce && !eventId) {
+      return NextResponse.json({ error: 'Event id is required to verify rental document signatures.' }, { status: 400 });
+    }
+
+    const signedRows = await prisma.signedDocuments.findMany({
+      where: {
+        templateId: rentalDocumentTemplateId,
+        userId,
+        signerRole: 'participant',
+        ...(template.signOnce ? {} : { eventId }),
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 20,
+      select: { status: true },
+    });
+    const hasSignedDocument = signedRows.some((row) => isSignedStatus(row.status));
+    if (!hasSignedDocument) {
+      return NextResponse.json({
+        error: 'Rental document must be signed before checkout.',
+      }, { status: 403 });
+    }
+  }
+
   let amountCents = 0;
   let purchaseType = 'event';
   let product: {
@@ -132,9 +178,7 @@ export async function POST(req: NextRequest) {
 
   const stripe = new Stripe(secretKey);
   try {
-    const userId = extractEntityId(payload.user);
     const teamId = extractEntityId(payload.team);
-    const eventId = extractEntityId(payload.event);
     const organizationId =
       extractEntityId(payload.organization)
       ?? normalizeString(payload.event?.organizationId)
@@ -163,6 +207,7 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'time_slot_id', extractEntityId(payload.timeSlot));
     appendMetadata(metadata, 'time_slot_start', payload.timeSlot?.startDate);
     appendMetadata(metadata, 'time_slot_end', payload.timeSlot?.endDate);
+    appendMetadata(metadata, 'rental_template_id', rentalDocumentTemplateId);
     appendMetadata(metadata, 'product_name', product?.name);
     appendMetadata(metadata, 'product_description', product?.description);
     appendMetadata(metadata, 'product_period', product?.period);

@@ -960,9 +960,6 @@ class EventService {
         const lat = typeof row.lat === 'number' ? row.lat : Number(row.lat ?? 0);
         const long = typeof row.long === 'number' ? row.long : Number(row.long ?? 0);
         const fieldNumber = typeof row.fieldNumber === 'number' ? row.fieldNumber : Number(row.fieldNumber ?? 0);
-        const rentalSlotIds = Array.isArray(row.rentalSlotIds)
-            ? row.rentalSlotIds.map((value: unknown) => String(value))
-            : undefined;
 
         const field: Field = {
             $id: String(row.$id ?? row.id ?? ''),
@@ -973,7 +970,9 @@ class EventService {
             fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
             divisions: Array.isArray(row.divisions) ? row.divisions : undefined,
             organization: row.organization ?? row.organizationId ?? undefined,
-            rentalSlotIds,
+            rentalSlotIds: Array.isArray(row.rentalSlotIds)
+                ? row.rentalSlotIds.map((value: unknown) => String(value))
+                : [],
         } as Field;
 
         return field;
@@ -1427,6 +1426,10 @@ class EventService {
             requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
                 ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id: string) => id.length > 0)
                 : [],
+            rentalDocumentTemplateId:
+                typeof row.rentalDocumentTemplateId === 'string' && row.rentalDocumentTemplateId.trim().length > 0
+                    ? row.rentalDocumentTemplateId.trim()
+                    : null,
         };
 
         const normalizedStartDate = ensureLocalDateTimeString(row.startDate ?? row.start ?? null);

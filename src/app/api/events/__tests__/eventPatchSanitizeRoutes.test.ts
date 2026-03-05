@@ -31,12 +31,17 @@ const leagueScoringConfigsMock = {
   upsert: jest.fn(),
 };
 
+const organizationsMock = {
+  findUnique: jest.fn(),
+};
+
 const executeRawMock = jest.fn();
 
 const prismaMock = {
   events: eventsMock,
   timeSlots: timeSlotsMock,
   divisions: divisionsMock,
+  organizations: organizationsMock,
   $transaction: jest.fn(async (callback: any) => callback({
     events: eventsMock,
     timeSlots: timeSlotsMock,
@@ -44,6 +49,7 @@ const prismaMock = {
     matches: matchesMock,
     divisions: divisionsMock,
     leagueScoringConfigs: leagueScoringConfigsMock,
+    organizations: organizationsMock,
     $executeRaw: executeRawMock,
   })),
 };
@@ -70,6 +76,11 @@ const patchRequest = (url: string, body: any) =>
 describe('event PATCH route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    organizationsMock.findUnique.mockResolvedValue({
+      ownerId: 'owner_1',
+      hostIds: ['host_1'],
+      refIds: ['ref_1'],
+    });
   });
 
   it('strips legacy $-prefixed fields and ignores unsupported keys (no legacy mapping)', async () => {
@@ -140,6 +151,55 @@ describe('event PATCH route', () => {
     const updateArg = prismaMock.events.update.mock.calls[0][0];
     expect(updateArg.where).toEqual({ id: 'event_1' });
     expect(updateArg.data.userIds).toEqual(['user_1']);
+  });
+
+  it('restricts org event host and referee assignments to organization hosts/referees', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    organizationsMock.findUnique.mockResolvedValueOnce({
+      ownerId: 'owner_1',
+      hostIds: ['host_1', 'host_2'],
+      refIds: ['ref_org_1'],
+    });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        organizationId: 'org_1',
+        assistantHostIds: ['host_2'],
+        refereeIds: ['ref_org_1'],
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'owner_1',
+        organizationId: 'org_1',
+        assistantHostIds: ['host_2'],
+        refereeIds: ['ref_org_1'],
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'owner_1',
+      organizationId: 'org_1',
+      assistantHostIds: ['host_2'],
+      refereeIds: ['ref_org_1'],
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          hostId: 'outside_host',
+          assistantHostIds: ['host_2', 'outside_assistant'],
+          refereeIds: ['ref_org_1', 'outside_ref'],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const updateArg = prismaMock.events.update.mock.calls[0][0];
+    expect(updateArg.data.hostId).toBe('owner_1');
+    expect(updateArg.data.assistantHostIds).toEqual(['host_2']);
+    expect(updateArg.data.refereeIds).toEqual(['ref_org_1']);
   });
 
   it('syncs division field mappings when divisionFieldIds are provided', async () => {

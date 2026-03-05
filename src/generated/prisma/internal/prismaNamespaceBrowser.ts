@@ -546,7 +546,8 @@ export const TimeSlotsScalarFieldEnum = {
   scheduledFieldIds: 'scheduledFieldIds',
   price: 'price',
   divisions: 'divisions',
-  requiredTemplateIds: 'requiredTemplateIds'
+  requiredTemplateIds: 'requiredTemplateIds',
+  rentalDocumentTemplateId: 'rentalDocumentTemplateId'
 } as const
 
 export type TimeSlotsScalarFieldEnum = (typeof TimeSlotsScalarFieldEnum)[keyof typeof TimeSlotsScalarFieldEnum]

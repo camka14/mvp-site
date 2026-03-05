@@ -20,6 +20,7 @@ const createSchema = z.object({
   scheduledFieldId: z.string().optional(),
   price: z.number().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
+  rentalDocumentTemplateId: z.string().nullable().optional(),
 }).passthrough();
 
 const normalizeDivisionKeys = (value: unknown): string[] => {
@@ -98,19 +99,49 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const fieldId = params.get('fieldId')?.trim();
+  const fieldIdsParam = params.get('fieldIds');
+  const rentalOnlyParam = params.get('rentalOnly');
   const dayOfWeek = params.get('dayOfWeek');
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
+  const rentalOnly = rentalOnlyParam === '1' || rentalOnlyParam === 'true';
+  const normalizedFieldIds = Array.from(
+    new Set(
+      [
+        ...(fieldId ? [fieldId] : []),
+        ...(fieldIdsParam ? fieldIdsParam.split(',').map((id) => id.trim()).filter(Boolean) : []),
+      ],
+    ),
+  );
 
   const whereClauses: any[] = [];
   if (ids?.length) whereClauses.push({ id: { in: ids } });
-  if (fieldId) {
+  if (normalizedFieldIds.length) {
     whereClauses.push({
       OR: [
-        { scheduledFieldId: fieldId },
-        { scheduledFieldIds: { has: fieldId } },
+        { scheduledFieldId: { in: normalizedFieldIds } },
+        { scheduledFieldIds: { hasSome: normalizedFieldIds } },
       ],
     });
+  }
+  if (rentalOnly && normalizedFieldIds.length) {
+    const fields = await prisma.fields.findMany({
+      where: { id: { in: normalizedFieldIds } },
+      select: { rentalSlotIds: true },
+    });
+    const rentalSlotIds = Array.from(
+      new Set(
+        fields.flatMap((field) =>
+          Array.isArray(field.rentalSlotIds)
+            ? field.rentalSlotIds.map((value: unknown) => String(value).trim()).filter(Boolean)
+            : [],
+        ),
+      ),
+    );
+    if (!rentalSlotIds.length) {
+      return NextResponse.json({ timeSlots: [] }, { status: 200 });
+    }
+    whereClauses.push({ id: { in: rentalSlotIds } });
   }
   if (dayOfWeek !== null && dayOfWeek !== undefined) {
     const day = Number(dayOfWeek);
@@ -170,6 +201,10 @@ export async function POST(req: NextRequest) {
   const requiredTemplateIds = Array.isArray(data.requiredTemplateIds)
     ? Array.from(new Set(data.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
     : [];
+  const rentalDocumentTemplateId =
+    typeof data.rentalDocumentTemplateId === 'string' && data.rentalDocumentTemplateId.trim().length > 0
+      ? data.rentalDocumentTemplateId.trim()
+      : null;
   const scheduledFieldIds = normalizeFieldIds([
     ...(Array.isArray(data.scheduledFieldIds) ? data.scheduledFieldIds : []),
     ...(typeof data.scheduledFieldId === 'string' ? [data.scheduledFieldId] : []),
@@ -192,6 +227,7 @@ export async function POST(req: NextRequest) {
       scheduledFieldIds,
       price: data.price ?? null,
       requiredTemplateIds,
+      rentalDocumentTemplateId,
       createdAt: now,
       updatedAt: now,
     } as any,

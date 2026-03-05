@@ -19,6 +19,8 @@ import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 import { paymentService } from '@/lib/paymentService';
+import { boldsignService, type SignStep } from '@/lib/boldsignService';
+import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService } from '@/lib/familyService';
 import { apiRequest } from '@/lib/apiClient';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
@@ -576,6 +578,12 @@ type TeamBillingSnapshot = {
   };
 };
 
+type PendingRentalCheckoutContext = {
+  eventDraft: Event;
+  draftToSave: Partial<Event>;
+  rentalSlot: TimeSlot;
+};
+
 const DEFAULT_NOTIFICATION_AUDIENCE: NotificationAudienceState = {
   managers: false,
   players: false,
@@ -654,7 +662,7 @@ const DEFAULT_SPORT: Sport = {
 
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
-  const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
+  const { user, authUser, loading: authLoading, isAuthenticated, isGuest } = useApp();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -678,6 +686,14 @@ function EventScheduleContent() {
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
   const rentalPriceParam = searchParams?.get('rentalPriceCents') || undefined;
   const rentalRequiredTemplateIdsParam = searchParams?.get('rentalRequiredTemplateIds') || undefined;
+  const rentalDocumentTemplateIdParam = searchParams?.get('rentalDocumentTemplateId') || undefined;
+  const rentalDocumentTemplateId = useMemo(() => {
+    if (!rentalDocumentTemplateIdParam) {
+      return undefined;
+    }
+    const normalized = rentalDocumentTemplateIdParam.trim();
+    return normalized.length > 0 ? normalized : undefined;
+  }, [rentalDocumentTemplateIdParam]);
   const rentalRequiredTemplateIds = useMemo(
     () => (
       rentalRequiredTemplateIdsParam
@@ -781,6 +797,14 @@ function EventScheduleContent() {
   const [formSeedEvent, setFormSeedEvent] = useState<Event | null>(null);
   const [rentalPaymentData, setRentalPaymentData] = useState<PaymentIntent | null>(null);
   const [showRentalPayment, setShowRentalPayment] = useState(false);
+  const [showRentalSignModal, setShowRentalSignModal] = useState(false);
+  const [rentalSignLinks, setRentalSignLinks] = useState<SignStep[]>([]);
+  const [rentalSignIndex, setRentalSignIndex] = useState(0);
+  const [rentalTextAccepted, setRentalTextAccepted] = useState(false);
+  const [rentalSignError, setRentalSignError] = useState<string | null>(null);
+  const [recordingRentalSignature, setRecordingRentalSignature] = useState(false);
+  const [pendingRentalSignedDocumentId, setPendingRentalSignedDocumentId] = useState<string | null>(null);
+  const [pendingRentalSignatureOperationId, setPendingRentalSignatureOperationId] = useState<string | null>(null);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [templateSummaries, setTemplateSummaries] = useState<Array<{ id: string; name: string }>>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -800,6 +824,7 @@ function EventScheduleContent() {
   const templateIdSeedResolvedRef = useRef<string | null>(null);
   const [failedTemplateSeedId, setFailedTemplateSeedId] = useState<string | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const pendingRentalCheckoutRef = useRef<PendingRentalCheckoutContext | null>(null);
   const isMobile = useMediaQuery('(max-width: 36em)');
   const eventFormRef = useRef<EventFormHandle>(null);
   const { location: userLocation, locationInfo: userLocationInfo } = useLocation();
@@ -977,8 +1002,9 @@ function EventScheduleContent() {
       end: normalizedEnd,
       fieldId: rentalFieldIdParam ?? undefined,
       priceCents: normalizedPrice,
+      rentalDocumentTemplateId,
     };
-  }, [isCreateMode, rentalEndParam, rentalFieldIdParam, rentalPriceParam, rentalStartParam]);
+  }, [isCreateMode, rentalDocumentTemplateId, rentalEndParam, rentalFieldIdParam, rentalPriceParam, rentalStartParam]);
 
   const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
     if (!rentalPurchaseContext) {
@@ -1016,6 +1042,7 @@ function EventScheduleContent() {
       repeating: false,
       scheduledFieldId,
       price,
+      rentalDocumentTemplateId: rentalPurchaseContext.rentalDocumentTemplateId ?? null,
     };
   }, [changesEvent?.fields, rentalImmutableDefaults?.fields, rentalPurchaseContext]);
 
@@ -3368,6 +3395,7 @@ function EventScheduleContent() {
       imageId: source?.imageId,
     };
   }, [activeEvent, changesEvent, event, rentalPurchaseContext?.priceCents]);
+  const currentRentalSignLink = rentalSignLinks[rentalSignIndex] ?? null;
 
   // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
   // Hydrate event + match data from the API and sync local component state.
@@ -4523,6 +4551,361 @@ function EventScheduleContent() {
     [buildSchedulePayload, eventId, handlePreviewEventUpdate, pathname, router, searchParams],
   );
 
+  const resetRentalSignFlowState = useCallback(() => {
+    setRentalSignLinks([]);
+    setRentalSignIndex(0);
+    setRentalTextAccepted(false);
+    setRentalSignError(null);
+    setRecordingRentalSignature(false);
+    setPendingRentalSignedDocumentId(null);
+    setPendingRentalSignatureOperationId(null);
+  }, []);
+
+  const startRentalPaymentIntent = useCallback(async (context: PendingRentalCheckoutContext) => {
+    if (!user) {
+      setSubmitError('You must be signed in to continue checkout.');
+      return;
+    }
+
+    pendingRegularEventRef.current = context.draftToSave;
+    setPublishing(true);
+    try {
+      const paymentIntent = await paymentService.createPaymentIntent(
+        user,
+        context.eventDraft,
+        undefined,
+        context.rentalSlot,
+        rentalOrganization ?? undefined,
+      );
+      setRentalPaymentData(paymentIntent);
+      setShowRentalPayment(true);
+    } catch (error) {
+      pendingRegularEventRef.current = null;
+      setSubmitError(error instanceof Error ? error.message : 'Failed to start rental payment.');
+    } finally {
+      setPublishing(false);
+    }
+  }, [rentalOrganization, user]);
+
+  const startRentalCheckoutFlow = useCallback(async (context: PendingRentalCheckoutContext) => {
+    if (!rentalDocumentTemplateId) {
+      await startRentalPaymentIntent(context);
+      return;
+    }
+    if (!user) {
+      setSubmitError('You must be signed in to sign rental documents.');
+      return;
+    }
+
+    try {
+      const signLinks = await boldsignService.createRentalSignLinks({
+        user,
+        userEmail: authUser?.email ?? undefined,
+        templateId: rentalDocumentTemplateId,
+        eventId: context.eventDraft.$id ?? eventId,
+        organizationId: rentalOrganization?.$id ?? context.eventDraft.organizationId ?? undefined,
+        timeoutMs: 45_000,
+      });
+
+      if (!signLinks.length) {
+        await startRentalPaymentIntent(context);
+        return;
+      }
+
+      pendingRentalCheckoutRef.current = context;
+      setRentalSignLinks(signLinks);
+      setRentalSignIndex(0);
+      setRentalTextAccepted(false);
+      setRentalSignError(null);
+      setPendingRentalSignedDocumentId(null);
+      setPendingRentalSignatureOperationId(null);
+      setShowRentalSignModal(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Failed to start rental document signing.');
+    }
+  }, [
+    authUser?.email,
+    eventId,
+    rentalDocumentTemplateId,
+    rentalOrganization?.$id,
+    startRentalPaymentIntent,
+    user,
+  ]);
+
+  const advanceRentalSignFlow = useCallback(async () => {
+    const nextIndex = rentalSignIndex + 1;
+    if (nextIndex < rentalSignLinks.length) {
+      setRentalSignIndex(nextIndex);
+      setRentalTextAccepted(false);
+      setPendingRentalSignedDocumentId(null);
+      setPendingRentalSignatureOperationId(null);
+      setShowRentalSignModal(true);
+      return;
+    }
+
+    const checkoutContext = pendingRentalCheckoutRef.current;
+    pendingRentalCheckoutRef.current = null;
+    setShowRentalSignModal(false);
+    resetRentalSignFlowState();
+    if (checkoutContext) {
+      await startRentalPaymentIntent(checkoutContext);
+    }
+  }, [rentalSignIndex, rentalSignLinks.length, resetRentalSignFlowState, startRentalPaymentIntent]);
+
+  const recordRentalSignature = useCallback(async (params: {
+    templateId: string;
+    documentId: string;
+    type: SignStep['type'];
+  }): Promise<{ operationId?: string; syncStatus?: string }> => {
+    if (!user) {
+      throw new Error('You must be signed in to sign rental documents.');
+    }
+
+    const pendingContext = pendingRentalCheckoutRef.current;
+    const result = await apiRequest<{
+      ok?: boolean;
+      error?: string;
+      operationId?: string;
+      syncStatus?: string;
+    }>('/api/documents/record-signature', {
+      method: 'POST',
+      body: {
+        templateId: params.templateId,
+        documentId: params.documentId,
+        eventId: pendingContext?.eventDraft?.$id ?? eventId,
+        type: params.type,
+        userId: user.$id,
+        signerContext: 'participant',
+        user,
+      },
+    });
+
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+
+    return {
+      operationId: typeof result?.operationId === 'string' ? result.operationId : undefined,
+      syncStatus: typeof result?.syncStatus === 'string' ? result.syncStatus : undefined,
+    };
+  }, [eventId, user]);
+
+  const handleRentalSignedDocument = useCallback(async (messageDocumentId?: string) => {
+    const currentLink = rentalSignLinks[rentalSignIndex];
+    if (!currentLink || currentLink.type === 'TEXT') {
+      return;
+    }
+    if (messageDocumentId && messageDocumentId !== currentLink.documentId) {
+      return;
+    }
+    if (pendingRentalSignedDocumentId || pendingRentalSignatureOperationId || recordingRentalSignature) {
+      return;
+    }
+    if (!currentLink.documentId) {
+      setRentalSignError('Missing document identifier for signature.');
+      return;
+    }
+
+    setRecordingRentalSignature(true);
+    setRentalSignError(null);
+    try {
+      const signatureResult = await recordRentalSignature({
+        templateId: currentLink.templateId,
+        documentId: currentLink.documentId,
+        type: currentLink.type,
+      });
+      setShowRentalSignModal(false);
+      setPendingRentalSignedDocumentId(currentLink.documentId);
+      setPendingRentalSignatureOperationId(signatureResult.operationId || currentLink.operationId || null);
+    } catch (error) {
+      setRentalSignError(error instanceof Error ? error.message : 'Failed to record rental signature.');
+      setPendingRentalSignedDocumentId(null);
+      setPendingRentalSignatureOperationId(null);
+    } finally {
+      setRecordingRentalSignature(false);
+    }
+  }, [
+    pendingRentalSignatureOperationId,
+    pendingRentalSignedDocumentId,
+    recordRentalSignature,
+    recordingRentalSignature,
+    rentalSignIndex,
+    rentalSignLinks,
+  ]);
+
+  const handleRentalTextAcceptance = useCallback(async () => {
+    const currentLink = rentalSignLinks[rentalSignIndex];
+    if (!currentLink || currentLink.type !== 'TEXT') {
+      return;
+    }
+    if (!rentalTextAccepted || pendingRentalSignedDocumentId || pendingRentalSignatureOperationId || recordingRentalSignature) {
+      return;
+    }
+
+    const documentId = currentLink.documentId || createId();
+    setRecordingRentalSignature(true);
+    setRentalSignError(null);
+    try {
+      const signatureResult = await recordRentalSignature({
+        templateId: currentLink.templateId,
+        documentId,
+        type: currentLink.type,
+      });
+      setShowRentalSignModal(false);
+      setPendingRentalSignedDocumentId(documentId);
+      setPendingRentalSignatureOperationId(signatureResult.operationId || currentLink.operationId || null);
+    } catch (error) {
+      setRentalSignError(error instanceof Error ? error.message : 'Failed to record rental signature.');
+      setPendingRentalSignedDocumentId(null);
+      setPendingRentalSignatureOperationId(null);
+    } finally {
+      setRecordingRentalSignature(false);
+    }
+  }, [
+    pendingRentalSignatureOperationId,
+    pendingRentalSignedDocumentId,
+    recordRentalSignature,
+    recordingRentalSignature,
+    rentalSignIndex,
+    rentalSignLinks,
+    rentalTextAccepted,
+  ]);
+
+  useEffect(() => {
+    setRentalTextAccepted(false);
+  }, [rentalSignIndex, rentalSignLinks]);
+
+  useEffect(() => {
+    if (!showRentalSignModal) {
+      return;
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (typeof event.origin === 'string' && !event.origin.includes('boldsign')) {
+        return;
+      }
+      const payload = event.data;
+      let eventName = '';
+      if (typeof payload === 'string') {
+        eventName = payload;
+      } else if (payload && typeof payload === 'object') {
+        eventName = payload.event || payload.eventName || payload.type || payload.name || '';
+      }
+      const eventLabel = eventName.toString();
+      if (!eventLabel || (!eventLabel.includes('onDocumentSigned') && !eventLabel.includes('documentSigned'))) {
+        return;
+      }
+
+      const documentId =
+        (payload && typeof payload === 'object' && (payload.documentId || payload.documentID)) || undefined;
+      void handleRentalSignedDocument(
+        typeof documentId === 'string' ? documentId : undefined,
+      );
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [handleRentalSignedDocument, showRentalSignModal]);
+
+  useEffect(() => {
+    if (!pendingRentalSignatureOperationId || !user) {
+      return;
+    }
+
+    let cancelled = false;
+    const startedAt = Date.now();
+    const intervalMs = 1500;
+    const timeoutMs = 90_000;
+
+    const poll = async () => {
+      try {
+        const operation = await boldsignService.getOperationStatus(pendingRentalSignatureOperationId);
+        if (cancelled) {
+          return;
+        }
+
+        const status = String(operation.status ?? '').toUpperCase();
+        if (status === 'CONFIRMED') {
+          setPendingRentalSignedDocumentId(null);
+          setPendingRentalSignatureOperationId(null);
+          await advanceRentalSignFlow();
+          return;
+        }
+
+        if (status === 'FAILED' || status === 'FAILED_RETRYABLE' || status === 'TIMED_OUT') {
+          throw new Error(operation.error || 'Failed to synchronize rental signature status.');
+        }
+
+        if (Date.now() - startedAt > timeoutMs) {
+          throw new Error('Rental document sync is delayed. Please try again.');
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setRentalSignError(error instanceof Error ? error.message : 'Failed to confirm rental signature.');
+        setPendingRentalSignedDocumentId(null);
+        setPendingRentalSignatureOperationId(null);
+        setShowRentalSignModal(true);
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void poll();
+    }, intervalMs);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [advanceRentalSignFlow, pendingRentalSignatureOperationId, user]);
+
+  useEffect(() => {
+    if (!pendingRentalSignedDocumentId || !user || pendingRentalSignatureOperationId) {
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const signed = await signedDocumentService.isDocumentSigned(
+          pendingRentalSignedDocumentId,
+          user.$id,
+        );
+        if (!signed || cancelled) {
+          return;
+        }
+
+        setPendingRentalSignedDocumentId(null);
+        await advanceRentalSignFlow();
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setRentalSignError(error instanceof Error ? error.message : 'Failed to confirm rental signature.');
+        setPendingRentalSignedDocumentId(null);
+        setShowRentalSignModal(true);
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void poll();
+    }, 1000);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [advanceRentalSignFlow, pendingRentalSignatureOperationId, pendingRentalSignedDocumentId, user]);
+
+  const closeRentalSignModal = useCallback(() => {
+    setShowRentalSignModal(false);
+    resetRentalSignFlowState();
+    pendingRentalCheckoutRef.current = null;
+  }, [resetRentalSignFlowState]);
+
   const closeRentalPaymentModal = useCallback(() => {
     setShowRentalPayment(false);
     setRentalPaymentData(null);
@@ -4888,7 +5271,6 @@ function EventScheduleContent() {
         ...normalizedDraft,
         state: 'UNPUBLISHED',
       };
-      pendingRegularEventRef.current = draftToSave;
 
       if (rentalPurchaseTimeSlot && user) {
         const rentalPriceCents = typeof rentalPurchaseTimeSlot.price === 'number'
@@ -4897,22 +5279,11 @@ function EventScheduleContent() {
         const requiresPayment = typeof rentalPriceCents === 'number' && rentalPriceCents > 0;
 
         if (requiresPayment) {
-          setPublishing(true);
-          try {
-            const paymentIntent = await paymentService.createPaymentIntent(
-              user,
-              normalizedDraft as Event,
-              undefined,
-              rentalPurchaseTimeSlot,
-              rentalOrganization ?? undefined,
-            );
-            setRentalPaymentData(paymentIntent);
-            setShowRentalPayment(true);
-          } catch (error) {
-            setSubmitError(error instanceof Error ? error.message : 'Failed to start rental payment.');
-          } finally {
-            setPublishing(false);
-          }
+          await startRentalCheckoutFlow({
+            eventDraft: normalizedDraft as Event,
+            draftToSave,
+            rentalSlot: rentalPurchaseTimeSlot,
+          });
           return;
         }
       }
@@ -5803,6 +6174,103 @@ function EventScheduleContent() {
           paymentData={rentalPaymentData}
           onPaymentSuccess={handleRentalPaymentSuccess}
         />
+        <Modal
+          opened={showRentalSignModal && Boolean(currentRentalSignLink)}
+          onClose={closeRentalSignModal}
+          title="Sign Rental Document"
+          size="xl"
+          centered
+        >
+          <Stack gap="sm">
+            {currentRentalSignLink ? (
+              <>
+                <Text size="sm" c="dimmed">
+                  Document {rentalSignIndex + 1} of {rentalSignLinks.length}
+                  {currentRentalSignLink.title ? ` • ${currentRentalSignLink.title}` : ''}
+                </Text>
+                {currentRentalSignLink.requiredSignerLabel ? (
+                  <Text size="sm" c="dimmed">
+                    Required signer: {currentRentalSignLink.requiredSignerLabel}
+                  </Text>
+                ) : null}
+                {rentalSignError ? (
+                  <Alert color="red">
+                    {rentalSignError}
+                  </Alert>
+                ) : null}
+                {pendingRentalSignedDocumentId || pendingRentalSignatureOperationId ? (
+                  <Group gap="xs">
+                    <Loader size="sm" />
+                    <Text size="sm" c="dimmed">
+                      Confirming signature...
+                    </Text>
+                  </Group>
+                ) : null}
+                {currentRentalSignLink.type === 'TEXT' ? (
+                  <>
+                    <Paper withBorder p="sm" radius="md" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                      <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                        {currentRentalSignLink.content || 'No document content provided.'}
+                      </Text>
+                    </Paper>
+                    <Checkbox
+                      checked={rentalTextAccepted}
+                      onChange={(event) => setRentalTextAccepted(event.currentTarget.checked)}
+                      label="I have read and agree to this document."
+                    />
+                    <Group justify="flex-end">
+                      <Button
+                        onClick={handleRentalTextAcceptance}
+                        disabled={!rentalTextAccepted || recordingRentalSignature}
+                        loading={recordingRentalSignature}
+                      >
+                        Accept And Continue
+                      </Button>
+                    </Group>
+                  </>
+                ) : (
+                  <>
+                    {currentRentalSignLink.url ? (
+                      <iframe
+                        title={`Rental document ${currentRentalSignLink.title ?? currentRentalSignLink.templateId}`}
+                        src={currentRentalSignLink.url}
+                        className="h-[480px] w-full rounded border"
+                      />
+                    ) : (
+                      <Alert color="red">
+                        This document is missing a signing link. Close checkout and try again.
+                      </Alert>
+                    )}
+                    <Group justify="space-between">
+                      {currentRentalSignLink.url ? (
+                        <Button
+                          component="a"
+                          href={currentRentalSignLink.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          variant="default"
+                        >
+                          Open In New Tab
+                        </Button>
+                      ) : (
+                        <div />
+                      )}
+                      <Button
+                        onClick={() => void handleRentalSignedDocument()}
+                        disabled={!currentRentalSignLink.documentId || recordingRentalSignature}
+                        loading={recordingRentalSignature}
+                      >
+                        I Finished Signing
+                      </Button>
+                    </Group>
+                  </>
+                )}
+              </>
+            ) : (
+              <Text size="sm" c="dimmed">Preparing rental document...</Text>
+            )}
+          </Stack>
+        </Modal>
       </>
     );
   }

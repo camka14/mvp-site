@@ -611,6 +611,10 @@ export default function FieldsTabContent({ organization, organizationId, current
     const rentalRequiredTemplateIds = Array.isArray(matchingRentalSlot?.requiredTemplateIds)
       ? matchingRentalSlot.requiredTemplateIds.filter((id) => typeof id === 'string' && id.length > 0)
       : [];
+    const rentalDocumentTemplateId =
+      typeof matchingRentalSlot?.rentalDocumentTemplateId === 'string'
+        ? matchingRentalSlot.rentalDocumentTemplateId.trim()
+        : '';
     const newId = createId();
     const params = new URLSearchParams();
     params.set('create', '1');
@@ -639,6 +643,9 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (rentalRequiredTemplateIds.length > 0) {
       params.set('rentalRequiredTemplateIds', rentalRequiredTemplateIds.join(','));
     }
+    if (rentalDocumentTemplateId.length > 0) {
+      params.set('rentalDocumentTemplateId', rentalDocumentTemplateId);
+    }
     if (org?.$id) {
       params.set('rentalOrgId', org.$id);
     }
@@ -651,6 +658,7 @@ export default function FieldsTabContent({ organization, organizationId, current
     hostSelection,
     isSelectionValid,
     matchingRentalSlot?.price,
+    matchingRentalSlot?.rentalDocumentTemplateId,
     matchingRentalSlot?.requiredTemplateIds,
     org?.$id,
     router,

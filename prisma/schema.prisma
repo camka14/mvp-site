@@ -521,6 +521,7 @@ model TimeSlots {
   price               Int?
   divisions           String[]  @default([])
   requiredTemplateIds String[]  @default([])
+  rentalDocumentTemplateId String?
 
   @@index([scheduledFieldId])
 }

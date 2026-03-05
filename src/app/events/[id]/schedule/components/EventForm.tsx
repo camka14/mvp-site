@@ -19,6 +19,12 @@ import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
 import { organizationService } from '@/lib/organizationService';
 import { fieldService } from '@/lib/fieldService';
+import {
+    collectOrganizationHostIds,
+    collectOrganizationRefereeIds,
+    normalizeEntityId,
+    sanitizeOrganizationEventAssignments,
+} from '@/lib/organizationEventAccess';
 import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
@@ -77,6 +83,7 @@ type RentalPurchaseContext = {
     organization?: Organization | null;
     organizationEmail?: string | null;
     priceCents?: number;
+    rentalDocumentTemplateId?: string;
 };
 
 type EventType = Event['eventType'];
@@ -1239,6 +1246,22 @@ const toUserLabel = (user: Partial<UserData> | undefined, fallbackId: string): s
         return user.userName.trim();
     }
     return fallbackId;
+};
+
+const userMatchesSearch = (candidate: Partial<UserData> | undefined, query: string): boolean => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery.length) {
+        return true;
+    }
+    const tokens = [
+        `${candidate?.firstName ?? ''} ${candidate?.lastName ?? ''}`.trim(),
+        candidate?.userName ?? '',
+        candidate?.fullName ?? '',
+        candidate?.$id ?? '',
+    ]
+        .map((value) => value.trim().toLowerCase())
+        .filter((value) => value.length > 0);
+    return tokens.some((value) => value.includes(normalizedQuery));
 };
 
 // Drop match back-references to avoid circular data when React Hook Form clones defaults.
@@ -3472,6 +3495,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     ]);
     const [refereeInviteError, setRefereeInviteError] = useState<string | null>(null);
     const [invitingReferees, setInvitingReferees] = useState(false);
+    const [assistantHostUsers, setAssistantHostUsers] = useState<UserData[]>([]);
+    const [assistantHostSearch, setAssistantHostSearch] = useState('');
+    const [assistantHostResults, setAssistantHostResults] = useState<UserData[]>([]);
+    const [assistantHostSearchLoading, setAssistantHostSearchLoading] = useState(false);
+    const [assistantHostError, setAssistantHostError] = useState<string | null>(null);
 
     const [fieldsLoading, setFieldsLoading] = useState(false);
     const organizationHostedEventId = (
@@ -3485,28 +3513,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const shouldProvisionFields = !isOrganizationHostedEvent && !hasImmutableFields;
     const shouldManageLocalFields = shouldProvisionFields && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
-    const organizationManagerIdSet = useMemo(() => {
-        const ids = new Set<string>();
-        if (typeof organization?.ownerId === 'string' && organization.ownerId.length > 0) {
-            ids.add(organization.ownerId);
-        }
-        if (Array.isArray(organization?.hostIds)) {
-            organization.hostIds
-                .map((id) => String(id))
-                .filter((id) => id.length > 0)
-                .forEach((id) => ids.add(id));
-        }
-        if (typeof eventData.hostId === 'string' && eventData.hostId.length > 0) {
-            ids.add(eventData.hostId);
-        }
-        (eventData.assistantHostIds || []).forEach((id) => {
-            const normalized = String(id).trim();
-            if (normalized.length > 0) {
-                ids.add(normalized);
-            }
-        });
-        return ids;
-    }, [eventData.assistantHostIds, eventData.hostId, organization?.hostIds, organization?.ownerId]);
+    const organizationAllowedHostIds = useMemo(
+        () => collectOrganizationHostIds(organization),
+        [organization],
+    );
+    const organizationAllowedHostIdSet = useMemo(
+        () => new Set(organizationAllowedHostIds),
+        [organizationAllowedHostIds],
+    );
+    const organizationAllowedRefereeIds = useMemo(
+        () => collectOrganizationRefereeIds(organization),
+        [organization],
+    );
+    const organizationAllowedRefereeIdSet = useMemo(
+        () => new Set(organizationAllowedRefereeIds),
+        [organizationAllowedRefereeIds],
+    );
     const organizationUsersById = useMemo(() => {
         const map = new Map<string, Partial<UserData>>();
         const addUser = (candidate?: UserData | null) => {
@@ -3519,15 +3541,35 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         addUser(currentUser);
         return map;
     }, [currentUser, organization?.hosts, organization?.owner]);
+    const organizationRefereesById = useMemo(() => {
+        const map = new Map<string, UserData>();
+        (organization?.referees || []).forEach((referee) => {
+            if (referee?.$id) {
+                map.set(referee.$id, referee);
+            }
+        });
+        (eventData.referees || []).forEach((referee) => {
+            if (!referee?.$id) {
+                return;
+            }
+            if (!organizationAllowedRefereeIdSet.has(referee.$id)) {
+                return;
+            }
+            if (!map.has(referee.$id)) {
+                map.set(referee.$id, referee);
+            }
+        });
+        return map;
+    }, [eventData.referees, organization?.referees, organizationAllowedRefereeIdSet]);
     const organizationHostSelectData = useMemo(
-        () => Array.from(organizationManagerIdSet)
+        () => Array.from(organizationAllowedHostIds)
             .map((id) => {
                 const baseLabel = toUserLabel(organizationUsersById.get(id), id);
                 const label = id === organization?.ownerId ? `${baseLabel} (Owner)` : baseLabel;
                 return { value: id, label };
             })
             .sort((left, right) => left.label.localeCompare(right.label)),
-        [organization?.ownerId, organizationManagerIdSet, organizationUsersById],
+        [organization?.ownerId, organizationAllowedHostIds, organizationUsersById],
     );
     const assistantHostSelectData = useMemo(
         () => organizationHostSelectData.filter((option) => option.value !== eventData.hostId),
@@ -3543,25 +3585,151 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ),
         [eventData.assistantHostIds, eventData.hostId],
     );
+    const assistantHostUsersById = useMemo(() => {
+        const map = new Map<string, UserData>();
+        assistantHostUsers.forEach((userEntry) => {
+            if (userEntry?.$id) {
+                map.set(userEntry.$id, userEntry);
+            }
+        });
+        return map;
+    }, [assistantHostUsers]);
+    const selectedAssistantHostUsers = useMemo(
+        () => assistantHostValue
+            .map((id) => assistantHostUsersById.get(id))
+            .filter((candidate): candidate is UserData => Boolean(candidate)),
+        [assistantHostUsersById, assistantHostValue],
+    );
+    const unresolvedAssistantHostIds = useMemo(
+        () => assistantHostValue.filter((id) => !assistantHostUsersById.has(id)),
+        [assistantHostUsersById, assistantHostValue],
+    );
     useEffect(() => {
         if (!isOrganizationHostedEvent) {
             return;
         }
-        if (typeof eventData.hostId === 'string' && eventData.hostId.length > 0) {
-            return;
-        }
-        const fallbackHostId = organization?.ownerId || organizationHostSelectData[0]?.value;
-        if (!fallbackHostId) {
+        const sanitized = sanitizeOrganizationEventAssignments(
+            {
+                hostId: eventData.hostId,
+                assistantHostIds: eventData.assistantHostIds || [],
+                refereeIds: [],
+            },
+            {
+                ownerId: organization?.ownerId,
+                hostIds: organizationAllowedHostIds,
+                refIds: [],
+            },
+        );
+        const normalizedCurrentHostId = normalizeEntityId(eventData.hostId) ?? null;
+        const normalizedCurrentAssistantHostIds = Array.from(
+            new Set(
+                (eventData.assistantHostIds || [])
+                    .map((id) => normalizeEntityId(id))
+                    .filter((id): id is string => Boolean(id) && id !== normalizedCurrentHostId),
+            ),
+        );
+        const nextHostId = sanitized.hostId;
+        if (
+            normalizedCurrentHostId === nextHostId
+            && stringArraysEqual(normalizedCurrentAssistantHostIds, sanitized.assistantHostIds)
+        ) {
             return;
         }
         setEventData((prev) => ({
             ...prev,
-            hostId: fallbackHostId,
-            assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== fallbackHostId),
+            hostId: nextHostId ?? prev.hostId,
+            assistantHostIds: sanitized.assistantHostIds,
         }));
-    }, [eventData.hostId, isOrganizationHostedEvent, organization?.ownerId, organizationHostSelectData, setEventData]);
+    }, [
+        eventData.assistantHostIds,
+        eventData.hostId,
+        isOrganizationHostedEvent,
+        organization?.ownerId,
+        organizationAllowedHostIds,
+        setEventData,
+    ]);
+    useEffect(() => {
+        if (!isOrganizationHostedEvent) {
+            return;
+        }
+        const normalizedCurrentRefereeIds = Array.from(
+            new Set(
+                [
+                    ...(eventData.refereeIds || []),
+                    ...(eventData.referees || []).map((referee) => referee?.$id),
+                ]
+                    .map((id) => normalizeEntityId(id))
+                    .filter((id): id is string => Boolean(id)),
+            ),
+        );
+        const nextRefereeIds = normalizedCurrentRefereeIds.filter((id) => organizationAllowedRefereeIdSet.has(id));
+        const nextReferees = nextRefereeIds
+            .map((id) => organizationRefereesById.get(id))
+            .filter((candidate): candidate is UserData => Boolean(candidate));
+        if (
+            stringArraysEqual((eventData.refereeIds || []).map((id) => String(id)).filter(Boolean), nextRefereeIds)
+            && stringArraysEqual(
+                (eventData.referees || []).map((referee) => referee?.$id).filter((id): id is string => Boolean(id)),
+                nextReferees.map((referee) => referee.$id),
+            )
+        ) {
+            return;
+        }
+        setEventData((prev) => ({
+            ...prev,
+            refereeIds: nextRefereeIds,
+            referees: nextReferees,
+        }));
+    }, [
+        eventData.refereeIds,
+        eventData.referees,
+        isOrganizationHostedEvent,
+        organizationAllowedRefereeIdSet,
+        organizationRefereesById,
+        setEventData,
+    ]);
+    useEffect(() => {
+        const currentAssistantHostIds = assistantHostValue;
+        if (!currentAssistantHostIds.length) {
+            setAssistantHostUsers((prev) => (prev.length > 0 ? [] : prev));
+            return;
+        }
+        const knownIds = new Set(assistantHostUsers.map((userEntry) => userEntry.$id).filter(Boolean));
+        const missingIds = currentAssistantHostIds.filter((id) => !knownIds.has(id));
+        if (!missingIds.length) {
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const fetched = await userService.getUsersByIds(missingIds);
+                if (cancelled || !fetched.length) {
+                    return;
+                }
+                setAssistantHostUsers((prev) => {
+                    const byId = new Map(prev.map((entry) => [entry.$id, entry]));
+                    fetched.forEach((entry) => {
+                        if (entry?.$id) {
+                            byId.set(entry.$id, entry);
+                        }
+                    });
+                    return currentAssistantHostIds
+                        .map((id) => byId.get(id))
+                        .filter((entry): entry is UserData => Boolean(entry));
+                });
+            } catch (error) {
+                console.warn('Failed to hydrate assistant hosts for event:', error);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [assistantHostUsers, assistantHostValue]);
     const handleHostChange = useCallback((value: string | null) => {
         if (!value) {
+            return;
+        }
+        if (isOrganizationHostedEvent && !organizationAllowedHostIdSet.has(value)) {
             return;
         }
         setEventData((prev) => ({
@@ -3569,7 +3737,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             hostId: value,
             assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== value),
         }));
-    }, [setEventData]);
+    }, [isOrganizationHostedEvent, organizationAllowedHostIdSet, setEventData]);
     const handleAssistantHostsChange = useCallback((values: string[]) => {
         setEventData((prev) => ({
             ...prev,
@@ -3577,10 +3745,68 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 new Set(
                     values
                         .map((id) => String(id).trim())
+                        .filter((id) => (
+                            id.length > 0
+                            && id !== prev.hostId
+                            && (!isOrganizationHostedEvent || organizationAllowedHostIdSet.has(id))
+                        )),
+                ),
+            ),
+        }));
+    }, [isOrganizationHostedEvent, organizationAllowedHostIdSet, setEventData]);
+    const handleSearchAssistantHosts = useCallback(
+        async (query: string) => {
+            setAssistantHostSearch(query);
+            setAssistantHostError(null);
+            if (isOrganizationHostedEvent) {
+                setAssistantHostResults([]);
+                return;
+            }
+            if (query.trim().length < 2) {
+                setAssistantHostResults([]);
+                return;
+            }
+            try {
+                setAssistantHostSearchLoading(true);
+                const selectedIdSet = new Set([...(eventData.assistantHostIds || []), eventData.hostId || '']);
+                const results = await userService.searchUsers(query.trim());
+                setAssistantHostResults(
+                    results.filter((candidate) => Boolean(candidate?.$id) && !selectedIdSet.has(candidate.$id)),
+                );
+            } catch (error) {
+                console.error('Failed to search assistant hosts:', error);
+                setAssistantHostError('Failed to search assistant hosts. Try again.');
+            } finally {
+                setAssistantHostSearchLoading(false);
+            }
+        },
+        [eventData.assistantHostIds, eventData.hostId, isOrganizationHostedEvent],
+    );
+    const handleAddAssistantHost = useCallback((assistantHost: UserData) => {
+        setEventData((prev) => ({
+            ...prev,
+            assistantHostIds: Array.from(
+                new Set(
+                    [...(prev.assistantHostIds || []), assistantHost.$id]
+                        .map((id) => String(id).trim())
                         .filter((id) => id.length > 0 && id !== prev.hostId),
                 ),
             ),
         }));
+        setAssistantHostUsers((prev) => {
+            if (prev.some((candidate) => candidate.$id === assistantHost.$id)) {
+                return prev;
+            }
+            return [...prev, assistantHost];
+        });
+        setAssistantHostResults((prev) => prev.filter((candidate) => candidate.$id !== assistantHost.$id));
+    }, [setEventData]);
+    const handleRemoveAssistantHost = useCallback((assistantHostId: string) => {
+        setEventData((prev) => ({
+            ...prev,
+            assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== assistantHostId),
+        }));
+        setAssistantHostUsers((prev) => prev.filter((candidate) => candidate.$id !== assistantHostId));
     }, [setEventData]);
     const fieldCountOptions = useMemo(
         () => Array.from({ length: 12 }, (_, idx) => ({ value: String(idx + 1), label: String(idx + 1) })),
@@ -3956,6 +4182,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setRefereeResults([]);
                 return;
             }
+            if (isOrganizationHostedEvent) {
+                const selectedRefereeIdSet = new Set(eventData.refereeIds || []);
+                const localResults = Array.from(organizationRefereesById.values())
+                    .filter((candidate) => !selectedRefereeIdSet.has(candidate.$id))
+                    .filter((candidate) => userMatchesSearch(candidate, query.trim()));
+                setRefereeResults(localResults);
+                return;
+            }
             try {
                 setRefereeSearchLoading(true);
                 const results = await userService.searchUsers(query.trim());
@@ -3968,10 +4202,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setRefereeSearchLoading(false);
             }
         },
-        [eventData.refereeIds],
+        [eventData.refereeIds, isOrganizationHostedEvent, organizationRefereesById],
     );
 
     const handleAddReferee = useCallback((referee: UserData) => {
+        if (isOrganizationHostedEvent && !organizationAllowedRefereeIdSet.has(referee.$id)) {
+            return;
+        }
         setEventData((prev) => {
             const nextIds = Array.from(new Set([...(prev.refereeIds || []), referee.$id]));
             const nextRefs = (prev.referees || []).some((ref) => ref.$id === referee.$id)
@@ -3980,7 +4217,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return { ...prev, refereeIds: nextIds, referees: nextRefs };
         });
         setRefereeResults((prev) => prev.filter((candidate) => candidate.$id !== referee.$id));
-    }, [setEventData]);
+    }, [isOrganizationHostedEvent, organizationAllowedRefereeIdSet, setEventData]);
 
     const handleRemoveReferee = useCallback((refereeId: string) => {
         setEventData((prev) => ({
@@ -3991,6 +4228,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [setEventData]);
 
     const handleInviteRefereeEmail = useCallback(async () => {
+        if (isOrganizationHostedEvent) {
+            setRefereeInviteError('Organization events can only use organization referees.');
+            return;
+        }
         if (!currentUser) {
             setRefereeInviteError('You must be signed in to invite referees.');
             return;
@@ -4062,7 +4303,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         } finally {
             setInvitingReferees(false);
         }
-    }, [currentUser, eventData.$id, refereeInvites, setEventData]);
+    }, [currentUser, eventData.$id, isOrganizationHostedEvent, refereeInvites, setEventData]);
 
     // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
     const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
@@ -6004,9 +6245,63 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             })(),
         }));
 
+        const organizationAssignments = isOrganizationHostedEvent
+            ? sanitizeOrganizationEventAssignments(
+                {
+                    hostId: source.hostId || currentUser?.$id || null,
+                    assistantHostIds: source.assistantHostIds || [],
+                    refereeIds: source.refereeIds || [],
+                },
+                {
+                    ownerId: organization?.ownerId,
+                    hostIds: organizationAllowedHostIds,
+                    refIds: organizationAllowedRefereeIds,
+                    referees: organization?.referees,
+                },
+            )
+            : null;
+        const normalizedHostId = (
+            organizationAssignments?.hostId
+            || normalizeEntityId(source.hostId)
+            || normalizeEntityId(currentUser?.$id)
+            || ''
+        );
+        const normalizedAssistantHostIds = organizationAssignments
+            ? organizationAssignments.assistantHostIds
+            : Array.from(
+                new Set(
+                    (source.assistantHostIds || [])
+                        .map((id) => String(id))
+                        .filter((id) => id.length > 0 && id !== normalizedHostId),
+                ),
+            );
+        const normalizedRefereeIds = organizationAssignments
+            ? organizationAssignments.refereeIds
+            : Array.from(
+                new Set(
+                    (source.refereeIds || [])
+                        .map((id) => String(id).trim())
+                        .filter((id) => id.length > 0),
+                ),
+            );
+        const refereePoolById = new Map<string, UserData>();
+        (source.referees || []).forEach((referee) => {
+            if (referee?.$id) {
+                refereePoolById.set(referee.$id, referee);
+            }
+        });
+        if (isOrganizationHostedEvent) {
+            organizationRefereesById.forEach((referee, id) => {
+                refereePoolById.set(id, referee);
+            });
+        }
+        const normalizedReferees = normalizedRefereeIds
+            .map((id) => refereePoolById.get(id))
+            .filter((referee): referee is UserData => Boolean(referee));
+
         const draft: Partial<Event> = {
             $id: activeEditingEvent?.$id,
-            hostId: source.hostId || currentUser?.$id,
+            hostId: normalizedHostId,
             name: source.name.trim(),
             description: source.description,
             location: source.location,
@@ -6080,15 +6375,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             freeAgentIds: source.freeAgents,
             teams: source.teams,
             players: source.players,
-            referees: source.referees,
-            refereeIds: source.refereeIds,
-            assistantHostIds: Array.from(
-                new Set(
-                    (source.assistantHostIds || [])
-                        .map((id) => String(id))
-                        .filter((id) => id.length > 0 && id !== source.hostId),
-                ),
-            ),
+            referees: normalizedReferees,
+            refereeIds: normalizedRefereeIds,
+            assistantHostIds: normalizedAssistantHostIds,
             doTeamsRef: source.doTeamsRef,
             teamRefsMaySwap: source.doTeamsRef ? Boolean(source.teamRefsMaySwap) : false,
             coordinates: baseCoordinates,
@@ -6389,7 +6678,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         immutableTimeSlots,
         isEditMode,
         isOrganizationManagedEvent,
+        isOrganizationHostedEvent,
         organizationHostedEventId,
+        organization?.ownerId,
+        organization?.referees,
+        organizationAllowedHostIds,
+        organizationAllowedRefereeIds,
+        organizationRefereesById,
         currentUser,
         joinAsParticipant,
         rentalPurchase,
@@ -7053,6 +7348,83 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </AnimatedSection>
                                 </div>
                             </AnimatedSection>
+                            <AnimatedSection in={!isOrganizationHostedEvent}>
+                                <div className="space-y-2">
+                                    <div>
+                                        <Title order={6} mb="xs">Assistant hosts</Title>
+                                        <Text size="sm" c="dimmed" mb="xs">
+                                            Assistant hosts can edit and reschedule this event.
+                                        </Text>
+                                    </div>
+                                    {selectedAssistantHostUsers.length > 0 || unresolvedAssistantHostIds.length > 0 ? (
+                                        <Stack gap="xs">
+                                            {selectedAssistantHostUsers.map((assistantHost) => (
+                                                <Group key={assistantHost.$id} justify="space-between" align="center" gap="sm">
+                                                    <UserCard user={assistantHost} className="!p-0 !shadow-none flex-1" />
+                                                    <Button
+                                                        variant="subtle"
+                                                        color="red"
+                                                        size="xs"
+                                                        onClick={() => handleRemoveAssistantHost(assistantHost.$id)}
+                                                    >
+                                                        Remove
+                                                    </Button>
+                                                </Group>
+                                            ))}
+                                            {unresolvedAssistantHostIds.map((assistantHostId) => (
+                                                <Group key={assistantHostId} justify="space-between" align="center" gap="sm">
+                                                    <Text size="sm">{assistantHostId}</Text>
+                                                    <Button
+                                                        variant="subtle"
+                                                        color="red"
+                                                        size="xs"
+                                                        onClick={() => handleRemoveAssistantHost(assistantHostId)}
+                                                    >
+                                                        Remove
+                                                    </Button>
+                                                </Group>
+                                            ))}
+                                        </Stack>
+                                    ) : (
+                                        <Text size="sm" c="dimmed">No assistant hosts selected.</Text>
+                                    )}
+
+                                    <div>
+                                        <Title order={6} mb="xs">Add assistant hosts</Title>
+                                        <TextInput
+                                            value={assistantHostSearch}
+                                            onChange={(e) => handleSearchAssistantHosts(e.currentTarget.value)}
+                                            placeholder="Search by name or username"
+                                            maw={420}
+                                            maxLength={MAX_MEDIUM_TEXT_LENGTH}
+                                            mb="xs"
+                                        />
+                                        {assistantHostError && (
+                                            <Text size="xs" c="red" mb="xs">
+                                                {assistantHostError}
+                                            </Text>
+                                        )}
+                                        {assistantHostSearchLoading ? (
+                                            <Text size="sm" c="dimmed">Searching assistant hosts...</Text>
+                                        ) : assistantHostSearch.length < 2 ? (
+                                            <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
+                                        ) : assistantHostResults.length > 0 ? (
+                                            <Stack gap="xs">
+                                                {assistantHostResults.map((result) => (
+                                                    <Group key={result.$id} justify="space-between" align="center" gap="sm">
+                                                        <UserCard user={result} className="!p-0 !shadow-none flex-1" />
+                                                        <Button size="xs" onClick={() => handleAddAssistantHost(result)}>
+                                                            Add
+                                                        </Button>
+                                                    </Group>
+                                                ))}
+                                            </Stack>
+                                        ) : (
+                                            <Text size="sm" c="dimmed">No users found.</Text>
+                                        )}
+                                    </div>
+                                </div>
+                            </AnimatedSection>
 
                             {/* Pricing and Participant Details */}
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
@@ -7480,10 +7852,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
                                 <div>
                                     <Title order={6} mb="xs">Add referees</Title>
+                                    {isOrganizationHostedEvent && (
+                                        <Text size="sm" c="dimmed" mb="xs">
+                                            Organization events can only use referees assigned to this organization.
+                                        </Text>
+                                    )}
                                     <TextInput
                                         value={refereeSearch}
                                         onChange={(e) => handleSearchReferees(e.currentTarget.value)}
-                                        placeholder="Search by name or username"
+                                        placeholder={isOrganizationHostedEvent ? 'Search organization referees' : 'Search by name or username'}
                                         maw={420}
                                         maxLength={MAX_MEDIUM_TEXT_LENGTH}
                                         mb="xs"
@@ -7510,11 +7887,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         </Stack>
                                     ) : (
                                         <Stack gap="xs">
-                                            <Text size="sm" c="dimmed">No referees found. Invite by email below.</Text>
+                                            <Text size="sm" c="dimmed">
+                                                {isOrganizationHostedEvent
+                                                    ? 'No organization referees found.'
+                                                    : 'No referees found. Invite by email below.'}
+                                            </Text>
                                         </Stack>
                                     )}
                                 </div>
 
+                                {!isOrganizationHostedEvent && (
                                 <div>
                                     <Title order={6} mb="xs">Invite referees by email</Title>
                                     <Text size="sm" c="dimmed" mb="xs">
@@ -7605,6 +7987,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         )}
                                     </div>
                                 </div>
+                                )}
                             </Stack>
                             </Collapse>
                         </Paper>

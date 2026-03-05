@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
+import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
   buildDivisionName,
   buildDivisionToken,
@@ -2236,9 +2237,36 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   });
   const resolvedOrganizationId = normalizeEntityId(payload.organizationId) ?? normalizeEntityId(existingEvent?.organizationId);
   const resolvedHostId = normalizeEntityId(payload.hostId) ?? normalizeEntityId(existingEvent?.hostId);
+  const organizationAccess = resolvedOrganizationId
+    ? await client.organizations.findUnique({
+      where: { id: resolvedOrganizationId },
+      select: {
+        ownerId: true,
+        hostIds: true,
+        refIds: true,
+      },
+    })
+    : null;
+  const organizationAssignments = resolvedOrganizationId
+    ? sanitizeOrganizationEventAssignments(
+      {
+        hostId: payload.hostId ?? resolvedHostId ?? null,
+        assistantHostIds: ensureStringArray(payload.assistantHostIds),
+        refereeIds: ensureStringArray(payload.refereeIds),
+      },
+      organizationAccess,
+    )
+    : null;
+  const normalizedHostId = organizationAssignments?.hostId ?? resolvedHostId ?? '';
+  const normalizedAssistantHostIds = organizationAssignments
+    ? organizationAssignments.assistantHostIds
+    : ensureStringArray(payload.assistantHostIds);
+  const normalizedRefereeIds = organizationAssignments
+    ? organizationAssignments.refereeIds
+    : ensureStringArray(payload.refereeIds);
   const billingOwnerHasStripeAccount = await resolveBillingOwnerHasStripeAccount(client, {
     organizationId: resolvedOrganizationId,
-    hostId: resolvedHostId,
+    hostId: normalizedHostId,
   });
   const existingFieldIds = normalizeFieldIds(existingEvent?.fieldIds ?? []);
   const existingTimeSlotIds = normalizeFieldIds(existingEvent?.timeSlotIds ?? []);
@@ -2412,8 +2440,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     maxParticipants: payload.maxParticipants ?? null,
     minAge: payload.minAge ?? null,
     maxAge: payload.maxAge ?? null,
-    hostId: payload.hostId ?? '',
-    assistantHostIds: ensureStringArray(payload.assistantHostIds),
+    hostId: normalizedHostId,
+    assistantHostIds: normalizedAssistantHostIds,
     noFixedEndDateTime,
     price: normalizedEventPrice,
     singleDivision: payload.singleDivision ?? false,
@@ -2454,7 +2482,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     eventType: payload.eventType ?? null,
     doTeamsRef: normalizedDoTeamsRef ?? null,
     teamRefsMaySwap: normalizedTeamRefsMaySwap,
-    refereeIds: ensureStringArray(payload.refereeIds),
+    refereeIds: normalizedRefereeIds,
     allowPaymentPlans: normalizedEventAllowPaymentPlans,
     installmentCount: normalizedEventInstallmentCount,
     installmentDueDates: normalizedEventInstallmentDueDates,

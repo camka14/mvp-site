@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Group, Modal, MultiSelect, NumberInput, Stack, Switch, Text } from '@mantine/core';
+import { Button, Group, Modal, MultiSelect, NumberInput, Select, Stack, Switch, Text } from '@mantine/core';
 import { DatePickerInput, TimeInput } from '@mantine/dates';
 import type { Field, TimeSlot } from '@/types';
 import { fieldService, type ManageRentalSlotResult } from '@/lib/fieldService';
@@ -130,9 +130,11 @@ export default function CreateRentalSlotModal({
   const [repeating, setRepeating] = useState<boolean>(false);
   const [price, setPrice] = useState<number | null>(null);
   const [requiredTemplateIds, setRequiredTemplateIds] = useState<string[]>([]);
+  const [rentalDocumentTemplateId, setRentalDocumentTemplateId] = useState<string | null>(null);
   const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [templatesLoading, setTemplatesLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [deleting, setDeleting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -141,6 +143,7 @@ export default function CreateRentalSlotModal({
     }
 
     setSubmitting(false);
+    setDeleting(false);
     setError(null);
 
     if (slot) {
@@ -175,6 +178,11 @@ export default function CreateRentalSlotModal({
           ? slot.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)
           : [],
       );
+      setRentalDocumentTemplateId(
+        typeof slot.rentalDocumentTemplateId === 'string' && slot.rentalDocumentTemplateId.trim().length > 0
+          ? slot.rentalDocumentTemplateId.trim()
+          : null,
+      );
       return;
     }
 
@@ -194,6 +202,7 @@ export default function CreateRentalSlotModal({
       setRepeating(true);
       setPrice(null);
       setRequiredTemplateIds([]);
+      setRentalDocumentTemplateId(null);
       return;
     }
 
@@ -208,6 +217,7 @@ export default function CreateRentalSlotModal({
     setRepeating(false);
     setPrice(null);
     setRequiredTemplateIds([]);
+    setRentalDocumentTemplateId(null);
   }, [opened, slot, initialRange, organizationHasStripeAccount]);
 
   useEffect(() => {
@@ -276,10 +286,37 @@ export default function CreateRentalSlotModal({
   }, [startDate, endDate, repeating]);
 
   const handleClose = () => {
-    if (submitting) {
+    if (submitting || deleting) {
       return;
     }
     onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!field || !slot?.$id) {
+      setError('A field and existing rental slot are required to delete.');
+      return;
+    }
+
+    const confirmed = typeof window === 'undefined'
+      ? true
+      : window.confirm('Delete this rental slot? This cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+    try {
+      const updatedField = await fieldService.deleteRentalSlot(field, slot.$id);
+      onSaved?.(updatedField);
+      onClose();
+    } catch (err) {
+      console.error('Failed to delete rental slot:', err);
+      setError('Failed to delete rental slot. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -365,6 +402,7 @@ export default function CreateRentalSlotModal({
         startTimeMinutes: repeating && startMinutes !== null ? startMinutes : undefined,
         endTimeMinutes: repeating && endMinutes !== null ? endMinutes : undefined,
         requiredTemplateIds,
+        rentalDocumentTemplateId: rentalDocumentTemplateId ?? null,
         price:
           organizationHasStripeAccount && price !== null
             ? Math.round(price * 100)
@@ -382,6 +420,7 @@ export default function CreateRentalSlotModal({
           startTimeMinutes: payload.startTimeMinutes,
           endTimeMinutes: payload.endTimeMinutes,
           requiredTemplateIds: payload.requiredTemplateIds,
+          rentalDocumentTemplateId: payload.rentalDocumentTemplateId ?? null,
           price: organizationHasStripeAccount ? payload.price : undefined,
         };
         result = await fieldService.updateRentalSlot(field, updatePayload);
@@ -494,8 +533,23 @@ export default function CreateRentalSlotModal({
           </div>
 
           <div>
+            <Select
+              label="Rental document template (optional)"
+              description="If selected, renters must sign this document before checkout."
+              data={templateOptions}
+              value={rentalDocumentTemplateId}
+              onChange={setRentalDocumentTemplateId}
+              placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'}
+              searchable
+              clearable
+              disabled={!field || !organizationId || templatesLoading}
+              nothingFoundMessage="No templates found"
+            />
+          </div>
+
+          <div>
             <MultiSelect
-              label="Required templates (optional)"
+              label="Event required templates (optional)"
               data={templateOptions}
               value={requiredTemplateIds}
               onChange={setRequiredTemplateIds}
@@ -534,13 +588,27 @@ export default function CreateRentalSlotModal({
             </Text>
           )}
 
-          <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={handleClose} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!field || submitting}>
-              {submitting ? 'Saving…' : slot ? 'Save Rental Slot' : 'Create Rental Slot'}
-            </Button>
+          <Group justify={slot ? 'space-between' : 'flex-end'} mt="md">
+            {slot ? (
+              <Button
+                color="red"
+                variant="light"
+                onClick={handleDelete}
+                disabled={!field || submitting || deleting}
+              >
+                {deleting ? 'Deleting…' : 'Delete Rental Slot'}
+              </Button>
+            ) : (
+              <div />
+            )}
+            <Group gap="sm">
+              <Button variant="default" onClick={handleClose} disabled={submitting || deleting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!field || submitting || deleting}>
+                {submitting ? 'Saving…' : slot ? 'Save Rental Slot' : 'Create Rental Slot'}
+              </Button>
+            </Group>
           </Group>
         </Stack>
       </form>

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
   deleteMatchesByEvent,
   loadEventWithRelations,
@@ -1436,6 +1437,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       } else if (!Object.prototype.hasOwnProperty.call(data, 'teamRefsMaySwap')) {
         data.teamRefsMaySwap = Boolean((existing as any).teamRefsMaySwap);
       }
+      const nextOrganizationId = normalizeEntityId(data.organizationId ?? existing.organizationId ?? null);
+      if (nextOrganizationId) {
+        const organizationAccess = await tx.organizations.findUnique({
+          where: { id: nextOrganizationId },
+          select: {
+            ownerId: true,
+            hostIds: true,
+            refIds: true,
+          },
+        });
+        if (!organizationAccess) {
+          throw new Response('Organization not found', { status: 400 });
+        }
+        const sanitizedAssignments = sanitizeOrganizationEventAssignments(
+          {
+            hostId: data.hostId ?? existing.hostId,
+            assistantHostIds: (
+              Object.prototype.hasOwnProperty.call(data, 'assistantHostIds')
+                ? data.assistantHostIds
+                : existing.assistantHostIds
+            ) as string[] | null | undefined,
+            refereeIds: (
+              Object.prototype.hasOwnProperty.call(data, 'refereeIds')
+                ? data.refereeIds
+                : existing.refereeIds
+            ) as string[] | null | undefined,
+          },
+          organizationAccess,
+        );
+        data.hostId = sanitizedAssignments.hostId ?? normalizeEntityId(existing.hostId) ?? '';
+        data.assistantHostIds = sanitizedAssignments.assistantHostIds;
+        data.refereeIds = sanitizedAssignments.refereeIds;
+      }
       if (targetEventType === 'LEAGUE') {
         const normalizedLeagueConfig = normalizeLeagueScoringConfigUpdate(incomingLeagueScoringConfig);
         const payloadLeagueConfigId = typeof payload.leagueScoringConfigId === 'string'
@@ -1669,8 +1703,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         incomingFieldsById.set(fieldId, field);
       }
 
-      const nextOrganizationId = (data.organizationId ?? existing.organizationId ?? null) as string | null;
-      const shouldPersistLocalFields = incomingFieldsById.size > 0 && !nextOrganizationId;
+      const resolvedNextOrganizationId = (data.organizationId ?? existing.organizationId ?? null) as string | null;
+      const shouldPersistLocalFields = incomingFieldsById.size > 0 && !resolvedNextOrganizationId;
       if (shouldPersistLocalFields && typeof (tx as any).fields?.upsert === 'function') {
         for (const [index, fieldId] of nextFieldIds.entries()) {
           const field = incomingFieldsById.get(fieldId);
