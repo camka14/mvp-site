@@ -14,13 +14,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
   const search = req.nextUrl.searchParams;
   const start = parseDateInput(search.get('start'));
   const end = parseDateInput(search.get('end'));
+  const rangeWhere = (() => {
+    if (start && end) {
+      return {
+        AND: [
+          { start: { lte: end } },
+          { end: { gte: start } },
+        ],
+      };
+    }
+    if (start) {
+      return { end: { gte: start } };
+    }
+    if (end) {
+      return { start: { lte: end } };
+    }
+    return {};
+  })();
 
   const events = await prisma.events.findMany({
     where: {
       fieldIds: { has: fieldId },
       NOT: { state: 'TEMPLATE' },
-      ...(start ? { start: { gte: start } } : {}),
-      ...(end ? { end: { lte: end } } : {}),
+      ...rangeWhere,
     },
     orderBy: { start: 'asc' },
   });

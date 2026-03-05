@@ -7,7 +7,7 @@ const prismaMock = {
     findUnique: jest.fn(),
   },
   templateDocuments: {
-    findUnique: jest.fn(),
+    findMany: jest.fn(),
   },
   signedDocuments: {
     findMany: jest.fn(),
@@ -38,10 +38,13 @@ describe('POST /api/billing/purchase-intent', () => {
   });
 
   it('blocks rental checkout when required rental document has not been signed', async () => {
-    prismaMock.templateDocuments.findUnique.mockResolvedValue({
-      id: 'tmpl_rental_1',
-      signOnce: false,
-    });
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_rental_1',
+        title: 'Rental Agreement',
+        signOnce: false,
+      },
+    ]);
     prismaMock.signedDocuments.findMany.mockResolvedValue([]);
 
     const res = await POST(jsonPost({
@@ -56,10 +59,13 @@ describe('POST /api/billing/purchase-intent', () => {
   });
 
   it('creates a payment intent when rental document is already signed', async () => {
-    prismaMock.templateDocuments.findUnique.mockResolvedValue({
-      id: 'tmpl_rental_1',
-      signOnce: false,
-    });
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_rental_1',
+        title: 'Rental Agreement',
+        signOnce: false,
+      },
+    ]);
     prismaMock.signedDocuments.findMany.mockResolvedValue([
       { status: 'SIGNED' },
     ]);
@@ -73,5 +79,38 @@ describe('POST /api/billing/purchase-intent', () => {
 
     expect(res.status).toBe(200);
     expect(String(data.paymentIntent ?? '')).toContain('pi_mock_');
+  });
+
+  it('blocks rental checkout when any required rental document template is unsigned', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_rental_1',
+        title: 'Rental Agreement',
+        signOnce: false,
+      },
+      {
+        id: 'tmpl_rental_2',
+        title: 'Damage Waiver',
+        signOnce: false,
+      },
+    ]);
+    prismaMock.signedDocuments.findMany
+      .mockResolvedValueOnce([{ status: 'SIGNED' }])
+      .mockResolvedValueOnce([]);
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+      timeSlot: {
+        $id: 'slot_1',
+        price: 2500,
+        rentalDocumentTemplateId: 'tmpl_rental_1',
+        rentalDocumentTemplateIds: ['tmpl_rental_1', 'tmpl_rental_2', 'tmpl_rental_1'],
+      },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(String(data.error ?? '')).toContain('Damage Waiver');
   });
 });

@@ -259,4 +259,74 @@ describe('eventService', () => {
 
     expect(event?.attendees).toBe(2);
   });
+
+  it('skips field cleanup when deleting an unpublished organization event', async () => {
+    apiRequestMock.mockResolvedValue({});
+
+    await expect(
+      eventService.deleteUnpublishedEvent({
+        $id: 'evt_unpublished_org',
+        organizationId: 'org_1',
+        fields: [{ $id: 'field_org_1' }],
+      } as any),
+    ).resolves.toBeUndefined();
+
+    expect(apiRequestMock).toHaveBeenCalledTimes(1);
+    expect(apiRequestMock).toHaveBeenCalledWith('/api/events/evt_unpublished_org', {
+      method: 'DELETE',
+      body: {
+        event: expect.objectContaining({
+          $id: 'evt_unpublished_org',
+        }),
+      },
+    });
+  });
+
+  it('skips organization-owned fields during unpublished event cleanup', async () => {
+    apiRequestMock.mockResolvedValue({});
+
+    await expect(
+      eventService.deleteUnpublishedEvent({
+        $id: 'evt_unpublished_mixed_fields',
+        fields: [
+          { $id: 'field_org_ref', organization: 'org_1' },
+          { $id: 'field_org_obj', organization: { $id: 'org_2' } },
+          { $id: 'field_org_id', organizationId: 'org_3' },
+          { $id: 'field_local' },
+        ],
+      } as any),
+    ).resolves.toBeUndefined();
+
+    const fieldDeleteCalls = apiRequestMock.mock.calls
+      .filter(([path, options]) => path.startsWith('/api/fields/') && options?.method === 'DELETE')
+      .map(([path]) => path);
+
+    expect(fieldDeleteCalls).toEqual(['/api/fields/field_local']);
+  });
+
+  it('does not throw when local field cleanup fails for unpublished event deletion', async () => {
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/evt_unpublished_failure') {
+        return Promise.resolve({});
+      }
+      if (path === '/api/fields/field_local') {
+        return Promise.reject(new Error('Delete forbidden'));
+      }
+      return Promise.resolve({});
+    });
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(
+      eventService.deleteUnpublishedEvent({
+        $id: 'evt_unpublished_failure',
+        fields: [{ $id: 'field_local' }],
+      } as any),
+    ).resolves.toBeUndefined();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Failed to delete 1 field(s) for unpublished event evt_unpublished_failure.',
+    );
+
+    warnSpy.mockRestore();
+  });
 });

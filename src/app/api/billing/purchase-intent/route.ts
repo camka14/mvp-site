@@ -67,38 +67,65 @@ export async function POST(req: NextRequest) {
   const payload = parsed.data;
   const userId = extractEntityId(payload.user);
   const eventId = extractEntityId(payload.event);
-  const rentalDocumentTemplateId = normalizeString(payload.timeSlot?.rentalDocumentTemplateId);
+  const rentalDocumentTemplateIds = Array.from(
+    new Set(
+      [
+        normalizeString(payload.timeSlot?.rentalDocumentTemplateId),
+        ...(
+          Array.isArray(payload.timeSlot?.rentalDocumentTemplateIds)
+            ? payload.timeSlot.rentalDocumentTemplateIds.map((value) => normalizeString(value))
+            : []
+        ),
+      ].filter((value): value is string => Boolean(value)),
+    ),
+  );
+  const primaryRentalDocumentTemplateId = rentalDocumentTemplateIds[0] ?? null;
 
-  if (payload.timeSlot && rentalDocumentTemplateId) {
+  if (payload.timeSlot && rentalDocumentTemplateIds.length > 0) {
     if (!userId) {
       return NextResponse.json({ error: 'Sign in to complete rental document signing before payment.' }, { status: 403 });
     }
-    const template = await prisma.templateDocuments.findUnique({
-      where: { id: rentalDocumentTemplateId },
-      select: { id: true, signOnce: true },
+    const templates = await prisma.templateDocuments.findMany({
+      where: { id: { in: rentalDocumentTemplateIds } },
+      select: { id: true, title: true, signOnce: true },
     });
-    if (!template) {
-      return NextResponse.json({ error: 'Rental document template not found.' }, { status: 400 });
+    const templateById = new Map(templates.map((template) => [template.id, template]));
+    const missingTemplateIds = rentalDocumentTemplateIds.filter((templateId) => !templateById.has(templateId));
+    if (missingTemplateIds.length > 0) {
+      return NextResponse.json({
+        error: `Rental document templates not found: ${missingTemplateIds.join(', ')}`,
+      }, { status: 400 });
     }
-    if (!template.signOnce && !eventId) {
-      return NextResponse.json({ error: 'Event id is required to verify rental document signatures.' }, { status: 400 });
+    const unsignedTemplateLabels: string[] = [];
+    for (const templateId of rentalDocumentTemplateIds) {
+      const template = templateById.get(templateId);
+      if (!template) {
+        continue;
+      }
+      if (!template.signOnce && !eventId) {
+        return NextResponse.json({ error: 'Event id is required to verify rental document signatures.' }, { status: 400 });
+      }
+
+      const signedRows = await prisma.signedDocuments.findMany({
+        where: {
+          templateId: template.id,
+          userId,
+          signerRole: 'participant',
+          ...(template.signOnce ? {} : { eventId }),
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 20,
+        select: { status: true },
+      });
+      const hasSignedDocument = signedRows.some((row) => isSignedStatus(row.status));
+      if (!hasSignedDocument) {
+        unsignedTemplateLabels.push(template.title?.trim() || template.id);
+      }
     }
 
-    const signedRows = await prisma.signedDocuments.findMany({
-      where: {
-        templateId: rentalDocumentTemplateId,
-        userId,
-        signerRole: 'participant',
-        ...(template.signOnce ? {} : { eventId }),
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 20,
-      select: { status: true },
-    });
-    const hasSignedDocument = signedRows.some((row) => isSignedStatus(row.status));
-    if (!hasSignedDocument) {
+    if (unsignedTemplateLabels.length > 0) {
       return NextResponse.json({
-        error: 'Rental document must be signed before checkout.',
+        error: `Rental document must be signed before checkout: ${unsignedTemplateLabels.join(', ')}`,
       }, { status: 403 });
     }
   }
@@ -207,7 +234,10 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'time_slot_id', extractEntityId(payload.timeSlot));
     appendMetadata(metadata, 'time_slot_start', payload.timeSlot?.startDate);
     appendMetadata(metadata, 'time_slot_end', payload.timeSlot?.endDate);
-    appendMetadata(metadata, 'rental_template_id', rentalDocumentTemplateId);
+    appendMetadata(metadata, 'rental_template_id', primaryRentalDocumentTemplateId);
+    if (rentalDocumentTemplateIds.length > 1) {
+      appendMetadata(metadata, 'rental_template_ids', rentalDocumentTemplateIds.join(','));
+    }
     appendMetadata(metadata, 'product_name', product?.name);
     appendMetadata(metadata, 'product_description', product?.description);
     appendMetadata(metadata, 'product_period', product?.period);

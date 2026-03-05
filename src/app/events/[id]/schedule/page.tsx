@@ -582,6 +582,19 @@ type PendingRentalCheckoutContext = {
   eventDraft: Event;
   draftToSave: Partial<Event>;
   rentalSlot: TimeSlot;
+  requiresPayment: boolean;
+};
+
+type RentalSelectionQuery = {
+  key: string;
+  scheduledFieldIds: string[];
+  startDate: string;
+  endDate: string;
+  repeating: boolean;
+  dayOfWeek?: number;
+  daysOfWeek?: number[];
+  startTimeMinutes?: number;
+  endTimeMinutes?: number;
 };
 
 const DEFAULT_NOTIFICATION_AUDIENCE: NotificationAudienceState = {
@@ -687,13 +700,27 @@ function EventScheduleContent() {
   const rentalPriceParam = searchParams?.get('rentalPriceCents') || undefined;
   const rentalRequiredTemplateIdsParam = searchParams?.get('rentalRequiredTemplateIds') || undefined;
   const rentalDocumentTemplateIdParam = searchParams?.get('rentalDocumentTemplateId') || undefined;
-  const rentalDocumentTemplateId = useMemo(() => {
-    if (!rentalDocumentTemplateIdParam) {
-      return undefined;
-    }
-    const normalized = rentalDocumentTemplateIdParam.trim();
-    return normalized.length > 0 ? normalized : undefined;
-  }, [rentalDocumentTemplateIdParam]);
+  const rentalDocumentTemplateIdsParam = searchParams?.get('rentalDocumentTemplateIds') || undefined;
+  const rentalSelectionsParam = searchParams?.get('rentalSelections') || undefined;
+  const rentalDocumentTemplateIds = useMemo(
+    () => Array.from(
+      new Set(
+        [
+          ...(rentalDocumentTemplateIdsParam
+            ? rentalDocumentTemplateIdsParam
+              .split(',')
+              .map((id) => id.trim())
+              .filter((id) => id.length > 0)
+            : []),
+          ...(rentalDocumentTemplateIdParam && rentalDocumentTemplateIdParam.trim().length > 0
+            ? [rentalDocumentTemplateIdParam.trim()]
+            : []),
+        ],
+      ),
+    ),
+    [rentalDocumentTemplateIdParam, rentalDocumentTemplateIdsParam],
+  );
+  const rentalDocumentTemplateId = rentalDocumentTemplateIds[0];
   const rentalRequiredTemplateIds = useMemo(
     () => (
       rentalRequiredTemplateIdsParam
@@ -709,7 +736,167 @@ function EventScheduleContent() {
     ),
     [rentalRequiredTemplateIdsParam],
   );
-  const isRentalFlow = Boolean(rentalStartParam && rentalEndParam);
+  const rentalSelections = useMemo<RentalSelectionQuery[]>(() => {
+    if (!rentalSelectionsParam) {
+      return [];
+    }
+
+    const normalizeSelectionDateRange = (selection: Record<string, unknown>): { start: string; end: string } | null => {
+      const explicitStart = formatLocalDateTime(
+        typeof selection.startDate === 'string' ? selection.startDate : null,
+      );
+      const explicitEnd = formatLocalDateTime(
+        typeof selection.endDate === 'string' ? selection.endDate : null,
+      );
+      if (explicitStart && explicitEnd) {
+        const startDate = parseLocalDateTime(explicitStart);
+        const endDate = parseLocalDateTime(explicitEnd);
+        if (startDate && endDate && endDate.getTime() > startDate.getTime()) {
+          return { start: explicitStart, end: explicitEnd };
+        }
+      }
+
+      const startBoundary = parseLocalDateTime(explicitStart ?? null);
+      const daysSource = Array.isArray(selection.daysOfWeek)
+        ? selection.daysOfWeek
+        : [selection.dayOfWeek];
+      const daysOfWeek = Array.from(
+        new Set(
+          daysSource
+            .map((day) => Number(day))
+            .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+        ),
+      ).sort((left, right) => left - right);
+      const startTimeMinutes = Number(selection.startTimeMinutes);
+      const endTimeMinutes = Number(selection.endTimeMinutes);
+      if (!startBoundary || !daysOfWeek.length || !Number.isFinite(startTimeMinutes) || !Number.isFinite(endTimeMinutes)) {
+        return null;
+      }
+
+      const startSeed = new Date(startBoundary.getTime());
+      startSeed.setHours(0, 0, 0, 0);
+      const seedDay = (startSeed.getDay() + 6) % 7;
+      const firstDay = daysOfWeek[0];
+      let diff = firstDay - seedDay;
+      if (diff < 0) diff += 7;
+      startSeed.setDate(startSeed.getDate() + diff);
+      startSeed.setMinutes(startTimeMinutes);
+
+      const endSeed = new Date(startSeed.getTime());
+      endSeed.setHours(0, 0, 0, 0);
+      endSeed.setMinutes(endTimeMinutes);
+      if (endSeed.getTime() <= startSeed.getTime()) {
+        endSeed.setTime(startSeed.getTime() + 60 * 60 * 1000);
+      }
+
+      const normalizedStart = formatLocalDateTime(startSeed);
+      const normalizedEnd = formatLocalDateTime(endSeed);
+      if (!normalizedStart || !normalizedEnd) {
+        return null;
+      }
+      return { start: normalizedStart, end: normalizedEnd };
+    };
+
+    try {
+      const parsed = JSON.parse(rentalSelectionsParam);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      const normalizedSelections: RentalSelectionQuery[] = [];
+      parsed.forEach((rawSelection, index) => {
+        if (!rawSelection || typeof rawSelection !== 'object') {
+          return;
+        }
+        const selection = rawSelection as Record<string, unknown>;
+        const dateRange = normalizeSelectionDateRange(selection);
+        if (!dateRange) {
+          return;
+        }
+        const scheduledFieldIds = Array.from(
+          new Set(
+            (Array.isArray(selection.scheduledFieldIds) ? selection.scheduledFieldIds : [])
+              .map((fieldId) => (typeof fieldId === 'string' ? fieldId.trim() : ''))
+              .filter((fieldId) => fieldId.length > 0),
+          ),
+        );
+        if (!scheduledFieldIds.length) {
+          return;
+        }
+        const startDate = parseLocalDateTime(dateRange.start);
+        const endDate = parseLocalDateTime(dateRange.end);
+        if (!startDate || !endDate || endDate.getTime() <= startDate.getTime()) {
+          return;
+        }
+        const derivedDayOfWeek = ((startDate.getDay() + 6) % 7);
+        const startTimeMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+        const endTimeMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+        const normalizedDays = Array.from(
+          new Set(
+            (Array.isArray(selection.daysOfWeek) ? selection.daysOfWeek : [selection.dayOfWeek])
+              .map((day) => Number(day))
+              .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+          ),
+        ).sort((left, right) => left - right);
+        const daysOfWeek = normalizedDays.length ? normalizedDays : [derivedDayOfWeek];
+        normalizedSelections.push({
+          key: typeof selection.key === 'string' && selection.key.trim().length > 0
+            ? selection.key.trim()
+            : `rental-selection-${index + 1}`,
+          scheduledFieldIds,
+          dayOfWeek: daysOfWeek[0] ?? derivedDayOfWeek,
+          daysOfWeek,
+          startTimeMinutes,
+          endTimeMinutes,
+          startDate: dateRange.start,
+          endDate: dateRange.end,
+          repeating: false,
+        });
+      });
+      return normalizedSelections;
+    } catch (error) {
+      console.warn('Invalid rentalSelections query payload:', error);
+      return [];
+    }
+  }, [rentalSelectionsParam]);
+  const rentalRangeFromSelections = useMemo(() => {
+    if (!rentalSelections.length) {
+      return { start: undefined, end: undefined };
+    }
+
+    let earliest: Date | null = null;
+    let latest: Date | null = null;
+    rentalSelections.forEach((selection) => {
+      const selectionStart = parseLocalDateTime(selection.startDate);
+      const selectionEnd = parseLocalDateTime(selection.endDate);
+      if (!selectionStart || !selectionEnd || selectionEnd.getTime() <= selectionStart.getTime()) {
+        return;
+      }
+      if (!earliest || selectionStart < earliest) {
+        earliest = selectionStart;
+      }
+      if (!latest || selectionEnd > latest) {
+        latest = selectionEnd;
+      }
+    });
+
+    return {
+      start: earliest ? formatLocalDateTime(earliest) : undefined,
+      end: latest ? formatLocalDateTime(latest) : undefined,
+    };
+  }, [rentalSelections]);
+  const normalizedRentalStart = useMemo(
+    () => formatLocalDateTime(rentalStartParam) || rentalRangeFromSelections.start,
+    [rentalRangeFromSelections.start, rentalStartParam],
+  );
+  const normalizedRentalEnd = useMemo(
+    () => formatLocalDateTime(rentalEndParam) || rentalRangeFromSelections.end,
+    [rentalEndParam, rentalRangeFromSelections.end],
+  );
+  const rentalFieldIdsFromSelections = useMemo(
+    () => Array.from(new Set(rentalSelections.flatMap((selection) => selection.scheduledFieldIds))),
+    [rentalSelections],
+  );
+  const isRentalFlow = Boolean((normalizedRentalStart && normalizedRentalEnd) || rentalSelections.length > 0);
   const resolvedHostOrgId = hostOrgIdParam ?? (!isRentalFlow ? orgIdParam : undefined);
   const resolvedRentalOrgId = rentalOrgIdParam ?? (isRentalFlow ? orgIdParam : undefined);
 
@@ -910,18 +1097,30 @@ function EventScheduleContent() {
   );
 
   const rentalImmutableDefaults = useMemo<Partial<Event> | undefined>(() => {
-    if (!isCreateMode || !rentalStartParam || !rentalEndParam) {
+    if (!isCreateMode || (!normalizedRentalStart && !normalizedRentalEnd && rentalSelections.length === 0)) {
       return undefined;
     }
 
-    const normalizedStart = formatLocalDateTime(rentalStartParam);
-    const normalizedEnd = formatLocalDateTime(rentalEndParam);
+    const normalizedStart = normalizedRentalStart;
+    const normalizedEnd = normalizedRentalEnd;
     if (!normalizedStart || !normalizedEnd) {
       return undefined;
     }
 
-    const rentalFieldFromOrg = rentalFieldIdParam
-      ? (rentalOrganization?.fields || []).find((field) => field?.$id === rentalFieldIdParam)
+    const rentalFieldsById = new Map(
+      (rentalOrganization?.fields || [])
+        .filter((field): field is Field => Boolean(field?.$id))
+        .map((field) => [field.$id, field as Field]),
+    );
+    const allRentalFieldIds = Array.from(
+      new Set([
+        ...(rentalFieldIdParam ? [rentalFieldIdParam] : []),
+        ...rentalFieldIdsFromSelections,
+      ]),
+    );
+    const primaryRentalFieldId = allRentalFieldIds[0];
+    const rentalFieldFromOrg = primaryRentalFieldId
+      ? rentalFieldsById.get(primaryRentalFieldId)
       : undefined;
 
     const fallbackFieldNumber = (() => {
@@ -936,11 +1135,11 @@ function EventScheduleContent() {
       if (rentalFieldFromOrg) {
         return rentalFieldFromOrg as Field;
       }
-      if (!rentalFieldIdParam) {
+      if (!primaryRentalFieldId) {
         return undefined;
       }
       return {
-        $id: rentalFieldIdParam,
+        $id: primaryRentalFieldId,
         name: rentalFieldNameParam?.trim() || `Field ${fallbackFieldNumber}`,
         fieldNumber: fallbackFieldNumber,
         location: rentalLocationParam ?? '',
@@ -965,8 +1164,55 @@ function EventScheduleContent() {
     if (derivedCoordinates) {
       defaults.coordinates = derivedCoordinates;
     }
-    if (resolvedField) {
+    const resolvedFields = allRentalFieldIds
+      .map((fieldId, index) => {
+        const fromOrganization = rentalFieldsById.get(fieldId);
+        if (fromOrganization) {
+          return fromOrganization;
+        }
+        if (resolvedField && resolvedField.$id === fieldId) {
+          return resolvedField;
+        }
+        return {
+          $id: fieldId,
+          name: `Field ${index + 1}`,
+          fieldNumber: index + 1,
+          location: rentalLocationParam ?? rentalOrganization?.location ?? '',
+          lat: rentalCoordinates?.[1] ?? 0,
+          long: rentalCoordinates?.[0] ?? 0,
+        } as Field;
+      })
+      .filter((field): field is Field => Boolean(field?.$id));
+    if (resolvedFields.length > 0) {
+      defaults.fields = resolvedFields;
+      defaults.fieldIds = resolvedFields.map((field) => field.$id);
+    } else if (resolvedField) {
       defaults.fields = [resolvedField];
+      defaults.fieldIds = [resolvedField.$id];
+    }
+    if (rentalSelections.length > 0) {
+      const rentalTimeSlots: TimeSlot[] = [];
+      rentalSelections.forEach((selectionItem, index) => {
+          const selectionStart = parseLocalDateTime(selectionItem.startDate);
+          const selectionEnd = parseLocalDateTime(selectionItem.endDate);
+          if (!selectionStart || !selectionEnd || selectionEnd.getTime() <= selectionStart.getTime()) {
+            return;
+          }
+          const dayOfWeek = ((selectionStart.getDay() + 6) % 7) as TimeSlot['dayOfWeek'];
+          rentalTimeSlots.push({
+            $id: selectionItem.key || `rental-selection-${index + 1}`,
+            dayOfWeek,
+            daysOfWeek: [dayOfWeek] as TimeSlot['daysOfWeek'],
+            startTimeMinutes: selectionStart.getHours() * 60 + selectionStart.getMinutes(),
+            endTimeMinutes: selectionEnd.getHours() * 60 + selectionEnd.getMinutes(),
+            startDate: formatLocalDateTime(selectionStart) ?? selectionItem.startDate,
+            endDate: formatLocalDateTime(selectionEnd) ?? selectionItem.endDate,
+            repeating: false,
+            scheduledFieldId: selectionItem.scheduledFieldIds[0],
+            scheduledFieldIds: selectionItem.scheduledFieldIds,
+          });
+        });
+      defaults.timeSlots = rentalTimeSlots;
     }
     if (rentalRequiredTemplateIds.length > 0) {
       defaults.requiredTemplateIds = rentalRequiredTemplateIds;
@@ -977,21 +1223,23 @@ function EventScheduleContent() {
     isCreateMode,
     rentalRequiredTemplateIds,
     rentalOrganization,
+    rentalSelections,
+    rentalFieldIdsFromSelections,
     rentalCoordinates,
-    rentalEndParam,
+    normalizedRentalEnd,
     rentalFieldIdParam,
     rentalFieldNameParam,
     rentalFieldNumberParam,
     rentalLocationParam,
-    rentalStartParam,
+    normalizedRentalStart,
   ]);
 
   const rentalPurchaseContext = useMemo(() => {
-    if (!isCreateMode || !rentalStartParam || !rentalEndParam) {
+    if (!isCreateMode) {
       return undefined;
     }
-    const normalizedStart = formatLocalDateTime(rentalStartParam);
-    const normalizedEnd = formatLocalDateTime(rentalEndParam);
+    const normalizedStart = normalizedRentalStart;
+    const normalizedEnd = normalizedRentalEnd;
     if (!normalizedStart || !normalizedEnd) {
       return undefined;
     }
@@ -1000,11 +1248,21 @@ function EventScheduleContent() {
     return {
       start: normalizedStart,
       end: normalizedEnd,
-      fieldId: rentalFieldIdParam ?? undefined,
+      fieldId: rentalFieldIdParam ?? rentalFieldIdsFromSelections[0] ?? undefined,
       priceCents: normalizedPrice,
       rentalDocumentTemplateId,
+      rentalDocumentTemplateIds,
     };
-  }, [isCreateMode, rentalDocumentTemplateId, rentalEndParam, rentalFieldIdParam, rentalPriceParam, rentalStartParam]);
+  }, [
+    isCreateMode,
+    normalizedRentalEnd,
+    normalizedRentalStart,
+    rentalDocumentTemplateId,
+    rentalDocumentTemplateIds,
+    rentalFieldIdParam,
+    rentalFieldIdsFromSelections,
+    rentalPriceParam,
+  ]);
 
   const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
     if (!rentalPurchaseContext) {
@@ -1043,6 +1301,7 @@ function EventScheduleContent() {
       scheduledFieldId,
       price,
       rentalDocumentTemplateId: rentalPurchaseContext.rentalDocumentTemplateId ?? null,
+      rentalDocumentTemplateIds: rentalPurchaseContext.rentalDocumentTemplateIds ?? [],
     };
   }, [changesEvent?.fields, rentalImmutableDefaults?.fields, rentalPurchaseContext]);
 
@@ -4562,6 +4821,10 @@ function EventScheduleContent() {
   }, []);
 
   const startRentalPaymentIntent = useCallback(async (context: PendingRentalCheckoutContext) => {
+    if (!context.requiresPayment) {
+      await scheduleRegularEvent(context.draftToSave);
+      return;
+    }
     if (!user) {
       setSubmitError('You must be signed in to continue checkout.');
       return;
@@ -4585,10 +4848,10 @@ function EventScheduleContent() {
     } finally {
       setPublishing(false);
     }
-  }, [rentalOrganization, user]);
+  }, [rentalOrganization, scheduleRegularEvent, user]);
 
   const startRentalCheckoutFlow = useCallback(async (context: PendingRentalCheckoutContext) => {
-    if (!rentalDocumentTemplateId) {
+    if (!rentalDocumentTemplateIds.length) {
       await startRentalPaymentIntent(context);
       return;
     }
@@ -4601,7 +4864,7 @@ function EventScheduleContent() {
       const signLinks = await boldsignService.createRentalSignLinks({
         user,
         userEmail: authUser?.email ?? undefined,
-        templateId: rentalDocumentTemplateId,
+        templateIds: rentalDocumentTemplateIds,
         eventId: context.eventDraft.$id ?? eventId,
         organizationId: rentalOrganization?.$id ?? context.eventDraft.organizationId ?? undefined,
         timeoutMs: 45_000,
@@ -4626,7 +4889,7 @@ function EventScheduleContent() {
   }, [
     authUser?.email,
     eventId,
-    rentalDocumentTemplateId,
+    rentalDocumentTemplateIds,
     rentalOrganization?.$id,
     startRentalPaymentIntent,
     user,
@@ -5272,17 +5535,19 @@ function EventScheduleContent() {
         state: 'UNPUBLISHED',
       };
 
-      if (rentalPurchaseTimeSlot && user) {
+      if (rentalPurchaseTimeSlot) {
         const rentalPriceCents = typeof rentalPurchaseTimeSlot.price === 'number'
           ? rentalPurchaseTimeSlot.price
           : undefined;
         const requiresPayment = typeof rentalPriceCents === 'number' && rentalPriceCents > 0;
+        const requiresSignature = rentalDocumentTemplateIds.length > 0;
 
-        if (requiresPayment) {
+        if (requiresSignature || requiresPayment) {
           await startRentalCheckoutFlow({
             eventDraft: normalizedDraft as Event,
             draftToSave,
             rentalSlot: rentalPurchaseTimeSlot,
+            requiresPayment,
           });
           return;
         }
@@ -6084,6 +6349,26 @@ function EventScheduleContent() {
                 </Button>
               </Group>
             </Group>
+            {submitError && (
+              <Alert color="red" radius="md" onClose={() => setSubmitError(null)} withCloseButton>
+                {submitError}
+              </Alert>
+            )}
+            {error && (
+              <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
+                {error}
+              </Alert>
+            )}
+            {warningMessage && (
+              <Alert color="yellow" radius="md" onClose={() => setWarningMessage(null)} withCloseButton>
+                {warningMessage}
+              </Alert>
+            )}
+            {infoMessage && (
+              <Alert color="green" radius="md" onClose={() => setInfoMessage(null)} withCloseButton>
+                {infoMessage}
+              </Alert>
+            )}
             <Modal
               opened={templatePromptOpen}
               onClose={closeTemplatePrompt}
@@ -6158,6 +6443,7 @@ function EventScheduleContent() {
                 defaultLocation={createLocationDefaults}
                 immutableDefaults={rentalImmutableDefaults}
                 rentalPurchase={rentalPurchaseContext}
+                templateOrganizationId={resolvedRentalOrgId ?? organizationForCreate?.$id ?? undefined}
                 event={changesEvent}
                 formId={createFormId}
                 isCreateMode
@@ -6310,8 +6596,8 @@ function EventScheduleContent() {
 
   const leagueConfig = activeEvent.leagueConfig;
   const hasNetworkActionInFlight = publishing || reschedulingMatches || cancelling || creatingTemplate;
-  const showEditActionButton = !isTemplateEvent && !isEditingEvent;
-  const showSaveActionButton = isEditingEvent;
+  const showEditActionButton = !isCreateMode && !isTemplateEvent && !isEditingEvent;
+  const showSaveActionButton = isCreateMode || isEditingEvent;
   const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament);
   const showBuildBracketsActionButton = isEditingEvent && (
     isTournament || (isLeague && Boolean(activeEvent.includePlayoffs))
@@ -6354,7 +6640,7 @@ function EventScheduleContent() {
                     Manage
                   </Button>
                 )}
-                {isEditingEvent && (
+                {(isEditingEvent || isCreateMode) && (
                   <>
                     {showLifecycleStatusSelect && (
                       <Select
@@ -6461,6 +6747,18 @@ function EventScheduleContent() {
             </Alert>
           )}
 
+          {submitError && (
+            <Alert color="red" radius="md" onClose={() => setSubmitError(null)} withCloseButton>
+              {submitError}
+            </Alert>
+          )}
+
+          {error && (
+            <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
+              {error}
+            </Alert>
+          )}
+
           {visibleMatchConflictMessage && (
             <Alert
               color="red"
@@ -6518,6 +6816,7 @@ function EventScheduleContent() {
                   isCreateMode={isCreateMode}
                   immutableDefaults={isCreateMode ? rentalImmutableDefaults : undefined}
                   rentalPurchase={isCreateMode ? rentalPurchaseContext : undefined}
+                  templateOrganizationId={isCreateMode ? (resolvedRentalOrgId ?? activeOrganization?.$id ?? undefined) : undefined}
                 />
               ) : (
                 <EventDetailSheet
@@ -7720,6 +8019,103 @@ function EventScheduleContent() {
         paymentData={rentalPaymentData}
         onPaymentSuccess={handleRentalPaymentSuccess}
       />
+      <Modal
+        opened={showRentalSignModal && Boolean(currentRentalSignLink)}
+        onClose={closeRentalSignModal}
+        title="Sign Rental Document"
+        size="xl"
+        centered
+      >
+        <Stack gap="sm">
+          {currentRentalSignLink ? (
+            <>
+              <Text size="sm" c="dimmed">
+                Document {rentalSignIndex + 1} of {rentalSignLinks.length}
+                {currentRentalSignLink.title ? ` • ${currentRentalSignLink.title}` : ''}
+              </Text>
+              {currentRentalSignLink.requiredSignerLabel ? (
+                <Text size="sm" c="dimmed">
+                  Required signer: {currentRentalSignLink.requiredSignerLabel}
+                </Text>
+              ) : null}
+              {rentalSignError ? (
+                <Alert color="red">
+                  {rentalSignError}
+                </Alert>
+              ) : null}
+              {pendingRentalSignedDocumentId || pendingRentalSignatureOperationId ? (
+                <Group gap="xs">
+                  <Loader size="sm" />
+                  <Text size="sm" c="dimmed">
+                    Confirming signature...
+                  </Text>
+                </Group>
+              ) : null}
+              {currentRentalSignLink.type === 'TEXT' ? (
+                <>
+                  <Paper withBorder p="sm" radius="md" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                    <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                      {currentRentalSignLink.content || 'No document content provided.'}
+                    </Text>
+                  </Paper>
+                  <Checkbox
+                    checked={rentalTextAccepted}
+                    onChange={(event) => setRentalTextAccepted(event.currentTarget.checked)}
+                    label="I have read and agree to this document."
+                  />
+                  <Group justify="flex-end">
+                    <Button
+                      onClick={handleRentalTextAcceptance}
+                      disabled={!rentalTextAccepted || recordingRentalSignature}
+                      loading={recordingRentalSignature}
+                    >
+                      Accept And Continue
+                    </Button>
+                  </Group>
+                </>
+              ) : (
+                <>
+                  {currentRentalSignLink.url ? (
+                    <iframe
+                      title={`Rental document ${currentRentalSignLink.title ?? currentRentalSignLink.templateId}`}
+                      src={currentRentalSignLink.url}
+                      className="h-[480px] w-full rounded border"
+                    />
+                  ) : (
+                    <Alert color="red">
+                      This document is missing a signing link. Close checkout and try again.
+                    </Alert>
+                  )}
+                  <Group justify="space-between">
+                    {currentRentalSignLink.url ? (
+                      <Button
+                        component="a"
+                        href={currentRentalSignLink.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        variant="default"
+                      >
+                        Open In New Tab
+                      </Button>
+                    ) : (
+                      <div />
+                    )}
+                    <Button
+                      onClick={() => void handleRentalSignedDocument()}
+                      disabled={!currentRentalSignLink.documentId || recordingRentalSignature}
+                      loading={recordingRentalSignature}
+                    >
+                      I Finished Signing
+                    </Button>
+                  </Group>
+                </>
+              )}
+            </>
+          ) : (
+            <Text size="sm" c="dimmed">Preparing rental document...</Text>
+          )}
+        </Stack>
+      </Modal>
     </div>
   );
 }

@@ -66,7 +66,7 @@ describe('buildFieldCalendarEvents', () => {
       } as Field,
     ]);
 
-    const matchEntry = entries.find((entry) => entry.metaType === 'match');
+    const matchEntry = entries.find((entry) => entry.metaType === 'booked');
     expect(matchEntry).toBeDefined();
     expect(matchEntry?.start.toISOString()).toBe(new Date(match.start).toISOString());
     expect(matchEntry?.end.toISOString()).toBe(new Date(match.end as string).toISOString());
@@ -99,7 +99,7 @@ describe('buildFieldCalendarEvents', () => {
       } as Field,
     ]);
 
-    const matchEntry = entries.find((entry) => entry.metaType === 'match');
+    const matchEntry = entries.find((entry) => entry.metaType === 'booked');
     expect(matchEntry).toBeDefined();
     const expectedStart = new Date(matchWithoutEnd.start);
     expect(matchEntry?.start.toISOString()).toBe(expectedStart.toISOString());

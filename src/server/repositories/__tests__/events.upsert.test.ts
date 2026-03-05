@@ -353,6 +353,29 @@ describe('upsertEventFromPayload', () => {
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
 
+  it('does not clear field rentalSlotIds when payload omits rentalSlotIds', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      organizationId: 'org_1',
+      fields: [
+        {
+          $id: 'field_1',
+          fieldNumber: 1,
+          name: 'Court A',
+          divisions: ['OPEN'],
+          // rentalSlotIds intentionally omitted
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
+    expect(fieldUpsertArg.create.rentalSlotIds).toEqual([]);
+    expect(fieldUpsertArg.update).not.toHaveProperty('rentalSlotIds');
+  });
+
   it('uses sport-based default divisions when payload divisions are omitted', async () => {
     const client = createMockClient();
 

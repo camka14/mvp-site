@@ -2581,6 +2581,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   for (const field of fieldsToPersist) {
     const fieldId = field.$id || field.id;
     if (!fieldId) continue;
+    const hasRentalSlotIdsInput = Array.isArray(field.rentalSlotIds);
+    const normalizedRentalSlotIds = hasRentalSlotIdsInput
+      ? ensureArray(field.rentalSlotIds).map((value) => String(value)).filter(Boolean)
+      : null;
     // Backward-compatible mirror so legacy clients can still inspect field division tags.
     let fieldDivisions = legacyFieldDivisionMap[fieldId] ?? [];
     if (!fieldDivisions.length) {
@@ -2609,7 +2613,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         heading: field.heading ?? null,
         inUse: field.inUse ?? null,
         name: field.name ?? null,
-        rentalSlotIds: ensureArray(field.rentalSlotIds),
+        rentalSlotIds: normalizedRentalSlotIds ?? [],
         location: field.location ?? null,
         organizationId: field.organizationId ?? payload.organizationId ?? null,
         createdAt: new Date(),
@@ -2623,7 +2627,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         heading: field.heading ?? null,
         inUse: field.inUse ?? null,
         name: field.name ?? null,
-        rentalSlotIds: ensureArray(field.rentalSlotIds),
+        ...(normalizedRentalSlotIds !== null ? { rentalSlotIds: normalizedRentalSlotIds } : {}),
         location: field.location ?? null,
         organizationId: field.organizationId ?? payload.organizationId ?? null,
         updatedAt: new Date(),

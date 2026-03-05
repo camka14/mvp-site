@@ -169,10 +169,10 @@ export async function POST(req: NextRequest) {
   }
 
   const userPayload = parsed.data.user as Record<string, unknown> | undefined;
-  const signerUserId = pickString(parsed.data.userId) ?? session.userId;
-  if (!session.isAdmin && signerUserId !== session.userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const requestedSignerUserId = pickString(parsed.data.userId);
+  const signerUserId = !session.isAdmin
+    ? session.userId
+    : (requestedSignerUserId ?? session.userId);
 
   const requestedTemplateIds = Array.from(
     new Set(

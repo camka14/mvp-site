@@ -421,6 +421,29 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('uses overlap filtering for GET /api/events/field/:fieldId range queries', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+    const startIso = '2026-02-01T00:00:00.000Z';
+    const endIso = '2026-02-07T23:59:59.999Z';
+
+    const res = await eventsByFieldGet(
+      new NextRequest(`http://localhost/api/events/field/field_1?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`),
+      { params: Promise.resolve({ fieldId: 'field_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            { start: { lte: new Date(endIso) } },
+            { end: { gte: new Date(startIso) } },
+          ],
+        }),
+      }),
+    );
+  });
+
   it('excludes template matches from GET /api/fields/:id/matches results', async () => {
     prismaMock.matches.findMany.mockResolvedValueOnce([
       { id: 'match_published', eventId: 'event_published', fieldId: 'field_1' },
@@ -447,5 +470,32 @@ describe('event template privacy routes', () => {
       .map((row) => row.id ?? row.$id)
       .filter((id): id is string => Boolean(id));
     expect(matchIds).toEqual(['match_published']);
+  });
+
+  it('uses overlap filtering for GET /api/fields/:id/matches range queries', async () => {
+    prismaMock.matches.findMany.mockResolvedValueOnce([]);
+    const startIso = '2026-02-01T00:00:00.000Z';
+    const endIso = '2026-02-07T23:59:59.999Z';
+
+    const res = await matchesByFieldGet(
+      new NextRequest(`http://localhost/api/fields/field_1/matches?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`),
+      { params: Promise.resolve({ id: 'field_1' }) },
+    );
+    expect(res.status).toBe(200);
+    expect(prismaMock.matches.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            { start: { lte: new Date(endIso) } },
+            {
+              OR: [
+                { end: null },
+                { end: { gte: new Date(startIso) } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
   });
 });

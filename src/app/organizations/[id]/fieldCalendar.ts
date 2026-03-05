@@ -27,7 +27,7 @@ export type FieldCalendarEntry = {
   end: Date;
   resourceId: string;
   resource: EventRecord | Match | TimeSlot;
-  metaType: 'event' | 'match' | 'rental';
+  metaType: 'booked' | 'rental';
   fieldName: string;
 };
 
@@ -58,25 +58,23 @@ type CalendarRange = { start: Date; end: Date } | null;
 export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange = null): FieldCalendarEntry[] => {
   return fields.flatMap((field) => {
     const baseTitle = field.name || `Field ${field.fieldNumber}`;
-    const events = (field.events || []).filter((evt) => evt.eventType !== 'LEAGUE' && evt.eventType !== 'TOURNAMENT');
-    const matches = (field.matches || []).filter((match) => {
-      const matchWithEvent = match as Match & { event?: EventRecord | null };
-      const eventRef = typeof matchWithEvent.event === 'object' ? matchWithEvent.event ?? null : null;
-      const eventType = eventRef?.eventType;
+    const events = (field.events || []).filter((evt) => {
+      const eventType = typeof evt.eventType === 'string' ? evt.eventType.toUpperCase() : '';
       return eventType !== 'LEAGUE' && eventType !== 'TOURNAMENT';
     });
+    const matches = field.matches || [];
 
     const eventEntries: FieldCalendarEntry[] = events.map((evt) => {
       const start = parseToDate(evt.start) ?? new Date();
       const end = ensureEndDate(start, evt.end, ONE_HOUR_IN_MINUTES);
       return {
-        id: `field-event-${field.$id}-${evt.$id}`,
-        title: evt.name,
+        id: `field-booked-event-${field.$id}-${evt.$id}`,
+        title: 'Booked',
         start,
         end,
         resourceId: field.$id,
         resource: evt,
-        metaType: 'event',
+        metaType: 'booked',
         fieldName: baseTitle,
       };
     });
@@ -84,18 +82,14 @@ export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange =
     const matchEntries: FieldCalendarEntry[] = matches.map((match) => {
       const start = parseToDate(match.start) ?? new Date();
       const end = ensureEndDate(start, match.end, ONE_HOUR_IN_MINUTES);
-      const eventRef =
-        typeof (match as Match & { event?: EventRecord | null }).event === 'object'
-          ? ((match as Match & { event?: EventRecord | null }).event ?? null)
-          : null;
       return {
-        id: `field-match-${field.$id}-${match.$id}`,
-        title: eventRef?.name ? `${eventRef.name} Match` : 'Match',
+        id: `field-booked-match-${field.$id}-${match.$id}`,
+        title: 'Booked',
         start,
         end,
         resourceId: field.$id,
         resource: match,
-        metaType: 'match',
+        metaType: 'booked',
         fieldName: baseTitle,
       };
     });

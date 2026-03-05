@@ -226,12 +226,56 @@ class EventService {
             throw error;
         }
 
-        if (event.organization) {
+        const eventOrganizationId = (() => {
+            const organizationValue = event.organization as Organization | string | null | undefined;
+            if (typeof organizationValue === 'string') {
+                const normalized = organizationValue.trim();
+                return normalized.length > 0 ? normalized : null;
+            }
+            if (organizationValue && typeof organizationValue === 'object' && typeof (organizationValue as any).$id === 'string') {
+                const normalized = String((organizationValue as any).$id).trim();
+                return normalized.length > 0 ? normalized : null;
+            }
+            if (typeof event.organizationId === 'string') {
+                const normalized = event.organizationId.trim();
+                return normalized.length > 0 ? normalized : null;
+            }
+            return null;
+        })();
+
+        if (eventOrganizationId) {
             return;
         }
 
         const fieldsToRemove = Array.isArray(event.fields)
-            ? event.fields.filter((field): field is Field => Boolean(field?.$id))
+            ? event.fields
+                .filter((field): field is Field => Boolean(field?.$id))
+                .filter((field) => {
+                    const organizationValue = (field as Field & {
+                        organization?: Organization | string | null;
+                        organizationId?: string | null;
+                    }).organization;
+
+                    if (typeof organizationValue === 'string' && organizationValue.trim().length > 0) {
+                        return false;
+                    }
+
+                    if (
+                        organizationValue
+                        && typeof organizationValue === 'object'
+                        && typeof (organizationValue as any).$id === 'string'
+                        && String((organizationValue as any).$id).trim().length > 0
+                    ) {
+                        return false;
+                    }
+
+                    const organizationIdValue = (field as Field & { organizationId?: string | null }).organizationId;
+                    if (typeof organizationIdValue === 'string' && organizationIdValue.trim().length > 0) {
+                        return false;
+                    }
+
+                    return true;
+                })
             : [];
 
         if (!fieldsToRemove.length) {
@@ -246,8 +290,7 @@ class EventService {
 
         const failures = deletionResults.filter((result) => result.status === 'rejected');
         if (failures.length) {
-            console.error(`Failed to delete ${failures.length} field(s) for unpublished event ${event.$id}.`);
-            throw new Error('Failed to delete fields for unpublished event');
+            console.warn(`Failed to delete ${failures.length} field(s) for unpublished event ${event.$id}.`);
         }
     }
     

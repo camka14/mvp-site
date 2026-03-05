@@ -559,6 +559,32 @@ describe('League schedule page', () => {
     });
   });
 
+  it('shows create action and hides manage action for create mode without edit query', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path.startsWith('/api/events?state=TEMPLATE')) {
+        return Promise.resolve({ events: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(capturedEventFormProps?.event?.eventType).toBe('EVENT');
+    });
+
+    expect(screen.queryByRole('button', { name: /^manage$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^create event$/i })).toBeInTheDocument();
+  });
+
   it('creates a template from persisted edit data and preserves complex divisions/time slots', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
@@ -1966,5 +1992,81 @@ describe('League schedule page', () => {
       'tmpl_release',
     ]);
     expect(capturedEventFormProps?.rentalPurchase?.rentalDocumentTemplateId).toBe('tmpl_rental_contract');
+  });
+
+  it('shows create-mode submit errors from form validation', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        return null;
+      },
+    });
+    mockEventFormValidateResult = false;
+    mockEventFormDirtyState = true;
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByTestId('event-form');
+
+    const createButton = await screen.findByRole('button', { name: /^create event$/i });
+    fireEvent.click(createButton);
+
+    expect(await screen.findByText('Please fix the highlighted fields before submitting.')).toBeInTheDocument();
+  });
+
+  it('opens rental sign modal in create mode after sign links are created', async () => {
+    const start = formatLocalDateTime(new Date());
+    const end = formatLocalDateTime(new Date(Date.now() + 60 * 60 * 1000));
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'rentalStart') return start;
+        if (key === 'rentalEnd') return end;
+        if (key === 'rentalFieldId') return 'field_1';
+        if (key === 'rentalOrgId') return 'org_rental';
+        if (key === 'rentalDocumentTemplateId') return 'tmpl_rental_contract';
+        return null;
+      },
+    });
+    mockEventFormDirtyState = true;
+    mockEventFormValidateResult = true;
+
+    (organizationService.getOrganizationById as jest.Mock).mockResolvedValue({
+      $id: 'org_rental',
+      name: 'Rental Org',
+      fields: [],
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/rentals/sign') {
+        return Promise.resolve({
+          signLinks: [
+            {
+              templateId: 'tmpl_rental_contract',
+              type: 'TEXT',
+              title: 'Rental Contract',
+              signOnce: false,
+              content: 'Rental terms go here.',
+              documentId: 'doc_1',
+              requiredSignerType: 'PARTICIPANT',
+              requiredSignerLabel: 'Participant',
+              signerContext: 'participant',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByTestId('event-form');
+
+    const createButton = await screen.findByRole('button', { name: /^create event$/i });
+    fireEvent.click(createButton);
+
+    expect(await screen.findByRole('dialog', { name: /sign rental document/i })).toBeInTheDocument();
+    expect(await screen.findByText(/rental terms go here/i)).toBeInTheDocument();
   });
 });

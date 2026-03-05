@@ -9,12 +9,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const search = req.nextUrl.searchParams;
   const start = parseDateInput(search.get('start'));
   const end = parseDateInput(search.get('end'));
+  const rangeWhere = (() => {
+    if (start && end) {
+      return {
+        AND: [
+          { start: { lte: end } },
+          {
+            OR: [
+              { end: null },
+              { end: { gte: start } },
+            ],
+          },
+        ],
+      };
+    }
+    if (start) {
+      return {
+        OR: [
+          { end: null },
+          { end: { gte: start } },
+        ],
+      };
+    }
+    if (end) {
+      return { start: { lte: end } };
+    }
+    return {};
+  })();
 
   const matches = await prisma.matches.findMany({
     where: {
       fieldId: id,
-      ...(start ? { start: { gte: start } } : {}),
-      ...(end ? { end: { lte: end } } : {}),
+      ...rangeWhere,
     },
     orderBy: { start: 'asc' },
   });

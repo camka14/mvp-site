@@ -145,4 +145,43 @@ describe('POST /api/rentals/sign', () => {
     expect(String(data.error ?? '')).toContain('must use Participant signer type');
     expect(prismaMock.signedDocuments.create).not.toHaveBeenCalled();
   });
+
+  it('falls back to session user when non-admin payload userId mismatches', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_rental_1',
+        type: 'TEXT',
+        title: 'Rental Waiver',
+        content: 'I accept the rental terms.',
+        signOnce: false,
+        requiredSignerType: 'PARTICIPANT',
+      },
+    ]);
+
+    const res = await POST(jsonPost('http://localhost/api/rentals/sign', {
+      templateId: 'tmpl_rental_1',
+      eventId: 'event_new_3',
+      organizationId: 'org_1',
+      userId: 'another_user',
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.signLinks).toHaveLength(1);
+    expect(prismaMock.userData.findUnique).toHaveBeenCalledWith({
+      where: { id: 'user_1' },
+      select: {
+        firstName: true,
+        lastName: true,
+        userName: true,
+      },
+    });
+    expect(prismaMock.signedDocuments.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: 'user_1',
+        }),
+      }),
+    );
+  });
 });

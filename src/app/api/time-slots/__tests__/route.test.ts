@@ -27,6 +27,19 @@ jest.mock('@/server/legacyFormat', () => ({
     const parsed = value instanceof Date ? value : new Date(String(value));
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   },
+  stripLegacyFieldsDeep: (value: unknown) => {
+    if (Array.isArray(value)) {
+      return value.map((entry) => (entry && typeof entry === 'object'
+        ? Object.fromEntries(Object.entries(entry).filter(([key]) => !key.startsWith('$')))
+        : entry));
+    }
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).filter(([key]) => !key.startsWith('$')),
+      );
+    }
+    return value;
+  },
   withLegacyFields: (value: any) => ({ ...value, $id: value.id ?? value.$id ?? null }),
 }));
 
@@ -276,5 +289,50 @@ describe('time-slots routes', () => {
       scheduledFieldIds: ['field_a', 'field_b'],
       rentalDocumentTemplateId: 'tmpl_patch_doc',
     }));
+  });
+
+  it('PATCH strips legacy and immutable fields before prisma update', async () => {
+    prismaMock.timeSlots.update.mockResolvedValueOnce({
+      id: 'slot_patch_guard',
+      dayOfWeek: 2,
+      daysOfWeek: [2],
+      scheduledFieldId: 'field_a',
+      scheduledFieldIds: ['field_a'],
+      divisions: ['open'],
+      startDate: new Date('2026-01-05T00:00:00.000Z'),
+      endDate: null,
+      repeating: true,
+      startTimeMinutes: 540,
+      endTimeMinutes: 600,
+      price: null,
+      requiredTemplateIds: [],
+      rentalDocumentTemplateId: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const res = await PATCH(
+      jsonRequest('http://localhost/api/time-slots/slot_patch_guard', {
+        slot: {
+          $id: 'slot_patch_guard',
+          id: 'slot_patch_guard',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          dayOfWeek: 2,
+          daysOfWeek: [2],
+          scheduledFieldId: 'field_a',
+          scheduledFieldIds: ['field_a'],
+        },
+      }, 'PATCH'),
+      { params: Promise.resolve({ id: 'slot_patch_guard' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const updateCallArg = prismaMock.timeSlots.update.mock.calls.at(-1)?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(updateCallArg.data).not.toHaveProperty('$id');
+    expect(updateCallArg.data).not.toHaveProperty('id');
+    expect(updateCallArg.data).not.toHaveProperty('createdAt');
+    expect(updateCallArg.data).toHaveProperty('updatedAt');
   });
 });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,7 +91,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
-  const payload = parsed.data.slot ?? parsed.data ?? {};
+  const payload = stripLegacyFieldsDeep(parsed.data.slot ?? parsed.data ?? {}) as Record<string, unknown>;
+  delete payload.id;
+  delete payload.createdAt;
+  delete payload.updatedAt;
   if (payload.startDate) {
     const parsedDate = parseDateInput(payload.startDate);
     if (parsedDate) payload.startDate = parsedDate;
@@ -143,10 +146,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     payload.dayOfWeek = normalizedDays[0] ?? null;
   }
   const updatedAt = new Date();
+  const updateData: Record<string, unknown> = { updatedAt };
+  const updatableKeys = [
+    'dayOfWeek',
+    'daysOfWeek',
+    'repeating',
+    'scheduledFieldId',
+    'scheduledFieldIds',
+    'startTimeMinutes',
+    'endTimeMinutes',
+    'startDate',
+    'endDate',
+    'price',
+    'requiredTemplateIds',
+    'rentalDocumentTemplateId',
+  ] as const;
+  for (const key of updatableKeys) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      updateData[key] = payload[key];
+    }
+  }
 
   const updated = await prisma.timeSlots.update({
     where: { id },
-    data: { ...payload, updatedAt } as any,
+    data: updateData as any,
   });
   if (payloadDivisions !== null) {
     await persistTimeSlotDivisions(id, payloadDivisions, updatedAt);
