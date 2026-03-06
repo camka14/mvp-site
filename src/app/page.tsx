@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -7,6 +8,24 @@ import Loading from '@/components/ui/Loading';
 import { useApp } from './providers';
 import { authService } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
+
+type FeatureSection = {
+  id: string;
+  title: string;
+  points: string[];
+  webImage: {
+    src: string;
+    alt: string;
+    width: number;
+    height: number;
+  };
+  mobileImage: {
+    src: string;
+    alt: string;
+    width: number;
+    height: number;
+  } | null;
+};
 
 const featureSections = [
   {
@@ -17,7 +36,18 @@ const featureSections = [
       'Build schedules with teams, brackets, and match dependencies.',
       'Publish results and standings in one source of truth.',
     ],
-    imageLabel: 'Image D: Web event admin view (teams, matches, standings)',
+    webImage: {
+      src: '/landing/bracket_screenshot_web.png',
+      alt: 'Web bracket and standings screen',
+      width: 1919,
+      height: 906,
+    },
+    mobileImage: {
+      src: '/landing/bracket_mobile.png',
+      alt: 'Mobile bracket screen',
+      width: 1344,
+      height: 2992,
+    },
   },
   {
     id: 'fields-scheduling',
@@ -27,7 +57,18 @@ const featureSections = [
       'Use map placement and field layout context when planning.',
       'Keep operations conflict-aware as events scale.',
     ],
-    imageLabel: 'Image E: Field placement map or scheduling grid',
+    webImage: {
+      src: '/landing/schedule_screenshot_web.png',
+      alt: 'Web field and scheduling view',
+      width: 1919,
+      height: 905,
+    },
+    mobileImage: {
+      src: '/landing/schedule_mobile.png',
+      alt: 'Mobile schedule view',
+      width: 1344,
+      height: 2992,
+    },
   },
   {
     id: 'registration',
@@ -37,7 +78,18 @@ const featureSections = [
       'Track participant status, waitlists, and attendance quickly.',
       'Support parent or guardian registration paths where required.',
     ],
-    imageLabel: 'Image F: Participants list with registration statuses',
+    webImage: {
+      src: '/landing/team_managment_web.png',
+      alt: 'Web team management and roster view',
+      width: 1918,
+      height: 904,
+    },
+    mobileImage: {
+      src: '/landing/participants_mobile.png',
+      alt: 'Mobile participants view',
+      width: 1344,
+      height: 2992,
+    },
   },
   {
     id: 'payments',
@@ -47,7 +99,18 @@ const featureSections = [
       'Process billing with server-side Stripe reconciliation.',
       'Handle billing records and refund workflows when needed.',
     ],
-    imageLabel: 'Image G: Mobile checkout + web billing view',
+    webImage: {
+      src: '/landing/payment_screen_web.png',
+      alt: 'Web payment flow and checkout summary',
+      width: 1919,
+      height: 900,
+    },
+    mobileImage: {
+      src: '/landing/payment_screen_mobile.png',
+      alt: 'Mobile payment sheet and checkout options',
+      width: 1344,
+      height: 2992,
+    },
   },
   {
     id: 'documents',
@@ -57,7 +120,13 @@ const featureSections = [
       'Track signed records by player and event.',
       'Give organizers instant visibility into compliance.',
     ],
-    imageLabel: 'Image H: Waiver signing + document status view',
+    webImage: {
+      src: '/landing/teams_auth_screenshot_web.png',
+      alt: 'Web team management dashboard',
+      width: 1440,
+      height: 900,
+    },
+    mobileImage: null,
   },
   {
     id: 'communication',
@@ -67,9 +136,46 @@ const featureSections = [
       'Send topic notifications and organizer announcements.',
       'Keep players and parents synced in real time.',
     ],
-    imageLabel: 'Image I: Mobile chat + push notification preview',
+    webImage: {
+      src: '/landing/discover_screen_web.png',
+      alt: 'Web discover feed and updates view',
+      width: 1919,
+      height: 899,
+    },
+    mobileImage: null,
   },
-];
+  {
+    id: 'my-schedule',
+    title: 'Personal schedules stay organized.',
+    points: [
+      'Give players one place to see upcoming games and assignments.',
+      'Keep event times and locations visible without extra coordination.',
+      'Reduce no-shows with clear schedule visibility.',
+    ],
+    webImage: {
+      src: '/landing/my_schedule_auth_screenshot_web.png',
+      alt: 'Web personal schedule dashboard',
+      width: 1440,
+      height: 900,
+    },
+    mobileImage: null,
+  },
+] satisfies FeatureSection[];
+
+const heroScreenshots = {
+  web: {
+    src: '/landing/discover_screen_web.png',
+    alt: 'Web discover dashboard',
+    width: 1919,
+    height: 899,
+  },
+  mobile: {
+    src: '/landing/discover_screen_mobile.png',
+    alt: 'Mobile discover screen',
+    width: 1344,
+    height: 2992,
+  },
+};
 
 const useCases = [
   'Tournaments',
@@ -78,6 +184,38 @@ const useCases = [
   'Training Camps',
   'Facility Programs',
   'Community Events',
+];
+
+const integrations = [
+  {
+    name: 'Stripe Payments',
+    logoSrc: '/integrations/stripe-wordmark-slate.svg',
+    logoAlt: 'Stripe logo',
+    logoWidth: 112,
+    logoHeight: 34,
+  },
+  {
+    name: 'Firebase Push',
+    logoSrc: '/integrations/firebase-horizontal-full-color.svg',
+    logoAlt: 'Firebase logo',
+    logoWidth: 136,
+    logoHeight: 36,
+  },
+  {
+    name: 'BoldSign E-Sign',
+    logoSrc: '/integrations/boldsign-wordmark.svg',
+    logoAlt: 'BoldSign logo',
+    logoWidth: 170,
+    logoHeight: 48,
+  },
+  {
+    name: 'Google Maps',
+    logoSrc: '/integrations/google-maps.svg',
+    logoAlt: 'Google Maps icon',
+    logoWidth: 92,
+    logoHeight: 132,
+    wordmarkText: 'Google Maps',
+  },
 ];
 
 export default function HomePage() {
@@ -150,7 +288,7 @@ export default function HomePage() {
       </header>
 
       <main className="relative">
-        <section className="mx-auto grid w-full max-w-7xl gap-10 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pt-24">
+        <section className="mx-auto grid w-full max-w-7xl gap-10 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8 lg:pt-24">
           <div className="space-y-7" data-reveal>
             <p className="landing-kicker inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
               Combined Platform: Web + Mobile
@@ -197,19 +335,30 @@ export default function HomePage() {
 
           <div className="relative" data-reveal data-delay="1">
             <div className="landing-shot landing-surface-strong rounded-3xl p-4">
-              <div className="landing-hero-media aspect-[16/10] rounded-2xl p-6">
-                <p className="landing-label text-xs uppercase tracking-[0.16em]">Image A</p>
-                <h2 className="landing-section-title mt-3 text-xl font-semibold">Web dashboard + mobile app mockup</h2>
-                <p className="landing-section-copy mt-2 max-w-md text-sm">
-                  Front: mobile event details with Join/Pay/Chat. Background: web admin schedule and participant controls.
-                </p>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="landing-note-primary rounded-xl p-3 text-xs">
-                  Mobile screen: Event details + CTA actions
+              <div className="landing-hero-stack space-y-4">
+                <div className="landing-shot-image landing-shot-image-equal">
+                  <Image
+                    src={heroScreenshots.web.src}
+                    alt={heroScreenshots.web.alt}
+                    width={heroScreenshots.web.width}
+                    height={heroScreenshots.web.height}
+                    sizes="(min-width: 1024px) 44vw, 100vw"
+                    className="landing-shot-image-content landing-shot-image-content-equal"
+                  />
                 </div>
-                <div className="landing-note-secondary rounded-xl p-3 text-xs">
-                  Web screen: Event admin and scheduling
+                <div className="flex justify-center">
+                  <div className="landing-phone-frame landing-phone-frame-hero">
+                    <div className="landing-phone-screen">
+                      <Image
+                        src={heroScreenshots.mobile.src}
+                        alt={heroScreenshots.mobile.alt}
+                        width={heroScreenshots.mobile.width}
+                        height={heroScreenshots.mobile.height}
+                        sizes="(min-width: 1024px) 18vw, 52vw"
+                        className="landing-phone-image"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -246,8 +395,15 @@ export default function HomePage() {
                 <li>Broadcast updates and announcements</li>
                 <li>Track documents and waivers</li>
               </ul>
-              <div className="landing-note-primary mt-5 rounded-2xl p-4 text-xs">
-                Image B: Web organizer dashboard screenshot
+              <div className="landing-shot-image landing-shot-image-equal mt-5">
+                <Image
+                  src="/landing/org_home_web.png"
+                  alt="Web organizer organization home dashboard screenshot"
+                  width={1919}
+                  height={909}
+                  sizes="(min-width: 1280px) 560px, (min-width: 1024px) 44vw, 100vw"
+                  className="landing-shot-image-content landing-shot-image-content-equal"
+                />
               </div>
             </article>
 
@@ -260,8 +416,17 @@ export default function HomePage() {
                 <li>Receive push notifications instantly</li>
                 <li>View schedules, locations, and updates</li>
               </ul>
-              <div className="landing-note-secondary mt-5 rounded-2xl p-4 text-xs">
-                Image C: Mobile participant app screenshot
+              <div className="landing-phone-frame landing-phone-frame-two-sides mt-5">
+                <div className="landing-phone-screen">
+                  <Image
+                    src="/landing/discover_screen_mobile.png"
+                    alt="Mobile discover screenshot"
+                    width={1344}
+                    height={2992}
+                    sizes="(min-width: 1024px) 14vw, 50vw"
+                    className="landing-phone-image"
+                  />
+                </div>
               </div>
             </article>
           </div>
@@ -273,7 +438,7 @@ export default function HomePage() {
             return (
               <article
                 key={feature.id}
-                className={`landing-surface grid gap-6 rounded-3xl p-6 lg:grid-cols-2 lg:items-center ${reverse ? 'lg:[&>*:first-child]:order-2' : ''}`}
+                className={`landing-surface grid gap-6 rounded-3xl p-6 lg:items-center ${reverse ? 'lg:grid-cols-[3fr_1fr] lg:[&>*:first-child]:order-2' : 'lg:grid-cols-[1fr_3fr]'}`}
               >
                 <div className="space-y-4">
                   <h3 className="landing-section-title text-2xl font-semibold">{feature.title}</h3>
@@ -284,9 +449,37 @@ export default function HomePage() {
                   </ul>
                 </div>
                 <div className="landing-surface-soft landing-section-copy rounded-2xl p-5 text-sm">
-                  <div className="landing-feature-media aspect-[4/3] rounded-xl p-4">
-                    <p className="landing-label text-xs uppercase tracking-[0.16em]">Screenshot placement</p>
-                    <p className="mt-3">{feature.imageLabel}</p>
+                  <div className="rounded-xl">
+                    <div className={`landing-media-grid grid gap-3 ${feature.mobileImage ? 'sm:grid-cols-[2.7fr_0.42fr] sm:items-stretch' : ''}`}>
+                      <div className={`landing-shot-image ${feature.mobileImage ? 'landing-media-pair-item' : ''}`}>
+                        <Image
+                          src={feature.webImage.src}
+                          alt={feature.webImage.alt}
+                          width={feature.webImage.width}
+                          height={feature.webImage.height}
+                          sizes={
+                            feature.mobileImage
+                              ? '(min-width: 1280px) 832px, (min-width: 1024px) 64vw, 100vw'
+                              : '(min-width: 1280px) 960px, (min-width: 1024px) 72vw, 100vw'
+                          }
+                          className={`landing-shot-image-content ${feature.mobileImage ? 'landing-shot-image-content-equal' : ''}`}
+                        />
+                      </div>
+                      {feature.mobileImage ? (
+                        <div className="landing-phone-frame landing-phone-frame-compact landing-phone-frame-equal landing-media-pair-item">
+                          <div className="landing-phone-screen">
+                            <Image
+                              src={feature.mobileImage.src}
+                              alt={feature.mobileImage.alt}
+                              width={feature.mobileImage.width}
+                              height={feature.mobileImage.height}
+                              sizes="(min-width: 1024px) 12vw, 40vw"
+                              className="landing-phone-image"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </article>
@@ -326,11 +519,25 @@ export default function HomePage() {
         <section id="resources" className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
           <div className="landing-surface rounded-3xl p-6">
             <h2 className="landing-section-title text-2xl font-semibold sm:text-3xl">Integrations and platform stack</h2>
-            <div className="landing-section-copy mt-5 flex flex-wrap gap-3 text-sm">
-              {['Stripe Payments', 'Firebase Push', 'BoldSign E-Sign', 'Google Maps'].map((integration) => (
-                <span key={integration} className="landing-pill rounded-full px-4 py-2">
-                  {integration}
-                </span>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {integrations.map((integration) => (
+                <article
+                  key={integration.name}
+                  className={`landing-pill flex min-h-24 items-center justify-center rounded-2xl px-4 py-3 ${integration.name === 'Google Maps' ? 'landing-pill-google gap-2' : ''}`}
+                >
+                  <Image
+                    src={integration.logoSrc}
+                    alt={integration.logoAlt}
+                    width={integration.logoWidth}
+                    height={integration.logoHeight}
+                    className={`w-auto shrink-0 ${integration.name === 'Google Maps' ? 'h-10' : 'h-8'}`}
+                  />
+                  {integration.wordmarkText ? (
+                    <span className="landing-pill-wordmark whitespace-nowrap text-base font-semibold">
+                      {integration.wordmarkText}
+                    </span>
+                  ) : null}
+                </article>
               ))}
             </div>
           </div>

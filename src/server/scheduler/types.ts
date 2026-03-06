@@ -751,7 +751,14 @@ export class Tournament {
     this.maxAge = params.maxAge ?? null;
     this.doTeamsRef = typeof params.doTeamsRef === 'boolean' ? params.doTeamsRef : true;
     this.teamRefsMaySwap = this.doTeamsRef ? Boolean(params.teamRefsMaySwap) : false;
-    this.fieldCount = params.fieldCount ?? null;
+    const configuredFieldCount = Object.keys(params.fields ?? {}).length;
+    if (configuredFieldCount > 0) {
+      this.fieldCount = configuredFieldCount;
+    } else if (typeof params.fieldCount === 'number' && Number.isFinite(params.fieldCount)) {
+      this.fieldCount = Math.max(1, Math.trunc(params.fieldCount));
+    } else {
+      this.fieldCount = null;
+    }
     this.prize = params.prize ?? null;
     this.hostId = params.hostId ?? '';
     this.assistantHostIds = params.assistantHostIds ?? [];

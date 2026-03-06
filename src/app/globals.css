@@ -904,6 +904,98 @@ summary::-webkit-details-marker {
   background: var(--landing-feature-gradient);
 }
 
+.landing-shot-image {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--landing-highlight-border) 55%, white);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--mvp-surface) 82%, white);
+}
+
+.landing-shot-image-content {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.landing-shot-image-equal {
+  height: auto;
+  aspect-ratio: 1919 / 909;
+}
+
+.landing-shot-image-content-equal {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+}
+
+.landing-media-pair-item {
+  height: 100%;
+}
+
+.landing-phone-frame {
+  position: relative;
+  width: 100%;
+  max-width: 16rem;
+  margin-inline: auto;
+  padding: 0.4rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(15, 23, 42, 0.55);
+  background: linear-gradient(150deg, #0f172a 0%, #111827 55%, #1f2937 100%);
+  box-shadow:
+    0 16px 28px -16px rgba(15, 23, 42, 0.55),
+    inset 0 0 0 0.08rem rgba(255, 255, 255, 0.16);
+}
+
+.landing-phone-frame::before {
+  content: '';
+  position: absolute;
+  top: 0.34rem;
+  left: 50%;
+  z-index: 2;
+  width: 34%;
+  height: 0.95rem;
+  transform: translateX(-50%);
+  border-radius: 0 0 0.8rem 0.8rem;
+  background: #0f172a;
+}
+
+.landing-phone-screen {
+  overflow: hidden;
+  border-radius: 1.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #f8fafc;
+}
+
+.landing-phone-frame-compact {
+  max-width: 10rem;
+}
+
+.landing-phone-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.landing-phone-frame-equal {
+  height: 100%;
+  aspect-ratio: 9 / 20;
+  width: auto;
+  max-height: 100%;
+}
+
+.landing-phone-frame-equal .landing-phone-screen {
+  height: 100%;
+}
+
+.landing-phone-frame-equal .landing-phone-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .landing-step {
   color: var(--landing-accent-text);
 }
@@ -912,6 +1004,16 @@ summary::-webkit-details-marker {
   border: 1px solid var(--landing-border-soft);
   background: var(--landing-surface-strong);
   color: var(--landing-text-muted);
+}
+
+.landing-pill-google {
+  background: linear-gradient(135deg, rgba(66, 133, 244, 0.08) 0%, rgba(52, 168, 83, 0.08) 100%);
+  border-color: rgba(66, 133, 244, 0.32);
+}
+
+.landing-pill-wordmark {
+  color: var(--landing-text);
+  letter-spacing: -0.01em;
 }
 
 .landing-cta {
@@ -969,6 +1071,14 @@ summary::-webkit-details-marker {
 .landing-shot {
   box-shadow: var(--landing-shot-shadow);
   animation: landing-float 5.2s ease-in-out infinite;
+}
+
+.landing-phone-frame-hero {
+  max-width: clamp(9rem, 16vw, 12.5rem);
+}
+
+.landing-phone-frame-two-sides {
+  max-width: clamp(7.5rem, 10vw, 8.75rem);
 }
 
 @keyframes landing-reveal {

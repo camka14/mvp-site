@@ -846,6 +846,16 @@ const resolvePlayoffDivisionTournamentConfig = (
   const loserPointsFallback = Array.isArray(league.loserBracketPointsToVictory)
     ? league.loserBracketPointsToVictory
     : [];
+  const fallbackFieldCount = (() => {
+    const configuredFieldCount = Object.keys(league.fields ?? {}).length;
+    if (configuredFieldCount > 0) {
+      return configuredFieldCount;
+    }
+    if (typeof league.fieldCount === 'number' && Number.isFinite(league.fieldCount)) {
+      return Math.max(1, Math.trunc(league.fieldCount));
+    }
+    return 1;
+  })();
 
   return {
     doubleElimination,
@@ -864,9 +874,7 @@ const resolvePlayoffDivisionTournamentConfig = (
     prize: typeof divisionConfig?.prize === 'string' ? divisionConfig.prize : (league.prize ?? ''),
     fieldCount: normalizePositiveInt(
       divisionConfig?.fieldCount,
-      typeof league.fieldCount === 'number' && Number.isFinite(league.fieldCount)
-        ? league.fieldCount
-        : 1,
+      fallbackFieldCount,
     ),
     restTimeMinutes: normalizeNonNegativeInt(
       divisionConfig?.restTimeMinutes,

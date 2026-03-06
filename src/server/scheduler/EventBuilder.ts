@@ -653,6 +653,16 @@ export class EventBuilder {
     const loserPointsFallback = Array.isArray(this.event.loserBracketPointsToVictory)
       ? this.event.loserBracketPointsToVictory
       : [];
+    const fallbackFieldCount = (() => {
+      const configuredFieldCount = Object.keys(this.event.fields ?? {}).length;
+      if (configuredFieldCount > 0) {
+        return configuredFieldCount;
+      }
+      if (typeof this.event.fieldCount === 'number' && Number.isFinite(this.event.fieldCount)) {
+        return Math.max(1, Math.trunc(this.event.fieldCount));
+      }
+      return 1;
+    })();
 
     return {
       doubleElimination,
@@ -673,9 +683,7 @@ export class EventBuilder {
         : (this.event.prize ?? ''),
       fieldCount: normalizePositiveInt(
         divisionConfig?.fieldCount,
-        typeof this.event.fieldCount === 'number' && Number.isFinite(this.event.fieldCount)
-          ? this.event.fieldCount
-          : 1,
+        fallbackFieldCount,
       ),
       restTimeMinutes: normalizeNonNegativeInt(
         divisionConfig?.restTimeMinutes,

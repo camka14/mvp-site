@@ -473,6 +473,21 @@ class EventService {
             }
             return undefined;
         };
+        const normalizedFieldIds = Array.isArray(row.fieldIds)
+            ? row.fieldIds
+                .filter((fieldId: unknown): fieldId is string => typeof fieldId === 'string')
+                .map((fieldId: string) => fieldId.trim())
+                .filter((fieldId: string) => fieldId.length > 0)
+            : [];
+        const derivedFieldCount = (() => {
+            if (normalizedFieldIds.length > 0) {
+                return normalizedFieldIds.length;
+            }
+            if (Array.isArray(row.fields)) {
+                return row.fields.length;
+            }
+            return undefined;
+        })();
 
         return {
             $id: row.$id,
@@ -505,7 +520,7 @@ class EventService {
             freeAgentIds: row.freeAgentIds,
             teamIds: row.teamIds,
             userIds: Array.isArray(row.userIds) ? row.userIds.map(String) : [],
-            fieldIds: row.fieldIds,
+            fieldIds: normalizedFieldIds,
             timeSlotIds: row.timeSlotIds,
             refereeIds: Array.isArray(row.refereeIds) ? row.refereeIds.map((id: unknown) => String(id)) : [],
             assistantHostIds: Array.isArray(row.assistantHostIds) ? row.assistantHostIds.map((id: unknown) => String(id)) : [],
@@ -639,7 +654,7 @@ class EventService {
             winnerBracketPointsToVictory: row.winnerBracketPointsToVictory,
             loserBracketPointsToVictory: row.loserBracketPointsToVictory,
             prize: row.prize,
-            fieldCount: row.fieldCount,
+            fieldCount: derivedFieldCount,
             gamesPerOpponent: row.gamesPerOpponent,
             includePlayoffs: row.includePlayoffs,
             playoffTeamCount: row.playoffTeamCount,

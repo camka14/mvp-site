@@ -38,6 +38,7 @@ const DIVISION_GENDER_OPTIONS = [
 ] as const;
 const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
 const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
+const EMPTY_EVENT_FREE_AGENTS: UserData[] = [];
 
 const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
     .trim()
@@ -119,7 +120,7 @@ export default function TeamDetailModal({
     onTeamUpdated,
     onTeamDeleted,
     eventContext,
-    eventFreeAgents = [],
+    eventFreeAgents = EMPTY_EVENT_FREE_AGENTS,
     selectedFreeAgentId,
     selectedFreeAgentUser,
 }: TeamDetailModalProps) {

@@ -6,6 +6,7 @@ import { Readable } from 'stream';
 import sharp from 'sharp';
 
 export const dynamic = 'force-dynamic';
+const CACHE_CONTROL = process.env.NODE_ENV === 'production' ? 'public, max-age=3600' : 'no-store';
 
 const streamToBuffer = async (stream: Readable): Promise<Buffer> => {
   const chunks: Buffer[] = [];
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         headers: {
           'Content-Type': contentType,
           'Content-Length': data.byteLength.toString(),
-          'Cache-Control': 'public, max-age=3600',
+          'Cache-Control': CACHE_CONTROL,
           'Content-Disposition': `inline; filename="${encodeURIComponent(file.originalName || file.path)}"`,
         },
       });
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       headers: {
         'Content-Type': contentType,
         'Content-Length': output.byteLength.toString(),
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': CACHE_CONTROL,
         'Content-Disposition': `inline; filename="${encodeURIComponent(file.originalName || file.path)}"`,
       },
     });

@@ -1395,6 +1395,13 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const coordinates = Array.isArray(event.coordinates)
     ? event.coordinates.filter((value): value is number => typeof value === 'number')
     : null;
+  const resolvedFieldCount = (() => {
+    if (fields.length > 0) {
+      return fields.length;
+    }
+    const linkedFieldCount = ensureStringArray(event.fieldIds).length;
+    return linkedFieldCount > 0 ? linkedFieldCount : null;
+  })();
 
   const baseParams = {
     id: event.id,
@@ -1432,7 +1439,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
       event.doTeamsRef === true && typeof (event as any).teamRefsMaySwap === 'boolean'
         ? Boolean((event as any).teamRefsMaySwap)
         : false,
-    fieldCount: event.fieldCount ?? null,
+    fieldCount: resolvedFieldCount,
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
     assistantHostIds: ensureStringArray((event as any).assistantHostIds),
@@ -2454,7 +2461,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     registrationCutoffHours: payload.registrationCutoffHours ?? null,
     seedColor: payload.seedColor ?? null,
     imageId: payload.imageId ?? '',
-    fieldCount: payload.fieldCount ?? null,
+    // Deprecated input: derive field count from linked fields instead of trusting payload.fieldCount.
+    fieldCount: fieldIds.length > 0 ? fieldIds.length : null,
     winnerBracketPointsToVictory: ensureNumberArray(payload.winnerBracketPointsToVictory),
     loserBracketPointsToVictory: ensureNumberArray(payload.loserBracketPointsToVictory),
     coordinates: Array.isArray(payload.coordinates)

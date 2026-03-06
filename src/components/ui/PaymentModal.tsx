@@ -48,7 +48,15 @@ export default function PaymentModal({
     const clientSecret = paymentData?.paymentIntent;
     const publishableKey = paymentData?.publishableKey || envPublishableKey;
 
-    const stripePromise = publishableKey ? loadStripe(publishableKey) : null;
+    const stripePromise = publishableKey
+        ? loadStripe(publishableKey, {
+            developerTools: {
+                assistant: {
+                    enabled: false,
+                },
+            },
+        })
+        : null;
 
     // Handle Stripe configuration error
     if (!stripePromise) {

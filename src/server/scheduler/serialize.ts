@@ -163,7 +163,13 @@ const serializeTournamentExtras = (event: Tournament) => ({
   winnerBracketPointsToVictory: event.winnerBracketPointsToVictory ?? [],
   loserBracketPointsToVictory: event.loserBracketPointsToVictory ?? [],
   prize: event.prize ?? null,
-  fieldCount: event.fieldCount ?? null,
+  fieldCount: (() => {
+    const configuredFieldCount = Object.keys(event.fields ?? {}).length;
+    if (configuredFieldCount > 0) {
+      return configuredFieldCount;
+    }
+    return event.fieldCount ?? null;
+  })(),
   matches: Object.values(event.matches).map(serializeMatch),
   usesSets: event.usesSets ?? false,
   matchDurationMinutes: event.matchDurationMinutes ?? null,
