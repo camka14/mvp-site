@@ -293,6 +293,12 @@
   color: var(--discover-badge-tournament-text);
 }
 
+.discover-badge-draft {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
 .discover-muted-pill {
   display: inline-flex;
   align-items: center;

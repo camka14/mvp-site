@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
@@ -193,6 +194,56 @@ const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number) 
   return 2 * R * Math.asin(Math.sqrt(a));
 };
 
+const resolveSessionContext = (
+  req: NextRequest,
+): { userId: string; isAdmin: boolean } | null => {
+  const token = getTokenFromRequest(req);
+  if (!token) {
+    return null;
+  }
+  const session = verifySessionToken(token);
+  if (!session) {
+    return null;
+  }
+  const userId = typeof session.userId === 'string' ? session.userId.trim() : '';
+  if (!userId) {
+    return null;
+  }
+  return {
+    userId,
+    isAdmin: Boolean(session.isAdmin),
+  };
+};
+
+const buildDiscoverVisibilityClause = (
+  sessionUserId: string | null,
+  isAdmin: boolean,
+) => {
+  const visibilityOr: any[] = [
+    { state: 'PUBLISHED' },
+    { state: null },
+  ];
+
+  if (isAdmin) {
+    visibilityOr.push({ state: 'UNPUBLISHED' });
+  } else if (sessionUserId) {
+    visibilityOr.push({
+      state: 'UNPUBLISHED',
+      OR: [
+        { hostId: sessionUserId },
+        { assistantHostIds: { has: sessionUserId } },
+      ],
+    });
+  }
+
+  return {
+    AND: [
+      { NOT: { state: 'TEMPLATE' } },
+      { OR: visibilityOr },
+    ],
+  };
+};
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = searchSchema.safeParse(body ?? {});
@@ -206,12 +257,15 @@ export async function POST(req: NextRequest) {
   const queryTerm = (filters.query ?? '').trim();
   const normalizedQuery = normalizeQuery(queryTerm);
   const hasQuery = normalizedQuery.length > 0;
+  const session = resolveSessionContext(req);
+  const sessionUserId = session?.userId ?? null;
+  const isAdmin = session?.isAdmin === true;
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
   const where: any = {};
-  // Event templates are not real events and should never appear in public discovery/search results.
-  where.NOT = { state: 'TEMPLATE' };
+  const visibilityClause = buildDiscoverVisibilityClause(sessionUserId, isAdmin);
+  where.AND = [...(Array.isArray(where.AND) ? where.AND : []), ...visibilityClause.AND];
   if (filters.eventTypes?.length) {
     where.eventType = { in: filters.eventTypes };
   }

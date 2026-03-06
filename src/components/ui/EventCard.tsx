@@ -51,6 +51,8 @@ export default function EventCard({
   hostChangeDisabled = false,
 }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
+  const normalizedState = typeof event.state === 'string' ? event.state.toUpperCase() : 'PUBLISHED';
+  const isDraftEvent = normalizedState === 'UNPUBLISHED' || normalizedState === 'DRAFT';
 
   const eventTypeInfo = useMemo(() => {
     if (event.eventType === 'TOURNAMENT') {
@@ -267,6 +269,11 @@ export default function EventCard({
           <span className="discover-muted-pill">
             {event.teamSignup ? 'Team Registration' : 'Individual Registration'}
           </span>
+          {isDraftEvent && (
+            <span className="discover-event-badge discover-badge-draft">
+              Draft
+            </span>
+          )}
           {distance && (
             <span className="discover-muted-pill">
               {distance} away

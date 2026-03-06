@@ -68,6 +68,12 @@ const collectEdges = (
   errors: BracketValidationError[],
 ): Edge[] => {
   const edgesByKey = new Map<string, Edge>();
+  const refsByNodeId = new Map<string, {
+    winnerNext: string | null;
+    loserNext: string | null;
+    previousLeft: string | null;
+    previousRight: string | null;
+  }>();
 
   const addEdge = (sourceId: string, targetId: string) => {
     if (sourceId === targetId) {
@@ -87,10 +93,20 @@ const collectEdges = (
   };
 
   for (const node of nodeById.values()) {
-    const winnerNext = normalizeRef(node.winnerNextMatchId);
-    const loserNext = normalizeRef(node.loserNextMatchId);
-    const previousLeft = normalizeRef(node.previousLeftId);
-    const previousRight = normalizeRef(node.previousRightId);
+    refsByNodeId.set(node.id, {
+      winnerNext: normalizeRef(node.winnerNextMatchId),
+      loserNext: normalizeRef(node.loserNextMatchId),
+      previousLeft: normalizeRef(node.previousLeftId),
+      previousRight: normalizeRef(node.previousRightId),
+    });
+  }
+
+  for (const node of nodeById.values()) {
+    const refs = refsByNodeId.get(node.id);
+    const winnerNext = refs?.winnerNext ?? null;
+    const loserNext = refs?.loserNext ?? null;
+    const previousLeft = refs?.previousLeft ?? null;
+    const previousRight = refs?.previousRight ?? null;
 
     const references: Array<{ ref: string | null; label: string }> = [
       { ref: winnerNext, label: 'winnerNextMatchId' },
@@ -111,17 +127,42 @@ const collectEdges = (
       }
     }
 
-    if (winnerNext && nodeById.has(winnerNext)) {
-      addEdge(node.id, winnerNext);
+  }
+
+  const shouldIncludeReverseEdge = (sourceId: string, targetId: string): boolean => {
+    const sourceRefs = refsByNodeId.get(sourceId);
+    if (!sourceRefs) {
+      return false;
     }
-    if (loserNext && nodeById.has(loserNext)) {
-      addEdge(node.id, loserNext);
+
+    if (sourceRefs.winnerNext === targetId || sourceRefs.loserNext === targetId) {
+      return true;
     }
-    if (previousLeft && nodeById.has(previousLeft)) {
-      addEdge(previousLeft, node.id);
+
+    const hasAnyForwardLink = Boolean(sourceRefs.winnerNext || sourceRefs.loserNext);
+    return !hasAnyForwardLink;
+  };
+
+  for (const node of nodeById.values()) {
+    const refs = refsByNodeId.get(node.id);
+    if (!refs) {
+      continue;
     }
-    if (previousRight && nodeById.has(previousRight)) {
-      addEdge(previousRight, node.id);
+
+    if (refs.winnerNext && nodeById.has(refs.winnerNext)) {
+      addEdge(node.id, refs.winnerNext);
+    }
+    if (refs.loserNext && nodeById.has(refs.loserNext)) {
+      addEdge(node.id, refs.loserNext);
+    }
+
+    // Previous links are treated as derived reverse pointers unless the source
+    // has no forward links at all (legacy/partial data fallback).
+    if (refs.previousLeft && nodeById.has(refs.previousLeft) && shouldIncludeReverseEdge(refs.previousLeft, node.id)) {
+      addEdge(refs.previousLeft, node.id);
+    }
+    if (refs.previousRight && nodeById.has(refs.previousRight) && shouldIncludeReverseEdge(refs.previousRight, node.id)) {
+      addEdge(refs.previousRight, node.id);
     }
   }
 

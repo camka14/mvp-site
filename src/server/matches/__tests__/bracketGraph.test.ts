@@ -62,4 +62,22 @@ describe('bracket candidate filtering', () => {
 
     expect(candidates).toContain('match_2');
   });
+
+  it('ignores stale reverse links when source next pointers moved to different targets', () => {
+    const candidates = filterValidNextMatchCandidates({
+      sourceId: 'match_60',
+      lane: 'winner',
+      nodes: [
+        { id: 'match_52', matchId: 52, winnerNextMatchId: 'match_58' },
+        { id: 'match_54', matchId: 54, winnerNextMatchId: 'match_65', loserNextMatchId: 'match_59' },
+        { id: 'match_58', matchId: 58, previousLeftId: 'match_52', previousRightId: 'match_54' },
+        { id: 'match_59', matchId: 59 },
+        { id: 'match_60', matchId: 60, winnerNextMatchId: 'match_61' },
+        { id: 'match_61', matchId: 61 },
+        { id: 'match_65', matchId: 65 },
+      ],
+    });
+
+    expect(candidates).toContain('match_58');
+  });
 });

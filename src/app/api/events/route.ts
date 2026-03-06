@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
@@ -458,6 +459,56 @@ const isDivisionAssignmentValidationError = (error: unknown): boolean => {
     || normalized.includes('assigned to multiple divisions');
 };
 
+const resolveSessionContext = (
+  req: NextRequest,
+): { userId: string; isAdmin: boolean } | null => {
+  const token = getTokenFromRequest(req);
+  if (!token) {
+    return null;
+  }
+  const session = verifySessionToken(token);
+  if (!session) {
+    return null;
+  }
+  const userId = typeof session.userId === 'string' ? session.userId.trim() : '';
+  if (!userId) {
+    return null;
+  }
+  return {
+    userId,
+    isAdmin: Boolean(session.isAdmin),
+  };
+};
+
+const buildDefaultEventVisibilityClause = (
+  sessionUserId: string | null,
+  isAdmin: boolean,
+) => {
+  const visibilityOr: any[] = [
+    { state: 'PUBLISHED' },
+    { state: null },
+  ];
+
+  if (isAdmin) {
+    visibilityOr.push({ state: 'UNPUBLISHED' });
+  } else if (sessionUserId) {
+    visibilityOr.push({
+      state: 'UNPUBLISHED',
+      OR: [
+        { hostId: sessionUserId },
+        { assistantHostIds: { has: sessionUserId } },
+      ],
+    });
+  }
+
+  return {
+    AND: [
+      { NOT: { state: 'TEMPLATE' } },
+      { OR: visibilityOr },
+    ],
+  };
+};
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
@@ -469,7 +520,11 @@ export async function GET(req: NextRequest) {
   const limit = Number(params.get('limit') || '100');
   let templateSession: Awaited<ReturnType<typeof requireSession>> | null = null;
 
-  const normalizedState = typeof state === 'string' ? state.toUpperCase() : undefined;
+  const normalizedStateRaw = typeof state === 'string' ? state.toUpperCase() : undefined;
+  const normalizedState = normalizedStateRaw === 'DRAFT' ? 'UNPUBLISHED' : normalizedStateRaw;
+  const sessionContext = resolveSessionContext(req);
+  const sessionUserId = sessionContext?.userId ?? null;
+  const isAdminSession = sessionContext?.isAdmin === true;
   if (normalizedState === 'TEMPLATE') {
     templateSession = await requireSession(req);
     if (!templateSession.isAdmin) {
@@ -500,7 +555,8 @@ export async function GET(req: NextRequest) {
   const where: any = {};
   // Event templates are not real events and should not appear in normal lists.
   if (!normalizedState) {
-    where.NOT = { state: 'TEMPLATE' };
+    const visibilityClause = buildDefaultEventVisibilityClause(sessionUserId, isAdminSession);
+    where.AND = [...(Array.isArray(where.AND) ? where.AND : []), ...visibilityClause.AND];
   }
   if (ids?.length) where.id = { in: ids };
   if (organizationId) where.organizationId = organizationId;
@@ -511,6 +567,16 @@ export async function GET(req: NextRequest) {
   if (sportId) where.sportId = sportId;
   if (eventType) where.eventType = eventType;
   if (state) where.state = normalizedState ?? state;
+  if (normalizedState === 'UNPUBLISHED' && !isAdminSession) {
+    if (sessionUserId) {
+      where.OR = [
+        { hostId: sessionUserId },
+        { assistantHostIds: { has: sessionUserId } },
+      ];
+    } else {
+      where.id = { in: [] };
+    }
+  }
 
   const events = await prisma.events.findMany({
     where,

@@ -22,9 +22,15 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getTokenFromRequestMock = jest.fn();
+const verifySessionTokenMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/authServer', () => ({
+  getTokenFromRequest: (...args: any[]) => getTokenFromRequestMock(...args),
+  verifySessionToken: (...args: any[]) => verifySessionTokenMock(...args),
+}));
 jest.mock('@/server/repositories/events', () => ({ upsertEventFromPayload: jest.fn() }));
 jest.mock('@/server/eventCreationNotifications', () => ({ notifySocialAudienceOfEventCreation: jest.fn() }));
 
@@ -46,6 +52,8 @@ describe('event template privacy routes', () => {
     jest.clearAllMocks();
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
+    getTokenFromRequestMock.mockReturnValue(null);
+    verifySessionTokenMock.mockReturnValue(null);
   });
 
   it('excludes templates from GET /api/events when no state filter is provided', async () => {
@@ -53,10 +61,18 @@ describe('event template privacy routes', () => {
     const res = await eventsGet(new NextRequest('http://localhost/api/events'));
 
     expect(res.status).toBe(200);
-    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
-      }),
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
+        expect.objectContaining({
+          OR: expect.arrayContaining([
+            { state: 'PUBLISHED' },
+            { state: null },
+          ]),
+        }),
+      ]),
     );
   });
 
@@ -184,10 +200,78 @@ describe('event template privacy routes', () => {
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
 
     expect(res.status).toBe(200);
-    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
+        expect.objectContaining({
+          OR: expect.arrayContaining([
+            { state: 'PUBLISHED' },
+            { state: null },
+          ]),
+        }),
+      ]),
+    );
+  });
+
+  it('includes user-owned unpublished events in GET /api/events list visibility', async () => {
+    getTokenFromRequestMock.mockReturnValueOnce('token_1');
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events'));
+
+    expect(res.status).toBe(200);
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              state: 'UNPUBLISHED',
+              OR: expect.arrayContaining([
+                { hostId: 'host_1' },
+                { assistantHostIds: { has: 'host_1' } },
+              ]),
+            }),
+          ]),
+        }),
+      ]),
+    );
+  });
+
+  it('includes user-owned unpublished events in POST /api/events/search visibility', async () => {
+    getTokenFromRequestMock.mockReturnValueOnce('token_1');
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await searchPost(
+      new NextRequest('http://localhost/api/events/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer token_1' },
+        body: JSON.stringify({ filters: {} }),
       }),
+    );
+
+    expect(res.status).toBe(200);
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              state: 'UNPUBLISHED',
+              OR: expect.arrayContaining([
+                { hostId: 'host_1' },
+                { assistantHostIds: { has: 'host_1' } },
+              ]),
+            }),
+          ]),
+        }),
+      ]),
     );
   });
 
