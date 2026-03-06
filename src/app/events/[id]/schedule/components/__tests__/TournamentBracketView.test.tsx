@@ -224,6 +224,39 @@ describe('TournamentBracketView', () => {
     expect(getMatchNodeTop('p1')).toBe(getMatchNodeTop('c1'));
   });
 
+  it('ignores stale right relation objects when previousRightId is undefined', () => {
+    const leftChild = buildMatch('c3', { winnerNextMatchId: 'p2' });
+    const staleRightRelation = buildMatch('c4', { winnerNextMatchId: 'p2' });
+    const parent = buildMatch('p2', {
+      previousLeftId: 'c3',
+      previousRightId: undefined,
+      previousLeftMatch: leftChild,
+      previousRightMatch: staleRightRelation,
+    });
+
+    const bracket: TournamentBracket = {
+      tournament: { doubleElimination: false } as TournamentBracket['tournament'],
+      matches: {
+        [leftChild.$id]: leftChild,
+        [staleRightRelation.$id]: staleRightRelation,
+        [parent.$id]: parent,
+      },
+      teams: [],
+      isHost: false,
+      canManage: false,
+    };
+
+    renderWithMantine(
+      <TournamentBracketView
+        bracket={bracket}
+        canEditMatches
+        onMatchClick={() => undefined}
+      />,
+    );
+
+    expect(getMatchNodeTop('p2')).toBe(getMatchNodeTop('c3'));
+  });
+
   it('highlights matches involving the current user, including referee assignments', () => {
     const userId = 'user_1';
     const playerMatch = buildMatch('m1', {

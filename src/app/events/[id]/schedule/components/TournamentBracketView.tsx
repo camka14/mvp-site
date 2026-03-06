@@ -496,7 +496,8 @@ export default function TournamentBracketView({
             return viewById[id];
         }
         // Keep layout tied to explicit IDs so partial edit-state links don't over-count children.
-        if (idValue === null || (typeof idValue === 'string' && idValue.trim().length === 0)) {
+        const hasExplicitId = typeof idValue === 'string' && idValue.trim().length > 0;
+        if (!hasExplicitId) {
             return undefined;
         }
         const relationId = extractEntityId(relationValue);
