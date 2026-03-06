@@ -1396,8 +1396,9 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     ? event.coordinates.filter((value): value is number => typeof value === 'number')
     : null;
   const resolvedFieldCount = (() => {
-    if (fields.length > 0) {
-      return fields.length;
+    const resolvedFieldEntries = Object.keys(fields).length;
+    if (resolvedFieldEntries > 0) {
+      return resolvedFieldEntries;
     }
     const linkedFieldCount = ensureStringArray(event.fieldIds).length;
     return linkedFieldCount > 0 ? linkedFieldCount : null;
