@@ -523,7 +523,7 @@ export default function HomePage() {
               {integrations.map((integration) => (
                 <article
                   key={integration.name}
-                  className={`landing-pill flex min-h-24 items-center justify-center rounded-2xl px-4 py-3 ${integration.name === 'Google Maps' ? 'landing-pill-google gap-2' : ''}`}
+                  className={`landing-pill flex min-h-24 items-center justify-center rounded-2xl px-4 py-3 ${integration.name === 'Google Maps' ? 'gap-2' : ''}`}
                 >
                   <Image
                     src={integration.logoSrc}

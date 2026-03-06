@@ -672,6 +672,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const receiptLogContext = {
+      paymentIntentId,
+      purchaseType,
+      userId,
+      teamId,
+      eventId,
+      productId,
+      organizationId,
+      billId: resolvedBillId,
+      billPaymentId: resolvedBillPaymentId,
+    };
+
     if (shouldSendReceipt) {
       void sendPurchaseReceiptEmail({
         purchaseType,
@@ -688,14 +700,25 @@ export async function POST(req: NextRequest) {
         paidAt: now,
         receiptEmail,
         metadata,
-      }).catch((error) => {
-        console.warn('Failed to send purchase receipt email', {
-          paymentIntentId,
-          billId: resolvedBillId,
-          billPaymentId: resolvedBillPaymentId,
-          error,
+      })
+        .then((result) => {
+          if (result.sent) {
+            console.info('Purchase receipt flow completed: email sent.', receiptLogContext);
+            return;
+          }
+          console.warn('Purchase receipt flow completed: email skipped.', {
+            ...receiptLogContext,
+            reason: result.reason ?? 'unknown',
+          });
+        })
+        .catch((error) => {
+          console.warn('Failed to send purchase receipt email', {
+            ...receiptLogContext,
+            error,
+          });
         });
-      });
+    } else {
+      console.info('Purchase receipt flow skipped: no newly paid bill payment detected.', receiptLogContext);
     }
   } catch (error) {
     console.error('Stripe webhook handling failed', error);

@@ -95,6 +95,17 @@ const toLowerEmail = (value: string | null | undefined): string | null => {
   return normalized.length ? normalized : null;
 };
 
+const redactEmail = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  const [localPart, domainPart] = normalized.split('@');
+  if (!localPart || !domainPart) {
+    return null;
+  }
+  const visiblePrefix = localPart.slice(0, Math.min(2, localPart.length));
+  return `${visiblePrefix}***@${domainPart}`;
+};
+
 const resolvePurchaseTypeLabel = (purchaseType: string | null | undefined): string => {
   const normalized = (purchaseType ?? '').trim().toLowerCase();
   if (normalized === 'event') return 'Event registration';
@@ -162,6 +173,13 @@ export const sendPurchaseReceiptEmail = async (
   input: SendPurchaseReceiptEmailInput,
 ): Promise<{ sent: boolean; reason?: string }> => {
   if (!isEmailEnabled()) {
+    console.warn('Purchase receipt email skipped: SMTP is not configured.', {
+      paymentIntentId: normalizeString(input.paymentIntentId),
+      userId: normalizeString(input.userId),
+      eventId: normalizeString(input.eventId),
+      teamId: normalizeString(input.teamId),
+      hasReceiptEmailFallback: Boolean(toLowerEmail(input.receiptEmail)),
+    });
     return { sent: false, reason: 'email_disabled' };
   }
 
@@ -260,6 +278,14 @@ export const sendPurchaseReceiptEmail = async (
   const fallbackEmail = toLowerEmail(input.receiptEmail);
   const recipientEmail = toLowerEmail(userEmailRow?.email) ?? fallbackEmail;
   if (!recipientEmail) {
+    console.warn('Purchase receipt email skipped: no recipient email was available.', {
+      paymentIntentId,
+      userId,
+      eventId,
+      teamId,
+      hasReceiptEmailFallback: Boolean(fallbackEmail),
+      hasUserEmail: Boolean(toLowerEmail(userEmailRow?.email)),
+    });
     return { sent: false, reason: 'missing_recipient_email' };
   }
 
@@ -419,6 +445,15 @@ export const sendPurchaseReceiptEmail = async (
     subject,
     text,
     html,
+  });
+
+  console.info('Purchase receipt email accepted by SMTP transport.', {
+    paymentIntentId,
+    userId,
+    eventId,
+    teamId,
+    recipient: redactEmail(recipientEmail),
+    purchaseType,
   });
 
   return { sent: true };
