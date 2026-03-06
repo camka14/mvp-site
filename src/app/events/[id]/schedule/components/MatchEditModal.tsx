@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider, Checkbox } from '@mantine/core';
+import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider, Checkbox, Switch } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
@@ -182,6 +182,7 @@ export default function MatchEditModal({
   const [setResults, setSetResults] = useState<number[]>([0]);
   const [winnerNextMatchId, setWinnerNextMatchId] = useState<string | null>(null);
   const [loserNextMatchId, setLoserNextMatchId] = useState<string | null>(null);
+  const [losersBracket, setLosersBracket] = useState(false);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
@@ -201,6 +202,7 @@ export default function MatchEditModal({
       setSetResults([0]);
       setWinnerNextMatchId(null);
       setLoserNextMatchId(null);
+      setLosersBracket(false);
       setLocked(false);
       setError(null);
       return;
@@ -225,6 +227,7 @@ export default function MatchEditModal({
     setSetResults(aligned.results);
     setWinnerNextMatchId(normalizeOptionalId(match.winnerNextMatchId) ?? null);
     setLoserNextMatchId(normalizeOptionalId(match.loserNextMatchId) ?? null);
+    setLosersBracket(Boolean(match.losersBracket));
     setLocked(Boolean(match.locked));
     setError(null);
   }, [match, opened]);
@@ -579,6 +582,7 @@ export default function MatchEditModal({
       start: startValue ? formatLocalDateTime(startValue) : null,
       end: endValue ? formatLocalDateTime(endValue) : null,
       locked,
+      losersBracket,
       team1Points: sanitizePoints(team1Points),
       team2Points: sanitizePoints(team2Points),
       setResults: sanitizeResults(setResults),
@@ -663,10 +667,16 @@ export default function MatchEditModal({
           <div className="text-right">
             <Text size="sm" c="dimmed">Bracket</Text>
             <Text fw={600}>
-              {match?.losersBracket ? 'Losers Bracket' : 'Main Schedule'}
+              {losersBracket ? 'Losers Bracket' : 'Winners Bracket'}
             </Text>
           </div>
         </Group>
+
+        <Switch
+          label="Place match in losers bracket"
+          checked={losersBracket}
+          onChange={(event) => setLosersBracket(event.currentTarget.checked)}
+        />
 
         <Checkbox
           label="Lock match (prevent auto-rescheduling)"
