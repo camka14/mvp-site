@@ -313,4 +313,55 @@ describe('TournamentBracketView', () => {
     expect(screen.getByText('highlight-m3')).toBeInTheDocument();
     expect(screen.getByText('normal-m4')).toBeInTheDocument();
   });
+
+  it('renders disconnected matches in a collapsible unplaced dock', () => {
+    const treeLeft = buildMatch('t1', {
+      matchId: 101,
+      winnerNextMatchId: 't3',
+    });
+    const treeRight = buildMatch('t2', {
+      matchId: 102,
+      winnerNextMatchId: 't3',
+    });
+    const treeRoot = buildMatch('t3', {
+      matchId: 303,
+      previousLeftId: 't1',
+      previousRightId: 't2',
+    });
+
+    const disconnectedLeaf = buildMatch('u1', {
+      matchId: 11,
+      winnerNextMatchId: 'u2',
+    });
+    const disconnectedRoot = buildMatch('u2', {
+      matchId: 12,
+      previousLeftId: 'u1',
+    });
+
+    const bracket: TournamentBracket = {
+      tournament: { doubleElimination: false } as TournamentBracket['tournament'],
+      matches: {
+        [treeLeft.$id]: treeLeft,
+        [treeRight.$id]: treeRight,
+        [treeRoot.$id]: treeRoot,
+        [disconnectedLeaf.$id]: disconnectedLeaf,
+        [disconnectedRoot.$id]: disconnectedRoot,
+      },
+      teams: [],
+      isHost: false,
+      canManage: false,
+    };
+
+    renderWithMantine(<TournamentBracketView bracket={bracket} />);
+
+    expect(screen.getByText('Unplaced Matches (2)')).toBeInTheDocument();
+    expect(screen.getByText('match-u1').closest('div.absolute')).toBeNull();
+    expect(screen.getByText('match-t1').closest('div.absolute')).not.toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Collapse unplaced matches'));
+    expect(screen.queryByText('Unplaced Matches (2)')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Expand unplaced matches'));
+    expect(screen.getByText('Unplaced Matches (2)')).toBeInTheDocument();
+  });
 });

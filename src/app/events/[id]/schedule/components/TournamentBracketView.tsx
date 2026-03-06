@@ -323,6 +323,7 @@ export default function TournamentBracketView({
     const [viewportHeight, setViewportHeight] = useState<number | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [isLosersBracket, setIsLosersBracket] = useState(false);
+    const [isUnplacedDockCollapsed, setIsUnplacedDockCollapsed] = useState(false);
     const matchRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const contentRef = useRef<HTMLDivElement>(null);
     const [connections, setConnections] = useState<{ fromId: string; toId: string; x1: number; y1: number; x2: number; y2: number }[]>([]);
@@ -539,17 +540,91 @@ export default function TournamentBracketView({
         return best;
     }, [terminalIds, viewById]);
 
+    const connectedTreeIds = useMemo(() => {
+        const ids = new Set<string>();
+        if (!rootId) {
+            return ids;
+        }
+
+        const visit = (id: string) => {
+            if (ids.has(id)) {
+                return;
+            }
+            ids.add(id);
+            const match = viewById[id];
+            if (!match || match.losersBracket !== isLosersBracket) {
+                return;
+            }
+            const left = resolveLinkFromView(match.previousLeftId, match.previousLeftMatch);
+            const right = resolveLinkFromView(match.previousRightId, match.previousRightMatch);
+            if (left?.$id) {
+                visit(left.$id);
+            }
+            if (right?.$id) {
+                visit(right.$id);
+            }
+        };
+
+        visit(rootId);
+        return ids;
+    }, [isLosersBracket, rootId, viewById, resolveLinkFromView]);
+
+    const treeById = useMemo(() => {
+        if (!connectedTreeIds.size) {
+            return {} as Record<string, Match>;
+        }
+        return Object.fromEntries(
+            Object.entries(viewById).filter(([id]) => connectedTreeIds.has(id)),
+        );
+    }, [connectedTreeIds, viewById]);
+
+    const unplacedMatches = useMemo(
+        () => Object.values(viewById)
+            .filter((match) => match.losersBracket === isLosersBracket && !connectedTreeIds.has(match.$id))
+            .sort((left, right) => {
+                const leftMatchId = typeof left.matchId === 'number' ? left.matchId : -Infinity;
+                const rightMatchId = typeof right.matchId === 'number' ? right.matchId : -Infinity;
+                if (leftMatchId !== rightMatchId) {
+                    return rightMatchId - leftMatchId;
+                }
+                return left.$id.localeCompare(right.$id);
+            }),
+        [connectedTreeIds, isLosersBracket, viewById],
+    );
+
+    useEffect(() => {
+        if (unplacedMatches.length === 0 && isUnplacedDockCollapsed) {
+            setIsUnplacedDockCollapsed(false);
+        }
+    }, [isUnplacedDockCollapsed, unplacedMatches.length]);
+
+    const resolveLinkFromTree = useCallback((idValue: unknown, relationValue: unknown): Match | undefined => {
+        const id = normalizeMatchRefId(idValue);
+        if (id && treeById[id]) {
+            return treeById[id];
+        }
+        const hasExplicitId = typeof idValue === 'string' && idValue.trim().length > 0;
+        if (!hasExplicitId) {
+            return undefined;
+        }
+        const relationId = extractEntityId(relationValue);
+        if (relationId && treeById[relationId]) {
+            return treeById[relationId];
+        }
+        return undefined;
+    }, [treeById]);
+
     // Helper: children of a node with at most one-hop cross-bracket inclusion
     const getChildrenLimited = useCallback((m: Match): Match[] => {
-        const left = resolveLinkFromView(m.previousLeftId, m.previousLeftMatch);
-        const right = resolveLinkFromView(m.previousRightId, m.previousRightMatch);
+        const left = resolveLinkFromTree(m.previousLeftId, m.previousLeftMatch);
+        const right = resolveLinkFromTree(m.previousRightId, m.previousRightMatch);
         const children: Match[] = [];
         if (left) children.push(left);
         if (right && (!left || right.$id !== left.$id)) children.push(right);
         // Do not traverse beyond one hop across brackets
         if (m.losersBracket !== isLosersBracket) return [];
         return children;
-    }, [resolveLinkFromView, isLosersBracket]);
+    }, [resolveLinkFromTree, isLosersBracket]);
 
     // Compute round indices from root with one-hop cross-bracket rule, then invert so leaves are round 0
     const roundIndexById = useMemo(() => {
@@ -559,7 +634,7 @@ export default function TournamentBracketView({
             const cur = depth.get(id);
             if (cur !== undefined && cur <= d) return;
             depth.set(id, d);
-            const m = viewById[id];
+            const m = treeById[id];
             if (!m) return;
             const children = getChildrenLimited(m);
             for (const c of children) visit(c.$id, d + 1);
@@ -570,16 +645,16 @@ export default function TournamentBracketView({
         const rounds = new Map<string, number>();
         depth.forEach((d, id) => { rounds.set(id, maxD - d); });
         // For nodes not connected to root (edge case), place at round 0
-        Object.keys(viewById).forEach(id => { if (!rounds.has(id)) rounds.set(id, 0); });
+        Object.keys(treeById).forEach(id => { if (!rounds.has(id)) rounds.set(id, 0); });
         return rounds;
-    }, [rootId, viewById, getChildrenLimited]);
+    }, [rootId, treeById, getChildrenLimited]);
 
     // Pair-depth per node: counts two-child splits along deepest path; single-child chains don't increment
     const pairDepthById = useMemo(() => {
-        const memo = new Map<string, number>();
-        const dfs = (id: string): number => {
-            if (memo.has(id)) return memo.get(id)!;
-            const m = viewById[id];
+            const memo = new Map<string, number>();
+            const dfs = (id: string): number => {
+                if (memo.has(id)) return memo.get(id)!;
+            const m = treeById[id];
             if (!m) { memo.set(id, 0); return 0; }
             const kids = getChildrenLimited(m);
 
@@ -593,9 +668,9 @@ export default function TournamentBracketView({
             memo.set(id, v);
             return v;
         };
-        Object.keys(viewById).forEach(id => dfs(id));
+        Object.keys(treeById).forEach(id => dfs(id));
         return memo;
-    }, [viewById, getChildrenLimited]);
+    }, [treeById, getChildrenLimited]);
 
     // Y centers via symmetric offsets: delta = 2 * max(nLeft, nRight) * LEVEL_STEP; single child keeps same center
     const yCenterById = useMemo(() => {
@@ -603,7 +678,7 @@ export default function TournamentBracketView({
         if (!rootId) return centers;
         const visit = (id: string, center: number) => {
             centers.set(id, center);
-            const m = viewById[id];
+            const m = treeById[id];
             if (!m) return;
             const kids = getChildrenLimited(m);
             if (kids.length === 1) {
@@ -631,7 +706,7 @@ export default function TournamentBracketView({
         };
         visit(rootId, 0);
         return centers;
-    }, [rootId, viewById, getChildrenLimited, pairDepthById, LEVEL_STEP]);
+    }, [rootId, treeById, getChildrenLimited, pairDepthById, LEVEL_STEP]);
 
     const positionById = useMemo(() => {
         const positions = new Map<string, { x: number; y: number; round: number; level: number }>();
@@ -639,14 +714,14 @@ export default function TournamentBracketView({
         let minCenter = Infinity;
         yCenterById.forEach(c => { if (c < minCenter) minCenter = c; });
         if (!isFinite(minCenter)) minCenter = 0;
-        for (const id of Object.keys(viewById)) {
+        for (const id of Object.keys(treeById)) {
             const round = roundIndexById.get(id) ?? 0;
             const center = yCenterById.get(id) ?? 0;
             const y = center - minCenter;
             positions.set(id, { x: round * (CARD_W + GAP_X), y, round, level: 0 });
         }
         return positions;
-    }, [rootId, yCenterById, roundIndexById, viewById]);
+    }, [rootId, yCenterById, roundIndexById, treeById]);
 
     const contentSize = useMemo(() => {
         let maxX = 0, maxY = 0;
@@ -667,20 +742,20 @@ export default function TournamentBracketView({
         const getNextTarget = (m: Match): Match | undefined => {
             if (!isLosersBracket) {
                 // Winners view: only next winner match
-                const t = resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
+                const t = resolveLinkFromTree(m.winnerNextMatchId, m.winnerNextMatch);
                 return t && t.losersBracket === false ? t : undefined;
             } else {
                 if (m.losersBracket === false) {
                     // Losers view: winners matches point to loserNext
-                    return resolveLinkFromView(m.loserNextMatchId, m.loserNextMatch);
+                    return resolveLinkFromTree(m.loserNextMatchId, m.loserNextMatch);
                 } else {
                     // Losers view: losers matches point to next winner (within losers bracket)
-                    return resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
+                    return resolveLinkFromTree(m.winnerNextMatchId, m.winnerNextMatch);
                 }
             }
         };
 
-        Object.values(viewById).forEach(m => {
+        Object.values(treeById).forEach(m => {
             const fromPos = positionById.get(m.$id);
             if (!fromPos) return;
             const target = getNextTarget(m);
@@ -698,7 +773,7 @@ export default function TournamentBracketView({
         });
 
         setConnections(conns);
-    }, [positionById, viewById, isLosersBracket, resolveLinkFromView, CARD_H]);
+    }, [positionById, treeById, isLosersBracket, resolveLinkFromTree, CARD_H]);
 
     useEffect(() => { calculateConnections(); }, [calculateConnections]);
 
@@ -939,25 +1014,26 @@ export default function TournamentBracketView({
             </Paper>
 
             {/* Bracket Container with CSS Zoom */}
-            <div
-                ref={scrollContainerRef}
-                className="flex-1 min-h-0 overflow-auto bg-white"
-            >
+            <div className="flex-1 min-h-0 flex overflow-hidden bg-white">
                 <div
-                    ref={contentRef}
-                    className="relative inline-block"
-                    style={{
-                        zoom: zoomLevel, // CSS zoom property
-                        width: contentSize.width,
-                        height: contentSize.height,
-                    }}
+                    ref={scrollContainerRef}
+                    className="flex-1 min-h-0 min-w-0 overflow-auto"
                 >
-                    {/* Absolutely positioned matches */}
-                    {Object.values(viewById).length === 0 ? (
+                    <div
+                        ref={contentRef}
+                        className="relative inline-block"
+                        style={{
+                            zoom: zoomLevel, // CSS zoom property
+                            width: contentSize.width,
+                            height: contentSize.height,
+                        }}
+                    >
+                        {/* Absolutely positioned matches */}
+                        {Object.values(treeById).length === 0 ? (
                         <Text c="dimmed">No matches</Text>
 	                    ) : (
 	                        <>
-		                            {Object.values(viewById).map((m) => {
+		                            {Object.values(treeById).map((m) => {
 		                                const pos = positionById.get(m.$id);
 		                                if (!pos) return null;
                                     const team1Id = extractEntityId((m as any).team1)
@@ -1032,22 +1108,77 @@ export default function TournamentBracketView({
 	                        </>
 	                    )}
 
-                    {/* SVG overlay for arrows */}
-                    <svg className="pointer-events-none absolute inset-0 z-10" width="100%" height="100%">
-                        <defs>
-                            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-                                <polygon points="0 0, 10 3.5, 0 7" fill="var(--mvp-neutral-400)" />
-                            </marker>
-                        </defs>
-                        {connections.map((c) => {
-                            const midX = (c.x1 + c.x2) / 2;
-                            const d = `M ${c.x1} ${c.y1} L ${midX} ${c.y1} L ${midX} ${c.y2} L ${c.x2} ${c.y2}`;
-                            return (
-                                <path key={`${c.fromId}-${c.toId}`} d={d} stroke="var(--mvp-neutral-400)" strokeWidth="2" fill="none" strokeLinecap="square" markerEnd="url(#arrowhead)" />
-                            );
-                        })}
-                    </svg>
+                        {/* SVG overlay for arrows */}
+                        <svg className="pointer-events-none absolute inset-0 z-10" width="100%" height="100%">
+                            <defs>
+                                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                                    <polygon points="0 0, 10 3.5, 0 7" fill="var(--mvp-neutral-400)" />
+                                </marker>
+                            </defs>
+                            {connections.map((c) => {
+                                const midX = (c.x1 + c.x2) / 2;
+                                const d = `M ${c.x1} ${c.y1} L ${midX} ${c.y1} L ${midX} ${c.y2} L ${c.x2} ${c.y2}`;
+                                return (
+                                    <path key={`${c.fromId}-${c.toId}`} d={d} stroke="var(--mvp-neutral-400)" strokeWidth="2" fill="none" strokeLinecap="square" markerEnd="url(#arrowhead)" />
+                                );
+                            })}
+                        </svg>
+                    </div>
                 </div>
+
+                {unplacedMatches.length > 0 && (
+                    <Paper
+                        withBorder
+                        className="h-full border-l border-t-0 border-r-0 border-b-0"
+                        style={{ width: isUnplacedDockCollapsed ? 44 : 332, minWidth: isUnplacedDockCollapsed ? 44 : 332 }}
+                    >
+                        <div className="flex h-full flex-col">
+                            <Group justify="space-between" align="center" p="xs" wrap="nowrap">
+                                {!isUnplacedDockCollapsed && (
+                                    <Text size="sm" fw={600}>
+                                        Unplaced Matches ({unplacedMatches.length})
+                                    </Text>
+                                )}
+                                <ActionIcon
+                                    variant="subtle"
+                                    size="sm"
+                                    aria-label={isUnplacedDockCollapsed ? 'Expand unplaced matches' : 'Collapse unplaced matches'}
+                                    onClick={() => setIsUnplacedDockCollapsed((prev) => !prev)}
+                                >
+                                    {isUnplacedDockCollapsed ? '<<' : '>>'}
+                                </ActionIcon>
+                            </Group>
+                            {!isUnplacedDockCollapsed && (
+                                <div className="flex-1 overflow-y-auto px-2 pb-2">
+                                    <div className="space-y-3">
+                                        {unplacedMatches.map((match) => {
+                                            const canInternalManage = canManageMatch(match);
+                                            const highlightCurrentUser = matchInvolvesCurrentUser(match);
+                                            const clickable = hasExternalMatchClick || canInternalManage;
+                                            const hasConflict = conflictMatchIdSet.has(match.$id);
+                                            const team1Placeholder = leaguePlayoffPlaceholderAssignments[`${match.$id}:team1`];
+                                            const team2Placeholder = leaguePlayoffPlaceholderAssignments[`${match.$id}:team2`];
+                                            return (
+                                                <MatchCard
+                                                    key={`unplaced-${match.$id}`}
+                                                    match={match}
+                                                    onClick={clickable ? () => handleMatchClick(match) : undefined}
+                                                    canManage={false}
+                                                    className="w-full"
+                                                    highlightCurrentUser={highlightCurrentUser}
+                                                    showDate={showDateOnMatches}
+                                                    team1Placeholder={team1Placeholder}
+                                                    team2Placeholder={team2Placeholder}
+                                                    hasConflict={hasConflict}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </Paper>
+                )}
             </div>
 
             {/* Score Update Modal */}
