@@ -3573,7 +3573,6 @@ function EventScheduleContent() {
   const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
     if (isCreateMode) return 'Cancel';
-    if (isUnpublished) return 'Delete';
     if (isPreview) return `Cancel ${entityLabel} Preview`;
     if (isEditingEvent) return 'Cancel Manage';
     return `Cancel ${entityLabel}`;
@@ -3587,40 +3586,6 @@ function EventScheduleContent() {
     const query = params.toString();
     router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
   }, [pathname, router, searchParams]);
-
-  const handleCancelEdit = useCallback(() => {
-    if (isCreateMode || cancelling) return;
-
-    hasUnsavedChangesRef.current = false;
-    setHasUnsavedChanges(false);
-    setFormHasUnsavedChanges(false);
-    setSelectedLifecycleStatus(null);
-    setSubmitError(null);
-    setWarningMessage(null);
-    setActionError(null);
-    setStagedMatchCreates({});
-    setStagedMatchDeletes([]);
-    setPendingCreateMatchId(null);
-    setMatchEditorContext('bracket');
-
-    if (event) {
-      const resetEvent = cloneValue(event) as Event;
-      const resetMatches = Array.isArray(resetEvent.matches)
-        ? (cloneValue(resetEvent.matches) as Match[])
-        : [];
-      setChangesEvent(resetEvent);
-      setChangesMatches(resetMatches);
-    }
-
-    if (pathname) {
-      const params = new URLSearchParams(searchParams?.toString() ?? '');
-      params.delete('mode');
-      const query = params.toString();
-      router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
-    }
-
-    setInfoMessage(`${entityLabel} edit cancelled.`);
-  }, [cancelling, entityLabel, event, isCreateMode, pathname, router, searchParams]);
 
   const handleLifecycleStatusChange = useCallback((value: string | null) => {
     if (!value) return;
@@ -5615,23 +5580,6 @@ function EventScheduleContent() {
 
     if (!event || cancelling) return;
 
-    const isUnpublished = (event.state ?? 'PUBLISHED') === 'UNPUBLISHED';
-
-    if (isUnpublished) {
-      if (!window.confirm(`Cancel this ${entityLabel.toLowerCase()}? This will delete the event, schedule, and any associated fields.`)) return;
-      setCancelling(true);
-      setError(null);
-      try {
-        await eventService.deleteUnpublishedEvent(event);
-        router.push('/events');
-      } catch (err) {
-        console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
-        setError(`Failed to cancel ${entityLabel.toLowerCase()}.`);
-        setCancelling(false);
-      }
-      return;
-    }
-
     if (isPreview) {
       if (typeof window !== 'undefined' && window.history.length > 1) {
         router.back();
@@ -6603,8 +6551,6 @@ function EventScheduleContent() {
     isTournament || (isLeague && Boolean(activeEvent.includePlayoffs))
   );
   const showDeleteTemplateActionButton = isTemplateEvent;
-  const showCancelEditActionButton =
-    !isCreateMode && isEditingEvent && isUnpublished && !isTemplateEvent;
   const showCancelActionButton = !isTemplateEvent;
   const showCreateTemplateButton = !isTemplateEvent;
   const showLifecycleStatusSelect = isEditingEvent && !isTemplateEvent;
@@ -6692,15 +6638,6 @@ function EventScheduleContent() {
                         }
                       >
                         Rebuild
-                      </Button>
-                    )}
-                    {showCancelEditActionButton && (
-                      <Button
-                        variant="default"
-                        onClick={handleCancelEdit}
-                        disabled={hasNetworkActionInFlight}
-                      >
-                        Cancel Manage
                       </Button>
                     )}
                   </>

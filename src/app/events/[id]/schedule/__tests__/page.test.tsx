@@ -971,7 +971,7 @@ describe('League schedule page', () => {
     expect(await screen.findByText(/Edit Match/)).toBeInTheDocument();
   });
 
-  it('deletes unpublished events via eventService when cancelling preview', async () => {
+  it('does not delete events when cancelling preview', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
         if (key === 'mode') return null;
@@ -984,28 +984,24 @@ describe('League schedule page', () => {
       event: buildApiEvent({ state: 'UNPUBLISHED' }),
     });
 
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
-
     renderWithMantine(<LeagueSchedulePage />);
 
     await waitFor(() => {
       expect(screen.getByText(/Summer League/)).toBeInTheDocument();
     });
 
-    const cancelButton = await screen.findByRole('button', { name: /^delete$/i });
+    const cancelButton = await screen.findByRole('button', { name: /cancel .* preview/i });
     fireEvent.click(cancelButton);
 
     await waitFor(() => {
-      expect(eventService.deleteUnpublishedEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ $id: 'event_1' })
-      );
+      expect(mockRouter.back.mock.calls.length + mockRouter.push.mock.calls.length).toBeGreaterThan(0);
     });
 
+    expect(eventService.deleteUnpublishedEvent).not.toHaveBeenCalled();
     expect(eventService.deleteEvent).not.toHaveBeenCalled();
     expect(leagueService.deleteMatchesByEvent).not.toHaveBeenCalled();
     expect(leagueService.deleteWeeklySchedulesForEvent).not.toHaveBeenCalled();
     expect(apiRequestMock).toHaveBeenCalledWith('/api/events/event_1');
-    confirmSpy.mockRestore();
   });
 
   it('saves an unpublished league without changing lifecycle state', async () => {
