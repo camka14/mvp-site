@@ -4646,6 +4646,45 @@ function EventScheduleContent() {
     return { ok: true };
   }, [activeEvent?.eventType, buildBracketNodes, stagedMatchCreates]);
 
+  const normalizeDraftBracketGraph = useCallback((draftMatches: Match[]): Match[] => {
+    const graphValidation = validateAndNormalizeBracketGraph(buildBracketNodes(draftMatches));
+    if (!graphValidation.ok) {
+      return draftMatches;
+    }
+
+    return draftMatches.map((match) => {
+      const matchId = normalizeIdToken(match.$id);
+      if (!matchId) {
+        return match;
+      }
+
+      const normalizedNode = graphValidation.normalizedById[matchId];
+      if (!normalizedNode) {
+        return match;
+      }
+
+      const normalizedPreviousLeftId = asBulkMatchRef(normalizedNode.previousLeftId);
+      const normalizedPreviousRightId = asBulkMatchRef(normalizedNode.previousRightId);
+      const currentPreviousLeftId = asBulkMatchRef(match.previousLeftId);
+      const currentPreviousRightId = asBulkMatchRef(match.previousRightId);
+
+      if (
+        currentPreviousLeftId === normalizedPreviousLeftId
+        && currentPreviousRightId === normalizedPreviousRightId
+      ) {
+        return match;
+      }
+
+      return {
+        ...match,
+        previousLeftId: normalizedPreviousLeftId,
+        previousRightId: normalizedPreviousRightId,
+        previousLeftMatch: undefined,
+        previousRightMatch: undefined,
+      };
+    });
+  }, [buildBracketNodes]);
+
   const toBulkMatchUpdatePayload = useCallback((match: Match): Record<string, unknown> => {
     const normalizeRelationId = (value: unknown): string | null => {
       if (typeof value === 'string') {
@@ -5828,7 +5867,9 @@ function EventScheduleContent() {
       nextMatches.push(cloneValue(updated) as Match);
     }
 
-    setChangesMatches(nextMatches);
+    const normalizedMatches = normalizeDraftBracketGraph(nextMatches);
+
+    setChangesMatches(normalizedMatches);
     setDismissedMatchConflictSignature(null);
     setMatchConflictOverrideMessage(null);
     if (isClientMatchId(updated.$id)) {
@@ -5851,7 +5892,7 @@ function EventScheduleContent() {
     setMatchEditorContext('bracket');
     setIsMatchEditorOpen(false);
     setMatchBeingEdited(null);
-  }, [activeEvent?.eventType, changesMatches, matchEditorContext, matches]);
+  }, [activeEvent?.eventType, changesMatches, matchEditorContext, matches, normalizeDraftBracketGraph]);
 
   const handleToggleLockAllMatches = useCallback((locked: boolean, matchIds: string[]) => {
     if (!canEditMatches || matchIds.length === 0) return;
