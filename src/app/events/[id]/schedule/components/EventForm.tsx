@@ -6675,7 +6675,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         } else if (source.start) {
                             serialized.startDate = source.start;
                         }
-                        if (source.end) {
+                        // Open-ended scheduling should not force recurring slot end bounds.
+                        if (!source.noFixedEndDateTime && source.end) {
                             serialized.endDate = source.end;
                         }
                     }
