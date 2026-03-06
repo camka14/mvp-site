@@ -54,4 +54,50 @@ describe('MatchCard conflict rendering', () => {
     expect(screen.queryByText(/there is a conflict/i)).not.toBeInTheDocument();
     expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('border-red-400');
   });
+
+  it('labels winner and loser separately when the same prior match feeds both slots', () => {
+    const sourceMatch = buildMatch({
+      $id: 'match_63',
+      matchId: 63,
+      winnerNextMatchId: 'match_65',
+      loserNextMatchId: 'match_65',
+    });
+
+    renderWithMantine(
+      createElement(MatchCard, {
+        match: buildMatch({
+          $id: 'match_65',
+          matchId: 65,
+          previousLeftMatch: sourceMatch,
+          previousRightMatch: sourceMatch,
+        }),
+      }),
+    );
+
+    expect(screen.getByText('Winner of match #63')).toBeInTheDocument();
+    expect(screen.getByText('Loser of match #63')).toBeInTheDocument();
+  });
+
+  it('derives the missing opposite slot label when one previous link is absent but source feeds both winner and loser', () => {
+    const sourceMatch = buildMatch({
+      $id: 'match_63',
+      matchId: 63,
+      winnerNextMatchId: 'match_65',
+      loserNextMatchId: 'match_65',
+    });
+
+    renderWithMantine(
+      createElement(MatchCard, {
+        match: buildMatch({
+          $id: 'match_65',
+          matchId: 65,
+          previousLeftMatch: sourceMatch,
+          previousRightMatch: undefined,
+        }),
+      }),
+    );
+
+    expect(screen.getByText('Winner of match #63')).toBeInTheDocument();
+    expect(screen.getByText('Loser of match #63')).toBeInTheDocument();
+  });
 });

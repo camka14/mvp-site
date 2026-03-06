@@ -82,12 +82,40 @@ function MatchCard({
         return 'TBD';
     };
 
-    const getBracketPlaceholder = (previousMatch?: Match | null) => {
+    const normalizeMatchRefId = (value: unknown): string => (
+        typeof value === 'string' ? value.trim() : ''
+    );
+
+    const getBracketPlaceholder = (
+        previousMatch?: Match | null,
+        slot?: 'team1' | 'team2',
+    ) => {
         if (!previousMatch || typeof previousMatch.matchId !== 'number') {
             return 'TBD';
         }
-        const isCrossBracketLoser = Boolean(match.losersBracket && previousMatch.losersBracket === false);
-        const prefix = isCrossBracketLoser ? 'Loser' : 'Winner';
+        const currentMatchId = normalizeMatchRefId(match.$id);
+        const winnerNextId = normalizeMatchRefId(previousMatch.winnerNextMatchId);
+        const loserNextId = normalizeMatchRefId(previousMatch.loserNextMatchId);
+
+        let prefix: 'Winner' | 'Loser';
+        if (currentMatchId.length > 0) {
+            const winnerFeedsCurrent = winnerNextId === currentMatchId;
+            const loserFeedsCurrent = loserNextId === currentMatchId;
+            if (winnerFeedsCurrent && loserFeedsCurrent) {
+                prefix = slot === 'team2' ? 'Loser' : 'Winner';
+            } else if (loserFeedsCurrent) {
+                prefix = 'Loser';
+            } else if (winnerFeedsCurrent) {
+                prefix = 'Winner';
+            } else {
+                const isCrossBracketLoser = Boolean(match.losersBracket && previousMatch.losersBracket === false);
+                prefix = isCrossBracketLoser ? 'Loser' : 'Winner';
+            }
+        } else {
+            const isCrossBracketLoser = Boolean(match.losersBracket && previousMatch.losersBracket === false);
+            prefix = isCrossBracketLoser ? 'Loser' : 'Winner';
+        }
+
         return `${prefix} of match #${previousMatch.matchId}`;
     };
 
@@ -95,6 +123,7 @@ function MatchCard({
         teamData: Match['team1'],
         previousMatch?: Match | null,
         placeholder?: string,
+        slot?: 'team1' | 'team2',
     ) => {
         if (teamData) {
             return getTeamName(teamData);
@@ -102,7 +131,23 @@ function MatchCard({
         if (placeholder && placeholder.trim().length > 0) {
             return placeholder.trim();
         }
-        return getBracketPlaceholder(previousMatch);
+        if (!previousMatch && slot) {
+            const siblingPreviousMatch = slot === 'team1'
+                ? match.previousRightMatch
+                : match.previousLeftMatch;
+            if (siblingPreviousMatch && typeof siblingPreviousMatch.matchId === 'number') {
+                const currentMatchId = normalizeMatchRefId(match.$id);
+                const siblingWinnerNextId = normalizeMatchRefId(siblingPreviousMatch.winnerNextMatchId);
+                const siblingLoserNextId = normalizeMatchRefId(siblingPreviousMatch.loserNextMatchId);
+                const siblingFeedsBothOutcomes = currentMatchId.length > 0
+                    && siblingWinnerNextId === currentMatchId
+                    && siblingLoserNextId === currentMatchId;
+                if (siblingFeedsBothOutcomes) {
+                    return `${slot === 'team2' ? 'Loser' : 'Winner'} of match #${siblingPreviousMatch.matchId}`;
+                }
+            }
+        }
+        return getBracketPlaceholder(previousMatch, slot);
     };
 
     const getUserName = (userData: any) => {
@@ -168,6 +213,7 @@ function MatchCard({
         previousMatch,
         placeholder,
         reverseScore = false,
+        slot,
     }: {
         team: Match['team1'];
         points: number[];
@@ -175,6 +221,7 @@ function MatchCard({
         previousMatch?: Match | null;
         placeholder?: string;
         reverseScore?: boolean;
+        slot: 'team1' | 'team2';
     }) => (
         <div className={`flex items-center justify-between ${isCompactHorizontal ? 'p-1.5' : 'p-2'} rounded ${winner ? 'bg-green-50 border border-green-200' : 'bg-gray-100'}`}>
             {reverseScore ? (
@@ -194,7 +241,7 @@ function MatchCard({
                         {team && (
                             <Image
                                 src={getTeamAvatarUrl(team, 24)}
-                                alt={getTeamLabel(team, previousMatch, placeholder)}
+                                alt={getTeamLabel(team, previousMatch, placeholder, slot)}
                                 width={24}
                                 height={24}
                                 unoptimized
@@ -202,7 +249,7 @@ function MatchCard({
                             />
                         )}
                         <span className="text-sm font-medium truncate text-right">
-                            {getTeamLabel(team, previousMatch, placeholder)}
+                            {getTeamLabel(team, previousMatch, placeholder, slot)}
                         </span>
                     </div>
                 </>
@@ -212,7 +259,7 @@ function MatchCard({
                         {team && (
                             <Image
                                 src={getTeamAvatarUrl(team, 24)}
-                                alt={getTeamLabel(team, previousMatch, placeholder)}
+                                alt={getTeamLabel(team, previousMatch, placeholder, slot)}
                                 width={24}
                                 height={24}
                                 unoptimized
@@ -220,7 +267,7 @@ function MatchCard({
                             />
                         )}
                         <span className="text-sm font-medium truncate">
-                            {getTeamLabel(team, previousMatch, placeholder)}
+                            {getTeamLabel(team, previousMatch, placeholder, slot)}
                         </span>
                     </div>
                     <div className="flex items-center gap-1 text-sm font-mono ml-2">
@@ -248,6 +295,7 @@ function MatchCard({
                     winner: result?.winner === 1,
                     previousMatch: match.previousLeftMatch,
                     placeholder: team1Placeholder,
+                    slot: 'team1',
                 })}
                 {renderTeamRow({
                     team: match.team2,
@@ -255,6 +303,7 @@ function MatchCard({
                     winner: result?.winner === 2,
                     previousMatch: match.previousRightMatch,
                     placeholder: team2Placeholder,
+                    slot: 'team2',
                 })}
             </div>
             <div className="mt-3 flex items-center justify-between">
@@ -278,6 +327,7 @@ function MatchCard({
                         winner: result?.winner === 1,
                         previousMatch: match.previousLeftMatch,
                         placeholder: team1Placeholder,
+                        slot: 'team1',
                     })}
                 </div>
                 <div className="h-full">
@@ -288,6 +338,7 @@ function MatchCard({
                         previousMatch: match.previousRightMatch,
                         placeholder: team2Placeholder,
                         reverseScore: true,
+                        slot: 'team2',
                     })}
                 </div>
             </div>

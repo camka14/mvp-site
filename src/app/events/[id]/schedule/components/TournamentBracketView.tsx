@@ -68,6 +68,90 @@ const normalizeMatchRefId = (value: unknown): string => {
     return value.trim();
 };
 
+type MatchLinkResolver = (idValue: unknown, relationValue: unknown) => Match | undefined;
+
+const collectUniqueChildren = (match: Match, resolveLink: MatchLinkResolver): Match[] => {
+    const left = resolveLink(match.previousLeftId, match.previousLeftMatch);
+    const right = resolveLink(match.previousRightId, match.previousRightMatch);
+    const children: Match[] = [];
+    if (left) {
+        children.push(left);
+    }
+    if (right && (!left || right.$id !== left.$id)) {
+        children.push(right);
+    }
+    return children;
+};
+
+const resolveMatchRefId = (idValue: unknown, relationValue: unknown): string => {
+    const explicit = normalizeMatchRefId(idValue);
+    if (explicit) {
+        return explicit;
+    }
+    return extractEntityId(relationValue);
+};
+
+const collectLosersChildrenByNextLinks = (match: Match, matchesById: Record<string, Match>): Match[] =>
+    Object.values(matchesById)
+        .filter((candidate) => {
+            if (!candidate?.$id || candidate.$id === match.$id) {
+                return false;
+            }
+            const nextId = candidate.losersBracket
+                ? resolveMatchRefId(candidate.winnerNextMatchId, candidate.winnerNextMatch)
+                : resolveMatchRefId(candidate.loserNextMatchId, candidate.loserNextMatch);
+            return nextId === match.$id;
+        })
+        .sort((left, right) => {
+            const leftMatchId = typeof left.matchId === 'number' ? left.matchId : -Infinity;
+            const rightMatchId = typeof right.matchId === 'number' ? right.matchId : -Infinity;
+            if (leftMatchId !== rightMatchId) {
+                return rightMatchId - leftMatchId;
+            }
+            return left.$id.localeCompare(right.$id);
+        });
+
+const collectLosersChildren = (
+    match: Match,
+    resolveLink: MatchLinkResolver,
+    matchesById: Record<string, Match>,
+): Match[] => {
+    const orderedUnique = new Map<string, Match>();
+    const nextLinkedChildren = collectLosersChildrenByNextLinks(match, matchesById);
+
+    nextLinkedChildren.forEach((child) => {
+        if (child.$id && !orderedUnique.has(child.$id)) {
+            orderedUnique.set(child.$id, child);
+        }
+    });
+
+    collectUniqueChildren(match, resolveLink).forEach((child) => {
+        if (child.$id && !orderedUnique.has(child.$id)) {
+            const winnerNextId = resolveMatchRefId(child.winnerNextMatchId, child.winnerNextMatch);
+            const loserNextId = resolveMatchRefId(child.loserNextMatchId, child.loserNextMatch);
+            const losersRouteTargetId = child.losersBracket ? winnerNextId : loserNextId;
+            const pointsElsewhereInLosersView = losersRouteTargetId.length > 0 && losersRouteTargetId !== match.$id;
+
+            if (!pointsElsewhereInLosersView) {
+                orderedUnique.set(child.$id, child);
+            }
+        }
+    });
+
+    return Array.from(orderedUnique.values()).slice(0, 2);
+};
+
+const selectLoserTraversalChildren = (children: Match[]): Match[] => {
+    if (children.length <= 1) {
+        return children;
+    }
+    const loserChildren = children.filter((child) => child.losersBracket);
+    if (loserChildren.length === 0) {
+        return children;
+    }
+    return loserChildren;
+};
+
 const normalizeDivisionDetailsList = (input: unknown): Division[] => {
     if (!Array.isArray(input)) {
         return [];
@@ -457,23 +541,38 @@ export default function TournamentBracketView({
 
     // Map if needed in future: const matchesById = useMemo(() => Object.fromEntries(bracket.matches.map(m => [m.$id, m])), [bracket.matches]);
 
-    // Subset of matches for current view, plus one-hop children from the opposite bracket
+    // Subset of matches for current view.
     const viewById = useMemo(() => {
+        if (isLosersBracket) {
+            const filteredEntries = Object.entries(bracket.matches).filter(([, match]) => {
+                const hasPrevious =
+                    Boolean(resolveLinkFromAll(match.previousLeftId, match.previousLeftMatch)) ||
+                    Boolean(resolveLinkFromAll(match.previousRightId, match.previousRightMatch));
+
+                const hasNext =
+                    Boolean(resolveLinkFromAll(match.winnerNextMatchId, match.winnerNextMatch)) ||
+                    Boolean(resolveLinkFromAll(match.loserNextMatchId, match.loserNextMatch));
+
+                return hasPrevious || hasNext;
+            });
+            return Object.fromEntries(filteredEntries);
+        }
+
         const map: Record<string, Match> = {};
 
-        // include all matches in current bracket
+        // Winners view: include matches in current bracket.
         Object.values(bracket.matches).forEach(m => {
             if (m.losersBracket === isLosersBracket) {
                 map[m.$id] = m;
             }
         });
 
-        // include one-hop children even if from opposite bracket
+        // Winners view: include one-hop children even if from opposite bracket.
         Object.values(map).forEach(parent => {
-            const left = resolveLinkFromAll(parent.previousLeftId, parent.previousLeftMatch);
-            const right = resolveLinkFromAll(parent.previousRightId, parent.previousRightMatch);
-            if (left) map[left.$id] = left;
-            if (right) map[right.$id] = right;
+            const children = collectUniqueChildren(parent, resolveLinkFromAll);
+            children.forEach((child) => {
+                map[child.$id] = child;
+            });
         });
 
         const filteredEntries = Object.entries(map).filter(([, match]) => {
@@ -519,7 +618,7 @@ export default function TournamentBracketView({
         }
     }, [hasLoserMatches, isLosersBracket]);
 
-    // Terminals: no winnerNext within current view's bracket
+    // Terminals: no winnerNext within current view's bracket.
     const terminalIds = useMemo(() => Object.values(viewById)
         .filter(m => m.losersBracket === isLosersBracket)
         .filter((m) => {
@@ -528,46 +627,93 @@ export default function TournamentBracketView({
         })
         .map(m => m.$id), [viewById, isLosersBracket, resolveLinkFromView]);
 
-    // Choose a root terminal (prefer highest matchId)
+    const tournamentRootIds = useMemo(() => {
+        if (!isLosersBracket) {
+            return [] as string[];
+        }
+        return Object.values(viewById)
+            .filter((match) => {
+                const winnerNext = resolveLinkFromView(match.winnerNextMatchId, match.winnerNextMatch);
+                const loserNext = resolveLinkFromView(match.loserNextMatchId, match.loserNextMatch);
+                return !winnerNext && !loserNext;
+            })
+            .map((match) => match.$id);
+    }, [isLosersBracket, resolveLinkFromView, viewById]);
+
+    // Choose a root terminal (prefer highest matchId).
     const rootId = useMemo(() => {
+        const candidateIds = isLosersBracket && tournamentRootIds.length > 0
+            ? tournamentRootIds
+            : terminalIds;
         let best: string | null = null;
         let bestMatchId = -Infinity;
-        for (const id of terminalIds) {
+        for (const id of candidateIds) {
             const m = viewById[id];
             const key = m?.matchId ?? 0;
             if (key > bestMatchId || (key === bestMatchId && (!best || id.localeCompare(best) < 0))) { best = id; bestMatchId = key; }
         }
         return best;
-    }, [terminalIds, viewById]);
+    }, [isLosersBracket, terminalIds, tournamentRootIds, viewById]);
 
-    const connectedTreeIds = useMemo(() => {
-        const ids = new Set<string>();
+    const treeConnectivity = useMemo(() => {
+        const connectedIds = new Set<string>();
+        const traversedIds = new Set<string>();
         if (!rootId) {
-            return ids;
+            return { connectedIds, traversedIds };
         }
 
-        const visit = (id: string) => {
-            if (ids.has(id)) {
+        const visitWinners = (id: string) => {
+            if (traversedIds.has(id)) {
                 return;
             }
-            ids.add(id);
+            traversedIds.add(id);
+            connectedIds.add(id);
             const match = viewById[id];
             if (!match || match.losersBracket !== isLosersBracket) {
                 return;
             }
-            const left = resolveLinkFromView(match.previousLeftId, match.previousLeftMatch);
-            const right = resolveLinkFromView(match.previousRightId, match.previousRightMatch);
-            if (left?.$id) {
-                visit(left.$id);
-            }
-            if (right?.$id) {
-                visit(right.$id);
-            }
+            const children = collectUniqueChildren(match, resolveLinkFromView);
+            children.forEach((child) => {
+                if (child.$id) {
+                    visitWinners(child.$id);
+                }
+            });
         };
 
-        visit(rootId);
-        return ids;
+        const visitLosers = (id: string) => {
+            if (traversedIds.has(id)) {
+                return;
+            }
+            traversedIds.add(id);
+            const match = viewById[id];
+            if (!match) {
+                return;
+            }
+            connectedIds.add(id);
+            const children = collectLosersChildren(match, resolveLinkFromView, viewById);
+            children.forEach((child) => {
+                if (child.$id) {
+                    connectedIds.add(child.$id);
+                }
+            });
+            const nextChildren = selectLoserTraversalChildren(children);
+            nextChildren.forEach((child) => {
+                if (child.$id) {
+                    visitLosers(child.$id);
+                }
+            });
+        };
+
+        if (isLosersBracket) {
+            visitLosers(rootId);
+        } else {
+            visitWinners(rootId);
+        }
+        return { connectedIds, traversedIds };
     }, [isLosersBracket, rootId, viewById, resolveLinkFromView]);
+
+    const connectedTreeIds = treeConnectivity.connectedIds;
+    const traversedTreeIds = treeConnectivity.traversedIds;
 
     const treeById = useMemo(() => {
         if (!connectedTreeIds.size) {
@@ -580,7 +726,15 @@ export default function TournamentBracketView({
 
     const unplacedMatches = useMemo(
         () => Object.values(viewById)
-            .filter((match) => match.losersBracket === isLosersBracket && !connectedTreeIds.has(match.$id))
+            .filter((match) => {
+                if (connectedTreeIds.has(match.$id)) {
+                    return false;
+                }
+                if (isLosersBracket) {
+                    return true;
+                }
+                return match.losersBracket === isLosersBracket;
+            })
             .sort((left, right) => {
                 const leftMatchId = typeof left.matchId === 'number' ? left.matchId : -Infinity;
                 const rightMatchId = typeof right.matchId === 'number' ? right.matchId : -Infinity;
@@ -614,17 +768,21 @@ export default function TournamentBracketView({
         return undefined;
     }, [treeById]);
 
-    // Helper: children of a node with at most one-hop cross-bracket inclusion
+    // Helper: children of a node with layout-only filtering.
     const getChildrenLimited = useCallback((m: Match): Match[] => {
-        const left = resolveLinkFromTree(m.previousLeftId, m.previousLeftMatch);
-        const right = resolveLinkFromTree(m.previousRightId, m.previousRightMatch);
-        const children: Match[] = [];
-        if (left) children.push(left);
-        if (right && (!left || right.$id !== left.$id)) children.push(right);
-        // Do not traverse beyond one hop across brackets
-        if (m.losersBracket !== isLosersBracket) return [];
+        if (isLosersBracket) {
+            if (!traversedTreeIds.has(m.$id)) {
+                return [];
+            }
+            return collectLosersChildren(m, resolveLinkFromTree, treeById);
+        }
+        const children = collectUniqueChildren(m, resolveLinkFromTree);
+        // Winners view keeps legacy bracket-bound traversal.
+        if (m.losersBracket !== isLosersBracket) {
+            return [];
+        }
         return children;
-    }, [resolveLinkFromTree, isLosersBracket]);
+    }, [resolveLinkFromTree, isLosersBracket, traversedTreeIds, treeById]);
 
     // Compute round indices from root with one-hop cross-bracket rule, then invert so leaves are round 0
     const roundIndexById = useMemo(() => {
@@ -745,13 +903,30 @@ export default function TournamentBracketView({
                 const t = resolveLinkFromTree(m.winnerNextMatchId, m.winnerNextMatch);
                 return t && t.losersBracket === false ? t : undefined;
             } else {
-                if (m.losersBracket === false) {
-                    // Losers view: winners matches point to loserNext
-                    return resolveLinkFromTree(m.loserNextMatchId, m.loserNextMatch);
-                } else {
-                    // Losers view: losers matches point to next winner (within losers bracket)
-                    return resolveLinkFromTree(m.winnerNextMatchId, m.winnerNextMatch);
+                const winnerNextId = resolveMatchRefId(m.winnerNextMatchId, m.winnerNextMatch);
+                const loserNextId = resolveMatchRefId(m.loserNextMatchId, m.loserNextMatch);
+
+                if (m.losersBracket) {
+                    // Losers view: LB matches route primarily via winnerNext.
+                    if (winnerNextId) {
+                        return treeById[winnerNextId];
+                    }
+                    // Fallback for partial data.
+                    if (loserNextId) {
+                        return treeById[loserNextId];
+                    }
+                    return undefined;
                 }
+
+                // Losers view: WB matches route primarily via loserNext.
+                if (loserNextId) {
+                    return treeById[loserNextId];
+                }
+                // Fallback for partial data when loserNext is missing.
+                if (winnerNextId) {
+                    return treeById[winnerNextId];
+                }
+                return undefined;
             }
         };
 
