@@ -28,6 +28,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
 
   const existing = await prisma.chatGroup.findUnique({ where: { id: topicId } });
   const now = new Date();
+  const canCreateChatGroup = userIds.length >= 2;
+
+  if (!existing && !canCreateChatGroup) {
+    return NextResponse.json({ topicId, topic: null }, { status: 200 });
+  }
 
   const record = existing
     ? await prisma.chatGroup.update({

@@ -88,22 +88,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
   const existing = await prisma.chatGroup.findUnique({ where: { id: topicId } });
   const now = new Date();
   const mergedUserIds = uniqueIds([...(existing?.userIds ?? []), ...requestUserIds]);
+  const canCreateChatGroup = mergedUserIds.length >= 2;
 
   const record = existing
     ? await prisma.chatGroup.update({
       where: { id: topicId },
       data: { userIds: mergedUserIds, updatedAt: now },
     })
-    : await prisma.chatGroup.create({
-      data: {
-        id: topicId,
-        name: null,
-        userIds: mergedUserIds,
-        hostId: session.userId,
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
+    : canCreateChatGroup
+      ? await prisma.chatGroup.create({
+        data: {
+          id: topicId,
+          name: null,
+          userIds: mergedUserIds,
+          hostId: session.userId,
+          createdAt: now,
+          updatedAt: now,
+        },
+      })
+      : null;
 
   const pushToken = parsed.data.pushToken?.trim();
   if (pushToken) {
@@ -118,7 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
     });
   }
 
-  return NextResponse.json({ topicId, topic: withLegacyFields(record) }, { status: 200 });
+  return NextResponse.json({ topicId, topic: record ? withLegacyFields(record) : null }, { status: 200 });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {

@@ -82,6 +82,40 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
     });
   });
 
+  it('does not create a one-user unnamed chat when topic does not exist', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue(null);
+    prismaMock.chatGroup.create.mockResolvedValue({
+      id: 'user_user_1',
+      name: null,
+      userIds: ['user_1'],
+      hostId: 'user_1',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+    });
+
+    const res = await POST(postRequest({
+      userIds: ['user_1'],
+      pushToken: 'push_token_1',
+      pushTarget: 'user_user_1',
+      pushPlatform: 'android',
+    }), {
+      params: Promise.resolve({ topicId: 'user_user_1' }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      topicId: 'user_user_1',
+      topic: null,
+    });
+    expect(prismaMock.chatGroup.create).not.toHaveBeenCalled();
+    expect(registerPushDeviceTargetMock).toHaveBeenCalledWith({
+      userId: 'user_1',
+      pushToken: 'push_token_1',
+      pushTarget: 'user_user_1',
+      pushPlatform: 'android',
+    });
+  });
+
   it('removes push token metadata when unsubscribing', async () => {
     prismaMock.chatGroup.findUnique.mockResolvedValue({ id: 'user_user_1', userIds: ['user_1', 'user_2'] });
     prismaMock.chatGroup.update.mockResolvedValue({
