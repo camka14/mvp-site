@@ -2409,6 +2409,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const open = isOpen ?? true;
     const refsPrefilledRef = useRef<boolean>(false);
     const lastResetEventIdRef = useRef<string | null>(null);
+    const dirtyBootstrapTimerRef = useRef<number | null>(null);
     const slotConflictRequestRef = useRef(0);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>, fallbackDivisions: string[] = []): LeagueSlotForm => {
@@ -3007,6 +3008,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         reValidateMode: 'onBlur',
         defaultValues: buildDefaultFormValues(),
     });
+    const [isDirtyTrackingReady, setIsDirtyTrackingReady] = useState(false);
     const setValue = rawSetValue as (
         name: string,
         value: unknown,
@@ -3015,6 +3017,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     useEffect(() => {
         if (!open) {
+            setIsDirtyTrackingReady(false);
+            onDirtyStateChange?.(false);
             return;
         }
         const nextEventId = activeEditingEvent?.$id ?? null;
@@ -3022,12 +3026,33 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         lastResetEventIdRef.current = nextEventId;
+        if (dirtyBootstrapTimerRef.current !== null && typeof window !== 'undefined') {
+            window.clearTimeout(dirtyBootstrapTimerRef.current);
+        }
+        setIsDirtyTrackingReady(false);
+        onDirtyStateChange?.(false);
         reset(buildDefaultFormValues());
-    }, [activeEditingEvent?.$id, buildDefaultFormValues, reset, open]);
+        if (typeof window !== 'undefined') {
+            dirtyBootstrapTimerRef.current = window.setTimeout(() => {
+                reset(getValues());
+                setIsDirtyTrackingReady(true);
+            }, 0);
+        } else {
+            setIsDirtyTrackingReady(true);
+        }
+    }, [activeEditingEvent?.$id, buildDefaultFormValues, getValues, onDirtyStateChange, reset, open]);
 
     useEffect(() => {
-        onDirtyStateChange?.(isDirty);
-    }, [isDirty, onDirtyStateChange]);
+        return () => {
+            if (dirtyBootstrapTimerRef.current !== null && typeof window !== 'undefined') {
+                window.clearTimeout(dirtyBootstrapTimerRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        onDirtyStateChange?.(isDirtyTrackingReady ? isDirty : false);
+    }, [isDirty, isDirtyTrackingReady, onDirtyStateChange]);
 
     const formValues = watch();
     const eventData = formValues;

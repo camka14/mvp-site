@@ -9,6 +9,7 @@ const useChatMock = jest.fn();
 const useChatUIMock = jest.fn();
 const renameChatGroupMock = jest.fn();
 const deleteChatGroupMock = jest.fn();
+const markChatViewedMock = jest.fn();
 
 jest.mock('@/lib/chatService', () => ({
   chatService: {
@@ -45,6 +46,7 @@ describe('ChatList', () => {
   beforeEach(() => {
     renameChatGroupMock.mockReset();
     deleteChatGroupMock.mockReset();
+    markChatViewedMock.mockReset();
     renameChatGroupMock.mockResolvedValue(baseGroup);
     deleteChatGroupMock.mockResolvedValue(undefined);
 
@@ -52,6 +54,7 @@ describe('ChatList', () => {
       chatGroups: [],
       loading: false,
       loadChatGroups: jest.fn(),
+      markChatViewed: markChatViewedMock,
     });
     useChatUIMock.mockReturnValue({
       ...baseChatUIState,
@@ -73,6 +76,7 @@ describe('ChatList', () => {
       chatGroups: [nullNamedGroup],
       loading: false,
       loadChatGroups: jest.fn(),
+      markChatViewed: markChatViewedMock,
     });
 
     renderWithMantine(<ChatList />);
@@ -90,6 +94,7 @@ describe('ChatList', () => {
       chatGroups: [baseGroup],
       loading: false,
       loadChatGroups: loadChatGroupsMock,
+      markChatViewed: markChatViewedMock,
     });
 
     const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('Renamed Chat');
@@ -115,6 +120,7 @@ describe('ChatList', () => {
       chatGroups: [baseGroup],
       loading: false,
       loadChatGroups: loadChatGroupsMock,
+      markChatViewed: markChatViewedMock,
     });
 
     useChatUIMock.mockReturnValue({
@@ -146,6 +152,7 @@ describe('ChatList', () => {
       chatGroups: [baseGroup],
       loading: false,
       loadChatGroups: jest.fn(),
+      markChatViewed: markChatViewedMock,
     });
 
     useChatUIMock.mockReturnValue({
@@ -158,5 +165,53 @@ describe('ChatList', () => {
     await user.click(screen.getByLabelText('Chat actions for Weekend League'));
 
     expect(openChatWindowMock).not.toHaveBeenCalled();
+  });
+
+  it('shows unread message count next to the last message', () => {
+    const unreadGroup: ChatGroup = {
+      ...baseGroup,
+      unreadCount: 4,
+      lastMessage: {
+        body: 'Latest hello',
+        sentTime: '2026-03-07T00:00:00.000Z',
+        userId: 'user_2',
+      },
+    };
+
+    useChatMock.mockReturnValue({
+      chatGroups: [unreadGroup],
+      loading: false,
+      loadChatGroups: jest.fn(),
+      markChatViewed: markChatViewedMock,
+    });
+
+    renderWithMantine(<ChatList />);
+
+    expect(screen.getByText('Latest hello')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
+  });
+
+  it('marks chat as viewed when selecting a chat', async () => {
+    const user = userEvent.setup();
+    const openChatWindowMock = jest.fn();
+
+    useChatMock.mockReturnValue({
+      chatGroups: [baseGroup],
+      loading: false,
+      loadChatGroups: jest.fn(),
+      markChatViewed: markChatViewedMock,
+    });
+
+    useChatUIMock.mockReturnValue({
+      ...baseChatUIState,
+      openChatWindow: openChatWindowMock,
+      closeChatWindow: jest.fn(),
+    });
+
+    renderWithMantine(<ChatList />);
+    await user.click(screen.getByText('Weekend League'));
+
+    expect(markChatViewedMock).toHaveBeenCalledWith('chat_1');
+    expect(openChatWindowMock).toHaveBeenCalledWith('chat_1');
   });
 });

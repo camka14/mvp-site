@@ -5,7 +5,8 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
-import { Container, Title, Text, Group, Button, SimpleGrid, Paper } from '@mantine/core';
+import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
+import { Container, Title, Text, Group, Button, Paper } from '@mantine/core';
 import { useApp } from '@/app/providers';
 import type { Organization, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
@@ -54,7 +55,7 @@ function OrganizationsPageContent() {
   return (
     <>
       <Navigation />
-      <Container size="lg" py="xl">
+      <Container fluid py="xl">
         <Group justify="space-between" align="center" mb="lg">
           <div>
             <Title order={2} mb={4}>Organizations</Title>
@@ -64,17 +65,17 @@ function OrganizationsPageContent() {
         </Group>
 
         {loading ? (
-          <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+          <ResponsiveCardGrid>
             {Array.from({ length: 6 }).map((_, i) => (
               <Paper key={`org-skel-${i}`} withBorder radius="md" p="md" h={120} className="skeleton" />
             ))}
-          </SimpleGrid>
+          </ResponsiveCardGrid>
         ) : orgs.length > 0 ? (
-          <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+          <ResponsiveCardGrid>
             {orgs.map((org) => (
               <OrganizationCard key={org.$id} organization={org} onClick={() => router.push(`/organizations/${org.$id}`)} />
             ))}
-          </SimpleGrid>
+          </ResponsiveCardGrid>
         ) : (
           <div className="text-center py-16 flex flex-col items-center">
             <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">

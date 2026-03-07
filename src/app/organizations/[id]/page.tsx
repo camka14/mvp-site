@@ -8,6 +8,7 @@ import Loading from '@/components/ui/Loading';
 import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table, Loader } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
+import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
@@ -1640,7 +1641,7 @@ function OrganizationDetailContent() {
   return (
     <>
       <Navigation />
-      <Container size="xl" py="xl" className="discover-shell org-page-shell">
+      <Container fluid py="xl" className="discover-shell org-page-shell">
         {loading || !org ? (
           <Loading fullScreen={false} text="Loading organization..." />
         ) : (
@@ -1710,7 +1711,7 @@ function OrganizationDetailContent() {
                   <Paper withBorder p="md" radius="md">
                     <Title order={5} mb="md">Recent Events</Title>
                     {org.events && org.events.length > 0 ? (
-                      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                      <ResponsiveCardGrid>
                         {org.events.slice(0, 4).map((e) => (
                           <EventCard
                             key={e.$id}
@@ -1724,7 +1725,7 @@ function OrganizationDetailContent() {
                             } : undefined}
                           />
                         ))}
-                      </SimpleGrid>
+                      </ResponsiveCardGrid>
                     ) : (
                       <Text size="sm" c="dimmed">No events yet.</Text>
                     )}
@@ -1869,7 +1870,7 @@ function OrganizationDetailContent() {
                 {eventTemplatesLoading ? (
                   <Text size="sm" c="dimmed">Loading event templates...</Text>
                 ) : eventTemplates.length > 0 ? (
-                  <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                  <ResponsiveCardGrid>
                     {eventTemplates.map((eventTemplate) => (
                       <EventCard
                         key={eventTemplate.$id}
@@ -1877,7 +1878,7 @@ function OrganizationDetailContent() {
                         onClick={() => openOrganizationEvent(eventTemplate.$id)}
                       />
                     ))}
-                  </SimpleGrid>
+                  </ResponsiveCardGrid>
                 ) : (
                   <Text size="sm" c="dimmed">No event templates yet.</Text>
                 )}

@@ -258,7 +258,7 @@ export default function HomePage() {
       </div>
 
       <header className="landing-header sticky top-0 z-20 backdrop-blur-lg">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        <div className="container-responsive flex items-center justify-between py-4">
           <Link href="/" className="landing-brand text-lg font-semibold tracking-wide">
             MVP
           </Link>
@@ -288,7 +288,7 @@ export default function HomePage() {
       </header>
 
       <main className="relative">
-        <section className="mx-auto grid w-full max-w-7xl gap-10 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8 lg:pt-24">
+        <section className="container-responsive grid gap-10 pb-20 pt-16 lg:grid-cols-[0.9fr_1.1fr] lg:pt-24">
           <div className="space-y-7" data-reveal>
             <p className="landing-kicker inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
               Combined Platform: Web + Mobile
@@ -366,7 +366,7 @@ export default function HomePage() {
         </section>
 
         <section className="landing-band">
-          <div className="landing-section-copy mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-sm sm:px-6 lg:px-8">
+          <div className="container-responsive landing-section-copy flex flex-wrap items-center justify-between gap-3 py-5 text-sm">
             <p>Built for tournament hosts, leagues, and facilities.</p>
             <div className="flex flex-wrap gap-2">
               {['Community Sports', 'Regional Leagues', 'Tournament Ops', 'Club Networks'].map((label) => (
@@ -378,7 +378,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="product" className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <section id="product" className="container-responsive py-16">
           <div className="mb-8">
             <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Two sides of the platform</h2>
             <p className="landing-section-copy mt-3 max-w-3xl">
@@ -423,7 +423,7 @@ export default function HomePage() {
                     alt="Mobile discover screenshot"
                     width={1344}
                     height={2992}
-                    sizes="(min-width: 1024px) 14vw, 50vw"
+                    sizes="(min-width: 1280px) 18rem, (min-width: 768px) 34vw, 48vw"
                     className="landing-phone-image"
                   />
                 </div>
@@ -432,7 +432,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-7xl space-y-10 px-4 pb-16 sm:px-6 lg:px-8">
+        <section className="container-responsive space-y-10 pb-16">
           {featureSections.map((feature, index) => {
             const reverse = index % 2 === 1;
             return (
@@ -450,7 +450,7 @@ export default function HomePage() {
                 </div>
                 <div className="landing-surface-soft landing-section-copy rounded-2xl p-5 text-sm">
                   <div className="rounded-xl">
-                    <div className={`landing-media-grid grid gap-3 ${feature.mobileImage ? 'sm:grid-cols-[2.7fr_0.42fr] sm:items-stretch' : ''}`}>
+                    <div className={`landing-media-grid grid gap-3 ${feature.mobileImage ? 'landing-media-grid-paired' : ''}`}>
                       <div className={`landing-shot-image ${feature.mobileImage ? 'landing-media-pair-item' : ''}`}>
                         <Image
                           src={feature.webImage.src}
@@ -487,7 +487,7 @@ export default function HomePage() {
           })}
         </section>
 
-        <section className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+        <section className="container-responsive pb-16">
           <div className="landing-surface rounded-3xl p-6">
             <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">How it works</h2>
             <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -505,7 +505,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="use-cases" className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+        <section id="use-cases" className="container-responsive pb-16">
           <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Use cases</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {useCases.map((useCase) => (
@@ -516,7 +516,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="resources" className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+        <section id="resources" className="container-responsive pb-16">
           <div className="landing-surface rounded-3xl p-6">
             <h2 className="landing-section-title text-2xl font-semibold sm:text-3xl">Integrations and platform stack</h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -543,7 +543,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="pricing" className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+        <section id="pricing" className="container-responsive pb-16">
           <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Pricing preview</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {[
@@ -568,7 +568,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+        <section className="container-responsive pb-20">
           <div className="landing-cta rounded-3xl p-8">
             <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Ready to run your next event on MVP?</h2>
             <p className="landing-cta-copy mt-3 max-w-2xl">

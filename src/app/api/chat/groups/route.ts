@@ -26,7 +26,21 @@ export async function GET(req: NextRequest) {
     orderBy: { updatedAt: 'desc' },
   });
 
-  return NextResponse.json({ groups: withLegacyList(groups) }, { status: 200 });
+  const groupsWithUnread = await Promise.all(groups.map(async (group) => {
+    const unreadCount = await prisma.messages.count({
+      where: {
+        chatId: group.id,
+        userId: { not: session.userId },
+        NOT: { readByIds: { has: session.userId } },
+      },
+    });
+    return {
+      ...group,
+      unreadCount,
+    };
+  }));
+
+  return NextResponse.json({ groups: withLegacyList(groupsWithUnread) }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

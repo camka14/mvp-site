@@ -1258,7 +1258,7 @@ export default function ProfilePage() {
         <>
             <Navigation />
             <div className="min-h-screen bg-gray-50 py-8">
-                <Container size="lg">
+                <Container fluid>
                     {/* Profile Header */}
                     <Paper radius="lg" shadow="xl" withBorder>
                         <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-32"></div>

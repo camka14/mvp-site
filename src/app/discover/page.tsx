@@ -13,7 +13,6 @@ import {
   Paper,
   RangeSlider,
   Select,
-  SimpleGrid,
   Slider,
   Tabs,
   Text,
@@ -28,6 +27,7 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
+import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
@@ -632,7 +632,7 @@ function DiscoverPageContent() {
   return (
     <>
       <Navigation />
-      <Container size="xl" py="xl" className="discover-shell">
+      <Container fluid py="xl" className="discover-shell">
         <div className="discover-page-header mb-8">
           <Title order={2} mb={6} className="discover-title">
             Discover
@@ -1228,7 +1228,7 @@ function EventsTabContent(props: {
             </Paper>
           ) : (
             <>
-              <SimpleGrid cols={{ base: 1, sm: 2, xl: 3 }} spacing="lg">
+              <ResponsiveCardGrid>
                 {sortedEvents.map((event) => (
                   <EventCard
                     key={event.$id}
@@ -1238,7 +1238,7 @@ function EventsTabContent(props: {
                     onClick={() => onEventClick(event)}
                   />
                 ))}
-              </SimpleGrid>
+              </ResponsiveCardGrid>
               <div ref={sentinelRef} style={{ height: 1 }} />
               {isLoadingMore && (
                 <Group justify="center" mt="lg">
@@ -1549,7 +1549,7 @@ function OrganizationsTabContent(props: {
               </Text>
             </Paper>
           ) : (
-            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
+            <ResponsiveCardGrid>
               {results.map(({ organization, distanceKm }) => (
                 <OrganizationCard
                   key={organization.$id}
@@ -1564,7 +1564,7 @@ function OrganizationsTabContent(props: {
                   }
                 />
               ))}
-            </SimpleGrid>
+            </ResponsiveCardGrid>
           )}
         </div>
       </div>
@@ -1927,7 +1927,7 @@ function RentalsTabContent(props: {
               </Text>
             </Paper>
           ) : (
-            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
+            <ResponsiveCardGrid>
               {organizationsWithListings.map(({ organization, listings }) => (
                 <OrganizationCard
                   key={organization.$id}
@@ -1940,7 +1940,7 @@ function RentalsTabContent(props: {
                   }
                 />
               ))}
-            </SimpleGrid>
+            </ResponsiveCardGrid>
           )}
         </div>
       </div>

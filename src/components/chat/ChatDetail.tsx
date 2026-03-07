@@ -12,22 +12,76 @@ interface ChatDetailProps {
 }
 
 export function ChatDetail({ chatId }: ChatDetailProps) {
-    const { messages, sendMessage, chatGroups } = useChat();
+    const { messages, messagePagination, sendMessage, loadMoreMessages, chatGroups } = useChat();
     const { closeChatWindow } = useChatUI();
     const { user } = useApp();
     const [messageInput, setMessageInput] = useState('');
     const [sending, setSending] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messageListRef = useRef<HTMLDivElement>(null);
+    const pendingLoadMoreRestoreRef = useRef<{ previousTop: number; previousHeight: number } | null>(null);
+    const previousMessageCountRef = useRef(0);
+    const previousLastMessageKeyRef = useRef('');
 
     const chatMessages = useMemo(() => messages[chatId] || [], [messages, chatId]);
+    const pagination = messagePagination[chatId];
+    const loadingMore = pagination?.loadingMore ?? false;
+    const hasMore = pagination?.hasMore ?? false;
     const chatGroup = chatGroups.find(chat => chat.$id === chatId);
     const chatTitle = resolveChatGroupTitle(chatGroup, 'Chat');
     const chatInitial = resolveChatGroupInitial(chatGroup, 'C');
     const chatMemberCount = Array.isArray(chatGroup?.userIds) ? chatGroup.userIds.length : 0;
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        previousMessageCountRef.current = 0;
+        previousLastMessageKeyRef.current = '';
+        pendingLoadMoreRestoreRef.current = null;
+    }, [chatId]);
+
+    useEffect(() => {
+        const container = messageListRef.current;
+        if (!container) {
+            return;
+        }
+
+        if (pendingLoadMoreRestoreRef.current) {
+            const { previousHeight, previousTop } = pendingLoadMoreRestoreRef.current;
+            const heightDelta = container.scrollHeight - previousHeight;
+            container.scrollTop = previousTop + Math.max(heightDelta, 0);
+            pendingLoadMoreRestoreRef.current = null;
+        } else {
+            const previousCount = previousMessageCountRef.current;
+            const previousLastMessageKey = previousLastMessageKeyRef.current;
+            const latestMessage = chatMessages[chatMessages.length - 1];
+            const latestKey = latestMessage ? `${latestMessage.$id}::${latestMessage.sentTime}` : '';
+            const appendedAtBottom = chatMessages.length > previousCount
+                && previousLastMessageKey.length > 0
+                && latestKey.length > 0
+                && latestKey !== previousLastMessageKey;
+
+            if (previousCount === 0 || appendedAtBottom) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        const nextLast = chatMessages[chatMessages.length - 1];
+        previousLastMessageKeyRef.current = nextLast ? `${nextLast.$id}::${nextLast.sentTime}` : '';
+        previousMessageCountRef.current = chatMessages.length;
     }, [chatMessages]);
+
+    const handleMessagesScroll = () => {
+        const container = messageListRef.current;
+        if (!container || loadingMore || !hasMore) {
+            return;
+        }
+
+        if (container.scrollTop <= 24) {
+            pendingLoadMoreRestoreRef.current = {
+                previousTop: container.scrollTop,
+                previousHeight: container.scrollHeight,
+            };
+            void loadMoreMessages(chatId);
+        }
+    };
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -80,7 +134,14 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
             </div>
 
             {/* Messages - Scrollable area that takes remaining height */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+            <div
+                ref={messageListRef}
+                onScroll={handleMessagesScroll}
+                className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0"
+            >
+                {loadingMore ? (
+                    <div className="text-center text-xs text-gray-500">Loading more messages...</div>
+                ) : null}
                 {chatMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center text-gray-500">
                         <div className="text-sm">No messages yet</div>
@@ -109,7 +170,6 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
                         );
                     })
                 )}
-                <div ref={messagesEndRef} />
             </div>
 
             {/* Message Input - Fixed height at bottom */}

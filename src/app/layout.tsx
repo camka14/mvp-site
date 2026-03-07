@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Roboto_Flex } from 'next/font/google';
 import './globals.css';
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -12,12 +12,19 @@ import { ChatComponents } from '@/components/chat/ChatComponents';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
 import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
 
-const inter = Inter({ subsets: ['latin'] });
+const robotoFlex = Roboto_Flex({
+  subsets: ['latin'],
+  display: 'swap',
+});
 const mvpPrimary = [...MOBILE_APP_MANTINE_PRIMARY_SCALE] as MantineColorsTuple;
 const theme = createTheme({
   primaryColor: 'mvpPrimary',
   colors: {
     mvpPrimary,
+  },
+  fontFamily: robotoFlex.style.fontFamily,
+  headings: {
+    fontFamily: robotoFlex.style.fontFamily,
   },
   defaultRadius: 'md',
 });
@@ -59,7 +66,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
   const disableChat = process.env.NEXT_PUBLIC_DISABLE_CHAT === '1';
 
   return (
-    <html lang="en" className={inter.className}>
+    <html lang="en" className={robotoFlex.className}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />

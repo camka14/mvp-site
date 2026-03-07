@@ -8,6 +8,7 @@ export interface ChatGroup {
     hostId: string;
     displayName?: string | null;
     imageUrl?: string | null;
+    unreadCount?: number;
     lastMessage?: {
         body: string;
         sentTime: string;
@@ -22,6 +23,40 @@ export interface Message {
     sentTime: string;
     readByIds: string[];
 }
+
+export type MessagePageOrder = 'asc' | 'desc';
+
+export interface MessagePageQuery {
+    limit?: number;
+    index?: number;
+    order?: MessagePageOrder;
+}
+
+export interface MessagePagePagination {
+    index: number;
+    limit: number;
+    totalCount: number;
+    nextIndex: number;
+    remainingCount: number;
+    hasMore: boolean;
+    order: MessagePageOrder;
+}
+
+export interface MessagePageResult {
+    messages: Message[];
+    pagination: MessagePagePagination;
+}
+
+const DEFAULT_PAGE_LIMIT = 20;
+
+const toMessage = (row: any): Message => ({
+    $id: row.$id,
+    userId: row.userId,
+    body: row.body,
+    chatId: row.chatId,
+    sentTime: row.sentTime,
+    readByIds: row.readByIds || [],
+});
 
 class ChatService {
 
@@ -39,6 +74,7 @@ class ChatService {
                 hostId: row.hostId,
                 displayName: row.displayName,
                 imageUrl: row.imageUrl,
+                unreadCount: Number.isFinite(row.unreadCount) ? Number(row.unreadCount) : 0,
                 $createdAt: row.$createdAt,
                 $updatedAt: row.$updatedAt
             }));
@@ -48,46 +84,81 @@ class ChatService {
         }
     }
 
-    async getMessages(chatId: string): Promise<Message[]> {
+    async getMessagesPage(chatId: string, query: MessagePageQuery = {}): Promise<MessagePageResult> {
         try {
-            const params = new URLSearchParams();
-            params.set('limit', '100');
-            params.set('order', 'asc');
-            const response = await apiRequest<{ messages?: any[] }>(`/api/chat/groups/${chatId}/messages?${params.toString()}`);
+            const normalizedLimit = Number.isFinite(query.limit) ? Math.trunc(query.limit as number) : DEFAULT_PAGE_LIMIT;
+            const limit = Math.min(Math.max(normalizedLimit, 1), 100);
+            const normalizedIndex = Number.isFinite(query.index) ? Math.trunc(query.index as number) : 0;
+            const index = Math.max(0, normalizedIndex);
+            const order: MessagePageOrder = query.order === 'asc' ? 'asc' : 'desc';
 
-            return (response.messages ?? []).map((row: any) => ({
-                $id: row.$id,
-                userId: row.userId,
-                body: row.body,
-                chatId: row.chatId,
-                sentTime: row.sentTime,
-                readByIds: row.readByIds || []
-            }));
+            const params = new URLSearchParams();
+            params.set('limit', String(limit));
+            params.set('index', String(index));
+            params.set('order', order);
+            const response = await apiRequest<{
+                messages?: any[];
+                pagination?: Partial<MessagePagePagination>;
+            }>(`/api/chat/groups/${chatId}/messages?${params.toString()}`);
+
+            const messages = (response.messages ?? []).map((row: any) => toMessage(row));
+            const fallbackNextIndex = index + messages.length;
+            const totalCount = Number.isFinite(response.pagination?.totalCount)
+                ? Number(response.pagination?.totalCount)
+                : fallbackNextIndex;
+            const nextIndex = Number.isFinite(response.pagination?.nextIndex)
+                ? Number(response.pagination?.nextIndex)
+                : fallbackNextIndex;
+            const remainingCount = Number.isFinite(response.pagination?.remainingCount)
+                ? Math.max(0, Number(response.pagination?.remainingCount))
+                : Math.max(0, totalCount - nextIndex);
+            const hasMore = typeof response.pagination?.hasMore === 'boolean'
+                ? response.pagination.hasMore
+                : remainingCount > 0;
+
+            return {
+                messages,
+                pagination: {
+                    index,
+                    limit,
+                    totalCount,
+                    nextIndex,
+                    remainingCount,
+                    hasMore,
+                    order,
+                },
+            };
         } catch (error) {
-            console.error('Failed to get messages:', error);
+            console.error('Failed to get paged messages:', error);
             throw error;
         }
     }
 
+    async getMessages(chatId: string): Promise<Message[]> {
+        const page = await this.getMessagesPage(chatId, { limit: 100, index: 0, order: 'asc' });
+        return page.messages;
+    }
+
     async getLastMessage(chatId: string): Promise<Message | null> {
         try {
-            const params = new URLSearchParams();
-            params.set('limit', '1');
-            params.set('order', 'desc');
-            const response = await apiRequest<{ messages?: any[] }>(`/api/chat/groups/${chatId}/messages?${params.toString()}`);
-            if (!response.messages?.length) return null;
-            const row: any = response.messages[0];
-            return {
-                $id: row.$id,
-                userId: row.userId,
-                body: row.body,
-                chatId: row.chatId,
-                sentTime: row.sentTime,
-                readByIds: row.readByIds || []
-            };
+            const page = await this.getMessagesPage(chatId, { limit: 1, index: 0, order: 'desc' });
+            if (!page.messages.length) return null;
+            return page.messages[0];
         } catch (error) {
             console.error('Failed to get last message:', error);
             return null;
+        }
+    }
+
+    async markChatMessagesRead(chatId: string): Promise<void> {
+        try {
+            await apiRequest(`/api/chat/groups/${chatId}/messages/read`, {
+                method: 'POST',
+                body: {},
+            });
+        } catch (error) {
+            console.error('Failed to mark chat messages as read:', error);
+            throw error;
         }
     }
 

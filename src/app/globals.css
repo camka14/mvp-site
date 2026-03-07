@@ -21,6 +21,14 @@
   background: var(--mvp-scrollbar-thumb-hover);
 }
 
+/* Keep media fluid by default */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
 /* Material Design 3 inspired components */
 .elevation-1 {
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -122,7 +130,28 @@
 
 /* Responsive utilities */
 .container-responsive {
-  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 2vw, 2.5rem);
+}
+
+.responsive-card-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--responsive-card-columns, 1), minmax(0, 1fr));
+  gap: 1rem;
+  justify-content: stretch;
+  align-items: stretch;
+}
+
+.responsive-card-grid > * {
+  min-width: 0;
+  width: 100%;
+}
+
+@media (min-width: 48rem) {
+  .responsive-card-grid {
+    gap: 1.5rem;
+  }
 }
 
 /* Standard popup/panel styling for dropdowns, pickers, menus */
@@ -936,14 +965,26 @@ summary::-webkit-details-marker {
   object-position: center center;
 }
 
+.landing-media-grid-paired {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+@media (min-width: 640px) {
+  .landing-media-grid-paired {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+  }
+}
+
 .landing-media-pair-item {
   height: 100%;
+  min-height: 0;
+  align-self: stretch;
 }
 
 .landing-phone-frame {
   position: relative;
-  width: 100%;
-  max-width: 16rem;
+  width: min(100%, var(--landing-phone-frame-width, clamp(8.5rem, 10vw + 3rem, 14rem)));
   margin-inline: auto;
   padding: 0.4rem;
   border-radius: 2rem;
@@ -975,7 +1016,7 @@ summary::-webkit-details-marker {
 }
 
 .landing-phone-frame-compact {
-  max-width: 10rem;
+  --landing-phone-frame-width: clamp(8rem, 7.5vw + 2.75rem, 12rem);
 }
 
 .landing-phone-image {
@@ -987,9 +1028,11 @@ summary::-webkit-details-marker {
 
 .landing-phone-frame-equal {
   height: 100%;
-  aspect-ratio: 9 / 20;
   width: auto;
+  aspect-ratio: 9 / 20;
   max-height: 100%;
+  max-width: 100%;
+  justify-self: center;
 }
 
 .landing-phone-frame-equal .landing-phone-screen {
@@ -999,7 +1042,7 @@ summary::-webkit-details-marker {
 .landing-phone-frame-equal .landing-phone-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .landing-step {
@@ -1075,11 +1118,11 @@ summary::-webkit-details-marker {
 }
 
 .landing-phone-frame-hero {
-  max-width: clamp(9rem, 16vw, 12.5rem);
+  --landing-phone-frame-width: clamp(9.5rem, 9.5vw + 3rem, 15rem);
 }
 
 .landing-phone-frame-two-sides {
-  max-width: clamp(7.5rem, 10vw, 8.75rem);
+  --landing-phone-frame-width: clamp(10.5rem, 36vw, 18rem);
 }
 
 @keyframes landing-reveal {

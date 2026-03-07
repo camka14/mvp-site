@@ -43,7 +43,7 @@ export function ManageTeams({ showNavigation = true, withContainer = true }: Man
     <>
       {showNavigation && <Navigation />}
       {withContainer ? (
-        <Container size="lg" py="xl">
+        <Container fluid py="xl">
           {content}
         </Container>
       ) : (

@@ -219,7 +219,7 @@ export default function AdminConstantsClient({ initialAdminEmail }: AdminConstan
     <>
       <Navigation />
       <div className="min-h-screen bg-gray-50 py-8">
-        <Container size="xl">
+        <Container fluid>
           <Paper radius="lg" shadow="md" withBorder p="lg">
             <Group justify="space-between" align="flex-end" mb="sm">
               <div>

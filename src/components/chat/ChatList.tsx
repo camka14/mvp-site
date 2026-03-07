@@ -8,13 +8,14 @@ import { chatService } from '@/lib/chatService';
 import { resolveChatGroupInitial, resolveChatGroupTitle } from './chatGroupDisplay';
 
 export function ChatList() {
-    const { chatGroups, loading, loadChatGroups } = useChat();
+    const { chatGroups, loading, loadChatGroups, markChatViewed } = useChat();
     const { openChatWindow, openChatWindows, closeChatList, closeChatWindow, setInviteModalOpen } = useChatUI();
     const [actionError, setActionError] = useState<string | null>(null);
     const [openActionsChatId, setOpenActionsChatId] = useState<string | null>(null);
 
     const handleChatSelect = (chatId: string) => {
         setOpenActionsChatId(null);
+        markChatViewed(chatId);
         // Only open if not already open
         if (!openChatWindows.includes(chatId)) {
             openChatWindow(chatId);
@@ -141,6 +142,7 @@ export function ChatList() {
                             const chatTitle = resolveChatGroupTitle(chatGroup, 'Unnamed Chat');
                             const chatInitial = resolveChatGroupInitial(chatGroup, 'C');
                             const isActionsOpen = openActionsChatId === chatGroup.$id;
+                            const unreadCount = Math.max(0, Number(chatGroup.unreadCount ?? 0));
 
                             return (
                                 <div
@@ -172,9 +174,16 @@ export function ChatList() {
                                             <p className={`text-xs truncate ${isOpen ? 'text-gray-300' : 'text-gray-500'}`}>
                                                 {chatGroup.lastMessage?.body || 'No messages yet'}
                                             </p>
-                                            <span className={`text-xs ml-2 flex-shrink-0 ${isOpen ? 'text-gray-300' : 'text-gray-500'}`}>
-                                                {chatGroup.userIds.length} members
-                                            </span>
+                                            <div className="ml-2 flex flex-shrink-0 items-center gap-2">
+                                                {unreadCount > 0 ? (
+                                                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                                        {unreadCount}
+                                                    </span>
+                                                ) : null}
+                                                <span className={`text-xs ${isOpen ? 'text-gray-300' : 'text-gray-500'}`}>
+                                                    {chatGroup.userIds.length} members
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
 

@@ -7,17 +7,23 @@ import { useChatUI } from '@/context/ChatUIContext';
 import { ChatList } from './ChatList';
 import { ChatDetail } from './ChatDetail';
 import Lottie, { LottieRefCurrentProps } from 'lottie-react';
+import chatAnimationData from '../../../public/chat.json';
 
 const CHAT_POLL_INTERVAL_MS = 2000;
+const INACTIVE_CHAT_REFRESH_MS = 30000;
 
 export function ChatDrawer() {
-    const { loadMessages } = useChat();
+    const { chatGroups, loadMessages, loadChatGroups, markChatViewed } = useChat();
     const { isChatListOpen, openChatWindows, openChatList, isFloatingButtonVisible } = useChatUI();
     const [mounted, setMounted] = useState(false);
     const pollingRef = useRef(false);
     const uniqueOpenChatWindows = useMemo(
         () => Array.from(new Set(openChatWindows)),
         [openChatWindows],
+    );
+    const totalUnreadCount = useMemo(
+        () => chatGroups.reduce((total, group) => total + Math.max(0, Number(group.unreadCount ?? 0)), 0),
+        [chatGroups],
     );
 
     useEffect(() => {
@@ -27,9 +33,10 @@ export function ChatDrawer() {
     // Load messages for each open chat window
     useEffect(() => {
         uniqueOpenChatWindows.forEach(chatId => {
+            markChatViewed(chatId);
             loadMessages(chatId);
         });
-    }, [uniqueOpenChatWindows, loadMessages]);
+    }, [uniqueOpenChatWindows, loadMessages, markChatViewed]);
 
     useEffect(() => {
         if (!mounted || uniqueOpenChatWindows.length === 0) {
@@ -58,6 +65,29 @@ export function ChatDrawer() {
             pollingRef.current = false;
         };
     }, [mounted, uniqueOpenChatWindows, loadMessages]);
+
+    useEffect(() => {
+        if (!mounted) {
+            return;
+        }
+
+        const refreshInactiveChats = async () => {
+            try {
+                await loadChatGroups({ silent: true });
+            } catch (error) {
+                console.error('Failed to refresh inactive chats:', error);
+            }
+        };
+
+        void refreshInactiveChats();
+        const interval = window.setInterval(() => {
+            void refreshInactiveChats();
+        }, INACTIVE_CHAT_REFRESH_MS);
+
+        return () => {
+            window.clearInterval(interval);
+        };
+    }, [mounted, loadChatGroups]);
 
     if (!mounted) return null;
 
@@ -100,29 +130,16 @@ export function ChatDrawer() {
             })}
 
             {/* Floating Chat Button (Lottie) */}
-            {isFloatingButtonVisible && <FloatingChatButton onClick={openChatList} />}
+            {isFloatingButtonVisible && <FloatingChatButton onClick={openChatList} unreadCount={totalUnreadCount} />}
         </div>
     );
 
     return createPortal(drawerContent, document.body);
 }
 
-function FloatingChatButton({ onClick }: { onClick: () => void }) {
-    const [animationData, setAnimationData] = useState<any | null>(null);
+function FloatingChatButton({ onClick, unreadCount }: { onClick: () => void; unreadCount: number }) {
+    const animationData = chatAnimationData;
     const lottieRef = useRef<LottieRefCurrentProps>(null);
-
-    useEffect(() => {
-        let mounted = true;
-        fetch('/chat.json')
-            .then((r) => (r.ok ? r.json() : Promise.reject('Failed to load chat.json')))
-            .then((data) => {
-                if (mounted) setAnimationData(data);
-            })
-            .catch((e) => console.error(e));
-        return () => {
-            mounted = false;
-        };
-    }, []);
 
     useEffect(() => {
         // Ensure we hold on the first frame when data loads
@@ -154,7 +171,8 @@ function FloatingChatButton({ onClick }: { onClick: () => void }) {
             aria-label="Open chat"
             onClick={onClick}
             onMouseEnter={handleMouseEnter}
-            className="fixed bottom-4 right-4 bg-transparent hover:bg-transparent p-3 rounded-full shadow-lg transition-shadow pointer-events-auto"
+            className="fixed bottom-4 right-4 rounded-full bg-transparent p-3 shadow-lg transition-shadow hover:bg-transparent pointer-events-auto relative"
+            style={{ position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 60 }}
         >
             {animationData ? (
                 <Lottie
@@ -171,6 +189,11 @@ function FloatingChatButton({ onClick }: { onClick: () => void }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-3.582 8-8 8a8.955 8.955 0 01-2.292-.307l-5.7 1.9a.75.75 0 01-.92-.92l1.9-5.7c-.207-.732-.308-1.494-.308-2.292C6 7.582 9.582 4 14 4s8 3.582 8 8z" />
                 </svg>
             )}
+            {unreadCount > 0 ? (
+                <span className="absolute right-0 top-0 inline-flex min-w-5 -translate-y-0.5 translate-x-0.5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+            ) : null}
         </button>
     );
 }

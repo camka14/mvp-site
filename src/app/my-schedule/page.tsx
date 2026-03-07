@@ -263,7 +263,7 @@ function MySchedulePageContent() {
   return (
     <>
       <Navigation />
-      <Container size="xl" py="xl">
+      <Container fluid py="xl">
         <Stack gap="lg">
           <Group justify="space-between" align="center">
             <div>

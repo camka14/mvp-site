@@ -2,10 +2,10 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
-import { Megaphone } from 'lucide-react';
+import { ListChecks, Megaphone } from 'lucide-react';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -585,6 +585,14 @@ type PendingRentalCheckoutContext = {
   requiresPayment: boolean;
 };
 
+type PendingSaveChangeItem = {
+  id: string;
+  category: 'event' | 'match';
+  label: string;
+  detail?: string;
+  sortOrder: number;
+};
+
 type RentalSelectionQuery = {
   key: string;
   scheduledFieldIds: string[];
@@ -918,6 +926,7 @@ function EventScheduleContent() {
   const [reschedulingMatches, setReschedulingMatches] = useState(false);
   const [pendingScheduleAction, setPendingScheduleAction] = useState<'reschedule' | 'rebuild' | null>(null);
   const [selectedLifecycleStatus, setSelectedLifecycleStatus] = useState<EventLifecycleStatus | null>(null);
+  const [isPendingChangesPopoverOpen, setIsPendingChangesPopoverOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   const [selectedScheduleDivision, setSelectedScheduleDivision] = useState<string>('all');
@@ -1000,6 +1009,7 @@ function EventScheduleContent() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [selectedTemplateStartDate, setSelectedTemplateStartDate] = useState<Date | null>(null);
   const [templateSeedKey, setTemplateSeedKey] = useState(0);
+  const [eventFormResetVersion, setEventFormResetVersion] = useState(0);
   const [childUserIds, setChildUserIds] = useState<string[]>([]);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [notificationTitle, setNotificationTitle] = useState('');
@@ -1630,6 +1640,225 @@ function EventScheduleContent() {
         ? 'League'
         : 'Event';
   const activeLifecycleStatus = getEventLifecycleStatus(activeEvent);
+  const pendingSaveChanges = useMemo<PendingSaveChangeItem[]>(() => {
+    const items: PendingSaveChangeItem[] = [];
+    const normalizedStagedDeletes = Array.from(
+      new Set(
+        stagedMatchDeletes
+          .map((value) => normalizeIdToken(value))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    const stagedDeleteSet = new Set(normalizedStagedDeletes);
+    const baselineMatchesById = new Map<string, Match>();
+    const draftMatchesById = new Map<string, Match>();
+
+    matches.forEach((match) => {
+      const matchId = normalizeIdToken(match.$id);
+      if (matchId) {
+        baselineMatchesById.set(matchId, match);
+      }
+    });
+    activeMatches.forEach((match) => {
+      const matchId = normalizeIdToken(match.$id);
+      if (matchId) {
+        draftMatchesById.set(matchId, match);
+      }
+    });
+
+    const formatMatchLabel = (match: Match | undefined, matchId: string): string => {
+      if (match && typeof match.matchId === 'number' && Number.isFinite(match.matchId)) {
+        return `Match #${Math.trunc(match.matchId)}`;
+      }
+      if (isClientMatchId(matchId)) {
+        return 'New match';
+      }
+      return `Match ${matchId.slice(0, 8)}`;
+    };
+
+    const summarizeChangedMatchFields = (before: Match, after: Match): string[] => {
+      const changedFields: string[] = [];
+      const idChanged = (first: string | null | undefined, second: string | null | undefined): boolean => (
+        normalizeIdToken(first) !== normalizeIdToken(second)
+      );
+      const valueChanged = (first: unknown, second: unknown): boolean => (
+        (first ?? null) !== (second ?? null)
+      );
+      const arrayChanged = (first: unknown[] | null | undefined, second: unknown[] | null | undefined): boolean => (
+        JSON.stringify(first ?? []) !== JSON.stringify(second ?? [])
+      );
+      const startBefore = typeof before.start === 'string' && before.start.trim().length > 0 ? before.start : null;
+      const startAfter = typeof after.start === 'string' && after.start.trim().length > 0 ? after.start : null;
+      const endBefore = typeof before.end === 'string' && before.end.trim().length > 0 ? before.end : null;
+      const endAfter = typeof after.end === 'string' && after.end.trim().length > 0 ? after.end : null;
+      const divisionBefore = normalizeDivisionToken(getDivisionId(before.division));
+      const divisionAfter = normalizeDivisionToken(getDivisionId(after.division));
+
+      if (idChanged(before.team1Id, after.team1Id)) changedFields.push('team 1');
+      if (idChanged(before.team2Id, after.team2Id)) changedFields.push('team 2');
+      if (idChanged(before.refereeId, after.refereeId)) changedFields.push('referee');
+      if (idChanged(before.teamRefereeId, after.teamRefereeId)) changedFields.push('team referee');
+      if (idChanged(before.fieldId, after.fieldId)) changedFields.push('field');
+      if (valueChanged(startBefore, startAfter)) changedFields.push('start time');
+      if (valueChanged(endBefore, endAfter)) changedFields.push('end time');
+      if (valueChanged(divisionBefore, divisionAfter)) changedFields.push('division');
+      if (idChanged(before.previousLeftId, after.previousLeftId)) changedFields.push('previous left');
+      if (idChanged(before.previousRightId, after.previousRightId)) changedFields.push('previous right');
+      if (idChanged(before.winnerNextMatchId, after.winnerNextMatchId)) changedFields.push('winner next');
+      if (idChanged(before.loserNextMatchId, after.loserNextMatchId)) changedFields.push('loser next');
+      if (valueChanged(before.side, after.side)) changedFields.push('side');
+      if (Boolean(before.losersBracket) !== Boolean(after.losersBracket)) changedFields.push('winner/loser bracket');
+      if (Boolean(before.locked) !== Boolean(after.locked)) changedFields.push('lock status');
+      if (Boolean(before.refereeCheckedIn ?? before.refCheckedIn) !== Boolean(after.refereeCheckedIn ?? after.refCheckedIn)) {
+        changedFields.push('referee check-in');
+      }
+      if (
+        arrayChanged(before.team1Points, after.team1Points)
+        || arrayChanged(before.team2Points, after.team2Points)
+        || arrayChanged(before.setResults, after.setResults)
+      ) {
+        changedFields.push('score values');
+      }
+
+      return changedFields;
+    };
+
+    if (selectedLifecycleStatus && selectedLifecycleStatus !== activeLifecycleStatus) {
+      items.push({
+        id: 'event-lifecycle-status',
+        category: 'event',
+        label: `Event status: ${activeLifecycleStatus} -> ${selectedLifecycleStatus}`,
+        detail: 'Lifecycle status will update on save.',
+        sortOrder: 0,
+      });
+    }
+
+    if (formHasUnsavedChanges) {
+      items.push({
+        id: 'event-form-updates',
+        category: 'event',
+        label: 'Event details updated',
+        detail: 'Unsaved form changes will be applied on save.',
+        sortOrder: 1,
+      });
+    }
+
+    draftMatchesById.forEach((match, matchId) => {
+      if (stagedDeleteSet.has(matchId)) {
+        return;
+      }
+
+      const baselineMatch = baselineMatchesById.get(matchId);
+      if (!baselineMatch || isClientMatchId(matchId)) {
+        const createMeta = stagedMatchCreates[matchId];
+        items.push({
+          id: `match-create-${matchId}`,
+          category: 'match',
+          label: `Add ${formatMatchLabel(match, matchId)}`,
+          detail: createMeta
+            ? `Added from ${createMeta.creationContext === 'schedule' ? 'schedule' : 'bracket'} view.`
+            : 'New staged match.',
+          sortOrder: 20,
+        });
+        return;
+      }
+
+      const changedFields = summarizeChangedMatchFields(baselineMatch, match);
+      if (changedFields.length > 0) {
+        const maxFieldsToShow = 4;
+        const visibleFields = changedFields.slice(0, maxFieldsToShow);
+        const hiddenCount = changedFields.length - visibleFields.length;
+        items.push({
+          id: `match-update-${matchId}`,
+          category: 'match',
+          label: `Update ${formatMatchLabel(match, matchId)}`,
+          detail: hiddenCount > 0
+            ? `${visibleFields.join(', ')} (+${hiddenCount} more)`
+            : visibleFields.join(', '),
+          sortOrder: 30,
+        });
+      }
+    });
+
+    baselineMatchesById.forEach((match, matchId) => {
+      if (stagedDeleteSet.has(matchId) || !draftMatchesById.has(matchId)) {
+        items.push({
+          id: `match-delete-${matchId}`,
+          category: 'match',
+          label: `Delete ${formatMatchLabel(match, matchId)}`,
+          detail: 'Match will be removed on save.',
+          sortOrder: 40,
+        });
+      }
+    });
+
+    if (hasPendingUnsavedChanges && items.length === 0) {
+      items.push({
+        id: 'unspecified-unsaved-changes',
+        category: 'event',
+        label: 'Unsaved changes pending',
+        detail: 'Save to apply the latest updates.',
+        sortOrder: 99,
+      });
+    }
+
+    return items.sort((first, second) => {
+      if (first.sortOrder !== second.sortOrder) {
+        return first.sortOrder - second.sortOrder;
+      }
+      return first.label.localeCompare(second.label);
+    });
+  }, [
+    activeLifecycleStatus,
+    activeMatches,
+    formHasUnsavedChanges,
+    hasPendingUnsavedChanges,
+    matches,
+    selectedLifecycleStatus,
+    stagedMatchCreates,
+    stagedMatchDeletes,
+  ]);
+  const pendingSaveChangeCount = pendingSaveChanges.length;
+  const renderPendingChangesPopover = () => (
+    <Popover
+      opened={isPendingChangesPopoverOpen}
+      onChange={setIsPendingChangesPopoverOpen}
+      width={420}
+      position="bottom-end"
+      withArrow
+      shadow="md"
+    >
+      <Popover.Target>
+        <Button
+          variant="default"
+          leftSection={<ListChecks size={16} />}
+          onClick={() => setIsPendingChangesPopoverOpen((current) => !current)}
+          disabled={pendingSaveChangeCount === 0}
+        >
+          Changes ({pendingSaveChangeCount})
+        </Button>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Stack gap={6}>
+          <Text size="xs" c="dimmed">
+            These updates will be applied when you save.
+          </Text>
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <Stack gap={8}>
+              {pendingSaveChanges.map((change) => (
+                <Paper key={change.id} withBorder radius="sm" p="xs">
+                  <Text size="sm" fw={600}>{change.label}</Text>
+                  {change.detail ? (
+                    <Text size="xs" c="dimmed">{change.detail}</Text>
+                  ) : null}
+                </Paper>
+              ))}
+            </Stack>
+          </div>
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  );
   const canEditMatches = Boolean(canManageEvent && isEditingEvent);
   const shouldShowCreationSheet = Boolean(
     isCreateMode
@@ -3297,6 +3526,12 @@ function EventScheduleContent() {
   }, [hasPendingUnsavedChanges]);
 
   useEffect(() => {
+    if (pendingSaveChangeCount === 0) {
+      setIsPendingChangesPopoverOpen(false);
+    }
+  }, [pendingSaveChangeCount]);
+
+  useEffect(() => {
     if (!isCreateMode || !user) return;
     if (templateIdParam && failedTemplateSeedId !== templateIdParam) {
       return;
@@ -3581,6 +3816,7 @@ function EventScheduleContent() {
   const handleEnterEditMode = useCallback(() => {
     if (!pathname) return;
     setSelectedLifecycleStatus(null);
+    setFormHasUnsavedChanges(false);
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.set('mode', 'edit');
     const query = params.toString();
@@ -5601,6 +5837,48 @@ function EventScheduleContent() {
     }
   }, [activeEvent, cancelling, event, router]);
 
+  const handleDiscardChanges = useCallback(() => {
+    if (!hasPendingUnsavedChanges) {
+      return;
+    }
+
+    if (typeof window !== 'undefined' && !window.confirm('Discard all unsaved changes?')) {
+      return;
+    }
+
+    const baselineEvent = event ?? formSeedEvent ?? activeEvent ?? changesEvent;
+    const baselineEventClone = baselineEvent ? (cloneValue(baselineEvent) as Event) : null;
+    const baselineMatches = cloneValue(matches) as Match[];
+
+    setChangesEvent(baselineEventClone);
+    setChangesMatches(baselineMatches);
+    setStagedMatchCreates({});
+    setStagedMatchDeletes([]);
+    setPendingCreateMatchId(null);
+    setMatchEditorContext('bracket');
+    setIsMatchEditorOpen(false);
+    setMatchBeingEdited(null);
+    setSelectedLifecycleStatus(null);
+    setHasUnsavedChanges(false);
+    setFormHasUnsavedChanges(false);
+    setSubmitError(null);
+    setActionError(null);
+    setMatchConflictOverrideMessage(null);
+    setDismissedMatchConflictSignature(null);
+    setWarningMessage(null);
+    setIsPendingChangesPopoverOpen(false);
+    hasUnsavedChangesRef.current = false;
+    setEventFormResetVersion((current) => current + 1);
+    setInfoMessage('Unsaved changes discarded.');
+  }, [
+    activeEvent,
+    changesEvent,
+    event,
+    formSeedEvent,
+    hasPendingUnsavedChanges,
+    matches,
+  ]);
+
   const handleCancel = async () => {
     if (isCreateMode) {
       if (cancelling) return;
@@ -6315,11 +6593,21 @@ function EventScheduleContent() {
     return (
       <>
         <Navigation />
-        <Container size="lg" py="xl">
+        <Container fluid py="xl">
           <Stack gap="md">
             <Group justify="space-between" align="center">
               <Title order={2}>Create Event</Title>
               <Group gap="sm">
+                {renderPendingChangesPopover()}
+                {hasPendingUnsavedChanges && (
+                  <Button
+                    variant="default"
+                    onClick={handleDiscardChanges}
+                    disabled={publishing || reschedulingMatches || cancelling}
+                  >
+                    Discard Changes
+                  </Button>
+                )}
                 <Button
                   color="green"
                   onClick={handlePublish}
@@ -6595,14 +6883,15 @@ function EventScheduleContent() {
   const showCancelActionButton = !isTemplateEvent;
   const showCreateTemplateButton = !isTemplateEvent;
   const showLifecycleStatusSelect = isEditingEvent && !isTemplateEvent;
+  const showDiscardChangesButton = (isEditingEvent || isCreateMode) && hasPendingUnsavedChanges;
   const eventFormRenderKey = isCreateMode
-    ? `create:${activeEvent?.$id ?? eventId ?? 'event'}:${templateSeedKey}`
-    : `event:${activeEvent?.$id ?? eventId ?? 'event'}`;
+    ? `create:${activeEvent?.$id ?? eventId ?? 'event'}:${templateSeedKey}:${eventFormResetVersion}`
+    : `event:${activeEvent?.$id ?? eventId ?? 'event'}:${eventFormResetVersion}`;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-      <Container size="xl" pt="xl" pb={0}>
+      <Container fluid pt="xl" pb={0}>
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start">
             <Group gap="xs" align="center">
@@ -6629,6 +6918,16 @@ function EventScheduleContent() {
                 )}
                 {(isEditingEvent || isCreateMode) && (
                   <>
+                    {renderPendingChangesPopover()}
+                    {showDiscardChangesButton && (
+                      <Button
+                        variant="default"
+                        onClick={handleDiscardChanges}
+                        disabled={hasNetworkActionInFlight}
+                      >
+                        Discard Changes
+                      </Button>
+                    )}
                     {showLifecycleStatusSelect && (
                       <Select
                         data={EVENT_LIFECYCLE_OPTIONS}

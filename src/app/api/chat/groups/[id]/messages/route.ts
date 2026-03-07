@@ -17,14 +17,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const search = req.nextUrl.searchParams;
-  const limit = Number(search.get('limit') || '100');
+  const rawLimit = Number(search.get('limit') || '100');
+  const normalizedLimit = Number.isFinite(rawLimit) ? Math.trunc(rawLimit) : 100;
+  const limit = Math.min(Math.max(normalizedLimit, 1), 100);
+  const rawIndex = Number(search.get('index') || '0');
+  const normalizedIndex = Number.isFinite(rawIndex) ? Math.trunc(rawIndex) : 0;
+  const index = Math.max(0, normalizedIndex);
   const order = search.get('order') === 'desc' ? 'desc' : 'asc';
 
-  const messages = await prisma.messages.findMany({
-    where: { chatId: id },
-    orderBy: { sentTime: order },
-    take: Number.isFinite(limit) ? limit : 100,
-  });
+  const where = { chatId: id };
+  const [totalCount, messages] = await Promise.all([
+    prisma.messages.count({ where }),
+    prisma.messages.findMany({
+      where,
+      orderBy: { sentTime: order },
+      skip: index,
+      take: limit,
+    }),
+  ]);
 
-  return NextResponse.json({ messages: withLegacyList(messages) }, { status: 200 });
+  const nextIndex = index + messages.length;
+  const remainingCount = Math.max(totalCount - nextIndex, 0);
+
+  return NextResponse.json({
+    messages: withLegacyList(messages),
+    pagination: {
+      index,
+      limit,
+      totalCount,
+      nextIndex,
+      remainingCount,
+      hasMore: remainingCount > 0,
+      order,
+    },
+  }, { status: 200 });
 }
