@@ -227,7 +227,7 @@ export default function EventCard({
 
   const participantCapacity = useMemo(
     () => resolveEventParticipantCapacity(event),
-    [event.divisionDetails, event.maxParticipants, event.singleDivision],
+    [event],
   );
 
   const attendeeCount = useMemo(() => {
