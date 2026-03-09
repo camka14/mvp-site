@@ -32,8 +32,8 @@ describe('sendInviteEmails', () => {
 
     buildInviteEmailMock.mockReturnValue({
       subject: 'You are invited',
-      text: 'Open MVP to review your invite.',
-      html: '<p>Open MVP to review your invite.</p>',
+      text: 'Open BracketIQ to review your invite.',
+      html: '<p>Open BracketIQ to review your invite.</p>',
     });
     isEmailEnabledMock.mockReturnValue(true);
     sendEmailMock.mockResolvedValue(undefined);

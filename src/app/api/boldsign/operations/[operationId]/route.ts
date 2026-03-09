@@ -3,12 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
 import {
-  BOLDSIGN_OPERATION_TYPES,
   BOLDSIGN_OPERATION_STATUSES,
   getBoldSignOperationById,
   updateBoldSignOperationById,
 } from '@/lib/boldsignSyncOperations';
-import { reconcileBoldSignOperations } from '@/lib/boldsignWebhookSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,13 +22,6 @@ const isPendingStatus = (status: string): boolean => {
   return status === BOLDSIGN_OPERATION_STATUSES.PENDING_WEBHOOK
     || status === BOLDSIGN_OPERATION_STATUSES.PENDING_RECONCILE
     || status === BOLDSIGN_OPERATION_STATUSES.FAILED_RETRYABLE;
-};
-
-const getReconcileDelayMs = (operationType: string): number => {
-  if (operationType === BOLDSIGN_OPERATION_TYPES.TEMPLATE_CREATE) {
-    return 15_000;
-  }
-  return 1_500;
 };
 
 export async function GET(
@@ -71,21 +62,6 @@ export async function GET(
     if (!authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-  }
-
-  const isPending = isPendingStatus(operation.status);
-  const lastUpdatedAt = operation.updatedAt?.getTime() ?? 0;
-  const shouldTryReconcile = isPending && Date.now() - lastUpdatedAt >= getReconcileDelayMs(operation.operationType);
-  if (shouldTryReconcile) {
-    await reconcileBoldSignOperations({
-      operationId: operation.id,
-      limit: 10,
-    });
-    operation = await getBoldSignOperationById(operationId);
-  }
-
-  if (!operation) {
-    return NextResponse.json({ error: 'Operation not found.' }, { status: 404 });
   }
 
   if (isPendingStatus(operation.status) && operation.expiresAt && operation.expiresAt.getTime() <= Date.now()) {

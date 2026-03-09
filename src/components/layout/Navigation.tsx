@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -83,11 +84,16 @@ export default function Navigation() {
       <div className="container-responsive">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href={homeHref} className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white" style={{ background: 'var(--ocean-primary)' }}>
-              <span className="text-white font-bold text-lg">M</span>
-            </div>
-            <span className="text-xl font-bold text-slate-900">MVP</span>
+          <Link href={homeHref} className="flex items-center gap-3">
+            <Image
+              src="/bracketiq-shield.svg"
+              alt="BracketIQ shield logo"
+              width={40}
+              height={40}
+              className="h-10 w-10"
+              priority
+            />
+            <span className="text-xl font-bold text-slate-900">BracketIQ</span>
           </Link>
 
           {/* Desktop Navigation */}

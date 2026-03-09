@@ -93,7 +93,7 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
         await sendPushToUsers({
           userIds: [inviteUserId],
           title: content.subject,
-          body: 'You have a new invitation in MVP. Open the app to review it.',
+          body: 'You have a new invitation in BracketIQ. Open the app to review it.',
           data: {
             inviteId: invite.id,
             inviteType: invite.type ?? '',

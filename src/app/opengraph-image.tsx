@@ -79,14 +79,14 @@ export default function Image() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 68, lineHeight: 1.08, fontWeight: 800 }}>
-            <span>Razumly MVP</span>
+            <span>BracketIQ</span>
             <span>Manage teams, events, and chat in one place.</span>
             <span>Any sport. One platform.</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: primaryDark, fontSize: 22, fontWeight: 600 }}>
             <span style={{ display: 'flex', width: 12, height: 12, borderRadius: '50%', background: MOBILE_APP_THEME_TOKENS.success, boxShadow: `0 0 0 10px ${withAlpha(MOBILE_APP_THEME_TOKENS.success, 0.12)}` }} />
-            mvp.razumly.com
+            BracketIQ by Razumly
           </div>
 
           <div style={{ display: 'flex', gap: '16px', color: textMuted, fontSize: 20 }}>

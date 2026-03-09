@@ -336,7 +336,7 @@ const buildInstantLineItems = ({
     lineItems.push({
       id: `line_${lineItems.length + 1}`,
       type: 'FEE',
-      label: 'MVP fee',
+      label: 'BracketIQ fee',
       amountCents: mvpFeeCents,
     });
   }

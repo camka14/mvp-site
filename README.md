@@ -1,4 +1,4 @@
-# Razumly MVP — Multi-sport Event Platform
+# BracketIQ — Multi-sport Event Platform
 
 Full-stack Next.js app that lets organizers and players run pickup games, leagues, and tournaments for any sport. Built with TypeScript, Mantine UI, Prisma + Postgres, and self-hosted Next.js APIs for auth, data, media, and billing.
 
@@ -50,6 +50,7 @@ npm install
   - `BOLDSIGN_API_KEY`
   - `BOLDSIGN_API_BASE_URL` (optional, defaults to `https://api.boldsign.com`)
   - `BOLDSIGN_DEV_REDIRECT_BASE_URL` (optional override; in dev this is auto-set from ngrok by `npm run dev`)
+  - `BOLDSIGN_RECONCILE_SECRET` (required for scheduled reconcile cron auth in production)
   - `STRIPE_CONNECT_CLIENT_ID` (required for Stripe Connect OAuth onboarding + fallback management flows)
   - SMTP email invites:
   - `SMTP_URL` (or configure host/port/user/password below)
@@ -110,3 +111,6 @@ STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV=true
 - `src/lib` — service modules + API client wrappers
 - `src/server` — server-only helpers and repositories
 - `public` — static assets
+
+## Operations
+- BoldSign reconcile cron setup (DigitalOcean App Platform): `docs/ops/boldsign-reconcile-cron.md`

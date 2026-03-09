@@ -31,20 +31,31 @@ const theme = createTheme({
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://mvp.razumly.com'),
-  title: 'MVP | Sports Event Platform',
+  title: 'BracketIQ | Sports Event Platform',
   description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
   keywords: ['sports', 'events', 'tournaments', 'leagues', 'pickup games', 'teams'],
+  icons: {
+    icon: [
+      { url: '/bracketiq-shield.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: [
+      { url: '/bracketiq-shield.svg', type: 'image/svg+xml' },
+    ],
+    apple: [
+      { url: '/bracketiq-shield.svg', type: 'image/svg+xml' },
+    ],
+  },
   openGraph: {
-    title: 'MVP | Sports Event Platform',
+    title: 'BracketIQ | Sports Event Platform',
     description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
     url: 'https://mvp.razumly.com',
-    siteName: 'MVP',
+    siteName: 'BracketIQ',
     images: [
       {
         url: '/opengraph-image',
         width: 1200,
         height: 630,
-        alt: 'Preview of the MVP multi-sport event platform.',
+        alt: 'Preview of the BracketIQ multi-sport event platform.',
       },
     ],
     locale: 'en_US',
@@ -52,7 +63,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'MVP | Sports Event Platform',
+    title: 'BracketIQ | Sports Event Platform',
     description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
     images: ['/opengraph-image'],
   },
@@ -69,7 +80,6 @@ export default function RootLayout({ children }: RootLayoutProps) {
     <html lang="en" className={robotoFlex.className}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
       </head>
       <body className="min-h-screen bg-background text-foreground">
         <MantineProvider theme={theme} defaultColorScheme="light">

@@ -3324,7 +3324,7 @@ function EventScheduleContent() {
     if (createBillMvpFeeAmountCents > 0) {
       lineItems.push({
         id: `line_${lineItems.length + 1}`,
-        label: 'MVP fee',
+        label: 'BracketIQ fee',
         amountCents: createBillMvpFeeAmountCents,
       });
     }

@@ -85,7 +85,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/bills', () => {
       createdBy: 'host_1',
       lineItems: [
         { id: 'line_1', type: 'EVENT', label: 'Beach Tournament Entry', amountCents: 5000 },
-        { id: 'line_2', type: 'FEE', label: 'MVP fee', amountCents: 50 },
+        { id: 'line_2', type: 'FEE', label: 'BracketIQ fee', amountCents: 50 },
         { id: 'line_3', type: 'FEE', label: 'Stripe fee', amountCents: 182 },
         { id: 'line_4', type: 'TAX', label: 'Tax', amountCents: 100 },
       ],
@@ -125,7 +125,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/bills', () => {
           status: 'OPEN',
           lineItems: [
             { id: 'line_1', type: 'EVENT', label: 'Beach Tournament Entry', amountCents: 5000 },
-            { id: 'line_2', type: 'FEE', label: 'MVP fee', amountCents: 50 },
+            { id: 'line_2', type: 'FEE', label: 'BracketIQ fee', amountCents: 50 },
             { id: 'line_3', type: 'FEE', label: 'Stripe fee', amountCents: 182 },
             { id: 'line_4', type: 'TAX', label: 'Tax', amountCents: 100 },
           ],

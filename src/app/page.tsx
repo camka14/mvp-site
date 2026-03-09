@@ -259,8 +259,16 @@ export default function HomePage() {
 
       <header className="landing-header sticky top-0 z-20 backdrop-blur-lg">
         <div className="container-responsive flex items-center justify-between py-4">
-          <Link href="/" className="landing-brand text-lg font-semibold tracking-wide">
-            MVP
+          <Link href="/" className="landing-brand inline-flex items-center gap-3 text-lg font-semibold tracking-wide">
+            <Image
+              src="/bracketiq-shield.svg"
+              alt="BracketIQ shield logo"
+              width={36}
+              height={36}
+              className="h-9 w-9"
+              priority
+            />
+            <span>BracketIQ</span>
           </Link>
 
           <nav className="landing-nav hidden items-center gap-6 text-sm md:flex">
@@ -570,7 +578,7 @@ export default function HomePage() {
 
         <section className="container-responsive pb-20">
           <div className="landing-cta rounded-3xl p-8">
-            <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Ready to run your next event on MVP?</h2>
+            <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Ready to run your next event on BracketIQ?</h2>
             <p className="landing-cta-copy mt-3 max-w-2xl">
               Start with your first league, tournament, or event and invite your teams immediately.
             </p>

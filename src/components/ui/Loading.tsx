@@ -1,3 +1,5 @@
+import Image from 'next/image';
+
 interface LoadingProps {
   size?: 'sm' | 'md' | 'lg';
   text?: string;
@@ -5,9 +7,27 @@ interface LoadingProps {
   belowNavigation?: boolean;
 }
 
-function LoadingSpinner({ sizeClass, text }: { sizeClass: string; text?: string }) {
+function LoadingSpinner({
+  sizeClass,
+  text,
+  showLogo = false,
+}: {
+  sizeClass: string;
+  text?: string;
+  showLogo?: boolean;
+}) {
   return (
     <div className="flex flex-col items-center justify-center space-y-4">
+      {showLogo ? (
+        <Image
+          src="/bracketiq-shield.svg"
+          alt="BracketIQ shield logo"
+          width={72}
+          height={72}
+          className="h-[72px] w-[72px]"
+          priority
+        />
+      ) : null}
       <div className={`${sizeClass} animate-spin rounded-full border-2 border-gray-300 border-t-blue-600`} />
       {text && (
         <p className="text-sm text-gray-600 animate-pulse">{text}</p>
@@ -34,7 +54,7 @@ export default function Loading({
 
     return (
       <div className={`fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center ${overlayZIndex}`}>
-        <LoadingSpinner sizeClass={sizeClass} text={text} />
+        <LoadingSpinner sizeClass={sizeClass} text={text} showLogo />
       </div>
     );
   }
