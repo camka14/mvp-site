@@ -19,6 +19,9 @@ const prismaMock = {
     findFirst: jest.fn(),
     create: jest.fn(),
   },
+  invites: {
+    deleteMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -60,6 +63,7 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
     });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
+    prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.userData.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
       if (where.id === 'parent_1') {
         return { dateOfBirth: new Date('1988-04-01T00:00:00.000Z') };

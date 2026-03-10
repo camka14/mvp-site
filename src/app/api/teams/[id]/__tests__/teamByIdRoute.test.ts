@@ -6,7 +6,9 @@ const findUniqueMock = jest.fn();
 const updateMock = jest.fn();
 const findManyMock = jest.fn();
 const eventsFindManyMock = jest.fn();
-const organizationsCountMock = jest.fn();
+const organizationFindFirstMock = jest.fn();
+const staffMemberFindUniqueMock = jest.fn();
+const inviteFindFirstMock = jest.fn();
 
 const txClientMock = {
   teams: {
@@ -25,7 +27,13 @@ const prismaMock = {
     findMany: (...args: any[]) => findManyMock(...args),
   },
   organizations: {
-    count: (...args: any[]) => organizationsCountMock(...args),
+    findFirst: (...args: any[]) => organizationFindFirstMock(...args),
+  },
+  staffMembers: {
+    findUnique: (...args: any[]) => staffMemberFindUniqueMock(...args),
+  },
+  invites: {
+    findFirst: (...args: any[]) => inviteFindFirstMock(...args),
   },
   $transaction: jest.fn(async (handler: any) => handler(txClientMock)),
 };
@@ -50,7 +58,9 @@ describe('/api/teams/[id] PATCH', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'captain_1', isAdmin: false });
-    organizationsCountMock.mockResolvedValue(0);
+    organizationFindFirstMock.mockResolvedValue(null);
+    staffMemberFindUniqueMock.mockResolvedValue(null);
+    inviteFindFirstMock.mockResolvedValue(null);
     findManyMock.mockResolvedValue([]);
     eventsFindManyMock.mockResolvedValue([]);
     findUniqueMock.mockResolvedValue({

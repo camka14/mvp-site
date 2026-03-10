@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { normalizeInviteType } from '@/lib/staff';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,12 +25,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   await prisma.$transaction(async (tx) => {
-    // If a team invite is deleted (declined/uninvited), remove the user from the team's pending list
-    // so they can't accept an invite that no longer exists.
-    if (invite.type === 'player' && invite.teamId && invite.userId) {
+    if (normalizeInviteType(invite.type) === 'TEAM' && invite.teamId && invite.userId) {
       const teamsDelegate = getTeamsDelegate(tx);
       const team = await teamsDelegate?.findUnique({ where: { id: invite.teamId } });
-      if (team) {
+      if (team && Array.isArray(team.pending) && team.pending.includes(invite.userId)) {
         const pending = Array.isArray(team.pending) ? team.pending : [];
         const nextPending = pending.filter((userId: string) => userId !== invite.userId);
         await teamsDelegate.update({

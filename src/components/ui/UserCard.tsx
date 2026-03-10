@@ -8,6 +8,7 @@ interface UserCardProps {
     actions?: React.ReactNode;
     onClick?: () => void;
     className?: string;
+    hideHandle?: boolean;
 }
 
 export default function UserCard({
@@ -16,7 +17,8 @@ export default function UserCard({
     role,
     actions,
     onClick,
-    className = ''
+    className = '',
+    hideHandle = false,
 }: UserCardProps) {
 
     const titleCase = (value: string) => {
@@ -44,7 +46,7 @@ export default function UserCard({
                     <Text fw={500} size="sm" truncate>
                         {displayName}
                     </Text>
-                    <Text size="sm" c="dimmed" truncate>@{userHandle}</Text>
+                    {!hideHandle && <Text size="sm" c="dimmed" truncate>@{userHandle}</Text>}
                     {showRole && role && (
                         <Text size="xs" c="blue" fw={600} mt={4}>{titleCase(role)}</Text>
                     )}

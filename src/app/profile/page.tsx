@@ -18,6 +18,7 @@ import { teamService } from '@/lib/teamService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import { ManageTeams } from '@/app/teams/page';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
+import ProfileInvitesSection from '@/components/ui/ProfileInvitesSection';
 import { productService } from '@/lib/productService';
 import { organizationService } from '@/lib/organizationService';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
@@ -1427,6 +1428,12 @@ export default function ProfilePage() {
                             </div>
                         </div>
                     </Paper>
+
+                    <div className="mt-8">
+                        <Paper withBorder radius="lg" p="md" shadow="sm">
+                            <ProfileInvitesSection userId={user.$id} />
+                        </Paper>
+                    </div>
 
                     <div className="mt-8">
                         <Paper withBorder radius="lg" p="md" shadow="sm">

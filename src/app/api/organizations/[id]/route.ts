@@ -23,11 +23,49 @@ const sanitizeStringArray = (value: unknown): string[] => {
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const org = await prisma.organizations.findUnique({ where: { id } });
+  const [org, staffMembers] = await Promise.all([
+    prisma.organizations.findUnique({ where: { id } }),
+    prisma.staffMembers.findMany({
+      where: { organizationId: id },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ]);
   if (!org) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  return NextResponse.json(withLegacyFields(org), { status: 200 });
+
+  const session = await requireSession(_req).catch(() => null);
+  const canManage = session ? await canManageOrganization(session, { id: org.id, ownerId: org.ownerId }) : false;
+  const [staffInvites, staffEmails] = canManage
+    ? await Promise.all([
+      prisma.invites.findMany({
+        where: { organizationId: id, type: 'STAFF' },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.sensitiveUserData.findMany({
+        where: {
+          userId: {
+            in: Array.from(new Set([
+              org.ownerId,
+              ...staffMembers.map((staffMember) => staffMember.userId),
+            ].filter((value): value is string => typeof value === 'string' && value.length > 0))),
+          },
+        },
+        select: {
+          userId: true,
+          email: true,
+        },
+      }),
+    ])
+    : [[], []];
+
+  const staffEmailsByUserId = Object.fromEntries(
+    staffEmails
+      .filter((row) => typeof row.userId === 'string' && typeof row.email === 'string' && row.email.length > 0)
+      .map((row) => [row.userId, row.email] as const),
+  );
+
+  return NextResponse.json(withLegacyFields({ ...org, staffMembers, staffInvites, staffEmailsByUserId }), { status: 200 });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -39,11 +77,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
-  const existing = await prisma.organizations.findUnique({ where: { id } });
+  const existing = await prisma.organizations.findUnique({ where: { id }, select: { id: true, ownerId: true } });
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (!canManageOrganization(session, existing)) {
+  if (!(await canManageOrganization(session, existing))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

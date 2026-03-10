@@ -1,9 +1,21 @@
 import type { UserData } from '@/types';
+import { deriveOrganizationRoleIds } from '@/lib/staff';
 
 type OrganizationAccessLike = {
   ownerId?: string | null;
   hostIds?: string[] | null;
   refIds?: string[] | null;
+  staffMembers?: Array<{
+    organizationId?: string | null;
+    userId?: string | null;
+    types?: string[] | null;
+  } | null | undefined> | null;
+  staffInvites?: Array<{
+    organizationId?: string | null;
+    userId?: string | null;
+    type?: string | null;
+    status?: string | null;
+  } | null | undefined> | null;
   referees?: Array<Pick<UserData, '$id'> | null | undefined> | null;
 } | null | undefined;
 
@@ -46,12 +58,41 @@ export const collectOrganizationHostIds = (organization: OrganizationAccessLike)
   if (ownerId) {
     ids.add(ownerId);
   }
+  const derivedStaffHostIds = deriveOrganizationRoleIds(
+    (organization?.staffMembers ?? []).map((staffMember) => ({
+      organizationId: normalizeEntityId(staffMember?.organizationId) ?? '',
+      userId: normalizeEntityId(staffMember?.userId) ?? '',
+      types: Array.isArray(staffMember?.types) ? staffMember?.types : [],
+    })),
+    (organization?.staffInvites ?? []).map((invite) => ({
+      organizationId: normalizeEntityId(invite?.organizationId),
+      userId: normalizeEntityId(invite?.userId),
+      type: typeof invite?.type === 'string' ? invite.type : '',
+      status: typeof invite?.status === 'string' ? invite.status : null,
+    })),
+    'HOST',
+  );
+  derivedStaffHostIds.forEach((id) => ids.add(id));
   normalizeUniqueIds(organization?.hostIds).forEach((id) => ids.add(id));
   return Array.from(ids);
 };
 
 export const collectOrganizationRefereeIds = (organization: OrganizationAccessLike): string[] => {
   const ids = new Set<string>();
+  deriveOrganizationRoleIds(
+    (organization?.staffMembers ?? []).map((staffMember) => ({
+      organizationId: normalizeEntityId(staffMember?.organizationId) ?? '',
+      userId: normalizeEntityId(staffMember?.userId) ?? '',
+      types: Array.isArray(staffMember?.types) ? staffMember?.types : [],
+    })),
+    (organization?.staffInvites ?? []).map((invite) => ({
+      organizationId: normalizeEntityId(invite?.organizationId),
+      userId: normalizeEntityId(invite?.userId),
+      type: typeof invite?.type === 'string' ? invite.type : '',
+      status: typeof invite?.status === 'string' ? invite.status : null,
+    })),
+    'REFEREE',
+  ).forEach((id) => ids.add(id));
   normalizeUniqueIds(organization?.refIds).forEach((id) => ids.add(id));
   (organization?.referees ?? []).forEach((referee) => {
     const refereeId = normalizeEntityId(referee?.$id);
@@ -100,4 +141,3 @@ export const sanitizeOrganizationEventAssignments = (
     refereeIds,
   };
 };
-

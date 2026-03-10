@@ -11,6 +11,8 @@ type MockClient = {
   $executeRaw: jest.Mock;
   events: { findUnique: jest.Mock; upsert: jest.Mock };
   organizations: { findUnique: jest.Mock };
+  staffMembers: { findMany: jest.Mock };
+  invites: { findMany: jest.Mock };
   userData: { findUnique: jest.Mock };
   leagueScoringConfigs: { upsert: jest.Mock };
   fields: { findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
@@ -28,6 +30,12 @@ const createMockClient = (): MockClient => ({
   },
   organizations: {
     findUnique: jest.fn().mockResolvedValue(null),
+  },
+  staffMembers: {
+    findMany: jest.fn().mockResolvedValue([]),
+  },
+  invites: {
+    findMany: jest.fn().mockResolvedValue([]),
   },
   userData: {
     findUnique: jest.fn().mockResolvedValue(null),

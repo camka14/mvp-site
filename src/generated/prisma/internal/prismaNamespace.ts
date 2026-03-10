@@ -390,6 +390,7 @@ export const ModelName = {
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
   Invites: 'Invites',
+  StaffMembers: 'StaffMembers',
   Teams: 'Teams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
@@ -430,7 +431,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -875,6 +876,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.InvitesCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.InvitesCountAggregateOutputType> | number
+        }
+      }
+    }
+    StaffMembers: {
+      payload: Prisma.$StaffMembersPayload<ExtArgs>
+      fields: Prisma.StaffMembersFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.StaffMembersFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.StaffMembersFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>
+        }
+        findFirst: {
+          args: Prisma.StaffMembersFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.StaffMembersFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>
+        }
+        findMany: {
+          args: Prisma.StaffMembersFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>[]
+        }
+        create: {
+          args: Prisma.StaffMembersCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>
+        }
+        createMany: {
+          args: Prisma.StaffMembersCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.StaffMembersCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>[]
+        }
+        delete: {
+          args: Prisma.StaffMembersDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>
+        }
+        update: {
+          args: Prisma.StaffMembersUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>
+        }
+        deleteMany: {
+          args: Prisma.StaffMembersDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.StaffMembersUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.StaffMembersUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>[]
+        }
+        upsert: {
+          args: Prisma.StaffMembersUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffMembersPayload>
+        }
+        aggregate: {
+          args: Prisma.StaffMembersAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStaffMembers>
+        }
+        groupBy: {
+          args: Prisma.StaffMembersGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StaffMembersGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.StaffMembersCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StaffMembersCountAggregateOutputType> | number
         }
       }
     }
@@ -2898,6 +2973,7 @@ export const InvitesScalarFieldEnum = {
   type: 'type',
   email: 'email',
   status: 'status',
+  staffTypes: 'staffTypes',
   eventId: 'eventId',
   organizationId: 'organizationId',
   teamId: 'teamId',
@@ -2908,6 +2984,18 @@ export const InvitesScalarFieldEnum = {
 } as const
 
 export type InvitesScalarFieldEnum = (typeof InvitesScalarFieldEnum)[keyof typeof InvitesScalarFieldEnum]
+
+
+export const StaffMembersScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  userId: 'userId',
+  types: 'types'
+} as const
+
+export type StaffMembersScalarFieldEnum = (typeof StaffMembersScalarFieldEnum)[keyof typeof StaffMembersScalarFieldEnum]
 
 
 export const TeamsScalarFieldEnum = {
@@ -3941,6 +4029,7 @@ export type GlobalOmitConfig = {
   userData?: Prisma.UserDataOmit
   sensitiveUserData?: Prisma.SensitiveUserDataOmit
   invites?: Prisma.InvitesOmit
+  staffMembers?: Prisma.StaffMembersOmit
   teams?: Prisma.TeamsOmit
   messages?: Prisma.MessagesOmit
   chatGroup?: Prisma.ChatGroupOmit

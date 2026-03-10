@@ -16,6 +16,12 @@ const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
   },
+  staffMembers: {
+    findUnique: jest.fn(),
+  },
+  invites: {
+    findMany: jest.fn(),
+  },
   divisions: {
     findMany: jest.fn(),
   },
@@ -50,8 +56,18 @@ const jsonPost = (url: string, body: any) =>
 describe('event template privacy routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.events.findMany.mockReset();
+    prismaMock.events.findUnique.mockReset();
+    prismaMock.teams.findMany.mockReset();
+    prismaMock.matches.findMany.mockReset();
+    prismaMock.organizations.findUnique.mockReset();
+    prismaMock.staffMembers.findUnique.mockReset();
+    prismaMock.invites.findMany.mockReset();
+    prismaMock.divisions.findMany.mockReset();
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.staffMembers.findUnique.mockResolvedValue(null);
+    prismaMock.invites.findMany.mockResolvedValue([]);
     getTokenFromRequestMock.mockReturnValue(null);
     verifySessionTokenMock.mockReturnValue(null);
   });
@@ -106,7 +122,12 @@ describe('event template privacy routes', () => {
 
   it('allows org managers to list org event templates without host scoping', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
-    prismaMock.organizations.findUnique.mockResolvedValueOnce({ ownerId: 'owner_1', hostIds: ['host_1'] });
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({ id: 'org_1', ownerId: 'owner_1' });
+    prismaMock.staffMembers.findUnique.mockResolvedValueOnce({
+      organizationId: 'org_1',
+      userId: 'host_1',
+      types: ['HOST'],
+    });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
     const res = await eventsGet(
@@ -138,7 +159,7 @@ describe('event template privacy routes', () => {
 
   it('forbids non-managers from listing org event templates', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'user_2', isAdmin: false });
-    prismaMock.organizations.findUnique.mockResolvedValueOnce({ ownerId: 'owner_1', hostIds: ['host_1'] });
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({ id: 'org_1', ownerId: 'owner_1' });
 
     const res = await eventsGet(
       new NextRequest('http://localhost/api/events?state=TEMPLATE&organizationId=org_1'),
@@ -181,8 +202,13 @@ describe('event template privacy routes', () => {
       organizationId: 'org_1',
     });
     prismaMock.organizations.findUnique.mockResolvedValueOnce({
+      id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: ['host_1'],
+    });
+    prismaMock.staffMembers.findUnique.mockResolvedValueOnce({
+      organizationId: 'org_1',
+      userId: 'host_1',
+      types: ['HOST'],
     });
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
 

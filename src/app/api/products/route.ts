@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
-  if (!canManageOrganization(session, org)) {
+  if (!(await canManageOrganization(session, org))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

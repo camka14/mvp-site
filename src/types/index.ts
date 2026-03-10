@@ -294,20 +294,27 @@ export interface UserData {
   avatarUrl: string;
 }
 
-export type InviteType =
-  | 'referee'
-  | 'player'
-  | 'host'
-  | 'team_manager'
-  | 'team_head_coach'
-  | 'team_assistant_coach';
-export type InviteStatus = 'pending' | 'sent' | 'accepted' | 'rejected';
+export type StaffMemberType = 'HOST' | 'REFEREE' | 'STAFF';
+export type InviteType = 'STAFF' | 'TEAM' | 'EVENT';
+export type InviteStatus = 'PENDING' | 'DECLINED';
+
+export interface StaffMember {
+  $id: string;
+  organizationId: string;
+  userId: string;
+  types: StaffMemberType[];
+  user?: UserData;
+  invite?: Invite | null;
+  $createdAt?: string;
+  $updatedAt?: string;
+}
 
 export interface Invite {
   $id: string;
   type: InviteType;
   email?: string;
   status?: InviteStatus;
+  staffTypes?: StaffMemberType[];
   userId?: string | null;
   eventId?: string | null;
   organizationId?: string | null;
@@ -524,6 +531,9 @@ export interface Organization {
   hasStripeAccount?: boolean;
   fieldIds?: string[];
   refIds?: string[];
+  staffMembers?: StaffMember[];
+  staffInvites?: Invite[];
+  staffEmailsByUserId?: Record<string, string>;
   productIds?: string[];
   teamIds?: string[];
   $createdAt?: string;

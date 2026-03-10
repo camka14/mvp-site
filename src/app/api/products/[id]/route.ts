@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const org = await prisma.organizations.findUnique({ where: { id: existing.organizationId } });
-  if (!canManageOrganization(session, org)) {
+  if (!(await canManageOrganization(session, org))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -52,7 +52,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   const org = await prisma.organizations.findUnique({ where: { id: existing.organizationId } });
-  if (!canManageOrganization(session, org)) {
+  if (!(await canManageOrganization(session, org))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

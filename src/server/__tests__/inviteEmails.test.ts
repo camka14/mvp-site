@@ -4,7 +4,6 @@ const prismaMock = {
   events: { findMany: jest.fn() },
   organizations: { findMany: jest.fn() },
   teams: { findMany: jest.fn() },
-  invites: { update: jest.fn() },
 };
 
 const buildInviteEmailMock = jest.fn();
@@ -28,7 +27,6 @@ describe('sendInviteEmails', () => {
     prismaMock.events.findMany.mockResolvedValue([]);
     prismaMock.organizations.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
-    prismaMock.invites.update.mockResolvedValue({});
 
     buildInviteEmailMock.mockReturnValue({
       subject: 'You are invited',
@@ -48,12 +46,12 @@ describe('sendInviteEmails', () => {
   });
 
   it('attempts push delivery after a successful invite email send', async () => {
-    await sendInviteEmails([{
+    const invites = await sendInviteEmails([{
       id: 'invite_1',
       email: 'player@example.com',
       userId: 'user_1',
-      type: 'player',
-      status: 'pending',
+      type: 'TEAM',
+      status: 'PENDING',
     }], 'http://localhost');
 
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
@@ -61,27 +59,30 @@ describe('sendInviteEmails', () => {
       userIds: ['user_1'],
       title: 'You are invited',
     }));
-    expect(prismaMock.invites.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'invite_1' },
-      data: { status: 'sent' },
-    }));
+    expect(invites).toEqual([expect.objectContaining({
+      id: 'invite_1',
+      status: 'PENDING',
+    })]);
   });
 
   it('does not attempt push when email sending fails', async () => {
     sendEmailMock.mockRejectedValue(new Error('smtp down'));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-    await sendInviteEmails([{
+    const invites = await sendInviteEmails([{
       id: 'invite_2',
       email: 'player@example.com',
       userId: 'user_1',
-      type: 'player',
-      status: 'pending',
+      type: 'TEAM',
+      status: 'PENDING',
     }], 'http://localhost');
 
     expect(sendPushToUsersMock).not.toHaveBeenCalled();
-    expect(prismaMock.invites.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'invite_2' },
-      data: { status: 'failed' },
-    }));
+    expect(invites).toEqual([expect.objectContaining({
+      id: 'invite_2',
+      status: 'PENDING',
+    })]);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 });

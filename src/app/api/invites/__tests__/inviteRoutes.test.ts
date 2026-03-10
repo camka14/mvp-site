@@ -6,6 +6,8 @@ const prismaMock = {
   $transaction: jest.fn(),
   invites: {
     create: jest.fn(),
+    findFirst: jest.fn(),
+    update: jest.fn(),
   },
   authUser: {
     findUnique: jest.fn(),
@@ -13,17 +15,30 @@ const prismaMock = {
   sensitiveUserData: {
     findFirst: jest.fn(),
   },
+  teams: {
+    findUnique: jest.fn(),
+  },
+  organizations: {
+    findUnique: jest.fn(),
+  },
+  staffMembers: {
+    upsert: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
 const sendInviteEmailsMock = jest.fn();
 const ensureAuthUserAndUserDataByEmailMock = jest.fn();
+const canManageOrganizationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/inviteEmails', () => ({ sendInviteEmails: (...args: any[]) => sendInviteEmailsMock(...args) }));
 jest.mock('@/server/inviteUsers', () => ({
   ensureAuthUserAndUserDataByEmail: (...args: any[]) => ensureAuthUserAndUserDataByEmailMock(...args),
+}));
+jest.mock('@/server/accessControl', () => ({
+  canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
 }));
 
 import { POST } from '@/app/api/invites/route';
@@ -41,21 +56,33 @@ describe('/api/invites', () => {
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
     prismaMock.authUser.findUnique.mockResolvedValue(null);
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+    prismaMock.invites.findFirst.mockResolvedValue(null);
+    prismaMock.staffMembers.upsert.mockResolvedValue({});
+    prismaMock.teams.findUnique.mockResolvedValue({
+      id: 'team_1',
+      playerIds: [],
+      pending: [],
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+    });
+    canManageOrganizationMock.mockResolvedValue(true);
   });
 
-  it('returns a consistent { invites: [] } response shape even for a single invite', async () => {
+  it('returns a consistent { invites: [] } response shape even for a single TEAM invite', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'inviter_1', isAdmin: false });
     ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_1', authUserExisted: true });
 
     const createdAt = new Date('2020-01-01T00:00:00.000Z');
     prismaMock.invites.create.mockResolvedValue({
       id: 'invite_1',
-      type: 'player',
+      type: 'TEAM',
       email: 'test@example.com',
-      status: 'pending',
+      status: 'PENDING',
       eventId: null,
       organizationId: null,
-      teamId: null,
+      teamId: 'team_1',
       userId: 'user_1',
       createdBy: 'inviter_1',
       firstName: 'Test',
@@ -67,7 +94,7 @@ describe('/api/invites', () => {
 
     const res = await POST(
       jsonRequest({
-        invites: [{ type: 'player', email: 'test@example.com', firstName: 'Test', lastName: 'User' }],
+        invites: [{ type: 'TEAM', teamId: 'team_1', email: 'test@example.com', firstName: 'Test', lastName: 'User' }],
       }),
     );
     const json = await res.json();
@@ -77,17 +104,19 @@ describe('/api/invites', () => {
     expect(json.invites).toHaveLength(1);
     expect(json.invites[0].$id).toBe('invite_1');
     expect(json.invites[0].$createdAt).toBe('2020-01-01T00:00:00.000Z');
+    expect(json.invites[0].type).toBe('TEAM');
 
     expect(ensureAuthUserAndUserDataByEmailMock).toHaveBeenCalledWith(
       prismaMock,
       'test@example.com',
       expect.any(Date),
     );
+    expect(prismaMock.teams.findUnique).toHaveBeenCalledWith({ where: { id: 'team_1' } });
     expect(prismaMock.invites.create).toHaveBeenCalledTimes(1);
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([], 'http://localhost');
   });
 
-  it('sends email when a userId invite targets an invite-placeholder auth account', async () => {
+  it('sends email when a TEAM invite targets an invite-placeholder auth account', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'captain_1', isAdmin: false });
     prismaMock.authUser.findUnique.mockResolvedValue({
       id: 'user_placeholder',
@@ -100,9 +129,9 @@ describe('/api/invites', () => {
     const createdAt = new Date('2020-01-01T00:00:00.000Z');
     const createdInvite = {
       id: 'invite_placeholder',
-      type: 'player',
+      type: 'TEAM',
       email: 'placeholder@example.com',
-      status: 'pending',
+      status: 'PENDING',
       eventId: null,
       organizationId: null,
       teamId: 'team_1',
@@ -118,7 +147,7 @@ describe('/api/invites', () => {
 
     const res = await POST(
       jsonRequest({
-        invites: [{ type: 'player', teamId: 'team_1', userId: 'user_placeholder' }],
+        invites: [{ type: 'TEAM', teamId: 'team_1', userId: 'user_placeholder' }],
       }),
     );
     const json = await res.json();
@@ -129,17 +158,17 @@ describe('/api/invites', () => {
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'http://localhost');
   });
 
-  it('uses forwarded request origin when sending invite emails', async () => {
+  it('uses forwarded request origin when sending EVENT invite emails', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'inviter_1', isAdmin: false });
     ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_1', authUserExisted: false });
 
     const createdAt = new Date('2020-01-01T00:00:00.000Z');
     const createdInvite = {
       id: 'invite_forwarded',
-      type: 'player',
+      type: 'EVENT',
       email: 'forwarded@example.com',
-      status: 'pending',
-      eventId: null,
+      status: 'PENDING',
+      eventId: 'event_1',
       organizationId: null,
       teamId: null,
       userId: 'user_1',
@@ -154,7 +183,7 @@ describe('/api/invites', () => {
 
     const res = await POST(
       jsonRequest(
-        { invites: [{ type: 'player', email: 'forwarded@example.com' }] },
+        { invites: [{ type: 'EVENT', eventId: 'event_1', email: 'forwarded@example.com' }] },
         { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'mvp.razumly.com' },
       ),
     );

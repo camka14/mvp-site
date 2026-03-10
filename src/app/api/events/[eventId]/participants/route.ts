@@ -462,6 +462,14 @@ async function updateParticipants(
         },
       });
 
+      await prisma.invites?.deleteMany?.({
+        where: {
+          type: 'EVENT',
+          eventId,
+          userId: session.userId,
+        },
+      });
+
       return NextResponse.json({
         event: withLegacyEvent(event),
         registration: withLegacyFields(requestRegistration),
@@ -869,6 +877,13 @@ async function updateParticipants(
       } else if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: result.status });
       } else {
+        await prisma.invites?.deleteMany?.({
+          where: {
+            type: 'EVENT',
+            eventId,
+            userId: session.userId,
+          },
+        });
         return NextResponse.json({
           event: withLegacyEvent(result.event),
           warnings: warnings.length ? warnings : undefined,
@@ -1004,6 +1019,14 @@ async function updateParticipants(
       });
     }
   }
+
+  await prisma.invites?.deleteMany?.({
+    where: {
+      type: 'EVENT',
+      eventId,
+      userId: session.userId,
+    },
+  });
 
   return NextResponse.json({
     event: withLegacyEvent(updated),

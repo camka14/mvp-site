@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect } from '@mantine/core';
-import { Invite, InviteType, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
@@ -29,8 +29,8 @@ interface TeamDetailModalProps {
 }
 
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-type TeamInviteRoleType = Extract<InviteType, 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach'>;
-const TEAM_ROLE_INVITE_TYPES: TeamInviteRoleType[] = ['team_manager', 'team_head_coach', 'team_assistant_coach'];
+type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
+const TEAM_ROLE_INVITE_TYPES = ['TEAM'] as const;
 const DIVISION_GENDER_OPTIONS = [
     { value: 'M', label: 'Mens' },
     { value: 'F', label: 'Womens' },
@@ -110,6 +110,22 @@ const getDefaultDivisionTypeSelections = (sportInput: string | null | undefined)
 const getUserHandle = (candidate?: Pick<UserData, 'userName'> | null): string => {
     const normalized = candidate?.userName?.trim();
     return `@${normalized && normalized.length ? normalized : 'user'}`;
+};
+
+const getPendingInviteRole = (
+    team: Team,
+    invite: Invite,
+): TeamInviteRoleType => {
+    if (invite.userId && Array.isArray(team.pending) && team.pending.includes(invite.userId)) {
+        return 'player';
+    }
+    if (invite.userId && team.managerId === invite.userId) {
+        return 'team_manager';
+    }
+    if (invite.userId && team.headCoachId === invite.userId) {
+        return 'team_head_coach';
+    }
+    return 'team_assistant_coach';
 };
 
 export default function TeamDetailModal({
@@ -263,7 +279,7 @@ export default function TeamDetailModal({
             teamId: currentTeam.$id,
             types: TEAM_ROLE_INVITE_TYPES,
         });
-        const pendingInvites = invites.filter((invite) => invite.status === 'pending');
+        const pendingInvites = invites.filter((invite) => invite.status === 'PENDING' && !currentTeam.pending.includes(invite.userId ?? ''));
         const inviteUserIds = pendingInvites
             .map((invite) => invite.userId)
             .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
@@ -275,14 +291,16 @@ export default function TeamDetailModal({
                 invitedUser: invite.userId ? invitedUserMap.get(invite.userId) : undefined,
             })),
         );
-    }, [currentTeam.$id]);
+    }, [currentTeam.$id, currentTeam.pending]);
 
     const isRoleInvitePending = useCallback((userId: string, roleType: TeamInviteRoleType): boolean => {
         if (roleType === 'player') {
             return currentTeam.pending.includes(userId);
         }
         return pendingRoleInvites.some(
-            (entry) => entry.invite.type === roleType && entry.invite.userId === userId && entry.invite.status === 'pending',
+            (entry) => getPendingInviteRole(currentTeam, entry.invite) === roleType
+                && entry.invite.userId === userId
+                && entry.invite.status === 'PENDING',
         );
     }, [currentTeam.pending, pendingRoleInvites]);
 
@@ -1202,9 +1220,10 @@ export default function TeamDetailModal({
                             <Title order={5} mb="sm">Pending Staff Invitations ({pendingRoleInvites.length})</Title>
                             <div className="space-y-3">
                                 {pendingRoleInvites.map(({ invite, invitedUser }) => {
-                                    const inviteRoleLabel = invite.type === 'team_manager'
+                                    const inviteRole = getPendingInviteRole(currentTeam, invite);
+                                    const inviteRoleLabel = inviteRole === 'team_manager'
                                         ? 'Manager'
-                                        : invite.type === 'team_head_coach'
+                                        : inviteRole === 'team_head_coach'
                                         ? 'Head Coach'
                                         : 'Assistant Coach';
                                     const isCancellingInvite = cancellingRoleInviteIds.has(invite.$id);

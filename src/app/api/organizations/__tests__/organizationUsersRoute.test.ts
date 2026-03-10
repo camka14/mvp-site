@@ -19,6 +19,12 @@ const prismaMock = {
   userData: {
     findMany: jest.fn(),
   },
+  staffMembers: {
+    findUnique: jest.fn(),
+  },
+  invites: {
+    findMany: jest.fn(),
+  },
   templateDocuments: {
     findMany: jest.fn(),
   },
@@ -37,6 +43,8 @@ import { GET } from '@/app/api/organizations/[id]/users/route';
 describe('GET /api/organizations/[id]/users', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.staffMembers.findUnique.mockResolvedValue(null);
+    prismaMock.invites.findMany.mockResolvedValue([]);
   });
 
   it('returns 403 for users who are not part of the organization', async () => {

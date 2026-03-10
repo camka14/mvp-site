@@ -11,6 +11,12 @@ const prismaMock = {
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  staffMembers: {
+    findUnique: jest.fn(),
+  },
+  invites: {
+    findMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -31,6 +37,8 @@ describe('field routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
+    prismaMock.staffMembers.findUnique.mockResolvedValue(null);
+    prismaMock.invites.findMany.mockResolvedValue([]);
   });
 
   it('creates a field and links it to an organization when owner', async () => {

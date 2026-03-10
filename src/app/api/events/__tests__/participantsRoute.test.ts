@@ -49,6 +49,9 @@ const prismaMock = {
   billPayments: {
     findMany: jest.fn(),
   },
+  invites: {
+    deleteMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -137,6 +140,7 @@ describe('POST /api/events/[eventId]/participants', () => {
     prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
     prismaMock.bills.findMany.mockResolvedValue([]);
     prismaMock.billPayments.findMany.mockResolvedValue([]);
+    prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
   });
 
   it('rejects direct user participant joins for team-signup events', async () => {

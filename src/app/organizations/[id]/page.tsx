@@ -12,7 +12,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { Event, Organization, Product, Team, UserData, PaymentIntent, TemplateDocument } from '@/types';
+import type { Event, Organization, Product, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { eventService } from '@/lib/eventService';
@@ -26,6 +26,7 @@ import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import { apiRequest } from '@/lib/apiClient';
+import { hasStaffMemberType } from '@/lib/staff';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
@@ -33,7 +34,7 @@ import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
-import RoleRosterManager, { type RoleRosterEntry } from './RoleRosterManager';
+import RoleRosterManager, { type RoleInviteRow, type RoleRosterEntry } from './RoleRosterManager';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 import {
   getRequiredSignerTypeLabel,
@@ -113,8 +114,7 @@ type OrganizationTab =
   | 'teams'
   | 'users'
   | 'fields'
-  | 'hosts'
-  | 'referees'
+  | 'staff'
   | 'refunds'
   | 'store'
   | 'templates';
@@ -230,24 +230,16 @@ function OrganizationDetailContent() {
   const [calendarView, setCalendarView] = useState<View>('month');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [updatingEventHostId, setUpdatingEventHostId] = useState<string | null>(null);
-  const [hostSearch, setHostSearch] = useState('');
-  const [hostResults, setHostResults] = useState<UserData[]>([]);
-  const [hostSearchLoading, setHostSearchLoading] = useState(false);
-  const [hostError, setHostError] = useState<string | null>(null);
-  const [hostInvites, setHostInvites] = useState<{ firstName: string; lastName: string; email: string }[]>([
-    { firstName: '', lastName: '', email: '' },
+  const [staffSearch, setStaffSearch] = useState('');
+  const [staffResults, setStaffResults] = useState<UserData[]>([]);
+  const [staffSearchLoading, setStaffSearchLoading] = useState(false);
+  const [staffError, setStaffError] = useState<string | null>(null);
+  const [existingStaffInviteTypes, setExistingStaffInviteTypes] = useState<StaffMemberType[]>(['HOST']);
+  const [staffInvites, setStaffInvites] = useState<RoleInviteRow[]>([
+    { firstName: '', lastName: '', email: '', types: ['HOST'] },
   ]);
-  const [hostInviteError, setHostInviteError] = useState<string | null>(null);
-  const [invitingHosts, setInvitingHosts] = useState(false);
-  const [refereeSearch, setRefereeSearch] = useState('');
-  const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
-  const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
-  const [refereeError, setRefereeError] = useState<string | null>(null);
-  const [refereeInvites, setRefereeInvites] = useState<{ firstName: string; lastName: string; email: string }[]>([
-    { firstName: '', lastName: '', email: '' },
-  ]);
-  const [refereeInviteError, setRefereeInviteError] = useState<string | null>(null);
-  const [invitingReferees, setInvitingReferees] = useState(false);
+  const [staffInviteError, setStaffInviteError] = useState<string | null>(null);
+  const [invitingStaff, setInvitingStaff] = useState(false);
   const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
   const [connectingStripe, setConnectingStripe] = useState(false);
   const [managingStripe, setManagingStripe] = useState(false);
@@ -259,7 +251,11 @@ function OrganizationDetailContent() {
       && org
       && (
         user.$id === org.ownerId
-        || (Array.isArray(org.hostIds) && org.hostIds.includes(user.$id))
+        || (org.staffMembers ?? []).some((staffMember) => (
+          staffMember.userId === user.$id
+            && !staffMember.invite
+            && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
+        ))
       ),
   );
   const isOrganizationRoleMember = Boolean(
@@ -267,8 +263,7 @@ function OrganizationDetailContent() {
       && org
       && (
         user.$id === org.ownerId
-        || (Array.isArray(org.hostIds) && org.hostIds.includes(user.$id))
-        || (Array.isArray(org.refIds) && org.refIds.includes(user.$id))
+        || (org.staffMembers ?? []).some((staffMember) => staffMember.userId === user.$id && !staffMember.invite)
       ),
   );
   const isCurrentOrganizationHomePage = Boolean(
@@ -288,8 +283,7 @@ function OrganizationDetailContent() {
       if (isOwner) {
         base.push({ label: 'Event Templates', value: 'eventTemplates' });
         base.push({ label: 'Document Templates', value: 'templates' });
-        base.push({ label: 'Hosts', value: 'hosts' });
-        base.push({ label: 'Referees', value: 'referees' });
+        base.push({ label: 'Staff', value: 'staff' });
         base.push({ label: 'Refunds', value: 'refunds' });
       }
       base.push({ label: 'Fields', value: 'fields' });
@@ -325,10 +319,6 @@ function OrganizationDetailContent() {
     );
   };
 
-  const currentRefereeIds = useMemo(
-    () => (Array.isArray(org?.refIds) ? org.refIds.filter((id): id is string => typeof id === 'string') : []),
-    [org?.refIds],
-  );
   const currentHostIds = useMemo(
     () => (Array.isArray(org?.hostIds) ? org.hostIds.filter((id): id is string => typeof id === 'string') : []),
     [org?.hostIds],
@@ -343,15 +333,7 @@ function OrganizationDetailContent() {
     }
     return null;
   }, [org?.owner, org?.ownerId, user]);
-  const unresolvedHostIds = useMemo(
-    () => currentHostIds.filter((hostId) => hostId !== org?.ownerId && !currentHosts.some((host) => host.$id === hostId)),
-    [currentHostIds, currentHosts, org?.ownerId],
-  );
   const currentReferees = useMemo(() => org?.referees ?? [], [org?.referees]);
-  const unresolvedRefereeIds = useMemo(
-    () => currentRefereeIds.filter((refereeId) => !currentReferees.some((referee) => referee.$id === refereeId)),
-    [currentRefereeIds, currentReferees],
-  );
   const userDisplayName = useCallback((candidate: Partial<UserData> | undefined, fallbackId: string): string => {
     const firstName = typeof candidate?.firstName === 'string' ? candidate.firstName.trim() : '';
     const lastName = typeof candidate?.lastName === 'string' ? candidate.lastName.trim() : '';
@@ -364,81 +346,85 @@ function OrganizationDetailContent() {
     }
     return fallbackId;
   }, []);
-  const hostRosterEntries = useMemo<RoleRosterEntry[]>(() => {
+  const staffRosterEntries = useMemo<RoleRosterEntry[]>(() => {
     const entries: RoleRosterEntry[] = [];
     const seen = new Set<string>();
+    const staffMembers = Array.isArray(org?.staffMembers) ? org.staffMembers : [];
+    const organizationStaffInvites = Array.isArray(org?.staffInvites) ? org.staffInvites : [];
 
     if (ownerHost?.$id) {
       entries.push({
         id: ownerHost.$id,
+        userId: ownerHost.$id,
         fullName: userDisplayName(ownerHost, ownerHost.$id),
         userName: ownerHost.userName || null,
+        email: org?.staffEmailsByUserId?.[ownerHost.$id] ?? null,
+        user: ownerHost,
         status: 'active',
         subtitle: 'Owner',
+        types: ['HOST'],
         canRemove: false,
+        locked: true,
       });
       seen.add(ownerHost.$id);
     } else if (org?.ownerId) {
       entries.push({
         id: org.ownerId,
+        userId: org.ownerId,
         fullName: org.ownerId,
         userName: null,
+        email: org?.staffEmailsByUserId?.[org.ownerId] ?? null,
+        user: null,
         status: 'active',
         subtitle: 'Owner',
+        types: ['HOST'],
         canRemove: false,
+        locked: true,
       });
       seen.add(org.ownerId);
     }
 
-    currentHosts.forEach((host) => {
-      if (!host?.$id || seen.has(host.$id) || host.$id === org?.ownerId) {
+    staffMembers.forEach((staffMember) => {
+      const userEntry = staffMember.user;
+      if (!staffMember.userId || seen.has(staffMember.userId) || staffMember.userId === org?.ownerId) {
         return;
       }
-      seen.add(host.$id);
+      seen.add(staffMember.userId);
       entries.push({
-        id: host.$id,
-        fullName: userDisplayName(host, host.$id),
-        userName: host.userName || null,
-        status: 'active',
+        id: staffMember.$id,
+        userId: staffMember.userId,
+        fullName: userDisplayName(userEntry, staffMember.userId),
+        userName: userEntry?.userName || null,
+        email: org?.staffEmailsByUserId?.[staffMember.userId] ?? staffMember.invite?.email ?? null,
+        user: userEntry ?? null,
+        status: staffMember.invite?.status === 'DECLINED' ? 'declined' : staffMember.invite ? 'pending' : 'active',
+        subtitle: undefined,
+        types: staffMember.types,
         canRemove: true,
       });
     });
 
-    unresolvedHostIds.forEach((hostId) => {
-      if (seen.has(hostId)) {
+    organizationStaffInvites.forEach((invite) => {
+      if (!invite.userId || seen.has(invite.userId) || invite.userId === org?.ownerId) {
         return;
       }
       entries.push({
-        id: hostId,
-        fullName: hostId,
+        id: invite.$id,
+        userId: invite.userId,
+        fullName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email || invite.userId,
         userName: null,
-        status: 'invited',
-        subtitle: hostId,
+        email: invite.email ?? null,
+        user: null,
+        status: invite.status === 'DECLINED' ? 'declined' : 'pending',
+        subtitle: undefined,
+        types: invite.staffTypes ?? ['HOST'],
         canRemove: true,
       });
-      seen.add(hostId);
+      seen.add(invite.userId);
     });
 
     return entries;
-  }, [currentHosts, org?.ownerId, ownerHost, unresolvedHostIds, userDisplayName]);
-  const refereeRosterEntries = useMemo<RoleRosterEntry[]>(() => {
-    const activeRows: RoleRosterEntry[] = currentReferees.map((referee) => ({
-      id: referee.$id,
-      fullName: userDisplayName(referee, referee.$id),
-      userName: referee.userName || null,
-      status: 'active',
-      canRemove: true,
-    }));
-    const invitedRows: RoleRosterEntry[] = unresolvedRefereeIds.map((refereeId) => ({
-      id: refereeId,
-      fullName: refereeId,
-      userName: null,
-      status: 'invited',
-      subtitle: refereeId,
-      canRemove: true,
-    }));
-    return [...activeRows, ...invitedRows];
-  }, [currentReferees, unresolvedRefereeIds, userDisplayName]);
+  }, [org?.ownerId, org?.staffInvites, org?.staffMembers, ownerHost, userDisplayName]);
   const eventHostOptions = useMemo(() => {
     const ids = new Set<string>();
     if (typeof org?.ownerId === 'string' && org.ownerId.length > 0) {
@@ -1377,117 +1363,123 @@ function OrganizationDetailContent() {
     }
   }, [org?.$id, purchaseProduct, refreshOrganizationProducts, user]);
 
-  const handleSearchHosts = useCallback(
+  const handleSearchStaff = useCallback(
     async (query: string) => {
-      setHostSearch(query);
-      setHostError(null);
+      setStaffSearch(query);
+      setStaffError(null);
       if (query.trim().length < 2) {
-        setHostResults([]);
+        setStaffResults([]);
         return;
       }
       try {
-        setHostSearchLoading(true);
+        setStaffSearchLoading(true);
         const results = await userService.searchUsers(query.trim());
-        const filtered = results.filter((candidate) => !currentHostIds.includes(candidate.$id));
-        setHostResults(filtered);
+        const selectedUserIds = new Set((org?.staffMembers ?? []).map((staffMember) => staffMember.userId));
+        const filtered = results.filter((candidate) => !selectedUserIds.has(candidate.$id));
+        setStaffResults(filtered);
       } catch (error) {
-        console.error('Failed to search hosts:', error);
-        setHostError('Failed to search hosts. Try again.');
+        console.error('Failed to search staff:', error);
+        setStaffError('Failed to search staff. Try again.');
       } finally {
-        setHostSearchLoading(false);
+        setStaffSearchLoading(false);
       }
     },
-    [currentHostIds],
+    [org?.staffMembers],
   );
 
-  const handleAddHost = useCallback(
-    async (host: UserData) => {
+  const handleInviteExistingStaff = useCallback(
+    async (candidate: UserData, types: StaffMemberType[]) => {
       if (!org || !isOwner) return;
-      const nextHostIds = Array.from(new Set([...(org.hostIds ?? []), host.$id]));
       try {
-        await organizationService.updateOrganization(org.$id, { hostIds: nextHostIds });
-        setOrg((prev) => {
-          if (!prev) return prev;
-          const existingHosts = prev.hosts ?? [];
-          const nextHosts = existingHosts.some((entry) => entry.$id === host.$id) ? existingHosts : [...existingHosts, host];
-          return { ...prev, hostIds: nextHostIds, hosts: nextHosts };
-        });
-        setHostResults((prev) => prev.filter((candidate) => candidate.$id !== host.$id));
+        await organizationService.inviteExistingStaff(org.$id, candidate.$id, types);
+        await loadOrg(org.$id, { silent: true });
+        setStaffResults((prev) => prev.filter((entry) => entry.$id !== candidate.$id));
         notifications.show({
           color: 'green',
-          message: `${host.firstName || host.userName || 'Host'} added to organization hosts.`,
+          message: `${candidate.firstName || candidate.userName || 'Staff member'} invited.`,
         });
       } catch (error) {
-        console.error('Failed to add host:', error);
-        notifications.show({ color: 'red', message: 'Failed to add host.' });
+        console.error('Failed to invite existing staff member:', error);
+        notifications.show({ color: 'red', message: error instanceof Error ? error.message : 'Failed to invite staff member.' });
       }
     },
-    [isOwner, org],
+    [isOwner, loadOrg, org],
   );
 
-  const handleInviteHostEmails = useCallback(async () => {
+  const handleInviteStaffEmails = useCallback(async () => {
     if (!org || !isOwner || !user) return;
 
-    const sanitized = hostInvites.map((invite) => ({
+    const sanitized = staffInvites.map((invite) => ({
       firstName: invite.firstName.trim(),
       lastName: invite.lastName.trim(),
       email: invite.email.trim(),
+      types: invite.types,
     }));
 
     for (const invite of sanitized) {
-      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
-        setHostInviteError('Enter first, last, and valid email for all invites.');
+      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email) || invite.types.length === 0) {
+        setStaffInviteError('Enter first name, last name, email, and at least one staff type for every invite.');
         return;
       }
     }
 
-    setHostInviteError(null);
-    setInvitingHosts(true);
+    setStaffInviteError(null);
+    setInvitingStaff(true);
     try {
       await userService.inviteUsersByEmail(
         user.$id,
         sanitized.map((invite) => ({
           ...invite,
-          type: 'host' as const,
+          type: 'STAFF',
           organizationId: org.$id,
+          staffTypes: invite.types,
         })),
       );
       await loadOrg(org.$id, { silent: true });
       notifications.show({
         color: 'green',
-        message: 'Host invites sent. New hosts will be added automatically.',
+        message: 'Staff invites sent.',
       });
-      setHostInvites([{ firstName: '', lastName: '', email: '' }]);
+      setStaffInvites([{ firstName: '', lastName: '', email: '', types: ['HOST'] }]);
     } catch (error) {
-      setHostInviteError(error instanceof Error ? error.message : 'Failed to invite hosts.');
+      setStaffInviteError(error instanceof Error ? error.message : 'Failed to invite staff.');
     } finally {
-      setInvitingHosts(false);
+      setInvitingStaff(false);
     }
-  }, [hostInvites, isOwner, loadOrg, org, user]);
+  }, [isOwner, loadOrg, org, staffInvites, user]);
 
-  const handleRemoveHost = useCallback(
-    async (hostId: string) => {
+  const handleRemoveStaffMember = useCallback(
+    async (userIdToRemove: string) => {
       if (!org || !isOwner) return;
       if (typeof window !== 'undefined') {
-        const confirmed = window.confirm('Remove this host from the organization roster?');
+        const confirmed = window.confirm('Remove this staff member from the organization?');
         if (!confirmed) {
           return;
         }
       }
-      const nextHostIds = (org.hostIds ?? []).filter((id) => id !== hostId);
       try {
-        await organizationService.updateOrganization(org.$id, { hostIds: nextHostIds });
-        setOrg((prev) => {
-          if (!prev) return prev;
-          const nextHosts = (prev.hosts ?? []).filter((host) => host.$id !== hostId);
-          return { ...prev, hostIds: nextHostIds, hosts: nextHosts };
-        });
+        await organizationService.removeStaffMember(org.$id, userIdToRemove);
+        await loadOrg(org.$id, { silent: true });
       } catch (error) {
-        console.error('Failed to remove host:', error);
-        notifications.show({ color: 'red', message: 'Failed to remove host.' });
+        console.error('Failed to remove staff member:', error);
+        notifications.show({ color: 'red', message: 'Failed to remove staff member.' });
       }
     },
-    [isOwner, org],
+    [isOwner, loadOrg, org],
+  );
+
+  const handleUpdateStaffTypes = useCallback(
+    async (userIdToUpdate: string, nextTypes: StaffMemberType[]) => {
+      if (!org || !isOwner || nextTypes.length === 0) return;
+      try {
+        await organizationService.updateStaffMemberTypes(org.$id, userIdToUpdate, nextTypes);
+        await loadOrg(org.$id, { silent: true });
+      } catch (error) {
+        console.error('Failed to update staff member types:', error);
+        notifications.show({ color: 'red', message: 'Failed to update staff member types.' });
+      }
+    },
+    [isOwner, loadOrg, org],
   );
 
   const handleUpdateEventHost = useCallback(async (eventId: string, hostId: string) => {
@@ -1515,119 +1507,6 @@ function OrganizationDetailContent() {
       setUpdatingEventHostId(null);
     }
   }, [isOwner, org]);
-
-  const handleSearchReferees = useCallback(
-    async (query: string) => {
-      setRefereeSearch(query);
-      setRefereeError(null);
-      if (query.trim().length < 2) {
-        setRefereeResults([]);
-        return;
-      }
-      try {
-        setRefereeSearchLoading(true);
-        const results = await userService.searchUsers(query.trim());
-        const filtered = results.filter((candidate) => !currentRefereeIds.includes(candidate.$id));
-        setRefereeResults(filtered);
-      } catch (error) {
-        console.error('Failed to search referees:', error);
-        setRefereeError('Failed to search referees. Try again.');
-      } finally {
-        setRefereeSearchLoading(false);
-      }
-    },
-    [currentRefereeIds],
-  );
-
-  const handleAddReferee = useCallback(
-    async (referee: UserData) => {
-      if (!org || !isOwner) return;
-      const nextRefIds = Array.from(new Set([...(org.refIds ?? []), referee.$id]));
-      try {
-        await organizationService.updateOrganization(org.$id, { refIds: nextRefIds });
-        setOrg((prev) => {
-          if (!prev) return prev;
-          const existingRefs = prev.referees ?? [];
-          const nextRefs = existingRefs.some((r) => r.$id === referee.$id) ? existingRefs : [...existingRefs, referee];
-          return { ...prev, refIds: nextRefIds, referees: nextRefs };
-        });
-        setRefereeResults((prev) => prev.filter((candidate) => candidate.$id !== referee.$id));
-        notifications.show({
-          color: 'green',
-          message: `${referee.firstName || referee.userName || 'Referee'} added to roster.`,
-        });
-      } catch (error) {
-        console.error('Failed to add referee:', error);
-        notifications.show({ color: 'red', message: 'Failed to add referee.' });
-      }
-    },
-    [org, isOwner],
-  );
-
-  const handleInviteRefereeEmails = useCallback(async () => {
-    if (!org || !isOwner || !user) return;
-
-    const sanitized = refereeInvites.map((invite) => ({
-      firstName: invite.firstName.trim(),
-      lastName: invite.lastName.trim(),
-      email: invite.email.trim(),
-    }));
-
-    for (const invite of sanitized) {
-      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
-        setRefereeInviteError('Enter first, last, and valid email for all invites.');
-        return;
-      }
-    }
-
-    setRefereeInviteError(null);
-    setInvitingReferees(true);
-    try {
-      await userService.inviteUsersByEmail(
-        user.$id,
-        sanitized.map((invite) => ({
-          ...invite,
-          type: 'referee' as const,
-          organizationId: org.$id,
-        })),
-      );
-      await loadOrg(org.$id, { silent: true });
-      notifications.show({
-        color: 'green',
-        message: 'Referee invites sent. New referees will be added automatically.',
-      });
-      setRefereeInvites([{ firstName: '', lastName: '', email: '' }]);
-    } catch (error) {
-      setRefereeInviteError(error instanceof Error ? error.message : 'Failed to invite referees.');
-    } finally {
-      setInvitingReferees(false);
-    }
-  }, [loadOrg, org, isOwner, user, refereeInvites]);
-
-  const handleRemoveReferee = useCallback(
-    async (refereeId: string) => {
-      if (!org || !isOwner) return;
-      if (typeof window !== 'undefined') {
-        const confirmed = window.confirm('Remove this referee from the organization roster?');
-        if (!confirmed) {
-          return;
-        }
-      }
-      const nextRefIds = (org.refIds ?? []).filter((id) => id !== refereeId);
-      try {
-        await organizationService.updateOrganization(org.$id, { refIds: nextRefIds });
-        setOrg((prev) => {
-          if (!prev) return prev;
-          const nextRefs = (prev.referees ?? []).filter((ref) => ref.$id !== refereeId);
-          return { ...prev, refIds: nextRefIds, referees: nextRefs };
-        });
-      } catch (error) {
-        console.error('Failed to remove referee:', error);
-        notifications.show({ color: 'red', message: 'Failed to remove referee.' });
-      }
-    },
-    [org, isOwner],
-  );
 
   if (authLoading) return <Loading fullScreen text="Loading organization..." />;
   if (!isAuthenticated || !user) return null;
@@ -2211,57 +2090,24 @@ function OrganizationDetailContent() {
               </Paper>
             )}
 
-            {isOwner && activeTab === 'hosts' && (
+            {isOwner && activeTab === 'staff' && (
               <RoleRosterManager
-                roleSingular="Host"
-                rolePlural="Hosts"
-                description="Manage organization hosts and event editors."
-                rosterEntries={hostRosterEntries}
-                searchValue={hostSearch}
-                onSearchChange={(value) => { void handleSearchHosts(value); }}
-                searchResults={hostResults}
-                searchLoading={hostSearchLoading}
-                searchError={hostError}
-                onAddExisting={(candidate) => { void handleAddHost(candidate); }}
-                inviteRows={hostInvites}
-                onInviteRowsChange={(rows) => setHostInvites(rows)}
-                inviteError={hostInviteError}
-                inviting={invitingHosts}
-                onSendInvites={() => { void handleInviteHostEmails(); }}
-                onRemoveFromRoster={(entryId) => { void handleRemoveHost(entryId); }}
-                onImportCsv={() => {
-                  notifications.show({
-                    color: 'blue',
-                    message: 'CSV import for hosts is coming soon.',
-                  });
-                }}
-              />
-            )}
-
-            {isOwner && activeTab === 'referees' && (
-              <RoleRosterManager
-                roleSingular="Referee"
-                rolePlural="Referees"
-                description="Manage active and invited referees for this organization."
-                rosterEntries={refereeRosterEntries}
-                searchValue={refereeSearch}
-                onSearchChange={(value) => { void handleSearchReferees(value); }}
-                searchResults={refereeResults}
-                searchLoading={refereeSearchLoading}
-                searchError={refereeError}
-                onAddExisting={(candidate) => { void handleAddReferee(candidate); }}
-                inviteRows={refereeInvites}
-                onInviteRowsChange={(rows) => setRefereeInvites(rows)}
-                inviteError={refereeInviteError}
-                inviting={invitingReferees}
-                onSendInvites={() => { void handleInviteRefereeEmails(); }}
-                onRemoveFromRoster={(entryId) => { void handleRemoveReferee(entryId); }}
-                onImportCsv={() => {
-                  notifications.show({
-                    color: 'blue',
-                    message: 'CSV import for referees is coming soon.',
-                  });
-                }}
+                rosterEntries={staffRosterEntries}
+                searchValue={staffSearch}
+                onSearchChange={(value) => { void handleSearchStaff(value); }}
+                searchResults={staffResults}
+                searchLoading={staffSearchLoading}
+                searchError={staffError}
+                existingInviteTypes={existingStaffInviteTypes}
+                onExistingInviteTypesChange={setExistingStaffInviteTypes}
+                onAddExisting={(candidate, types) => { void handleInviteExistingStaff(candidate, types); }}
+                inviteRows={staffInvites}
+                onInviteRowsChange={(rows) => setStaffInvites(rows)}
+                inviteError={staffInviteError}
+                inviting={invitingStaff}
+                onSendInvites={() => { void handleInviteStaffEmails(); }}
+                onRemoveFromRoster={(entryUserId) => { void handleRemoveStaffMember(entryUserId); }}
+                onTypesChange={(entryUserId, nextTypes) => { void handleUpdateStaffTypes(entryUserId, nextTypes); }}
               />
             )}
 

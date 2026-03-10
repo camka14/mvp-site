@@ -57,22 +57,56 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const ownerId = params.get('ownerId');
+  const userId = params.get('userId');
   const limit = Number(params.get('limit') || '100');
   const query = normalizeSearchQuery(params.get('query'));
   const normalizedQuery = query.toLowerCase();
 
+  if (userId) {
+    const session = await requireSession(req);
+    if (!session.isAdmin && session.userId !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 1000) : 100;
+
+  const accessibleOrganizationIds = userId
+    ? Array.from(
+      new Set(
+        (await prisma.staffMembers.findMany({
+          where: { userId },
+          select: { organizationId: true },
+        })).map((row) => row.organizationId),
+      ),
+    )
+    : [];
 
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
   if (ownerId) where.ownerId = ownerId;
-  if (query.length > 0) {
+  if (userId) {
     where.OR = [
+      { ownerId: userId },
+      ...(accessibleOrganizationIds.length > 0 ? [{ id: { in: accessibleOrganizationIds } }] : []),
+    ];
+  }
+  if (query.length > 0) {
+    const queryWhere = [
       { name: { contains: query, mode: 'insensitive' } },
       { location: { contains: query, mode: 'insensitive' } },
       { description: { contains: query, mode: 'insensitive' } },
     ];
+    if (where.OR) {
+      where.AND = [
+        { OR: where.OR },
+        { OR: queryWhere },
+      ];
+      delete where.OR;
+    } else {
+      where.OR = queryWhere;
+    }
   }
 
   const candidateTake = query.length > 0

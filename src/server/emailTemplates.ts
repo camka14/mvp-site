@@ -36,15 +36,19 @@ const buildInviteActionUrl = (input: InviteEmailInput): string => {
 };
 
 const buildSubject = (input: InviteEmailInput): string => {
-  const inviteType = (input.inviteType ?? '').toLowerCase();
-  if (inviteType === 'referee') {
-    if (input.eventName) {
-      return `You are invited to referee ${input.eventName}`;
-    }
+  const inviteType = (input.inviteType ?? '').trim().toUpperCase();
+  if (inviteType === 'STAFF') {
     if (input.organizationName) {
-      return `You are invited to referee for ${input.organizationName}`;
+      return `You are invited to join the staff for ${input.organizationName}`;
     }
-    return 'You are invited to referee on Razumly';
+    return 'You have a staff invite on Razumly';
+  }
+
+  if (inviteType === 'EVENT') {
+    if (input.eventName) {
+      return `You are invited to join ${input.eventName}`;
+    }
+    return 'You have an event invite on Razumly';
   }
 
   if (input.teamName) {

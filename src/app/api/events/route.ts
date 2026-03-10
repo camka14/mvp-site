@@ -531,9 +531,9 @@ export async function GET(req: NextRequest) {
       if (organizationId) {
         const organization = await prisma.organizations.findUnique({
           where: { id: organizationId },
-          select: { ownerId: true, hostIds: true },
+          select: { id: true, ownerId: true, hostIds: true, refIds: true },
         });
-        if (!canManageOrganization(templateSession, organization)) {
+        if (!(await canManageOrganization(templateSession, organization))) {
           return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
         // Organization template visibility is org-scoped, not host-scoped.

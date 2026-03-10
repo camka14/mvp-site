@@ -70,6 +70,11 @@ export type SensitiveUserData = Prisma.SensitiveUserDataModel
  */
 export type Invites = Prisma.InvitesModel
 /**
+ * Model StaffMembers
+ * 
+ */
+export type StaffMembers = Prisma.StaffMembersModel
+/**
  * Model Teams
  * 
  */

@@ -5,79 +5,100 @@ import {
   Badge,
   Button,
   Group,
+  MultiSelect,
   Paper,
-  SegmentedControl,
   Select,
+  SegmentedControl,
   SimpleGrid,
   Stack,
-  Switch,
   Table,
   Text,
   TextInput,
   Title,
 } from '@mantine/core';
 import UserCard from '@/components/ui/UserCard';
-import type { UserData } from '@/types';
+import type { StaffMemberType, UserData } from '@/types';
 
-export type RoleRosterStatus = 'active' | 'invited' | 'inactive';
+export type RoleRosterStatus = 'active' | 'pending' | 'declined';
 
 export type RoleInviteRow = {
   firstName: string;
   lastName: string;
   email: string;
+  types: StaffMemberType[];
 };
 
 export type RoleRosterEntry = {
   id: string;
+  userId: string;
   fullName: string;
   userName: string | null;
+  email?: string | null;
+  user?: UserData | null;
   status: RoleRosterStatus;
   subtitle?: string | null;
+  types: StaffMemberType[];
   canRemove?: boolean;
+  locked?: boolean;
 };
 
 type RoleRosterManagerProps = {
-  roleSingular: string;
-  rolePlural: string;
-  description: string;
   rosterEntries: RoleRosterEntry[];
   searchValue: string;
   onSearchChange: (value: string) => void;
   searchResults: UserData[];
   searchLoading: boolean;
   searchError: string | null;
-  onAddExisting: (user: UserData) => void;
+  existingInviteTypes: StaffMemberType[];
+  onExistingInviteTypesChange: (types: StaffMemberType[]) => void;
+  onAddExisting: (user: UserData, types: StaffMemberType[]) => void;
   inviteRows: RoleInviteRow[];
   onInviteRowsChange: (rows: RoleInviteRow[]) => void;
   inviteError: string | null;
   inviting: boolean;
   onSendInvites: () => void;
-  onRemoveFromRoster: (id: string) => void;
-  onImportCsv?: () => void;
+  onRemoveFromRoster: (userId: string) => void;
+  onTypesChange: (userId: string, types: StaffMemberType[]) => void;
 };
+
+const STAFF_TYPE_OPTIONS = [
+  { value: 'HOST', label: 'Host' },
+  { value: 'REFEREE', label: 'Referee' },
+  { value: 'STAFF', label: 'Staff' },
+] satisfies Array<{ value: StaffMemberType; label: string }>;
 
 const statusColor = (status: RoleRosterStatus): 'teal' | 'blue' | 'gray' => {
   if (status === 'active') return 'teal';
-  if (status === 'invited') return 'blue';
+  if (status === 'pending') return 'blue';
   return 'gray';
 };
 
 const statusLabel = (status: RoleRosterStatus): string => {
   if (status === 'active') return 'Active';
-  if (status === 'invited') return 'Invited';
-  return 'Inactive';
+  if (status === 'pending') return 'Pending';
+  return 'Declined';
 };
 
+const formatTypeLabel = (type: StaffMemberType): string => STAFF_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type;
+
+const getUserCardData = (entry: RoleRosterEntry): UserData | null => (
+  entry.user
+    ? {
+      ...entry.user,
+      fullName: entry.fullName,
+    }
+    : null
+);
+
 export default function RoleRosterManager({
-  roleSingular,
-  rolePlural,
-  description,
   rosterEntries,
   searchValue,
   onSearchChange,
   searchResults,
   searchLoading,
   searchError,
+  existingInviteTypes,
+  onExistingInviteTypesChange,
   onAddExisting,
   inviteRows,
   onInviteRowsChange,
@@ -85,90 +106,60 @@ export default function RoleRosterManager({
   inviting,
   onSendInvites,
   onRemoveFromRoster,
-  onImportCsv,
+  onTypesChange,
 }: RoleRosterManagerProps) {
-  const [inviteExpanded, setInviteExpanded] = useState(true);
   const [inviteMode, setInviteMode] = useState<'existing' | 'email'>('existing');
   const [rosterQuery, setRosterQuery] = useState('');
-  const [rosterStatus, setRosterStatus] = useState<'all' | RoleRosterStatus>('all');
-  const [rosterSort, setRosterSort] = useState<'name-asc' | 'name-desc' | 'status'>('name-asc');
-  const [availableOnly, setAvailableOnly] = useState(false);
-  const [paymentFilter, setPaymentFilter] = useState<'all' | 'volunteer' | 'paid'>('all');
+  const [typeFilter, setTypeFilter] = useState<StaffMemberType[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'all' | RoleRosterStatus>('all');
 
   const filteredRosterEntries = useMemo(() => {
     const query = rosterQuery.trim().toLowerCase();
-    const filtered = rosterEntries.filter((entry) => {
-      if (rosterStatus !== 'all' && entry.status !== rosterStatus) {
+    return rosterEntries.filter((entry) => {
+      if (typeFilter.length > 0 && !typeFilter.some((type) => entry.types.includes(type))) {
         return false;
       }
-      if (query.length === 0) {
+      if (statusFilter !== 'all' && entry.status !== statusFilter) {
+        return false;
+      }
+      if (!query.length) {
         return true;
       }
       return entry.fullName.toLowerCase().includes(query)
         || (entry.userName ?? '').toLowerCase().includes(query)
-        || entry.id.toLowerCase().includes(query);
+        || (entry.email ?? '').toLowerCase().includes(query)
+        || (entry.subtitle ?? '').toLowerCase().includes(query);
     });
-
-    if (rosterSort === 'status') {
-      const rank: Record<RoleRosterStatus, number> = {
-        active: 0,
-        invited: 1,
-        inactive: 2,
-      };
-      return filtered.sort((left, right) => (
-        rank[left.status] - rank[right.status]
-          || left.fullName.localeCompare(right.fullName)
-      ));
-    }
-
-    return filtered.sort((left, right) => {
-      const comparison = left.fullName.localeCompare(right.fullName);
-      return rosterSort === 'name-desc' ? comparison * -1 : comparison;
-    });
-  }, [rosterEntries, rosterQuery, rosterSort, rosterStatus]);
+  }, [rosterEntries, rosterQuery, statusFilter, typeFilter]);
 
   const rosterCounts = useMemo(
     () => ({
-      total: rosterEntries.length,
       active: rosterEntries.filter((entry) => entry.status === 'active').length,
-      invited: rosterEntries.filter((entry) => entry.status === 'invited').length,
+      pending: rosterEntries.filter((entry) => entry.status === 'pending').length,
+      declined: rosterEntries.filter((entry) => entry.status === 'declined').length,
     }),
     [rosterEntries],
   );
 
   return (
-    <Stack gap="md">
-      <Paper withBorder p="md" radius="md">
+    <Paper withBorder p="md" radius="md">
+      <Stack gap="md">
         <Stack gap={2}>
-          <Title order={5}>{roleSingular} Roster</Title>
+          <Title order={5}>Staff List</Title>
           <Text size="sm" c="dimmed">
-            {description}
+            Manage organization hosts, referees, and staff access in one roster.
           </Text>
         </Stack>
-      </Paper>
 
-      <Paper withBorder p="md" radius="md">
-        <Group justify="space-between" align="flex-start" gap="md" wrap="wrap" mb={inviteExpanded ? 'sm' : 0}>
-          <Stack gap={2}>
-            <Title order={6}>Invite {rolePlural}</Title>
-            <Text size="sm" c="dimmed">
-              Add existing users or send email invitations.
-            </Text>
-          </Stack>
-          <Group gap="xs">
-            {onImportCsv && (
-              <Button variant="outline" size="xs" onClick={onImportCsv}>
-                Import CSV
-              </Button>
-            )}
-            <Button variant="default" size="xs" onClick={() => setInviteExpanded((previous) => !previous)}>
-              {inviteExpanded ? 'Collapse' : 'Expand'}
-            </Button>
-          </Group>
-        </Group>
-
-        {inviteExpanded && (
+        <Paper withBorder p="md" radius="md" bg="gray.0">
           <Stack gap="sm">
+            <Stack gap={2}>
+              <Title order={6}>Invite Staff</Title>
+              <Text size="sm" c="dimmed">
+                Invite existing users or send email invites with one or more staff roles.
+              </Text>
+            </Stack>
+
             <SegmentedControl
               value={inviteMode}
               onChange={(value) => setInviteMode(value as typeof inviteMode)}
@@ -180,20 +171,28 @@ export default function RoleRosterManager({
 
             {inviteMode === 'existing' ? (
               <Stack gap="sm">
+                <MultiSelect
+                  label="Staff type"
+                  data={STAFF_TYPE_OPTIONS}
+                  value={existingInviteTypes}
+                  onChange={(values) => {
+                    const nextTypes = values.filter((value): value is StaffMemberType => STAFF_TYPE_OPTIONS.some((option) => option.value === value));
+                    if (!nextTypes.length) {
+                      return;
+                    }
+                    onExistingInviteTypesChange(nextTypes);
+                  }}
+                  searchable={false}
+                  clearable={false}
+                />
                 <TextInput
                   value={searchValue}
-                  onChange={(event) => {
-                    onSearchChange(event.currentTarget.value);
-                  }}
-                  placeholder={`Search ${rolePlural.toLowerCase()} by name or username`}
+                  onChange={(event) => onSearchChange(event.currentTarget.value)}
+                  placeholder="Search staff by name or username"
                 />
-                {searchError && (
-                  <Text size="xs" c="red">
-                    {searchError}
-                  </Text>
-                )}
+                {searchError && <Text size="xs" c="red">{searchError}</Text>}
                 {searchLoading ? (
-                  <Text size="sm" c="dimmed">Searching {rolePlural.toLowerCase()}...</Text>
+                  <Text size="sm" c="dimmed">Searching staff...</Text>
                 ) : searchValue.length < 2 ? (
                   <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
                 ) : searchResults.length > 0 ? (
@@ -202,8 +201,8 @@ export default function RoleRosterManager({
                       <Paper key={result.$id} withBorder p="sm" radius="md">
                         <Group justify="space-between" align="center" gap="sm">
                           <UserCard user={result} className="!p-0 !shadow-none flex-1" />
-                          <Button size="xs" onClick={() => onAddExisting(result)}>
-                            Add
+                          <Button size="xs" onClick={() => onAddExisting(result, existingInviteTypes)}>
+                            Invite
                           </Button>
                         </Group>
                       </Paper>
@@ -215,12 +214,9 @@ export default function RoleRosterManager({
               </Stack>
             ) : (
               <Stack gap="sm">
-                <Text size="sm" c="dimmed">
-                  Add one or more invite rows and send them in one action.
-                </Text>
                 {inviteRows.map((invite, index) => (
                   <Paper key={index} withBorder radius="md" p="sm">
-                    <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                       <TextInput
                         label="First name"
                         placeholder="First name"
@@ -241,6 +237,8 @@ export default function RoleRosterManager({
                           onInviteRowsChange(next);
                         }}
                       />
+                    </SimpleGrid>
+                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm" mt="sm">
                       <TextInput
                         label="Email"
                         placeholder="name@example.com"
@@ -250,6 +248,22 @@ export default function RoleRosterManager({
                           next[index] = { ...invite, email: event.currentTarget.value };
                           onInviteRowsChange(next);
                         }}
+                      />
+                      <MultiSelect
+                        label="Staff type"
+                        data={STAFF_TYPE_OPTIONS}
+                        value={invite.types}
+                        onChange={(values) => {
+                          const nextTypes = values.filter((value): value is StaffMemberType => STAFF_TYPE_OPTIONS.some((option) => option.value === value));
+                          if (!nextTypes.length) {
+                            return;
+                          }
+                          const next = [...inviteRows];
+                          next[index] = { ...invite, types: nextTypes };
+                          onInviteRowsChange(next);
+                        }}
+                        searchable={false}
+                        clearable={false}
                       />
                     </SimpleGrid>
                     {inviteRows.length > 1 && (
@@ -271,171 +285,212 @@ export default function RoleRosterManager({
                     type="button"
                     variant="default"
                     size="xs"
-                    onClick={() => onInviteRowsChange([...inviteRows, { firstName: '', lastName: '', email: '' }])}
+                    onClick={() => onInviteRowsChange([...inviteRows, { firstName: '', lastName: '', email: '', types: ['HOST'] }])}
                   >
                     Add row
                   </Button>
-                  <Button
-                    onClick={onSendInvites}
-                    loading={inviting}
-                    disabled={inviting}
-                  >
+                  <Button onClick={onSendInvites} loading={inviting} disabled={inviting}>
                     Send invites
                   </Button>
                 </Group>
-                {inviteError && (
-                  <Text size="xs" c="red">
-                    {inviteError}
-                  </Text>
-                )}
+                {inviteError && <Text size="xs" c="red">{inviteError}</Text>}
               </Stack>
             )}
           </Stack>
-        )}
-      </Paper>
-
-      <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="md">
-        <Paper withBorder p="md" radius="md">
-          <Stack gap="sm">
-            <Title order={6}>Roster Filters</Title>
-            <TextInput
-              label="Search"
-              placeholder={`Filter ${rolePlural.toLowerCase()} by name, username, or id`}
-              value={rosterQuery}
-              onChange={(event) => setRosterQuery(event.currentTarget.value)}
-            />
-            <Select
-              label="Status"
-              value={rosterStatus}
-              onChange={(value) => setRosterStatus((value as typeof rosterStatus) ?? 'all')}
-              data={[
-                { value: 'all', label: 'All statuses' },
-                { value: 'active', label: 'Active' },
-                { value: 'invited', label: 'Invited' },
-                { value: 'inactive', label: 'Inactive' },
-              ]}
-            />
-            <Select
-              label="Sort"
-              value={rosterSort}
-              onChange={(value) => setRosterSort((value as typeof rosterSort) ?? 'name-asc')}
-              data={[
-                { value: 'name-asc', label: 'Name (A-Z)' },
-                { value: 'name-desc', label: 'Name (Z-A)' },
-                { value: 'status', label: 'Status' },
-              ]}
-            />
-            <Switch
-              label="Show only available"
-              checked={availableOnly}
-              onChange={(event) => setAvailableOnly(event.currentTarget.checked)}
-              disabled
-            />
-            <Select
-              label="Payment"
-              value={paymentFilter}
-              onChange={(value) => setPaymentFilter((value as typeof paymentFilter) ?? 'all')}
-              data={[
-                { value: 'all', label: 'All payment types' },
-                { value: 'volunteer', label: 'Volunteer' },
-                { value: 'paid', label: 'Paid' },
-              ]}
-              disabled
-            />
-            <Button
-              variant="subtle"
-              size="xs"
-              onClick={() => {
-                setRosterQuery('');
-                setRosterStatus('all');
-                setRosterSort('name-asc');
-                setAvailableOnly(false);
-                setPaymentFilter('all');
-              }}
-            >
-              Clear filters
-            </Button>
-            <Text size="xs" c="dimmed">
-              Availability and payment filters will activate once metadata is enabled.
-            </Text>
-          </Stack>
         </Paper>
 
-        <div style={{ gridColumn: 'span 2' }}>
-          <Paper withBorder p="md" radius="md">
-            <Stack gap={2} mb="md">
+        <div className="staff-roster-layout">
+          <Paper withBorder p="md" radius="md" h="fit-content">
+            <Stack gap="sm">
+              <Stack gap={2}>
+                <Title order={6}>Filters</Title>
+                <Text size="sm" c="dimmed">
+                  Narrow the staff list by role or invite status.
+                </Text>
+              </Stack>
+
+              <TextInput
+                label="Search"
+                placeholder="Name or username"
+                value={rosterQuery}
+                onChange={(event) => setRosterQuery(event.currentTarget.value)}
+              />
+
+              <MultiSelect
+                label="Type"
+                data={STAFF_TYPE_OPTIONS}
+                value={typeFilter}
+                onChange={(values) => {
+                  setTypeFilter(
+                    values.filter((value): value is StaffMemberType => STAFF_TYPE_OPTIONS.some((option) => option.value === value)),
+                  );
+                }}
+                placeholder="All types"
+                clearable
+                searchable={false}
+              />
+
+              <Select
+                label="Status"
+                data={[
+                  { value: 'all', label: 'All statuses' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'declined', label: 'Declined' },
+                ]}
+                value={statusFilter}
+                onChange={(value: string | null) => setStatusFilter((value as 'all' | RoleRosterStatus | null) ?? 'all')}
+                allowDeselect={false}
+              />
+
+              <Button
+                variant="default"
+                onClick={() => {
+                  setRosterQuery('');
+                  setTypeFilter([]);
+                  setStatusFilter('all');
+                }}
+              >
+                Clear filters
+              </Button>
+            </Stack>
+          </Paper>
+
+          <Stack gap="md">
+            <Stack gap={2}>
               <Title order={6}>Roster</Title>
               <Text size="sm" c="dimmed">
-                {`${filteredRosterEntries.length} shown • ${rosterCounts.active} active • ${rosterCounts.invited} invited`}
+                {`${filteredRosterEntries.length} shown • ${rosterCounts.active} active • ${rosterCounts.pending} pending • ${rosterCounts.declined} declined`}
               </Text>
             </Stack>
 
             {filteredRosterEntries.length > 0 ? (
               <div style={{ overflowX: 'auto' }}>
-                <Table withTableBorder withColumnBorders highlightOnHover miw={720}>
+                <Table withTableBorder withColumnBorders highlightOnHover miw={760}>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>{roleSingular}</Table.Th>
+                      <Table.Th>Staff Member</Table.Th>
+                      <Table.Th>Type</Table.Th>
                       <Table.Th>Status</Table.Th>
-                      <Table.Th>Username</Table.Th>
-                      <Table.Th style={{ width: 130 }}>Actions</Table.Th>
+                      <Table.Th style={{ width: 140 }}>Actions</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {filteredRosterEntries.map((entry) => (
-                      <Table.Tr key={entry.id}>
-                        <Table.Td>
-                          <Text fw={600}>{entry.fullName}</Text>
-                          {entry.subtitle && (
-                            <Text size="xs" c="dimmed">{entry.subtitle}</Text>
-                          )}
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge
-                            radius="xl"
-                            variant="light"
-                            color={statusColor(entry.status)}
-                          >
-                            {statusLabel(entry.status)}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="sm" c="dimmed">
-                            {entry.userName ? `@${entry.userName}` : 'Not available'}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          {entry.canRemove === false ? (
-                            <Text size="xs" c="dimmed">Locked</Text>
-                          ) : (
-                            <Button
-                              size="xs"
-                              variant="subtle"
-                              color="red"
-                              onClick={() => onRemoveFromRoster(entry.id)}
-                            >
-                              Remove
-                            </Button>
-                          )}
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
+                    {filteredRosterEntries.map((entry) => {
+                      const userCardData = getUserCardData(entry);
+                      const secondaryParts = [
+                        entry.userName ? `@${entry.userName}` : null,
+                        entry.email ?? null,
+                      ].filter((value): value is string => Boolean(value));
+
+                      return (
+                        <Table.Tr key={entry.id}>
+                          <Table.Td>
+                            {userCardData ? (
+                              <Stack gap={4}>
+                                <UserCard
+                                  user={userCardData}
+                                  className="!p-0 !shadow-none !bg-transparent"
+                                />
+                                {entry.email && (
+                                  <Text size="xs" c="dimmed">
+                                    {entry.email}
+                                  </Text>
+                                )}
+                                {entry.subtitle && (
+                                  <Text size="xs" c="dimmed">
+                                    {entry.subtitle}
+                                  </Text>
+                                )}
+                              </Stack>
+                            ) : (
+                              <>
+                                <Text fw={600}>{entry.fullName}</Text>
+                                {secondaryParts.length > 0 && (
+                                  <Text size="xs" c="dimmed">
+                                    {secondaryParts.join(' • ')}
+                                  </Text>
+                                )}
+                              </>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            {!entry.locked ? (
+                              <MultiSelect
+                                data={STAFF_TYPE_OPTIONS}
+                                value={entry.types}
+                                onChange={(values) => {
+                                  const nextTypes = values.filter((value): value is StaffMemberType => STAFF_TYPE_OPTIONS.some((option) => option.value === value));
+                                  if (!nextTypes.length) {
+                                    return;
+                                  }
+                                  onTypesChange(entry.userId, nextTypes);
+                                }}
+                                placeholder="Select roles"
+                                searchable={false}
+                                clearable={false}
+                              />
+                            ) : (
+                              <Group gap={6}>
+                                {entry.types.map((type) => (
+                                  <Badge key={`${entry.id}-${type}`} variant="light">
+                                    {formatTypeLabel(type)}
+                                  </Badge>
+                                ))}
+                              </Group>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge radius="xl" variant="light" color={statusColor(entry.status)}>
+                              {statusLabel(entry.status)}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            {entry.canRemove === false ? (
+                              <Text size="xs" c="dimmed">Locked</Text>
+                            ) : (
+                              <Button
+                                size="xs"
+                                variant="subtle"
+                                color="red"
+                                onClick={() => onRemoveFromRoster(entry.userId)}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
                   </Table.Tbody>
                 </Table>
               </div>
             ) : (
               <Paper withBorder p="lg" radius="md" style={{ textAlign: 'center' }}>
                 <Stack gap="xs" align="center">
-                  <Title order={6}>No {rolePlural.toLowerCase()} yet</Title>
+                  <Title order={6}>No matching staff</Title>
                   <Text size="sm" c="dimmed">
-                    Use the invite card above to add existing users or send email invitations.
+                    Adjust your filters or use Invite Staff to add someone new.
                   </Text>
                 </Stack>
               </Paper>
             )}
-          </Paper>
+          </Stack>
         </div>
-      </SimpleGrid>
-    </Stack>
+      </Stack>
+      <style jsx>{`
+        .staff-roster-layout {
+          display: grid;
+          gap: 1rem;
+          grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+        }
+
+        @media (max-width: 768px) {
+          .staff-roster-layout {
+            grid-template-columns: minmax(0, 1fr);
+          }
+        }
+      `}</style>
+    </Paper>
   );
 }

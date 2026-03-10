@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
-import { Team, UserData, Event, Invite, InviteType } from '@/types';
+import { Team, UserData, Event, Invite } from '@/types';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 import { eventService } from '@/lib/eventService';
@@ -21,12 +21,7 @@ type ManageTeamsProps = {
   withContainer?: boolean;
 };
 
-const TEAM_INVITE_TYPES: InviteType[] = [
-  'player',
-  'team_manager',
-  'team_head_coach',
-  'team_assistant_coach',
-];
+const TEAM_INVITE_TYPES = ['TEAM'] as const;
 
 export default function TeamsPage() {
   return (
@@ -102,17 +97,23 @@ function TeamsPageContent() {
       ? division
       : division?.name || division?.skillLevel || 'Division';
 
-  const getInviteRoleLabel = (type: string): string => {
-    switch (type) {
-      case 'team_manager':
-        return 'Manager';
-      case 'team_head_coach':
-        return 'Head Coach';
-      case 'team_assistant_coach':
-        return 'Assistant Coach';
-      default:
-        return 'Player';
+  const getInviteRoleLabel = (invite: Invite, team: Team | null): string => {
+    if (!team || !user?.$id) {
+      return 'Team Invite';
     }
+    if (Array.isArray(team.pending) && team.pending.includes(user.$id)) {
+      return 'Player';
+    }
+    if (team.managerId === user.$id) {
+      return 'Manager';
+    }
+    if (team.headCoachId === user.$id) {
+      return 'Head Coach';
+    }
+    if (Array.isArray(team.coachIds) && team.coachIds.includes(user.$id)) {
+      return 'Assistant Coach';
+    }
+    return 'Team Invite';
   };
 
   const loadTeamsData = useCallback(async () => {
@@ -240,7 +241,7 @@ function TeamsPageContent() {
     if (!user) return;
 
     try {
-      const success = await userService.deleteInviteById(inviteId);
+      const success = await userService.declineInvite(inviteId);
       if (success) {
         setTeamInvitations(prev => prev.filter((entry) => entry.invite.$id !== inviteId));
       }
@@ -387,7 +388,7 @@ function TeamsPageContent() {
                         {team && (
                           <Text size="sm" c="dimmed">{getDivisionLabel(team.division)} Division</Text>
                         )}
-                        <Text size="sm" c="dimmed">Role: {getInviteRoleLabel(invite.type)}</Text>
+                        <Text size="sm" c="dimmed">Role: {getInviteRoleLabel(invite, team)}</Text>
                       </div>
                       <Badge color="orange" variant="light">Invited</Badge>
                     </Group>

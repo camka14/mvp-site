@@ -6,10 +6,11 @@ import Loading from '@/components/ui/Loading';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
-import { Container, Title, Text, Group, Button, Paper } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Stack } from '@mantine/core';
 import { useApp } from '@/app/providers';
-import type { Organization, UserData } from '@/types';
+import type { Invite, Organization, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
+import { userService } from '@/lib/userService';
 import { useRouter } from 'next/navigation';
 
 export default function OrganizationsPage() {
@@ -23,6 +24,7 @@ export default function OrganizationsPage() {
 function OrganizationsPageContent() {
   const { user, loading: authLoading, isAuthenticated } = useApp();
   const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [pendingOrgInvites, setPendingOrgInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const router = useRouter();
@@ -40,8 +42,23 @@ function OrganizationsPageContent() {
   const loadOrgs = async (ownerId: string) => {
     setLoading(true);
     try {
-      const list = await organizationService.getOrganizationsByOwner(ownerId);
-      setOrgs(list);
+      const [list, invites] = await Promise.all([
+        organizationService.getOrganizationsByUser(ownerId),
+        userService.listInvites({ userId: ownerId, type: 'STAFF' }),
+      ]);
+      const nextPendingInvites = invites.filter((invite) => invite.status === 'PENDING' && Boolean(invite.organizationId));
+      const pendingOrganizationIds = nextPendingInvites
+        .map((invite) => invite.organizationId)
+        .filter((organizationId): organizationId is string => typeof organizationId === 'string' && organizationId.length > 0);
+      const invitedOrganizations = pendingOrganizationIds.length
+        ? await organizationService.getOrganizationsByIds(pendingOrganizationIds)
+        : [];
+      const organizationsById = new Map<string, Organization>();
+      [...list, ...invitedOrganizations].forEach((organization) => {
+        organizationsById.set(organization.$id, organization);
+      });
+      setOrgs(Array.from(organizationsById.values()));
+      setPendingOrgInvites(nextPendingInvites);
     } catch (e) {
       console.error('Failed to load organizations', e);
     } finally {
@@ -51,6 +68,12 @@ function OrganizationsPageContent() {
 
   if (authLoading) return <Loading fullScreen text="Loading organizations..." />;
   if (!isAuthenticated || !user) return null;
+
+  const pendingInviteByOrganizationId = new Map(
+    pendingOrgInvites
+      .filter((invite) => typeof invite.organizationId === 'string')
+      .map((invite) => [invite.organizationId as string, invite] as const),
+  );
 
   return (
     <>
@@ -72,9 +95,49 @@ function OrganizationsPageContent() {
           </ResponsiveCardGrid>
         ) : orgs.length > 0 ? (
           <ResponsiveCardGrid>
-            {orgs.map((org) => (
-              <OrganizationCard key={org.$id} organization={org} onClick={() => router.push(`/organizations/${org.$id}`)} />
-            ))}
+            {orgs.map((org) => {
+              const invite = pendingInviteByOrganizationId.get(org.$id);
+              if (!invite) {
+                return (
+                  <OrganizationCard
+                    key={org.$id}
+                    organization={org}
+                    onClick={() => router.push(`/organizations/${org.$id}`)}
+                  />
+                );
+              }
+              return (
+                <OrganizationCard
+                  key={org.$id}
+                  organization={org}
+                  actions={(
+                    <Stack gap={6}>
+                      <Button
+                        size="xs"
+                        onClick={async (event) => {
+                          event.stopPropagation();
+                          await userService.acceptInvite(invite.$id);
+                          await loadOrgs(user.$id);
+                        }}
+                      >
+                        Accept Invite
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="default"
+                        onClick={async (event) => {
+                          event.stopPropagation();
+                          await userService.declineInvite(invite.$id);
+                          await loadOrgs(user.$id);
+                        }}
+                      >
+                        Decline
+                      </Button>
+                    </Stack>
+                  )}
+                />
+              );
+            })}
           </ResponsiveCardGrid>
         ) : (
           <div className="text-center py-16 flex flex-col items-center">

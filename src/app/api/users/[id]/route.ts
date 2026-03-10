@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession, assertUserAccess } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { hasOrganizationStaffAccess } from '@/server/accessControl';
 import {
   findUserNameConflictUserId,
   isPrismaUserNameUniqueError,
@@ -93,9 +94,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           return NextResponse.json({ error: 'Organization not found.' }, { status: 404 });
         }
 
-        const isOrganizationRoleMember = organization.ownerId === id
-          || organization.hostIds.includes(id)
-          || organization.refIds.includes(id);
+        const isOrganizationRoleMember = await hasOrganizationStaffAccess(
+          { userId: id, isAdmin: false },
+          organization,
+          ['HOST', 'REFEREE', 'STAFF'],
+        );
         if (!isOrganizationRoleMember) {
           return NextResponse.json(
             { error: 'Only organization owners, hosts, or referees can set this organization as home page.' },

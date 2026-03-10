@@ -57,6 +57,7 @@ export const ModelName = {
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
   Invites: 'Invites',
+  StaffMembers: 'StaffMembers',
   Teams: 'Teams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
@@ -231,6 +232,7 @@ export const InvitesScalarFieldEnum = {
   type: 'type',
   email: 'email',
   status: 'status',
+  staffTypes: 'staffTypes',
   eventId: 'eventId',
   organizationId: 'organizationId',
   teamId: 'teamId',
@@ -241,6 +243,18 @@ export const InvitesScalarFieldEnum = {
 } as const
 
 export type InvitesScalarFieldEnum = (typeof InvitesScalarFieldEnum)[keyof typeof InvitesScalarFieldEnum]
+
+
+export const StaffMembersScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  userId: 'userId',
+  types: 'types'
+} as const
+
+export type StaffMembersScalarFieldEnum = (typeof StaffMembersScalarFieldEnum)[keyof typeof StaffMembersScalarFieldEnum]
 
 
 export const TeamsScalarFieldEnum = {

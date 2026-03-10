@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { canManageOrganization } from '@/server/accessControl';
+import { canManageOrganization, canRefereeOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,10 +108,10 @@ const getSortTimestamp = (value: string | undefined): number => {
 const hasOrganizationUserAccess = async (params: {
   sessionUserId: string;
   isAdmin: boolean;
-  org: { ownerId: string; refIds: string[]; hostIds: string[] };
+  org: { id: string; ownerId: string };
   events: OrgEventRow[];
 }): Promise<boolean> => {
-  if (canManageOrganization(
+  if (await canManageOrganization(
     {
       userId: params.sessionUserId,
       isAdmin: params.isAdmin,
@@ -121,7 +121,13 @@ const hasOrganizationUserAccess = async (params: {
     return true;
   }
 
-  if (params.org.refIds.includes(params.sessionUserId)) {
+  if (await canRefereeOrganization(
+    {
+      userId: params.sessionUserId,
+      isAdmin: params.isAdmin,
+    },
+    params.org,
+  )) {
     return true;
   }
 
@@ -186,9 +192,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     sessionUserId: session.userId,
     isAdmin: session.isAdmin,
     org: {
+      id: org.id,
       ownerId: org.ownerId,
-      hostIds: Array.isArray(org.hostIds) ? org.hostIds.filter((entry): entry is string => typeof entry === 'string') : [],
-      refIds: Array.isArray(org.refIds) ? org.refIds.filter((entry): entry is string => typeof entry === 'string') : [],
     },
     events: eventRows,
   });

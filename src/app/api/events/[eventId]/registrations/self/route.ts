@@ -188,6 +188,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     },
   });
 
+  await prisma.invites?.deleteMany?.({
+    where: {
+      type: 'EVENT',
+      eventId,
+      userId: session.userId,
+    },
+  });
+
   return NextResponse.json({
     registration: withLegacyFields(registration),
     warnings: consentDispatch?.errors.length ? consentDispatch.errors : undefined,

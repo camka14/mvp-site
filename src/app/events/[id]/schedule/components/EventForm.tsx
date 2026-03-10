@@ -2419,11 +2419,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             error: undefined,
         };
     }, []);
+    const [hydratedOrganization, setHydratedOrganization] = useState<Organization | null>(organization ?? null);
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);
+    const resolvedOrganization = hydratedOrganization ?? organization ?? null;
     // Organization events must use org billing; personal events use the current user billing account.
     const hasStripeAccount = Boolean(
-        organization ? organization.hasStripeAccount : currentUser?.hasStripeAccount,
+        resolvedOrganization ? resolvedOrganization.hasStripeAccount : currentUser?.hasStripeAccount,
     );
     const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -2438,6 +2440,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const sportOptions = useMemo(() => sports.map((sport) => ({ value: sport.$id, label: sport.name })), [sports]);
 
     const immutableDefaultsMemo = useMemo(() => immutableDefaults ?? {}, [immutableDefaults]);
+
+    useEffect(() => {
+        setHydratedOrganization(organization ?? null);
+    }, [organization]);
 
     const immutableFields = useMemo(() => {
         if (!Array.isArray(immutableDefaultsMemo.fields)) {
@@ -2728,11 +2734,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             : base.installmentAmounts.length;
         base.installmentCount = normalizedInstallmentCount || 0;
         base.allowTeamSplitDefault = Boolean(base.allowTeamSplitDefault);
-        if (!base.organizationId && organization?.$id) {
-            base.organizationId = organization.$id;
+        if (!base.organizationId && resolvedOrganization?.$id) {
+            base.organizationId = resolvedOrganization.$id;
         }
         const hostedOrganizationId = (
-            organization?.$id
+            resolvedOrganization?.$id
             || base.organizationId
             || (activeEditingEvent?.organization as Organization | undefined)?.$id
             || activeEditingEvent?.organizationId
@@ -2754,8 +2760,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (hasImmutableFields) {
                 return sanitizeFieldsForForm(immutableFields);
             }
-            if (hostedOrganizationId && Array.isArray(organization?.fields) && organization.fields.length) {
-                return sanitizeFieldsForForm(organization.fields as Field[]).sort(
+            if (hostedOrganizationId && Array.isArray(resolvedOrganization?.fields) && resolvedOrganization.fields.length) {
+                return sanitizeFieldsForForm(resolvedOrganization.fields as Field[]).sort(
                     (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
                 );
             }
@@ -3051,7 +3057,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [formValues.divisionFieldIds],
     );
     const joinAsParticipant = formValues.joinAsParticipant;
-    const organizationId = organization?.$id ?? eventData.organizationId;
+    const organizationId = resolvedOrganization?.$id ?? eventData.organizationId;
     const templateOrganizationId = templateOrganizationIdProp ?? organizationId;
 
     useEffect(() => {
@@ -3496,7 +3502,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const [fieldsLoading, setFieldsLoading] = useState(false);
     const organizationHostedEventId = (
-        organization?.$id
+        resolvedOrganization?.$id
         || eventData.organizationId
         || (activeEditingEvent?.organization as Organization | undefined)?.$id
         || activeEditingEvent?.organizationId
@@ -3529,14 +3535,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 map.set(candidate.$id, candidate);
             }
         };
-        addUser(organization?.owner);
-        (organization?.hosts || []).forEach((host) => addUser(host));
+        addUser(resolvedOrganization?.owner);
+        (resolvedOrganization?.hosts || []).forEach((host) => addUser(host));
         addUser(currentUser);
         return map;
-    }, [currentUser, organization?.hosts, organization?.owner]);
+    }, [currentUser, resolvedOrganization?.hosts, resolvedOrganization?.owner]);
     const organizationRefereesById = useMemo(() => {
         const map = new Map<string, UserData>();
-        (organization?.referees || []).forEach((referee) => {
+        (resolvedOrganization?.referees || []).forEach((referee) => {
             if (referee?.$id) {
                 map.set(referee.$id, referee);
             }
@@ -3553,16 +3559,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
         });
         return map;
-    }, [eventData.referees, organization?.referees, organizationAllowedRefereeIdSet]);
+    }, [eventData.referees, resolvedOrganization?.referees, organizationAllowedRefereeIdSet]);
     const organizationHostSelectData = useMemo(
         () => Array.from(organizationAllowedHostIds)
             .map((id) => {
                 const baseLabel = toUserLabel(organizationUsersById.get(id), id);
-                const label = id === organization?.ownerId ? `${baseLabel} (Owner)` : baseLabel;
+                const label = id === resolvedOrganization?.ownerId ? `${baseLabel} (Owner)` : baseLabel;
                 return { value: id, label };
             })
             .sort((left, right) => left.label.localeCompare(right.label)),
-        [organization?.ownerId, organizationAllowedHostIds, organizationUsersById],
+        [resolvedOrganization?.ownerId, organizationAllowedHostIds, organizationUsersById],
     );
     const assistantHostSelectData = useMemo(
         () => organizationHostSelectData.filter((option) => option.value !== eventData.hostId),
@@ -3608,7 +3614,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 refereeIds: [],
             },
             {
-                ownerId: organization?.ownerId,
+                ownerId: resolvedOrganization?.ownerId,
                 hostIds: organizationAllowedHostIds,
                 refIds: [],
             },
@@ -3637,7 +3643,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.assistantHostIds,
         eventData.hostId,
         isOrganizationHostedEvent,
-        organization?.ownerId,
+        resolvedOrganization?.ownerId,
         organizationAllowedHostIds,
         setEventData,
     ]);
@@ -4251,7 +4257,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 currentUser.$id,
                 sanitized.map((invite) => ({
                     ...invite,
-                    type: 'referee' as const,
+                    type: 'EVENT' as const,
                     eventId,
                 })),
             );
@@ -5722,8 +5728,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const sortByFieldNumber = (nextFields: Field[]) =>
                 [...nextFields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
 
-            const seededFields = Array.isArray(organization?.fields)
-                ? sortByFieldNumber(sanitizeFieldsForForm(organization.fields as Field[]))
+            const seededFields = Array.isArray(resolvedOrganization?.fields)
+                ? sortByFieldNumber(sanitizeFieldsForForm(resolvedOrganization.fields as Field[]))
                 : [];
             if (seededFields.length) {
                 setFields(seededFields);
@@ -5731,17 +5737,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             try {
                 setFieldsLoading(true);
-                const resolvedOrganization = await organizationService.getOrganizationById(organizationHostedEventId, true);
+                const fetchedOrganization = await organizationService.getOrganizationById(organizationHostedEventId, true);
                 if (cancelled) return;
+                if (fetchedOrganization) {
+                    setHydratedOrganization(fetchedOrganization);
+                }
 
-                let resolvedFields = Array.isArray(resolvedOrganization?.fields)
-                    ? sortByFieldNumber(sanitizeFieldsForForm(resolvedOrganization.fields as Field[]))
+                let resolvedFields = Array.isArray(fetchedOrganization?.fields)
+                    ? sortByFieldNumber(sanitizeFieldsForForm(fetchedOrganization.fields as Field[]))
                     : seededFields;
                 if (!resolvedFields.length) {
-                    const fallbackFieldIds = Array.isArray(resolvedOrganization?.fieldIds)
-                        ? resolvedOrganization.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
-                        : Array.isArray(organization?.fieldIds)
-                            ? organization.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
+                    const fallbackFieldIds = Array.isArray(fetchedOrganization?.fieldIds)
+                        ? fetchedOrganization.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
+                        : Array.isArray(resolvedOrganization?.fieldIds)
+                            ? resolvedOrganization.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
                             : [];
                     if (fallbackFieldIds.length) {
                         const fetchedFields = await fieldService.listFields({ fieldIds: fallbackFieldIds });
@@ -5767,8 +5776,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             cancelled = true;
         };
     }, [
-        organization?.fieldIds,
-        organization?.fields,
+        resolvedOrganization?.fieldIds,
+        resolvedOrganization?.fields,
         hasImmutableFields,
         organizationHostedEventId,
         setFields,
@@ -5837,8 +5846,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             eventOrganizationId,
             sourceFields,
             organizationFieldIds: [
-                ...normalizeFieldIds(organization?.fieldIds),
-                ...normalizeFieldIds((organization?.fields ?? []).map((field) => field?.$id)),
+                ...normalizeFieldIds(resolvedOrganization?.fieldIds),
+                ...normalizeFieldIds((resolvedOrganization?.fields ?? []).map((field) => field?.$id)),
             ],
             referencedFieldIds: Array.from(referencedFieldIds),
             isEditMode,
@@ -5852,8 +5861,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         fields,
         immutableFields,
         isEditMode,
-        organization?.fieldIds,
-        organization?.fields,
+        resolvedOrganization?.fieldIds,
+        resolvedOrganization?.fields,
     ]);
 
     useEffect(() => {
@@ -6002,14 +6011,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const leagueError = errors.leagueSlots ? 'Please resolve schedule timeslot issues before submitting.' : null;
 
     useEffect(() => {
-        if (isEditMode || !organization) {
+        if (isEditMode || !resolvedOrganization) {
             return;
         }
         if (refsPrefilledRef.current) {
             return;
         }
-        const orgRefIds = organization.refIds ?? [];
-        const orgReferees = organization.referees ?? [];
+        const orgRefIds = resolvedOrganization.refIds ?? [];
+        const orgReferees = resolvedOrganization.referees ?? [];
         if (orgRefIds.length || orgReferees.length) {
             setEventData((prev) => ({
                 ...prev,
@@ -6018,7 +6027,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }));
             refsPrefilledRef.current = true;
         }
-    }, [organization, isEditMode, setEventData]);
+    }, [resolvedOrganization, isEditMode, setEventData]);
 
     // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
     const handleConnectStripe = async () => {
@@ -6291,10 +6300,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     refereeIds: source.refereeIds || [],
                 },
                 {
-                    ownerId: organization?.ownerId,
+                    ownerId: resolvedOrganization?.ownerId,
                     hostIds: organizationAllowedHostIds,
                     refIds: organizationAllowedRefereeIds,
-                    referees: organization?.referees,
+                    referees: resolvedOrganization?.referees,
                 },
             )
             : null;
@@ -6717,8 +6726,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         isOrganizationManagedEvent,
         isOrganizationHostedEvent,
         organizationHostedEventId,
-        organization?.ownerId,
-        organization?.referees,
+        resolvedOrganization?.ownerId,
+        resolvedOrganization?.referees,
         organizationAllowedHostIds,
         organizationAllowedRefereeIds,
         organizationRefereesById,
@@ -8052,7 +8061,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         ? 'League Divisions'
                                         : 'Divisions'}
                                 </Text>
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
                                     <MantineSelect
                                         label="Gender"
                                         placeholder="Select gender"

@@ -53,13 +53,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (existing.organizationId) {
     const org = await prisma.organizations.findUnique({
       where: { id: existing.organizationId },
-      select: { ownerId: true, hostIds: true },
+      select: { id: true, ownerId: true },
     });
     if (!org) {
       if (!session.isAdmin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-    } else if (!canManageOrganization(session, org)) {
+    } else if (!(await canManageOrganization(session, org))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
@@ -94,7 +94,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const organization = orgId
     ? await prisma.organizations.findUnique({
         where: { id: orgId },
-        select: { id: true, ownerId: true, hostIds: true, fieldIds: true },
+        select: { id: true, ownerId: true, fieldIds: true },
       })
     : null;
 
@@ -104,7 +104,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
   }
 
-  if (organization && !canManageOrganization(session, organization)) {
+  if (organization && !(await canManageOrganization(session, organization))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

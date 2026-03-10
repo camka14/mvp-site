@@ -35,6 +35,14 @@ const organizationsMock = {
   findUnique: jest.fn(),
 };
 
+const staffMembersMock = {
+  findMany: jest.fn(),
+};
+
+const invitesMock = {
+  findMany: jest.fn(),
+};
+
 const executeRawMock = jest.fn();
 
 const prismaMock = {
@@ -42,6 +50,8 @@ const prismaMock = {
   timeSlots: timeSlotsMock,
   divisions: divisionsMock,
   organizations: organizationsMock,
+  staffMembers: staffMembersMock,
+  invites: invitesMock,
   $transaction: jest.fn(async (callback: any) => callback({
     events: eventsMock,
     timeSlots: timeSlotsMock,
@@ -50,6 +60,8 @@ const prismaMock = {
     divisions: divisionsMock,
     leagueScoringConfigs: leagueScoringConfigsMock,
     organizations: organizationsMock,
+    staffMembers: staffMembersMock,
+    invites: invitesMock,
     $executeRaw: executeRawMock,
   })),
 };
@@ -77,10 +89,13 @@ describe('event PATCH route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     organizationsMock.findUnique.mockResolvedValue({
+      id: 'org_1',
       ownerId: 'owner_1',
       hostIds: ['host_1'],
       refIds: ['ref_1'],
     });
+    staffMembersMock.findMany.mockResolvedValue([]);
+    invitesMock.findMany.mockResolvedValue([]);
   });
 
   it('strips legacy $-prefixed fields and ignores unsupported keys (no legacy mapping)', async () => {

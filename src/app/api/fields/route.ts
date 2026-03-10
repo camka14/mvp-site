@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   const organization = orgId
     ? await prisma.organizations.findUnique({
         where: { id: orgId },
-        select: { id: true, ownerId: true, hostIds: true, fieldIds: true },
+        select: { id: true, ownerId: true, hostIds: true, refIds: true, fieldIds: true },
       })
     : null;
 
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
 
-  if (organization && !canManageOrganization(session, organization)) {
+  if (organization && !(await canManageOrganization(session, organization))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

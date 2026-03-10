@@ -19,6 +19,9 @@ const prismaMock = {
     findFirst: jest.fn(),
     create: jest.fn(),
   },
+  invites: {
+    deleteMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -54,6 +57,7 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
     });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ parentId: 'parent_1' });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
+    prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
   });
 
   it('requires division selection when registering by individual division', async () => {

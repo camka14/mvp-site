@@ -101,7 +101,6 @@ export default function TeamCard({
             <Group gap={6} mt={4}>
               <Text size="sm" c="dimmed">{divisionLabel}</Text>
               {team.sport && <Badge variant="light" color="blue" size="xs">{team.sport}</Badge>}
-              {team.isFull && <Badge variant="light" color="red" size="xs">Full</Badge>}
             </Group>
             <Group gap={6} mt={6}>
               <Badge size="xs" variant="light" color="gray">Team</Badge>

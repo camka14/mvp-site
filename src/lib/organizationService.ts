@@ -2,17 +2,55 @@
 
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
-import type { Event, Field, Organization, Product, Team, UserData } from '@/types';
+import type { Event, Field, Invite, Organization, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
 import { buildPayload } from './utils';
 import { userService } from './userService';
 import { productService } from './productService';
 import { teamService } from './teamService';
+import {
+  deriveOrganizationRoleIds,
+  deriveStaffInviteTypes,
+  getBlockingStaffInvite,
+  normalizeInviteStatus,
+  normalizeInviteType,
+  normalizeStaffMemberTypes,
+} from './staff';
 
 type AnyRow = Record<string, any> & { $id: string };
 
 class OrganizationService {
+  private mapInvite(row: Record<string, unknown>): Invite {
+    return {
+      $id: String(row.$id ?? row.id ?? ''),
+      type: normalizeInviteType(row.type) ?? 'STAFF',
+      email: typeof row.email === 'string' ? row.email : undefined,
+      status: normalizeInviteStatus(row.status) ?? undefined,
+      staffTypes: deriveStaffInviteTypes({ staffTypes: row.staffTypes as Invite['staffTypes'] }, typeof row.type === 'string' ? row.type : null),
+      userId: typeof row.userId === 'string' ? row.userId : null,
+      eventId: typeof row.eventId === 'string' ? row.eventId : null,
+      organizationId: typeof row.organizationId === 'string' ? row.organizationId : null,
+      teamId: typeof row.teamId === 'string' ? row.teamId : null,
+      createdBy: typeof row.createdBy === 'string' ? row.createdBy : null,
+      firstName: typeof row.firstName === 'string' ? row.firstName : undefined,
+      lastName: typeof row.lastName === 'string' ? row.lastName : undefined,
+      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
+      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
+    };
+  }
+
+  private mapStaffMember(row: Record<string, unknown>): StaffMember {
+    return {
+      $id: String(row.$id ?? row.id ?? ''),
+      organizationId: String(row.organizationId ?? ''),
+      userId: String(row.userId ?? ''),
+      types: normalizeStaffMemberTypes(row.types),
+      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
+      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
+    };
+  }
+
   private resolveCoordinates(row: AnyRow): [number, number] | undefined {
     if (Array.isArray(row.coordinates) && row.coordinates.length >= 2) {
       const [lngRaw, latRaw] = row.coordinates;
@@ -58,6 +96,15 @@ class OrganizationService {
         .filter((value) => value.length > 0)
       : undefined;
 
+    const staffInvites = Array.isArray(row.staffInvites)
+      ? row.staffInvites.map((value: unknown) => this.mapInvite(value as Record<string, unknown>))
+      : [];
+    const staffMembers = Array.isArray(row.staffMembers)
+      ? row.staffMembers.map((value: unknown) => this.mapStaffMember(value as Record<string, unknown>))
+      : [];
+    const derivedHostIds = deriveOrganizationRoleIds(staffMembers, staffInvites, 'HOST');
+    const derivedRefIds = deriveOrganizationRoleIds(staffMembers, staffInvites, 'REFEREE');
+
     const organization: Organization = {
       $id: row.$id,
       name: row.name ?? '',
@@ -68,10 +115,18 @@ class OrganizationService {
       location: row.location ?? undefined,
       coordinates: coordinates,
       ownerId: row.ownerId ?? row.owner_id ?? undefined,
-      hostIds,
+      hostIds: staffMembers.length > 0 ? derivedHostIds : hostIds,
       hasStripeAccount: Boolean(row.hasStripeAccount),
       fieldIds,
-      refIds,
+      refIds: staffMembers.length > 0 ? derivedRefIds : refIds,
+      staffMembers,
+      staffInvites,
+      staffEmailsByUserId: row.staffEmailsByUserId && typeof row.staffEmailsByUserId === 'object'
+        ? Object.fromEntries(
+          Object.entries(row.staffEmailsByUserId as Record<string, unknown>)
+            .filter((entry): entry is [string, string] => typeof entry[0] === 'string' && typeof entry[1] === 'string'),
+        )
+        : undefined,
       productIds,
       teamIds,
       $createdAt: row.$createdAt,
@@ -142,6 +197,53 @@ class OrganizationService {
     return (response.organizations ?? []).map((row) => this.mapRowToOrganization(row));
   }
 
+  async getOrganizationsByUser(userId: string): Promise<Organization[]> {
+    const params = new URLSearchParams();
+    params.set('userId', userId);
+    params.set('limit', '100');
+    const response = await apiRequest<{ organizations?: AnyRow[] }>(`/api/organizations?${params.toString()}`);
+    return (response.organizations ?? []).map((row) => this.mapRowToOrganization(row));
+  }
+
+  async updateStaffMemberTypes(organizationId: string, userId: string, types: StaffMemberType[]): Promise<StaffMember> {
+    const response = await apiRequest<{ staffMember: Record<string, unknown> }>(`/api/organizations/${organizationId}/staff`, {
+      method: 'PATCH',
+      body: { userId, types },
+    });
+    return this.mapStaffMember(response.staffMember);
+  }
+
+  async removeStaffMember(organizationId: string, userId: string): Promise<void> {
+    await apiRequest(`/api/organizations/${organizationId}/staff`, {
+      method: 'DELETE',
+      body: { userId },
+    });
+  }
+
+  async inviteExistingStaff(
+    organizationId: string,
+    userId: string,
+    staffTypes: StaffMemberType[],
+  ): Promise<Invite> {
+    const response = await apiRequest<{ invites?: Array<Record<string, unknown>> }>('/api/invites', {
+      method: 'POST',
+      body: {
+        invites: [{
+          type: 'STAFF',
+          organizationId,
+          userId,
+          staffTypes,
+          status: 'PENDING',
+        }],
+      },
+    });
+    const invite = response.invites?.[0];
+    if (!invite) {
+      throw new Error('Failed to create staff invite');
+    }
+    return this.mapInvite(invite);
+  }
+
   async getOrganizationsByIds(ids: string[]): Promise<Organization[]> {
     const organizationIds = ids.filter((id): id is string => typeof id === 'string' && Boolean(id));
     if (!organizationIds.length) return [];
@@ -192,14 +294,10 @@ class OrganizationService {
         : [];
 
       const fieldsPromise = fieldIds.length ? fieldService.listFields({ fieldIds }) : Promise.resolve<Field[]>([]);
-      const refereeIds = Array.isArray(organization.refIds)
-        ? organization.refIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
-        : [];
-      const refereesPromise = refereeIds.length ? userService.getUsersByIds(refereeIds) : Promise.resolve<UserData[]>([]);
-      const hostIds = Array.isArray(organization.hostIds)
-        ? organization.hostIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
-        : [];
-      const hostsPromise = hostIds.length ? userService.getUsersByIds(hostIds) : Promise.resolve<UserData[]>([]);
+      const staffMembers = Array.isArray(organization.staffMembers) ? organization.staffMembers : [];
+      const staffInvites = Array.isArray(organization.staffInvites) ? organization.staffInvites : [];
+      const staffUserIds = Array.from(new Set(staffMembers.map((member) => member.userId).filter(Boolean)));
+      const staffUsersPromise = staffUserIds.length ? userService.getUsersByIds(staffUserIds) : Promise.resolve<UserData[]>([]);
       const ownerPromise = organization.ownerId
         ? userService.getUserById(organization.ownerId)
         : Promise.resolve(undefined);
@@ -217,20 +315,43 @@ class OrganizationService {
         ? teamService.getTeamsByIds(teamIds, true)
         : Promise.resolve<Team[]>([]);
 
-      const [fields, events, referees, hosts, owner, products, teams] = await Promise.all([
+      const [fields, events, staffUsers, owner, products, teams] = await Promise.all([
         fieldsPromise,
         this.fetchEventsByOrganization(organization.$id),
-        refereesPromise,
-        hostsPromise,
+        staffUsersPromise,
         ownerPromise,
         productsPromise,
         teamsPromise,
       ]);
 
+      const staffUsersById = new Map(staffUsers.map((userEntry) => [userEntry.$id, userEntry] as const));
+      const hydratedStaffMembers = staffMembers.map((staffMember) => {
+        const userEntry = staffUsersById.get(staffMember.userId);
+        const invite = getBlockingStaffInvite(staffInvites, staffMember.organizationId, staffMember.userId)
+          ? staffInvites.find((entry) => entry.organizationId === staffMember.organizationId && entry.userId === staffMember.userId) ?? null
+          : null;
+        return {
+          ...staffMember,
+          user: userEntry,
+          invite,
+        };
+      });
+      const activeHostIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'HOST');
+      const activeRefereeIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'REFEREE');
+      const activeHosts = activeHostIds
+        .map((id) => staffUsersById.get(id))
+        .filter((entry): entry is UserData => Boolean(entry));
+      const activeReferees = activeRefereeIds
+        .map((id) => staffUsersById.get(id))
+        .filter((entry): entry is UserData => Boolean(entry));
+
       organization.fields = fields;
       organization.events = events;
-      organization.referees = referees;
-      organization.hosts = hosts;
+      organization.staffMembers = hydratedStaffMembers;
+      organization.hostIds = activeHostIds;
+      organization.refIds = activeRefereeIds;
+      organization.referees = activeReferees;
+      organization.hosts = activeHosts;
       organization.owner = owner;
       organization.products = products;
       organization.teams = teams;

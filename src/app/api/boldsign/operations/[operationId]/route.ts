@@ -56,7 +56,7 @@ export async function GET(
 
     if (!authorized && operation.organizationId) {
       const org = await prisma.organizations.findUnique({ where: { id: operation.organizationId } });
-      authorized = Boolean(org && canManageOrganization(session, org));
+      authorized = Boolean(org && await canManageOrganization(session, org));
     }
 
     if (!authorized) {

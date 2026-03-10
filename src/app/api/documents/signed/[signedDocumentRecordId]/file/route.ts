@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { downloadSignedDocumentPdf, isBoldSignConfigured } from '@/lib/boldsignServer';
+import { canManageOrganization, canRefereeOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,21 +50,23 @@ const hasOrganizationDocumentAccess = async (params: {
 
   const org = await prisma.organizations.findUnique({
     where: { id: organizationId },
-    select: { ownerId: true, hostIds: true, refIds: true },
+    select: { id: true, ownerId: true },
   });
   if (!org) {
     return false;
   }
 
-  if (org.ownerId === params.sessionUserId) {
+  if (await canManageOrganization(
+    { userId: params.sessionUserId, isAdmin: params.isAdmin },
+    org,
+  )) {
     return true;
   }
 
-  if (Array.isArray(org.hostIds) && org.hostIds.includes(params.sessionUserId)) {
-    return true;
-  }
-
-  if (Array.isArray(org.refIds) && org.refIds.includes(params.sessionUserId)) {
+  if (await canRefereeOrganization(
+    { userId: params.sessionUserId, isAdmin: params.isAdmin },
+    org,
+  )) {
     return true;
   }
 

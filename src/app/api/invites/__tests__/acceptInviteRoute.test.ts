@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 const prismaMock = {
   invites: {
     findUnique: jest.fn(),
+    delete: jest.fn(),
   },
   $transaction: jest.fn(),
 };
@@ -25,6 +26,7 @@ describe('POST /api/invites/[id]/accept', () => {
   const txMock = {
     teams: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
     },
     invites: {
@@ -34,39 +36,30 @@ describe('POST /api/invites/[id]/accept', () => {
       findUnique: jest.fn(),
       update: jest.fn(),
     },
+    events: {
+      findMany: jest.fn(),
+    },
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.$transaction.mockImplementation(async (fn: (tx: typeof txMock) => unknown) => fn(txMock));
-  });
-
-  it('handles missing headCoachId column by retrying with coachIds fallback', async () => {
-    prismaMock.invites.findUnique.mockResolvedValue({
-      id: 'invite_1',
-      type: 'team_head_coach',
-      teamId: 'team_1',
-      userId: 'user_1',
-    });
-
-    txMock.teams.findUnique.mockResolvedValue({
-      id: 'team_1',
-      playerIds: ['captain_1'],
-      pending: [],
-      coachIds: ['assistant_existing'],
-    });
-    txMock.teams.update
-      .mockRejectedValueOnce(new Error('Unknown argument `headCoachId`. Available options are marked with ?.'))
-      .mockResolvedValueOnce({
-        id: 'team_1',
-      });
-    txMock.userData.findUnique.mockResolvedValue({
-      id: 'user_1',
-      teamIds: [],
-    });
+    txMock.teams.findMany.mockResolvedValue([]);
+    txMock.events.findMany.mockResolvedValue([]);
+    txMock.userData.findUnique.mockResolvedValue({ id: 'user_1', teamIds: [] });
     txMock.userData.update.mockResolvedValue({ id: 'user_1' });
     txMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
+    prismaMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
+  });
+
+  it('accepts a STAFF invite by deleting it without a transaction', async () => {
+    prismaMock.invites.findUnique.mockResolvedValue({
+      id: 'invite_1',
+      type: 'STAFF',
+      organizationId: 'org_1',
+      userId: 'user_1',
+    });
 
     const response = await POST(
       postRequest(),
@@ -76,21 +69,57 @@ describe('POST /api/invites/[id]/accept', () => {
 
     expect(response.status).toBe(200);
     expect(payload.ok).toBe(true);
-    expect(txMock.teams.update).toHaveBeenCalledTimes(2);
-
-    const firstUpdateCall = txMock.teams.update.mock.calls[0][0];
-    expect(firstUpdateCall.data.headCoachId).toBe('user_1');
-
-    const secondUpdateCall = txMock.teams.update.mock.calls[1][0];
-    expect(secondUpdateCall.data.headCoachId).toBeUndefined();
-    expect(secondUpdateCall.data.coachIds).toEqual(['assistant_existing', 'user_1']);
+    expect(prismaMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it('returns 400 when invite type is not a team membership role', async () => {
+  it('accepts a TEAM player invite by moving the user out of pending and deleting the invite', async () => {
     prismaMock.invites.findUnique.mockResolvedValue({
       id: 'invite_1',
-      type: 'host',
+      type: 'TEAM',
       teamId: 'team_1',
+      userId: 'user_1',
+    });
+
+    txMock.teams.findUnique.mockResolvedValue({
+      id: 'team_1',
+      playerIds: ['captain_1'],
+      pending: ['user_1'],
+    });
+
+    txMock.teams.update.mockResolvedValue({ id: 'team_1' });
+
+    const response = await POST(
+      postRequest(),
+      { params: Promise.resolve({ id: 'invite_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(txMock.teams.update).toHaveBeenCalledWith({
+      where: { id: 'team_1' },
+      data: {
+        playerIds: ['captain_1', 'user_1'],
+        pending: [],
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(txMock.userData.update).toHaveBeenCalledWith({
+      where: { id: 'user_1' },
+      data: {
+        teamIds: ['team_1'],
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(txMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
+  });
+
+  it('returns 400 when invite type is not a staff or team invite', async () => {
+    prismaMock.invites.findUnique.mockResolvedValue({
+      id: 'invite_1',
+      type: 'EVENT',
+      eventId: 'event_1',
       userId: 'user_1',
     });
 

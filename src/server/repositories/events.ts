@@ -2255,6 +2255,27 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       },
     })
     : null;
+  const organizationStaffMembers = resolvedOrganizationId && client.staffMembers?.findMany
+    ? await client.staffMembers.findMany({
+      where: { organizationId: resolvedOrganizationId },
+      select: {
+        organizationId: true,
+        userId: true,
+        types: true,
+      },
+    })
+    : [];
+  const organizationStaffInvites = resolvedOrganizationId && client.invites?.findMany
+    ? await client.invites.findMany({
+      where: { organizationId: resolvedOrganizationId, type: 'STAFF' },
+      select: {
+        organizationId: true,
+        userId: true,
+        type: true,
+        status: true,
+      },
+    })
+    : [];
   const organizationAssignments = resolvedOrganizationId
     ? sanitizeOrganizationEventAssignments(
       {
@@ -2262,7 +2283,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         assistantHostIds: ensureStringArray(payload.assistantHostIds),
         refereeIds: ensureStringArray(payload.refereeIds),
       },
-      organizationAccess,
+      organizationAccess ? { ...organizationAccess, staffMembers: organizationStaffMembers, staffInvites: organizationStaffInvites } : null,
     )
     : null;
   const normalizedHostId = organizationAssignments?.hostId ?? resolvedHostId ?? '';

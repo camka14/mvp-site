@@ -11,6 +11,12 @@ const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
   },
+  staffMembers: {
+    findUnique: jest.fn(),
+  },
+  invites: {
+    findMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -39,6 +45,8 @@ describe('PATCH /api/users/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.staffMembers.findUnique.mockResolvedValue(null);
+    prismaMock.invites.findMany.mockResolvedValue([]);
   });
 
   it('returns 409 when requested username already exists for a different user', async () => {
@@ -82,8 +90,6 @@ describe('PATCH /api/users/[id]', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'other_user',
-      hostIds: ['host_1'],
-      refIds: ['ref_1'],
     });
 
     const response = await patchUserById(
@@ -101,8 +107,11 @@ describe('PATCH /api/users/[id]', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'other_user',
-      hostIds: ['user_1'],
-      refIds: [],
+    });
+    prismaMock.staffMembers.findUnique.mockResolvedValue({
+      organizationId: 'org_1',
+      userId: 'user_1',
+      types: ['HOST'],
     });
     prismaMock.userData.update.mockResolvedValue({
       id: 'user_1',

@@ -150,6 +150,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       ...(consentDispatch?.errors ?? []),
     ].filter((value) => value.trim().length > 0);
 
+    await prisma.invites?.deleteMany?.({
+      where: {
+        type: 'EVENT',
+        eventId,
+        userId: childId,
+      },
+    });
+
     return NextResponse.json({
       registration: withLegacyFields(existingRegistration),
       consent: needsConsent
@@ -192,6 +200,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       : []),
     ...(consentDispatch?.errors ?? []),
   ].filter((value) => value.trim().length > 0);
+
+  await prisma.invites?.deleteMany?.({
+    where: {
+      type: 'EVENT',
+      eventId,
+      userId: childId,
+    },
+  });
 
   return NextResponse.json({
     registration: withLegacyFields(registration),

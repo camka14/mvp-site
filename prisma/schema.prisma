@@ -237,6 +237,7 @@ model Invites {
   type           String
   email          String
   status         String?
+  staffTypes     String[]  @default([])
   eventId        String?
   organizationId String?
   teamId         String?
@@ -244,6 +245,19 @@ model Invites {
   createdBy      String?
   firstName      String?
   lastName       String?
+}
+
+model StaffMembers {
+  id             String    @id
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  organizationId String
+  userId         String
+  types          String[]  @default([])
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
 }
 
 model Teams {

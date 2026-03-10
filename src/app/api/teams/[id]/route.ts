@@ -309,16 +309,40 @@ const createTeamWithCompatibility = async (
 
 const hasOrganizationTeamManagementAccess = async (teamId: string, userId: string): Promise<boolean> => {
   if (!teamId || !userId) return false;
-  const count = await prisma.organizations.count({
-    where: {
-      teamIds: { has: teamId },
-      OR: [
-        { ownerId: userId },
-        { hostIds: { has: userId } },
-      ],
-    },
+  const organization = await prisma.organizations.findFirst({
+    where: { teamIds: { has: teamId } },
+    select: { id: true, ownerId: true },
   });
-  return count > 0;
+  if (!organization) {
+    return false;
+  }
+  if (organization.ownerId === userId) {
+    return true;
+  }
+  const staffMember = await prisma.staffMembers.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId: organization.id,
+        userId,
+      },
+    },
+    select: { types: true },
+  });
+  if (!staffMember || !Array.isArray(staffMember.types)) {
+    return false;
+  }
+  if (!staffMember.types.some((type) => type === 'HOST' || type === 'STAFF')) {
+    return false;
+  }
+  const blockingInvite = await prisma.invites.findFirst({
+    where: {
+      organizationId: organization.id,
+      userId,
+      type: 'STAFF',
+    },
+    select: { id: true },
+  });
+  return !blockingInvite;
 };
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -362,7 +386,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const isCaptain = existing.captainId === session.userId;
   const isManager = normalizeText((existing as any).managerId) === session.userId;
-  const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session.userId);
+  const isOrganizationManager = (!session.isAdmin && !isCaptain && !isManager)
+    ? await hasOrganizationTeamManagementAccess(id, session.userId)
+    : false;
   if (!session.isAdmin && !isCaptain && !isManager && !isOrganizationManager) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

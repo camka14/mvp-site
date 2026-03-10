@@ -106,28 +106,13 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
         });
       }
 
-      return { id: invite.id, status: 'sent' };
+      return { id: invite.id, status: invite.status ?? 'PENDING' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Failed to send invite email', { inviteId: invite.id, error: message });
-      return { id: invite.id, status: 'failed' };
+      return { id: invite.id, status: invite.status ?? 'PENDING' };
     }
   }));
-
-  const statusUpdates = results.filter((result) => result.status === 'sent' || result.status === 'failed');
-  if (statusUpdates.length) {
-    await Promise.all(statusUpdates.map((update) => (
-      prisma.invites.update({
-        where: { id: update.id },
-        data: { status: update.status },
-      })
-    )));
-  }
-
-  const statusMap = new Map(statusUpdates.map((update) => [update.id, update.status]));
-  return invites.map((invite) => {
-    const nextStatus = statusMap.get(invite.id);
-    if (!nextStatus) return invite;
-    return { ...invite, status: nextStatus };
-  });
+  const statusMap = new Map(results.map((update) => [update.id, update.status]));
+  return invites.map((invite) => ({ ...invite, status: statusMap.get(invite.id) ?? invite.status }));
 };

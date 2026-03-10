@@ -1,14 +1,11 @@
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
-import { InviteType, Team, UserData, getTeamAvatarUrl } from '@/types';
+import { Team, UserData, getTeamAvatarUrl } from '@/types';
 import { userService } from './userService';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
-export type TeamInviteRoleType = Extract<
-    InviteType,
-    'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach'
->;
+export type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
 
 class TeamService {
     async getTeamById(id: string, includeRelations: boolean = false): Promise<Team | undefined> {

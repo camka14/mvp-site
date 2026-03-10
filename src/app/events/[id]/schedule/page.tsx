@@ -23,6 +23,7 @@ import { boldsignService, type SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService } from '@/lib/familyService';
 import { apiRequest } from '@/lib/apiClient';
+import { hasStaffMemberType } from '@/lib/staff';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { calculateMvpAndStripeFees } from '@/lib/billingFees';
@@ -1625,7 +1626,11 @@ function EventScheduleContent() {
       && activeOrganization
       && (
         activeOrganization.ownerId === user.$id
-        || (Array.isArray(activeOrganization.hostIds) && activeOrganization.hostIds.includes(user.$id))
+        || (activeOrganization.staffMembers ?? []).some((staffMember) => (
+          staffMember.userId === user.$id
+            && !staffMember.invite
+            && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
+        ))
       ),
   );
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);

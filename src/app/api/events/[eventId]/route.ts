@@ -1437,14 +1437,37 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       const nextOrganizationId = normalizeEntityId(data.organizationId ?? existing.organizationId ?? null);
       if (nextOrganizationId) {
-        const organizationAccess = await tx.organizations.findUnique({
-          where: { id: nextOrganizationId },
-          select: {
-            ownerId: true,
-            hostIds: true,
-            refIds: true,
-          },
-        });
+        const [organizationAccess, staffMembers, staffInvites] = await Promise.all([
+          tx.organizations.findUnique({
+            where: { id: nextOrganizationId },
+            select: {
+              ownerId: true,
+              hostIds: true,
+              refIds: true,
+            },
+          }),
+          tx.staffMembers?.findMany
+            ? tx.staffMembers.findMany({
+              where: { organizationId: nextOrganizationId },
+              select: {
+                organizationId: true,
+                userId: true,
+                types: true,
+              },
+            })
+            : Promise.resolve([]),
+          tx.invites?.findMany
+            ? tx.invites.findMany({
+              where: { organizationId: nextOrganizationId, type: 'STAFF' },
+              select: {
+                organizationId: true,
+                userId: true,
+                type: true,
+                status: true,
+              },
+            })
+            : Promise.resolve([]),
+        ]);
         if (!organizationAccess) {
           throw new Response('Organization not found', { status: 400 });
         }
@@ -1462,7 +1485,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
                 : existing.refereeIds
             ) as string[] | null | undefined,
           },
-          organizationAccess,
+          { ...organizationAccess, staffMembers, staffInvites },
         );
         data.hostId = sanitizedAssignments.hostId ?? normalizeEntityId(existing.hostId) ?? '';
         data.assistantHostIds = sanitizedAssignments.assistantHostIds;
