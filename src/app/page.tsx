@@ -263,9 +263,9 @@ export default function HomePage() {
             <Image
               src="/bracketiq-shield.svg"
               alt="BracketIQ shield logo"
-              width={36}
-              height={36}
-              className="h-9 w-9"
+              width={40}
+              height={40}
+              className="h-10 w-10"
               priority
             />
             <span>BracketIQ</span>

@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Group, Modal, MultiSelect, NumberInput, Select, Stack, Switch, Text } from '@mantine/core';
+import { Button, Group, Modal, MultiSelect, Select, Stack, Switch, Text } from '@mantine/core';
 import { DatePickerInput, TimeInput } from '@mantine/dates';
 import type { Field, TimeSlot } from '@/types';
 import { fieldService, type ManageRentalSlotResult } from '@/lib/fieldService';
 import { apiRequest } from '@/lib/apiClient';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import CentsInput from '@/components/ui/CentsInput';
+import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 
 interface CreateRentalSlotModalProps {
   opened: boolean;
@@ -128,7 +130,7 @@ export default function CreateRentalSlotModal({
   const [startTime, setStartTime] = useState<string>(toTimeValue(now));
   const [endTime, setEndTime] = useState<string>(toTimeValue(defaultEnd));
   const [repeating, setRepeating] = useState<boolean>(false);
-  const [price, setPrice] = useState<number | null>(null);
+  const [price, setPrice] = useState<number>(0);
   const [requiredTemplateIds, setRequiredTemplateIds] = useState<string[]>([]);
   const [rentalDocumentTemplateId, setRentalDocumentTemplateId] = useState<string | null>(null);
   const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -170,8 +172,8 @@ export default function CreateRentalSlotModal({
       setRepeating(Boolean(slot.repeating));
       setPrice(
         organizationHasStripeAccount && typeof slot.price === 'number'
-          ? slot.price / 100
-          : null,
+          ? slot.price
+          : 0,
       );
       setRequiredTemplateIds(
         Array.isArray(slot.requiredTemplateIds)
@@ -200,7 +202,7 @@ export default function CreateRentalSlotModal({
       setStartTime(toTimeValue(rangeStart));
       setEndTime(toTimeValue(rangeEnd));
       setRepeating(true);
-      setPrice(null);
+      setPrice(0);
       setRequiredTemplateIds([]);
       setRentalDocumentTemplateId(null);
       return;
@@ -215,7 +217,7 @@ export default function CreateRentalSlotModal({
     setStartTime(toTimeValue(baseDate));
     setEndTime(toTimeValue(baseEnd));
     setRepeating(false);
-    setPrice(null);
+    setPrice(0);
     setRequiredTemplateIds([]);
     setRentalDocumentTemplateId(null);
   }, [opened, slot, initialRange, organizationHasStripeAccount]);
@@ -271,7 +273,7 @@ export default function CreateRentalSlotModal({
 
   useEffect(() => {
     if (!organizationHasStripeAccount) {
-      setPrice(null);
+      setPrice(0);
     }
   }, [organizationHasStripeAccount]);
 
@@ -403,10 +405,7 @@ export default function CreateRentalSlotModal({
         endTimeMinutes: repeating && endMinutes !== null ? endMinutes : undefined,
         requiredTemplateIds,
         rentalDocumentTemplateId: rentalDocumentTemplateId ?? null,
-        price:
-          organizationHasStripeAccount && price !== null
-            ? Math.round(price * 100)
-            : undefined,
+        price: organizationHasStripeAccount ? price : (slot?.price ?? 0),
       };
 
       let result: ManageRentalSlotResult;
@@ -421,7 +420,7 @@ export default function CreateRentalSlotModal({
           endTimeMinutes: payload.endTimeMinutes,
           requiredTemplateIds: payload.requiredTemplateIds,
           rentalDocumentTemplateId: payload.rentalDocumentTemplateId ?? null,
-          price: organizationHasStripeAccount ? payload.price : undefined,
+          price: organizationHasStripeAccount ? payload.price : (slot.price ?? 0),
         };
         result = await fieldService.updateRentalSlot(field, updatePayload);
       } else {
@@ -502,29 +501,19 @@ export default function CreateRentalSlotModal({
           )}
 
           <div>
-            <NumberInput
-              label="Price (optional, USD)"
-              value={organizationHasStripeAccount ? price ?? undefined : undefined}
-              onChange={(val) => {
+            <CentsInput
+              label="Price (optional)"
+              value={organizationHasStripeAccount ? price : 0}
+              onChange={(nextValue) => {
                 if (!organizationHasStripeAccount) {
-                  setPrice(null);
+                  setPrice(0);
                   return;
                 }
-                if (typeof val === 'number') {
-                  setPrice(val);
-                  return;
-                }
-                if (val === '' || val === null || val === undefined) {
-                  setPrice(null);
-                  return;
-                }
-                const numeric = Number(val);
-                setPrice(Number.isFinite(numeric) ? numeric : null);
+                setPrice(nextValue);
               }}
-              min={0}
-              step={1}
               disabled={!field || !organizationHasStripeAccount}
             />
+            <PriceWithFeesPreview amountCents={organizationHasStripeAccount ? price : 0} />
             {!organizationHasStripeAccount && (
               <Text size="xs" c="dimmed" mt={4}>
                 Connect a Stripe account to charge for rentals.

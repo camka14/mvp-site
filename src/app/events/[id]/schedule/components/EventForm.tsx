@@ -7,7 +7,7 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument, formatBillAmount, formatPrice } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -39,6 +39,8 @@ import { resolveTournamentSetMode } from './tournamentSetMode';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import { hasExternalRentalFieldForEvent } from './externalRentalField';
+import CentsInput from '@/components/ui/CentsInput';
+import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import UserCard from '@/components/ui/UserCard';
 import {
     buildDivisionName,
@@ -55,6 +57,7 @@ import {
     getRequiredSignerTypeLabel,
     normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
+import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -101,6 +104,7 @@ const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX }
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STANDARD_NUMBER = 99_999;
 const MAX_PRICE_NUMBER = 9_999_999;
+const MAX_PRICE_CENTS = MAX_PRICE_NUMBER * 100;
 const SECTION_SCROLL_OFFSET = 140;
 const SECTION_ANIMATION_DURATION_MS = 220;
 const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
@@ -330,7 +334,7 @@ type DivisionDetailForm = {
     skillDivisionTypeName: string;
     ageDivisionTypeId: string;
     ageDivisionTypeName: string;
-    // Stored as dollars in the form; converted to cents in API payloads.
+    // Stored as integer cents throughout the form state.
     price: number;
     maxParticipants: number;
     playoffTeamCount?: number;
@@ -338,6 +342,7 @@ type DivisionDetailForm = {
     allowPaymentPlans: boolean;
     installmentCount?: number;
     installmentDueDates: string[];
+    // Stored as integer cents throughout the form state.
     installmentAmounts: number[];
     sportId?: string;
     fieldIds?: string[];
@@ -1176,23 +1181,7 @@ const normalizeBoolean = (value: unknown): boolean | undefined => {
     return undefined;
 };
 
-// Helpers to move between UI dollars and API cents for installment amounts.
-const normalizeInstallmentDollars = (amounts: unknown): number[] => {
-    if (!Array.isArray(amounts)) return [];
-    return amounts.map((amount) => {
-        const parsed = typeof amount === 'number' ? amount : Number(amount);
-        return Number.isFinite(parsed) ? parsed / 100 : 0;
-    });
-};
-
-const normalizeInstallmentCents = (amounts: unknown): number[] => {
-    if (!Array.isArray(amounts)) return [];
-    return amounts.map((amount) => {
-        const parsed = typeof amount === 'number' ? amount : Number(amount);
-        const safe = Number.isFinite(parsed) ? parsed : 0;
-        return Math.round(Math.max(0, safe) * 100);
-    });
-};
+const normalizeInstallmentAmounts = (amounts: unknown): number[] => normalizePriceCentsArray(amounts);
 
 const normalizeInstallmentDates = (dates: unknown): string[] => {
     if (!Array.isArray(dates)) return [];
@@ -1346,7 +1335,7 @@ const normalizeDivisionDetailEntry = (
     eventId: string,
     sportInput?: string | null,
     referenceDate?: Date | null,
-    priceStoredInCents: boolean = true,
+    valuesStoredInCents: boolean = true,
 ): DivisionDetailForm | null => {
     if (!entry || typeof entry !== 'object') {
         return null;
@@ -1418,12 +1407,9 @@ const normalizeDivisionDetailEntry = (
     const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
         ? row.installmentAmounts.map((value) => {
             const parsed = typeof value === 'number' ? value : Number(value);
-            if (!Number.isFinite(parsed)) {
-                return 0;
-            }
-            return priceStoredInCents
-                ? Math.max(0, parsed) / 100
-                : Math.max(0, parsed);
+            return valuesStoredInCents
+                ? normalizePriceCents(parsed)
+                : normalizePriceCents(Number.isFinite(parsed) ? parsed * 100 : 0);
         })
         : [];
     const rawInstallmentDueDates = normalizeInstallmentDates(row.installmentDueDates);
@@ -1444,9 +1430,9 @@ const normalizeDivisionDetailEntry = (
         skillDivisionTypeName,
         ageDivisionTypeId,
         ageDivisionTypeName,
-        price: priceStoredInCents
-            ? Math.max(0, rawDivisionPriceCents) / 100
-            : Math.max(0, rawDivisionPriceCents),
+        price: valuesStoredInCents
+            ? normalizePriceCents(rawDivisionPriceCents)
+            : normalizePriceCents(rawDivisionPriceCents * 100),
         maxParticipants: Math.max(2, Math.trunc(rawDivisionMaxParticipants)),
         playoffTeamCount: Number.isFinite(rawDivisionPlayoffTeamCount)
             ? Math.max(2, Math.trunc(rawDivisionPlayoffTeamCount as number))
@@ -1643,7 +1629,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         ? ((event.sport as Sport).name || (event.sport as Sport).$id || '')
         : resolvedSportId) || '';
     const divisionReferenceDate = parseDateValue(event.start ?? null);
-    const defaultEventInstallmentAmounts = normalizeInstallmentDollars(event.installmentAmounts);
+    const defaultEventInstallmentAmounts = normalizeInstallmentAmounts(event.installmentAmounts);
     const defaultEventInstallmentDueDates = Array.isArray(event.installmentDueDates)
         ? event.installmentDueDates.map((value) => String(value))
         : [];
@@ -1717,7 +1703,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
                 skillDivisionTypeName,
                 ageDivisionTypeId,
                 ageDivisionTypeName,
-                price: Number.isFinite(event.price) ? (event.price as number) / 100 : 0,
+                price: normalizePriceCents(event.price),
                 maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
                 playoffTeamCount: Number.isFinite(event.playoffTeamCount)
                     ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
@@ -1760,9 +1746,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         kind: detail.kind === 'PLAYOFF' ? 'PLAYOFF' : 'LEAGUE',
         price: Number.isFinite(detail.price)
             ? Math.max(0, detail.price)
-            : Number.isFinite(event.price)
-                ? (event.price as number) / 100
-                : 0,
+            : normalizePriceCents(event.price),
         maxParticipants: Number.isFinite(detail.maxParticipants)
             ? Math.max(2, Math.trunc(detail.maxParticipants))
             : Number.isFinite(event.maxParticipants)
@@ -1778,12 +1762,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
             ? detail.allowPaymentPlans
             : defaultEventAllowPaymentPlans,
         installmentAmounts: (() => {
-            const divisionInstallments = Array.isArray(detail.installmentAmounts)
-                ? detail.installmentAmounts.map((value) => {
-                    const parsed = typeof value === 'number' ? value : Number(value);
-                    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-                })
-                : [];
+            const divisionInstallments = normalizeInstallmentAmounts(detail.installmentAmounts);
             if (detail.allowPaymentPlans) {
                 return divisionInstallments;
             }
@@ -1849,13 +1828,11 @@ const mapEventToFormState = (event: Event): EventFormState => {
     sportConfig: event.sport && typeof event.sport === 'object'
         ? { ...(event.sport as Sport) }
         : null,
-    // Stored in cents in the backend; convert to dollars for the form UI.
-    price: Number.isFinite(event.price) ? (event.price as number) / 100 : 0,
+    price: normalizePriceCents(event.price),
     minAge: Number.isFinite(event.minAge) ? event.minAge : undefined,
     maxAge: Number.isFinite(event.maxAge) ? event.maxAge : undefined,
     allowPaymentPlans: Boolean(event.allowPaymentPlans),
-    // Stored in cents in the backend; convert to dollars for the form UI.
-    installmentAmounts: normalizeInstallmentDollars(event.installmentAmounts),
+    installmentAmounts: normalizeInstallmentAmounts(event.installmentAmounts),
     installmentCount: (() => {
         const amounts = Array.isArray(event.installmentAmounts) ? event.installmentAmounts as number[] : [];
         return Number.isFinite(event.installmentCount) ? (event.installmentCount as number) : (amounts.length || 0);
@@ -1982,13 +1959,13 @@ const eventFormSchema = z
         eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE']),
         sportId: z.string().trim(),
         sportConfig: z.any().nullable(),
-        price: z.number().min(0, 'Price must be at least 0'),
+        price: z.number().int().min(0, 'Price must be at least 0'),
         minAge: z.number().int().min(0).optional(),
         maxAge: z.number().int().min(0).optional(),
         allowPaymentPlans: z.boolean().default(false),
         installmentCount: z.number().int().min(0).default(0),
         installmentDueDates: z.array(z.string()).default([]),
-        installmentAmounts: z.array(z.number().min(0)).default([]),
+        installmentAmounts: z.array(z.number().int().min(0)).default([]),
         allowTeamSplitDefault: z.boolean().default(false),
         maxParticipants: z.number().min(2, 'Enter at least 2'),
         teamSizeLimit: z.number().min(1, 'Enter at least 1'),
@@ -2011,14 +1988,14 @@ const eventFormSchema = z
                 skillDivisionTypeName: z.string().trim().min(1),
                 ageDivisionTypeId: z.string().trim().min(1),
                 ageDivisionTypeName: z.string().trim().min(1),
-                price: z.number().min(0),
+                price: z.number().int().min(0),
                 maxParticipants: z.number().int().min(2),
                 playoffTeamCount: z.number().optional(),
                 playoffPlacementDivisionIds: z.array(z.string()).optional(),
                 allowPaymentPlans: z.boolean().default(false),
                 installmentCount: z.number().int().min(0).default(0),
                 installmentDueDates: z.array(z.string()).default([]),
-                installmentAmounts: z.array(z.number().min(0)).default([]),
+                installmentAmounts: z.array(z.number().int().min(0)).default([]),
                 sportId: z.string().optional(),
                 fieldIds: z.array(z.string()).optional(),
                 ageCutoffDate: z.string().optional(),
@@ -2149,7 +2126,7 @@ const eventFormSchema = z
                 });
             }
             const total = amounts.reduce((sum, amt) => sum + (Number.isFinite(amt) ? Number(amt) : 0), 0);
-            if (values.price > 0 && Math.round(total * 100) !== Math.round(values.price * 100)) {
+            if (values.price > 0 && total !== values.price) {
                 ctx.addIssue({
                     code: "custom",
                     message: 'Installment amounts must add up to the event price',
@@ -2188,7 +2165,7 @@ const eventFormSchema = z
                     });
                 }
                 const total = amounts.reduce((sum, amount) => sum + (Number.isFinite(amount) ? Number(amount) : 0), 0);
-                if (detail.price > 0 && Math.round(total * 100) !== Math.round(detail.price * 100)) {
+                if (detail.price > 0 && total !== detail.price) {
                     ctx.addIssue({
                         code: 'custom',
                         message: 'Division installment amounts must add up to the division price',
@@ -2547,8 +2524,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (defaults.leagueScoringConfig && typeof defaults.leagueScoringConfig === 'object') {
             next.leagueScoringConfig = createLeagueScoringConfig(defaults.leagueScoringConfig as Partial<LeagueScoringConfig>);
         }
-        // Immutable defaults store price in cents; normalize to dollars for UI.
-        if (typeof defaults.price === 'number') next.price = defaults.price / 100;
+        if (typeof defaults.price === 'number') next.price = normalizePriceCents(defaults.price);
         if (typeof defaults.minAge === 'number') next.minAge = defaults.minAge;
         if (typeof defaults.maxAge === 'number') next.maxAge = defaults.maxAge;
         if (typeof defaults.maxParticipants === 'number') next.maxParticipants = defaults.maxParticipants;
@@ -2644,11 +2620,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     allowPaymentPlans: Boolean((defaults as any).allowPaymentPlans),
                     installmentCount: Number.isFinite((defaults as any).installmentCount)
                         ? Math.max(0, Math.trunc((defaults as any).installmentCount))
-                        : normalizeInstallmentDollars((defaults as any).installmentAmounts).length,
+                        : normalizeInstallmentAmounts((defaults as any).installmentAmounts).length,
                     installmentDueDates: Array.isArray((defaults as any).installmentDueDates)
                         ? (defaults as any).installmentDueDates.map((value: unknown) => String(value))
                         : [],
-                    installmentAmounts: normalizeInstallmentDollars((defaults as any).installmentAmounts),
+                    installmentAmounts: normalizeInstallmentAmounts((defaults as any).installmentAmounts),
                     sportId: resolveSportInput(next.sportConfig ?? next.sportId) || undefined,
                     fieldIds: [],
                 }, resolveSportInput(next.sportConfig ?? next.sportId), parseDateValue(next.start ?? null));
@@ -3357,7 +3333,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         (index: number, value: number) => {
             const amounts = [...(getValues('installmentAmounts') || [])];
             if (index >= amounts.length) return;
-            amounts[index] = Number.isFinite(value) ? Number(value) : 0;
+            amounts[index] = normalizePriceCents(value);
             setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
@@ -3426,7 +3402,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (index < 0 || index >= amounts.length) {
                 return prev;
             }
-            amounts[index] = Number.isFinite(value) ? Math.max(0, value) : 0;
+            amounts[index] = normalizePriceCents(value);
             return {
                 ...prev,
                 installmentAmounts: amounts,
@@ -4383,7 +4359,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const resetDivisionEditor = useCallback(() => {
         const defaultInstallmentAmounts = eventData.allowPaymentPlans
-            ? (eventData.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+            ? normalizeInstallmentAmounts(eventData.installmentAmounts)
             : [];
         const defaultInstallmentDueDates = eventData.allowPaymentPlans
             ? [...(eventData.installmentDueDates || [])]
@@ -4529,7 +4505,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             resolveSportInput(eventData.sportConfig ?? eventData.sportId),
         );
         const defaultInstallmentAmounts = eventData.allowPaymentPlans
-            ? (eventData.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+            ? normalizeInstallmentAmounts(eventData.installmentAmounts)
             : [];
         const defaultInstallmentDueDates = eventData.allowPaymentPlans
             ? [...(eventData.installmentDueDates || [])]
@@ -4540,7 +4516,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const detailInstallmentAmounts = detailAllowPaymentPlans
             ? ((detail.installmentAmounts?.length
                 ? detail.installmentAmounts
-                : defaultInstallmentAmounts).map((value) => Math.max(0, Number(value) || 0)))
+                : defaultInstallmentAmounts).map((value) => normalizePriceCents(value)))
             : [];
         const detailInstallmentDueDates = detailAllowPaymentPlans
             ? (detail.installmentDueDates?.length
@@ -4644,8 +4620,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             : Boolean(divisionEditor.allowPaymentPlans);
         const normalizedDivisionInstallmentAmounts = normalizedDivisionAllowPaymentPlans
             ? (eventData.singleDivision
-                ? (eventData.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
-                : (divisionEditor.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0)))
+                ? normalizeInstallmentAmounts(eventData.installmentAmounts)
+                : normalizeInstallmentAmounts(divisionEditor.installmentAmounts))
             : [];
         const normalizedDivisionInstallmentDueDates = normalizedDivisionAllowPaymentPlans
             ? (eventData.singleDivision
@@ -4721,7 +4697,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             );
             if (
                 normalizedDivisionPrice > 0
-                && Math.round(total * 100) !== Math.round(normalizedDivisionPrice * 100)
+                && total !== normalizedDivisionPrice
             ) {
                 setDivisionEditor((prev) => ({
                     ...prev,
@@ -6097,10 +6073,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         };
 
         const pricingEnabled = hasStripeAccount;
-        const eventPriceDollars = pricingEnabled ? Math.max(0, source.price || 0) : 0;
+        const eventPriceCents = pricingEnabled ? normalizePriceCents(source.price) : 0;
         const eventAllowPaymentPlans = pricingEnabled ? Boolean(source.allowPaymentPlans) : false;
         const installmentAmountsCents = eventAllowPaymentPlans
-            ? normalizeInstallmentCents(source.installmentAmounts)
+            ? normalizeInstallmentAmounts(source.installmentAmounts)
             : [];
         const minAge = normalizeNumber(source.minAge);
         const maxAge = normalizeNumber(source.maxAge);
@@ -6114,7 +6090,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         source.$id,
                         sportInput,
                         divisionReferenceDate,
-                        false,
                     ))
                     .filter((entry): entry is DivisionDetailForm => Boolean(entry))
                 : [];
@@ -6162,7 +6137,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     skillDivisionTypeName,
                     ageDivisionTypeId,
                     ageDivisionTypeName,
-                    price: eventPriceDollars,
+                    price: eventPriceCents,
                     maxParticipants: Math.max(2, Math.trunc(source.maxParticipants || 2)),
                     playoffTeamCount: Number.isFinite(source.leagueData?.playoffTeamCount)
                         ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
@@ -6174,7 +6149,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         : 0,
                     installmentDueDates: eventAllowPaymentPlans ? [...(source.installmentDueDates || [])] : [],
                     installmentAmounts: eventAllowPaymentPlans
-                        ? (source.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+                        ? normalizeInstallmentAmounts(source.installmentAmounts)
                         : [],
                     sportId: sportInput || undefined,
                     fieldIds: [],
@@ -6226,8 +6201,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             price: pricingEnabled
                 ? (
                     singleDivisionEnabled
-                        ? eventPriceDollars
-                        : Math.max(0, detail.price || 0)
+                        ? eventPriceCents
+                        : normalizePriceCents(detail.price)
                 )
                 : 0,
             maxParticipants: singleDivisionEnabled
@@ -6286,13 +6261,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
                 if (singleDivisionEnabled) {
                     return eventAllowPaymentPlans
-                        ? (source.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0))
+                        ? normalizeInstallmentAmounts(source.installmentAmounts)
                         : [];
                 }
                 if (!detail.allowPaymentPlans) {
                     return [];
                 }
-                return (detail.installmentAmounts || []).map((value) => Math.max(0, Number(value) || 0));
+                return normalizeInstallmentAmounts(detail.installmentAmounts);
             })(),
             installmentDueDates: (() => {
                 if (!pricingEnabled) {
@@ -6376,8 +6351,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ) ? Boolean(source.noFixedEndDateTime) : false,
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
-            // Backend stores price in cents; convert dollars from the form to cents before saving.
-            price: Math.round(eventPriceDollars * 100),
+            price: eventPriceCents,
             minAge,
             maxAge,
             allowPaymentPlans: eventAllowPaymentPlans,
@@ -6396,8 +6370,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             divisions: normalizedDivisionKeys,
             divisionDetails: normalizedDivisionDetailsForPayload.map((detail) => ({
                 ...detail,
-                // Persist division pricing in cents to match event-level pricing semantics.
-                price: Math.round(Math.max(0, detail.price || 0) * 100),
+                price: normalizePriceCents(detail.price),
                 maxParticipants: Math.max(2, Math.trunc(detail.maxParticipants || 2)),
                 playoffTeamCount: Number.isFinite(detail.playoffTeamCount)
                     ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
@@ -6407,7 +6380,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     ? (detail.installmentCount || detail.installmentAmounts.length || 0)
                     : 0,
                 installmentAmounts: detail.allowPaymentPlans
-                    ? normalizeInstallmentCents(detail.installmentAmounts)
+                    ? normalizeInstallmentAmounts(detail.installmentAmounts)
                     : [],
                 installmentDueDates: detail.allowPaymentPlans
                     ? (Array.isArray(detail.installmentDueDates)
@@ -7498,23 +7471,25 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         name="price"
                                         control={control}
                                         render={({ field }) => (
-                                            <NumberInput
-                                                label={eventData.singleDivision ? 'Price ($)' : 'Default Price ($)'}
-                                                min={0}
-                                                max={MAX_PRICE_NUMBER}
-                                                step={0.01}
+                                            <CentsInput
+                                                label={eventData.singleDivision ? 'Price' : 'Default Price'}
+                                                maxCents={MAX_PRICE_CENTS}
                                                 value={field.value}
                                                 maw={220}
-                                                clampBehavior="strict"
-                                                onChange={(val) => {
+                                                onChange={(nextValue) => {
                                                     if (isImmutableField('price')) return;
-                                                    field.onChange(Number(val) || 0);
+                                                    field.onChange(nextValue);
                                                 }}
                                                 disabled={!hasStripeAccount || isImmutableField('price')}
-                                                decimalScale={2}
-                                                fixedDecimalScale
                                             />
                                         )}
+                                    />
+                                    <PriceWithFeesPreview
+                                        amountCents={eventData.price}
+                                        eventType={eventData.eventType}
+                                        helperText={!eventData.singleDivision
+                                            ? 'Used as the base price for new divisions before fees.'
+                                            : null}
                                     />
 
                                     {/* Always show connect Stripe when no account */}
@@ -7540,14 +7515,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             </p>
                                         </div>
                                     </AnimatedSection>
-
-                                    <p className="text-sm text-gray-500">
-                                        {!eventData.singleDivision
-                                            ? `Used as the default for new divisions (${eventData.price === 0 ? 'Free' : `$${eventData.price?.toFixed(2)}`})`
-                                            : eventData.price === 0
-                                                ? 'Free'
-                                                : `$${eventData.price?.toFixed(2)}`}
-                                    </p>
                                 </div>
                             </div>
 
@@ -7715,16 +7682,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                             }}
                                                             style={{ flex: '1 1 260px', maxWidth: 280 }}
                                                         />
-                                                        <NumberInput
+                                                        <CentsInput
                                                             label="Amount"
-                                                            min={0}
-                                                            max={MAX_PRICE_NUMBER}
-                                                            step={0.01}
+                                                            maxCents={MAX_PRICE_CENTS}
                                                             value={amount}
-                                                            onChange={(val) => setInstallmentAmount(idx, Number(val) || 0)}
-                                                            decimalScale={2}
-                                                            fixedDecimalScale
-                                                            clampBehavior="strict"
+                                                            onChange={(nextValue) => setInstallmentAmount(idx, nextValue)}
                                                             maw={180}
                                                         />
                                                         {eventData.installmentAmounts.length > 1 && (
@@ -7744,10 +7706,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 <Button variant="light" onClick={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}>
                                                     Add installment
                                                 </Button>
-                                                <Text size="sm" c={Math.round(((eventData.installmentAmounts || []).reduce((s, a) => s + (Number(a) || 0), 0) - eventData.price) * 100) === 0 ? 'dimmed' : 'red'}>
-                                                    Installment total: $
-                                                    {((eventData.installmentAmounts || []).reduce((s, a) => s + (Number(a) || 0), 0)).toFixed(2)} / $
-                                                    {(eventData.price || 0).toFixed(2)}
+                                                <Text
+                                                    size="sm"
+                                                    c={(eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) === eventData.price
+                                                        ? 'dimmed'
+                                                        : 'red'}
+                                                >
+                                                    Installment total: {formatBillAmount((eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0))} / {formatBillAmount(eventData.price || 0)}
                                                 </Text>
                                             </Group>
                                         </Stack>
@@ -8149,39 +8114,39 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             }));
                                         }}
                                     />
-                                    <NumberInput
-                                        label="Division Price ($)"
-                                        min={0}
-                                        max={MAX_PRICE_NUMBER}
-                                        step={0.01}
-                                        value={eventData.singleDivision ? eventData.price : divisionEditor.price}
-                                        className="md:col-span-3"
-                                        maw={220}
-                                        decimalScale={2}
-                                        fixedDecimalScale
-                                        clampBehavior="strict"
-                                        disabled={
-                                            isImmutableField('divisions')
-                                            || !divisionEditorReady
-                                            || eventData.singleDivision
-                                            || !hasStripeAccount
-                                        }
-                                        onChange={(val) => {
-                                            if (
+                                    <div className="md:col-span-3">
+                                        <CentsInput
+                                            label="Division Price"
+                                            maxCents={MAX_PRICE_CENTS}
+                                            value={eventData.singleDivision ? eventData.price : divisionEditor.price}
+                                            maw={220}
+                                            disabled={
                                                 isImmutableField('divisions')
                                                 || !divisionEditorReady
                                                 || eventData.singleDivision
                                                 || !hasStripeAccount
-                                            ) {
-                                                return;
                                             }
-                                            setDivisionEditor((prev) => ({
-                                                ...prev,
-                                                price: Math.max(0, Number(val) || 0),
-                                                error: null,
-                                            }));
-                                        }}
-                                    />
+                                            onChange={(nextValue) => {
+                                                if (
+                                                    isImmutableField('divisions')
+                                                    || !divisionEditorReady
+                                                    || eventData.singleDivision
+                                                    || !hasStripeAccount
+                                                ) {
+                                                    return;
+                                                }
+                                                setDivisionEditor((prev) => ({
+                                                    ...prev,
+                                                    price: normalizePriceCents(nextValue),
+                                                    error: null,
+                                                }));
+                                            }}
+                                        />
+                                        <PriceWithFeesPreview
+                                            amountCents={eventData.singleDivision ? eventData.price : divisionEditor.price}
+                                            eventType={eventData.eventType}
+                                        />
+                                    </div>
                                     <NumberInput
                                         label={eventData.teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
                                         min={2}
@@ -8301,16 +8266,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                     }}
                                                                     style={{ flex: '1 1 260px', maxWidth: 280 }}
                                                                 />
-                                                                <NumberInput
+                                                                <CentsInput
                                                                     label="Amount"
-                                                                    min={0}
-                                                                    max={MAX_PRICE_NUMBER}
-                                                                    step={0.01}
+                                                                    maxCents={MAX_PRICE_CENTS}
                                                                     value={amount}
-                                                                    onChange={(value) => setDivisionInstallmentAmount(idx, Number(value) || 0)}
-                                                                    decimalScale={2}
-                                                                    fixedDecimalScale
-                                                                    clampBehavior="strict"
+                                                                    onChange={(nextValue) => setDivisionInstallmentAmount(idx, nextValue)}
                                                                     maw={180}
                                                                 />
                                                                 {divisionEditor.installmentAmounts.length > 1 && (
@@ -8335,13 +8295,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         </Button>
                                                         <Text
                                                             size="sm"
-                                                            c={Math.round(((divisionEditor.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) - divisionEditor.price) * 100) === 0
+                                                            c={(divisionEditor.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) === divisionEditor.price
                                                                 ? 'dimmed'
                                                                 : 'red'}
                                                         >
-                                                            Installment total: $
-                                                            {((divisionEditor.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0)).toFixed(2)} / $
-                                                            {(divisionEditor.price || 0).toFixed(2)}
+                                                            Installment total: {formatBillAmount((divisionEditor.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0))} / {formatBillAmount(divisionEditor.price || 0)}
                                                         </Text>
                                                     </Group>
                                                 </Stack>
@@ -8426,11 +8384,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                             {`${detail.gender} • Skill: ${detail.skillDivisionTypeName || detail.divisionTypeName} • Age: ${detail.ageDivisionTypeName || detail.divisionTypeName}`}
                                                         </Text>
                                                         <Text size="xs" c="dimmed">
-                                                            {`Price: $${effectiveDivisionPrice.toFixed(2)} • ${eventData.teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}
+                                                            {`Price: ${formatPrice(effectiveDivisionPrice)} • ${eventData.teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}
                                                         </Text>
                                                         <Text size="xs" c="dimmed">
                                                             {effectiveDivisionAllowPaymentPlans
-                                                                ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling $${effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0).toFixed(2)}`
+                                                                ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling ${formatBillAmount(effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0))}`
                                                                 : 'Payment plan: disabled'}
                                                         </Text>
                                                         {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && (
