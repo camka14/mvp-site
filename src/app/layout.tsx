@@ -10,6 +10,7 @@ import { ChatProvider } from '@/context/ChatContext';
 import { ChatUIProvider } from '@/context/ChatUIContext';
 import { ChatComponents } from '@/components/chat/ChatComponents';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
+import SiteFooter from '@/components/layout/SiteFooter';
 import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
 
 const robotoFlex = Roboto_Flex({
@@ -84,16 +85,21 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body className="min-h-screen bg-background text-foreground">
         <MantineProvider theme={theme} defaultColorScheme="light">
           <Providers>
-            {disableChat ? (
-              children
-            ) : (
-              <ChatProvider>
-                <ChatUIProvider>
-                  {children}
-                  <ChatComponents />
-                </ChatUIProvider>
-              </ChatProvider>
-            )}
+            <div className="flex min-h-screen flex-col">
+              <div className="flex-1">
+                {disableChat ? (
+                  children
+                ) : (
+                  <ChatProvider>
+                    <ChatUIProvider>
+                      {children}
+                      <ChatComponents />
+                    </ChatUIProvider>
+                  </ChatProvider>
+                )}
+              </div>
+              <SiteFooter />
+            </div>
             <MobileAppPrompt />
           </Providers>
         </MantineProvider>
