@@ -3716,11 +3716,19 @@ function EventScheduleContent() {
 
       try {
         const hostPromise = hostOrgId
-          ? organizationService.getOrganizationById(hostOrgId, true)
+          ? (
+            organizationService.getOrganizationByIdForEventForm
+              ? organizationService.getOrganizationByIdForEventForm(hostOrgId)
+              : organizationService.getOrganizationById(hostOrgId, true)
+          )
           : Promise.resolve(null);
         const rentalPromise =
           rentalOrgId && rentalOrgId !== hostOrgId
-            ? organizationService.getOrganizationById(rentalOrgId, true)
+            ? (
+              organizationService.getOrganizationByIdForEventForm
+                ? organizationService.getOrganizationByIdForEventForm(rentalOrgId)
+                : organizationService.getOrganizationById(rentalOrgId, true)
+            )
             : Promise.resolve(null);
         const [hostOrg, rentalOrg] = await Promise.all([hostPromise, rentalPromise]);
 

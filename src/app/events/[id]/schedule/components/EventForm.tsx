@@ -5733,11 +5733,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 : [];
             if (seededFields.length) {
                 setFields(seededFields);
+                setFieldsLoading(false);
+                return;
             }
 
             try {
                 setFieldsLoading(true);
-                const fetchedOrganization = await organizationService.getOrganizationById(organizationHostedEventId, true);
+                const fetchedOrganization = await (
+                    organizationService.getOrganizationByIdForEventForm
+                        ? organizationService.getOrganizationByIdForEventForm(organizationHostedEventId)
+                        : organizationService.getOrganizationById(organizationHostedEventId, true)
+                );
                 if (cancelled) return;
                 if (fetchedOrganization) {
                     setHydratedOrganization(fetchedOrganization);

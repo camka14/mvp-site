@@ -17,7 +17,7 @@ import {
   Title,
   TextInput,
 } from '@mantine/core';
-import { DatePickerInput, DateTimePicker } from '@mantine/dates';
+import { DatePickerInput, DateTimePicker, TimeInput } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 import { formatDisplayDate, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
@@ -35,22 +35,39 @@ const DAYS_OF_WEEK = [
   { value: '6', label: 'Sunday' },
 ];
 
-const toAmPmLabel = (minutes: number): string => {
-  const clamped = Math.max(0, Math.min(minutes, 24 * 60 - 1));
-  const hour24 = Math.floor(clamped / 60);
-  const minute = clamped % 60;
-  const amPm = hour24 < 12 ? 'AM' : 'PM';
-  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-  return `${hour12.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} ${amPm}`;
+const minutesToTimeValue = (minutes: number): string => {
+  const normalized = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(normalized / 60) % 24;
+  const mins = normalized % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 };
 
-const TIME_OPTIONS = Array.from({ length: (24 * 60) / 15 }, (_, index) => {
-  const minutes = index * 15;
-  return {
-    value: String(minutes),
-    label: toAmPmLabel(minutes),
-  };
-});
+const parseTimeValue = (value: string): number | undefined => {
+  if (!value || typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
+  if (!match) {
+    return undefined;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (
+    Number.isNaN(hours)
+    || Number.isNaN(minutes)
+    || hours < 0
+    || hours > 23
+    || minutes < 0
+    || minutes > 59
+  ) {
+    return undefined;
+  }
+
+  return hours * 60 + minutes;
+};
 
 const normalizeSlotDays = (slot: Pick<LeagueSlotForm, 'dayOfWeek' | 'daysOfWeek'>): number[] => {
   const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
@@ -574,14 +591,6 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               slotEndDate.getTime() <= slotStartDate.getTime(),
             );
             const divisionsReadOnly = readOnly && !allowDivisionEditsWhenReadOnly;
-            const startTimeOptions = typeof slot.startTimeMinutes === 'number' &&
-              !TIME_OPTIONS.some((option) => option.value === String(slot.startTimeMinutes))
-              ? [...TIME_OPTIONS, { value: String(slot.startTimeMinutes), label: toAmPmLabel(slot.startTimeMinutes) }]
-              : TIME_OPTIONS;
-            const endTimeOptions = typeof slot.endTimeMinutes === 'number' &&
-              !TIME_OPTIONS.some((option) => option.value === String(slot.endTimeMinutes))
-              ? [...TIME_OPTIONS, { value: String(slot.endTimeMinutes), label: toAmPmLabel(slot.endTimeMinutes) }]
-              : TIME_OPTIONS;
             const hasConflicts = conflictCount > 0;
             return (
               <Card
@@ -722,31 +731,27 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           />
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:items-end">
-                            <MantineSelect
+                            <TimeInput
                               label="Start Time"
                               withAsterisk
-                              placeholder="Select start time"
-                              data={startTimeOptions}
-                              value={typeof slot.startTimeMinutes === 'number' ? String(slot.startTimeMinutes) : null}
+                              withSeconds={false}
+                              value={typeof slot.startTimeMinutes === 'number' ? minutesToTimeValue(slot.startTimeMinutes) : ''}
                               onChange={(value) => onUpdateSlot(index, {
-                                startTimeMinutes: typeof value === 'string' ? Number(value) : undefined,
+                                startTimeMinutes: parseTimeValue(value.currentTarget.value),
                               })}
-                              comboboxProps={DROPDOWN_PROPS}
                               disabled={readOnly}
                               error={startMissing && !readOnly ? 'Select a start time' : undefined}
                               maw={220}
                             />
 
-                            <MantineSelect
+                            <TimeInput
                               label="End Time"
                               withAsterisk
-                              placeholder="Select end time"
-                              data={endTimeOptions}
-                              value={typeof slot.endTimeMinutes === 'number' ? String(slot.endTimeMinutes) : null}
+                              withSeconds={false}
+                              value={typeof slot.endTimeMinutes === 'number' ? minutesToTimeValue(slot.endTimeMinutes) : ''}
                               onChange={(value) => onUpdateSlot(index, {
-                                endTimeMinutes: typeof value === 'string' ? Number(value) : undefined,
+                                endTimeMinutes: parseTimeValue(value.currentTarget.value),
                               })}
-                              comboboxProps={DROPDOWN_PROPS}
                               disabled={readOnly}
                               error={endMissing && !readOnly ? 'Select an end time' : undefined}
                               maw={220}

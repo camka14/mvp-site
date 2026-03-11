@@ -19,8 +19,96 @@ import {
 } from './staff';
 
 type AnyRow = Record<string, any> & { $id: string };
+type OrganizationFetchMode = 'base' | 'eventForm' | 'full';
+type CachedOrganizationEntry = {
+  expiresAt: number;
+  value: Organization;
+};
 
 class OrganizationService {
+  private readonly organizationCacheTtlMs = 5_000;
+
+  private readonly organizationRequestCache = new Map<string, Promise<Organization | undefined>>();
+
+  private readonly organizationValueCache = new Map<string, CachedOrganizationEntry>();
+
+  private cloneValue<T>(value: T): T {
+    const structuredCloneFn = (globalThis as { structuredClone?: <U>(input: U) => U }).structuredClone;
+    if (structuredCloneFn) {
+      return structuredCloneFn(value);
+    }
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+
+  private getOrganizationCacheKey(id: string, mode: OrganizationFetchMode): string {
+    return `${mode}:${id}`;
+  }
+
+  private invalidateOrganizationCache(id?: string): void {
+    if (!id) {
+      return;
+    }
+    Array.from(this.organizationValueCache.keys())
+      .filter((key) => key.endsWith(`:${id}`))
+      .forEach((key) => {
+        this.organizationValueCache.delete(key);
+      });
+    Array.from(this.organizationRequestCache.keys())
+      .filter((key) => key.endsWith(`:${id}`))
+      .forEach((key) => {
+        this.organizationRequestCache.delete(key);
+      });
+  }
+
+  private async fetchOrganizationById(
+    id: string,
+    mode: OrganizationFetchMode,
+  ): Promise<Organization | undefined> {
+    const normalizedId = id.trim();
+    if (!normalizedId) {
+      return undefined;
+    }
+
+    const cacheKey = this.getOrganizationCacheKey(normalizedId, mode);
+    const cached = this.organizationValueCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return this.cloneValue(cached.value);
+    }
+
+    const inFlight = this.organizationRequestCache.get(cacheKey);
+    if (inFlight) {
+      const result = await inFlight;
+      return result ? this.cloneValue(result) : undefined;
+    }
+
+    const request = (async () => {
+      try {
+        const response = await apiRequest<any>(`/api/organizations/${normalizedId}`);
+        const organization = this.mapRowToOrganization(response as AnyRow);
+        let hydrated = organization;
+        if (mode === 'full') {
+          hydrated = await this.withRelations(organization);
+        } else if (mode === 'eventForm') {
+          hydrated = await this.withEventFormRelations(organization);
+        }
+        this.organizationValueCache.set(cacheKey, {
+          value: this.cloneValue(hydrated),
+          expiresAt: Date.now() + this.organizationCacheTtlMs,
+        });
+        return hydrated;
+      } catch (e) {
+        console.error('Failed to fetch organization:', e);
+        return undefined;
+      } finally {
+        this.organizationRequestCache.delete(cacheKey);
+      }
+    })();
+
+    this.organizationRequestCache.set(cacheKey, request);
+    const result = await request;
+    return result ? this.cloneValue(result) : undefined;
+  }
+
   private mapInvite(row: Record<string, unknown>): Invite {
     return {
       $id: String(row.$id ?? row.id ?? ''),
@@ -186,6 +274,7 @@ class OrganizationService {
       method: 'PATCH',
       body: { organization: payload },
     });
+    this.invalidateOrganizationCache(id);
     return this.mapRowToOrganization(response as AnyRow);
   }
 
@@ -210,6 +299,7 @@ class OrganizationService {
       method: 'PATCH',
       body: { userId, types },
     });
+    this.invalidateOrganizationCache(organizationId);
     return this.mapStaffMember(response.staffMember);
   }
 
@@ -218,6 +308,7 @@ class OrganizationService {
       method: 'DELETE',
       body: { userId },
     });
+    this.invalidateOrganizationCache(organizationId);
   }
 
   async inviteExistingStaff(
@@ -241,6 +332,7 @@ class OrganizationService {
     if (!invite) {
       throw new Error('Failed to create staff invite');
     }
+    this.invalidateOrganizationCache(organizationId);
     return this.mapInvite(invite);
   }
 
@@ -261,17 +353,11 @@ class OrganizationService {
   }
 
   async getOrganizationById(id: string, includeRelations: boolean = true): Promise<Organization | undefined> {
-    try {
-      const response = await apiRequest<any>(`/api/organizations/${id}`);
-      const organization = this.mapRowToOrganization(response as AnyRow);
-      if (!includeRelations) {
-        return organization;
-      }
-      return this.withRelations(organization);
-    } catch (e) {
-      console.error('Failed to fetch organization:', e);
-      return undefined;
-    }
+    return this.fetchOrganizationById(id, includeRelations ? 'full' : 'base');
+  }
+
+  async getOrganizationByIdForEventForm(id: string): Promise<Organization | undefined> {
+    return this.fetchOrganizationById(id, 'eventForm');
   }
 
   async listOrganizationsWithFields(limit: number = 100): Promise<Organization[]> {
@@ -286,6 +372,56 @@ class OrganizationService {
       console.error('Failed to list organizations with fields:', error);
       return [];
     }
+  }
+
+  private async withEventFormRelations(organization: Organization): Promise<Organization> {
+    const fieldIds = Array.isArray(organization.fieldIds)
+      ? organization.fieldIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
+      : [];
+
+    const fieldsPromise = fieldIds.length ? fieldService.listFields({ fieldIds }) : Promise.resolve<Field[]>([]);
+    const staffMembers = Array.isArray(organization.staffMembers) ? organization.staffMembers : [];
+    const staffInvites = Array.isArray(organization.staffInvites) ? organization.staffInvites : [];
+    const staffUserIds = Array.from(new Set(staffMembers.map((member) => member.userId).filter(Boolean)));
+    const staffUsersPromise = staffUserIds.length ? userService.getUsersByIds(staffUserIds) : Promise.resolve<UserData[]>([]);
+    const ownerPromise = organization.ownerId
+      ? userService.getUserById(organization.ownerId)
+      : Promise.resolve(undefined);
+
+    const [fields, staffUsers, owner] = await Promise.all([
+      fieldsPromise,
+      staffUsersPromise,
+      ownerPromise,
+    ]);
+
+    const staffUsersById = new Map(staffUsers.map((userEntry) => [userEntry.$id, userEntry] as const));
+    const hydratedStaffMembers = staffMembers.map((staffMember) => {
+      const userEntry = staffUsersById.get(staffMember.userId);
+      const invite = getBlockingStaffInvite(staffInvites, staffMember.organizationId, staffMember.userId)
+        ? staffInvites.find((entry) => entry.organizationId === staffMember.organizationId && entry.userId === staffMember.userId) ?? null
+        : null;
+      return {
+        ...staffMember,
+        user: userEntry,
+        invite,
+      };
+    });
+    const activeHostIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'HOST');
+    const activeRefereeIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'REFEREE');
+
+    organization.fields = fields;
+    organization.staffMembers = hydratedStaffMembers;
+    organization.hostIds = activeHostIds;
+    organization.refIds = activeRefereeIds;
+    organization.referees = activeRefereeIds
+      .map((userId) => staffUsersById.get(userId))
+      .filter((entry): entry is UserData => Boolean(entry));
+    organization.hosts = activeHostIds
+      .map((userId) => staffUsersById.get(userId))
+      .filter((entry): entry is UserData => Boolean(entry));
+    organization.owner = owner;
+
+    return organization;
   }
 
     private async withRelations(organization: Organization): Promise<Organization> {
