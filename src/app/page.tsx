@@ -526,27 +526,62 @@ export default function HomePage() {
 
         <section id="resources" className="container-responsive pb-16">
           <div className="landing-surface rounded-3xl p-6">
-            <h2 className="landing-section-title text-2xl font-semibold sm:text-3xl">Integrations and platform stack</h2>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {integrations.map((integration) => (
-                <article
-                  key={integration.name}
-                  className={`landing-pill flex min-h-24 items-center justify-center rounded-2xl px-4 py-3 ${integration.name === 'Google Maps' ? 'gap-2' : ''}`}
-                >
-                  <Image
-                    src={integration.logoSrc}
-                    alt={integration.logoAlt}
-                    width={integration.logoWidth}
-                    height={integration.logoHeight}
-                    className={`w-auto shrink-0 ${integration.name === 'Google Maps' ? 'h-10' : 'h-8'}`}
-                  />
-                  {integration.wordmarkText ? (
-                    <span className="landing-pill-wordmark whitespace-nowrap text-base font-semibold">
-                      {integration.wordmarkText}
-                    </span>
-                  ) : null}
+            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+              <div>
+                <h2 className="landing-section-title text-2xl font-semibold sm:text-3xl">Guides and platform resources</h2>
+                <p className="landing-section-copy mt-3 max-w-2xl text-sm sm:text-base">
+                  New on the BracketIQ blog: practical scheduling guides for organizers who need cleaner brackets,
+                  clearer updates, and fewer tournament-day surprises.
+                </p>
+                <article className="landing-surface-soft mt-5 rounded-3xl p-5">
+                  <p className="landing-label text-xs uppercase tracking-[0.16em]">Featured Guide</p>
+                  <h3 className="landing-section-title mt-3 text-xl font-semibold">
+                    Tournament schedule maker
+                  </h3>
+                  <p className="landing-section-copy mt-3 text-sm sm:text-base">
+                    Learn how to choose the right format, review conflicts before publishing, and keep updates moving
+                    when the bracket changes on game day.
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link
+                      href="/blog/tournament-schedule-maker"
+                      className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                    >
+                      Read the guide
+                    </Link>
+                    <Link
+                      href="/blog"
+                      className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                    >
+                      Visit the blog
+                    </Link>
+                  </div>
                 </article>
-              ))}
+              </div>
+              <div>
+                <h3 className="landing-section-title text-xl font-semibold">Integrations and platform stack</h3>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {integrations.map((integration) => (
+                    <article
+                      key={integration.name}
+                      className={`landing-pill flex min-h-24 items-center justify-center rounded-2xl px-4 py-3 ${integration.name === 'Google Maps' ? 'gap-2' : ''}`}
+                    >
+                      <Image
+                        src={integration.logoSrc}
+                        alt={integration.logoAlt}
+                        width={integration.logoWidth}
+                        height={integration.logoHeight}
+                        className={`w-auto shrink-0 ${integration.name === 'Google Maps' ? 'h-10' : 'h-8'}`}
+                      />
+                      {integration.wordmarkText ? (
+                        <span className="landing-pill-wordmark whitespace-nowrap text-base font-semibold">
+                          {integration.wordmarkText}
+                        </span>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>

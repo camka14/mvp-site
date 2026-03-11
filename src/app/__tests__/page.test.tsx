@@ -39,6 +39,7 @@ describe('Home landing page', () => {
     ).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /sign up/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('link', { name: /sign in/i }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: /visit the blog/i })).toHaveAttribute('href', '/blog');
     expect(screen.getAllByRole('button', { name: /continue as guest/i }).length).toBeGreaterThan(0);
     expect(pushMock).not.toHaveBeenCalled();
   });

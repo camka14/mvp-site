@@ -2,17 +2,14 @@
 
 import { Button, Group, Paper, Text } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
+import {
+  getMobileAppLinks,
+} from '@/lib/mobileAppLinks';
 
 type MobilePlatform = 'ios' | 'android' | 'other';
 
 const DISMISSED_UNTIL_KEY = 'mvp_mobile_app_prompt_dismissed_until';
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
-
-const IOS_STORE_URL_DEFAULT = 'https://apps.apple.com/us/search?term=Razumly%20MVP';
-const ANDROID_STORE_URL_DEFAULT = 'https://play.google.com/store/apps/details?id=com.razumly.mvp';
-
-const IOS_DEEP_LINK_DEFAULT = 'mvp://discover';
-const ANDROID_DEEP_LINK_DEFAULT = 'razumly://mvp';
 
 const detectMobilePlatform = (ua: string, maxTouchPoints: number): MobilePlatform => {
   const userAgent = ua.toLowerCase();
@@ -33,10 +30,7 @@ export default function MobileAppPrompt() {
   const [platform, setPlatform] = useState<MobilePlatform>('other');
   const [visible, setVisible] = useState(false);
 
-  const iosStoreUrl = process.env.NEXT_PUBLIC_MVP_IOS_APP_STORE_URL || IOS_STORE_URL_DEFAULT;
-  const androidStoreUrl = process.env.NEXT_PUBLIC_MVP_ANDROID_PLAY_STORE_URL || ANDROID_STORE_URL_DEFAULT;
-  const iosDeepLink = process.env.NEXT_PUBLIC_MVP_IOS_DEEP_LINK || IOS_DEEP_LINK_DEFAULT;
-  const androidDeepLink = process.env.NEXT_PUBLIC_MVP_ANDROID_DEEP_LINK || ANDROID_DEEP_LINK_DEFAULT;
+  const { iosStoreUrl, androidStoreUrl, iosDeepLink, androidDeepLink } = getMobileAppLinks();
 
   const storeUrl = useMemo(() => {
     if (platform === 'ios') return iosStoreUrl;

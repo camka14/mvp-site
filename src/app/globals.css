@@ -1069,6 +1069,23 @@ summary::-webkit-details-marker {
   color: var(--landing-text-muted);
 }
 
+.blog-article > :first-child {
+  margin-top: 0;
+}
+
+.blog-article code {
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--mvp-primary-100) 55%, white);
+  padding: 0.125rem 0.375rem;
+  color: var(--mvp-primary-900);
+  font-size: 0.92em;
+}
+
+.blog-article strong {
+  color: var(--landing-text);
+  font-weight: 700;
+}
+
 .landing-aura {
   position: absolute;
   width: 30rem;

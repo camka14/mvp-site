@@ -1,0 +1,183 @@
+export const metadata = {
+  description:
+    'A practical guide to choosing tournament formats, collecting the right inputs, preventing conflicts, and publishing updates that teams can trust.',
+}
+
+## What a tournament schedule maker actually solves
+
+A tournament schedule maker helps organizers turn a list of teams, fields, and time windows into a plan that people can actually use on game day. The core job is simple to describe and hard to do well. Every bracket or pool game needs the right opponent, the right time, and the right location. Every change has ripple effects. When one game moves late, the rest of the schedule can drift with it.
+
+Many tournaments start in a spreadsheet because it feels familiar. The trouble starts when the event grows beyond a handful of games. A spreadsheet can hold matchups, but it does not explain dependencies well. It does not protect you from assigning the same team twice at the same time. It does not help much when a coach is also running a second team, when one venue has a shorter turnaround, or when weather cuts two hours off the day.
+
+The right scheduling workflow gives you three practical benefits:
+
+- A clear structure for bracket logic and pool play.
+- A conflict review step before anything is published.
+- A reliable way to push updates once the event is live.
+
+For organizers, those benefits matter because schedule errors cost trust. Parents plan travel around them. Referees plan assignments around them. Facilities plan staffing around them. When a tournament schedule maker works well, fewer people are surprised, and the operations team has more time to handle the problems that really do require human judgment.
+
+## Tournament formats explained
+
+Choosing the right format is the first real scheduling decision. The format shapes the number of games, the amount of field inventory you need, and how easy it is to recover when something changes.
+
+### Single elimination
+
+Single elimination is the fastest format to schedule because each team exits after one loss. It works well when field space is tight, the event needs a clean finish, or the team count is high enough that pool play would become too long.
+
+The tradeoff is that every game carries extra weight. A late start or bracket error becomes visible quickly because there are fewer recovery points. Single elimination is also the format where seeding decisions matter most, so you need clear published rules before the first whistle.
+
+### Double elimination
+
+Double elimination gives teams more runway because they stay alive until they lose twice. That can feel fairer for travel teams or events where teams expect more than one guaranteed result. It also creates more complexity. Losers bracket games depend on earlier results, and the exact path a team takes is not known until the bracket starts to resolve.
+
+This format is where a tournament bracket generator becomes especially useful. Your plan has to account for result-driven dependencies, potential back-to-back games, and the risk that one delay in the winners bracket pushes multiple downstream games.
+
+### Round robin
+
+Round robin gives each team games against several opponents and is often the best choice when the event wants balanced participation. It is common for leagues, showcases, and tournaments that prioritize reps over a fast elimination finish.
+
+The challenge with a round robin tournament schedule is fairness. You need to watch rest gaps, field rotation, early and late starts, and home-away style balance if your sport or audience cares about it. The good news is that round robin schedules are easier to validate before play starts because the full game inventory is known in advance.
+
+### Pool play
+
+Pool play is a hybrid approach. Teams are grouped into smaller round robin pods, then the best teams advance into a bracket. This is a strong fit when the event wants guaranteed games plus a championship path.
+
+Pool play creates two scheduling layers. First, you build the pod schedules. Second, you reserve time and space for the playoff bracket that follows. The main risk is underestimating the handoff between those layers. If pool games run long or tiebreakers take time to resolve, the playoff schedule can get squeezed.
+
+## Inputs you need before scheduling
+
+Before you build anything, collect the inputs that control the shape of the day. A tournament schedule maker can organize them, but it cannot rescue missing assumptions.
+
+Start with the team list. Confirm the final count, divisions, and any known seed order. If teams are traveling long distances, note that early because arrival constraints often matter on the first day. If one coach manages more than one team, capture that before game slots are assigned.
+
+Then confirm venue inventory. Count the playable fields or courts, mark which are regulation-ready for each division, and block off any maintenance windows. If one field is outdoors and another is indoors, that matters. If one court has a longer setup time between matches, that matters too.
+
+Time windows are next. Define the first playable slot, the last slot that can start, the standard game length, and the buffer between games. A short youth game and an adult match rarely use the same turnover assumptions. Build those rules into the schedule from the start instead of fixing them by hand later.
+
+You also need event rules that affect scheduling:
+
+- Format rules for advancement and tiebreakers.
+- Minimum rest targets between games.
+- Limits on back-to-back games.
+- Policies for late arrivals, forfeits, and weather delays.
+- Communication rules for how updates are announced.
+
+If you want a cleaner review process, keep these inputs in one checklist before the first schedule draft is generated. That reduces the number of hidden assumptions that only surface after teams have already seen the bracket.
+
+## Step-by-step scheduling workflow
+
+Good scheduling is a workflow, not a single export button. The fastest way to build a schedule that survives real use is to work in clear stages: build, review conflicts, publish, and update live.
+
+### Build
+
+In the build stage, create the first draft from the chosen format and the confirmed inventory. This is where you assign teams, fields, and time slots. The point is to get a full draft on the page, not to make every edge case perfect in one pass.
+
+For a round robin or pool play event, start by verifying that every required matchup exists. For elimination events, verify the bracket structure and seed order. Then check that the total number of games fits inside the actual venue hours you control.
+
+### Review conflicts
+
+Once the first draft exists, stop building and start validating. This is the stage that prevents avoidable game-day problems.
+
+Review these checks in order:
+
+- Team overlap. No team should be assigned to two games at once.
+- Coach overlap. Shared coaches need enough travel and setup time between assignments.
+- Venue feasibility. Each field or court should host only one game per slot.
+- Rest balance. Teams should not get stacked with short turnarounds while other teams sit for hours.
+- Flow through the bracket. Winners and losers bracket paths need enough downstream space.
+
+This is also the point where you should ask whether the schedule feels fair, not only whether it compiles. A technically valid schedule can still create frustration if one pool gets all the early starts or one side of the bracket gets consistently short rest.
+
+### Publish
+
+When the draft clears conflict review, publish it in a format that teams can check quickly. The key here is clarity. Every participant should be able to answer three questions fast:
+
+- When do we play?
+- Where do we play?
+- What happens if the bracket changes?
+
+If you are using BracketIQ, this is the stage where the web dashboard and mobile experience become useful together. Organizers can manage the schedule from the web side, while teams and families can keep track of times, venues, and updates from the participant side.
+
+### Update live
+
+Live updates are where the schedule stops being a static plan and becomes an operations tool. Scores come in. One field runs late. A weather cell forces a pause. A team drops out. Those things happen. What matters is whether the update path is controlled.
+
+The safest live-update process is:
+
+1. Confirm the change.
+2. Identify the smallest affected part of the schedule.
+3. Update bracket or pool dependencies.
+4. Republish quickly.
+5. Communicate the change in the same place teams already check.
+
+<div id="demo-schedule-template" className="scroll-mt-24" />
+
+### Demo schedule template
+
+Use a simple structure before you publish: division, matchup, field or court, slot start, slot end, buffer, bracket dependency, and update status. If one of those columns is missing, organizers usually end up rebuilding part of the schedule by hand.
+
+## Real-world constraints
+
+Even strong draft schedules break down when they ignore the real-world rules around the event. This is where experienced organizers separate a clean bracket from a usable one.
+
+### Coach conflicts
+
+Coach conflicts show up in youth, club, and crossover events all the time. One coach may manage two teams in different divisions. If those assignments are not captured before publishing, somebody ends up asking for a delay at the field.
+
+The practical fix is to identify shared coaches early and treat them as a scheduling constraint in the same way you treat field inventory. If the conflict cannot be solved completely, publish the rule you used to prioritize one team over another.
+
+### Travel time
+
+Travel time matters both between venues and inside large complexes. If a team has to move across a venue after a late finish, the next start time needs a buffer. The tighter your complex is, the more aggressive you can be. The more spread out the event is, the more conservative you should become.
+
+### Cancellations
+
+Cancellations happen because of weather, injuries, no-shows, or venue issues. Your policy needs to be clear before the event starts. Decide whether you will reseed, convert a slot to a bye, shorten a pool, or cancel that branch of play entirely. If the rule is already written, the update process gets faster and the communication gets cleaner.
+
+### Bracket rebuilds
+
+Bracket rebuilds are the situation every organizer wants to avoid. Sometimes they are still necessary. The mistake is doing a rebuild without a clear freeze line. If some teams have already started a later round or if spectators have already traveled based on the current plan, a full bracket reset can create more problems than it solves.
+
+When a rebuild is required, limit the change to the smallest possible area, explain why it happened, and push the revised path through the same official channel that delivered the original bracket.
+
+## How to publish and communicate updates
+
+Publishing is not the end of the schedule. It is the start of the communication cycle. Teams should not have to hunt across text threads, screenshots, and social posts to figure out whether the bracket changed.
+
+Use one official source for schedule status. That source should show the current game time, location, opponent, and any bracket consequence. If you also use email, chat, or push notifications, those messages should reinforce the official source rather than replace it.
+
+Mobile-first communication matters because many readers will check the schedule from the sideline, the parking lot, or the road between venues. A schedule that looks organized on a desktop and confusing on a phone still creates support work for staff.
+
+The communication checklist is short:
+
+- Publish from one source of truth.
+- Use the same labels across the web and mobile experience.
+- Send updates quickly after a confirmed change.
+- Avoid unofficial screenshots as your primary update channel.
+- Tell teams where to look before the event starts.
+
+## Checklist for tournament day operations
+
+Once the first match starts, operations become a rhythm. The schedule only stays reliable if someone owns that rhythm.
+
+Use this tournament day checklist:
+
+- Confirm score entry ownership before the first game.
+- Verify bracket advancement rules one more time at the scorer table.
+- Keep a visible queue of games that are at risk of starting late.
+- Watch shared coaches and shared officials for overlap.
+- Track weather or facility alerts in the same channel used for updates.
+- Freeze and review any significant bracket edit before republishing.
+- Push schedule changes quickly to the official source.
+- Confirm the championship path before semifinal results begin to land.
+
+This is where tournament scheduling software earns its keep. The tool matters because it reduces the time between identifying a problem and communicating a clean update. That gives staff more room to handle the human side of the event.
+
+## Final planning notes before you publish
+
+If you are building your schedule today, keep the process simple. Start with the format that matches your event goals. Gather the full team and venue inventory before you touch the bracket. Build one draft, review it hard, and publish from one source of truth.
+
+The biggest scheduling wins usually come from small habits: checking coach overlap before you publish, protecting rest gaps, leaving real buffer time between games, and communicating updates through the same channel every time. Those habits make the difference between a tournament that feels calm and one that feels reactive all day.
+
+BracketIQ is built for organizers who need one place to create events, manage teams, assign fields, publish schedules, and keep participants informed across web and mobile. If you want a cleaner process for your next event, start with one draft, validate it early, and use a schedule workflow that can survive game day.
