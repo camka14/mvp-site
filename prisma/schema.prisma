@@ -305,6 +305,7 @@ model ChatGroup {
   createdAt DateTime?
   updatedAt DateTime?
   name      String?
+  // Indexed via a raw SQL GIN migration for array membership lookups.
   userIds   String[]
   hostId    String
 }
