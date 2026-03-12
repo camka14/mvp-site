@@ -74,11 +74,17 @@ interface EventFormProps {
     rentalPurchase?: RentalPurchaseContext;
     templateOrganizationId?: string;
     onDirtyStateChange?: (hasChanges: boolean) => void;
+    onDraftStateChange?: (state: {
+        draft: Partial<Event>;
+        baselineDraft: Partial<Event>;
+    }) => void;
 }
 
 export type EventFormHandle = {
     getDraft: () => Partial<Event>;
     validate: () => Promise<boolean>;
+    commitDirtyBaseline: () => void;
+    submitPendingRefereeInvites: (eventId: string) => Promise<void>;
 };
 
 type RentalPurchaseContext = {
@@ -90,6 +96,36 @@ type RentalPurchaseContext = {
     priceCents?: number;
     rentalDocumentTemplateId?: string;
 };
+
+type PendingRefereeInvite = {
+    firstName: string;
+    lastName: string;
+    email: string;
+};
+
+const normalizeDirtyTrackedIdList = (values: unknown[]): string[] => Array.from(
+    new Set(
+        values
+            .map((value) => normalizeEntityId(value))
+            .filter((value): value is string => Boolean(value)),
+    ),
+).sort();
+
+const normalizeDirtyTrackedPendingRefereeInvites = (invites: PendingRefereeInvite[]): PendingRefereeInvite[] => invites
+    .map((invite) => ({
+        firstName: invite.firstName.trim(),
+        lastName: invite.lastName.trim(),
+        email: invite.email.trim(),
+    }))
+    .filter((invite) => invite.firstName.length > 0 || invite.lastName.length > 0 || invite.email.length > 0);
+
+const serializeDirtySnapshot = (
+    buildDraft: (values: EventFormValues) => Partial<Event>,
+    values: EventFormValues,
+): string => JSON.stringify({
+    draft: buildDraft(values),
+    pendingRefereeInvites: normalizeDirtyTrackedPendingRefereeInvites(values.pendingRefereeInvites ?? []),
+});
 
 type EventType = Event['eventType'];
 
@@ -127,6 +163,12 @@ const DIVISION_GENDER_OPTIONS = [
     { value: 'F', label: 'Womens' },
     { value: 'C', label: 'CoEd' },
 ] as const;
+
+const createEmptyRefereeInvite = (): PendingRefereeInvite => ({
+    firstName: '',
+    lastName: '',
+    email: '',
+});
 
 const AnimatedSection = ({
     in: inProp,
@@ -1309,6 +1351,7 @@ type EventFormState = {
     teams: Team[];
     referees: UserData[];
     refereeIds: string[];
+    pendingRefereeInvites: PendingRefereeInvite[];
     assistantHostIds: string[];
     doTeamsRef: boolean;
     teamRefsMaySwap: boolean;
@@ -1881,6 +1924,14 @@ const mapEventToFormState = (event: Event): EventFormState => {
     teams: event.teams || [],
     referees: event.referees || [],
     refereeIds: event.refereeIds || [],
+    pendingRefereeInvites: Array.isArray((event as { pendingRefereeInvites?: PendingRefereeInvite[] }).pendingRefereeInvites)
+        && (event as { pendingRefereeInvites?: PendingRefereeInvite[] }).pendingRefereeInvites!.length > 0
+        ? (event as { pendingRefereeInvites?: PendingRefereeInvite[] }).pendingRefereeInvites!.map((invite) => ({
+            firstName: invite.firstName ?? '',
+            lastName: invite.lastName ?? '',
+            email: invite.email ?? '',
+        }))
+        : [createEmptyRefereeInvite()],
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsRef: Boolean(event.doTeamsRef),
     teamRefsMaySwap: Boolean(event.doTeamsRef) && Boolean((event as any).teamRefsMaySwap),
@@ -2029,6 +2080,13 @@ const eventFormSchema = z
         teams: z.array(z.any()),
         referees: z.array(z.any()),
         refereeIds: z.array(z.string()),
+        pendingRefereeInvites: z.array(
+            z.object({
+                firstName: z.string().default(''),
+                lastName: z.string().default(''),
+                email: z.string().default(''),
+            }),
+        ).default([createEmptyRefereeInvite()]),
         assistantHostIds: z.array(z.string()).default([]),
         doTeamsRef: z.boolean(),
         teamRefsMaySwap: z.boolean().default(false),
@@ -2382,11 +2440,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     rentalPurchase,
     templateOrganizationId: templateOrganizationIdProp,
     onDirtyStateChange,
+    onDraftStateChange,
 }, ref) => {
     const open = isOpen ?? true;
     const refsPrefilledRef = useRef<boolean>(false);
     const lastResetEventIdRef = useRef<string | null>(null);
     const dirtyBootstrapTimerRef = useRef<number | null>(null);
+    const dirtyBaselineRef = useRef<string>('');
+    const dirtyBaselineValuesRef = useRef<EventFormValues | null>(null);
+    const buildDraftForDirtyTrackingRef = useRef<(values: EventFormValues) => Partial<Event>>(
+        () => ({}),
+    );
     const slotConflictRequestRef = useRef(0);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((slot?: Partial<TimeSlot>, fallbackDivisions: string[] = []): LeagueSlotForm => {
@@ -2976,14 +3040,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const {
         control,
-        register,
         watch,
         setValue: rawSetValue,
         getValues,
         reset,
         clearErrors,
         trigger,
-        formState: { errors, isDirty },
+        formState: { errors },
     } = useForm<EventFormValues>({
         resolver: zodResolver(eventFormSchema) as Resolver<EventFormValues>,
         mode: 'onBlur',
@@ -2991,16 +3054,32 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         defaultValues: buildDefaultFormValues(),
     });
     const [isDirtyTrackingReady, setIsDirtyTrackingReady] = useState(false);
-    const setValue = rawSetValue as (
+    const setValue = useCallback((
         name: string,
         value: unknown,
         options?: Record<string, unknown>,
-    ) => void;
+    ) => {
+        (rawSetValue as (
+            fieldName: string,
+            fieldValue: unknown,
+            fieldOptions?: Record<string, unknown>,
+        ) => void)(name, value, options);
+        if (options?.shouldDirty) {
+            onDirtyStateChange?.(true);
+        }
+    }, [onDirtyStateChange, rawSetValue]);
+    const formValues = watch();
 
     useEffect(() => {
         if (!open) {
             setIsDirtyTrackingReady(false);
+            dirtyBaselineRef.current = '';
+            dirtyBaselineValuesRef.current = null;
             onDirtyStateChange?.(false);
+            onDraftStateChange?.({
+                draft: {},
+                baselineDraft: {},
+            });
             return;
         }
         const nextEventId = activeEditingEvent?.$id ?? null;
@@ -3013,16 +3092,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         setIsDirtyTrackingReady(false);
         onDirtyStateChange?.(false);
-        reset(buildDefaultFormValues());
+        const nextDefaults = buildDefaultFormValues();
+        reset(nextDefaults);
         if (typeof window !== 'undefined') {
             dirtyBootstrapTimerRef.current = window.setTimeout(() => {
-                reset(getValues());
+                const settledValues = getValues();
+                reset(settledValues);
+                dirtyBaselineValuesRef.current = settledValues;
+                dirtyBaselineRef.current = serializeDirtySnapshot(buildDraftForDirtyTrackingRef.current, settledValues);
                 setIsDirtyTrackingReady(true);
             }, 0);
         } else {
+            dirtyBaselineValuesRef.current = nextDefaults;
+            dirtyBaselineRef.current = serializeDirtySnapshot(buildDraftForDirtyTrackingRef.current, nextDefaults);
             setIsDirtyTrackingReady(true);
         }
-    }, [activeEditingEvent?.$id, buildDefaultFormValues, getValues, onDirtyStateChange, reset, open]);
+    }, [activeEditingEvent?.$id, buildDefaultFormValues, getValues, onDirtyStateChange, onDraftStateChange, reset, open]);
 
     useEffect(() => {
         return () => {
@@ -3033,10 +3118,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, []);
 
     useEffect(() => {
-        onDirtyStateChange?.(isDirtyTrackingReady ? isDirty : false);
-    }, [isDirty, isDirtyTrackingReady, onDirtyStateChange]);
+        const baselineValues = dirtyBaselineValuesRef.current ?? formValues;
+        onDraftStateChange?.({
+            draft: buildDraftForDirtyTrackingRef.current(formValues),
+            baselineDraft: buildDraftForDirtyTrackingRef.current(baselineValues),
+        });
+        if (!isDirtyTrackingReady) {
+            onDirtyStateChange?.(false);
+            return;
+        }
+        onDirtyStateChange?.(
+            serializeDirtySnapshot(buildDraftForDirtyTrackingRef.current, formValues) !== dirtyBaselineRef.current,
+        );
+    }, [formValues, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
-    const formValues = watch();
     const eventData = formValues;
     const leagueSlots = formValues.leagueSlots;
     const leagueData = formValues.leagueData;
@@ -3222,6 +3317,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             setValue('leagueData', next, { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
+    );
+
+    const setPendingRefereeInvites = useCallback(
+        (updater: React.SetStateAction<PendingRefereeInvite[]>) => {
+            const current = getValues('pendingRefereeInvites') ?? [];
+            const next = typeof updater === 'function'
+                ? (updater as (prev: PendingRefereeInvite[]) => PendingRefereeInvite[])(current)
+                : updater;
+            setValue('pendingRefereeInvites', next, { shouldDirty: true, shouldValidate: false });
+            onDirtyStateChange?.(true);
+        },
+        [getValues, onDirtyStateChange, setValue],
     );
 
     const setTournamentData = useCallback(
@@ -3489,11 +3596,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
     const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
     const [refereeError, setRefereeError] = useState<string | null>(null);
-    const [refereeInvites, setRefereeInvites] = useState<{ firstName: string; lastName: string; email: string }[]>([
-        { firstName: '', lastName: '', email: '' },
-    ]);
     const [refereeInviteError, setRefereeInviteError] = useState<string | null>(null);
-    const [invitingReferees, setInvitingReferees] = useState(false);
     const [assistantHostUsers, setAssistantHostUsers] = useState<UserData[]>([]);
     const [assistantHostSearch, setAssistantHostSearch] = useState('');
     const [assistantHostResults, setAssistantHostResults] = useState<UserData[]>([]);
@@ -3731,13 +3834,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (isOrganizationHostedEvent && !organizationAllowedHostIdSet.has(value)) {
             return;
         }
+        onDirtyStateChange?.(true);
         setEventData((prev) => ({
             ...prev,
             hostId: value,
             assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== value),
         }));
-    }, [isOrganizationHostedEvent, organizationAllowedHostIdSet, setEventData]);
+    }, [isOrganizationHostedEvent, onDirtyStateChange, organizationAllowedHostIdSet, setEventData]);
     const handleAssistantHostsChange = useCallback((values: string[]) => {
+        onDirtyStateChange?.(true);
         setEventData((prev) => ({
             ...prev,
             assistantHostIds: Array.from(
@@ -3752,7 +3857,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ),
             ),
         }));
-    }, [isOrganizationHostedEvent, organizationAllowedHostIdSet, setEventData]);
+    }, [isOrganizationHostedEvent, onDirtyStateChange, organizationAllowedHostIdSet, setEventData]);
     const handleSearchAssistantHosts = useCallback(
         async (query: string) => {
             setAssistantHostSearch(query);
@@ -3782,6 +3887,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [eventData.assistantHostIds, eventData.hostId, isOrganizationHostedEvent],
     );
     const handleAddAssistantHost = useCallback((assistantHost: UserData) => {
+        onDirtyStateChange?.(true);
         setEventData((prev) => ({
             ...prev,
             assistantHostIds: Array.from(
@@ -3799,14 +3905,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return [...prev, assistantHost];
         });
         setAssistantHostResults((prev) => prev.filter((candidate) => candidate.$id !== assistantHost.$id));
-    }, [setEventData]);
+    }, [onDirtyStateChange, setEventData]);
     const handleRemoveAssistantHost = useCallback((assistantHostId: string) => {
+        onDirtyStateChange?.(true);
         setEventData((prev) => ({
             ...prev,
             assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== assistantHostId),
         }));
         setAssistantHostUsers((prev) => prev.filter((candidate) => candidate.$id !== assistantHostId));
-    }, [setEventData]);
+    }, [onDirtyStateChange, setEventData]);
     const fieldCountOptions = useMemo(
         () => Array.from({ length: 12 }, (_, idx) => ({ value: String(idx + 1), label: String(idx + 1) })),
         []
@@ -4208,6 +4315,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (isOrganizationHostedEvent && !organizationAllowedRefereeIdSet.has(referee.$id)) {
             return;
         }
+        onDirtyStateChange?.(true);
         setEventData((prev) => {
             const nextIds = Array.from(new Set([...(prev.refereeIds || []), referee.$id]));
             const nextRefs = (prev.referees || []).some((ref) => ref.$id === referee.$id)
@@ -4216,46 +4324,56 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return { ...prev, refereeIds: nextIds, referees: nextRefs };
         });
         setRefereeResults((prev) => prev.filter((candidate) => candidate.$id !== referee.$id));
-    }, [isOrganizationHostedEvent, organizationAllowedRefereeIdSet, setEventData]);
+    }, [isOrganizationHostedEvent, onDirtyStateChange, organizationAllowedRefereeIdSet, setEventData]);
 
     const handleRemoveReferee = useCallback((refereeId: string) => {
+        onDirtyStateChange?.(true);
         setEventData((prev) => ({
             ...prev,
             refereeIds: (prev.refereeIds || []).filter((id) => id !== refereeId),
             referees: (prev.referees || []).filter((ref) => ref.$id !== refereeId),
         }));
-    }, [setEventData]);
+    }, [onDirtyStateChange, setEventData]);
 
-    const handleInviteRefereeEmail = useCallback(async () => {
+    const submitPendingRefereeInvites = useCallback(async (eventId: string) => {
         if (isOrganizationHostedEvent) {
-            setRefereeInviteError('Organization events can only use organization referees.');
             return;
         }
         if (!currentUser) {
-            setRefereeInviteError('You must be signed in to invite referees.');
-            return;
+            const message = 'You must be signed in to invite referees.';
+            setRefereeInviteError(message);
+            throw new Error(message);
         }
 
-        const sanitized = refereeInvites.map((invite) => ({
+        const sanitized = (getValues('pendingRefereeInvites') ?? []).map((invite) => ({
             firstName: invite.firstName.trim(),
             lastName: invite.lastName.trim(),
             email: invite.email.trim(),
         }));
+        const pendingInvites = sanitized.filter((invite) => (
+            invite.firstName.length > 0
+            || invite.lastName.length > 0
+            || invite.email.length > 0
+        ));
 
-        for (const invite of sanitized) {
+        if (!pendingInvites.length) {
+            setRefereeInviteError(null);
+            return;
+        }
+
+        for (const invite of pendingInvites) {
             if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
-                setRefereeInviteError('Enter first, last, and valid email for all invites.');
-                return;
+                const message = 'Enter first, last, and valid email for all invites before saving.';
+                setRefereeInviteError(message);
+                throw new Error(message);
             }
         }
 
         setRefereeInviteError(null);
-        setInvitingReferees(true);
         try {
-            const eventId = eventData.$id;
             const result = await userService.inviteUsersByEmail(
                 currentUser.$id,
-                sanitized.map((invite) => ({
+                pendingInvites.map((invite) => ({
                     ...invite,
                     type: 'EVENT' as const,
                     eventId,
@@ -4280,7 +4398,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     console.warn('Failed to fetch invited referees:', error);
                 }
 
-                let nextRefereeIds: string[] = [];
                 setEventData((prev) => {
                     const existingRefs = prev.referees || [];
                     const nextRefs = [...existingRefs];
@@ -4291,18 +4408,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             nextRefs.push(refUser);
                         }
                     });
-                    nextRefereeIds = Array.from(nextIds);
-                    return { ...prev, referees: nextRefs, refereeIds: nextRefereeIds };
+                    return {
+                        ...prev,
+                        referees: nextRefs,
+                        refereeIds: Array.from(nextIds),
+                    };
                 });
             }
 
-            setRefereeInvites([{ firstName: '', lastName: '', email: '' }]);
+            setValue('pendingRefereeInvites', [createEmptyRefereeInvite()], { shouldDirty: true, shouldValidate: false });
         } catch (error) {
             setRefereeInviteError(error instanceof Error ? error.message : 'Failed to invite referees.');
-        } finally {
-            setInvitingReferees(false);
+            throw error;
         }
-    }, [currentUser, eventData.$id, isOrganizationHostedEvent, refereeInvites, setEventData]);
+    }, [currentUser, getValues, isOrganizationHostedEvent, setEventData, setValue]);
 
     // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
     const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
@@ -6745,6 +6864,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         shouldProvisionFields,
         fieldCount,
     ]);
+    buildDraftForDirtyTrackingRef.current = buildDraftEvent;
 
     const getDraftSnapshot = useCallback(
         () => buildDraftEvent(getValues()),
@@ -6756,13 +6876,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [trigger],
     );
 
+    const commitDirtyBaseline = useCallback(() => {
+        const currentValues = getValues();
+        dirtyBaselineValuesRef.current = currentValues;
+        dirtyBaselineRef.current = serializeDirtySnapshot(buildDraftForDirtyTrackingRef.current, currentValues);
+        onDirtyStateChange?.(false);
+    }, [getValues, onDirtyStateChange]);
+
     useImperativeHandle(
         ref,
         () => ({
             getDraft: getDraftSnapshot,
             validate: validateDraft,
+            commitDirtyBaseline,
+            submitPendingRefereeInvites,
         }),
-        [getDraftSnapshot, validateDraft],
+        [commitDirtyBaseline, getDraftSnapshot, submitPendingRefereeInvites, validateDraft],
     );
 
     // Syncs the selected event image with component state after uploads or picker changes.
@@ -6994,16 +7123,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 )}
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
-                                <TextInput
-                                    label="Event Name"
-                                    withAsterisk
-                                    disabled={isImmutableField('name')}
-                                    placeholder="Enter event name"
-                                    error={errors.name?.message as string | undefined}
-                                    maw={520}
-                                    maxLength={MAX_EVENT_NAME_LENGTH}
-                                    className="md:col-span-6"
-                                    {...register('name', { required: 'Event name is required' })}
+                                <Controller
+                                    name="name"
+                                    control={control}
+                                    rules={{ required: 'Event name is required' }}
+                                    render={({ field, fieldState }) => (
+                                        <TextInput
+                                            label="Event Name"
+                                            withAsterisk
+                                            disabled={isImmutableField('name')}
+                                            placeholder="Enter event name"
+                                            error={fieldState.error?.message as string | undefined}
+                                            maw={520}
+                                            maxLength={MAX_EVENT_NAME_LENGTH}
+                                            className="md:col-span-6"
+                                            value={field.value ?? ''}
+                                            name={field.name}
+                                            onBlur={field.onBlur}
+                                            ref={field.ref}
+                                            onChange={(event) => {
+                                                if (isImmutableField('name')) return;
+                                                setValue('name', event.currentTarget.value, { shouldDirty: true, shouldValidate: true });
+                                            }}
+                                        />
+                                    )}
                                 />
 
                                 <div className="md:col-span-6">
@@ -7050,15 +7193,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </Alert>
                             )}
 
-                            <Textarea
-                                label="Description"
-                                disabled={isImmutableField('description')}
-                                placeholder="Describe your event..."
-                                autosize
-                                minRows={3}
-                                className="mt-4"
-                                maxLength={MAX_DESCRIPTION_LENGTH}
-                                {...register('description')}
+                            <Controller
+                                name="description"
+                                control={control}
+                                render={({ field }) => (
+                                    <Textarea
+                                        label="Description"
+                                        disabled={isImmutableField('description')}
+                                        placeholder="Describe your event..."
+                                        autosize
+                                        minRows={3}
+                                        className="mt-4"
+                                        maxLength={MAX_DESCRIPTION_LENGTH}
+                                        value={field.value ?? ''}
+                                        name={field.name}
+                                        onBlur={field.onBlur}
+                                        ref={field.ref}
+                                        onChange={(event) => {
+                                            if (isImmutableField('description')) return;
+                                            setValue('description', event.currentTarget.value, { shouldDirty: true, shouldValidate: false });
+                                        }}
+                                    />
+                                )}
                             />
                             </Collapse>
                         </Paper>
@@ -7262,7 +7418,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         if (isImmutableField('start')) return;
                                                         const parsed = parseLocalDateTime(val as Date | string | null);
                                                         if (!parsed) return;
-                                                        field.onChange(formatLocalDateTime(parsed));
+                                                        setValue('start', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
                                                     }}
                                                     minDate={todaysDate}
                                                     timePickerProps={{
@@ -7324,7 +7480,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                             if (isImmutableField('end')) return;
                                                             const parsed = parseLocalDateTime(val as Date | string | null);
                                                             if (!parsed) return;
-                                                            field.onChange(formatLocalDateTime(parsed));
+                                                            setValue('end', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
                                                         }}
                                                         minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
                                                         timePickerProps={{
@@ -7945,10 +8101,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 <div>
                                     <Title order={6} mb="xs">Invite referees by email</Title>
                                     <Text size="sm" c="dimmed" mb="xs">
-                                        Add referees to this event and send them an email invite.
+                                        Add referee invites to the draft. They will be sent after you save the event.
                                     </Text>
                                     <div className="space-y-3">
-                                        {refereeInvites.map((invite, index) => (
+                                        {eventData.pendingRefereeInvites.map((invite, index) => (
                                             <Paper key={index} withBorder radius="md" p="sm">
                                                 <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
                                                     <TextInput
@@ -7958,9 +8114,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         maw={220}
                                                         maxLength={MAX_SHORT_TEXT_LENGTH}
                                                         onChange={(e) => {
-                                                            const next = [...refereeInvites];
+                                                            const next = [...eventData.pendingRefereeInvites];
                                                             next[index] = { ...invite, firstName: e.currentTarget.value };
-                                                            setRefereeInvites(next);
+                                                            setPendingRefereeInvites(next);
                                                         }}
                                                     />
                                                     <TextInput
@@ -7970,9 +8126,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         maw={220}
                                                         maxLength={MAX_SHORT_TEXT_LENGTH}
                                                         onChange={(e) => {
-                                                            const next = [...refereeInvites];
+                                                            const next = [...eventData.pendingRefereeInvites];
                                                             next[index] = { ...invite, lastName: e.currentTarget.value };
-                                                            setRefereeInvites(next);
+                                                            setPendingRefereeInvites(next);
                                                         }}
                                                     />
                                                     <TextInput
@@ -7982,20 +8138,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         maw={280}
                                                         maxLength={MAX_MEDIUM_TEXT_LENGTH}
                                                         onChange={(e) => {
-                                                            const next = [...refereeInvites];
+                                                            const next = [...eventData.pendingRefereeInvites];
                                                             next[index] = { ...invite, email: e.currentTarget.value };
-                                                            setRefereeInvites(next);
+                                                            setPendingRefereeInvites(next);
                                                         }}
                                                     />
                                                 </SimpleGrid>
-                                                {refereeInvites.length > 1 && (
+                                                {eventData.pendingRefereeInvites.length > 1 && (
                                                     <Group justify="flex-end" mt="xs">
                                                         <Button
                                                             variant="subtle"
                                                             color="red"
                                                             size="xs"
                                                             onClick={() => {
-                                                                setRefereeInvites((prev) => prev.filter((_, i) => i !== index));
+                                                                setPendingRefereeInvites((prev) => prev.filter((_, i) => i !== index));
                                                             }}
                                                         >
                                                             Remove
@@ -8012,18 +8168,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 radius="md"
                                                 style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
                                                 onClick={() =>
-                                                    setRefereeInvites((prev) => [...prev, { firstName: '', lastName: '', email: '' }])
+                                                    setPendingRefereeInvites((prev) => [...prev, createEmptyRefereeInvite()])
                                                 }
                                             >
                                                 +
                                             </Button>
-                                            <Button
-                                                onClick={handleInviteRefereeEmail}
-                                                loading={invitingReferees}
-                                                disabled={invitingReferees}
-                                            >
-                                                Add Referees
-                                            </Button>
+                                            <Text size="sm" c="dimmed">
+                                                Save the event to send invites.
+                                            </Text>
                                         </Group>
                                         {refereeInviteError && (
                                             <Text size="xs" c="red">

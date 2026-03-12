@@ -4792,6 +4792,36 @@ function EventScheduleContent() {
     [activeEvent, activeTab, setSubmitError],
   );
 
+  const syncPendingEventFormInvites = useCallback(
+    async (savedEvent: Event): Promise<Event> => {
+      const formApi = eventFormRef.current;
+      const savedEventId = savedEvent.$id;
+      if (!formApi || !savedEventId) {
+        return savedEvent;
+      }
+
+      const beforeDraft = formApi.getDraft();
+      try {
+        await formApi.submitPendingRefereeInvites(savedEventId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to send referee invitations.';
+        setSubmitError(message);
+        throw error;
+      }
+
+      const afterDraft = formApi.getDraft();
+      const beforeRefereeIds = JSON.stringify(Array.isArray(beforeDraft.refereeIds) ? beforeDraft.refereeIds : []);
+      const afterRefereeIds = JSON.stringify(Array.isArray(afterDraft.refereeIds) ? afterDraft.refereeIds : []);
+      if (beforeRefereeIds === afterRefereeIds) {
+        return savedEvent;
+      }
+
+      const invitedEventDraft = { ...savedEvent, ...(afterDraft as Event), $id: savedEventId } as Event;
+      return eventService.updateEvent(savedEventId, invitedEventDraft);
+    },
+    [setSubmitError],
+  );
+
   const handlePreviewEventUpdate = useCallback((preview: Event) => {
     const normalizedPreview = normalizeApiEvent(preview) ?? preview;
     const previewClone = cloneValue(normalizedPreview) as Event;
@@ -5024,7 +5054,7 @@ function EventScheduleContent() {
   const scheduleRegularEvent = useCallback(
     async (draft: Partial<Event>) => {
       if (!draft) {
-        return;
+        return null;
       }
 
       setPublishing(true);
@@ -5053,9 +5083,11 @@ function EventScheduleContent() {
             { scroll: false },
           );
         }
+        return result.event;
       } catch (err) {
         console.error('Failed to create event:', err);
         setError('Failed to create event.');
+        return null;
       } finally {
         setPublishing(false);
       }
@@ -5075,7 +5107,14 @@ function EventScheduleContent() {
 
   const startRentalPaymentIntent = useCallback(async (context: PendingRentalCheckoutContext) => {
     if (!context.requiresPayment) {
-      await scheduleRegularEvent(context.draftToSave);
+      const scheduledEvent = await scheduleRegularEvent(context.draftToSave);
+      if (scheduledEvent?.$id) {
+        const syncedEvent = await syncPendingEventFormInvites(scheduledEvent);
+        eventFormRef.current?.commitDirtyBaseline();
+        if (syncedEvent !== scheduledEvent) {
+          handlePreviewEventUpdate(syncedEvent);
+        }
+      }
       return;
     }
     if (!user) {
@@ -5101,7 +5140,7 @@ function EventScheduleContent() {
     } finally {
       setPublishing(false);
     }
-  }, [rentalOrganization, scheduleRegularEvent, user]);
+  }, [handlePreviewEventUpdate, rentalOrganization, scheduleRegularEvent, syncPendingEventFormInvites, user]);
 
   const startRentalCheckoutFlow = useCallback(async (context: PendingRentalCheckoutContext) => {
     if (!rentalDocumentTemplateIds.length) {
@@ -5431,10 +5470,17 @@ function EventScheduleContent() {
   const handleRentalPaymentSuccess = useCallback(async () => {
     const pendingDraft = pendingRegularEventRef.current;
     if (pendingDraft) {
-      await scheduleRegularEvent(pendingDraft);
+      const scheduledEvent = await scheduleRegularEvent(pendingDraft);
+      if (scheduledEvent?.$id) {
+        const syncedEvent = await syncPendingEventFormInvites(scheduledEvent);
+        eventFormRef.current?.commitDirtyBaseline();
+        if (syncedEvent !== scheduledEvent) {
+          handlePreviewEventUpdate(syncedEvent);
+        }
+      }
     }
     closeRentalPaymentModal();
-  }, [closeRentalPaymentModal, scheduleRegularEvent]);
+  }, [closeRentalPaymentModal, handlePreviewEventUpdate, scheduleRegularEvent, syncPendingEventFormInvites]);
 
   const saveExistingEvent = useCallback(
     async ({
@@ -5452,7 +5498,9 @@ function EventScheduleContent() {
       const isBuildBracketAction = postSaveAction === 'buildBrackets';
       const hasSchedulingAction = isRescheduleAction || isBuildBracketAction;
 
-      const draft = await getDraftFromForm({ allowCurrentEventFallback: hasSchedulingAction });
+      const draft = await getDraftFromForm({
+        allowCurrentEventFallback: hasSchedulingAction,
+      });
       if (!draft) {
         return;
       }
@@ -5660,7 +5708,10 @@ function EventScheduleContent() {
           updatedEvent.matches = nextMatches;
         }
 
+        updatedEvent = await syncPendingEventFormInvites(updatedEvent);
+
         hasUnsavedChangesRef.current = false;
+        eventFormRef.current?.commitDirtyBaseline();
         hydrateEvent(updatedEvent);
         setHasUnsavedChanges(false);
         setFormHasUnsavedChanges(false);
@@ -5721,6 +5772,7 @@ function EventScheduleContent() {
       stagedMatchCreates,
       toBulkMatchUpdatePayload,
       stagedMatchDeletes,
+      syncPendingEventFormInvites,
       validateDraftMatchGraph,
     ],
   );
@@ -5806,7 +5858,14 @@ function EventScheduleContent() {
         }
       }
 
-      await scheduleRegularEvent(draftToSave);
+      const scheduledEvent = await scheduleRegularEvent(draftToSave);
+      if (scheduledEvent?.$id) {
+        const syncedEvent = await syncPendingEventFormInvites(scheduledEvent);
+        eventFormRef.current?.commitDirtyBaseline();
+        if (syncedEvent !== scheduledEvent) {
+          handlePreviewEventUpdate(syncedEvent);
+        }
+      }
       return;
     }
 
@@ -6722,14 +6781,14 @@ function EventScheduleContent() {
               </Stack>
             </Modal>
             {user && changesEvent ? (
-              <EventForm
-                key={`create-event-form-${templateSeedKey}`}
-                ref={eventFormRef}
-                isOpen
-                onClose={() => router.push('/events')}
-                onDirtyStateChange={handleEventFormDirtyStateChange}
-                currentUser={user}
-                organization={organizationForCreate}
+                <EventForm
+                  key={`create-event-form-${templateSeedKey}`}
+                  ref={eventFormRef}
+                  isOpen
+                  onClose={() => router.push('/events')}
+                  onDirtyStateChange={handleEventFormDirtyStateChange}
+                  currentUser={user}
+                  organization={organizationForCreate}
                 defaultLocation={createLocationDefaults}
                 immutableDefaults={rentalImmutableDefaults}
                 rentalPurchase={rentalPurchaseContext}
@@ -6958,7 +7017,7 @@ function EventScheduleContent() {
                         loading={publishing}
                         disabled={
                           (hasNetworkActionInFlight && !publishing)
-                          || !hasPendingUnsavedChanges
+                          || (!isCreateMode && !hasPendingUnsavedChanges)
                           || hasSplitDivisionUnassignedTeams
                           || (!isCreateMode && hasMatchConflicts)
                         }

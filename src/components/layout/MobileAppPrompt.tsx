@@ -108,7 +108,7 @@ export default function MobileAppPrompt() {
     >
       <Group justify="space-between" align="center" wrap="nowrap">
         <div>
-          <Text fw={600} size="sm">Use the Razumly app</Text>
+          <Text fw={600} size="sm">Use the BracketIQ app</Text>
           <Text size="xs" c="dimmed">Open this page in the mobile app for a better experience.</Text>
         </div>
         <Group gap="xs" wrap="nowrap">

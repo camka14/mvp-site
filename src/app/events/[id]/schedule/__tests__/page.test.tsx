@@ -70,23 +70,41 @@ let capturedEventFormProps: any = null;
 let mockEventFormDraft: any = null;
 let mockEventFormValidateResult = true;
 let mockEventFormDirtyState = false;
+let mockCommitDirtyBaseline = jest.fn();
+let mockSubmitPendingRefereeInvites = jest.fn();
 jest.mock('../components/EventForm', () => {
   const React = require('react');
-  const { forwardRef, useEffect, useImperativeHandle } = React;
+  const { forwardRef, useEffect, useImperativeHandle, useState } = React;
   const MockEventForm = forwardRef(function MockEventForm(props: any, ref: any) {
+    const [mockInputValue, setMockInputValue] = useState('');
+    const [isDirty, setIsDirty] = useState(mockEventFormDirtyState);
     useEffect(() => {
       capturedEventFormProps = props;
-      props.onDirtyStateChange?.(mockEventFormDirtyState);
-      return () => {
-        props.onDirtyStateChange?.(false);
-      };
+      props.onDirtyStateChange?.(isDirty);
+    }, [isDirty, props]);
+
+    useEffect(() => () => {
+      props.onDirtyStateChange?.(false);
     }, [props]);
 
     useImperativeHandle(ref, () => ({
       getDraft: () => mockEventFormDraft ?? props.event ?? {},
       validate: async () => mockEventFormValidateResult,
+      commitDirtyBaseline: () => mockCommitDirtyBaseline(),
+      submitPendingRefereeInvites: (eventId: string) => mockSubmitPendingRefereeInvites(eventId),
     }));
-    return <div data-testid="event-form" />;
+    return (
+      <div data-testid="event-form">
+        <input
+          aria-label="Mock Event Form Input"
+          value={mockInputValue}
+          onChange={(event) => {
+            setMockInputValue(event.currentTarget.value);
+            setIsDirty(event.currentTarget.value.trim().length > 0);
+          }}
+        />
+      </div>
+    );
   });
   MockEventForm.displayName = 'MockEventForm';
   return {
@@ -162,6 +180,8 @@ describe('League schedule page', () => {
     mockEventFormDraft = null;
     mockEventFormValidateResult = true;
     mockEventFormDirtyState = false;
+    mockCommitDirtyBaseline = jest.fn();
+    mockSubmitPendingRefereeInvites = jest.fn();
     useAppMock.mockReturnValue({
       user: { $id: 'host_1' },
       isAuthenticated: true,
@@ -216,6 +236,93 @@ describe('League schedule page', () => {
     expect(screen.queryByText(/Edit Match/)).not.toBeInTheDocument();
     expect(capturedEventFormProps?.event?.$id).toBe('event_1');
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
+  });
+
+  it('keeps the create button enabled in create mode when a seeded draft has no pending changes', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        if (key === 'templateId') return null;
+        if (key === 'skipTemplatePrompt') return '1';
+        return null;
+      },
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('event-form')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create Event' })).toBeEnabled();
+    });
+  });
+
+  it('enables Save when the event form reports unsaved changes', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const baseEvent = buildApiEvent({
+      id: 'event_1',
+      $id: 'event_1',
+      state: 'UNPUBLISHED',
+      organizationId: 'org_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      refereeIds: ['ref_1'],
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const event = { ...baseEvent };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    mockEventFormDirtyState = true;
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const saveButton = await screen.findByRole('button', { name: /^save$/i });
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
+  });
+
+  it('updates tracked changes when a form value changes', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const saveButton = await screen.findByRole('button', { name: /^save$/i });
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Mock Event Form Input'), {
+      target: { value: 'updated value' },
+    });
+
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
   });
 
   it('shows the send notification action next to the event title for managers', async () => {
@@ -1094,6 +1201,8 @@ describe('League schedule page', () => {
     expect(payload.fields?.[0]?.rentalSlotIds).toBeUndefined();
     expect(payload).not.toHaveProperty('attendees');
     expect(eventService.createEvent).not.toHaveBeenCalled();
+    expect(mockCommitDirtyBaseline).toHaveBeenCalledTimes(1);
+    expect(mockSubmitPendingRefereeInvites).toHaveBeenCalledWith('event_unpublished');
   });
 
   it('saves a template without changing template lifecycle state', async () => {

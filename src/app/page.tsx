@@ -525,41 +525,69 @@ export default function HomePage() {
         </section>
 
         <section id="resources" className="container-responsive pb-16">
-          <div className="landing-surface rounded-3xl p-6">
-            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <div>
+          <div className="landing-surface rounded-3xl p-6 lg:p-8">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl">
                 <h2 className="landing-section-title text-2xl font-semibold sm:text-3xl">Guides and platform resources</h2>
-                <p className="landing-section-copy mt-3 max-w-2xl text-sm sm:text-base">
+                <p className="landing-section-copy mt-3 text-sm sm:text-base">
                   New on the BracketIQ blog: practical scheduling guides for organizers who need cleaner brackets,
                   clearer updates, and fewer tournament-day surprises.
                 </p>
-                <article className="landing-surface-soft mt-5 rounded-3xl p-5">
-                  <p className="landing-label text-xs uppercase tracking-[0.16em]">Featured Guide</p>
-                  <h3 className="landing-section-title mt-3 text-xl font-semibold">
-                    Tournament schedule maker
-                  </h3>
-                  <p className="landing-section-copy mt-3 text-sm sm:text-base">
-                    Learn how to choose the right format, review conflicts before publishing, and keep updates moving
-                    when the bracket changes on game day.
-                  </p>
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <Link
-                      href="/blog/tournament-schedule-maker"
-                      className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                    >
-                      Read the guide
-                    </Link>
-                    <Link
-                      href="/blog"
-                      className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                    >
-                      Visit the blog
-                    </Link>
-                  </div>
-                </article>
               </div>
-              <div>
-                <h3 className="landing-section-title text-xl font-semibold">Integrations and platform stack</h3>
+              <Link
+                href="/blog"
+                className="landing-btn-secondary inline-flex min-h-11 items-center justify-center self-start rounded-full px-5 text-sm font-semibold transition"
+              >
+                Browse all guides
+              </Link>
+            </div>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:items-start">
+              <article className="landing-surface-soft rounded-3xl p-5 sm:p-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="landing-label text-xs uppercase tracking-[0.16em]">Featured Guide</p>
+                  <span className="rounded-full border border-slate-300/70 bg-white/80 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                    New
+                  </span>
+                </div>
+                <h3 className="landing-section-title mt-4 text-2xl font-semibold">
+                  Tournament schedule maker
+                </h3>
+                <p className="landing-section-copy mt-3 max-w-2xl text-sm sm:text-base">
+                  Learn how to choose the right format, review conflicts before publishing, and keep updates moving
+                  when the bracket changes on game day.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {['Format selection', 'Conflict review', 'Live updates'].map((item) => (
+                    <span
+                      key={item}
+                      className="rounded-full border border-slate-300/70 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    href="/blog/tournament-schedule-maker"
+                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Read the guide
+                  </Link>
+                  <Link
+                    href="/blog"
+                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Visit the blog
+                  </Link>
+                </div>
+              </article>
+
+              <div className="landing-surface-soft rounded-3xl p-5 sm:p-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="landing-section-title text-xl font-semibold">Integrations and platform stack</h3>
+                  <p className="landing-section-copy text-sm">Payments, maps, documents, and push notifications.</p>
+                </div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   {integrations.map((integration) => (
                     <article

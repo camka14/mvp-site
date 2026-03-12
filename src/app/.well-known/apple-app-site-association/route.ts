@@ -1,27 +1,10 @@
 import { NextResponse } from 'next/server';
+import { APPLE_APP_SITE_ASSOCIATION_BODY } from '@/lib/appSiteAssociations';
 
 export const dynamic = 'force-static';
 
-const body = {
-  applinks: {
-    details: [
-      {
-        appIDs: [
-          '427LTWF4US.com.razumly.mvp',
-        ],
-        components: [
-          {
-            '/': '/*',
-            comment: 'Match all routes on mvp.razumly.com',
-          },
-        ],
-      },
-    ],
-  },
-};
-
 export async function GET() {
-  return NextResponse.json(body, {
+  return NextResponse.json(APPLE_APP_SITE_ASSOCIATION_BODY, {
     status: 200,
     headers: {
       'content-type': 'application/json',

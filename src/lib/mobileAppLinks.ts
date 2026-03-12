@@ -1,4 +1,4 @@
-export const IOS_STORE_URL_DEFAULT = 'https://apps.apple.com/us/search?term=Razumly%20MVP';
+export const IOS_STORE_URL_DEFAULT = 'https://apps.apple.com/us/search?term=BracketIQ';
 export const ANDROID_STORE_URL_DEFAULT = 'https://play.google.com/store/apps/details?id=com.razumly.mvp';
 export const IOS_DEEP_LINK_DEFAULT = 'mvp://discover';
 export const ANDROID_DEEP_LINK_DEFAULT = 'razumly://mvp';
