@@ -102,6 +102,36 @@ class UserService {
     return response.user;
   }
 
+  async lookupEmailMembership(emails: string[], userIds: string[]): Promise<Array<{ email: string; userId: string }>> {
+    const normalizedEmails = Array.from(new Set(
+      emails
+        .map((email) => email.trim().toLowerCase())
+        .filter((email) => email.length > 0),
+    ));
+    const normalizedUserIds = Array.from(new Set(
+      userIds
+        .map((userId) => userId.trim())
+        .filter((userId) => userId.length > 0),
+    ));
+
+    if (!normalizedEmails.length || !normalizedUserIds.length) {
+      return [];
+    }
+
+    const response = await apiFetch<{
+      matches?: Array<{ email?: string | null; userId?: string | null }>;
+    }>('/api/users/email-membership', {
+      method: 'POST',
+      body: JSON.stringify({ emails: normalizedEmails, userIds: normalizedUserIds }),
+    });
+
+    return (response.matches ?? []).flatMap((match) => {
+      const email = typeof match.email === 'string' ? match.email.trim().toLowerCase() : '';
+      const userId = typeof match.userId === 'string' ? match.userId.trim() : '';
+      return email && userId ? [{ email, userId }] : [];
+    });
+  }
+
   async updateUser(id: string, updates: Partial<UserData>): Promise<UserData> {
     const response = await apiFetch<{ user: UserData }>(`/api/users/${id}`, {
       method: 'PATCH',
@@ -216,14 +246,16 @@ class UserService {
   async inviteUsersByEmail(
     inviterId: string,
     invites: Array<{
-      firstName: string;
-      lastName: string;
-      email: string;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      userId?: string;
       type?: string;
       staffTypes?: StaffMemberType[];
       eventId?: string;
       organizationId?: string;
       teamId?: string;
+      replaceStaffTypes?: boolean;
     }>,
   ): Promise<{ sent?: Invite[]; not_sent?: Invite[]; failed?: Invite[] }> {
     const payload = {

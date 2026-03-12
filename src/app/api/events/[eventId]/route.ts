@@ -1259,7 +1259,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
   }
   const divisionKeys = normalizeDivisionKeys(event.divisions);
   const playoffDivisionKeys = await getDivisionKeysForEventKind(eventId, 'PLAYOFF');
-  const [divisionFieldIds, divisionDetails, playoffDivisionDetails] = await Promise.all([
+  const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites] = await Promise.all([
     getDivisionFieldMapForEvent(eventId, divisionKeys),
     getDivisionDetailsForEvent(eventId, divisionKeys, event.start, {
       price: event.price,
@@ -1279,9 +1279,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       installmentDueDates: event.installmentDueDates,
       installmentAmounts: event.installmentAmounts,
     }),
+    prisma.invites.findMany({
+      where: { eventId, type: 'STAFF' },
+      orderBy: { createdAt: 'desc' },
+    }),
   ]);
   return NextResponse.json(
-    withLegacyEvent({ ...event, divisionFieldIds, divisionDetails, playoffDivisionDetails }),
+    withLegacyEvent({ ...event, divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites }),
     { status: 200 },
   );
 }

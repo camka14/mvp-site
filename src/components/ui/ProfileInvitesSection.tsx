@@ -90,7 +90,10 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
     [invites],
   );
   const eventInvites = useMemo(
-    () => invites.filter((invite) => invite.type === 'EVENT' && invite.eventId),
+    () => invites.filter((invite) => (
+      invite.eventId
+      && (invite.type === 'EVENT' || (invite.type === 'STAFF' && !invite.organizationId))
+    )),
     [invites],
   );
 
@@ -196,14 +199,28 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
             if (!event) {
               return null;
             }
+            const staffRoleLabel = invite.type === 'STAFF'
+              ? Array.isArray(invite.staffTypes) && invite.staffTypes.length > 0
+                ? invite.staffTypes.map((type) => (type === 'REFEREE' ? 'Referee' : 'Host')).join(' + ')
+                : 'Staff'
+              : null;
             return (
               <Paper key={invite.$id} withBorder radius="md" p="sm">
                 <Stack gap="sm">
                   <EventCard event={event} onClick={() => router.push(`/events/${event.$id}/schedule?tab=details`)} />
+                  {staffRoleLabel ? (
+                    <Text size="xs" c="dimmed">{staffRoleLabel}</Text>
+                  ) : null}
                   <Group justify="flex-end">
                     <Button
                       size="xs"
-                      onClick={() => router.push(`/events/${event.$id}/schedule?tab=details`)}
+                      onClick={() => {
+                        if (invite.type === 'STAFF') {
+                          void acceptInvite(invite.$id);
+                          return;
+                        }
+                        router.push(`/events/${event.$id}/schedule?tab=details`);
+                      }}
                     >
                       Accept Invite
                     </Button>

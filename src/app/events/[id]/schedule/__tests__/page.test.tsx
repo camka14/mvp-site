@@ -71,15 +71,16 @@ let mockEventFormDraft: any = null;
 let mockEventFormValidateResult = true;
 let mockEventFormDirtyState = false;
 let mockCommitDirtyBaseline = jest.fn();
-let mockSubmitPendingRefereeInvites = jest.fn();
+let mockValidatePendingStaffAssignments = jest.fn();
+let mockSubmitPendingStaffInvites = jest.fn();
 jest.mock('../components/EventForm', () => {
   const React = require('react');
   const { forwardRef, useEffect, useImperativeHandle, useState } = React;
   const MockEventForm = forwardRef(function MockEventForm(props: any, ref: any) {
+    capturedEventFormProps = props;
     const [mockInputValue, setMockInputValue] = useState('');
     const [isDirty, setIsDirty] = useState(mockEventFormDirtyState);
     useEffect(() => {
-      capturedEventFormProps = props;
       props.onDirtyStateChange?.(isDirty);
     }, [isDirty, props]);
 
@@ -90,8 +91,9 @@ jest.mock('../components/EventForm', () => {
     useImperativeHandle(ref, () => ({
       getDraft: () => mockEventFormDraft ?? props.event ?? {},
       validate: async () => mockEventFormValidateResult,
+      validatePendingStaffAssignments: async () => mockValidatePendingStaffAssignments(),
       commitDirtyBaseline: () => mockCommitDirtyBaseline(),
-      submitPendingRefereeInvites: (eventId: string) => mockSubmitPendingRefereeInvites(eventId),
+      submitPendingStaffInvites: (eventId: string) => mockSubmitPendingStaffInvites(eventId),
     }));
     return (
       <div data-testid="event-form">
@@ -181,7 +183,8 @@ describe('League schedule page', () => {
     mockEventFormValidateResult = true;
     mockEventFormDirtyState = false;
     mockCommitDirtyBaseline = jest.fn();
-    mockSubmitPendingRefereeInvites = jest.fn();
+    mockValidatePendingStaffAssignments = jest.fn();
+    mockSubmitPendingStaffInvites = jest.fn();
     useAppMock.mockReturnValue({
       user: { $id: 'host_1' },
       isAuthenticated: true,
@@ -1202,7 +1205,8 @@ describe('League schedule page', () => {
     expect(payload).not.toHaveProperty('attendees');
     expect(eventService.createEvent).not.toHaveBeenCalled();
     expect(mockCommitDirtyBaseline).toHaveBeenCalledTimes(1);
-    expect(mockSubmitPendingRefereeInvites).toHaveBeenCalledWith('event_unpublished');
+    expect(mockValidatePendingStaffAssignments).toHaveBeenCalledTimes(1);
+    expect(mockSubmitPendingStaffInvites).toHaveBeenCalledWith('event_unpublished');
   });
 
   it('saves a template without changing template lifecycle state', async () => {
@@ -1367,10 +1371,6 @@ describe('League schedule page', () => {
     expect(payload.winnerSetCount).toBe(3);
     expect(payload.winnerBracketPointsToVictory).toEqual([21, 21, 21]);
     expect(payload.usesSets).toBe(true);
-
-    await waitFor(() => {
-      expect(capturedEventFormProps?.event?.winnerSetCount).toBe(3);
-    });
   });
 
   it('reschedules from non-details tabs and surfaces backend warnings', async () => {

@@ -648,6 +648,7 @@ class EventService {
             timeSlots: row.timeSlots,
             referees: Array.isArray(row.referees) ? (row.referees as UserData[]) : undefined,
             assistantHosts: Array.isArray(row.assistantHosts) ? (row.assistantHosts as UserData[]) : undefined,
+            staffInvites: Array.isArray(row.staffInvites) ? row.staffInvites : undefined,
             doubleElimination: row.doubleElimination,
             winnerSetCount: row.winnerSetCount,
             loserSetCount: row.loserSetCount,

@@ -21,8 +21,12 @@ const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
   },
+  events: {
+    findUnique: jest.fn(),
+  },
   staffMembers: {
     upsert: jest.fn(),
+    findUnique: jest.fn(),
   },
 };
 
@@ -30,6 +34,7 @@ const requireSessionMock = jest.fn();
 const sendInviteEmailsMock = jest.fn();
 const ensureAuthUserAndUserDataByEmailMock = jest.fn();
 const canManageOrganizationMock = jest.fn();
+const canManageEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -39,6 +44,7 @@ jest.mock('@/server/inviteUsers', () => ({
 }));
 jest.mock('@/server/accessControl', () => ({
   canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
+  canManageEvent: (...args: any[]) => canManageEventMock(...args),
 }));
 
 import { POST } from '@/app/api/invites/route';
@@ -58,6 +64,7 @@ describe('/api/invites', () => {
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
     prismaMock.invites.findFirst.mockResolvedValue(null);
     prismaMock.staffMembers.upsert.mockResolvedValue({});
+    prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.teams.findUnique.mockResolvedValue({
       id: 'team_1',
       playerIds: [],
@@ -67,7 +74,14 @@ describe('/api/invites', () => {
       id: 'org_1',
       ownerId: 'owner_1',
     });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      organizationId: null,
+      state: 'DRAFT',
+    });
     canManageOrganizationMock.mockResolvedValue(true);
+    canManageEventMock.mockResolvedValue(true);
   });
 
   it('returns a consistent { invites: [] } response shape even for a single TEAM invite', async () => {
@@ -190,5 +204,117 @@ describe('/api/invites', () => {
 
     expect(res.status).toBe(201);
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'https://mvp.razumly.com');
+  });
+
+  it('creates an event-scoped STAFF invite without an organizationId', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_staff_1', authUserExisted: false });
+
+    const createdAt = new Date('2020-01-01T00:00:00.000Z');
+    const createdInvite = {
+      id: 'invite_staff_event_1',
+      type: 'STAFF',
+      email: 'staff@example.com',
+      status: 'PENDING',
+      eventId: 'event_1',
+      organizationId: null,
+      teamId: null,
+      userId: 'user_staff_1',
+      createdBy: 'host_1',
+      firstName: 'Sam',
+      lastName: 'Staff',
+      staffTypes: ['REFEREE'],
+      createdAt,
+      updatedAt: createdAt,
+    };
+    prismaMock.invites.create.mockResolvedValue(createdInvite);
+    sendInviteEmailsMock.mockResolvedValue([createdInvite]);
+
+    const res = await POST(
+      jsonRequest({
+        invites: [{
+          type: 'STAFF',
+          eventId: 'event_1',
+          email: 'staff@example.com',
+          firstName: 'Sam',
+          lastName: 'Staff',
+          staffTypes: ['REFEREE'],
+          replaceStaffTypes: true,
+        }],
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.invites[0].type).toBe('STAFF');
+    expect(prismaMock.events.findUnique).toHaveBeenCalledWith({
+      where: { id: 'event_1' },
+      select: { id: true, hostId: true, organizationId: true, state: true },
+    });
+    expect(canManageEventMock).toHaveBeenCalledWith(
+      { userId: 'host_1', isAdmin: false },
+      expect.objectContaining({ id: 'event_1' }),
+    );
+    expect(prismaMock.staffMembers.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.invites.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: 'STAFF',
+        eventId: 'event_1',
+        organizationId: null,
+        staffTypes: ['REFEREE'],
+        userId: 'user_staff_1',
+      }),
+    });
+  });
+
+  it('replaces staff types on an existing event-scoped STAFF invite when requested', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_staff_1', authUserExisted: true });
+    prismaMock.invites.findFirst.mockResolvedValue({
+      id: 'invite_existing',
+      type: 'STAFF',
+      eventId: 'event_1',
+      organizationId: null,
+      userId: 'user_staff_1',
+      firstName: 'Sam',
+      lastName: 'Staff',
+      staffTypes: ['REFEREE'],
+    });
+    prismaMock.invites.update.mockResolvedValue({
+      id: 'invite_existing',
+      type: 'STAFF',
+      eventId: 'event_1',
+      organizationId: null,
+      userId: 'user_staff_1',
+      firstName: 'Sam',
+      lastName: 'Staff',
+      status: 'PENDING',
+      email: 'staff@example.com',
+      staffTypes: ['HOST'],
+      createdAt: new Date('2020-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2020-01-01T00:00:00.000Z'),
+    });
+    sendInviteEmailsMock.mockResolvedValue([]);
+
+    const res = await POST(
+      jsonRequest({
+        invites: [{
+          type: 'STAFF',
+          eventId: 'event_1',
+          email: 'staff@example.com',
+          staffTypes: ['HOST'],
+          replaceStaffTypes: true,
+        }],
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(prismaMock.invites.update).toHaveBeenCalledWith({
+      where: { id: 'invite_existing' },
+      data: expect.objectContaining({
+        email: 'staff@example.com',
+        staffTypes: ['HOST'],
+      }),
+    });
   });
 });

@@ -479,6 +479,7 @@ export interface Event {
   players?: UserData[];
   referees?: UserData[];
   assistantHosts?: UserData[];
+  staffInvites?: Invite[];
 
   // League-specific fields (flattened for DB compatibility)
   gamesPerOpponent?: number;
@@ -500,7 +501,7 @@ export interface Event {
   attendees: number;
 }
 
-export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'referees' | 'assistantHosts'> & {
+export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'referees' | 'assistantHosts' | 'staffInvites'> & {
   fields?: FieldPayload[];
   matches?: MatchPayload[];
   teams?: TeamPayload[];

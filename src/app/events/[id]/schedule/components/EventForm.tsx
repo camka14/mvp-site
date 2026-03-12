@@ -7,12 +7,12 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument, formatBillAmount, formatPrice } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, formatBillAmount, formatPrice } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
 
-import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid, Collapse } from '@mantine/core';
+import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
 import { locationService } from '@/lib/locationService';
@@ -20,8 +20,6 @@ import { userService } from '@/lib/userService';
 import { organizationService } from '@/lib/organizationService';
 import { fieldService } from '@/lib/fieldService';
 import {
-    collectOrganizationHostIds,
-    collectOrganizationRefereeIds,
     normalizeEntityId,
     sanitizeOrganizationEventAssignments,
 } from '@/lib/organizationEventAccess';
@@ -83,8 +81,9 @@ interface EventFormProps {
 export type EventFormHandle = {
     getDraft: () => Partial<Event>;
     validate: () => Promise<boolean>;
+    validatePendingStaffAssignments: () => Promise<void>;
     commitDirtyBaseline: () => void;
-    submitPendingRefereeInvites: (eventId: string) => Promise<void>;
+    submitPendingStaffInvites: (eventId: string) => Promise<void>;
 };
 
 type RentalPurchaseContext = {
@@ -97,10 +96,38 @@ type RentalPurchaseContext = {
     rentalDocumentTemplateId?: string;
 };
 
-type PendingRefereeInvite = {
+type StaffAssignmentRole = 'REFEREE' | 'ASSISTANT_HOST';
+type EventInviteStaffType = 'REFEREE' | 'HOST';
+type StaffRosterStatus = 'active' | 'pending' | 'declined';
+
+type PendingStaffInvite = {
     firstName: string;
     lastName: string;
     email: string;
+    roles: StaffAssignmentRole[];
+};
+
+type StaffRosterEntry = {
+    id: string;
+    userId: string | null;
+    fullName: string;
+    userName: string | null;
+    email?: string | null;
+    user?: UserData | null;
+    status: StaffRosterStatus;
+    subtitle?: string | null;
+    types: StaffMemberType[];
+};
+
+type AssignedStaffCard = {
+    key: string;
+    role: 'REFEREE' | 'HOST' | 'ASSISTANT_HOST';
+    userId: string | null;
+    user?: UserData | null;
+    email?: string | null;
+    displayName: string;
+    status: 'email_invite' | 'pending' | 'declined' | null;
+    source: 'assigned' | 'draft';
 };
 
 const normalizeDirtyTrackedIdList = (values: unknown[]): string[] => Array.from(
@@ -111,21 +138,19 @@ const normalizeDirtyTrackedIdList = (values: unknown[]): string[] => Array.from(
     ),
 ).sort();
 
-const normalizeDirtyTrackedPendingRefereeInvites = (invites: PendingRefereeInvite[]): PendingRefereeInvite[] => invites
+const normalizeDirtyTrackedPendingStaffInvites = (invites: PendingStaffInvite[]): PendingStaffInvite[] => invites
     .map((invite) => ({
         firstName: invite.firstName.trim(),
         lastName: invite.lastName.trim(),
         email: invite.email.trim(),
+        roles: Array.from(new Set(invite.roles)).sort(),
     }))
-    .filter((invite) => invite.firstName.length > 0 || invite.lastName.length > 0 || invite.email.length > 0);
-
-const serializeDirtySnapshot = (
-    buildDraft: (values: EventFormValues) => Partial<Event>,
-    values: EventFormValues,
-): string => JSON.stringify({
-    draft: buildDraft(values),
-    pendingRefereeInvites: normalizeDirtyTrackedPendingRefereeInvites(values.pendingRefereeInvites ?? []),
-});
+    .filter((invite) => (
+        invite.email.length > 0
+        || invite.firstName.length > 0
+        || invite.lastName.length > 0
+        || invite.roles.length > 0
+    ));
 
 type EventType = Event['eventType'];
 
@@ -164,11 +189,105 @@ const DIVISION_GENDER_OPTIONS = [
     { value: 'C', label: 'CoEd' },
 ] as const;
 
-const createEmptyRefereeInvite = (): PendingRefereeInvite => ({
+const createEmptyStaffInvite = (): PendingStaffInvite => ({
     firstName: '',
     lastName: '',
     email: '',
+    roles: [],
 });
+
+const normalizeInviteEmail = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+
+const normalizePendingStaffInvite = (invite: PendingStaffInvite): PendingStaffInvite => ({
+    firstName: invite.firstName.trim(),
+    lastName: invite.lastName.trim(),
+    email: normalizeInviteEmail(invite.email),
+    roles: Array.from(new Set((invite.roles || []).filter((role): role is StaffAssignmentRole => (
+        role === 'REFEREE' || role === 'ASSISTANT_HOST'
+    )))),
+});
+
+const mapRoleToInviteStaffType = (role: StaffAssignmentRole): EventInviteStaffType => (
+    role === 'REFEREE' ? 'REFEREE' : 'HOST'
+);
+
+const mapInviteStaffTypeToRole = (type: StaffMemberType): StaffAssignmentRole | null => {
+    if (type === 'REFEREE') {
+        return 'REFEREE';
+    }
+    if (type === 'HOST') {
+        return 'ASSISTANT_HOST';
+    }
+    return null;
+};
+
+const normalizeInviteStatusToken = (status: unknown): StaffRosterStatus => {
+    if (typeof status === 'string') {
+        const normalized = status.trim().toLowerCase();
+        if (normalized === 'declined') {
+            return 'declined';
+        }
+        if (normalized === 'pending') {
+            return 'pending';
+        }
+    }
+    return 'active';
+};
+
+const getUserEmail = (candidate?: Partial<UserData> | null): string | null => {
+    const email = typeof (candidate as { email?: unknown } | undefined)?.email === 'string'
+        ? String((candidate as { email?: string }).email).trim().toLowerCase()
+        : '';
+    return email.length > 0 ? email : null;
+};
+
+const formatStaffRoleLabel = (role: AssignedStaffCard['role'] | StaffAssignmentRole): string => {
+    if (role === 'REFEREE') {
+        return 'Referee';
+    }
+    if (role === 'HOST') {
+        return 'Host';
+    }
+    return 'Assistant Host';
+};
+
+const formatStaffStatusLabel = (status: AssignedStaffCard['status'] | StaffRosterStatus): string => {
+    if (status === 'email_invite') {
+        return 'Email invite';
+    }
+    if (status === 'declined') {
+        return 'Declined';
+    }
+    if (status === 'pending') {
+        return 'Pending';
+    }
+    return 'Active';
+};
+
+const getStaffStatusColor = (status: AssignedStaffCard['status'] | StaffRosterStatus): 'gray' | 'blue' | 'teal' => {
+    if (status === 'declined') {
+        return 'gray';
+    }
+    if (status === 'pending' || status === 'email_invite') {
+        return 'blue';
+    }
+    return 'teal';
+};
+
+const maybeExtendVisibleCountOnScroll = (
+    event: React.UIEvent<HTMLDivElement>,
+    total: number,
+    setVisibleCount: React.Dispatch<React.SetStateAction<number>>,
+) => {
+    const target = event.currentTarget;
+    const remaining = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (remaining > 24) {
+        return;
+    }
+    setVisibleCount((prev) => (
+        prev >= total ? prev : Math.min(prev + 5, total)
+    ));
+};
 
 const AnimatedSection = ({
     in: inProp,
@@ -704,6 +823,141 @@ const tournamentConfigEqual = (left: TournamentConfig, right: TournamentConfig):
         (right.loserBracketPointsToVictory || []).map((value) => String(value)),
     )
 );
+
+const leagueConfigEqual = (left: LeagueConfig, right: LeagueConfig): boolean => (
+    left.gamesPerOpponent === right.gamesPerOpponent
+    && left.includePlayoffs === right.includePlayoffs
+    && left.playoffTeamCount === right.playoffTeamCount
+    && left.usesSets === right.usesSets
+    && left.matchDurationMinutes === right.matchDurationMinutes
+    && left.restTimeMinutes === right.restTimeMinutes
+    && left.setDurationMinutes === right.setDurationMinutes
+    && left.setsPerMatch === right.setsPerMatch
+    && stringArraysEqual(
+        (left.pointsToVictory || []).map((value) => String(value)),
+        (right.pointsToVictory || []).map((value) => String(value)),
+    )
+);
+
+const normalizeLeagueConfigForSetMode = (
+    source: Partial<LeagueConfig> | undefined,
+    usesSets: boolean,
+): LeagueConfig => {
+    const normalizedMatchDuration = Number.isFinite(Number(source?.matchDurationMinutes))
+        ? Math.max(1, Math.trunc(Number(source?.matchDurationMinutes)))
+        : 60;
+    const normalizedRestTime = Number.isFinite(Number(source?.restTimeMinutes))
+        ? Math.max(0, Math.trunc(Number(source?.restTimeMinutes)))
+        : 0;
+    const normalizedGamesPerOpponent = Number.isFinite(Number(source?.gamesPerOpponent))
+        ? Math.max(1, Math.trunc(Number(source?.gamesPerOpponent)))
+        : 1;
+    const normalizedIncludePlayoffs = Boolean(source?.includePlayoffs);
+    const normalizedPlayoffTeamCount = Number.isFinite(Number(source?.playoffTeamCount))
+        ? Math.max(2, Math.trunc(Number(source?.playoffTeamCount)))
+        : undefined;
+
+    if (usesSets) {
+        const allowedSetCounts = [1, 3, 5];
+        const normalizedSetsPerMatch = Number.isFinite(Number(source?.setsPerMatch))
+            && allowedSetCounts.includes(Math.trunc(Number(source?.setsPerMatch)))
+            ? Math.trunc(Number(source?.setsPerMatch))
+            : 1;
+        const normalizedSetDuration = Number.isFinite(Number(source?.setDurationMinutes))
+            ? Math.max(1, Math.trunc(Number(source?.setDurationMinutes)))
+            : 20;
+        const normalizedPoints = Array.isArray(source?.pointsToVictory)
+            ? source.pointsToVictory
+                .slice(0, normalizedSetsPerMatch)
+                .map((value) => {
+                    const parsed = Number(value);
+                    return Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : 21;
+                })
+            : [];
+        while (normalizedPoints.length < normalizedSetsPerMatch) {
+            normalizedPoints.push(21);
+        }
+        return {
+            gamesPerOpponent: normalizedGamesPerOpponent,
+            includePlayoffs: normalizedIncludePlayoffs,
+            playoffTeamCount: normalizedPlayoffTeamCount,
+            usesSets: true,
+            matchDurationMinutes: normalizedMatchDuration,
+            restTimeMinutes: normalizedRestTime,
+            setDurationMinutes: normalizedSetDuration,
+            setsPerMatch: normalizedSetsPerMatch,
+            pointsToVictory: normalizedPoints,
+        };
+    }
+
+    return {
+        gamesPerOpponent: normalizedGamesPerOpponent,
+        includePlayoffs: normalizedIncludePlayoffs,
+        playoffTeamCount: normalizedPlayoffTeamCount,
+        usesSets: false,
+        matchDurationMinutes: normalizedMatchDuration,
+        restTimeMinutes: normalizedRestTime,
+        setDurationMinutes: undefined,
+        setsPerMatch: undefined,
+        pointsToVictory: undefined,
+    };
+};
+
+const fieldsEqual = (left: Field[], right: Field[]): boolean => {
+    if (left.length !== right.length) {
+        return false;
+    }
+    for (let index = 0; index < left.length; index += 1) {
+        const first = left[index];
+        const second = right[index];
+        if (
+            first?.$id !== second?.$id
+            || (first?.name ?? '') !== (second?.name ?? '')
+            || (first?.fieldNumber ?? 0) !== (second?.fieldNumber ?? 0)
+            || (first?.location ?? '') !== (second?.location ?? '')
+            || Number(first?.lat ?? 0) !== Number(second?.lat ?? 0)
+            || Number(first?.long ?? 0) !== Number(second?.long ?? 0)
+            || !stringSetsEqual(
+                normalizeDivisionKeys(first?.divisions),
+                normalizeDivisionKeys(second?.divisions),
+            )
+        ) {
+            return false;
+        }
+    }
+    return true;
+};
+
+const leagueSlotsEqual = (left: LeagueSlotForm[], right: LeagueSlotForm[]): boolean => {
+    if (left.length !== right.length) {
+        return false;
+    }
+    for (let index = 0; index < left.length; index += 1) {
+        const first = left[index];
+        const second = right[index];
+        if (
+            first.key !== second.key
+            || first.$id !== second.$id
+            || !stringSetsEqual(normalizeSlotFieldIds(first), normalizeSlotFieldIds(second))
+            || !stringSetsEqual(
+                normalizeWeekdays(first).map((value) => String(value)),
+                normalizeWeekdays(second).map((value) => String(value)),
+            )
+            || !stringSetsEqual(normalizeDivisionKeys(first.divisions), normalizeDivisionKeys(second.divisions))
+            || first.startDate !== second.startDate
+            || first.endDate !== second.endDate
+            || first.startTimeMinutes !== second.startTimeMinutes
+            || first.endTimeMinutes !== second.endTimeMinutes
+            || Boolean(first.repeating) !== Boolean(second.repeating)
+            || Boolean(first.checking) !== Boolean(second.checking)
+            || (first.error ?? '') !== (second.error ?? '')
+            || !slotConflictsEqual(first.conflicts, second.conflicts)
+        ) {
+            return false;
+        }
+    }
+    return true;
+};
 
 const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
     if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
@@ -1351,7 +1605,7 @@ type EventFormState = {
     teams: Team[];
     referees: UserData[];
     refereeIds: string[];
-    pendingRefereeInvites: PendingRefereeInvite[];
+    pendingStaffInvites: PendingStaffInvite[];
     assistantHostIds: string[];
     doTeamsRef: boolean;
     teamRefsMaySwap: boolean;
@@ -1924,14 +2178,17 @@ const mapEventToFormState = (event: Event): EventFormState => {
     teams: event.teams || [],
     referees: event.referees || [],
     refereeIds: event.refereeIds || [],
-    pendingRefereeInvites: Array.isArray((event as { pendingRefereeInvites?: PendingRefereeInvite[] }).pendingRefereeInvites)
-        && (event as { pendingRefereeInvites?: PendingRefereeInvite[] }).pendingRefereeInvites!.length > 0
-        ? (event as { pendingRefereeInvites?: PendingRefereeInvite[] }).pendingRefereeInvites!.map((invite) => ({
+    pendingStaffInvites: Array.isArray((event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites)
+        && (event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites!.length > 0
+        ? (event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites!.map((invite) => ({
             firstName: invite.firstName ?? '',
             lastName: invite.lastName ?? '',
             email: invite.email ?? '',
+            roles: Array.isArray(invite.roles) ? invite.roles.filter((role): role is StaffAssignmentRole => (
+                role === 'REFEREE' || role === 'ASSISTANT_HOST'
+            )) : [],
         }))
-        : [createEmptyRefereeInvite()],
+        : [],
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsRef: Boolean(event.doTeamsRef),
     teamRefsMaySwap: Boolean(event.doTeamsRef) && Boolean((event as any).teamRefsMaySwap),
@@ -2080,13 +2337,14 @@ const eventFormSchema = z
         teams: z.array(z.any()),
         referees: z.array(z.any()),
         refereeIds: z.array(z.string()),
-        pendingRefereeInvites: z.array(
+        pendingStaffInvites: z.array(
             z.object({
                 firstName: z.string().default(''),
                 lastName: z.string().default(''),
                 email: z.string().default(''),
+                roles: z.array(z.enum(['REFEREE', 'ASSISTANT_HOST'])).default([]),
             }),
-        ).default([createEmptyRefereeInvite()]),
+        ).default([]),
         assistantHostIds: z.array(z.string()).default([]),
         doTeamsRef: z.boolean(),
         teamRefsMaySwap: z.boolean().default(false),
@@ -2444,9 +2702,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 }, ref) => {
     const open = isOpen ?? true;
     const refsPrefilledRef = useRef<boolean>(false);
-    const lastResetEventIdRef = useRef<string | null>(null);
-    const dirtyBootstrapTimerRef = useRef<number | null>(null);
-    const dirtyBaselineRef = useRef<string>('');
+    const lastResetSourceRef = useRef<Event | null>(null);
     const dirtyBaselineValuesRef = useRef<EventFormValues | null>(null);
     const buildDraftForDirtyTrackingRef = useRef<(values: EventFormValues) => Partial<Event>>(
         () => ({}),
@@ -2495,10 +2751,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [templatesError, setTemplatesError] = useState<string | null>(null);
 
-    const [hydratedEditingEvent, setHydratedEditingEvent] = useState<Event | null>(null);
-    const activeEditingEvent = hydratedEditingEvent ?? incomingEvent ?? null;
+    const activeEditingEvent = incomingEvent ?? null;
 
-    const isEditMode = activeEditingEvent.state !== "DRAFT" && !isCreateMode;
+    const isEditMode = Boolean(activeEditingEvent && !isCreateMode);
 
     const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
     const sportOptions = useMemo(() => sports.map((sport) => ({ value: sport.$id, label: sport.name })), [sports]);
@@ -2735,49 +2990,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return next;
     }, [immutableDefaultsMemo, sportsById]);
 
-    useEffect(() => {
-        if (!open || !incomingEvent || isCreateMode) {
-            setHydratedEditingEvent(null);
-            return;
-        }
-        if (!incomingEvent.$createdAt) {
-            setHydratedEditingEvent(null);
-            return;
-        }
-
-        if (!supportsScheduleSlots(incomingEvent.eventType)) {
-            setHydratedEditingEvent(null);
-            return;
-        }
-
-        if (Array.isArray(incomingEvent.timeSlots) && incomingEvent.timeSlots.length > 0) {
-            setHydratedEditingEvent(null);
-            return;
-        }
-
-        let cancelled = false;
-        (async () => {
-            try {
-                const full = await eventService.getEventWithRelations(incomingEvent.$id);
-                if (!cancelled && full) {
-                    setHydratedEditingEvent(full);
-                }
-            } catch (error) {
-                console.warn('Failed to hydrate editing event with time slots:', error);
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [incomingEvent, open, isCreateMode]);
-
     const buildDefaultFormValues = useCallback((): EventFormValues => {
         const defaultLocationLabel = (defaultLocation?.location ?? '').trim();
         const defaultLocationCoordinates = defaultLocation?.coordinates;
 
         const base = (() => {
             const initial = applyImmutableDefaults(mapEventToFormState(activeEditingEvent));
+            const normalizedSportId = typeof initial.sportId === 'string' ? initial.sportId.trim() : '';
+            if (normalizedSportId) {
+                initial.sportId = normalizedSportId;
+                const hydratedSport = sportsById.get(normalizedSportId);
+                if (hydratedSport) {
+                    initial.sportConfig = hydratedSport;
+                }
+            }
             if (!initial.location && defaultLocationLabel) {
                 initial.location = defaultLocationLabel;
             }
@@ -2956,21 +3182,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         })();
 
         const defaultLeagueData: LeagueConfig = (() => {
+            const selectedSport = base.sportConfig
+                ?? (base.sportId ? sportsById.get(base.sportId) : null);
+            const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
             if (activeEditingEvent && activeEditingEvent.eventType === 'LEAGUE') {
                 const source = activeEditingEvent.leagueConfig || activeEditingEvent;
-                return {
-                    gamesPerOpponent: source?.gamesPerOpponent ?? 1,
-                    includePlayoffs: source?.includePlayoffs ?? false,
-                    playoffTeamCount: source?.playoffTeamCount ?? undefined,
-                    usesSets: Boolean(source?.usesSets),
-                    matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
-                    restTimeMinutes: normalizeNumber(source?.restTimeMinutes, 0) ?? 0,
-                    setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
-                    setsPerMatch: normalizeNumber(source?.setsPerMatch),
-                    pointsToVictory: Array.isArray(source?.pointsToVictory) ? [...(source.pointsToVictory as number[])] : undefined,
-                };
+                return normalizeLeagueConfigForSetMode(source, requiresSets);
             }
-            return {
+            return normalizeLeagueConfigForSetMode({
                 gamesPerOpponent: 1,
                 includePlayoffs: false,
                 playoffTeamCount: undefined,
@@ -2980,7 +3199,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setDurationMinutes: undefined,
                 setsPerMatch: undefined,
                 pointsToVictory: undefined,
-            };
+            }, requiresSets);
         })();
 
         const defaultTournamentData = (() => {
@@ -3036,6 +3255,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         immutableDefaults,
         immutableFields,
         organization,
+        sportsById,
     ]);
 
     const {
@@ -3046,7 +3266,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         reset,
         clearErrors,
         trigger,
-        formState: { errors },
+        formState: { errors, isDirty },
     } = useForm<EventFormValues>({
         resolver: zodResolver(eventFormSchema) as Resolver<EventFormValues>,
         mode: 'onBlur',
@@ -3064,16 +3284,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             fieldValue: unknown,
             fieldOptions?: Record<string, unknown>,
         ) => void)(name, value, options);
-        if (options?.shouldDirty) {
-            onDirtyStateChange?.(true);
-        }
-    }, [onDirtyStateChange, rawSetValue]);
+    }, [rawSetValue]);
     const formValues = watch();
 
     useEffect(() => {
         if (!open) {
             setIsDirtyTrackingReady(false);
-            dirtyBaselineRef.current = '';
+            lastResetSourceRef.current = null;
             dirtyBaselineValuesRef.current = null;
             onDirtyStateChange?.(false);
             onDraftStateChange?.({
@@ -3082,40 +3299,25 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             });
             return;
         }
-        const nextEventId = activeEditingEvent?.$id ?? null;
-        if (lastResetEventIdRef.current === nextEventId) {
+        const sourceChanged = lastResetSourceRef.current !== activeEditingEvent;
+        if (!sourceChanged) {
             return;
         }
-        lastResetEventIdRef.current = nextEventId;
-        if (dirtyBootstrapTimerRef.current !== null && typeof window !== 'undefined') {
-            window.clearTimeout(dirtyBootstrapTimerRef.current);
-        }
+        lastResetSourceRef.current = activeEditingEvent;
         setIsDirtyTrackingReady(false);
         onDirtyStateChange?.(false);
         const nextDefaults = buildDefaultFormValues();
+        dirtyBaselineValuesRef.current = nextDefaults;
         reset(nextDefaults);
-        if (typeof window !== 'undefined') {
-            dirtyBootstrapTimerRef.current = window.setTimeout(() => {
-                const settledValues = getValues();
-                reset(settledValues);
-                dirtyBaselineValuesRef.current = settledValues;
-                dirtyBaselineRef.current = serializeDirtySnapshot(buildDraftForDirtyTrackingRef.current, settledValues);
-                setIsDirtyTrackingReady(true);
-            }, 0);
-        } else {
-            dirtyBaselineValuesRef.current = nextDefaults;
-            dirtyBaselineRef.current = serializeDirtySnapshot(buildDraftForDirtyTrackingRef.current, nextDefaults);
-            setIsDirtyTrackingReady(true);
-        }
-    }, [activeEditingEvent?.$id, buildDefaultFormValues, getValues, onDirtyStateChange, onDraftStateChange, reset, open]);
-
-    useEffect(() => {
-        return () => {
-            if (dirtyBootstrapTimerRef.current !== null && typeof window !== 'undefined') {
-                window.clearTimeout(dirtyBootstrapTimerRef.current);
-            }
-        };
-    }, []);
+        setIsDirtyTrackingReady(true);
+    }, [
+        activeEditingEvent,
+        buildDefaultFormValues,
+        onDirtyStateChange,
+        onDraftStateChange,
+        reset,
+        open,
+    ]);
 
     useEffect(() => {
         const baselineValues = dirtyBaselineValuesRef.current ?? formValues;
@@ -3127,10 +3329,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             onDirtyStateChange?.(false);
             return;
         }
-        onDirtyStateChange?.(
-            serializeDirtySnapshot(buildDraftForDirtyTrackingRef.current, formValues) !== dirtyBaselineRef.current,
-        );
-    }, [formValues, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
+        onDirtyStateChange?.(isDirty);
+    }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
     const eventData = formValues;
     const leagueSlots = formValues.leagueSlots;
@@ -3291,44 +3491,54 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [templateOrganizationId]);
 
     const setEventData = useCallback(
-        (updater: React.SetStateAction<EventFormValues>) => {
+        (
+            updater: React.SetStateAction<EventFormValues>,
+            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
+        ) => {
             const current = getValues();
             const next = typeof updater === 'function' ? (updater as (prev: EventFormValues) => EventFormValues)(current) : updater;
             if (next === current) {
                 return;
             }
+            const shouldDirty = options.shouldDirty ?? true;
+            const shouldValidate = options.shouldValidate ?? true;
             (Object.keys(next) as (keyof EventFormValues)[]).forEach((key) => {
                 const currentVal = current[key];
                 const nextVal = next[key];
                 if (Object.is(currentVal, nextVal)) return;
-                setValue(key, nextVal, { shouldDirty: true, shouldValidate: true });
+                setValue(key, nextVal, { shouldDirty, shouldValidate });
             });
         },
         [getValues, setValue],
     );
 
     const setLeagueData = useCallback(
-        (updater: React.SetStateAction<LeagueConfig>) => {
+        (
+            updater: React.SetStateAction<LeagueConfig>,
+            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
+        ) => {
             const current = getValues('leagueData');
             const next = typeof updater === 'function' ? (updater as (prev: LeagueConfig) => LeagueConfig)(current) : updater;
-            if (Object.is(current, next)) {
+            if (leagueConfigEqual(current, next)) {
                 return;
             }
-            setValue('leagueData', next, { shouldDirty: true, shouldValidate: true });
+            setValue('leagueData', next, {
+                shouldDirty: options.shouldDirty ?? true,
+                shouldValidate: options.shouldValidate ?? true,
+            });
         },
         [getValues, setValue],
     );
 
-    const setPendingRefereeInvites = useCallback(
-        (updater: React.SetStateAction<PendingRefereeInvite[]>) => {
-            const current = getValues('pendingRefereeInvites') ?? [];
+    const setPendingStaffInvites = useCallback(
+        (updater: React.SetStateAction<PendingStaffInvite[]>) => {
+            const current = getValues('pendingStaffInvites') ?? [];
             const next = typeof updater === 'function'
-                ? (updater as (prev: PendingRefereeInvite[]) => PendingRefereeInvite[])(current)
+                ? (updater as (prev: PendingStaffInvite[]) => PendingStaffInvite[])(current)
                 : updater;
-            setValue('pendingRefereeInvites', next, { shouldDirty: true, shouldValidate: false });
-            onDirtyStateChange?.(true);
+            setValue('pendingStaffInvites', next.map(normalizePendingStaffInvite), { shouldDirty: true, shouldValidate: false });
         },
-        [getValues, onDirtyStateChange, setValue],
+        [getValues, setValue],
     );
 
     const setTournamentData = useCallback(
@@ -3344,37 +3554,55 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
 
     const setPlayoffData = useCallback(
-        (updater: React.SetStateAction<TournamentConfig>) => {
+        (
+            updater: React.SetStateAction<TournamentConfig>,
+            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
+        ) => {
             const current = getValues('playoffData');
             const next = typeof updater === 'function' ? (updater as (prev: TournamentConfig) => TournamentConfig)(current) : updater;
             if (Object.is(current, next)) {
                 return;
             }
-            setValue('playoffData', next, { shouldDirty: true, shouldValidate: true });
+            setValue('playoffData', next, {
+                shouldDirty: options.shouldDirty ?? true,
+                shouldValidate: options.shouldValidate ?? true,
+            });
         },
         [getValues, setValue],
     );
 
     const setLeagueSlots = useCallback(
-        (updater: React.SetStateAction<LeagueSlotForm[]>) => {
+        (
+            updater: React.SetStateAction<LeagueSlotForm[]>,
+            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
+        ) => {
             const current = getValues('leagueSlots');
             const next = typeof updater === 'function' ? (updater as (prev: LeagueSlotForm[]) => LeagueSlotForm[])(current) : updater;
-            if (Object.is(current, next)) {
+            if (leagueSlotsEqual(current, next)) {
                 return;
             }
-            setValue('leagueSlots', next, { shouldDirty: true, shouldValidate: true });
+            setValue('leagueSlots', next, {
+                shouldDirty: options.shouldDirty ?? true,
+                shouldValidate: options.shouldValidate ?? true,
+            });
         },
         [getValues, setValue],
     );
 
     const setFields = useCallback(
-        (updater: React.SetStateAction<Field[]>) => {
+        (
+            updater: React.SetStateAction<Field[]>,
+            options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
+        ) => {
             const current = getValues('fields');
             const next = typeof updater === 'function' ? (updater as (prev: Field[]) => Field[])(current) : updater;
-            if (Object.is(current, next)) {
+            if (fieldsEqual(current, next)) {
                 return;
             }
-            setValue('fields', next, { shouldDirty: true, shouldValidate: true });
+            setValue('fields', next, {
+                shouldDirty: options.shouldDirty ?? true,
+                shouldValidate: options.shouldValidate ?? true,
+            });
         },
         [getValues, setValue],
     );
@@ -3411,13 +3639,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const setJoinAsParticipant = useCallback(
         (value: boolean) => {
+            if (Object.is(getValues('joinAsParticipant'), value)) {
+                return;
+            }
             (setValue as (name: string, value: unknown, options?: { shouldDirty?: boolean; shouldValidate?: boolean }) => void)(
                 'joinAsParticipant',
                 value,
                 { shouldDirty: true, shouldValidate: true },
             );
         },
-        [setValue],
+        [getValues, setValue],
     );
 
     const syncInstallmentCount = useCallback(
@@ -3565,6 +3796,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, []);
 
     useEffect(() => {
+        if (isEditMode) {
+            return;
+        }
         const ids = eventData.refereeIds || [];
         const refs = eventData.referees || [];
         const missingIds = ids.filter((id) => !refs.some((ref) => ref.$id === id));
@@ -3580,7 +3814,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     setEventData((prev) => ({
                         ...prev,
                         referees: [...(prev.referees || []), ...fetched.filter((ref) => ref.$id)],
-                    }));
+                    }), { shouldDirty: false, shouldValidate: false });
                 }
             } catch (error) {
                 console.warn('Failed to hydrate referees for event:', error);
@@ -3590,18 +3824,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return () => {
             cancelled = true;
         };
-    }, [eventData.refereeIds, eventData.referees, setEventData]);
+    }, [eventData.refereeIds, eventData.referees, isEditMode, setEventData]);
 
-    const [refereeSearch, setRefereeSearch] = useState('');
-    const [refereeResults, setRefereeResults] = useState<UserData[]>([]);
-    const [refereeSearchLoading, setRefereeSearchLoading] = useState(false);
-    const [refereeError, setRefereeError] = useState<string | null>(null);
-    const [refereeInviteError, setRefereeInviteError] = useState<string | null>(null);
     const [assistantHostUsers, setAssistantHostUsers] = useState<UserData[]>([]);
-    const [assistantHostSearch, setAssistantHostSearch] = useState('');
-    const [assistantHostResults, setAssistantHostResults] = useState<UserData[]>([]);
-    const [assistantHostSearchLoading, setAssistantHostSearchLoading] = useState(false);
-    const [assistantHostError, setAssistantHostError] = useState<string | null>(null);
+    const [staffInviteError, setStaffInviteError] = useState<string | null>(null);
+    const [organizationStaffSearch, setOrganizationStaffSearch] = useState('');
+    const [organizationStaffTypeFilter, setOrganizationStaffTypeFilter] = useState<'all' | StaffMemberType>('all');
+    const [organizationStaffStatusFilter, setOrganizationStaffStatusFilter] = useState<'all' | StaffRosterStatus>('all');
+    const [nonOrgStaffSearch, setNonOrgStaffSearch] = useState('');
+    const [nonOrgStaffResults, setNonOrgStaffResults] = useState<UserData[]>([]);
+    const [nonOrgStaffSearchLoading, setNonOrgStaffSearchLoading] = useState(false);
+    const [nonOrgStaffError, setNonOrgStaffError] = useState<string | null>(null);
+    const [newStaffInvite, setNewStaffInvite] = useState<PendingStaffInvite>(createEmptyStaffInvite());
+    const [organizationStaffVisibleCount, setOrganizationStaffVisibleCount] = useState(5);
+    const [refereeCardVisibleCount, setRefereeCardVisibleCount] = useState(5);
+    const [hostCardVisibleCount, setHostCardVisibleCount] = useState(5);
 
     const [fieldsLoading, setFieldsLoading] = useState(false);
     const organizationHostedEventId = (
@@ -3615,17 +3852,27 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const shouldProvisionFields = !isOrganizationHostedEvent && !hasImmutableFields;
     const shouldManageLocalFields = shouldProvisionFields && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
+    const organizationAssignableStaffIds = useMemo(
+        () => Array.from(
+            new Set([
+                resolvedOrganization?.ownerId,
+                ...(Array.isArray(resolvedOrganization?.staffMembers) ? resolvedOrganization.staffMembers.map((member) => member.userId) : []),
+                ...(Array.isArray(resolvedOrganization?.staffInvites) ? resolvedOrganization.staffInvites.map((invite) => invite.userId ?? '') : []),
+            ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)),
+        ),
+        [resolvedOrganization?.ownerId, resolvedOrganization?.staffInvites, resolvedOrganization?.staffMembers],
+    );
     const organizationAllowedHostIds = useMemo(
-        () => collectOrganizationHostIds(organization),
-        [organization],
+        () => organizationAssignableStaffIds,
+        [organizationAssignableStaffIds],
     );
     const organizationAllowedHostIdSet = useMemo(
         () => new Set(organizationAllowedHostIds),
         [organizationAllowedHostIds],
     );
     const organizationAllowedRefereeIds = useMemo(
-        () => collectOrganizationRefereeIds(organization),
-        [organization],
+        () => organizationAssignableStaffIds,
+        [organizationAssignableStaffIds],
     );
     const organizationAllowedRefereeIdSet = useMemo(
         () => new Set(organizationAllowedRefereeIds),
@@ -3663,20 +3910,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
         return map;
     }, [eventData.referees, resolvedOrganization?.referees, organizationAllowedRefereeIdSet]);
-    const organizationHostSelectData = useMemo(
-        () => Array.from(organizationAllowedHostIds)
-            .map((id) => {
-                const baseLabel = toUserLabel(organizationUsersById.get(id), id);
-                const label = id === resolvedOrganization?.ownerId ? `${baseLabel} (Owner)` : baseLabel;
-                return { value: id, label };
-            })
-            .sort((left, right) => left.label.localeCompare(right.label)),
-        [resolvedOrganization?.ownerId, organizationAllowedHostIds, organizationUsersById],
-    );
-    const assistantHostSelectData = useMemo(
-        () => organizationHostSelectData.filter((option) => option.value !== eventData.hostId),
-        [eventData.hostId, organizationHostSelectData],
-    );
     const assistantHostValue = useMemo(
         () => Array.from(
             new Set(
@@ -3696,15 +3929,120 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
         return map;
     }, [assistantHostUsers]);
-    const selectedAssistantHostUsers = useMemo(
-        () => assistantHostValue
-            .map((id) => assistantHostUsersById.get(id))
-            .filter((candidate): candidate is UserData => Boolean(candidate)),
-        [assistantHostUsersById, assistantHostValue],
+    const currentEventStaffInvites = useMemo(
+        () => (
+            Array.isArray(activeEditingEvent?.staffInvites)
+                ? activeEditingEvent.staffInvites
+                : Array.isArray(incomingEvent?.staffInvites)
+                    ? incomingEvent.staffInvites
+                    : []
+        ).filter((invite): invite is Invite => (
+            invite?.type === 'STAFF'
+            && invite.eventId === (activeEditingEvent?.$id ?? incomingEvent?.$id)
+        )),
+        [activeEditingEvent?.$id, activeEditingEvent?.staffInvites, incomingEvent?.$id, incomingEvent?.staffInvites],
     );
-    const unresolvedAssistantHostIds = useMemo(
-        () => assistantHostValue.filter((id) => !assistantHostUsersById.has(id)),
-        [assistantHostUsersById, assistantHostValue],
+    const currentEventStaffInviteByUserId = useMemo(() => {
+        const map = new Map<string, Invite>();
+        currentEventStaffInvites.forEach((invite) => {
+            if (invite.userId) {
+                map.set(invite.userId, invite);
+            }
+        });
+        return map;
+    }, [currentEventStaffInvites]);
+    const organizationStaffRosterEntries = useMemo<StaffRosterEntry[]>(() => {
+        const entries: StaffRosterEntry[] = [];
+        const seen = new Set<string>();
+        const staffMembers = Array.isArray(resolvedOrganization?.staffMembers) ? resolvedOrganization.staffMembers : [];
+        const staffInvites = Array.isArray(resolvedOrganization?.staffInvites) ? resolvedOrganization.staffInvites : [];
+
+        if (resolvedOrganization?.ownerId) {
+            entries.push({
+                id: resolvedOrganization.ownerId,
+                userId: resolvedOrganization.ownerId,
+                fullName: toUserLabel(resolvedOrganization.owner, resolvedOrganization.ownerId),
+                userName: resolvedOrganization.owner?.userName ?? null,
+                email: resolvedOrganization.staffEmailsByUserId?.[resolvedOrganization.ownerId] ?? getUserEmail(resolvedOrganization.owner),
+                user: resolvedOrganization.owner ?? null,
+                status: 'active',
+                subtitle: 'Owner',
+                types: ['HOST'],
+            });
+            seen.add(resolvedOrganization.ownerId);
+        }
+
+        staffMembers.forEach((staffMember) => {
+            if (!staffMember.userId || seen.has(staffMember.userId) || staffMember.userId === resolvedOrganization?.ownerId) {
+                return;
+            }
+            entries.push({
+                id: staffMember.$id,
+                userId: staffMember.userId,
+                fullName: toUserLabel(staffMember.user, staffMember.userId),
+                userName: staffMember.user?.userName ?? null,
+                email: resolvedOrganization?.staffEmailsByUserId?.[staffMember.userId] ?? getUserEmail(staffMember.user),
+                user: staffMember.user ?? null,
+                status: normalizeInviteStatusToken(staffMember.invite?.status),
+                subtitle: null,
+                types: Array.isArray(staffMember.types) ? staffMember.types : [],
+            });
+            seen.add(staffMember.userId);
+        });
+
+        staffInvites.forEach((invite) => {
+            if (!invite.userId || seen.has(invite.userId) || invite.userId === resolvedOrganization?.ownerId) {
+                return;
+            }
+            entries.push({
+                id: invite.$id,
+                userId: invite.userId,
+                fullName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email || invite.userId,
+                userName: null,
+                email: invite.email ?? null,
+                user: null,
+                status: normalizeInviteStatusToken(invite.status),
+                subtitle: null,
+                types: Array.isArray(invite.staffTypes) ? invite.staffTypes : ['HOST'],
+            });
+            seen.add(invite.userId);
+        });
+
+        return entries;
+    }, [
+        resolvedOrganization?.owner,
+        resolvedOrganization?.ownerId,
+        resolvedOrganization?.staffEmailsByUserId,
+        resolvedOrganization?.staffInvites,
+        resolvedOrganization?.staffMembers,
+    ]);
+    const filteredOrganizationStaffEntries = useMemo(
+        () => organizationStaffRosterEntries.filter((entry) => {
+            if (organizationStaffTypeFilter !== 'all' && !entry.types.includes(organizationStaffTypeFilter)) {
+                return false;
+            }
+            if (organizationStaffStatusFilter !== 'all' && entry.status !== organizationStaffStatusFilter) {
+                return false;
+            }
+            const query = organizationStaffSearch.trim().toLowerCase();
+            if (!query.length) {
+                return true;
+            }
+            return [
+                entry.fullName,
+                entry.userName ?? '',
+                entry.email ?? '',
+                entry.subtitle ?? '',
+            ]
+                .map((value) => value.toLowerCase())
+                .some((value) => value.includes(query));
+        }),
+        [
+            organizationStaffRosterEntries,
+            organizationStaffSearch,
+            organizationStaffStatusFilter,
+            organizationStaffTypeFilter,
+        ],
     );
     useEffect(() => {
         if (!isOrganizationHostedEvent) {
@@ -3741,7 +4079,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ...prev,
             hostId: nextHostId ?? prev.hostId,
             assistantHostIds: sanitized.assistantHostIds,
-        }));
+        }), { shouldDirty: false });
     }, [
         eventData.assistantHostIds,
         eventData.hostId,
@@ -3781,7 +4119,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ...prev,
             refereeIds: nextRefereeIds,
             referees: nextReferees,
-        }));
+        }), { shouldDirty: false });
     }, [
         eventData.refereeIds,
         eventData.referees,
@@ -3827,6 +4165,42 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             cancelled = true;
         };
     }, [assistantHostUsers, assistantHostValue]);
+    useEffect(() => {
+        if (isOrganizationHostedEvent) {
+            setNonOrgStaffResults([]);
+            setNonOrgStaffError(null);
+            return;
+        }
+        const query = nonOrgStaffSearch.trim();
+        if (query.length < 2) {
+            setNonOrgStaffResults([]);
+            setNonOrgStaffError(null);
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                setNonOrgStaffSearchLoading(true);
+                setNonOrgStaffError(null);
+                const results = await userService.searchUsers(query);
+                if (!cancelled) {
+                    setNonOrgStaffResults(results.filter((candidate) => Boolean(candidate?.$id)));
+                }
+            } catch (error) {
+                console.error('Failed to search staff:', error);
+                if (!cancelled) {
+                    setNonOrgStaffError('Failed to search staff. Try again.');
+                }
+            } finally {
+                if (!cancelled) {
+                    setNonOrgStaffSearchLoading(false);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [isOrganizationHostedEvent, nonOrgStaffSearch]);
     const handleHostChange = useCallback((value: string | null) => {
         if (!value) {
             return;
@@ -3834,86 +4208,49 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (isOrganizationHostedEvent && !organizationAllowedHostIdSet.has(value)) {
             return;
         }
-        onDirtyStateChange?.(true);
         setEventData((prev) => ({
             ...prev,
             hostId: value,
             assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== value),
         }));
-    }, [isOrganizationHostedEvent, onDirtyStateChange, organizationAllowedHostIdSet, setEventData]);
-    const handleAssistantHostsChange = useCallback((values: string[]) => {
-        onDirtyStateChange?.(true);
-        setEventData((prev) => ({
-            ...prev,
-            assistantHostIds: Array.from(
-                new Set(
-                    values
-                        .map((id) => String(id).trim())
-                        .filter((id) => (
-                            id.length > 0
-                            && id !== prev.hostId
-                            && (!isOrganizationHostedEvent || organizationAllowedHostIdSet.has(id))
-                        )),
-                ),
-            ),
-        }));
-    }, [isOrganizationHostedEvent, onDirtyStateChange, organizationAllowedHostIdSet, setEventData]);
-    const handleSearchAssistantHosts = useCallback(
-        async (query: string) => {
-            setAssistantHostSearch(query);
-            setAssistantHostError(null);
-            if (isOrganizationHostedEvent) {
-                setAssistantHostResults([]);
-                return;
-            }
-            if (query.trim().length < 2) {
-                setAssistantHostResults([]);
-                return;
-            }
-            try {
-                setAssistantHostSearchLoading(true);
-                const selectedIdSet = new Set([...(eventData.assistantHostIds || []), eventData.hostId || '']);
-                const results = await userService.searchUsers(query.trim());
-                setAssistantHostResults(
-                    results.filter((candidate) => Boolean(candidate?.$id) && !selectedIdSet.has(candidate.$id)),
-                );
-            } catch (error) {
-                console.error('Failed to search assistant hosts:', error);
-                setAssistantHostError('Failed to search assistant hosts. Try again.');
-            } finally {
-                setAssistantHostSearchLoading(false);
-            }
-        },
-        [eventData.assistantHostIds, eventData.hostId, isOrganizationHostedEvent],
-    );
-    const handleAddAssistantHost = useCallback((assistantHost: UserData) => {
-        onDirtyStateChange?.(true);
-        setEventData((prev) => ({
-            ...prev,
-            assistantHostIds: Array.from(
-                new Set(
-                    [...(prev.assistantHostIds || []), assistantHost.$id]
-                        .map((id) => String(id).trim())
-                        .filter((id) => id.length > 0 && id !== prev.hostId),
-                ),
-            ),
-        }));
+    }, [isOrganizationHostedEvent, organizationAllowedHostIdSet, setEventData]);
+    const cacheAssistantHostUser = useCallback((assistantHost?: UserData | null) => {
+        if (!assistantHost?.$id) {
+            return;
+        }
         setAssistantHostUsers((prev) => {
             if (prev.some((candidate) => candidate.$id === assistantHost.$id)) {
                 return prev;
             }
             return [...prev, assistantHost];
         });
-        setAssistantHostResults((prev) => prev.filter((candidate) => candidate.$id !== assistantHost.$id));
-    }, [onDirtyStateChange, setEventData]);
+    }, []);
+    const handleAddAssistantHost = useCallback((assistantHost: { $id?: string; userId?: string | null } & Partial<UserData>) => {
+        const assistantHostId = normalizeEntityId(assistantHost.$id ?? assistantHost.userId);
+        if (!assistantHostId) {
+            return;
+        }
+        if (isOrganizationHostedEvent && !organizationAllowedHostIdSet.has(assistantHostId)) {
+            return;
+        }
+        setEventData((prev) => ({
+            ...prev,
+            assistantHostIds: Array.from(
+                new Set(
+                    [...(prev.assistantHostIds || []), assistantHostId]
+                        .map((id) => String(id).trim())
+                        .filter((id) => id.length > 0 && id !== prev.hostId),
+                ),
+            ),
+        }));
+        cacheAssistantHostUser(assistantHost.$id ? (assistantHost as UserData) : null);
+    }, [cacheAssistantHostUser, isOrganizationHostedEvent, organizationAllowedHostIdSet, setEventData]);
     const handleRemoveAssistantHost = useCallback((assistantHostId: string) => {
-        onDirtyStateChange?.(true);
         setEventData((prev) => ({
             ...prev,
             assistantHostIds: (prev.assistantHostIds || []).filter((id) => id !== assistantHostId),
         }));
-        setAssistantHostUsers((prev) => prev.filter((candidate) => candidate.$id !== assistantHostId));
-    }, [onDirtyStateChange, setEventData]);
+    }, [setEventData]);
     const fieldCountOptions = useMemo(
         () => Array.from({ length: 12 }, (_, idx) => ({ value: String(idx + 1), label: String(idx + 1) })),
         []
@@ -4280,155 +4617,396 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         leagueData.includePlayoffs,
     ]);
 
-    const handleSearchReferees = useCallback(
-        async (query: string) => {
-            setRefereeSearch(query);
-            setRefereeError(null);
-            if (query.trim().length < 2) {
-                setRefereeResults([]);
-                return;
-            }
-            if (isOrganizationHostedEvent) {
-                const selectedRefereeIdSet = new Set(eventData.refereeIds || []);
-                const localResults = Array.from(organizationRefereesById.values())
-                    .filter((candidate) => !selectedRefereeIdSet.has(candidate.$id))
-                    .filter((candidate) => userMatchesSearch(candidate, query.trim()));
-                setRefereeResults(localResults);
-                return;
-            }
-            try {
-                setRefereeSearchLoading(true);
-                const results = await userService.searchUsers(query.trim());
-                const filtered = results.filter((candidate) => !(eventData.refereeIds || []).includes(candidate.$id));
-                setRefereeResults(filtered);
-            } catch (error) {
-                console.error('Failed to search referees:', error);
-                setRefereeError('Failed to search referees. Try again.');
-            } finally {
-                setRefereeSearchLoading(false);
-            }
-        },
-        [eventData.refereeIds, isOrganizationHostedEvent, organizationRefereesById],
-    );
-
-    const handleAddReferee = useCallback((referee: UserData) => {
-        if (isOrganizationHostedEvent && !organizationAllowedRefereeIdSet.has(referee.$id)) {
+    const handleAddReferee = useCallback((referee: { $id?: string; userId?: string | null } & Partial<UserData>) => {
+        const refereeId = normalizeEntityId(referee.$id ?? referee.userId);
+        if (!refereeId) {
             return;
         }
-        onDirtyStateChange?.(true);
+        if (isOrganizationHostedEvent && !organizationAllowedRefereeIdSet.has(refereeId)) {
+            return;
+        }
         setEventData((prev) => {
-            const nextIds = Array.from(new Set([...(prev.refereeIds || []), referee.$id]));
-            const nextRefs = (prev.referees || []).some((ref) => ref.$id === referee.$id)
-                ? prev.referees
-                : [...(prev.referees || []), referee];
+            const nextIds = Array.from(new Set([...(prev.refereeIds || []), refereeId]));
+            const nextRefs = referee.$id && !(prev.referees || []).some((ref) => ref.$id === referee.$id)
+                ? [...(prev.referees || []), referee as UserData]
+                : prev.referees || [];
             return { ...prev, refereeIds: nextIds, referees: nextRefs };
         });
-        setRefereeResults((prev) => prev.filter((candidate) => candidate.$id !== referee.$id));
-    }, [isOrganizationHostedEvent, onDirtyStateChange, organizationAllowedRefereeIdSet, setEventData]);
+    }, [isOrganizationHostedEvent, organizationAllowedRefereeIdSet, setEventData]);
 
     const handleRemoveReferee = useCallback((refereeId: string) => {
-        onDirtyStateChange?.(true);
         setEventData((prev) => ({
             ...prev,
             refereeIds: (prev.refereeIds || []).filter((id) => id !== refereeId),
             referees: (prev.referees || []).filter((ref) => ref.$id !== refereeId),
         }));
-    }, [onDirtyStateChange, setEventData]);
+    }, [setEventData]);
 
-    const submitPendingRefereeInvites = useCallback(async (eventId: string) => {
-        if (isOrganizationHostedEvent) {
-            return;
-        }
-        if (!currentUser) {
-            const message = 'You must be signed in to invite referees.';
-            setRefereeInviteError(message);
-            throw new Error(message);
-        }
+    const assignedUserIdsByRole = useMemo(() => ({
+        REFEREE: normalizeDirtyTrackedIdList(eventData.refereeIds || []),
+        ASSISTANT_HOST: normalizeDirtyTrackedIdList([...(eventData.hostId ? [eventData.hostId] : []), ...assistantHostValue]),
+    }) satisfies Record<StaffAssignmentRole, string[]>, [assistantHostValue, eventData.hostId, eventData.refereeIds]);
 
-        const sanitized = (getValues('pendingRefereeInvites') ?? []).map((invite) => ({
-            firstName: invite.firstName.trim(),
-            lastName: invite.lastName.trim(),
-            email: invite.email.trim(),
-        }));
-        const pendingInvites = sanitized.filter((invite) => (
-            invite.firstName.length > 0
-            || invite.lastName.length > 0
-            || invite.email.length > 0
+    const assignedUserIdSetByRole = useMemo(() => ({
+        REFEREE: new Set(assignedUserIdsByRole.REFEREE),
+        ASSISTANT_HOST: new Set(assignedUserIdsByRole.ASSISTANT_HOST),
+    }) satisfies Record<StaffAssignmentRole, Set<string>>, [assignedUserIdsByRole]);
+
+    const assignedStaffUserIds = useMemo(
+        () => Array.from(new Set([...assignedUserIdsByRole.REFEREE, ...assignedUserIdsByRole.ASSISTANT_HOST])),
+        [assignedUserIdsByRole],
+    );
+
+    const lookupPendingStaffInviteMembership = useCallback(async (pendingInvites: PendingStaffInvite[]) => {
+        const pendingEmails = Array.from(new Set(
+            pendingInvites
+                .map((invite) => normalizeInviteEmail(invite.email))
+                .filter((email) => email.length > 0),
         ));
-
-        if (!pendingInvites.length) {
-            setRefereeInviteError(null);
-            return;
+        if (!pendingEmails.length || !assignedStaffUserIds.length) {
+            return new Map<string, Set<string>>();
         }
 
+        const matches = await userService.lookupEmailMembership(pendingEmails, assignedStaffUserIds);
+        const membershipByEmail = new Map<string, Set<string>>();
+        matches.forEach((match) => {
+            const email = normalizeInviteEmail(match.email);
+            const userId = normalizeEntityId(match.userId);
+            if (!email || !userId) {
+                return;
+            }
+            const matchedUserIds = membershipByEmail.get(email) ?? new Set<string>();
+            matchedUserIds.add(userId);
+            membershipByEmail.set(email, matchedUserIds);
+        });
+        return membershipByEmail;
+    }, [assignedStaffUserIds]);
+
+    const findPendingStaffInviteConflictMessage = useCallback((
+        pendingInvites: PendingStaffInvite[],
+        membershipByEmail: Map<string, Set<string>>,
+    ): string | null => {
         for (const invite of pendingInvites) {
-            if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
-                const message = 'Enter first, last, and valid email for all invites before saving.';
-                setRefereeInviteError(message);
+            const matchedUserIds = membershipByEmail.get(invite.email);
+            if (!matchedUserIds || matchedUserIds.size === 0) {
+                continue;
+            }
+            for (const role of invite.roles) {
+                if (Array.from(matchedUserIds).some((userId) => assignedUserIdSetByRole[role].has(userId))) {
+                    return `${invite.email} is already added as ${formatStaffRoleLabel(role).toLowerCase()} for this event.`;
+                }
+            }
+        }
+        return null;
+    }, [assignedUserIdSetByRole]);
+
+
+    const validatePendingStaffInvites = useCallback(async (pendingInvitesInput: PendingStaffInvite[]) => {
+        if (isOrganizationHostedEvent) {
+            setStaffInviteError(null);
+            return new Map<string, Set<string>>();
+        }
+
+        const pendingInvites = normalizeDirtyTrackedPendingStaffInvites(pendingInvitesInput);
+        for (const invite of pendingInvites) {
+            if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email) || invite.roles.length === 0) {
+                const message = 'Enter first name, last name, valid email, and at least one role for every email invite before saving.';
+                setStaffInviteError(message);
                 throw new Error(message);
             }
         }
 
-        setRefereeInviteError(null);
-        try {
-            const result = await userService.inviteUsersByEmail(
-                currentUser.$id,
-                pendingInvites.map((invite) => ({
-                    ...invite,
-                    type: 'EVENT' as const,
-                    eventId,
-                })),
-            );
-            if (result.failed && result.failed.length) {
-                setRefereeInviteError('Failed to send one or more referee invites.');
+        const membershipByEmail = await lookupPendingStaffInviteMembership(pendingInvites);
+        const conflictMessage = findPendingStaffInviteConflictMessage(pendingInvites, membershipByEmail);
+        if (conflictMessage) {
+            setStaffInviteError(conflictMessage);
+            throw new Error(conflictMessage);
+        }
+
+        setStaffInviteError(null);
+        return membershipByEmail;
+    }, [findPendingStaffInviteConflictMessage, isOrganizationHostedEvent, lookupPendingStaffInviteMembership]);
+
+    const validatePendingStaffAssignments = useCallback(async () => {
+        const pendingInvites = normalizeDirtyTrackedPendingStaffInvites(getValues('pendingStaffInvites') ?? []);
+        await validatePendingStaffInvites(pendingInvites);
+    }, [getValues, validatePendingStaffInvites]);
+
+    const handleStagePendingStaffInvite = useCallback(async () => {
+        if (isOrganizationHostedEvent) {
+            return;
+        }
+
+        const nextInvite = normalizePendingStaffInvite(newStaffInvite);
+        if (!nextInvite.firstName || !nextInvite.lastName || !EMAIL_REGEX.test(nextInvite.email) || nextInvite.roles.length === 0) {
+            setStaffInviteError('Enter first name, last name, valid email, and at least one role before adding an email invite.');
+            return;
+        }
+
+        const membershipByEmail = await lookupPendingStaffInviteMembership([nextInvite]);
+        const conflictMessage = findPendingStaffInviteConflictMessage([nextInvite], membershipByEmail);
+        if (conflictMessage) {
+            setStaffInviteError(conflictMessage);
+            return;
+        }
+
+        setPendingStaffInvites((prev) => {
+            const existingIndex = prev.findIndex((invite) => normalizeInviteEmail(invite.email) === nextInvite.email);
+            if (existingIndex === -1) {
+                return [...prev, nextInvite];
             }
+            const updated = [...prev];
+            updated[existingIndex] = normalizePendingStaffInvite({
+                ...updated[existingIndex],
+                firstName: nextInvite.firstName,
+                lastName: nextInvite.lastName,
+                email: nextInvite.email,
+                roles: [...updated[existingIndex].roles, ...nextInvite.roles],
+            });
+            return updated;
+        });
+        setNewStaffInvite(createEmptyStaffInvite());
+        setStaffInviteError(null);
+    }, [findPendingStaffInviteConflictMessage, isOrganizationHostedEvent, lookupPendingStaffInviteMembership, newStaffInvite, setPendingStaffInvites]);
 
-            const sentEntries = result.sent || [];
-            const notSentEntries = result.not_sent || [];
-            const successEntries = [...sentEntries, ...notSentEntries];
-            const invitedUserIds = successEntries
-                .map((entry: any) => entry.userId)
-                .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
 
-            if (invitedUserIds.length) {
-                let invitedUsers: UserData[] = [];
-                try {
-                    invitedUsers = await userService.getUsersByIds(invitedUserIds);
-                } catch (error) {
-                    console.warn('Failed to fetch invited referees:', error);
-                }
+    const submitPendingStaffInvites = useCallback(async (eventId: string) => {
+        if (isOrganizationHostedEvent) {
+            return;
+        }
+        if (!currentUser?.$id) {
+            const message = 'You must be signed in to manage staff invites.';
+            setStaffInviteError(message);
+            throw new Error(message);
+        }
 
+        const pendingInvites = normalizeDirtyTrackedPendingStaffInvites(getValues('pendingStaffInvites') ?? []);
+        const pendingInviteMembershipByEmail = await validatePendingStaffInvites(pendingInvites);
+        const targetRolesByUserId = new Map<string, Set<EventInviteStaffType>>();
+        const addTargetRole = (userId: string | null | undefined, role: EventInviteStaffType) => {
+            const normalizedUserId = normalizeEntityId(userId);
+            if (!normalizedUserId) {
+                return;
+            }
+            const roles = targetRolesByUserId.get(normalizedUserId) ?? new Set<EventInviteStaffType>();
+            roles.add(role);
+            targetRolesByUserId.set(normalizedUserId, roles);
+        };
+
+        (eventData.refereeIds || []).forEach((refereeId) => addTargetRole(refereeId, 'REFEREE'));
+        assistantHostValue.forEach((assistantHostId) => addTargetRole(assistantHostId, 'HOST'));
+
+        const unresolvedEmailInvites: PendingStaffInvite[] = [];
+        pendingInvites.forEach((invite) => {
+            const knownUserId = Array.from(pendingInviteMembershipByEmail.get(invite.email) ?? [])[0] ?? null;
+            if (knownUserId) {
+                invite.roles.forEach((role) => addTargetRole(knownUserId, mapRoleToInviteStaffType(role)));
+                return;
+            }
+            unresolvedEmailInvites.push(invite);
+        });
+
+        const payload = [
+            ...Array.from(targetRolesByUserId.entries()).map(([userId, roles]) => ({
+                userId,
+                type: 'STAFF' as const,
+                eventId,
+                staffTypes: Array.from(roles),
+                replaceStaffTypes: true,
+            })),
+            ...unresolvedEmailInvites.map((invite) => ({
+                firstName: invite.firstName,
+                lastName: invite.lastName,
+                email: invite.email,
+                type: 'STAFF' as const,
+                eventId,
+                staffTypes: invite.roles.map(mapRoleToInviteStaffType),
+                replaceStaffTypes: true,
+            })),
+        ];
+
+        const result = payload.length > 0
+            ? await userService.inviteUsersByEmail(currentUser.$id, payload)
+            : { sent: [], not_sent: [], failed: [] };
+        if ((result.failed || []).length > 0) {
+            const message = 'Failed to create one or more staff invites.';
+            setStaffInviteError(message);
+            throw new Error(message);
+        }
+
+        const resolvedUserIds = new Set<string>();
+        const inviteRolesByEmail = new Map(unresolvedEmailInvites.map((invite) => [invite.email, invite.roles] as const));
+        const fetchedInvites = [...(result.sent || []), ...(result.not_sent || [])];
+        fetchedInvites.forEach((invite) => {
+            if (invite.userId) {
+                resolvedUserIds.add(invite.userId);
+            }
+        });
+
+        if (resolvedUserIds.size > 0) {
+            try {
+                const fetchedUsers = await userService.getUsersByIds(Array.from(resolvedUserIds));
                 setEventData((prev) => {
-                    const existingRefs = prev.referees || [];
-                    const nextRefs = [...existingRefs];
-                    const nextIds = new Set(prev.refereeIds || []);
-                    invitedUserIds.forEach((id) => nextIds.add(id));
-                    invitedUsers.forEach((refUser) => {
-                        if (!nextRefs.some((ref) => ref.$id === refUser.$id)) {
-                            nextRefs.push(refUser);
+                    const nextRefereeIds = new Set(prev.refereeIds || []);
+                    const nextAssistantHostIds = new Set(prev.assistantHostIds || []);
+                    const nextReferees = [...(prev.referees || [])];
+                    fetchedUsers.forEach((userEntry) => {
+                        const matchingInvite = fetchedInvites.find((invite) => invite.userId === userEntry.$id || normalizeInviteEmail(invite.email) === getUserEmail(userEntry));
+                        const roles = matchingInvite
+                            ? (matchingInvite.staffTypes || [])
+                                .map(mapInviteStaffTypeToRole)
+                                .filter((role): role is StaffAssignmentRole => Boolean(role))
+                            : inviteRolesByEmail.get(getUserEmail(userEntry) ?? '') || [];
+                        if (roles.includes('REFEREE')) {
+                            nextRefereeIds.add(userEntry.$id);
+                            if (!nextReferees.some((referee) => referee.$id === userEntry.$id)) {
+                                nextReferees.push(userEntry);
+                            }
+                        }
+                        if (roles.includes('ASSISTANT_HOST') && userEntry.$id !== prev.hostId) {
+                            nextAssistantHostIds.add(userEntry.$id);
+                            cacheAssistantHostUser(userEntry);
                         }
                     });
                     return {
                         ...prev,
-                        referees: nextRefs,
-                        refereeIds: Array.from(nextIds),
+                        referees: nextReferees,
+                        refereeIds: Array.from(nextRefereeIds),
+                        assistantHostIds: Array.from(nextAssistantHostIds),
                     };
                 });
+            } catch (error) {
+                console.warn('Failed to hydrate staff invite users:', error);
             }
-
-            setValue('pendingRefereeInvites', [createEmptyRefereeInvite()], { shouldDirty: true, shouldValidate: false });
-        } catch (error) {
-            setRefereeInviteError(error instanceof Error ? error.message : 'Failed to invite referees.');
-            throw error;
         }
-    }, [currentUser, getValues, isOrganizationHostedEvent, setEventData, setValue]);
+
+        const finalTargetUserIds = new Set<string>([
+            ...(eventData.refereeIds || []),
+            ...assistantHostValue,
+            ...Array.from(resolvedUserIds),
+        ]);
+        const invitesToDelete = currentEventStaffInvites.filter((invite) => invite.userId && !finalTargetUserIds.has(invite.userId));
+        if (invitesToDelete.length > 0) {
+            await Promise.all(invitesToDelete.map((invite) => userService.deleteInviteById(invite.$id)));
+        }
+
+        setPendingStaffInvites([]);
+        setStaffInviteError(null);
+    }, [
+        assistantHostValue,
+        cacheAssistantHostUser,
+        currentEventStaffInvites,
+        currentUser,
+        eventData.refereeIds,
+        getValues,
+        isOrganizationHostedEvent,
+        setEventData,
+        setPendingStaffInvites,
+        validatePendingStaffInvites,
+    ]);
+    const assignedRefereeCards = useMemo<AssignedStaffCard[]>(() => {
+        const cards: AssignedStaffCard[] = (eventData.refereeIds || []).map((refereeId) => {
+            const referee = (eventData.referees || []).find((candidate) => candidate.$id === refereeId)
+                ?? organizationRefereesById.get(refereeId)
+                ?? nonOrgStaffResults.find((candidate) => candidate.$id === refereeId)
+                ?? null;
+            const invite = currentEventStaffInviteByUserId.get(refereeId);
+            const inviteStatus = invite?.staffTypes?.includes('REFEREE') ? normalizeInviteStatusToken(invite.status) : null;
+            return {
+                key: `referee:${refereeId}`,
+                role: 'REFEREE',
+                userId: refereeId,
+                user: referee,
+                email: getUserEmail(referee),
+                displayName: toUserLabel(referee ?? undefined, refereeId),
+                status: inviteStatus && inviteStatus !== 'active' ? inviteStatus : null,
+                source: 'assigned',
+            };
+        });
+        (eventData.pendingStaffInvites || []).forEach((invite) => {
+            if (!invite.roles.includes('REFEREE')) {
+                return;
+            }
+            cards.push({
+                key: `draft-referee:${invite.email}`,
+                role: 'REFEREE',
+                userId: null,
+                user: null,
+                email: invite.email,
+                displayName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email,
+                status: 'email_invite',
+                source: 'draft',
+            });
+        });
+        return cards;
+    }, [currentEventStaffInviteByUserId, eventData.pendingStaffInvites, eventData.refereeIds, eventData.referees, nonOrgStaffResults, organizationRefereesById]);
+    const assignedHostCards = useMemo<AssignedStaffCard[]>(() => {
+        const cards: AssignedStaffCard[] = [];
+        const primaryHostId = normalizeEntityId(eventData.hostId);
+        if (primaryHostId) {
+            const hostUser = assistantHostUsersById.get(primaryHostId) ?? organizationUsersById.get(primaryHostId) ?? null;
+            cards.push({
+                key: `host:${primaryHostId}`,
+                role: 'HOST',
+                userId: primaryHostId,
+                user: (hostUser as UserData | null) ?? null,
+                email: getUserEmail(hostUser),
+                displayName: toUserLabel(hostUser ?? undefined, primaryHostId),
+                status: null,
+                source: 'assigned',
+            });
+        }
+        assistantHostValue.forEach((assistantHostId) => {
+            const assistantHost = assistantHostUsersById.get(assistantHostId) ?? organizationUsersById.get(assistantHostId) ?? null;
+            const invite = currentEventStaffInviteByUserId.get(assistantHostId);
+            const inviteStatus = invite?.staffTypes?.includes('HOST') ? normalizeInviteStatusToken(invite.status) : null;
+            cards.push({
+                key: `assistant-host:${assistantHostId}`,
+                role: 'ASSISTANT_HOST',
+                userId: assistantHostId,
+                user: (assistantHost as UserData | null) ?? null,
+                email: getUserEmail(assistantHost),
+                displayName: toUserLabel(assistantHost ?? undefined, assistantHostId),
+                status: inviteStatus && inviteStatus !== 'active' ? inviteStatus : null,
+                source: 'assigned',
+            });
+        });
+        (eventData.pendingStaffInvites || []).forEach((invite) => {
+            if (!invite.roles.includes('ASSISTANT_HOST')) {
+                return;
+            }
+            cards.push({
+                key: `draft-assistant:${invite.email}`,
+                role: 'ASSISTANT_HOST',
+                userId: null,
+                user: null,
+                email: invite.email,
+                displayName: [invite.firstName, invite.lastName].filter(Boolean).join(' ').trim() || invite.email,
+                status: 'email_invite',
+                source: 'draft',
+            });
+        });
+        return cards;
+    }, [assistantHostUsersById, assistantHostValue, currentEventStaffInviteByUserId, eventData.hostId, eventData.pendingStaffInvites, organizationUsersById]);
+    useEffect(() => {
+        setOrganizationStaffVisibleCount(5);
+    }, [filteredOrganizationStaffEntries.length, organizationStaffSearch, organizationStaffStatusFilter, organizationStaffTypeFilter]);
+    useEffect(() => {
+        setRefereeCardVisibleCount(5);
+    }, [assignedRefereeCards.length]);
+    useEffect(() => {
+        setHostCardVisibleCount(5);
+    }, [assignedHostCards.length]);
 
     // Normalizes slot state every time LeagueFields mutates the slot array so errors stay in sync.
-    const updateLeagueSlots = useCallback((updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[]) => {
+    const updateLeagueSlots = useCallback((
+        updater: (slots: LeagueSlotForm[]) => LeagueSlotForm[],
+        options: { shouldDirty?: boolean; shouldValidate?: boolean } = {},
+    ) => {
         if (hasImmutableTimeSlots) {
             return;
         }
-        setLeagueSlots(prev => normalizeSlotState(updater(prev), eventData.eventType));
+        setLeagueSlots(prev => normalizeSlotState(updater(prev), eventData.eventType), options);
     }, [eventData.eventType, hasImmutableTimeSlots, setLeagueSlots]);
 
     const handleLeagueScoringConfigChange = useCallback(
@@ -5042,17 +5620,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!hasMismatch) {
             return;
         }
-        updateLeagueSlots((prev) =>
-            prev.map((slot) => {
-                const current = normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup);
-                const filtered = current.filter((divisionKey) => selectedDivisionSet.has(divisionKey));
-                return {
-                    ...slot,
-                    divisions: enforceAllSlotDivisions
-                        ? selectedDivisionKeys
-                        : (filtered.length ? filtered : selectedDivisionKeys),
-                };
-            }),
+        updateLeagueSlots(
+            (prev) =>
+                prev.map((slot) => {
+                    const current = normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup);
+                    const filtered = current.filter((divisionKey) => selectedDivisionSet.has(divisionKey));
+                    return {
+                        ...slot,
+                        divisions: enforceAllSlotDivisions
+                            ? selectedDivisionKeys
+                            : (filtered.length ? filtered : selectedDivisionKeys),
+                    };
+                }),
+            { shouldDirty: false },
         );
     }, [eventData.singleDivision, leagueSlots, slotDivisionKeys, slotDivisionLookup, updateLeagueSlots]);
 
@@ -5062,10 +5642,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         if (eventData.splitLeaguePlayoffDivisions) {
-            setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
+            setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: false, shouldValidate: true });
         }
         if ((eventData.playoffDivisionDetails || []).length > 0) {
-            setValue('playoffDivisionDetails', [], { shouldDirty: true, shouldValidate: true });
+            setValue('playoffDivisionDetails', [], { shouldDirty: false, shouldValidate: true });
         }
     }, [
         eventData.eventType,
@@ -5086,7 +5666,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (current.length > 0) {
             return;
         }
-        setValue('playoffDivisionDetails', [createNextPlayoffDivision(current)], { shouldDirty: true, shouldValidate: true });
+        setValue('playoffDivisionDetails', [createNextPlayoffDivision(current)], { shouldDirty: false, shouldValidate: true });
     }, [
         createNextPlayoffDivision,
         eventData.eventType,
@@ -5164,7 +5744,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setLeagueData((prev) => ({
             ...prev,
             playoffTeamCount: Math.max(2, Math.trunc(fallbackFromDivision)),
-        }));
+        }), { shouldDirty: false });
     }, [
         eventData.divisionDetails,
         eventData.eventType,
@@ -5212,64 +5792,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ) ?? eventData.sportConfig;
         const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
         setLeagueData((prev) => {
-            const next = { ...prev };
-            let changed = false;
-
-            if (next.usesSets !== requiresSets) {
-                next.usesSets = requiresSets;
-                changed = true;
-            }
-
-            if (requiresSets) {
-                const allowed = [1, 3, 5];
-                const currentSets = next.setsPerMatch && allowed.includes(next.setsPerMatch)
-                    ? next.setsPerMatch
-                    : 1;
-                if (next.setsPerMatch !== currentSets) {
-                    next.setsPerMatch = currentSets;
-                    changed = true;
-                }
-
-                if (!Number.isFinite(next.setDurationMinutes)) {
-                    next.setDurationMinutes = 20;
-                    changed = true;
-                }
-
-                const targetLength = currentSets;
-                const existingPoints = Array.isArray(next.pointsToVictory)
-                    ? next.pointsToVictory
-                    : [];
-                const points = existingPoints.slice(0, targetLength);
-                while (points.length < targetLength) points.push(21);
-                if (
-                    points.length !== existingPoints.length ||
-                    points.some((value, index) => value !== existingPoints[index])
-                ) {
-                    next.pointsToVictory = points;
-                    changed = true;
-                }
-            } else {
-                if (next.setsPerMatch !== undefined) {
-                    next.setsPerMatch = undefined;
-                    changed = true;
-                }
-                if (next.setDurationMinutes !== undefined) {
-                    next.setDurationMinutes = undefined;
-                    changed = true;
-                }
-                if (next.pointsToVictory !== undefined) {
-                    next.pointsToVictory = undefined;
-                    changed = true;
-                }
-            }
-
-            if (!Number.isFinite(next.matchDurationMinutes)) {
-                next.matchDurationMinutes = 60;
-                changed = true;
-            }
-
-            return changed ? next : prev;
-        });
+            const normalized = normalizeLeagueConfigForSetMode(prev, requiresSets);
+            return leagueConfigEqual(prev, normalized) ? prev : normalized;
+        }, { shouldDirty: false });
     }, [eventData.sportConfig, eventData.sportId, setLeagueData, sportsById]);
 
     useEffect(() => {
@@ -5283,7 +5808,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         const normalizedPlayoff = normalizeTournamentConfigForSetMode(playoffData, false);
         if (!tournamentConfigEqual(playoffData, normalizedPlayoff)) {
-            setPlayoffData(normalizedPlayoff);
+            setPlayoffData(normalizedPlayoff, { shouldDirty: false });
         }
 
         const currentPlayoffDivisions = Array.isArray(eventData.playoffDivisionDetails)
@@ -5308,7 +5833,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
 
         if (changed) {
-            setValue('playoffDivisionDetails', nextPlayoffDivisions, { shouldDirty: true, shouldValidate: true });
+            setValue('playoffDivisionDetails', nextPlayoffDivisions, { shouldDirty: false, shouldValidate: true });
         }
     }, [
         eventData.playoffDivisionDetails,
@@ -5324,7 +5849,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!hasImmutableFields) {
             return;
         }
-        setFields(sanitizeFieldsForForm(immutableFields));
+        setFields(sanitizeFieldsForForm(immutableFields), { shouldDirty: false });
     }, [hasImmutableFields, immutableFields, setFields]);
 
     // When provisioning local fields, mirror count/division changes into the generated list.
@@ -5358,7 +5883,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
 
             return normalized;
-        });
+        }, { shouldDirty: false });
     }, [fieldCount, shouldManageLocalFields, eventData.divisions, setFields]);
 
     // For non-organization events with existing facilities, seed the field list with event ordering.
@@ -5369,7 +5894,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const sorted = sanitizeFieldsForForm(activeEditingEvent.fields).sort(
             (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
         );
-        setFields(sorted);
+        setFields(sorted, { shouldDirty: false });
     }, [activeEditingEvent?.fields, isOrganizationManagedEvent, setFields, shouldManageLocalFields]);
 
     useEffect(() => {
@@ -5438,7 +5963,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 scheduledFieldId: nextFieldIds[0],
                 scheduledFieldIds: nextFieldIds,
             };
-        }));
+        }), { shouldDirty: false });
     }, [fields, leagueSlots, updateLeagueSlots]);
 
     useEffect(() => {
@@ -5468,7 +5993,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     };
                 });
                 return changed ? next : prev;
-            });
+            }, { shouldDirty: false });
         };
 
         if (!supportsScheduleSlots(payload.eventType) || payload.slots.length === 0) {
@@ -5509,7 +6034,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 };
             });
             return changed ? next : prev;
-        });
+        }, { shouldDirty: false });
 
         let cancelled = false;
         const loadConflicts = async () => {
@@ -5551,7 +6076,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         };
                     });
                     return changed ? next : prev;
-                });
+                }, { shouldDirty: false });
             } catch (error) {
                 if (cancelled || slotConflictRequestRef.current !== requestId) {
                     return;
@@ -5570,7 +6095,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         };
                     });
                     return changed ? next : prev;
-                });
+                }, { shouldDirty: false });
             }
         };
 
@@ -5754,6 +6279,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     // Hydrate schedule state and slots when opening the modal for an existing event.
     useEffect(() => {
+        if (isEditMode) {
+            return;
+        }
         if (hasImmutableTimeSlots) {
             return;
         }
@@ -5766,20 +6294,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     playoffTeamCount: source?.playoffTeamCount ?? undefined,
                     usesSets: source?.usesSets ?? false,
                     matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
+                    restTimeMinutes: normalizeNumber(source?.restTimeMinutes, 0) ?? 0,
                     setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
                     setsPerMatch: normalizeNumber(source?.setsPerMatch),
                     pointsToVictory: Array.isArray(source?.pointsToVictory) ? source.pointsToVictory as number[] : undefined,
-                });
+                }, { shouldDirty: false });
 
                 if (activeEditingEvent.includePlayoffs) {
                     const extractedPlayoff = extractTournamentConfigFromEvent(activeEditingEvent);
                     if (extractedPlayoff) {
-                        setPlayoffData(extractedPlayoff);
+                        setPlayoffData(extractedPlayoff, { shouldDirty: false });
                     } else {
-                        setPlayoffData(buildTournamentConfig());
+                        setPlayoffData(buildTournamentConfig(), { shouldDirty: false });
                     }
                 } else {
-                    setPlayoffData(buildTournamentConfig());
+                    setPlayoffData(buildTournamentConfig(), { shouldDirty: false });
                 }
             } else {
                 setLeagueData({
@@ -5788,10 +6317,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     playoffTeamCount: undefined,
                     usesSets: false,
                     matchDurationMinutes: 60,
+                    restTimeMinutes: 0,
                     setDurationMinutes: undefined,
                     setsPerMatch: undefined,
-                });
-                setPlayoffData(buildTournamentConfig());
+                }, { shouldDirty: false });
+                setPlayoffData(buildTournamentConfig(), { shouldDirty: false });
             }
 
             const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
@@ -5801,7 +6331,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const initialSlots = slots.length > 0
                 ? slots
                 : [createSlotForm(undefined, slotDivisionKeysRef.current)];
-            setLeagueSlots(normalizeSlotState(initialSlots, activeEditingEvent.eventType));
+            setLeagueSlots(normalizeSlotState(initialSlots, activeEditingEvent.eventType), { shouldDirty: false });
         } else if (!activeEditingEvent) {
             setLeagueData({
                 gamesPerOpponent: 1,
@@ -5809,13 +6339,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 playoffTeamCount: undefined,
                 usesSets: false,
                 matchDurationMinutes: 60,
+                    restTimeMinutes: 0,
                     setDurationMinutes: undefined,
                     setsPerMatch: undefined,
-                });
-            setLeagueSlots(normalizeSlotState([createSlotForm(undefined, slotDivisionKeysRef.current)], 'EVENT'));
-            setPlayoffData(buildTournamentConfig());
+                }, { shouldDirty: false });
+            setLeagueSlots(normalizeSlotState([createSlotForm(undefined, slotDivisionKeysRef.current)], 'EVENT'), { shouldDirty: false });
+            setPlayoffData(buildTournamentConfig(), { shouldDirty: false });
         }
-    }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots, setLeagueData, setLeagueSlots, setPlayoffData]);
+    }, [activeEditingEvent, createSlotForm, hasImmutableTimeSlots, isEditMode, setLeagueData, setLeagueSlots, setPlayoffData]);
 
     useEffect(() => {
         if (!hasImmutableTimeSlots) {
@@ -5824,12 +6355,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const fallbackFieldId = immutableFields[0]?.$id;
         const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
             .map((slot) => createSlotForm(slot, slotDivisionKeysRef.current));
-        setLeagueSlots(normalizeSlotState(slotForms, eventData.eventType));
+        const normalizedSlots = normalizeSlotState(slotForms, eventData.eventType);
+        setLeagueSlots((prev) => (leagueSlotsEqual(prev, normalizedSlots) ? prev : normalizedSlots), { shouldDirty: false });
     }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, setLeagueSlots]);
 
     // Pull the organization's full field list so timeslot field options are complete in edit/create mode.
     useEffect(() => {
         let cancelled = false;
+
+        if (isEditMode) {
+            return () => {
+                cancelled = true;
+            };
+        }
 
         if (hasImmutableFields || shouldManageLocalFields) {
             return () => {
@@ -5851,7 +6389,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? sortByFieldNumber(sanitizeFieldsForForm(resolvedOrganization.fields as Field[]))
                 : [];
             if (seededFields.length) {
-                setFields(seededFields);
+                    setFields(seededFields, { shouldDirty: false });
                 setFieldsLoading(false);
                 return;
             }
@@ -5884,7 +6422,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     }
                 }
                 if (resolvedFields.length) {
-                    setFields(resolvedFields);
+                    setFields(resolvedFields, { shouldDirty: false });
                 }
             } catch (error) {
                 console.warn('Failed to hydrate organization fields for event form:', error);
@@ -5904,6 +6442,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         resolvedOrganization?.fieldIds,
         resolvedOrganization?.fields,
         hasImmutableFields,
+        isEditMode,
         organizationHostedEventId,
         setFields,
         shouldManageLocalFields,
@@ -5911,6 +6450,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     // Merge any newly loaded fields from the event into local state without losing existing edits.
     useEffect(() => {
+        if (isEditMode) {
+            return;
+        }
         if (hasImmutableFields) {
             return;
         }
@@ -5924,13 +6466,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     }
                 });
                 return Array.from(map.values());
-            });
+            }, { shouldDirty: false });
         }
-    }, [activeEditingEvent?.fields, hasImmutableFields, setFields]);
+    }, [activeEditingEvent?.fields, hasImmutableFields, isEditMode, setFields]);
 
     // Re-run slot normalization when the modal switches event types (e.g., league -> tournament).
     useEffect(() => {
-        updateLeagueSlots(prev => prev);
+        updateLeagueSlots(prev => prev, { shouldDirty: false });
     }, [eventData.eventType, updateLeagueSlots]);
 
     const todaysDate = new Date(new Date().setHours(0, 0, 0, 0));
@@ -6021,7 +6563,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!eventData.splitLeaguePlayoffDivisions) {
             return;
         }
-        setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: true, shouldValidate: true });
+        setValue('splitLeaguePlayoffDivisions', false, { shouldDirty: false, shouldValidate: true });
     }, [eventData.singleDivision, eventData.splitLeaguePlayoffDivisions, hasExternalRentalField, setValue]);
 
     const fieldsReferencedInSlots = useMemo(() => {
@@ -6095,16 +6637,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     ...prev,
                     teamSignup: true,
                 };
-            });
+            }, { shouldDirty: false });
         }
     }, [eventData.eventType, eventData.teamSignup, setEventData]);
 
     // Prevents the creator from joining twice when they toggle team-based registration on.
     useEffect(() => {
-        if (eventData.teamSignup) {
+        if (eventData.teamSignup && joinAsParticipant) {
             setJoinAsParticipant(false);
         }
-    }, [eventData.teamSignup, setJoinAsParticipant]);
+    }, [eventData.teamSignup, joinAsParticipant, setJoinAsParticipant]);
 
     // Populate human-readable location if empty
     // Converts coordinates into a city/state label when the user hasn't typed an address manually.
@@ -6129,7 +6671,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         if (eventData.noFixedEndDateTime) {
-            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+            setValue('noFixedEndDateTime', false, { shouldDirty: false, shouldValidate: true });
         }
     }, [eventData.eventType, eventData.noFixedEndDateTime, hasExternalRentalField, setValue]);
 
@@ -6879,19 +7421,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const commitDirtyBaseline = useCallback(() => {
         const currentValues = getValues();
         dirtyBaselineValuesRef.current = currentValues;
-        dirtyBaselineRef.current = serializeDirtySnapshot(buildDraftForDirtyTrackingRef.current, currentValues);
+        reset(currentValues);
         onDirtyStateChange?.(false);
-    }, [getValues, onDirtyStateChange]);
+    }, [getValues, onDirtyStateChange, reset]);
 
     useImperativeHandle(
         ref,
         () => ({
             getDraft: getDraftSnapshot,
             validate: validateDraft,
+            validatePendingStaffAssignments,
             commitDirtyBaseline,
-            submitPendingRefereeInvites,
+            submitPendingStaffInvites,
         }),
-        [commitDirtyBaseline, getDraftSnapshot, submitPendingRefereeInvites, validateDraft],
+        [commitDirtyBaseline, getDraftSnapshot, submitPendingStaffInvites, validateDraft, validatePendingStaffAssignments],
     );
 
     // Syncs the selected event image with component state after uploads or picker changes.
@@ -7497,144 +8040,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                             </div>
 
-                            <AnimatedSection in={isOrganizationHostedEvent}>
-                                <div className="space-y-2">
-                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
-                                        <div className="md:col-span-6">
-                                            <Controller
-                                                name="hostId"
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <MantineSelect
-                                                        label="Primary Host"
-                                                        placeholder={organizationHostSelectData.length ? 'Select host' : 'No organization hosts available'}
-                                                        data={organizationHostSelectData}
-                                                        value={field.value ?? null}
-                                                        comboboxProps={sharedComboboxProps}
-                                                        disabled={isImmutableField('hostId') || organizationHostSelectData.length === 0}
-                                                        allowDeselect={false}
-                                                        onChange={(value) => {
-                                                            if (isImmutableField('hostId')) return;
-                                                            if (!value) return;
-                                                            field.onChange(value);
-                                                            handleHostChange(value);
-                                                        }}
-                                                        maw={420}
-                                                    />
-                                                )}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-6">
-                                            <Controller
-                                                name="assistantHostIds"
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <MantineMultiSelect
-                                                        label="Assistant Hosts"
-                                                        description="Assistant hosts can edit and reschedule this event."
-                                                        placeholder={assistantHostSelectData.length ? 'Select assistant hosts' : 'No additional hosts available'}
-                                                        data={assistantHostSelectData}
-                                                        value={Array.isArray(field.value) ? field.value : assistantHostValue}
-                                                        comboboxProps={sharedComboboxProps}
-                                                        disabled={isImmutableField('assistantHostIds') || assistantHostSelectData.length === 0}
-                                                        searchable
-                                                        clearable
-                                                        onChange={(values) => {
-                                                            if (isImmutableField('assistantHostIds')) return;
-                                                            field.onChange(values);
-                                                            handleAssistantHostsChange(values);
-                                                        }}
-                                                        maw={420}
-                                                    />
-                                                )}
-                                            />
-                                        </div>
-                                    </div>
-                                    <AnimatedSection in={organizationHostSelectData.length === 0}>
-                                        <Text size="xs" c="dimmed">
-                                            Add organization hosts first to assign event hosts.
-                                        </Text>
-                                    </AnimatedSection>
-                                </div>
-                            </AnimatedSection>
-                            <AnimatedSection in={!isOrganizationHostedEvent}>
-                                <div className="space-y-2">
-                                    <div>
-                                        <Title order={6} mb="xs">Assistant hosts</Title>
-                                        <Text size="sm" c="dimmed" mb="xs">
-                                            Assistant hosts can edit and reschedule this event.
-                                        </Text>
-                                    </div>
-                                    {selectedAssistantHostUsers.length > 0 || unresolvedAssistantHostIds.length > 0 ? (
-                                        <Stack gap="xs">
-                                            {selectedAssistantHostUsers.map((assistantHost) => (
-                                                <Group key={assistantHost.$id} justify="space-between" align="center" gap="sm">
-                                                    <UserCard user={assistantHost} className="!p-0 !shadow-none flex-1" />
-                                                    <Button
-                                                        variant="subtle"
-                                                        color="red"
-                                                        size="xs"
-                                                        onClick={() => handleRemoveAssistantHost(assistantHost.$id)}
-                                                    >
-                                                        Remove
-                                                    </Button>
-                                                </Group>
-                                            ))}
-                                            {unresolvedAssistantHostIds.map((assistantHostId) => (
-                                                <Group key={assistantHostId} justify="space-between" align="center" gap="sm">
-                                                    <Text size="sm">{assistantHostId}</Text>
-                                                    <Button
-                                                        variant="subtle"
-                                                        color="red"
-                                                        size="xs"
-                                                        onClick={() => handleRemoveAssistantHost(assistantHostId)}
-                                                    >
-                                                        Remove
-                                                    </Button>
-                                                </Group>
-                                            ))}
-                                        </Stack>
-                                    ) : (
-                                        <Text size="sm" c="dimmed">No assistant hosts selected.</Text>
-                                    )}
-
-                                    <div>
-                                        <Title order={6} mb="xs">Add assistant hosts</Title>
-                                        <TextInput
-                                            value={assistantHostSearch}
-                                            onChange={(e) => handleSearchAssistantHosts(e.currentTarget.value)}
-                                            placeholder="Search by name or username"
-                                            maw={420}
-                                            maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                            mb="xs"
-                                        />
-                                        {assistantHostError && (
-                                            <Text size="xs" c="red" mb="xs">
-                                                {assistantHostError}
-                                            </Text>
-                                        )}
-                                        {assistantHostSearchLoading ? (
-                                            <Text size="sm" c="dimmed">Searching assistant hosts...</Text>
-                                        ) : assistantHostSearch.length < 2 ? (
-                                            <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
-                                        ) : assistantHostResults.length > 0 ? (
-                                            <Stack gap="xs">
-                                                {assistantHostResults.map((result) => (
-                                                    <Group key={result.$id} justify="space-between" align="center" gap="sm">
-                                                        <UserCard user={result} className="!p-0 !shadow-none flex-1" />
-                                                        <Button size="xs" onClick={() => handleAddAssistantHost(result)}>
-                                                            Add
-                                                        </Button>
-                                                    </Group>
-                                                ))}
-                                            </Stack>
-                                        ) : (
-                                            <Text size="sm" c="dimmed">No users found.</Text>
-                                        )}
-                                    </div>
-                                </div>
-                            </AnimatedSection>
-
                             {/* Pricing and Participant Details */}
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
                                 <div className="md:col-span-12 lg:col-span-6">
@@ -7981,7 +8386,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             className="scroll-mt-28 bg-gray-50"
                         >
                             <div className="flex items-center justify-between gap-3">
-                                <h3 className="text-lg font-semibold">Referees</h3>
+                                <h3 className="text-lg font-semibold">Staff</h3>
                                 <Button
                                     type="button"
                                     variant="subtle"
@@ -7994,198 +8399,429 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </Button>
                             </div>
                             <Collapse in={!collapsedSections['section-referees']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                            <Stack id="section-referees-content" gap="sm" mt="md">
-                                <Controller
-                                    name="doTeamsRef"
-                                    control={control}
-                                    render={({ field }) => (
-                                        <Switch
-                                            label="Teams provide referees"
-                                            description="Allow assigning team referees alongside dedicated refs."
-                                            checked={field.value}
-                                            onChange={(e) => {
-                                                const checked = e?.currentTarget?.checked ?? false;
-                                                field.onChange(checked);
-                                                if (!checked) {
-                                                    setValue('teamRefsMaySwap', false, { shouldDirty: true, shouldValidate: true });
-                                                }
-                                            }}
-                                        />
-                                    )}
-                                />
-                                {eventData.doTeamsRef && (
+                                <Stack id="section-referees-content" gap="md" mt="md">
                                     <Controller
-                                        name="teamRefsMaySwap"
+                                        name="doTeamsRef"
                                         control={control}
                                         render={({ field }) => (
                                             <Switch
-                                                label="Team refs may swap"
-                                                description="Allow any participating team to take over refereeing a match."
+                                                label="Teams provide referees"
+                                                description="Allow assigning team referees alongside dedicated staff refs."
                                                 checked={field.value}
-                                                onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
+                                                onChange={(e) => {
+                                                    const checked = e?.currentTarget?.checked ?? false;
+                                                    field.onChange(checked);
+                                                    if (!checked) {
+                                                        setValue('teamRefsMaySwap', false, { shouldDirty: true, shouldValidate: true });
+                                                    }
+                                                }}
                                             />
                                         )}
                                     />
-                                )}
+                                    {eventData.doTeamsRef && (
+                                        <Controller
+                                            name="teamRefsMaySwap"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <Switch
+                                                    label="Team refs may swap"
+                                                    description="Allow any participating team to take over refereeing a match."
+                                                    checked={field.value}
+                                                    onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
+                                                />
+                                            )}
+                                        />
+                                    )}
 
-                                <div>
-                                    <Title order={6} mb="xs">Selected referees</Title>
-                                    {eventData.referees.length > 0 ? (
-                                        <Stack gap="xs">
-                                            {eventData.referees.map((referee) => (
-                                                <Group key={referee.$id} justify="space-between" align="center" gap="sm">
-                                                    <UserCard user={referee} className="!p-0 !shadow-none flex-1" />
-                                                    <Button
-                                                        variant="subtle"
-                                                        color="red"
-                                                        size="xs"
-                                                        onClick={() => handleRemoveReferee(referee.$id)}
-                                                    >
-                                                        Remove
-                                                    </Button>
+                                    {isOrganizationHostedEvent ? (
+                                        <Paper withBorder radius="md" p="md" bg="white">
+                                            <Stack gap="sm">
+                                                <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
+                                                    <div>
+                                                        <Title order={6}>Organization Staff</Title>
+                                                        <Text size="sm" c="dimmed">
+                                                            Search the organization roster and assign staff directly to this event.
+                                                        </Text>
+                                                    </div>
                                                 </Group>
-                                            ))}
-                                        </Stack>
-                                    ) : (
-                                        <Text size="sm" c="dimmed">No referees selected.</Text>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <Title order={6} mb="xs">Add referees</Title>
-                                    {isOrganizationHostedEvent && (
-                                        <Text size="sm" c="dimmed" mb="xs">
-                                            Organization events can only use referees assigned to this organization.
-                                        </Text>
-                                    )}
-                                    <TextInput
-                                        value={refereeSearch}
-                                        onChange={(e) => handleSearchReferees(e.currentTarget.value)}
-                                        placeholder={isOrganizationHostedEvent ? 'Search organization referees' : 'Search by name or username'}
-                                        maw={420}
-                                        maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                        mb="xs"
-                                    />
-                                    {refereeError && (
-                                        <Text size="xs" c="red" mb="xs">
-                                            {refereeError}
-                                        </Text>
-                                    )}
-                                    {refereeSearchLoading ? (
-                                        <Text size="sm" c="dimmed">Searching referees...</Text>
-                                    ) : refereeSearch.length < 2 ? (
-                                        <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
-                                    ) : refereeResults.length > 0 ? (
-                                        <Stack gap="xs">
-                                            {refereeResults.map((result) => (
-                                                <Group key={result.$id} justify="space-between" align="center" gap="sm">
-                                                    <UserCard user={result} className="!p-0 !shadow-none flex-1" />
-                                                    <Button size="xs" onClick={() => handleAddReferee(result)}>
-                                                        Add
-                                                    </Button>
-                                                </Group>
-                                            ))}
-                                        </Stack>
-                                    ) : (
-                                        <Stack gap="xs">
-                                            <Text size="sm" c="dimmed">
-                                                {isOrganizationHostedEvent
-                                                    ? 'No organization referees found.'
-                                                    : 'No referees found. Invite by email below.'}
-                                            </Text>
-                                        </Stack>
-                                    )}
-                                </div>
-
-                                {!isOrganizationHostedEvent && (
-                                <div>
-                                    <Title order={6} mb="xs">Invite referees by email</Title>
-                                    <Text size="sm" c="dimmed" mb="xs">
-                                        Add referee invites to the draft. They will be sent after you save the event.
-                                    </Text>
-                                    <div className="space-y-3">
-                                        {eventData.pendingRefereeInvites.map((invite, index) => (
-                                            <Paper key={index} withBorder radius="md" p="sm">
-                                                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                                                <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
                                                     <TextInput
-                                                        label="First name"
-                                                        placeholder="First name"
-                                                        value={invite.firstName}
-                                                        maw={220}
-                                                        maxLength={MAX_SHORT_TEXT_LENGTH}
-                                                        onChange={(e) => {
-                                                            const next = [...eventData.pendingRefereeInvites];
-                                                            next[index] = { ...invite, firstName: e.currentTarget.value };
-                                                            setPendingRefereeInvites(next);
-                                                        }}
-                                                    />
-                                                    <TextInput
-                                                        label="Last name"
-                                                        placeholder="Last name"
-                                                        value={invite.lastName}
-                                                        maw={220}
-                                                        maxLength={MAX_SHORT_TEXT_LENGTH}
-                                                        onChange={(e) => {
-                                                            const next = [...eventData.pendingRefereeInvites];
-                                                            next[index] = { ...invite, lastName: e.currentTarget.value };
-                                                            setPendingRefereeInvites(next);
-                                                        }}
-                                                    />
-                                                    <TextInput
-                                                        label="Email"
-                                                        placeholder="name@example.com"
-                                                        value={invite.email}
-                                                        maw={280}
+                                                        label="Search staff"
+                                                        placeholder="Search by name or email"
+                                                        value={organizationStaffSearch}
+                                                        onChange={(event) => setOrganizationStaffSearch(event.currentTarget.value)}
                                                         maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                                        onChange={(e) => {
-                                                            const next = [...eventData.pendingRefereeInvites];
-                                                            next[index] = { ...invite, email: e.currentTarget.value };
-                                                            setPendingRefereeInvites(next);
-                                                        }}
+                                                    />
+                                                    <MantineSelect
+                                                        label="Role filter"
+                                                        data={[
+                                                            { value: 'all', label: 'All roles' },
+                                                            { value: 'HOST', label: 'Host' },
+                                                            { value: 'REFEREE', label: 'Referee' },
+                                                            { value: 'STAFF', label: 'Staff' },
+                                                        ]}
+                                                        value={organizationStaffTypeFilter}
+                                                        onChange={(value) => setOrganizationStaffTypeFilter((value as 'all' | StaffMemberType) ?? 'all')}
+                                                        comboboxProps={sharedComboboxProps}
+                                                    />
+                                                    <MantineSelect
+                                                        label="Status filter"
+                                                        data={[
+                                                            { value: 'all', label: 'All statuses' },
+                                                            { value: 'active', label: 'Active' },
+                                                            { value: 'pending', label: 'Pending' },
+                                                            { value: 'declined', label: 'Declined' },
+                                                        ]}
+                                                        value={organizationStaffStatusFilter}
+                                                        onChange={(value) => setOrganizationStaffStatusFilter((value as 'all' | StaffRosterStatus) ?? 'all')}
+                                                        comboboxProps={sharedComboboxProps}
                                                     />
                                                 </SimpleGrid>
-                                                {eventData.pendingRefereeInvites.length > 1 && (
-                                                    <Group justify="flex-end" mt="xs">
-                                                        <Button
-                                                            variant="subtle"
-                                                            color="red"
-                                                            size="xs"
-                                                            onClick={() => {
-                                                                setPendingRefereeInvites((prev) => prev.filter((_, i) => i !== index));
-                                                            }}
-                                                        >
-                                                            Remove
-                                                        </Button>
-                                                    </Group>
+                                                <div
+                                                    className="max-h-[420px] overflow-y-auto space-y-3 pr-1"
+                                                    onScroll={(event) => maybeExtendVisibleCountOnScroll(event, filteredOrganizationStaffEntries.length, setOrganizationStaffVisibleCount)}
+                                                >
+                                                    {filteredOrganizationStaffEntries.slice(0, organizationStaffVisibleCount).map((entry) => {
+                                                        const userId = entry.userId;
+                                                        const isRefereeAssigned = Boolean(userId && (eventData.refereeIds || []).includes(userId));
+                                                        const isHostAssigned = Boolean(userId && userId === eventData.hostId);
+                                                        const isAssistantAssigned = Boolean(userId && assistantHostValue.includes(userId));
+                                                        const assignmentsDisabled = !userId;
+                                                        return (
+                                                            <Paper key={entry.id} withBorder radius="md" p="sm">
+                                                                <Stack gap="xs">
+                                                                    <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
+                                                                        <div className="flex-1 min-w-0">
+                                                                            {entry.user ? (
+                                                                                <UserCard user={entry.user} className="!p-0 !shadow-none" />
+                                                                            ) : (
+                                                                                <Stack gap={2}>
+                                                                                    <Text fw={600}>{entry.fullName}</Text>
+                                                                                    {entry.email && <Text size="xs" c="dimmed">{entry.email}</Text>}
+                                                                                </Stack>
+                                                                            )}
+                                                                        </div>
+                                                                        <Badge radius="xl" variant="light" color={getStaffStatusColor(entry.status)}>
+                                                                            {formatStaffStatusLabel(entry.status)}
+                                                                        </Badge>
+                                                                    </Group>
+                                                                    <Group gap="xs" wrap="wrap">
+                                                                        <Button
+                                                                            type="button"
+                                                                            size="xs"
+                                                                            disabled={assignmentsDisabled || isRefereeAssigned || isImmutableField('refereeIds')}
+                                                                            onClick={() => handleAddReferee({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
+                                                                        >
+                                                                            Add as referee
+                                                                        </Button>
+                                                                        <Button
+                                                                            type="button"
+                                                                            size="xs"
+                                                                            variant="default"
+                                                                            disabled={assignmentsDisabled || isAssistantAssigned || isHostAssigned || isImmutableField('assistantHostIds')}
+                                                                            onClick={() => handleAddAssistantHost({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
+                                                                        >
+                                                                            Add as assistant
+                                                                        </Button>
+                                                                        <Button
+                                                                            type="button"
+                                                                            size="xs"
+                                                                            variant="light"
+                                                                            disabled={assignmentsDisabled || isHostAssigned || isImmutableField('hostId')}
+                                                                            onClick={() => handleHostChange(userId)}
+                                                                        >
+                                                                            Set as host
+                                                                        </Button>
+                                                                    </Group>
+                                                                </Stack>
+                                                            </Paper>
+                                                        );
+                                                    })}
+                                                    {filteredOrganizationStaffEntries.length === 0 && (
+                                                        <Text size="sm" c="dimmed">No organization staff matched your filters.</Text>
+                                                    )}
+                                                </div>
+                                            </Stack>
+                                        </Paper>
+                                    ) : (
+                                        <Paper withBorder radius="md" p="md" bg="white">
+                                            <Stack gap="sm">
+                                                <div>
+                                                    <Title order={6}>Add / Invite Staff</Title>
+                                                    <Text size="sm" c="dimmed">
+                                                        Add existing users or stage email invites as referees and assistant hosts.
+                                                    </Text>
+                                                </div>
+                                                <TextInput
+                                                    label="Search users"
+                                                    placeholder="Search by name or username"
+                                                    value={nonOrgStaffSearch}
+                                                    onChange={(event) => setNonOrgStaffSearch(event.currentTarget.value)}
+                                                    maxLength={MAX_MEDIUM_TEXT_LENGTH}
+                                                />
+                                                {nonOrgStaffError && (
+                                                    <Text size="xs" c="red">{nonOrgStaffError}</Text>
                                                 )}
-                                            </Paper>
-                                        ))}
-                                        <Group justify="space-between" align="center">
-                                            <Button
-                                                type="button"
-                                                variant="default"
-                                                size="lg"
-                                                radius="md"
-                                                style={{ width: 64, height: 64, fontSize: 28, padding: 0 }}
-                                                onClick={() =>
-                                                    setPendingRefereeInvites((prev) => [...prev, createEmptyRefereeInvite()])
-                                                }
-                                            >
-                                                +
-                                            </Button>
-                                            <Text size="sm" c="dimmed">
-                                                Save the event to send invites.
-                                            </Text>
-                                        </Group>
-                                        {refereeInviteError && (
-                                            <Text size="xs" c="red">
-                                                {refereeInviteError}
-                                            </Text>
-                                        )}
-                                    </div>
-                                </div>
-                                )}
-                            </Stack>
+                                                {nonOrgStaffSearchLoading ? (
+                                                    <Text size="sm" c="dimmed">Searching staff...</Text>
+                                                ) : nonOrgStaffSearch.trim().length >= 2 ? (
+                                                    <Stack gap="xs">
+                                                        {nonOrgStaffResults.length > 0 ? nonOrgStaffResults.map((result) => {
+                                                            const isRefereeAssigned = (eventData.refereeIds || []).includes(result.$id);
+                                                            const isHostAssigned = result.$id === eventData.hostId;
+                                                            const isAssistantAssigned = assistantHostValue.includes(result.$id);
+                                                            return (
+                                                                <Group key={result.$id} justify="space-between" align="center" gap="sm">
+                                                                    <UserCard user={result} className="!p-0 !shadow-none flex-1" />
+                                                                    <Group gap="xs">
+                                                                        <Button
+                                                                            type="button"
+                                                                            size="xs"
+                                                                            disabled={isRefereeAssigned || isImmutableField('refereeIds')}
+                                                                            onClick={() => handleAddReferee(result)}
+                                                                        >
+                                                                            Add as referee
+                                                                        </Button>
+                                                                        <Button
+                                                                            type="button"
+                                                                            size="xs"
+                                                                            variant="default"
+                                                                            disabled={isAssistantAssigned || isHostAssigned || isImmutableField('assistantHostIds')}
+                                                                            onClick={() => handleAddAssistantHost(result)}
+                                                                        >
+                                                                            Add as assistant host
+                                                                        </Button>
+                                                                    </Group>
+                                                                </Group>
+                                                            );
+                                                        }) : (
+                                                            <Text size="sm" c="dimmed">No users found.</Text>
+                                                        )}
+                                                    </Stack>
+                                                ) : (
+                                                    <Text size="sm" c="dimmed">Type at least 2 characters to search existing users.</Text>
+                                                )}
+                                                <Paper withBorder radius="md" p="sm" bg="gray.0">
+                                                    <Stack gap="sm">
+                                                        <Title order={6}>Invite by email</Title>
+                                                        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+                                                            <TextInput
+                                                                label="First name"
+                                                                value={newStaffInvite.firstName}
+                                                                onChange={(event) => {
+                                                                    const value = event.currentTarget.value;
+                                                                    setNewStaffInvite((prev) => ({ ...prev, firstName: value }));
+                                                                }}
+                                                                maxLength={MAX_SHORT_TEXT_LENGTH}
+                                                            />
+                                                            <TextInput
+                                                                label="Last name"
+                                                                value={newStaffInvite.lastName}
+                                                                onChange={(event) => {
+                                                                    const value = event.currentTarget.value;
+                                                                    setNewStaffInvite((prev) => ({ ...prev, lastName: value }));
+                                                                }}
+                                                                maxLength={MAX_SHORT_TEXT_LENGTH}
+                                                            />
+                                                            <TextInput
+                                                                label="Email"
+                                                                value={newStaffInvite.email}
+                                                                onChange={(event) => {
+                                                                    const value = event.currentTarget.value;
+                                                                    setNewStaffInvite((prev) => ({ ...prev, email: value }));
+                                                                }}
+                                                                maxLength={MAX_MEDIUM_TEXT_LENGTH}
+                                                            />
+                                                        </SimpleGrid>
+                                                        <Group gap="xs">
+                                                            <Button
+                                                                type="button"
+                                                                size="xs"
+                                                                variant={newStaffInvite.roles.includes('REFEREE') ? 'filled' : 'default'}
+                                                                onClick={() => setNewStaffInvite((prev) => ({
+                                                                    ...prev,
+                                                                    roles: prev.roles.includes('REFEREE')
+                                                                        ? prev.roles.filter((role) => role !== 'REFEREE')
+                                                                        : [...prev.roles, 'REFEREE'],
+                                                                }))}
+                                                            >
+                                                                Referee
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                size="xs"
+                                                                variant={newStaffInvite.roles.includes('ASSISTANT_HOST') ? 'filled' : 'default'}
+                                                                onClick={() => setNewStaffInvite((prev) => ({
+                                                                    ...prev,
+                                                                    roles: prev.roles.includes('ASSISTANT_HOST')
+                                                                        ? prev.roles.filter((role) => role !== 'ASSISTANT_HOST')
+                                                                        : [...prev.roles, 'ASSISTANT_HOST'],
+                                                                }))}
+                                                            >
+                                                                Assistant host
+                                                            </Button>
+                                                            <Button type="button" size="xs" onClick={handleStagePendingStaffInvite}>
+                                                                Add email invite
+                                                            </Button>
+                                                        </Group>
+                                                        <Text size="xs" c="dimmed">
+                                                            Email-invite cards stay labeled as Email invite until you save the event.
+                                                        </Text>
+                                                    </Stack>
+                                                </Paper>
+                                            </Stack>
+                                        </Paper>
+                                    )}
+
+                                    <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+                                        <Paper withBorder radius="md" p="md" bg="white">
+                                            <Stack gap="sm">
+                                                <Group justify="space-between" align="center">
+                                                    <Title order={6}>Referees</Title>
+                                                    <Badge radius="xl" variant="light">{assignedRefereeCards.length}</Badge>
+                                                </Group>
+                                                <div
+                                                    className="max-h-[420px] overflow-y-auto space-y-3 pr-1"
+                                                    onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedRefereeCards.length, setRefereeCardVisibleCount)}
+                                                >
+                                                    {assignedRefereeCards.slice(0, refereeCardVisibleCount).map((card) => (
+                                                        <Paper key={card.key} withBorder radius="md" p="sm">
+                                                            <Stack gap="xs">
+                                                                <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
+                                                                    <div className="flex-1 min-w-0">
+                                                                        {card.user ? (
+                                                                            <UserCard user={card.user} className="!p-0 !shadow-none" />
+                                                                        ) : (
+                                                                            <Stack gap={2}>
+                                                                                <Text fw={600}>{card.displayName}</Text>
+                                                                                {card.email && <Text size="xs" c="dimmed">{card.email}</Text>}
+                                                                            </Stack>
+                                                                        )}
+                                                                    </div>
+                                                                    {card.status && (
+                                                                        <Badge radius="xl" variant="light" color={getStaffStatusColor(card.status)}>
+                                                                            {formatStaffStatusLabel(card.status)}
+                                                                        </Badge>
+                                                                    )}
+                                                                </Group>
+                                                                <Group gap="xs" wrap="wrap">
+                                                                    <Badge variant="outline">{formatStaffRoleLabel(card.role)}</Badge>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="subtle"
+                                                                        color="red"
+                                                                        size="xs"
+                                                                        disabled={card.source === 'assigned' ? isImmutableField('refereeIds') : false}
+                                                                        onClick={() => {
+                                                                            if (card.source === 'draft' && card.email) {
+                                                                                setPendingStaffInvites((prev) => prev.flatMap((invite) => {
+                                                                                    if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
+                                                                                        return [invite];
+                                                                                    }
+                                                                                    const nextRoles = invite.roles.filter((role) => role !== 'REFEREE');
+                                                                                    if (!nextRoles.length) {
+                                                                                        return [];
+                                                                                    }
+                                                                                    return [{ ...invite, roles: nextRoles }];
+                                                                                }));
+                                                                                return;
+                                                                            }
+                                                                            if (card.userId) {
+                                                                                handleRemoveReferee(card.userId);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        Remove
+                                                                    </Button>
+                                                                </Group>
+                                                            </Stack>
+                                                        </Paper>
+                                                    ))}
+                                                    {assignedRefereeCards.length === 0 && (
+                                                        <Text size="sm" c="dimmed">No referees assigned.</Text>
+                                                    )}
+                                                </div>
+                                            </Stack>
+                                        </Paper>
+
+                                        <Paper withBorder radius="md" p="md" bg="white">
+                                            <Stack gap="sm">
+                                                <Group justify="space-between" align="center">
+                                                    <Title order={6}>Host Staff</Title>
+                                                    <Badge radius="xl" variant="light">{assignedHostCards.length}</Badge>
+                                                </Group>
+                                                <div
+                                                    className="max-h-[420px] overflow-y-auto space-y-3 pr-1"
+                                                    onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedHostCards.length, setHostCardVisibleCount)}
+                                                >
+                                                    {assignedHostCards.slice(0, hostCardVisibleCount).map((card) => (
+                                                        <Paper key={card.key} withBorder radius="md" p="sm">
+                                                            <Stack gap="xs">
+                                                                <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
+                                                                    <div className="flex-1 min-w-0">
+                                                                        {card.user ? (
+                                                                            <UserCard user={card.user} className="!p-0 !shadow-none" />
+                                                                        ) : (
+                                                                            <Stack gap={2}>
+                                                                                <Text fw={600}>{card.displayName}</Text>
+                                                                                {card.email && <Text size="xs" c="dimmed">{card.email}</Text>}
+                                                                            </Stack>
+                                                                        )}
+                                                                    </div>
+                                                                    {card.status && (
+                                                                        <Badge radius="xl" variant="light" color={getStaffStatusColor(card.status)}>
+                                                                            {formatStaffStatusLabel(card.status)}
+                                                                        </Badge>
+                                                                    )}
+                                                                </Group>
+                                                                <Group gap="xs" wrap="wrap">
+                                                                    <Badge variant="outline">{formatStaffRoleLabel(card.role)}</Badge>
+                                                                    {card.role !== 'HOST' && (
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="subtle"
+                                                                            color="red"
+                                                                            size="xs"
+                                                                            disabled={card.source === 'assigned' ? isImmutableField('assistantHostIds') : false}
+                                                                            onClick={() => {
+                                                                                if (card.source === 'draft' && card.email) {
+                                                                                    setPendingStaffInvites((prev) => prev.flatMap((invite) => {
+                                                                                        if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
+                                                                                            return [invite];
+                                                                                        }
+                                                                                        const nextRoles = invite.roles.filter((role) => role !== 'ASSISTANT_HOST');
+                                                                                        if (!nextRoles.length) {
+                                                                                            return [];
+                                                                                        }
+                                                                                        return [{ ...invite, roles: nextRoles }];
+                                                                                    }));
+                                                                                    return;
+                                                                                }
+                                                                                if (card.userId) {
+                                                                                    handleRemoveAssistantHost(card.userId);
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            Remove
+                                                                        </Button>
+                                                                    )}
+                                                                </Group>
+                                                            </Stack>
+                                                        </Paper>
+                                                    ))}
+                                                    {assignedHostCards.length === 0 && (
+                                                        <Text size="sm" c="dimmed">No host-side staff assigned.</Text>
+                                                    )}
+                                                </div>
+                                            </Stack>
+                                        </Paper>
+                                    </SimpleGrid>
+                                    {staffInviteError && (
+                                        <Text size="xs" c="red">
+                                            {staffInviteError}
+                                        </Text>
+                                    )}
+                                </Stack>
                             </Collapse>
                         </Paper>
 

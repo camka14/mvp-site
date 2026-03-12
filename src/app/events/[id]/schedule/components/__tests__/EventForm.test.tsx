@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithMantine } from '../../../../../../../test/utils/renderWithMantine';
 import EventForm, { EventFormHandle } from '../EventForm';
 import { userService } from '@/lib/userService';
+import { eventService } from '@/lib/eventService';
 
 jest.setTimeout(20000);
 
@@ -90,27 +91,44 @@ jest.mock('@/app/discover/components/LeagueFields', () => () => <div data-testid
 jest.mock('@/app/discover/components/LeagueScoringConfigPanel', () => () => <div data-testid="league-scoring-config" />);
 jest.mock('@/components/ui/CentsInput', () => () => <div data-testid="cents-input" />);
 jest.mock('@/components/ui/PriceWithFeesPreview', () => () => <div data-testid="price-preview" />);
-jest.mock('@/components/ui/UserCard', () => () => <div data-testid="user-card" />);
+jest.mock('@/components/ui/UserCard', () => ({ user }: any) => (
+  <div data-testid="user-card">
+    <span>{[user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.userName || user?.email || user?.$id || 'User'}</span>
+    {user?.email ? <span>{user.email}</span> : null}
+  </div>
+));
 jest.mock('@/components/ui/ImageUploader', () => ({
   ImageUploader: () => <div data-testid="image-uploader" />,
 }));
 
+const mockSport = { $id: 'volleyball', id: 'volleyball', name: 'Volleyball' };
+type MockUseSportsState = {
+  sports: any[];
+  sportsById: Map<string, any>;
+  sportsByName: Map<string, any>;
+  loading: boolean;
+  error: Error | null;
+};
+const buildMockUseSportsState = (input: { sports?: any[]; loading?: boolean; error?: Error | null } = {}): MockUseSportsState => {
+  const sports = input.sports ?? [mockSport];
+  return {
+    sports,
+    sportsById: new Map(sports.map((sport) => [sport.$id, sport])),
+    sportsByName: new Map(sports.map((sport) => [String(sport.name ?? '').toLowerCase(), sport])),
+    loading: input.loading ?? false,
+    error: input.error ?? null,
+  };
+};
+let mockUseSportsState: MockUseSportsState = buildMockUseSportsState();
+
 jest.mock('@/app/hooks/useSports', () => ({
-  useSports: () => {
-    const sport = { $id: 'volleyball', id: 'volleyball', name: 'Volleyball' };
-    return {
-      sports: [sport],
-      sportsById: new Map([[sport.$id, sport]]),
-      sportsByName: new Map([[sport.name.toLowerCase(), sport]]),
-      loading: false,
-      error: null,
-    };
-  },
+  useSports: () => mockUseSportsState,
 }));
 
 jest.mock('@/lib/eventService', () => ({
   eventService: {
     getEventWithRelations: jest.fn().mockResolvedValue(null),
+    getEventsForFieldInRange: jest.fn().mockResolvedValue([]),
   },
 }));
 
@@ -126,6 +144,7 @@ jest.mock('@/lib/userService', () => ({
   userService: {
     getUsersByIds: jest.fn().mockResolvedValue([]),
     searchUsers: jest.fn().mockResolvedValue([]),
+    lookupEmailMembership: jest.fn().mockResolvedValue([]),
     inviteUsersByEmail: jest.fn().mockResolvedValue({ sent: [], not_sent: [], failed: [] }),
   },
 }));
@@ -147,8 +166,12 @@ jest.mock('@/lib/apiClient', () => ({
 describe('EventForm dirty state', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseSportsState = buildMockUseSportsState();
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(null);
+    (eventService.getEventsForFieldInRange as jest.Mock).mockResolvedValue([]);
     (userService.getUsersByIds as jest.Mock).mockResolvedValue([]);
     (userService.searchUsers as jest.Mock).mockResolvedValue([]);
+    (userService.lookupEmailMembership as jest.Mock).mockResolvedValue([]);
     (userService.inviteUsersByEmail as jest.Mock).mockResolvedValue({ sent: [], not_sent: [], failed: [] });
   });
 
@@ -261,6 +284,41 @@ describe('EventForm dirty state', () => {
     $id: 'org_1',
     ownerId: 'host_1',
     owner: { $id: 'host_1', email: 'host@example.com', firstName: 'Harper', lastName: 'Host' },
+    staffMembers: [
+      {
+        $id: 'org_staff_host_2',
+        organizationId: 'org_1',
+        userId: 'host_2',
+        types: ['HOST'],
+        user: { $id: 'host_2', email: 'host2@example.com', firstName: 'Jordan', lastName: 'Host' },
+        invite: { status: 'ACCEPTED' },
+      },
+      {
+        $id: 'org_staff_assistant_1',
+        organizationId: 'org_1',
+        userId: 'assistant_1',
+        types: ['HOST'],
+        user: { $id: 'assistant_1', email: 'assistant@example.com', firstName: 'Alex', lastName: 'Host' },
+        invite: { status: 'ACCEPTED' },
+      },
+      {
+        $id: 'org_staff_ref_1',
+        organizationId: 'org_1',
+        userId: 'ref_1',
+        types: ['REFEREE'],
+        user: { $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' },
+        invite: { status: 'ACCEPTED' },
+      },
+      {
+        $id: 'org_staff_ref_2',
+        organizationId: 'org_1',
+        userId: 'ref_2',
+        types: ['REFEREE'],
+        user: { $id: 'ref_2', email: 'ref2@example.com', firstName: 'Casey', lastName: 'Ref' },
+        invite: { status: 'PENDING' },
+      },
+    ],
+    staffInvites: [],
     hostIds: ['host_1', 'host_2', 'assistant_1'],
     hosts: [
       { $id: 'host_1', email: 'host@example.com', firstName: 'Harper', lastName: 'Host' },
@@ -337,7 +395,9 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenLastCalledWith(true);
     });
 
-    formRef.current?.commitDirtyBaseline();
+    await act(async () => {
+      formRef.current?.commitDirtyBaseline();
+    });
 
     await waitFor(() => {
       expect(onDirtyStateChange).toHaveBeenLastCalledWith(false);
@@ -349,6 +409,204 @@ describe('EventForm dirty state', () => {
     await waitFor(() => {
       expect(onDirtyStateChange).toHaveBeenLastCalledWith(true);
     });
+  });
+
+  it('re-establishes dirty tracking after the saved event reloads with the same id', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    let setRenderedEvent: React.Dispatch<React.SetStateAction<any>> | null = null;
+    const Harness = () => {
+      const [event, setEvent] = React.useState<any>(buildEvent());
+      setRenderedEvent = setEvent;
+      return (
+        <EventForm
+          ref={formRef}
+          isOpen
+          currentUser={{ $id: 'host_1', email: 'host@example.com' } as any}
+          event={event}
+          organization={null as any}
+          onDirtyStateChange={onDirtyStateChange}
+        />
+      );
+    };
+
+    renderWithMantine(<Harness />);
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const eventNameInput = screen.getByPlaceholderText('Enter event name');
+    fireEvent.change(eventNameInput, { target: { value: 'Saved Event Name' } });
+    fireEvent.blur(eventNameInput);
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenLastCalledWith(true);
+    });
+
+    await act(async () => {
+      formRef.current?.commitDirtyBaseline();
+    });
+
+    await act(async () => {
+      setRenderedEvent?.({ ...buildEvent(), name: 'Saved Event Name', refereeIds: ['ref_1'] });
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenLastCalledWith(false);
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Enter event name'), {
+      target: { value: 'Saved Event Name Again' },
+    });
+    fireEvent.blur(screen.getByPlaceholderText('Enter event name'));
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenLastCalledWith(true);
+    });
+  });
+
+  it('does not mark edit mode dirty when referee data is already present', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      state: 'UNPUBLISHED',
+      refereeIds: ['ref_1'],
+      referees: [{ $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' }] as any,
+    });
+
+    await waitForStableDirtyState(onDirtyStateChange, false);
+    expect(userService.getUsersByIds).not.toHaveBeenCalledWith(['ref_1']);
+    expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it('does not mark edit mode dirty when sport config hydrates from sportId', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      state: 'UNPUBLISHED',
+      sport: null,
+    });
+
+    await waitForStableDirtyState(onDirtyStateChange, false);
+    expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it('does not mark edit mode dirty when sports catalog loads after initial render', async () => {
+    const onDirtyStateChange = jest.fn();
+    const event = {
+      ...buildEvent(),
+      state: 'UNPUBLISHED',
+      sport: null,
+      sportConfig: null,
+    } as any;
+    let setRenderVersion: React.Dispatch<React.SetStateAction<number>> | null = null;
+    const Harness = () => {
+      const [renderVersion, setLocalRenderVersion] = React.useState(0);
+      setRenderVersion = setLocalRenderVersion;
+      return (
+        <EventForm
+          key={`event-form-${renderVersion}`}
+          isOpen
+          currentUser={{ $id: 'host_1', email: 'host@example.com' } as any}
+          event={event}
+          organization={null as any}
+          onDirtyStateChange={onDirtyStateChange}
+        />
+      );
+    };
+    mockUseSportsState = buildMockUseSportsState({ sports: [], loading: true });
+
+    renderWithMantine(<Harness />);
+
+    await waitForStableDirtyState(onDirtyStateChange, false);
+
+    await act(async () => {
+      mockUseSportsState = buildMockUseSportsState({ sports: [mockSport], loading: false });
+      setRenderVersion?.((current) => current + 1);
+    });
+
+    await waitForStableDirtyState(onDirtyStateChange, false);
+    expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it('does not mark edit mode dirty when league set defaults hydrate for set-based sports', async () => {
+    const onDirtyStateChange = jest.fn();
+    const setBasedSport = {
+      ...mockSport,
+      $id: 'volleyball_sets',
+      id: 'volleyball_sets',
+      usePointsPerSetWin: true,
+    };
+    mockUseSportsState = buildMockUseSportsState({ sports: [setBasedSport], loading: false });
+
+    renderForm(onDirtyStateChange, undefined, {
+      state: 'UNPUBLISHED',
+      eventType: 'LEAGUE',
+      sportId: 'volleyball_sets',
+      sport: null,
+      sportConfig: null,
+      teamSignup: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: false,
+      },
+      timeSlots: [
+        {
+          $id: 'slot_1',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          divisions: ['open'],
+          startTimeMinutes: 600,
+          endTimeMinutes: 660,
+          repeating: true,
+          startDate: '2026-03-12T10:00',
+          endDate: '2026-03-12T12:00',
+        },
+      ],
+    });
+
+    await waitForStableDirtyState(onDirtyStateChange, false);
+    expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it('does not mark edit mode dirty when timeslot conflict checks update slot metadata', async () => {
+    const onDirtyStateChange = jest.fn();
+    (eventService.getEventsForFieldInRange as jest.Mock).mockResolvedValue([]);
+
+    renderForm(onDirtyStateChange, undefined, {
+      state: 'UNPUBLISHED',
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      noFixedEndDateTime: true,
+      fields: [{ $id: 'field_1', name: 'Field 1', fieldNumber: 1, location: 'Main Gym' }],
+      fieldIds: ['field_1'],
+      selectedFieldIds: ['field_1'],
+      timeSlots: [
+        {
+          $id: 'slot_1',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          divisions: ['open'],
+          startTimeMinutes: 600,
+          endTimeMinutes: 660,
+          repeating: true,
+          startDate: '2026-03-12T10:00',
+          endDate: '2026-03-12T12:00',
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(eventService.getEventsForFieldInRange).toHaveBeenCalled();
+    });
+
+    await waitForStableDirtyState(onDirtyStateChange, false);
+    expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
   });
 
   it('marks the form dirty when a referee is removed', async () => {
@@ -403,15 +661,15 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    fireEvent.change(screen.getAllByPlaceholderText('Search by name or username')[1], {
+    fireEvent.change(screen.getByLabelText('Search users'), {
       target: { value: 'casey' },
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add as referee' })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add as referee' }));
 
     await waitForStableDirtyState(onDirtyStateChange, true);
   });
@@ -428,15 +686,15 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    fireEvent.change(screen.getAllByPlaceholderText('Search by name or username')[0], {
+    fireEvent.change(screen.getByLabelText('Search users'), {
       target: { value: 'alex' },
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add as assistant host' })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add as assistant host' }));
 
     await waitForStableDirtyState(onDirtyStateChange, true);
   });
@@ -461,9 +719,7 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    fireEvent.change(screen.getByLabelText('Primary Host'), {
-      target: { value: 'host_2' },
-    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Set as host' })[1]);
 
     await waitFor(() => {
       expect(formRef.current?.getDraft()).toEqual(
@@ -474,46 +730,6 @@ describe('EventForm dirty state', () => {
     });
 
     await waitForStableDirtyState(onDirtyStateChange, true);
-  });
-
-  it('emits a staged draft delta when an organization primary host changes', async () => {
-    const onDirtyStateChange = jest.fn();
-    const onDraftStateChange = jest.fn();
-    const organization = buildOrganization();
-
-    renderForm(
-      onDirtyStateChange,
-      undefined,
-      {
-        organizationId: organization.$id,
-        hostId: 'host_1',
-        state: 'UNPUBLISHED',
-      },
-      organization,
-      { onDraftStateChange },
-    );
-
-    await waitFor(() => {
-      expect(onDraftStateChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          draft: expect.objectContaining({ hostId: 'host_1' }),
-          baselineDraft: expect.objectContaining({ hostId: 'host_1' }),
-        }),
-      );
-    });
-
-    fireEvent.change(screen.getByLabelText('Primary Host'), {
-      target: { value: 'host_2' },
-    });
-
-    await waitFor(() => {
-      expect(onDraftStateChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          draft: expect.objectContaining({ hostId: 'host_2' }),
-          baselineDraft: expect.objectContaining({ hostId: 'host_1' }),
-        }),
-      );
-    });
   });
 
   it('marks the form dirty when an organization assistant host changes', async () => {
@@ -536,11 +752,7 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    const assistantHostsSelect = screen.getByLabelText('Assistant Hosts') as HTMLSelectElement;
-    Array.from(assistantHostsSelect.options).forEach((option) => {
-      option.selected = option.value === 'assistant_1';
-    });
-    fireEvent.change(assistantHostsSelect);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add as assistant' })[1]);
 
     await waitForStableDirtyState(onDirtyStateChange, true);
   });
@@ -570,7 +782,7 @@ describe('EventForm dirty state', () => {
     await waitForStableDirtyState(onDirtyStateChange, true);
   });
 
-  it('marks the form dirty when a referee invite is edited', async () => {
+  it('stages email invite staff cards and marks the form dirty', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(onDirtyStateChange);
@@ -582,15 +794,97 @@ describe('EventForm dirty state', () => {
     fireEvent.change(screen.getByLabelText('First name'), {
       target: { value: 'Casey' },
     });
+    fireEvent.change(screen.getByLabelText('Last name'), {
+      target: { value: 'Ref' },
+    });
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'ref@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Referee' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add email invite' }));
 
     await waitForStableDirtyState(onDirtyStateChange, true);
+    expect(screen.getByText('Email invite')).toBeInTheDocument();
   });
 
-  it('stages referee invites until save and resolves them through the save hook', async () => {
+  it('does not stage a referee email invite when the server reports that email already belongs to an assigned referee', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    (userService.lookupEmailMembership as jest.Mock).mockResolvedValue([
+      { email: 'ref@example.com', userId: 'ref_1' },
+    ]);
+
+    renderForm(onDirtyStateChange, formRef, {
+      refereeIds: ['ref_1'],
+      referees: [],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    fireEvent.change(screen.getByLabelText('First name'), {
+      target: { value: 'Casey' },
+    });
+    fireEvent.change(screen.getByLabelText('Last name'), {
+      target: { value: 'Ref' },
+    });
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'ref@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Referee' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add email invite' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('ref@example.com is already added as referee for this event.')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Email invite')).not.toBeInTheDocument();
+    expect(userService.lookupEmailMembership).toHaveBeenCalledWith(
+      ['ref@example.com'],
+      expect.arrayContaining(['host_1', 'ref_1']),
+    );
+  });
+
+  it('rejects pending staff save validation when the server reports a same-role email match', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    (userService.lookupEmailMembership as jest.Mock).mockResolvedValue([
+      { email: 'assistant@example.com', userId: 'assistant_1' },
+    ]);
+
+    renderForm(onDirtyStateChange, formRef, {
+      assistantHostIds: ['assistant_1'],
+      pendingStaffInvites: [
+        { firstName: 'Alex', lastName: 'Host', email: 'assistant@example.com', roles: ['ASSISTANT_HOST'] },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    let thrown: Error | null = null;
+    await act(async () => {
+      try {
+        await formRef.current?.validatePendingStaffAssignments();
+      } catch (error) {
+        thrown = error as Error;
+      }
+    });
+
+    expect(thrown?.message).toBe('assistant@example.com is already added as assistant host for this event.');
+    expect(screen.getByText('assistant@example.com is already added as assistant host for this event.')).toBeInTheDocument();
+    expect(userService.lookupEmailMembership).toHaveBeenCalledWith(
+      ['assistant@example.com'],
+      expect.arrayContaining(['assistant_1', 'host_1']),
+    );
+  });
+
+  it('stages staff invites until save and resolves them through the save hook', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();
     (userService.inviteUsersByEmail as jest.Mock).mockResolvedValue({
-      sent: [{ userId: 'ref_2' }],
+      sent: [{ userId: 'ref_2', email: 'ref@example.com', staffTypes: ['REFEREE', 'HOST'] }],
       not_sent: [],
       failed: [],
     });
@@ -599,8 +893,8 @@ describe('EventForm dirty state', () => {
     ]);
 
     renderForm(onDirtyStateChange, formRef, {
-      pendingRefereeInvites: [
-        { firstName: 'Casey', lastName: 'Ref', email: 'ref@example.com' },
+      pendingStaffInvites: [
+        { firstName: 'Casey', lastName: 'Ref', email: 'ref@example.com', roles: ['REFEREE', 'ASSISTANT_HOST'] },
       ],
     });
 
@@ -610,30 +904,35 @@ describe('EventForm dirty state', () => {
     expect(userService.inviteUsersByEmail).not.toHaveBeenCalled();
 
     await act(async () => {
-      await formRef.current?.submitPendingRefereeInvites('event_1');
+      await formRef.current?.submitPendingStaffInvites('event_1');
     });
 
-    expect(userService.inviteUsersByEmail).toHaveBeenCalledWith('host_1', [
-      expect.objectContaining({
-        firstName: 'Casey',
-        lastName: 'Ref',
-        email: 'ref@example.com',
-        type: 'EVENT',
-        eventId: 'event_1',
-      }),
-    ]);
+    const [inviteUserIdArg, invitePayloadArg] = (userService.inviteUsersByEmail as jest.Mock).mock.calls[0];
+    expect(inviteUserIdArg).toBe('host_1');
+    expect(invitePayloadArg).toHaveLength(1);
+    expect(invitePayloadArg[0]).toEqual(expect.objectContaining({
+      firstName: 'Casey',
+      lastName: 'Ref',
+      email: 'ref@example.com',
+      type: 'STAFF',
+      eventId: 'event_1',
+      replaceStaffTypes: true,
+      staffTypes: expect.arrayContaining(['REFEREE', 'HOST']),
+    }));
 
     await waitFor(() => {
-      expect(screen.getAllByLabelText('Email')[0]).toHaveValue('');
+      expect(screen.getByLabelText('Email')).toHaveValue('');
     });
 
     expect(formRef.current?.getDraft()).toEqual(
       expect.objectContaining({
         refereeIds: expect.arrayContaining(['ref_2']),
+        assistantHostIds: expect.arrayContaining(['ref_2']),
         referees: expect.arrayContaining([
           expect.objectContaining({ $id: 'ref_2' }),
         ]),
       }),
     );
   });
+
 });

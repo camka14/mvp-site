@@ -12,10 +12,10 @@ import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { eventService } from '@/lib/eventService';
-import { fieldService } from '@/lib/fieldService';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
+import { sportsService } from '@/lib/sportsService';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 import { paymentService } from '@/lib/paymentService';
@@ -32,7 +32,7 @@ import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
 import { toEventPayload } from '@/types';
 import { formatBillAmount } from '@/types';
-import type { Event, EventState, Field, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
+import type { Event, EventState, Field, LeagueConfig, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import type {
   EventTeamComplianceResponse,
@@ -3870,6 +3870,342 @@ function EventScheduleContent() {
   }, [activeEvent, changesEvent, event, rentalPurchaseContext?.priceCents]);
   const currentRentalSignLink = rentalSignLinks[rentalSignIndex] ?? null;
 
+  const hydrateEventFormDependencies = useCallback(async (inputEvent: Event): Promise<Event> => {
+    const hydratedEvent = cloneValue(inputEvent) as Event;
+    const targetEventId = normalizeIdToken(hydratedEvent.$id) ?? normalizeIdToken(eventId);
+
+    if (
+      targetEventId
+      && (!Array.isArray(hydratedEvent.matches) || hydratedEvent.matches.length === 0)
+    ) {
+      try {
+        const matchesResponse = await apiRequest<any>(`/api/events/${targetEventId}/matches`);
+        if (Array.isArray(matchesResponse?.matches)) {
+          hydratedEvent.matches = matchesResponse.matches.map((match: Match) => normalizeApiMatch(match));
+        }
+      } catch (matchesError) {
+        console.error('Failed to hydrate matches for event form:', matchesError);
+      }
+    }
+
+    if (
+      hydratedEvent.eventType === 'LEAGUE'
+      && typeof hydratedEvent.leagueScoringConfigId === 'string'
+      && hydratedEvent.leagueScoringConfigId.trim().length > 0
+      && (!hydratedEvent.leagueScoringConfig || typeof hydratedEvent.leagueScoringConfig !== 'object')
+    ) {
+      try {
+        const leagueConfigResponse = await apiRequest<any>(`/api/league-scoring-configs/${hydratedEvent.leagueScoringConfigId}`);
+        const leagueConfig = leagueConfigResponse?.leagueScoringConfig ?? leagueConfigResponse;
+        if (leagueConfig && typeof leagueConfig === 'object') {
+          hydratedEvent.leagueScoringConfig = {
+            ...leagueConfig,
+            $id: typeof leagueConfig.$id === 'string'
+              ? leagueConfig.$id
+              : typeof leagueConfig.id === 'string'
+                ? leagueConfig.id
+                : undefined,
+          };
+        }
+      } catch (leagueConfigError) {
+        console.error('Failed to hydrate league scoring config for event form:', leagueConfigError);
+      }
+    }
+
+    const timeSlotIds = Array.isArray(hydratedEvent.timeSlotIds)
+      ? Array.from(
+        new Set(
+          hydratedEvent.timeSlotIds
+            .map((slotId) => String(slotId).trim())
+            .filter((slotId) => slotId.length > 0),
+        ),
+      )
+      : [];
+    if (
+      (!Array.isArray(hydratedEvent.timeSlots) || hydratedEvent.timeSlots.length === 0)
+      && timeSlotIds.length > 0
+    ) {
+      try {
+        const timeSlotsResponse = await apiRequest<{ timeSlots?: Array<Record<string, unknown>> }>(
+          `/api/time-slots?ids=${timeSlotIds.join(',')}`,
+        );
+        if (Array.isArray(timeSlotsResponse?.timeSlots)) {
+          hydratedEvent.timeSlots = timeSlotsResponse.timeSlots.map((row) => {
+            const slot = row as Record<string, unknown>;
+            const slotId = normalizeIdToken(slot.$id ?? slot.id) ?? createClientId();
+            const rawFieldIds = Array.isArray(slot.scheduledFieldIds)
+              ? slot.scheduledFieldIds
+              : typeof slot.scheduledFieldId === 'string'
+                ? [slot.scheduledFieldId]
+                : [];
+            const scheduledFieldIds = Array.from(
+              new Set(
+                rawFieldIds
+                  .map((fieldId) => String(fieldId).trim())
+                  .filter((fieldId) => fieldId.length > 0),
+              ),
+            );
+            const rawDays = Array.isArray(slot.daysOfWeek)
+              ? slot.daysOfWeek
+              : typeof slot.dayOfWeek === 'number'
+                ? [slot.dayOfWeek]
+                : [];
+            const daysOfWeek = Array.from(
+              new Set(
+                rawDays
+                  .map((day) => Number(day))
+                  .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+              ),
+            ) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+
+            return {
+              ...(slot as unknown as TimeSlot),
+              $id: slotId,
+              dayOfWeek: daysOfWeek[0] ?? (typeof slot.dayOfWeek === 'number' ? slot.dayOfWeek as TimeSlot['dayOfWeek'] : undefined),
+              daysOfWeek,
+              scheduledFieldId:
+                scheduledFieldIds[0]
+                ?? (typeof slot.scheduledFieldId === 'string' ? slot.scheduledFieldId : undefined),
+              scheduledFieldIds,
+              divisions: Array.isArray(slot.divisions)
+                ? Array.from(
+                  new Set(
+                    slot.divisions
+                      .map((division) => String(division).trim().toLowerCase())
+                      .filter((division) => division.length > 0),
+                  ),
+                )
+                : [],
+              repeating: slot.repeating === undefined ? true : Boolean(slot.repeating),
+            } as TimeSlot;
+          });
+        }
+      } catch (timeSlotsError) {
+        console.error('Failed to hydrate time slots for event form:', timeSlotsError);
+      }
+    }
+
+    const fieldIdsFromEvent = Array.isArray(hydratedEvent.fieldIds)
+      ? hydratedEvent.fieldIds.map((fieldId) => String(fieldId).trim()).filter((fieldId) => fieldId.length > 0)
+      : [];
+    const fieldIdsFromSlots = Array.isArray(hydratedEvent.timeSlots)
+      ? hydratedEvent.timeSlots.flatMap((slot) => {
+        const fromList = Array.isArray(slot.scheduledFieldIds)
+          ? slot.scheduledFieldIds
+          : [];
+        if (fromList.length > 0) {
+          return fromList.map((fieldId) => String(fieldId).trim()).filter((fieldId) => fieldId.length > 0);
+        }
+        return typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.trim().length > 0
+          ? [slot.scheduledFieldId.trim()]
+          : [];
+      })
+      : [];
+    const fieldIdsToHydrate = Array.from(new Set([...fieldIdsFromEvent, ...fieldIdsFromSlots]));
+    if (
+      (!Array.isArray(hydratedEvent.fields) || hydratedEvent.fields.length === 0)
+      && fieldIdsToHydrate.length > 0
+    ) {
+      try {
+        const fieldsResponse = await apiRequest<{ fields?: Array<Record<string, unknown>> }>(
+          `/api/fields?ids=${fieldIdsToHydrate.join(',')}`,
+        );
+        if (Array.isArray(fieldsResponse?.fields)) {
+          hydratedEvent.fields = fieldsResponse.fields as unknown as Field[];
+        }
+      } catch (fieldsError) {
+        console.error('Failed to hydrate fields for event form:', fieldsError);
+      }
+    }
+
+    if (Array.isArray(hydratedEvent.matches) && Array.isArray(hydratedEvent.fields) && hydratedEvent.fields.length > 0) {
+      const fieldsById = new Map<string, Field>(
+        hydratedEvent.fields
+          .filter((field): field is Field => Boolean(field?.$id))
+          .map((field) => [field.$id, field]),
+      );
+      hydratedEvent.matches = hydratedEvent.matches.map((match) => {
+        const normalizedMatch = normalizeApiMatch(match);
+        if (normalizedMatch.field && typeof normalizedMatch.field === 'object') {
+          return normalizedMatch;
+        }
+        const fieldId = normalizeIdToken(normalizedMatch.fieldId);
+        if (!fieldId) {
+          return normalizedMatch;
+        }
+        const field = fieldsById.get(fieldId);
+        if (!field) {
+          return normalizedMatch;
+        }
+        return {
+          ...normalizedMatch,
+          field,
+        };
+      });
+    }
+
+    let sports: Sport[] = [];
+    try {
+      sports = await sportsService.getAll();
+    } catch (sportsError) {
+      console.error('Failed to pre-load sports for event form:', sportsError);
+    }
+
+    const sportsById = new Map<string, Sport>(
+      sports
+        .filter((sport): sport is Sport => Boolean(sport?.$id))
+        .map((sport) => [sport.$id, sport]),
+    );
+
+    const resolvedSportId = normalizeIdToken(
+      hydratedEvent.sportId
+      || (typeof hydratedEvent.sport === 'string' ? hydratedEvent.sport : (hydratedEvent.sport as Sport | undefined)?.$id),
+    );
+    const resolvedSport = resolvedSportId ? sportsById.get(resolvedSportId) ?? null : null;
+    if (resolvedSport) {
+      hydratedEvent.sport = resolvedSport;
+      hydratedEvent.sportId = resolvedSport.$id;
+    }
+
+    const hydrateAssignedUsers = async (
+      ids: unknown,
+      existingUsers: unknown,
+    ): Promise<{ ids: string[]; users: UserData[] }> => {
+      const normalizedIds = Array.from(
+        new Set(
+          (Array.isArray(ids) ? ids : [])
+            .map((value) => normalizeIdToken(value))
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
+      const usersById = new Map<string, UserData>();
+      if (Array.isArray(existingUsers)) {
+        existingUsers.forEach((candidate) => {
+          if (candidate && typeof candidate === 'object' && '$id' in candidate) {
+            const candidateId = normalizeIdToken((candidate as UserData).$id);
+            if (candidateId) {
+              usersById.set(candidateId, candidate as UserData);
+            }
+          }
+        });
+      }
+
+      const missingIds = normalizedIds.filter((id) => !usersById.has(id));
+      if (missingIds.length > 0) {
+        try {
+          const fetchedUsers = await userService.getUsersByIds(missingIds);
+          fetchedUsers.forEach((candidate) => {
+            const candidateId = normalizeIdToken(candidate?.$id);
+            if (candidateId) {
+              usersById.set(candidateId, candidate);
+            }
+          });
+        } catch (usersError) {
+          console.error('Failed to hydrate assigned users for event form:', usersError);
+        }
+      }
+
+      return {
+        ids: normalizedIds,
+        users: normalizedIds
+          .map((id) => usersById.get(id))
+          .filter((candidate): candidate is UserData => Boolean(candidate)),
+      };
+    };
+
+    const normalizedReferees = await hydrateAssignedUsers(hydratedEvent.refereeIds, hydratedEvent.referees);
+    hydratedEvent.refereeIds = normalizedReferees.ids;
+    hydratedEvent.referees = normalizedReferees.users;
+
+    const normalizedAssistantHosts = await hydrateAssignedUsers(hydratedEvent.assistantHostIds, hydratedEvent.assistantHosts);
+    hydratedEvent.assistantHostIds = normalizedAssistantHosts.ids;
+    hydratedEvent.assistantHosts = normalizedAssistantHosts.users;
+
+    if (hydratedEvent.eventType === 'LEAGUE') {
+      const allowedSetCounts = [1, 3, 5];
+      const source = hydratedEvent.leagueConfig ?? hydratedEvent;
+      const matchDurationMinutes = Number.isFinite(Number(source.matchDurationMinutes))
+        ? Math.max(1, Math.trunc(Number(source.matchDurationMinutes)))
+        : 60;
+      const restTimeMinutes = Number.isFinite(Number(source.restTimeMinutes))
+        ? Math.max(0, Math.trunc(Number(source.restTimeMinutes)))
+        : 0;
+      const usesSets = Boolean(resolvedSport?.usePointsPerSetWin);
+
+      let setsPerMatch: number | undefined;
+      let setDurationMinutes: number | undefined;
+      let pointsToVictory: number[] | undefined;
+
+      if (usesSets) {
+        const rawSetsPerMatch = Number(source.setsPerMatch);
+        setsPerMatch = allowedSetCounts.includes(rawSetsPerMatch) ? rawSetsPerMatch : 1;
+        setDurationMinutes = Number.isFinite(Number(source.setDurationMinutes))
+          ? Math.max(1, Math.trunc(Number(source.setDurationMinutes)))
+          : 20;
+        const seedPoints = Array.isArray(source.pointsToVictory)
+          ? source.pointsToVictory
+          : [];
+        const normalizedPoints = seedPoints
+          .slice(0, setsPerMatch)
+          .map((value) => {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : 21;
+          });
+        while (normalizedPoints.length < setsPerMatch) {
+          normalizedPoints.push(21);
+        }
+        pointsToVictory = normalizedPoints;
+      }
+
+      const normalizedLeagueConfig: LeagueConfig = {
+        gamesPerOpponent: Number.isFinite(Number(source.gamesPerOpponent))
+          ? Math.max(1, Math.trunc(Number(source.gamesPerOpponent)))
+          : 1,
+        includePlayoffs: Boolean(source.includePlayoffs),
+        playoffTeamCount: Number.isFinite(Number(source.playoffTeamCount))
+          ? Math.max(2, Math.trunc(Number(source.playoffTeamCount)))
+          : undefined,
+        usesSets,
+        matchDurationMinutes,
+        restTimeMinutes,
+        setDurationMinutes,
+        setsPerMatch,
+        pointsToVictory,
+      };
+
+      hydratedEvent.leagueConfig = normalizedLeagueConfig;
+      hydratedEvent.usesSets = normalizedLeagueConfig.usesSets;
+      hydratedEvent.matchDurationMinutes = normalizedLeagueConfig.matchDurationMinutes;
+      hydratedEvent.restTimeMinutes = normalizedLeagueConfig.restTimeMinutes;
+      hydratedEvent.setDurationMinutes = normalizedLeagueConfig.setDurationMinutes;
+      hydratedEvent.setsPerMatch = normalizedLeagueConfig.setsPerMatch;
+      hydratedEvent.pointsToVictory = normalizedLeagueConfig.pointsToVictory;
+    }
+
+    const organizationId = normalizeIdToken(
+      hydratedEvent.organizationId
+      || (typeof hydratedEvent.organization === 'string'
+        ? hydratedEvent.organization
+        : (hydratedEvent.organization as Organization | undefined)?.$id),
+    );
+    if (organizationId) {
+      try {
+        const resolvedOrganization = await (
+          organizationService.getOrganizationByIdForEventForm
+            ? organizationService.getOrganizationByIdForEventForm(organizationId)
+            : organizationService.getOrganizationById(organizationId, true)
+        );
+        if (resolvedOrganization) {
+          hydratedEvent.organization = resolvedOrganization;
+        }
+      } catch (organizationError) {
+        console.error('Failed to hydrate event organization for event form:', organizationError);
+      }
+    }
+
+    return hydratedEvent;
+  }, [eventId]);
+
   // Kick off schedule loading once auth state is resolved or redirect unauthenticated users.
   // Hydrate event + match data from the API and sync local component state.
   const loadSchedule = useCallback(async ({
@@ -3896,211 +4232,18 @@ function EventScheduleContent() {
     }
 
     try {
-      const response = await apiRequest<any>(`/api/events/${eventId}`);
-      const responseEvent = response?.event ?? response;
-      const fetchedEvent = normalizeApiEvent(responseEvent ?? null);
-
+      let fetchedEvent = await eventService.getEventWithRelations(eventId);
+      if (!fetchedEvent) {
+        const response = await apiRequest<any>(`/api/events/${eventId}`);
+        const responseEvent = response?.event ?? response;
+        fetchedEvent = normalizeApiEvent(responseEvent ?? null) ?? undefined;
+      }
       if (!fetchedEvent) {
         setError('League not found.');
         return;
       }
-
-      if (fetchedEvent.eventType === 'LEAGUE') {
-        const leagueConfigId = typeof fetchedEvent.leagueScoringConfigId === 'string'
-          && fetchedEvent.leagueScoringConfigId.trim().length > 0
-          ? fetchedEvent.leagueScoringConfigId.trim()
-          : null;
-        if (
-          leagueConfigId
-          && (!fetchedEvent.leagueScoringConfig || typeof fetchedEvent.leagueScoringConfig !== 'object')
-        ) {
-          try {
-            const leagueConfigResponse = await apiRequest<any>(`/api/league-scoring-configs/${leagueConfigId}`);
-            const leagueConfig = leagueConfigResponse?.leagueScoringConfig ?? leagueConfigResponse;
-            if (leagueConfig && typeof leagueConfig === 'object') {
-              const normalizedLeagueConfig = {
-                ...leagueConfig,
-                $id: typeof leagueConfig.$id === 'string'
-                  ? leagueConfig.$id
-                  : typeof leagueConfig.id === 'string'
-                    ? leagueConfig.id
-                    : undefined,
-              };
-              fetchedEvent.leagueScoringConfig = normalizedLeagueConfig;
-            }
-          } catch (leagueConfigError) {
-            console.error('Failed to load league scoring config for event:', leagueConfigError);
-          }
-        }
-      }
-
-      if (Array.isArray(response?.matches)) {
-        fetchedEvent.matches = response.matches.map((match: Match) => normalizeApiMatch(match));
-      }
-      // `GET /api/events/:id` returns the raw event row and does not include matches.
-      // Matches are stored separately and must be fetched by `eventId`.
-      if (!Array.isArray(fetchedEvent.matches) || fetchedEvent.matches.length === 0) {
-        try {
-          const matchesResponse = await apiRequest<any>(`/api/events/${eventId}/matches`);
-          if (Array.isArray(matchesResponse?.matches)) {
-            fetchedEvent.matches = matchesResponse.matches.map((match: Match) => normalizeApiMatch(match));
-          }
-        } catch (matchesError) {
-          console.error('Failed to load matches for event:', matchesError);
-        }
-      }
-
-      const timeSlotIds = Array.isArray(fetchedEvent.timeSlotIds)
-        ? Array.from(
-          new Set(
-            fetchedEvent.timeSlotIds
-              .map((slotId) => String(slotId).trim())
-              .filter((slotId) => slotId.length > 0),
-          ),
-        )
-        : [];
-      if (
-        (!Array.isArray(fetchedEvent.timeSlots) || fetchedEvent.timeSlots.length === 0)
-        && timeSlotIds.length > 0
-      ) {
-        try {
-          const timeSlotsResponse = await apiRequest<{ timeSlots?: Array<Record<string, unknown>> }>(
-            `/api/time-slots?ids=${timeSlotIds.join(',')}`,
-          );
-          if (Array.isArray(timeSlotsResponse?.timeSlots)) {
-            fetchedEvent.timeSlots = timeSlotsResponse.timeSlots.map((row) => {
-              const slot = row as Record<string, unknown>;
-              const slotId = normalizeIdToken(slot.$id ?? slot.id) ?? createClientId();
-              const rawFieldIds = Array.isArray(slot.scheduledFieldIds)
-                ? slot.scheduledFieldIds
-                : typeof slot.scheduledFieldId === 'string'
-                  ? [slot.scheduledFieldId]
-                  : [];
-              const scheduledFieldIds = Array.from(
-                new Set(
-                  rawFieldIds
-                    .map((fieldId) => String(fieldId).trim())
-                    .filter((fieldId) => fieldId.length > 0),
-                ),
-              );
-              const rawDays = Array.isArray(slot.daysOfWeek)
-                ? slot.daysOfWeek
-                : typeof slot.dayOfWeek === 'number'
-                  ? [slot.dayOfWeek]
-                  : [];
-              const daysOfWeek = Array.from(
-                new Set(
-                  rawDays
-                    .map((day) => Number(day))
-                    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
-                ),
-              ) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
-
-              return {
-                ...(slot as unknown as TimeSlot),
-                $id: slotId,
-                dayOfWeek: daysOfWeek[0] ?? (typeof slot.dayOfWeek === 'number' ? slot.dayOfWeek as TimeSlot['dayOfWeek'] : undefined),
-                daysOfWeek,
-                scheduledFieldId:
-                  scheduledFieldIds[0]
-                  ?? (typeof slot.scheduledFieldId === 'string' ? slot.scheduledFieldId : undefined),
-                scheduledFieldIds,
-                divisions: Array.isArray(slot.divisions)
-                  ? Array.from(
-                    new Set(
-                      slot.divisions
-                        .map((division) => String(division).trim().toLowerCase())
-                        .filter((division) => division.length > 0),
-                    ),
-                  )
-                  : [],
-                repeating: slot.repeating === undefined ? true : Boolean(slot.repeating),
-              } as TimeSlot;
-            });
-          }
-        } catch (timeSlotsError) {
-          console.error('Failed to load time slots for event:', timeSlotsError);
-        }
-      }
-
-      const fieldIdsFromEvent = Array.isArray(fetchedEvent.fieldIds)
-        ? fetchedEvent.fieldIds.map((fieldId) => String(fieldId).trim()).filter((fieldId) => fieldId.length > 0)
-        : [];
-      const fieldIdsFromSlots = Array.isArray(fetchedEvent.timeSlots)
-        ? fetchedEvent.timeSlots.flatMap((slot) => {
-          const fromList = Array.isArray(slot.scheduledFieldIds)
-            ? slot.scheduledFieldIds
-            : [];
-          if (fromList.length > 0) {
-            return fromList.map((fieldId) => String(fieldId).trim()).filter((fieldId) => fieldId.length > 0);
-          }
-          return typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.trim().length > 0
-            ? [slot.scheduledFieldId.trim()]
-            : [];
-        })
-        : [];
-      const fieldIdsToHydrate = Array.from(new Set([...fieldIdsFromEvent, ...fieldIdsFromSlots]));
-
-      if (
-        (!Array.isArray(fetchedEvent.fields) || fetchedEvent.fields.length === 0)
-        && fieldIdsToHydrate.length > 0
-      ) {
-        try {
-          fetchedEvent.fields = await fieldService.listFields({ fieldIds: fieldIdsToHydrate });
-        } catch (fieldsError) {
-          console.error('Failed to load fields for event:', fieldsError);
-        }
-      }
-
-      if (Array.isArray(fetchedEvent.matches) && Array.isArray(fetchedEvent.fields) && fetchedEvent.fields.length > 0) {
-        const fieldsById = new Map<string, Field>(
-          fetchedEvent.fields
-            .filter((field): field is Field => Boolean(field?.$id))
-            .map((field) => [field.$id, field]),
-        );
-
-        fetchedEvent.matches = fetchedEvent.matches.map((match) => {
-          const normalizedMatch = normalizeApiMatch(match);
-          if (normalizedMatch.field && typeof normalizedMatch.field === 'object') {
-            return normalizedMatch;
-          }
-
-          const fieldId =
-            typeof normalizedMatch.fieldId === 'string' && normalizedMatch.fieldId.trim().length > 0
-              ? normalizedMatch.fieldId.trim()
-              : null;
-          if (!fieldId) {
-            return normalizedMatch;
-          }
-
-          const field = fieldsById.get(fieldId);
-          if (!field) {
-            return normalizedMatch;
-          }
-
-          return {
-            ...normalizedMatch,
-            field,
-          };
-        });
-      }
-
-      const organizationId = normalizeIdToken(
-        fetchedEvent.organizationId
-        || (typeof fetchedEvent.organization === 'string' ? fetchedEvent.organization : (fetchedEvent.organization as Organization | undefined)?.$id),
-      );
-      if (organizationId && (!fetchedEvent.organization || typeof fetchedEvent.organization === 'string')) {
-        try {
-          const resolvedOrganization = await organizationService.getOrganizationById(organizationId, true);
-          if (resolvedOrganization) {
-            fetchedEvent.organization = resolvedOrganization;
-          }
-        } catch (organizationError) {
-          console.error('Failed to load event organization:', organizationError);
-        }
-      }
-
-      hydrateEvent(fetchedEvent);
+      const normalizedEvent = await hydrateEventFormDependencies(fetchedEvent);
+      hydrateEvent(normalizedEvent);
       if (!hasUnsavedChangesRef.current) {
         setHasUnsavedChanges(false);
         setFormHasUnsavedChanges(false);
@@ -4113,7 +4256,7 @@ function EventScheduleContent() {
         setLoading(false);
       }
     }
-  }, [eventId, hydrateEvent, isCreateMode]);
+  }, [eventId, hydrateEvent, hydrateEventFormDependencies, isCreateMode]);
 
   useEffect(() => {
     if (!eventId || authLoading) {
@@ -4786,6 +4929,13 @@ function EventScheduleContent() {
         setSubmitError('Please fix the highlighted fields before submitting.');
         return null;
       }
+      try {
+        await formApi.validatePendingStaffAssignments();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Please fix the staff assignments before submitting.';
+        setSubmitError(message);
+        return null;
+      }
 
       return formApi.getDraft();
     },
@@ -4802,9 +4952,9 @@ function EventScheduleContent() {
 
       const beforeDraft = formApi.getDraft();
       try {
-        await formApi.submitPendingRefereeInvites(savedEventId);
+        await formApi.submitPendingStaffInvites(savedEventId);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to send referee invitations.';
+        const message = error instanceof Error ? error.message : 'Failed to reconcile staff invitations.';
         setSubmitError(message);
         throw error;
       }
@@ -4812,12 +4962,19 @@ function EventScheduleContent() {
       const afterDraft = formApi.getDraft();
       const beforeRefereeIds = JSON.stringify(Array.isArray(beforeDraft.refereeIds) ? beforeDraft.refereeIds : []);
       const afterRefereeIds = JSON.stringify(Array.isArray(afterDraft.refereeIds) ? afterDraft.refereeIds : []);
-      if (beforeRefereeIds === afterRefereeIds) {
-        return savedEvent;
+      const beforeAssistantHostIds = JSON.stringify(Array.isArray(beforeDraft.assistantHostIds) ? beforeDraft.assistantHostIds : []);
+      const afterAssistantHostIds = JSON.stringify(Array.isArray(afterDraft.assistantHostIds) ? afterDraft.assistantHostIds : []);
+      let latestEvent = savedEvent;
+      if (beforeRefereeIds !== afterRefereeIds || beforeAssistantHostIds !== afterAssistantHostIds) {
+        const invitedEventDraft = { ...savedEvent, ...(afterDraft as Event), $id: savedEventId } as Event;
+        latestEvent = await eventService.updateEvent(savedEventId, invitedEventDraft);
       }
 
-      const invitedEventDraft = { ...savedEvent, ...(afterDraft as Event), $id: savedEventId } as Event;
-      return eventService.updateEvent(savedEventId, invitedEventDraft);
+      const refreshedEvent = await eventService.getEventWithRelations(savedEventId);
+      if (!refreshedEvent) {
+        return latestEvent;
+      }
+      return refreshedEvent;
     },
     [setSubmitError],
   );
@@ -5712,7 +5869,6 @@ function EventScheduleContent() {
 
         hasUnsavedChangesRef.current = false;
         eventFormRef.current?.commitDirtyBaseline();
-        hydrateEvent(updatedEvent);
         setHasUnsavedChanges(false);
         setFormHasUnsavedChanges(false);
         setSelectedLifecycleStatus(null);
@@ -5725,9 +5881,7 @@ function EventScheduleContent() {
           router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
         }
 
-        if (isRescheduleAction || isBuildBracketAction) {
-          await loadSchedule({ showPageLoader: false, clearMessages: false });
-        }
+        await loadSchedule({ showPageLoader: false, clearMessages: false });
         if (isRescheduleAction) {
           setInfoMessage(`${entityLabel} settings saved and matches rescheduled.`);
           if (scheduleWarningText) {
@@ -5763,7 +5917,6 @@ function EventScheduleContent() {
       entityLabel,
       event,
       getDraftFromForm,
-      hydrateEvent,
       loadSchedule,
       pathname,
       router,

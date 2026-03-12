@@ -14,7 +14,7 @@ import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 import { getRequestOrigin } from '@/lib/requestOrigin';
-import { canManageOrganization } from '@/server/accessControl';
+import { canManageEvent, canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +30,7 @@ const inviteSchema = z.object({
   createdBy: z.string().optional(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
+  replaceStaffTypes: z.boolean().optional(),
 }).passthrough();
 
 const createSchema = z.object({
@@ -163,19 +164,33 @@ export async function POST(req: NextRequest) {
       const inviteUserId = resolvedUser.userId;
 
       if (inviteType === 'STAFF') {
-        if (!organizationId) {
-          return NextResponse.json({ error: 'Staff invites require organizationId' }, { status: 400 });
-        }
-
         const organization = await prisma.organizations.findUnique({
-          where: { id: organizationId },
+          where: { id: organizationId ?? '__none__' },
           select: { id: true, ownerId: true },
         });
-        if (!organization) {
-          return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+        const event = eventId
+          ? await prisma.events.findUnique({
+            where: { id: eventId },
+            select: { id: true, hostId: true, organizationId: true, state: true },
+          })
+          : null;
+        if (!organizationId && !eventId) {
+          return NextResponse.json({ error: 'Staff invites require organizationId or eventId' }, { status: 400 });
         }
-        if (!(await canManageOrganization(session, organization))) {
-          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        if (organizationId) {
+          if (!organization) {
+            return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+          }
+          if (!(await canManageOrganization(session, organization))) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+          }
+        } else {
+          if (!event) {
+            return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+          }
+          if (!(await canManageEvent(session, event))) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+          }
         }
 
         const staffTypes = normalizeStaffMemberTypes(
@@ -188,43 +203,48 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Staff invite requires at least one staff type' }, { status: 400 });
         }
 
-        await prisma.staffMembers.upsert({
-          where: {
-            organizationId_userId: {
+        if (organizationId) {
+          await prisma.staffMembers.upsert({
+            where: {
+              organizationId_userId: {
+                organizationId,
+                userId: inviteUserId,
+              },
+            },
+            create: {
+              id: crypto.randomUUID(),
               organizationId,
               userId: inviteUserId,
+              types: staffTypes,
+              createdAt: now,
+              updatedAt: now,
             },
-          },
-          create: {
-            id: crypto.randomUUID(),
-            organizationId,
-            userId: inviteUserId,
-            types: staffTypes,
-            createdAt: now,
-            updatedAt: now,
-          },
-          update: {
-            types: {
-              set: unionStrings(staffTypes, (
-                await prisma.staffMembers.findUnique({
-                  where: {
-                    organizationId_userId: {
-                      organizationId,
-                      userId: inviteUserId,
+            update: {
+              types: {
+                set: unionStrings(staffTypes, (
+                  await prisma.staffMembers.findUnique({
+                    where: {
+                      organizationId_userId: {
+                        organizationId,
+                        userId: inviteUserId,
+                      },
                     },
-                  },
-                  select: { types: true },
-                })
-              )?.types ?? []),
+                    select: { types: true },
+                  })
+                )?.types ?? []),
+              },
+              updatedAt: now,
             },
-            updatedAt: now,
-          },
-        });
+          });
+        }
+
+        const replaceStaffTypes = invite.replaceStaffTypes === true;
 
         const existingInvite = await prisma.invites.findFirst({
           where: {
             type: 'STAFF',
             organizationId,
+            eventId,
             userId: inviteUserId,
           },
         });
@@ -234,7 +254,7 @@ export async function POST(req: NextRequest) {
             data: {
               email: resolvedUser.email,
               status: normalizedStatus,
-              staffTypes: unionStrings(existingInvite.staffTypes, staffTypes),
+              staffTypes: replaceStaffTypes ? staffTypes : unionStrings(existingInvite.staffTypes, staffTypes),
               createdBy: invite.createdBy ?? session.userId,
               firstName: invite.firstName ?? existingInvite.firstName,
               lastName: invite.lastName ?? existingInvite.lastName,
@@ -248,6 +268,7 @@ export async function POST(req: NextRequest) {
               email: resolvedUser.email,
               status: normalizedStatus,
               staffTypes,
+              eventId,
               organizationId,
               userId: inviteUserId,
               createdBy: invite.createdBy ?? session.userId,
