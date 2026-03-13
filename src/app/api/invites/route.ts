@@ -91,7 +91,10 @@ const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date
     throw new Error('Invalid email');
   }
 
-  const ensured = await prisma.$transaction(async (tx) => ensureAuthUserAndUserDataByEmail(tx, email, now));
+  const ensured = await prisma.$transaction(async (tx) => ensureAuthUserAndUserDataByEmail(tx, email, now, {
+    firstName: invite.firstName,
+    lastName: invite.lastName,
+  }));
   userId = ensured.userId;
   shouldSendEmail = !ensured.authUserExisted;
   return { userId, email, shouldSendEmail };
@@ -392,9 +395,14 @@ export async function POST(req: NextRequest) {
   }
 
   const baseUrl = getRequestOrigin(req);
-  await sendInviteEmails(toEmail, baseUrl);
+  const emailedInvites = await sendInviteEmails(toEmail, baseUrl);
+  const emailedById = new Map(emailedInvites.map((invite) => [invite.id, invite]));
+  const mergedInvites = created.map((invite) => {
+    const emailed = emailedById.get(invite.id);
+    return emailed ? { ...invite, status: emailed.status ?? invite.status } : invite;
+  });
 
-  return NextResponse.json({ invites: created.map((invite) => mapInviteRecord(invite)) }, { status: 201 });
+  return NextResponse.json({ invites: mergedInvites.map((invite) => mapInviteRecord(invite)) }, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest) {

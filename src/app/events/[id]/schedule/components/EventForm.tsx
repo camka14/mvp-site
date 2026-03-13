@@ -98,7 +98,7 @@ type RentalPurchaseContext = {
 
 type StaffAssignmentRole = 'REFEREE' | 'ASSISTANT_HOST';
 type EventInviteStaffType = 'REFEREE' | 'HOST';
-type StaffRosterStatus = 'active' | 'pending' | 'declined';
+type StaffRosterStatus = 'active' | 'pending' | 'declined' | 'failed';
 
 type PendingStaffInvite = {
     firstName: string;
@@ -126,7 +126,7 @@ type AssignedStaffCard = {
     user?: UserData | null;
     email?: string | null;
     displayName: string;
-    status: 'email_invite' | 'pending' | 'declined' | null;
+    status: 'email_invite' | 'pending' | 'declined' | 'failed' | null;
     source: 'assigned' | 'draft';
 };
 
@@ -227,6 +227,9 @@ const normalizeInviteStatusToken = (status: unknown): StaffRosterStatus => {
         if (normalized === 'declined') {
             return 'declined';
         }
+        if (normalized === 'failed') {
+            return 'failed';
+        }
         if (normalized === 'pending') {
             return 'pending';
         }
@@ -255,6 +258,9 @@ const formatStaffStatusLabel = (status: AssignedStaffCard['status'] | StaffRoste
     if (status === 'email_invite') {
         return 'Email invite';
     }
+    if (status === 'failed') {
+        return 'Email failed';
+    }
     if (status === 'declined') {
         return 'Declined';
     }
@@ -264,7 +270,10 @@ const formatStaffStatusLabel = (status: AssignedStaffCard['status'] | StaffRoste
     return 'Active';
 };
 
-const getStaffStatusColor = (status: AssignedStaffCard['status'] | StaffRosterStatus): 'gray' | 'blue' | 'teal' => {
+const getStaffStatusColor = (status: AssignedStaffCard['status'] | StaffRosterStatus): 'gray' | 'blue' | 'teal' | 'red' => {
+    if (status === 'failed') {
+        return 'red';
+    }
     if (status === 'declined') {
         return 'gray';
     }
@@ -2704,6 +2713,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const refsPrefilledRef = useRef<boolean>(false);
     const lastResetSourceRef = useRef<Event | null>(null);
     const dirtyBaselineValuesRef = useRef<EventFormValues | null>(null);
+    const pendingInitialDirtyRebaseRef = useRef(false);
+    const pendingInitialDirtyRebaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const buildDraftForDirtyTrackingRef = useRef<(values: EventFormValues) => Partial<Event>>(
         () => ({}),
     );
@@ -2743,6 +2754,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     // Reflects whether the Stripe onboarding call is running to disable repeated clicks.
     const [connectingStripe, setConnectingStripe] = useState(false);
     const resolvedOrganization = hydratedOrganization ?? organization ?? null;
+    const resolvedOrganizationId = (resolvedOrganization?.$id ?? '').trim();
+    const resolvedOrganizationFields = resolvedOrganization?.fields;
     // Organization events must use org billing; personal events use the current user billing account.
     const hasStripeAccount = Boolean(
         resolvedOrganization ? resolvedOrganization.hasStripeAccount : currentUser?.hasStripeAccount,
@@ -3024,11 +3037,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             : base.installmentAmounts.length;
         base.installmentCount = normalizedInstallmentCount || 0;
         base.allowTeamSplitDefault = Boolean(base.allowTeamSplitDefault);
-        if (!base.organizationId && resolvedOrganization?.$id) {
-            base.organizationId = resolvedOrganization.$id;
+        if (!base.organizationId && resolvedOrganizationId) {
+            base.organizationId = resolvedOrganizationId;
         }
         const hostedOrganizationId = (
-            resolvedOrganization?.$id
+            resolvedOrganizationId
             || base.organizationId
             || (activeEditingEvent?.organization as Organization | undefined)?.$id
             || activeEditingEvent?.organizationId
@@ -3050,8 +3063,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (hasImmutableFields) {
                 return sanitizeFieldsForForm(immutableFields);
             }
-            if (hostedOrganizationId && Array.isArray(resolvedOrganization?.fields) && resolvedOrganization.fields.length) {
-                return sanitizeFieldsForForm(resolvedOrganization.fields as Field[]).sort(
+            if (hostedOrganizationId && Array.isArray(resolvedOrganizationFields) && resolvedOrganizationFields.length) {
+                return sanitizeFieldsForForm(resolvedOrganizationFields as Field[]).sort(
                     (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
                 );
             }
@@ -3254,7 +3267,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         hasImmutableFields,
         immutableDefaults,
         immutableFields,
-        organization,
+        resolvedOrganizationFields,
+        resolvedOrganizationId,
         sportsById,
     ]);
 
@@ -3292,6 +3306,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             setIsDirtyTrackingReady(false);
             lastResetSourceRef.current = null;
             dirtyBaselineValuesRef.current = null;
+            pendingInitialDirtyRebaseRef.current = false;
+            if (pendingInitialDirtyRebaseTimeoutRef.current) {
+                clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
+                pendingInitialDirtyRebaseTimeoutRef.current = null;
+            }
             onDirtyStateChange?.(false);
             onDraftStateChange?.({
                 draft: {},
@@ -3305,11 +3324,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         lastResetSourceRef.current = activeEditingEvent;
         setIsDirtyTrackingReady(false);
+        pendingInitialDirtyRebaseRef.current = true;
+        if (pendingInitialDirtyRebaseTimeoutRef.current) {
+            clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
+            pendingInitialDirtyRebaseTimeoutRef.current = null;
+        }
         onDirtyStateChange?.(false);
         const nextDefaults = buildDefaultFormValues();
-        dirtyBaselineValuesRef.current = nextDefaults;
+        dirtyBaselineValuesRef.current = null;
         reset(nextDefaults);
-        setIsDirtyTrackingReady(true);
     }, [
         activeEditingEvent,
         buildDefaultFormValues,
@@ -3936,10 +3959,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 : Array.isArray(incomingEvent?.staffInvites)
                     ? incomingEvent.staffInvites
                     : []
-        ).filter((invite): invite is Invite => (
-            invite?.type === 'STAFF'
-            && invite.eventId === (activeEditingEvent?.$id ?? incomingEvent?.$id)
-        )),
+        )
+            .map((invite) => {
+                const inviteId = normalizeEntityId(
+                    (invite as { $id?: string | null; id?: string | null } | null)?.$id
+                    ?? (invite as { $id?: string | null; id?: string | null } | null)?.id,
+                );
+                if (!inviteId) {
+                    return null;
+                }
+                return {
+                    ...(invite as Invite),
+                    $id: inviteId,
+                };
+            })
+            .filter((invite): invite is Invite => {
+                if (!invite) {
+                    return false;
+                }
+                return (
+                    invite.type === 'STAFF'
+                    && invite.eventId === (activeEditingEvent?.$id ?? incomingEvent?.$id)
+                );
+            }),
         [activeEditingEvent?.$id, activeEditingEvent?.staffInvites, incomingEvent?.$id, incomingEvent?.staffInvites],
     );
     const currentEventStaffInviteByUserId = useMemo(() => {
@@ -4887,7 +4929,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ]);
         const invitesToDelete = currentEventStaffInvites.filter((invite) => invite.userId && !finalTargetUserIds.has(invite.userId));
         if (invitesToDelete.length > 0) {
-            await Promise.all(invitesToDelete.map((invite) => userService.deleteInviteById(invite.$id)));
+            const inviteIdsToDelete = invitesToDelete
+                .map((invite) => normalizeEntityId(invite.$id))
+                .filter((inviteId): inviteId is string => Boolean(inviteId));
+            await Promise.all(inviteIdsToDelete.map((inviteId) => userService.deleteInviteById(inviteId)));
         }
 
         setPendingStaffInvites([]);
@@ -7408,6 +7453,57 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     ]);
     buildDraftForDirtyTrackingRef.current = buildDraftEvent;
 
+    useEffect(() => {
+        if (!open || !pendingInitialDirtyRebaseRef.current || sportsLoading || fieldsLoading) {
+            if (pendingInitialDirtyRebaseTimeoutRef.current) {
+                clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
+                pendingInitialDirtyRebaseTimeoutRef.current = null;
+            }
+            return;
+        }
+
+        const expectedDraftFingerprint = JSON.stringify(buildDraftEvent(getValues()));
+        if (pendingInitialDirtyRebaseTimeoutRef.current) {
+            clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
+        }
+
+        // Rebase only after normalization effects stop mutating draft-backed values.
+        pendingInitialDirtyRebaseTimeoutRef.current = setTimeout(() => {
+            pendingInitialDirtyRebaseTimeoutRef.current = null;
+            if (!pendingInitialDirtyRebaseRef.current) {
+                return;
+            }
+
+            const latestDraftFingerprint = JSON.stringify(buildDraftEvent(getValues()));
+            if (latestDraftFingerprint !== expectedDraftFingerprint) {
+                return;
+            }
+
+            const stabilizedValues = getValues();
+            dirtyBaselineValuesRef.current = stabilizedValues;
+            pendingInitialDirtyRebaseRef.current = false;
+            reset(stabilizedValues);
+            setIsDirtyTrackingReady(true);
+            onDirtyStateChange?.(false);
+        }, 0);
+
+        return () => {
+            if (pendingInitialDirtyRebaseTimeoutRef.current) {
+                clearTimeout(pendingInitialDirtyRebaseTimeoutRef.current);
+                pendingInitialDirtyRebaseTimeoutRef.current = null;
+            }
+        };
+    }, [
+        buildDraftEvent,
+        fieldsLoading,
+        formValues,
+        getValues,
+        onDirtyStateChange,
+        open,
+        reset,
+        sportsLoading,
+    ]);
+
     const getDraftSnapshot = useCallback(
         () => buildDraftEvent(getValues()),
         [buildDraftEvent, getValues],
@@ -8734,6 +8830,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         Remove
                                                                     </Button>
                                                                 </Group>
+                                                                {card.status === 'failed' && (
+                                                                    <Text size="xs" c="red">
+                                                                        Email likely failed to send. Remove and re-add this invite to retry.
+                                                                    </Text>
+                                                                )}
                                                             </Stack>
                                                         </Paper>
                                                     ))}
@@ -8806,6 +8907,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         </Button>
                                                                     )}
                                                                 </Group>
+                                                                {card.status === 'failed' && (
+                                                                    <Text size="xs" c="red">
+                                                                        Email likely failed to send. Remove and re-add this invite to retry.
+                                                                    </Text>
+                                                                )}
                                                             </Stack>
                                                         </Paper>
                                                     ))}

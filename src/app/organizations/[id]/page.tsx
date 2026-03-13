@@ -424,7 +424,7 @@ function OrganizationDetailContent() {
     });
 
     return entries;
-  }, [org?.ownerId, org?.staffInvites, org?.staffMembers, ownerHost, userDisplayName]);
+  }, [org?.ownerId, org?.staffEmailsByUserId, org?.staffInvites, org?.staffMembers, ownerHost, userDisplayName]);
   const eventHostOptions = useMemo(() => {
     const ids = new Set<string>();
     if (typeof org?.ownerId === 'string' && org.ownerId.length > 0) {

@@ -124,6 +124,10 @@ describe('/api/invites', () => {
       prismaMock,
       'test@example.com',
       expect.any(Date),
+      {
+        firstName: 'Test',
+        lastName: 'User',
+      },
     );
     expect(prismaMock.teams.findUnique).toHaveBeenCalledWith({ where: { id: 'team_1' } });
     expect(prismaMock.invites.create).toHaveBeenCalledTimes(1);
@@ -204,6 +208,43 @@ describe('/api/invites', () => {
 
     expect(res.status).toBe(201);
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'https://mvp.razumly.com');
+  });
+
+  it('returns FAILED status when invite email delivery fails', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'inviter_1', isAdmin: false });
+    ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_1', authUserExisted: false });
+
+    const createdAt = new Date('2020-01-01T00:00:00.000Z');
+    const createdInvite = {
+      id: 'invite_failed_email',
+      type: 'EVENT',
+      email: 'failed@example.com',
+      status: 'PENDING',
+      eventId: 'event_1',
+      organizationId: null,
+      teamId: null,
+      userId: 'user_1',
+      createdBy: 'inviter_1',
+      firstName: 'Fail',
+      lastName: 'Case',
+      createdAt,
+      updatedAt: createdAt,
+    };
+    prismaMock.invites.create.mockResolvedValue(createdInvite);
+    sendInviteEmailsMock.mockResolvedValue([{ ...createdInvite, status: 'FAILED' }]);
+
+    const res = await POST(
+      jsonRequest({
+        invites: [{ type: 'EVENT', eventId: 'event_1', email: 'failed@example.com', firstName: 'Fail', lastName: 'Case' }],
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.invites[0]).toEqual(expect.objectContaining({
+      $id: 'invite_failed_email',
+      status: 'FAILED',
+    }));
   });
 
   it('creates an event-scoped STAFF invite without an organizationId', async () => {

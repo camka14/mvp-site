@@ -14,6 +14,7 @@ import {
     EventStatus,
     EventState,
     Organization,
+    Invite,
     getTeamAvatarUrl,
     toEventPayload,
 } from '@/types';
@@ -648,7 +649,20 @@ class EventService {
             timeSlots: row.timeSlots,
             referees: Array.isArray(row.referees) ? (row.referees as UserData[]) : undefined,
             assistantHosts: Array.isArray(row.assistantHosts) ? (row.assistantHosts as UserData[]) : undefined,
-            staffInvites: Array.isArray(row.staffInvites) ? row.staffInvites : undefined,
+            staffInvites: Array.isArray(row.staffInvites)
+                ? row.staffInvites
+                    .map((invite: any) => {
+                        const inviteId = String(invite?.$id ?? invite?.id ?? '').trim();
+                        if (!inviteId) {
+                            return null;
+                        }
+                        return {
+                            ...invite,
+                            $id: inviteId,
+                        };
+                    })
+                    .filter((invite: any): invite is Invite => Boolean(invite))
+                : undefined,
             doubleElimination: row.doubleElimination,
             winnerSetCount: row.winnerSetCount,
             loserSetCount: row.loserSetCount,

@@ -86,11 +86,20 @@ jest.mock('@/lib/registrationService', () => ({
 
 jest.mock('@/components/ui/ParticipantsPreview', () => () => null);
 jest.mock('@/components/ui/ParticipantsDropdown', () => () => null);
-jest.mock('@/components/ui/PaymentModal', () => (props: any) => (
-  props.isOpen
-    ? <button type="button" onClick={() => void props.onPaymentSuccess()}>Complete Mock Payment</button>
-    : null
-));
+jest.mock('@/components/ui/PaymentModal', () => {
+  function MockPaymentModal(props: any) {
+    if (!props.isOpen) {
+      return null;
+    }
+    return (
+      <button type="button" onClick={() => void props.onPaymentSuccess()}>
+        Complete Mock Payment
+      </button>
+    );
+  }
+  MockPaymentModal.displayName = 'MockPaymentModal';
+  return MockPaymentModal;
+});
 jest.mock('@/components/ui/RefundSection', () => () => null);
 jest.mock('@/components/ui/UserCard', () => () => null);
 

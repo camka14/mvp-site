@@ -10,6 +10,7 @@ describe('buildInviteEmail', () => {
       eventName: 'Spring Invitational',
     });
 
+    expect(result.subject).toContain('BracketIQ: Staff Invite');
     expect(result.subject).toContain('Spring Invitational');
     expect(result.text).toContain('Spring Invitational');
     expect(result.actionUrl).toBe('http://localhost:3000/events/event_123/schedule');
@@ -24,6 +25,7 @@ describe('buildInviteEmail', () => {
       teamName: 'Aces United',
     });
 
+    expect(result.subject).toContain('BracketIQ: Staff Invite');
     expect(result.subject).toContain('Aces United');
     expect(result.actionUrl).toBe('https://mvp.razumly.com/teams');
   });

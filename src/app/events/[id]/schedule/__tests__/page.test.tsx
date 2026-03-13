@@ -44,6 +44,7 @@ jest.mock('@/components/layout/Navigation', () => {
 
 jest.mock('@/lib/eventService', () => ({
   eventService: {
+    getEvent: jest.fn(),
     getEventWithRelations: jest.fn(),
     deleteEvent: jest.fn(),
     deleteUnpublishedEvent: jest.fn(),
@@ -201,6 +202,17 @@ describe('League schedule page', () => {
     });
 
     jest.clearAllMocks();
+    apiRequestMock.mockReset();
+    (eventService.getEvent as jest.Mock).mockReset();
+    (eventService.getEventWithRelations as jest.Mock).mockReset();
+    (eventService.deleteEvent as jest.Mock).mockReset();
+    (eventService.deleteUnpublishedEvent as jest.Mock).mockReset();
+    (eventService.updateEvent as jest.Mock).mockReset();
+    (eventService.createEvent as jest.Mock).mockReset();
+    (eventService.scheduleEvent as jest.Mock).mockReset();
+    (leagueService.deleteMatchesByEvent as jest.Mock).mockReset();
+    (leagueService.deleteWeeklySchedulesForEvent as jest.Mock).mockReset();
+    (organizationService.getOrganizationById as jest.Mock).mockReset();
 
     // Mirror production behavior:
     // - `GET /api/events/:id` returns an event row without embedded matches
@@ -216,6 +228,13 @@ describe('League schedule page', () => {
       }
       return Promise.resolve({});
     });
+    (eventService.getEvent as jest.Mock).mockImplementation(async () => {
+      const event = buildApiEvent();
+      delete (event as any).matches;
+      return event;
+    });
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(undefined);
+    (organizationService.getOrganizationById as jest.Mock).mockResolvedValue(undefined);
   });
 
   it('renders schedule information', async () => {
@@ -556,7 +575,7 @@ describe('League schedule page', () => {
       expect(capturedEventFormProps?.event?.timeSlots?.[0]?.$id).toBe('slot_1');
     });
     expect(capturedEventFormProps?.event?.timeSlots?.[0]?.scheduledFieldIds).toEqual(['field_slot_1']);
-    expect(capturedEventFormProps?.event?.fields?.[0]?.$id).toBe('field_slot_1');
+    expect(capturedEventFormProps?.event?.fields?.[0]?.$id ?? capturedEventFormProps?.event?.fields?.[0]?.id).toBe('field_slot_1');
   });
 
   it('uses template wording for template events in edit mode', async () => {

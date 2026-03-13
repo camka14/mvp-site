@@ -1285,7 +1285,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
     }),
   ]);
   return NextResponse.json(
-    withLegacyEvent({ ...event, divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites }),
+    withLegacyEvent({
+      ...event,
+      divisionFieldIds,
+      divisionDetails,
+      playoffDivisionDetails,
+      staffInvites: staffInvites.map((invite) => withLegacyFields(invite)),
+    }),
     { status: 200 },
   );
 }

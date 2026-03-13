@@ -36,28 +36,29 @@ const buildInviteActionUrl = (input: InviteEmailInput): string => {
 };
 
 const buildSubject = (input: InviteEmailInput): string => {
+  const prefix = 'BracketIQ: Staff Invite';
   const inviteType = (input.inviteType ?? '').trim().toUpperCase();
   if (inviteType === 'STAFF') {
     if (input.organizationName) {
-      return `You are invited to join the staff for ${input.organizationName}`;
+      return `${prefix} — You are invited to join the staff for ${input.organizationName}`;
     }
-    return 'You have a staff invite on Razumly';
+    return prefix;
   }
 
   if (inviteType === 'EVENT') {
     if (input.eventName) {
-      return `You are invited to join ${input.eventName}`;
+      return `${prefix} — You are invited to join ${input.eventName}`;
     }
-    return 'You have an event invite on Razumly';
+    return `${prefix} — You have an event invite on BracketIQ`;
   }
 
   if (input.teamName) {
-    return `You are invited to join ${input.teamName}`;
+    return `${prefix} — You are invited to join ${input.teamName}`;
   }
   if (input.eventName) {
-    return `You are invited to join ${input.eventName}`;
+    return `${prefix} — You are invited to join ${input.eventName}`;
   }
-  return 'You are invited to join on Razumly';
+  return `${prefix} — You are invited to join on BracketIQ`;
 };
 
 export const buildInviteEmail = (input: InviteEmailInput): InviteEmailContent => {
@@ -72,7 +73,7 @@ export const buildInviteEmail = (input: InviteEmailInput): InviteEmailContent =>
   if (input.teamName) contextLines.push(`Team: ${input.teamName}`);
 
   const detailsText = contextLines.length ? `\n${contextLines.join('\n')}\n` : '\n';
-  const introLine = 'You have a new invite on Razumly.';
+  const introLine = 'You have a new invite on BracketIQ.';
 
   const text = [
     greeting,

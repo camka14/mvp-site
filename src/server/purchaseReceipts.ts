@@ -418,26 +418,26 @@ export const sendPurchaseReceiptEmail = async (
   });
 
   const subjectItemName = eventName ?? productName ?? purchaseTypeLabel;
-  const subject = `Receipt: ${subjectItemName}`;
+  const subject = `BracketIQ: Receipt - ${subjectItemName}`;
 
   const text = [
-    'Your payment was successful.',
+    'Your BracketIQ payment was successful.',
     'This is a receipt for your convenience.',
     '',
     ...detailRows.map((row) => `${row.label}: ${row.value}`),
     '',
-    'If you have any questions about this purchase, please contact support.',
+    'If you have any questions about this purchase, please contact BracketIQ support.',
   ].join('\n');
 
   const html = [
-    '<p>Your payment was successful.</p>',
+    '<p>Your BracketIQ payment was successful.</p>',
     '<p><em>This is a receipt for your convenience.</em></p>',
     '<table cellpadding="6" cellspacing="0" style="border-collapse: collapse;">',
     ...detailRows.map((row) => (
       `<tr><td style="font-weight:600;vertical-align:top;">${escapeHtml(row.label)}</td><td>${escapeHtml(row.value)}</td></tr>`
     )),
     '</table>',
-    '<p>If you have any questions about this purchase, please contact support.</p>',
+    '<p>If you have any questions about this purchase, please contact BracketIQ support.</p>',
   ].join('');
 
   await sendEmail({

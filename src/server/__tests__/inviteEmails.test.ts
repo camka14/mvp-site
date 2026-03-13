@@ -4,6 +4,7 @@ const prismaMock = {
   events: { findMany: jest.fn() },
   organizations: { findMany: jest.fn() },
   teams: { findMany: jest.fn() },
+  invites: { update: jest.fn() },
 };
 
 const buildInviteEmailMock = jest.fn();
@@ -27,6 +28,7 @@ describe('sendInviteEmails', () => {
     prismaMock.events.findMany.mockResolvedValue([]);
     prismaMock.organizations.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.invites.update.mockResolvedValue({});
 
     buildInviteEmailMock.mockReturnValue({
       subject: 'You are invited',
@@ -80,8 +82,12 @@ describe('sendInviteEmails', () => {
     expect(sendPushToUsersMock).not.toHaveBeenCalled();
     expect(invites).toEqual([expect.objectContaining({
       id: 'invite_2',
-      status: 'PENDING',
+      status: 'FAILED',
     })]);
+    expect(prismaMock.invites.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'invite_2' },
+      data: expect.objectContaining({ status: 'FAILED' }),
+    }));
     expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });

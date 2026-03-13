@@ -86,19 +86,57 @@ jest.mock('@/components/location/LocationSelector', () => {
   };
 });
 
-jest.mock('@/app/discover/components/TournamentFields', () => () => <div data-testid="tournament-fields" />);
-jest.mock('@/app/discover/components/LeagueFields', () => () => <div data-testid="league-fields" />);
-jest.mock('@/app/discover/components/LeagueScoringConfigPanel', () => () => <div data-testid="league-scoring-config" />);
-jest.mock('@/components/ui/CentsInput', () => () => <div data-testid="cents-input" />);
-jest.mock('@/components/ui/PriceWithFeesPreview', () => () => <div data-testid="price-preview" />);
-jest.mock('@/components/ui/UserCard', () => ({ user }: any) => (
-  <div data-testid="user-card">
-    <span>{[user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.userName || user?.email || user?.$id || 'User'}</span>
-    {user?.email ? <span>{user.email}</span> : null}
-  </div>
-));
+jest.mock('@/app/discover/components/TournamentFields', () => {
+  function MockTournamentFields() {
+    return <div data-testid="tournament-fields" />;
+  }
+  MockTournamentFields.displayName = 'MockTournamentFields';
+  return MockTournamentFields;
+});
+jest.mock('@/app/discover/components/LeagueFields', () => {
+  function MockLeagueFields() {
+    return <div data-testid="league-fields" />;
+  }
+  MockLeagueFields.displayName = 'MockLeagueFields';
+  return MockLeagueFields;
+});
+jest.mock('@/app/discover/components/LeagueScoringConfigPanel', () => {
+  function MockLeagueScoringConfigPanel() {
+    return <div data-testid="league-scoring-config" />;
+  }
+  MockLeagueScoringConfigPanel.displayName = 'MockLeagueScoringConfigPanel';
+  return MockLeagueScoringConfigPanel;
+});
+jest.mock('@/components/ui/CentsInput', () => {
+  function MockCentsInput() {
+    return <div data-testid="cents-input" />;
+  }
+  MockCentsInput.displayName = 'MockCentsInput';
+  return MockCentsInput;
+});
+jest.mock('@/components/ui/PriceWithFeesPreview', () => {
+  function MockPriceWithFeesPreview() {
+    return <div data-testid="price-preview" />;
+  }
+  MockPriceWithFeesPreview.displayName = 'MockPriceWithFeesPreview';
+  return MockPriceWithFeesPreview;
+});
+jest.mock('@/components/ui/UserCard', () => {
+  function MockUserCard({ user }: any) {
+    return (
+      <div data-testid="user-card">
+        <span>{[user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.userName || user?.email || user?.$id || 'User'}</span>
+        {user?.email ? <span>{user.email}</span> : null}
+      </div>
+    );
+  }
+  MockUserCard.displayName = 'MockUserCard';
+  return MockUserCard;
+});
 jest.mock('@/components/ui/ImageUploader', () => ({
-  ImageUploader: () => <div data-testid="image-uploader" />,
+  ImageUploader: function MockImageUploader() {
+    return <div data-testid="image-uploader" />;
+  },
 }));
 
 const mockSport = { $id: 'volleyball', id: 'volleyball', name: 'Volleyball' };
@@ -417,7 +455,9 @@ describe('EventForm dirty state', () => {
     let setRenderedEvent: React.Dispatch<React.SetStateAction<any>> | null = null;
     const Harness = () => {
       const [event, setEvent] = React.useState<any>(buildEvent());
-      setRenderedEvent = setEvent;
+      React.useEffect(() => {
+        setRenderedEvent = setEvent;
+      }, [setEvent]);
       return (
         <EventForm
           ref={formRef}
@@ -503,7 +543,9 @@ describe('EventForm dirty state', () => {
     let setRenderVersion: React.Dispatch<React.SetStateAction<number>> | null = null;
     const Harness = () => {
       const [renderVersion, setLocalRenderVersion] = React.useState(0);
-      setRenderVersion = setLocalRenderVersion;
+      React.useEffect(() => {
+        setRenderVersion = setLocalRenderVersion;
+      }, [setLocalRenderVersion]);
       return (
         <EventForm
           key={`event-form-${renderVersion}`}
@@ -780,6 +822,34 @@ describe('EventForm dirty state', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0]);
 
     await waitForStableDirtyState(onDirtyStateChange, true);
+  });
+
+  it('shows a failed-email hint on staff cards when invite status is FAILED', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(
+      onDirtyStateChange,
+      undefined,
+      {
+        refereeIds: ['ref_1'],
+        referees: [{ $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' }],
+        staffInvites: [{
+          $id: 'invite_failed_1',
+          type: 'STAFF',
+          eventId: 'event_1',
+          userId: 'ref_1',
+          status: 'FAILED',
+          staffTypes: ['REFEREE'],
+        }],
+      },
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.getByText('Email failed')).toBeInTheDocument();
+    expect(screen.getByText('Email likely failed to send. Remove and re-add this invite to retry.')).toBeInTheDocument();
   });
 
   it('stages email invite staff cards and marks the form dirty', async () => {

@@ -3,7 +3,7 @@ import type { Invite, InviteStatus, InviteType, StaffMember, StaffMemberType } f
 export const STAFF_MEMBER_TYPES = ['HOST', 'REFEREE', 'STAFF'] as const;
 export const STAFF_ACCESS_TYPES = ['HOST', 'STAFF'] as const;
 export const INVITE_TYPES = ['STAFF', 'TEAM', 'EVENT'] as const;
-export const INVITE_STATUSES = ['PENDING', 'DECLINED'] as const;
+export const INVITE_STATUSES = ['PENDING', 'DECLINED', 'FAILED'] as const;
 
 const LEGACY_TEAM_INVITE_TYPES = new Set([
   'PLAYER',
@@ -68,6 +68,9 @@ export const normalizeInviteStatus = (value: unknown): InviteStatus | null => {
   }
   if (normalized === 'REJECTED' || normalized === 'DECLINED') {
     return 'DECLINED';
+  }
+  if (normalized === 'FAILED') {
+    return 'FAILED';
   }
   return null;
 };

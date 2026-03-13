@@ -296,7 +296,7 @@ export interface UserData {
 
 export type StaffMemberType = 'HOST' | 'REFEREE' | 'STAFF';
 export type InviteType = 'STAFF' | 'TEAM' | 'EVENT';
-export type InviteStatus = 'PENDING' | 'DECLINED';
+export type InviteStatus = 'PENDING' | 'DECLINED' | 'FAILED';
 
 export interface StaffMember {
   $id: string;

@@ -86,7 +86,10 @@ export async function POST(req: NextRequest) {
 
     const now = new Date();
     const { userId, authUserExisted } = await prisma.$transaction(async (tx) => {
-      return ensureAuthUserAndUserDataByEmail(tx, email, now);
+      return ensureAuthUserAndUserDataByEmail(tx, email, now, {
+        firstName: invite.firstName,
+        lastName: invite.lastName,
+      });
     });
 
     const record = await prisma.invites.create({

@@ -302,7 +302,7 @@ export default function TeamDetailModal({
                 && entry.invite.userId === userId
                 && entry.invite.status === 'PENDING',
         );
-    }, [currentTeam.pending, pendingRoleInvites]);
+    }, [currentTeam, pendingRoleInvites]);
 
     const canInviteUserForRole = useCallback((userId: string, roleType: TeamInviteRoleType): boolean => {
         if (roleType === 'player') {
