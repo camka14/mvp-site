@@ -1,21 +1,25 @@
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
 import { Team, UserData, getTeamAvatarUrl } from '@/types';
-import { userService } from './userService';
+import { userService, type UserVisibilityContext } from './userService';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 export type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
 
 class TeamService {
-    async getTeamById(id: string, includeRelations: boolean = false): Promise<Team | undefined> {
+    async getTeamById(
+        id: string,
+        includeRelations: boolean = false,
+        visibilityContext: UserVisibilityContext = {},
+    ): Promise<Team | undefined> {
         try {
             const response = await apiRequest<any>(`/api/teams/${id}`);
 
             const team = this.mapRowToTeam(response);
 
             if (includeRelations) {
-                await this.hydrateTeamRelations(team);
+                await this.hydrateTeamRelations(team, visibilityContext);
             }
 
             return team;
@@ -25,14 +29,26 @@ class TeamService {
         }
     }
 
-    private async hydrateTeamRelations(team: Team): Promise<void> {
+    private async hydrateTeamRelations(
+        team: Team,
+        visibilityContext: UserVisibilityContext = {},
+    ): Promise<void> {
         if (!team) {
             return;
         }
 
+        const scopedVisibilityContext: UserVisibilityContext = {
+            teamId: team.$id,
+            eventId: visibilityContext.eventId,
+        };
+
         const [players, pendingPlayers] = await Promise.all([
-            team.playerIds.length > 0 ? userService.getUsersByIds(team.playerIds) : Promise.resolve<UserData[]>([]),
-            team.pending.length > 0 ? userService.getUsersByIds(team.pending) : Promise.resolve<UserData[]>([]),
+            team.playerIds.length > 0
+                ? userService.getUsersByIds(team.playerIds, scopedVisibilityContext)
+                : Promise.resolve<UserData[]>([]),
+            team.pending.length > 0
+                ? userService.getUsersByIds(team.pending, scopedVisibilityContext)
+                : Promise.resolve<UserData[]>([]),
         ]);
 
         const playersById = new Map(players.map((player) => [player.$id, player]));
@@ -52,7 +68,7 @@ class TeamService {
 
         if (team.captainId) {
             team.captain = resolveKnownUser(team.captainId)
-                ?? await userService.getUserById(team.captainId)
+                ?? await userService.getUserById(team.captainId, scopedVisibilityContext)
                 ?? undefined;
         } else {
             team.captain = undefined;
@@ -61,7 +77,7 @@ class TeamService {
         const managerId = team.managerId ?? team.captainId;
         if (managerId) {
             team.manager = resolveKnownUser(managerId)
-                ?? await userService.getUserById(managerId)
+                ?? await userService.getUserById(managerId, scopedVisibilityContext)
                 ?? undefined;
         } else {
             team.manager = undefined;
@@ -69,7 +85,7 @@ class TeamService {
 
         if (team.headCoachId) {
             team.headCoach = resolveKnownUser(team.headCoachId)
-                ?? await userService.getUserById(team.headCoachId)
+                ?? await userService.getUserById(team.headCoachId, scopedVisibilityContext)
                 ?? undefined;
         } else {
             team.headCoach = undefined;
@@ -81,7 +97,7 @@ class TeamService {
         if (assistantCoachIds.length > 0) {
             const missingCoachIds = assistantCoachIds.filter((coachId) => !resolveKnownUser(coachId));
             const fetchedCoaches = missingCoachIds.length > 0
-                ? await userService.getUsersByIds(missingCoachIds)
+                ? await userService.getUsersByIds(missingCoachIds, scopedVisibilityContext)
                 : [];
             const fetchedCoachMap = new Map(fetchedCoaches.map((coach) => [coach.$id, coach]));
             team.assistantCoaches = assistantCoachIds
@@ -262,7 +278,11 @@ class TeamService {
         return team;
     }
 
-    async getTeamsByIds(teamIds: string[], includeRelations: boolean = false): Promise<Team[]> {
+    async getTeamsByIds(
+        teamIds: string[],
+        includeRelations: boolean = false,
+        visibilityContext: UserVisibilityContext = {},
+    ): Promise<Team[]> {
         try {
             if (teamIds.length === 0) return [];
 
@@ -273,7 +293,7 @@ class TeamService {
             const teams = (response.teams ?? []).map(row => this.mapRowToTeam(row));
 
             if (includeRelations) {
-                await Promise.all(teams.map((team) => this.hydrateTeamRelations(team)));
+                await Promise.all(teams.map((team) => this.hydrateTeamRelations(team, visibilityContext)));
             }
 
             return teams;
@@ -294,6 +314,18 @@ class TeamService {
             return (response.teams ?? []).map((row: any) => this.mapRowToTeam(row));
         } catch (error) {
             console.error('Failed to fetch user teams:', error);
+            return [];
+        }
+    }
+
+    async getInviteFreeAgents(teamId: string): Promise<UserData[]> {
+        try {
+            const response = await apiRequest<{ users?: UserData[] }>(
+                `/api/teams/${encodeURIComponent(teamId)}/invite-free-agents`
+            );
+            return response.users ?? [];
+        } catch (error) {
+            console.error('Failed to fetch invite free agents:', error);
             return [];
         }
     }

@@ -546,6 +546,10 @@ class EventService {
                     id: String(entry?.id ?? entry?.$id ?? ''),
                     name: String(entry?.name ?? entry?.id ?? ''),
                     key: typeof entry?.key === 'string' ? entry.key : undefined,
+                    kind:
+                        entry?.kind === 'LEAGUE' || entry?.kind === 'PLAYOFF'
+                            ? entry.kind
+                            : 'LEAGUE',
                     divisionTypeId: typeof entry?.divisionTypeId === 'string' ? entry.divisionTypeId : undefined,
                     divisionTypeName: typeof entry?.divisionTypeName === 'string' ? entry.divisionTypeName : undefined,
                     ratingType:
@@ -572,6 +576,9 @@ class EventService {
                         : Number.isFinite(Number(entry?.playoffTeamCount))
                             ? Number(entry.playoffTeamCount)
                             : undefined,
+                    playoffPlacementDivisionIds: Array.isArray(entry?.playoffPlacementDivisionIds)
+                        ? entry.playoffPlacementDivisionIds.map((divisionId: unknown) => String(divisionId ?? '').trim())
+                        : undefined,
                     allowPaymentPlans: typeof entry?.allowPaymentPlans === 'boolean'
                         ? entry.allowPaymentPlans
                         : undefined,
@@ -804,12 +811,12 @@ class EventService {
 
         const [teams, players, fields, timeSlots, organization, referees, assistantHosts] = await Promise.all([
             this.resolveTeams(data.teams, teamIds),
-            this.resolvePlayers(data.players, userIds),
+            this.resolvePlayers(data.players, userIds, { eventId: event.$id }),
             this.resolveFields(data.fields, fieldIds),
             this.resolveTimeSlots(data.timeSlots, timeSlotIds),
             this.resolveOrganization(data.organization ?? data.organizationId ?? event.organization),
-            this.resolvePlayers(data.referees, refereeIds),
-            this.resolvePlayers(data.assistantHosts, assistantHostIds),
+            this.resolvePlayers(data.referees, refereeIds, { eventId: event.$id }),
+            this.resolvePlayers(data.assistantHosts, assistantHostIds, { eventId: event.$id }),
         ]);
 
         const matches = await this.resolveMatches(event, data.matches, teams, fields, referees);
@@ -984,7 +991,11 @@ class EventService {
         return team;
     }
 
-    private async resolvePlayers(existing: any, ids: string[]): Promise<UserData[]> {
+    private async resolvePlayers(
+        existing: any,
+        ids: string[],
+        context: { eventId?: string } = {},
+    ): Promise<UserData[]> {
         if (Array.isArray(existing) && existing.length) {
             return existing.map((entry) => ({
                 ...entry,
@@ -995,7 +1006,7 @@ class EventService {
         if (!ids.length) {
             return [];
         }
-        return userService.getUsersByIds(ids);
+        return userService.getUsersByIds(ids, context);
     }
 
     private async resolveFields(existing: any, ids: string[]): Promise<Field[]> {

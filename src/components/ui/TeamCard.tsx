@@ -17,6 +17,17 @@ export default function TeamCard({
   onClick,
   className = ''
 }: TeamCardProps) {
+  const visibleMembers = (team.players ?? []).filter((player) => {
+    if (player.isIdentityHidden) {
+      return false;
+    }
+
+    const normalizedHandle = player.userName?.trim().toLowerCase();
+    return normalizedHandle !== 'hidden';
+  });
+  const visibleMembersPreview = visibleMembers.slice(0, 5);
+  const hiddenVisibleMemberCount = Math.max(visibleMembers.length - visibleMembersPreview.length, 0);
+
   const resolveLabel = (value: unknown): string | null => {
     if (typeof value !== 'string') {
       return null;
@@ -119,19 +130,21 @@ export default function TeamCard({
         </SimpleGrid>
       )}
 
-      <Group justify="space-between" mb="xs">
-        <Group gap={6}>
-          <Text size="sm" c="dimmed">Members:</Text>
-          <Group gap={-8}>
-            {team.players?.slice(0, 5).map((player, index) => (
-              <Avatar key={player.$id} src={getUserAvatarUrl(player, 32)} alt={player.fullName} size={32} radius="xl" />
-            ))}
-            {team.currentSize > 5 && (
-              <Avatar size={32} radius="xl" color="gray">+{team.currentSize - 5}</Avatar>
-            )}
+      {visibleMembers.length > 0 && (
+        <Group justify="space-between" mb="xs">
+          <Group gap={6}>
+            <Text size="sm" c="dimmed">Members:</Text>
+            <Group gap={-8}>
+              {visibleMembersPreview.map((player) => (
+                <Avatar key={player.$id} src={getUserAvatarUrl(player, 32)} alt={player.fullName} size={32} radius="xl" />
+              ))}
+              {hiddenVisibleMemberCount > 0 && (
+                <Avatar size={32} radius="xl" color="gray">+{hiddenVisibleMemberCount}</Avatar>
+              )}
+            </Group>
           </Group>
         </Group>
-      </Group>
+      )}
 
       <Group justify="space-between" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
         <Group gap={8}>

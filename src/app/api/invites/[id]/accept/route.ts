@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
+import { syncTeamChatInTx } from '@/server/teamChatSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,6 +106,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           },
         });
       }
+    }
+
+    for (const teamId of Array.from(new Set(nextTeamIds))) {
+      await syncTeamChatInTx(tx, teamId);
     }
 
     await tx.invites.delete({ where: { id: invite.id } });

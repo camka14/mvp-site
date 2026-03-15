@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import { isMinorAtUtcDate } from '@/server/userPrivacy';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,19 @@ export async function POST(req: NextRequest) {
 
   if (!parsed.data.userIds.includes(session.userId)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const requestedUserIds = Array.from(new Set(parsed.data.userIds.map((entry) => entry.trim()).filter(Boolean)));
+  const targetUserIds = requestedUserIds.filter((id) => id !== session.userId);
+  if (targetUserIds.length > 0) {
+    const targetUsers = await prisma.userData.findMany({
+      where: { id: { in: targetUserIds } },
+      select: { id: true, dateOfBirth: true },
+    });
+    const containsMinorTarget = targetUsers.some((user) => isMinorAtUtcDate(user.dateOfBirth));
+    if (containsMinorTarget) {
+      return NextResponse.json({ error: 'Messaging minor accounts is not allowed.' }, { status: 403 });
+    }
   }
 
   const group = await prisma.chatGroup.create({

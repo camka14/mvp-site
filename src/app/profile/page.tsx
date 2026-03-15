@@ -6,7 +6,20 @@ import { useApp } from '@/app/providers';
 import { userService, type UserSocialGraph } from '@/lib/userService';
 import { familyService, FamilyChild, FamilyJoinRequest } from '@/lib/familyService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { Bill, PaymentIntent, Team, UserData, getUserAvatarUrl, formatPrice, formatBillAmount, Product, Organization } from '@/types';
+import {
+    Bill,
+    PaymentIntent,
+    Team,
+    UserData,
+    getUserAvatarUrl,
+    formatPrice,
+    formatBillAmount,
+    Product,
+    Organization,
+    getUserFullName,
+    getUserHandle,
+    isUserSocialInteractionRestricted,
+} from '@/types';
 import type { Subscription } from '@/types';
 import Loading from '@/components/ui/Loading';
 import Navigation from '@/components/layout/Navigation';
@@ -1495,13 +1508,20 @@ export default function ProfilePage() {
                                                 const hasIncomingRequest = user.friendRequestIds.includes(candidateId);
                                                 const hasOutgoingRequest = user.friendRequestSentIds.includes(candidateId);
                                                 const isActing = socialActionUserId === candidateId;
+                                                const isRestricted = isUserSocialInteractionRestricted(candidate);
+                                                const candidateDisplayName = getUserFullName(candidate);
+                                                const candidateHandle = getUserHandle(candidate);
+                                                const followDisabled = isActing || (isRestricted && !isFollowing);
 
                                                 return (
                                                     <Paper key={candidateId} withBorder radius="md" p="sm">
                                                         <Group justify="space-between" align="flex-start">
                                                             <div>
-                                                                <Text fw={600}>{candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim() || 'User'}</Text>
-                                                                <Text size="sm" c="dimmed">@{candidate.userName || 'user'}</Text>
+                                                                <Text fw={600}>{candidateDisplayName}</Text>
+                                                                {candidateHandle && <Text size="sm" c="dimmed">{candidateHandle}</Text>}
+                                                                {isRestricted && (
+                                                                    <Text size="xs" c="dimmed">Social actions are unavailable for this account.</Text>
+                                                                )}
                                                             </div>
                                                             <Group gap="xs">
                                                                 {isFriend ? (
@@ -1521,6 +1541,7 @@ export default function ProfilePage() {
                                                                             variant="light"
                                                                             color="green"
                                                                             loading={isActing}
+                                                                            disabled={isRestricted}
                                                                             onClick={() => { void runSocialAction(candidateId, (id) => userService.acceptFriendRequest(id), 'Friend request accepted.'); }}
                                                                         >
                                                                             Accept
@@ -1544,6 +1565,7 @@ export default function ProfilePage() {
                                                                         size="xs"
                                                                         variant="light"
                                                                         loading={isActing}
+                                                                        disabled={isRestricted}
                                                                         onClick={() => { void runSocialAction(candidateId, (id) => userService.sendFriendRequest(id), 'Friend request sent.'); }}
                                                                     >
                                                                         Add friend
@@ -1554,6 +1576,7 @@ export default function ProfilePage() {
                                                                     variant="light"
                                                                     color={isFollowing ? 'red' : 'blue'}
                                                                     loading={isActing}
+                                                                    disabled={followDisabled}
                                                                     onClick={() => {
                                                                         void runSocialAction(
                                                                             candidateId,
@@ -1587,8 +1610,8 @@ export default function ProfilePage() {
                                                 <Paper key={requester.$id} withBorder radius="md" p="sm">
                                                     <Group justify="space-between">
                                                         <div>
-                                                            <Text fw={600}>{requester.fullName || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || 'User'}</Text>
-                                                            <Text size="sm" c="dimmed">@{requester.userName || 'user'}</Text>
+                                                            <Text fw={600}>{getUserFullName(requester)}</Text>
+                                                            {getUserHandle(requester) && <Text size="sm" c="dimmed">{getUserHandle(requester)}</Text>}
                                                         </div>
                                                         <Group gap="xs">
                                                             <Button
@@ -1596,6 +1619,7 @@ export default function ProfilePage() {
                                                                 variant="light"
                                                                 color="green"
                                                                 loading={socialActionUserId === requester.$id}
+                                                                disabled={isUserSocialInteractionRestricted(requester)}
                                                                 onClick={() => { void runSocialAction(requester.$id, (id) => userService.acceptFriendRequest(id), 'Friend request accepted.'); }}
                                                             >
                                                                 Accept
@@ -1629,8 +1653,8 @@ export default function ProfilePage() {
                                                 <Paper key={friend.$id} withBorder radius="md" p="sm">
                                                     <Group justify="space-between">
                                                         <div>
-                                                            <Text fw={600}>{friend.fullName || `${friend.firstName || ''} ${friend.lastName || ''}`.trim() || 'User'}</Text>
-                                                            <Text size="sm" c="dimmed">@{friend.userName || 'user'}</Text>
+                                                            <Text fw={600}>{getUserFullName(friend)}</Text>
+                                                            {getUserHandle(friend) && <Text size="sm" c="dimmed">{getUserHandle(friend)}</Text>}
                                                         </div>
                                                         <Button
                                                             size="xs"
@@ -1660,8 +1684,8 @@ export default function ProfilePage() {
                                                 <Paper key={entry.$id} withBorder radius="md" p="sm">
                                                     <Group justify="space-between">
                                                         <div>
-                                                            <Text fw={600}>{entry.fullName || `${entry.firstName || ''} ${entry.lastName || ''}`.trim() || 'User'}</Text>
-                                                            <Text size="sm" c="dimmed">@{entry.userName || 'user'}</Text>
+                                                            <Text fw={600}>{getUserFullName(entry)}</Text>
+                                                            {getUserHandle(entry) && <Text size="sm" c="dimmed">{getUserHandle(entry)}</Text>}
                                                         </div>
                                                         <Button
                                                             size="xs"
@@ -1689,8 +1713,8 @@ export default function ProfilePage() {
                                         <div className="space-y-2">
                                             {socialGraph?.followers.map((entry) => (
                                                 <Paper key={entry.$id} withBorder radius="md" p="sm">
-                                                    <Text fw={600}>{entry.fullName || `${entry.firstName || ''} ${entry.lastName || ''}`.trim() || 'User'}</Text>
-                                                    <Text size="sm" c="dimmed">@{entry.userName || 'user'}</Text>
+                                                    <Text fw={600}>{getUserFullName(entry)}</Text>
+                                                    {getUserHandle(entry) && <Text size="sm" c="dimmed">{getUserHandle(entry)}</Text>}
                                                 </Paper>
                                             ))}
                                         </div>

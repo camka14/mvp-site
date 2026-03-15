@@ -246,6 +246,45 @@ describe('eventService', () => {
     );
   });
 
+  it('hydrates league playoff placement mappings from divisionDetails', async () => {
+    apiRequestMock.mockResolvedValue({
+      ...baseEventRow,
+      eventType: 'LEAGUE',
+      splitLeaguePlayoffDivisions: true,
+      divisionDetails: [
+        {
+          id: 'evt_1__division__open',
+          name: 'Open',
+          key: 'open',
+          kind: 'LEAGUE',
+          playoffTeamCount: 4,
+          playoffPlacementDivisionIds: [
+            'evt_1__division__playoff_1',
+            '',
+            'evt_1__division__playoff_2',
+            'evt_1__division__playoff_2',
+          ],
+        },
+      ],
+    });
+
+    const event = await eventService.getEvent('evt_1');
+
+    expect(event?.divisionDetails?.[0]).toEqual(
+      expect.objectContaining({
+        id: 'evt_1__division__open',
+        kind: 'LEAGUE',
+        playoffTeamCount: 4,
+        playoffPlacementDivisionIds: [
+          'evt_1__division__playoff_1',
+          '',
+          'evt_1__division__playoff_2',
+          'evt_1__division__playoff_2',
+        ],
+      }),
+    );
+  });
+
   it('prefers explicit attendee counts from API payloads', async () => {
     apiRequestMock.mockResolvedValue({
       ...baseEventRow,

@@ -1,27 +1,6 @@
 import type { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
-
-export const publicUserSelect = {
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  firstName: true,
-  lastName: true,
-  dateOfBirth: true,
-  dobVerified: true,
-  dobVerifiedAt: true,
-  ageVerificationProvider: true,
-  teamIds: true,
-  friendIds: true,
-  userName: true,
-  hasStripeAccount: true,
-  followingIds: true,
-  friendRequestIds: true,
-  friendRequestSentIds: true,
-  uploadedImages: true,
-  profileImageId: true,
-  homePageOrganizationId: true,
-} as const;
+import { isMinorAtUtcDate, publicUserSelect } from '@/server/userPrivacy';
 
 export type PublicUser = Prisma.UserDataGetPayload<{ select: typeof publicUserSelect }>;
 
@@ -100,6 +79,12 @@ const getActorAndTarget = async (
   return { actor, target };
 };
 
+const assertTargetIsNotMinor = (target: Pick<PublicUser, 'dateOfBirth'>): void => {
+  if (isMinorAtUtcDate(target.dateOfBirth)) {
+    throw new SocialGraphError(403, 'This action is not allowed for minor accounts.');
+  }
+};
+
 export class SocialGraphError extends Error {
   status: number;
 
@@ -166,6 +151,7 @@ export const getSocialGraphForUser = async (userId: string): Promise<SocialGraph
 export const sendFriendRequest = async (actorUserId: string, targetUserId: string): Promise<PublicUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
+    assertTargetIsNotMinor(target);
 
     const actorFriendIds = normalizeIds(actor.friendIds);
     const actorSentIds = normalizeIds(actor.friendRequestSentIds);
@@ -308,6 +294,7 @@ export const removeFriend = async (actorUserId: string, friendUserId: string): P
 export const followUser = async (actorUserId: string, targetUserId: string): Promise<PublicUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
+    assertTargetIsNotMinor(target);
 
     if (normalizeIds(actor.followingIds).includes(target.id)) {
       return actor;

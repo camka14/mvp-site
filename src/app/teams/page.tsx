@@ -3,17 +3,15 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
-import { Team, UserData, Event, Invite } from '@/types';
+import { Team, UserData, Invite } from '@/types';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
-import { eventService } from '@/lib/eventService';
 import Navigation from '@/components/layout/Navigation';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import Loading from '@/components/ui/Loading';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
-import InvitePlayersModal from './components/InvitePlayersModal';
 import { Container, Title, Text, Group, Button, SegmentedControl, SimpleGrid, Paper, Badge } from '@mantine/core';
 
 type ManageTeamsProps = {
@@ -57,15 +55,10 @@ function TeamsPageContent() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'my-teams' | 'invitations'>('my-teams');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [selectedTeamForDetails, setSelectedTeamForDetails] = useState<Team | null>(null);
   const [showTeamDetailModal, setShowTeamDetailModal] = useState(false);
 
-  // Event context for inviting free agents
   const searchParams = useSearchParams();
-  const [eventContext, setEventContext] = useState<Event | null>(null);
-  const [eventFreeAgents, setEventFreeAgents] = useState<UserData[]>([]);
   const [selectedFreeAgentId, setSelectedFreeAgentId] = useState<string | null>(null);
   const [selectedFreeAgent, setSelectedFreeAgent] = useState<UserData | null>(null);
 
@@ -73,24 +66,6 @@ function TeamsPageContent() {
   const [creating, setCreating] = useState(false);
 
   const router = useRouter();
-
-  // Sport-specific player count suggestions
-  const sportPlayerCounts: Record<string, number> = {
-    'Indoor Volleyball': 6,
-    'Beach Volleyball': 2,
-    'Grass Volleyball': 6,
-    'Basketball': 5,
-    'Indoor Soccer': 6,
-    'Grass Soccer': 11,
-    'Beach Soccer': 5,
-    'Football': 11,
-    'Hockey': 11,
-    'Baseball': 9,
-    'Tennis': 2,
-    'Pickleball': 4,
-    'Swimming': 8,
-    'Other': 8
-  };
 
   const getDivisionLabel = (division: Team['division']) =>
     typeof division === 'string'
@@ -156,65 +131,28 @@ function TeamsPageContent() {
     }
   }, [user, authLoading, isAuthenticated, router, loadTeamsData]);
 
-  // Load event context (free agents) if arriving from EventJoinModal
+  // Preserve optional selected free-agent focus from navigation while free agents are loaded server-side per team.
   useEffect(() => {
-    const eventId = searchParams?.get('event');
     const focusedFreeAgent = searchParams?.get('freeAgent');
     const normalizedFocusedFreeAgent =
       typeof focusedFreeAgent === 'string' && focusedFreeAgent.trim().length > 0
         ? focusedFreeAgent.trim()
         : null;
-    const loadEvent = async () => {
+    const loadFocusedFreeAgent = async () => {
       setSelectedFreeAgentId(normalizedFocusedFreeAgent);
-      if (!eventId) {
-        setEventContext(null);
-        setEventFreeAgents([]);
-        if (normalizedFocusedFreeAgent) {
-          const focusedUser = await userService.getUserById(normalizedFocusedFreeAgent);
-          setSelectedFreeAgent(focusedUser ?? null);
-        } else {
-          setSelectedFreeAgent(null);
-        }
+      if (!normalizedFocusedFreeAgent) {
+        setSelectedFreeAgent(null);
         return;
       }
       try {
-        const evt = await eventService.getEvent(eventId);
-        if (evt) {
-          setEventContext(evt);
-          if (evt.freeAgentIds && evt.freeAgentIds.length > 0) {
-            const agents = await userService.getUsersByIds(evt.freeAgentIds);
-            setEventFreeAgents(agents);
-            if (normalizedFocusedFreeAgent) {
-              const focusedFromEvent = agents.find((agent) => agent.$id === normalizedFocusedFreeAgent);
-              if (focusedFromEvent) {
-                setSelectedFreeAgent(focusedFromEvent);
-              } else {
-                const fallbackUser = await userService.getUserById(normalizedFocusedFreeAgent);
-                setSelectedFreeAgent(fallbackUser ?? null);
-              }
-            } else {
-              setSelectedFreeAgent(null);
-            }
-          } else {
-            setEventFreeAgents([]);
-            if (normalizedFocusedFreeAgent) {
-              const fallbackUser = await userService.getUserById(normalizedFocusedFreeAgent);
-              setSelectedFreeAgent(fallbackUser ?? null);
-            } else {
-              setSelectedFreeAgent(null);
-            }
-          }
-        } else {
-          setSelectedFreeAgent(null);
-        }
-      } catch (e) {
-        console.error('Failed to load event context:', e);
-        setEventContext(null);
-        setEventFreeAgents([]);
+        const focusedUser = await userService.getUserById(normalizedFocusedFreeAgent);
+        setSelectedFreeAgent(focusedUser ?? null);
+      } catch (error) {
+        console.error('Failed to load focused free agent:', error);
         setSelectedFreeAgent(null);
       }
     };
-    loadEvent();
+    void loadFocusedFreeAgent();
   }, [searchParams]);
 
   // CreateTeamModal manages its own form state
@@ -247,20 +185,6 @@ function TeamsPageContent() {
       }
     } catch (error) {
       console.error('Failed to reject invitation:', error);
-    }
-  };
-
-  // Invite flow handled within InvitePlayersModal
-
-  const divisions = ['Open', 'Recreational', 'Competitive', 'Elite'];
-  const sports = Object.keys(sportPlayerCounts);
-
-  const extractFileIdFromUrl = (url: string): string => {
-    try {
-      const match = url.match(/\/files\/([^/]+)\/preview/);
-      return match ? match[1] : '';
-    } catch {
-      return '';
     }
   };
 
@@ -334,15 +258,8 @@ function TeamsPageContent() {
                       <Button
                         onClick={(e) => {
                           e.stopPropagation();
-                          // If we have an event context, open the Team Detail modal
-                          // to surface event free agents for inviting
-                          if (eventContext) {
-                            setSelectedTeamForDetails(team);
-                            setShowTeamDetailModal(true);
-                          } else {
-                            setSelectedTeam(team);
-                            setShowInviteModal(true);
-                          }
+                          setSelectedTeamForDetails(team);
+                          setShowTeamDetailModal(true);
                         }}
                         title="Invite Players"
                       >
@@ -428,18 +345,6 @@ function TeamsPageContent() {
         onTeamCreated={(team) => setTeams(prev => [...prev, team])}
       />
 
-      {/* Invite Players Modal */}
-      {selectedTeam && (
-        <InvitePlayersModal
-          isOpen={showInviteModal}
-          onClose={() => {
-            setShowInviteModal(false);
-            setSelectedTeam(null);
-          }}
-          team={selectedTeam}
-        />
-      )}
-
       {/* Team Detail Modal */}
       {selectedTeamForDetails && (
         <TeamDetailModal
@@ -458,8 +363,6 @@ function TeamsPageContent() {
             setShowTeamDetailModal(false);
             setSelectedTeamForDetails(null);
           }}
-          eventContext={eventContext ?? undefined}
-          eventFreeAgents={eventFreeAgents}
           selectedFreeAgentId={selectedFreeAgentId ?? undefined}
           selectedFreeAgentUser={selectedFreeAgent ?? undefined}
         />

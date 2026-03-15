@@ -271,7 +271,10 @@ export interface UserData {
   $id: string;
   firstName: string;
   lastName: string;
+  displayName?: string;
   dateOfBirth?: string;
+  isMinor?: boolean;
+  isIdentityHidden?: boolean;
   dobVerified?: boolean;
   dobVerifiedAt?: string;
   ageVerificationProvider?: string;
@@ -1209,7 +1212,44 @@ export function toEventPayload(event: Event): EventPayload {
 }
 
 export function getUserFullName(user: UserData): string {
-  return `${user.firstName} ${user.lastName}`.trim();
+  const explicitDisplayName = user.displayName?.trim();
+  if (explicitDisplayName) {
+    return explicitDisplayName;
+  }
+
+  const fullName = `${user.firstName} ${user.lastName}`.trim();
+  if (fullName) {
+    return fullName;
+  }
+
+  if (user.isIdentityHidden) {
+    return 'Name Hidden';
+  }
+
+  const fallbackHandle = user.userName?.trim();
+  return fallbackHandle || 'User';
+}
+
+export function isUserSocialInteractionRestricted(user: UserData): boolean {
+  return Boolean(user.isMinor || user.isIdentityHidden);
+}
+
+export function getUserHandle(
+  user: Pick<UserData, 'userName' | 'isIdentityHidden'> | null | undefined,
+  options: { includeAt?: boolean; showWhenHidden?: boolean } = {},
+): string | null {
+  if (!user) {
+    return null;
+  }
+  const includeAt = options.includeAt ?? true;
+  const showWhenHidden = options.showWhenHidden ?? false;
+  if (user.isIdentityHidden && !showWhenHidden) {
+    return null;
+  }
+
+  const normalizedHandle = user.userName?.trim();
+  const resolved = normalizedHandle?.length ? normalizedHandle : 'user';
+  return includeAt ? `@${resolved}` : resolved;
 }
 
 const buildPreviewUrl = (fileId: string, width?: number, height?: number): string => {

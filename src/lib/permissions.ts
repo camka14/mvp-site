@@ -15,6 +15,14 @@ export const requireSession = async (req: NextRequest): Promise<AuthContext> => 
   return { ...decoded, rawToken: token };
 };
 
+export const getOptionalSession = (req: NextRequest): AuthContext | null => {
+  const token = getTokenFromRequest(req);
+  if (!token) return null;
+  const decoded = verifySessionToken(token);
+  if (!decoded) return null;
+  return { ...decoded, rawToken: token };
+};
+
 export const assertUserAccess = (session: SessionToken, targetUserId: string): void => {
   if (session.isAdmin) return;
   if (session.userId !== targetUserId) {

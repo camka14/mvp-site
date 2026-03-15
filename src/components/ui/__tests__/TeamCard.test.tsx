@@ -35,6 +35,23 @@ const createTeam = (overrides: Partial<Team> = {}): Team => ({
   ...overrides,
 });
 
+const createPlayer = (id: string, overrides: Partial<NonNullable<Team['players']>[number]> = {}): NonNullable<Team['players']>[number] => ({
+  $id: id,
+  firstName: 'Jane',
+  lastName: 'Doe',
+  displayName: 'Jane Doe',
+  teamIds: [],
+  friendIds: [],
+  friendRequestIds: [],
+  friendRequestSentIds: [],
+  followingIds: [],
+  userName: `user_${id}`,
+  uploadedImages: [],
+  fullName: 'Jane Doe',
+  avatarUrl: '',
+  ...overrides,
+});
+
 describe('TeamCard division label', () => {
   it('prefers divisionTypeName instead of rendering a division id', () => {
     const team = createTeam({
@@ -103,5 +120,55 @@ describe('TeamCard division label', () => {
     expect(screen.getByText(/Open/i)).toBeInTheDocument();
     expect(screen.queryByText(/Skill/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Division')).not.toBeInTheDocument();
+  });
+});
+
+describe('TeamCard members visibility', () => {
+  it('excludes hidden members from the avatar list', () => {
+    const visiblePlayer = createPlayer('player_visible', { fullName: 'Visible Player' });
+    const hiddenPlayer = createPlayer('player_hidden', {
+      fullName: 'Name Hidden',
+      displayName: 'Name Hidden',
+      userName: 'hidden',
+      isIdentityHidden: true,
+    });
+    const team = createTeam({
+      players: [visiblePlayer, hiddenPlayer],
+      currentSize: 2,
+    });
+
+    renderWithMantine(<TeamCard team={team} />);
+
+    expect(screen.getByText('Members:')).toBeInTheDocument();
+    expect(screen.getByAltText('Visible Player')).toBeInTheDocument();
+    expect(screen.queryByAltText('Name Hidden')).not.toBeInTheDocument();
+  });
+
+  it('hides the members section when all members are hidden', () => {
+    const hiddenPlayer = createPlayer('player_hidden', {
+      fullName: 'Name Hidden',
+      displayName: 'Name Hidden',
+      userName: 'hidden',
+      isIdentityHidden: true,
+    });
+    const team = createTeam({
+      players: [hiddenPlayer],
+      currentSize: 1,
+    });
+
+    renderWithMantine(<TeamCard team={team} />);
+
+    expect(screen.queryByText('Members:')).not.toBeInTheDocument();
+  });
+
+  it('hides the members section when there are no members', () => {
+    const team = createTeam({
+      players: [],
+      currentSize: 0,
+    });
+
+    renderWithMantine(<TeamCard team={team} />);
+
+    expect(screen.queryByText('Members:')).not.toBeInTheDocument();
   });
 });

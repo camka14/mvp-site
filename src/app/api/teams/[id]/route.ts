@@ -7,6 +7,7 @@ import {
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
+import { deleteTeamChatInTx, syncTeamChatInTx } from '@/server/teamChatSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -411,56 +412,57 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         updatedAt: now,
       },
     );
+    const teamsToSync = new Set<string>([id]);
 
     const derivedTeams = await txTeams.findMany({
       where: { parentTeamId: id },
       select: { id: true },
     });
     const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
-    if (!derivedTeamIds.length) {
-      return canonical;
-    }
+    if (derivedTeamIds.length) {
+      const events = await tx.events.findMany({
+        where: {
+          end: { gte: now },
+          teamIds: { hasSome: derivedTeamIds },
+        },
+        select: { id: true, teamIds: true },
+      });
 
-    const events = await tx.events.findMany({
-      where: {
-        end: { gte: now },
-        teamIds: { hasSome: derivedTeamIds },
-      },
-      select: { id: true, teamIds: true },
-    });
+      if (events.length) {
+        const derivedSet = new Set(derivedTeamIds);
+        const teamIdsToUpdate = new Set<string>();
+        for (const event of events) {
+          const teamIds = Array.isArray(event.teamIds) ? event.teamIds : [];
+          for (const teamId of teamIds) {
+            if (derivedSet.has(teamId)) {
+              teamIdsToUpdate.add(teamId);
+            }
+          }
+        }
+        const updatePayload = {
+          name: nextState.name,
+          playerIds: nextState.playerIds,
+          captainId: nextState.captainId,
+          managerId: nextState.managerId,
+          headCoachId: nextState.headCoachId,
+          coachIds: nextState.coachIds,
+          teamSize: nextState.teamSize,
+          profileImageId: nextState.profileImageId,
+          sport: nextState.sport,
+          divisionTypeId: nextState.divisionTypeId,
+          divisionTypeName: nextState.divisionTypeName,
+          updatedAt: now,
+        };
 
-    if (!events.length) {
-      return canonical;
-    }
-
-    const derivedSet = new Set(derivedTeamIds);
-    const teamIdsToUpdate = new Set<string>();
-    for (const event of events) {
-      const teamIds = Array.isArray(event.teamIds) ? event.teamIds : [];
-      for (const teamId of teamIds) {
-        if (derivedSet.has(teamId)) {
-          teamIdsToUpdate.add(teamId);
+        for (const teamId of teamIdsToUpdate) {
+          await updateTeamWithCompatibility(txTeams, { id: teamId }, updatePayload);
+          teamsToSync.add(teamId);
         }
       }
     }
 
-    const updatePayload = {
-      name: nextState.name,
-      playerIds: nextState.playerIds,
-      captainId: nextState.captainId,
-      managerId: nextState.managerId,
-      headCoachId: nextState.headCoachId,
-      coachIds: nextState.coachIds,
-      teamSize: nextState.teamSize,
-      profileImageId: nextState.profileImageId,
-      sport: nextState.sport,
-      divisionTypeId: nextState.divisionTypeId,
-      divisionTypeName: nextState.divisionTypeName,
-      updatedAt: now,
-    };
-
-    for (const teamId of teamIdsToUpdate) {
-      await updateTeamWithCompatibility(txTeams, { id: teamId }, updatePayload);
+    for (const teamId of teamsToSync) {
+      await syncTeamChatInTx(tx, teamId);
     }
 
     return canonical;
@@ -488,6 +490,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await teamsDelegate.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    const txTeams = getTeamsDelegate(tx);
+    if (!txTeams?.delete) {
+      throw new Error('Team storage is unavailable in transaction.');
+    }
+    await deleteTeamChatInTx(tx, id);
+    await txTeams.delete({ where: { id } });
+  });
   return NextResponse.json({ deleted: true }, { status: 200 });
 }

@@ -7,6 +7,7 @@ import {
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
+import { syncTeamChatByTeamId } from '@/server/teamChatSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -197,6 +198,8 @@ export async function POST(req: NextRequest) {
     createdAt: new Date(),
     updatedAt: new Date(),
   });
+
+  await syncTeamChatByTeamId(String((team as any).id ?? data.id));
 
   return NextResponse.json(withTeamRoleAliases(team as any), { status: 201 });
 }

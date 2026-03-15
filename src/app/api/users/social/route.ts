@@ -3,20 +3,30 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { getSocialGraphForUser } from '@/server/socialGraph';
 import { toSocialErrorResponse } from '@/app/api/users/social/shared';
+import { applyUserPrivacy, applyUserPrivacyList, createVisibilityContext } from '@/server/userPrivacy';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
 
   try {
     const socialGraph = await getSocialGraphForUser(session.userId);
+    const visibilityContext = await createVisibilityContext(prisma, {
+      viewerId: session.userId,
+      isAdmin: session.isAdmin,
+    });
     return NextResponse.json(
       {
-        user: withLegacyFields(socialGraph.user),
-        friends: withLegacyList(socialGraph.friends),
-        following: withLegacyList(socialGraph.following),
-        followers: withLegacyList(socialGraph.followers),
-        incomingFriendRequests: withLegacyList(socialGraph.incomingFriendRequests),
-        outgoingFriendRequests: withLegacyList(socialGraph.outgoingFriendRequests),
+        user: withLegacyFields(applyUserPrivacy(socialGraph.user, visibilityContext)),
+        friends: withLegacyList(applyUserPrivacyList(socialGraph.friends, visibilityContext)),
+        following: withLegacyList(applyUserPrivacyList(socialGraph.following, visibilityContext)),
+        followers: withLegacyList(applyUserPrivacyList(socialGraph.followers, visibilityContext)),
+        incomingFriendRequests: withLegacyList(
+          applyUserPrivacyList(socialGraph.incomingFriendRequests, visibilityContext),
+        ),
+        outgoingFriendRequests: withLegacyList(
+          applyUserPrivacyList(socialGraph.outgoingFriendRequests, visibilityContext),
+        ),
       },
       { status: 200 },
     );

@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect } from '@mantine/core';
-import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
@@ -22,8 +22,6 @@ interface TeamDetailModalProps {
     canManage?: boolean;
     onTeamUpdated?: (team: Team) => void;
     onTeamDeleted?: (teamId: string) => void;
-    eventContext?: Event;
-    eventFreeAgents?: UserData[];
     selectedFreeAgentId?: string;
     selectedFreeAgentUser?: UserData;
 }
@@ -38,7 +36,7 @@ const DIVISION_GENDER_OPTIONS = [
 ] as const;
 const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
 const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
-const EMPTY_EVENT_FREE_AGENTS: UserData[] = [];
+const EMPTY_FREE_AGENTS: UserData[] = [];
 
 const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
     .trim()
@@ -107,11 +105,6 @@ const getDefaultDivisionTypeSelections = (sportInput: string | null | undefined)
         ageDivisionTypeId: age?.id ?? DEFAULT_AGE_DIVISION_FALLBACK,
     };
 };
-const getUserHandle = (candidate?: Pick<UserData, 'userName'> | null): string => {
-    const normalized = candidate?.userName?.trim();
-    return `@${normalized && normalized.length ? normalized : 'user'}`;
-};
-
 const getPendingInviteRole = (
     team: Team,
     invite: Invite,
@@ -135,8 +128,6 @@ export default function TeamDetailModal({
     canManage,
     onTeamUpdated,
     onTeamDeleted,
-    eventContext,
-    eventFreeAgents = EMPTY_EVENT_FREE_AGENTS,
     selectedFreeAgentId,
     selectedFreeAgentUser,
 }: TeamDetailModalProps) {
@@ -150,7 +141,7 @@ export default function TeamDetailModal({
     const [error, setError] = useState<string | null>(null);
     const [teamPlayers, setTeamPlayers] = useState<UserData[]>([]);
     const [pendingPlayers, setPendingPlayers] = useState<UserData[]>([]);
-    const [localFreeAgents, setLocalFreeAgents] = useState<UserData[]>(eventFreeAgents);
+    const [localFreeAgents, setLocalFreeAgents] = useState<UserData[]>(EMPTY_FREE_AGENTS);
     const [editingName, setEditingName] = useState(false);
     const [newName, setNewName] = useState(currentTeam.name || '');
     const [editingDetails, setEditingDetails] = useState(false);
@@ -254,25 +245,79 @@ export default function TeamDetailModal({
         });
     }, []);
     const teamDivisionLabel = useMemo(() => {
-        if (typeof currentTeam.division === 'string' && currentTeam.division.trim().length > 0) {
-            return currentTeam.division.trim();
-        }
-        if (currentTeam.division && typeof currentTeam.division === 'object') {
-            if (typeof currentTeam.division.name === 'string' && currentTeam.division.name.trim().length > 0) {
-                return currentTeam.division.name.trim();
+        const sportInput = draftSport || currentTeam.sport || '';
+
+        const toDisplayDivisionLabel = (value: unknown): string | null => {
+            if (typeof value !== 'string') {
+                return null;
             }
-            if (typeof currentTeam.division.skillLevel === 'string' && currentTeam.division.skillLevel.trim().length > 0) {
-                return currentTeam.division.skillLevel.trim();
+            const trimmed = value.trim();
+            if (!trimmed.length) {
+                return null;
+            }
+
+            const normalized = normalizeDivisionToken(trimmed);
+            const looksLikeDivisionId = trimmed.toLowerCase().includes('__division__')
+                || normalized.startsWith('division_')
+                || normalized.startsWith('div_');
+            const looksLikeDivisionToken = /^(m|f|c)_(age|skill)_[a-z0-9_]+$/.test(normalized);
+            const looksLikeCompositeDivisionType = normalized.startsWith('skill_') && normalized.includes('_age_');
+
+            if (!looksLikeDivisionId && !looksLikeDivisionToken && !looksLikeCompositeDivisionType) {
+                return trimmed;
+            }
+
+            const inferred = inferDivisionDetails({
+                identifier: trimmed,
+                sportInput,
+                fallbackName: trimmed,
+            });
+            const compositeDivisionType = parseCompositeDivisionTypeId(inferred.divisionTypeId);
+            if (compositeDivisionType) {
+                return resolveDraftDivisionDisplayName(
+                    inferred.gender,
+                    compositeDivisionType.skillDivisionTypeId,
+                    compositeDivisionType.ageDivisionTypeId,
+                    sportInput,
+                );
+            }
+
+            return inferred.defaultName;
+        };
+
+        const directDivisionLabel = toDisplayDivisionLabel(currentTeam.division);
+        if (directDivisionLabel) {
+            return directDivisionLabel;
+        }
+
+        if (currentTeam.division && typeof currentTeam.division === 'object') {
+            const divisionNameLabel = toDisplayDivisionLabel(currentTeam.division.name);
+            if (divisionNameLabel) {
+                return divisionNameLabel;
+            }
+            const divisionSkillLabel = toDisplayDivisionLabel(currentTeam.division.skillLevel);
+            if (divisionSkillLabel) {
+                return divisionSkillLabel;
             }
         }
         if (typeof currentTeam.divisionTypeName === 'string' && currentTeam.divisionTypeName.trim().length > 0) {
             return currentTeam.divisionTypeName.trim();
         }
-        if (typeof currentTeam.divisionTypeId === 'string' && currentTeam.divisionTypeId.trim().length > 0) {
-            return currentTeam.divisionTypeId.trim();
+
+        const divisionTypeIdLabel = toDisplayDivisionLabel(currentTeam.divisionTypeId);
+        if (divisionTypeIdLabel) {
+            return divisionTypeIdLabel;
         }
+
         return 'Division';
-    }, [currentTeam.division, currentTeam.divisionTypeId, currentTeam.divisionTypeName]);
+    }, [
+        currentTeam.division,
+        currentTeam.divisionTypeId,
+        currentTeam.divisionTypeName,
+        currentTeam.sport,
+        draftSport,
+        resolveDraftDivisionDisplayName,
+    ]);
 
     const fetchRoleInvites = useCallback(async () => {
         const invites = await userService.listInvites({
@@ -283,7 +328,9 @@ export default function TeamDetailModal({
         const inviteUserIds = pendingInvites
             .map((invite) => invite.userId)
             .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-        const invitedUsers = inviteUserIds.length > 0 ? await userService.getUsersByIds(inviteUserIds) : [];
+        const invitedUsers = inviteUserIds.length > 0
+            ? await userService.getUsersByIds(inviteUserIds, { teamId: currentTeam.$id })
+            : [];
         const invitedUserMap = new Map(invitedUsers.map((invitedUser) => [invitedUser.$id, invitedUser]));
         setPendingRoleInvites(
             pendingInvites.map((invite) => ({
@@ -325,14 +372,14 @@ export default function TeamDetailModal({
             setLoading(true);
 
             if (currentTeam.playerIds.length > 0) {
-                const players = await userService.getUsersByIds(currentTeam.playerIds);
+                const players = await userService.getUsersByIds(currentTeam.playerIds, { teamId: currentTeam.$id });
                 setTeamPlayers(players);
             } else {
                 setTeamPlayers([]);
             }
 
             if (currentTeam.pending.length > 0) {
-                const pending = await userService.getUsersByIds(currentTeam.pending);
+                const pending = await userService.getUsersByIds(currentTeam.pending, { teamId: currentTeam.$id });
                 setPendingPlayers(pending);
             } else {
                 setPendingPlayers([]);
@@ -341,7 +388,9 @@ export default function TeamDetailModal({
             const managerId = currentTeam.managerId ?? currentTeam.captainId;
             const roleUserIds = [managerId, currentTeam.headCoachId, ...assistantCoachIds]
                 .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-            const roleUsers = roleUserIds.length > 0 ? await userService.getUsersByIds(roleUserIds) : [];
+            const roleUsers = roleUserIds.length > 0
+                ? await userService.getUsersByIds(roleUserIds, { teamId: currentTeam.$id })
+                : [];
             const roleUserMap = new Map(roleUsers.map((roleUser) => [roleUser.$id, roleUser]));
             setManagerUser(managerId ? roleUserMap.get(managerId) ?? null : null);
             setHeadCoachUser(currentTeam.headCoachId ? roleUserMap.get(currentTeam.headCoachId) ?? null : null);
@@ -372,6 +421,35 @@ export default function TeamDetailModal({
             setSearching(false);
         }
     }, [canInviteUserForRole, searchQuery, selectedInviteRole]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        if (!isOpen || !canManageTeam) {
+            setLocalFreeAgents(EMPTY_FREE_AGENTS);
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        void (async () => {
+            try {
+                const freeAgents = await teamService.getInviteFreeAgents(currentTeam.$id);
+                if (!cancelled) {
+                    setLocalFreeAgents(freeAgents);
+                }
+            } catch (fetchError) {
+                console.error('Failed to load invite free agents:', fetchError);
+                if (!cancelled) {
+                    setLocalFreeAgents(EMPTY_FREE_AGENTS);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [canManageTeam, currentTeam.$id, isOpen]);
 
     useEffect(() => {
         if (isOpen) {
@@ -411,10 +489,6 @@ export default function TeamDetailModal({
         setSearchQuery('');
         setSearchResults([]);
     }, [isOpen, normalizedSelectedFreeAgentId]);
-
-    useEffect(() => {
-        setLocalFreeAgents(eventFreeAgents);
-    }, [eventFreeAgents]);
 
     useEffect(() => {
         setNewName(currentTeam.name || '');
@@ -625,7 +699,7 @@ export default function TeamDetailModal({
         let users = [...searchResults];
         const filteredFreeAgents = getFilteredFreeAgents();
 
-        if (selectedInviteRole === 'player' && eventContext && filteredFreeAgents.length > 0) {
+        if (selectedInviteRole === 'player' && filteredFreeAgents.length > 0) {
             const freeAgentsNotInResults = filteredFreeAgents.filter(
                 agent => !users.some(user => user.$id === agent.$id)
             );
@@ -637,7 +711,7 @@ export default function TeamDetailModal({
 
     const handleInviteUser = async (userId: string) => {
         try {
-            const user = await userService.getUserById(userId);
+            const user = await userService.getUserById(userId, { teamId: currentTeam.$id });
             if (!user) throw new Error('User not found');
             if (!canInviteUserForRole(user.$id, selectedInviteRole)) {
                 notifications.show({ color: 'yellow', message: `${selectedRoleLabel} already assigned or invited.` });
@@ -647,7 +721,7 @@ export default function TeamDetailModal({
 
             if (success) {
                 if (selectedInviteRole === 'player') {
-                    const invitedUser = await userService.getUserById(userId);
+                    const invitedUser = await userService.getUserById(userId, { teamId: currentTeam.$id });
                     if (invitedUser) {
                         setPendingPlayers(prev => (
                             prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
@@ -710,7 +784,7 @@ export default function TeamDetailModal({
             }
 
             if (selectedInviteRole === 'player') {
-                const invitedUser = await userService.getUserById(ensuredUser.$id);
+                const invitedUser = await userService.getUserById(ensuredUser.$id, { teamId: currentTeam.$id });
                 if (invitedUser) {
                     setPendingPlayers(prev => (
                         prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
@@ -928,13 +1002,11 @@ export default function TeamDetailModal({
                     </Group>
                 </div>
                 <div style={{ padding: 24, paddingTop: 0 }}>
-                    {/* Event Context Banner */}
-                    {eventContext && (
-                        <Alert color="blue" variant="light" mb="md" title={`Managing team for: ${eventContext.name}`}>
-                            <Text size="sm" c="blue">{eventContext.location} • {eventContext.sport?.name}</Text>
-                            {getFilteredFreeAgents().length > 0 && (
-                                <Text size="sm" c="blue">{getFilteredFreeAgents().length} free agents available to invite.</Text>
-                            )}
+                    {canManageTeam && getFilteredFreeAgents().length > 0 && (
+                        <Alert color="blue" variant="light" mb="md" title="Current event free agents">
+                            <Text size="sm" c="blue">
+                                {getFilteredFreeAgents().length} free agents available to invite.
+                            </Text>
                         </Alert>
                     )}
 
@@ -1035,7 +1107,7 @@ export default function TeamDetailModal({
                                                     <Avatar src={getUserAvatarUrl(player, 40)} alt={getUserFullName(player)} size={40} radius="xl" />
                                                     <div>
                                                         <Text fw={500}>{getUserFullName(player)}</Text>
-                                                        <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>
+                                                        {getUserHandle(player) && <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>}
                                                         {player.$id === currentTeam.captainId && (
                                                             <Badge color="blue" variant="light" size="xs">Captain</Badge>
                                                         )}
@@ -1065,7 +1137,7 @@ export default function TeamDetailModal({
                             <h4 className="text-lg font-semibold mb-4">Pending Invitations ({pendingPlayers.length})</h4>
                             <div className="space-y-3">
                                 {pendingPlayers.map(player => {
-                                    const isFromEvent = eventFreeAgents.some(agent => agent.$id === player.$id);
+                                    const isFromEvent = localFreeAgents.some(agent => agent.$id === player.$id);
                                     const isCancelling = cancellingInviteIds.has(player.$id);
 
                                     return (
@@ -1087,7 +1159,9 @@ export default function TeamDetailModal({
                                                 />
                                                 <div>
                                                     <p className="font-medium">{getUserFullName(player)}</p>
-                                                    <p className="text-xs text-gray-500">{getUserHandle(player)}</p>
+                                                    {getUserHandle(player) && (
+                                                        <p className="text-xs text-gray-500">{getUserHandle(player)}</p>
+                                                    )}
                                                     <span className={`text-xs font-medium ${isFromEvent ? 'text-blue-600' : 'text-yellow-600'
                                                         }`}>
                                                         {isFromEvent ? 'Free Agent - Invitation pending' : 'Invitation pending'}
@@ -1232,7 +1306,7 @@ export default function TeamDetailModal({
                                             <Group justify="space-between">
                                                 <div>
                                                     <Text fw={500}>{invitedUser ? getUserFullName(invitedUser) : invite.email ?? 'Unknown user'}</Text>
-                                                    {invitedUser && (
+                                                    {invitedUser && getUserHandle(invitedUser) && (
                                                         <Text size="xs" c="dimmed">{getUserHandle(invitedUser)}</Text>
                                                     )}
                                                     <Text size="xs" c="dimmed">Role: {inviteRoleLabel}</Text>
@@ -1330,7 +1404,9 @@ export default function TeamDetailModal({
                                                     />
                                                     <div>
                                                         <Text fw={500}>{getUserFullName(suggestedFreeAgent)}</Text>
-                                                        <Text size="xs" c="dimmed">{getUserHandle(suggestedFreeAgent)}</Text>
+                                                        {getUserHandle(suggestedFreeAgent) && (
+                                                            <Text size="xs" c="dimmed">{getUserHandle(suggestedFreeAgent)}</Text>
+                                                        )}
                                                         <Text size="xs" c="green">Suggested from event free agents</Text>
                                                     </div>
                                                 </Group>
@@ -1355,7 +1431,9 @@ export default function TeamDetailModal({
                                                                 <Avatar src={getUserAvatarUrl(agent, 40)} alt={getUserFullName(agent)} size={40} radius="xl" />
                                                                 <div>
                                                                     <Text fw={500}>{getUserFullName(agent)}</Text>
-                                                                    <Text size="xs" c="dimmed">{getUserHandle(agent)}</Text>
+                                                                    {getUserHandle(agent) && (
+                                                                        <Text size="xs" c="dimmed">{getUserHandle(agent)}</Text>
+                                                                    )}
                                                                     <Text size="xs" c="blue">Free Agent from Event</Text>
                                                                 </div>
                                                             </Group>
@@ -1378,7 +1456,9 @@ export default function TeamDetailModal({
                                                                     <Avatar src={getUserAvatarUrl(user, 40)} alt={getUserFullName(user)} size={40} radius="xl" />
                                                                     <div>
                                                                         <Text fw={500}>{getUserFullName(user)}</Text>
-                                                                        <Text size="xs" c="dimmed">{getUserHandle(user)}</Text>
+                                                                        {getUserHandle(user) && (
+                                                                            <Text size="xs" c="dimmed">{getUserHandle(user)}</Text>
+                                                                        )}
                                                                         {isFreeAgent && <Text size="xs" c="blue">Free Agent from Event</Text>}
                                                                     </div>
                                                                 </Group>

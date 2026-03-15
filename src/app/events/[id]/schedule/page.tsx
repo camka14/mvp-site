@@ -50,6 +50,7 @@ import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import ScoreUpdateModal from './components/ScoreUpdateModal';
 import PaymentModal, { PaymentEventSummary } from '@/components/ui/PaymentModal';
 import TeamCard from '@/components/ui/TeamCard';
+import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
 
@@ -964,6 +965,7 @@ function EventScheduleContent() {
   const [createBillAllowSplit, setCreateBillAllowSplit] = useState(false);
   const [createBillLabel, setCreateBillLabel] = useState('Event registration');
   const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
+  const [selectedParticipantTeam, setSelectedParticipantTeam] = useState<Team | null>(null);
   const [selectedAddTeamDivisionId, setSelectedAddTeamDivisionId] = useState<string | null>(null);
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
   const [organizationTeamsForPicker, setOrganizationTeamsForPicker] = useState<Team[]>([]);
@@ -2511,7 +2513,11 @@ function EventScheduleContent() {
       setParticipantsLoading(true);
       setParticipantsError(null);
       try {
-        const hydratedTeams = await teamService.getTeamsByIds(participantTeamIds, true);
+        const hydratedTeams = await teamService.getTeamsByIds(
+          participantTeamIds,
+          true,
+          { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
+        );
         if (cancelled) {
           return;
         }
@@ -2539,7 +2545,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.teamSignup, participantTeamIds]);
+  }, [activeEvent?.$id, activeEvent?.teamSignup, eventId, participantTeamIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2560,7 +2566,10 @@ function EventScheduleContent() {
       setParticipantsLoading(true);
       setParticipantsError(null);
       try {
-        const hydratedUsers = await userService.getUsersByIds(participantUserIds);
+        const hydratedUsers = await userService.getUsersByIds(
+          participantUserIds,
+          { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
+        );
         if (cancelled) {
           return;
         }
@@ -2588,7 +2597,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.teamSignup, participantUserIds]);
+  }, [activeEvent?.$id, activeEvent?.teamSignup, eventId, participantUserIds]);
 
   useEffect(() => {
     if (!canUseTeamCompliance) {
@@ -2725,7 +2734,10 @@ function EventScheduleContent() {
       }
 
       try {
-        const hydratedReferees = await userService.getUsersByIds(participantRefereeIds);
+        const hydratedReferees = await userService.getUsersByIds(
+          participantRefereeIds,
+          { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
+        );
         if (cancelled) {
           return;
         }
@@ -2747,7 +2759,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [participantRefereeIds]);
+  }, [activeEvent?.$id, eventId, participantRefereeIds]);
 
   useEffect(() => {
     if (!isAddTeamModalOpen) {
@@ -2825,7 +2837,13 @@ function EventScheduleContent() {
               .filter((teamId): teamId is string => Boolean(teamId)),
           ),
         );
-        const hydrated = allTeamIds.length > 0 ? await teamService.getTeamsByIds(allTeamIds, true) : [];
+        const hydrated = allTeamIds.length > 0
+          ? await teamService.getTeamsByIds(
+            allTeamIds,
+            true,
+            { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
+          )
+          : [];
         if (!cancelled) {
           setSearchTeamPool(hydrated);
         }
@@ -2847,7 +2865,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.organization, isAddTeamModalOpen, organizationIdForParticipants]);
+  }, [activeEvent?.$id, activeEvent?.organization, eventId, isAddTeamModalOpen, organizationIdForParticipants]);
 
   const refreshParticipantTeamsFromServer = useCallback(
     async (targetEventId: string) => {
@@ -2864,7 +2882,11 @@ function EventScheduleContent() {
         ),
       );
       const refreshedTeams = refreshedTeamIds.length > 0
-        ? await teamService.getTeamsByIds(refreshedTeamIds, true)
+        ? await teamService.getTeamsByIds(
+          refreshedTeamIds,
+          true,
+          { eventId: targetEventId },
+        )
         : [];
       const refreshedTeamsById = new Map(refreshedTeams.map((team) => [team.$id, team]));
       const orderedTeams = refreshedTeamIds
@@ -2878,7 +2900,10 @@ function EventScheduleContent() {
         ),
       );
       const refreshedUsers = refreshedUserIds.length > 0
-        ? await userService.getUsersByIds(refreshedUserIds)
+        ? await userService.getUsersByIds(
+          refreshedUserIds,
+          { eventId: targetEventId },
+        )
         : [];
       const refreshedUsersById = new Map(refreshedUsers.map((participant) => [participant.$id, participant]));
       const orderedUsers = refreshedUserIds
@@ -4722,12 +4747,14 @@ function EventScheduleContent() {
     actions,
     className = '',
     showComplianceDetails = canUseTeamCompliance,
+    enableDetailsView = true,
   }: {
     cardKey: string;
     team: Team;
     actions?: React.ReactNode;
     className?: string;
     showComplianceDetails?: boolean;
+    enableDetailsView?: boolean;
   }) => {
     if (isEditingEvent) {
       return (
@@ -4747,12 +4774,29 @@ function EventScheduleContent() {
       );
     }
 
+    const teamCardActions = actions
+      ? (
+        <div
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          {actions}
+        </div>
+      )
+      : undefined;
+
     return (
       <TeamCard
         key={cardKey}
         team={team}
         className={className}
-        actions={actions}
+        actions={teamCardActions}
+        onClick={enableDetailsView
+          ? () => {
+            setSelectedParticipantTeam(team);
+          }
+          : undefined}
       />
     );
   };
@@ -7488,6 +7532,7 @@ function EventScheduleContent() {
                                         cardKey: `${column.id}:${team.$id}`,
                                         team,
                                         className: isPlaceholderTeam ? '!bg-gray-100' : '',
+                                        enableDetailsView: !isPlaceholderTeam,
                                         actions: teamActions,
                                       });
                                     })}
@@ -7552,6 +7597,7 @@ function EventScheduleContent() {
                                     cardKey: `unassigned:${team.$id}`,
                                     team,
                                     className: isPlaceholderTeam ? '!bg-gray-100' : '',
+                                    enableDetailsView: !isPlaceholderTeam,
                                     actions: teamActions,
                                   });
                                 })}
@@ -7569,6 +7615,7 @@ function EventScheduleContent() {
                           cardKey: team.$id,
                           team,
                           className: isPlaceholderTeam ? '!bg-gray-100' : '',
+                          enableDetailsView: !isPlaceholderTeam,
                           actions: canManageEvent && !isPlaceholderTeam
                             ? (
                               participantsUpdatingTeamId === team.$id
@@ -8021,6 +8068,7 @@ function EventScheduleContent() {
                     cardKey: `org-team-${team.$id}`,
                     team,
                     showComplianceDetails: false,
+                    enableDetailsView: false,
                     actions: participantsUpdatingTeamId === team.$id
                       ? <Text size="xs" c="dimmed">Adding...</Text>
                       : (
@@ -8061,6 +8109,7 @@ function EventScheduleContent() {
                   cardKey: `search-team-${team.$id}`,
                   team,
                   showComplianceDetails: false,
+                  enableDetailsView: false,
                   actions: participantsUpdatingTeamId === team.$id
                     ? <Text size="xs" c="dimmed">Adding...</Text>
                     : (
@@ -8080,6 +8129,16 @@ function EventScheduleContent() {
           </Stack>
         </Stack>
       </Modal>
+      {selectedParticipantTeam && (
+        <TeamDetailModal
+          currentTeam={selectedParticipantTeam}
+          isOpen={Boolean(selectedParticipantTeam)}
+          onClose={() => {
+            setSelectedParticipantTeam(null);
+          }}
+          canManage={false}
+        />
+      )}
       <Modal
         opened={Boolean(selectedRefundTeam)}
         onClose={closeRefundModal}

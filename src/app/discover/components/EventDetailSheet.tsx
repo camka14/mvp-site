@@ -8,6 +8,8 @@ import {
     Team,
     getEventDateTime,
     getUserAvatarUrl,
+    getUserFullName,
+    getUserHandle,
     getTeamAvatarUrl,
     PaymentIntent,
     getEventImageFallbackUrl,
@@ -813,7 +815,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
             if (shouldLoadFreeAgents) {
                 try {
-                    const agents = await userService.getUsersByIds(freeAgentIds);
+                    const agents = await userService.getUsersByIds(freeAgentIds, { eventId: baseEvent.$id });
                     setFreeAgents(agents);
                 } catch (error) {
                     console.error('Failed to load free agents:', error);
@@ -3174,18 +3176,29 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     isLoading={isLoadingEvent}
                     renderParticipant={(player) => (
                         <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                            <Image
-                                src={getUserAvatarUrl(player as UserData, 40)}
-                                alt={(player as UserData).fullName}
-                                width={40}
-                                height={40}
-                                unoptimized
-                                className="w-10 h-10 rounded-full object-cover"
-                            />
-                            <div>
-                                <div className="font-medium text-gray-900">{(player as UserData).fullName}</div>
-                                <div className="text-sm text-gray-500">@{(player as UserData).userName}</div>
-                            </div>
+                            {(() => {
+                                const participant = player as UserData;
+                                const participantName = getUserFullName(participant);
+                                const participantHandle = getUserHandle(participant);
+                                return (
+                                    <>
+                                        <Image
+                                            src={getUserAvatarUrl(participant, 40)}
+                                            alt={participantName}
+                                            width={40}
+                                            height={40}
+                                            unoptimized
+                                            className="w-10 h-10 rounded-full object-cover"
+                                        />
+                                        <div>
+                                            <div className="font-medium text-gray-900">{participantName}</div>
+                                            {participantHandle && (
+                                                <div className="text-sm text-gray-500">{participantHandle}</div>
+                                            )}
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </div>
                     )}
                     emptyMessage="No players have joined this event yet."
@@ -3261,13 +3274,15 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 opened={Boolean(selectedFreeAgentActionUser)}
                 onClose={() => setSelectedFreeAgentActionUser(null)}
                 centered
-                title={selectedFreeAgentActionUser ? `${selectedFreeAgentActionUser.fullName}` : 'Free Agent Actions'}
+                title={selectedFreeAgentActionUser ? getUserFullName(selectedFreeAgentActionUser) : 'Free Agent Actions'}
                 zIndex={SIGN_MODAL_Z_INDEX}
             >
                 <Stack gap="sm">
-                    <Text size="sm" c="dimmed">
-                        @{selectedFreeAgentActionUser?.userName || 'user'}
-                    </Text>
+                    {selectedFreeAgentActionUser && getUserHandle(selectedFreeAgentActionUser) && (
+                        <Text size="sm" c="dimmed">
+                            {getUserHandle(selectedFreeAgentActionUser)}
+                        </Text>
+                    )}
                     <Button
                         onClick={handleInviteFreeAgentToTeam}
                         disabled={!selectedFreeAgentActionUser || !currentEvent?.$id}

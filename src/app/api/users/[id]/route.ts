@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { requireSession, assertUserAccess } from '@/lib/permissions';
+import { requireSession, assertUserAccess, getOptionalSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { hasOrganizationStaffAccess } from '@/server/accessControl';
 import {
@@ -9,28 +9,7 @@ import {
   isPrismaUserNameUniqueError,
   normalizeUserName,
 } from '@/server/userNames';
-
-const publicUserSelect = {
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  firstName: true,
-  lastName: true,
-  dateOfBirth: true,
-  dobVerified: true,
-  dobVerifiedAt: true,
-  ageVerificationProvider: true,
-  teamIds: true,
-  friendIds: true,
-  userName: true,
-  hasStripeAccount: true,
-  followingIds: true,
-  friendRequestIds: true,
-  friendRequestSentIds: true,
-  uploadedImages: true,
-  profileImageId: true,
-  homePageOrganizationId: true,
-};
+import { applyUserPrivacy, createVisibilityContext, publicUserSelect } from '@/server/userPrivacy';
 
 const updateSchema = z.object({
   data: z.record(z.string(), z.any()),
@@ -42,7 +21,21 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!user) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  return NextResponse.json({ user: withLegacyFields(user) }, { status: 200 });
+  const session = getOptionalSession(_req);
+  const query = _req.nextUrl.searchParams;
+  const parseContextId = (value: string | null): string | null => {
+    if (!value) return null;
+    const normalized = value.trim();
+    return normalized.length ? normalized : null;
+  };
+
+  const visibilityContext = await createVisibilityContext(prisma, {
+    viewerId: session?.userId,
+    isAdmin: session?.isAdmin,
+    teamId: parseContextId(query.get('teamId')),
+    eventId: parseContextId(query.get('eventId')),
+  });
+  return NextResponse.json({ user: withLegacyFields(applyUserPrivacy(user, visibilityContext)) }, { status: 200 });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

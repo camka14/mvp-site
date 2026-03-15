@@ -21,6 +21,11 @@ interface UpdateProfileData {
   profileImageId?: string;
 }
 
+export interface UserVisibilityContext {
+  teamId?: string;
+  eventId?: string;
+}
+
 export interface UserSocialGraph {
   user: UserData;
   friends: UserData[];
@@ -47,16 +52,20 @@ class UserService {
     return response.user;
   }
 
-  async getUserById(id: string): Promise<UserData | undefined> {
+  async getUserById(id: string, context: UserVisibilityContext = {}): Promise<UserData | undefined> {
     try {
-      const response = await apiFetch<{ user: UserData }>(`/api/users/${id}`);
+      const params = new URLSearchParams();
+      if (context.teamId) params.set('teamId', context.teamId);
+      if (context.eventId) params.set('eventId', context.eventId);
+      const query = params.toString();
+      const response = await apiFetch<{ user: UserData }>(`/api/users/${id}${query ? `?${query}` : ''}`);
       return response.user;
     } catch {
       return undefined;
     }
   }
 
-  async getUsersByIds(ids: string[]): Promise<UserData[]> {
+  async getUsersByIds(ids: string[], context: UserVisibilityContext = {}): Promise<UserData[]> {
     if (ids.length === 0) return [];
     const uniqueIds = Array.from(new Set(ids.filter((id) => id.trim().length > 0)));
     if (!uniqueIds.length) return [];
@@ -66,6 +75,8 @@ class UserService {
         this.chunkIds(uniqueIds).map((batch) => {
           const params = new URLSearchParams();
           params.set('ids', batch.join(','));
+          if (context.teamId) params.set('teamId', context.teamId);
+          if (context.eventId) params.set('eventId', context.eventId);
           return apiFetch<{ users?: UserData[] }>(`/api/users?${params.toString()}`);
         }),
       );
@@ -76,7 +87,7 @@ class UserService {
         .map((id) => byId.get(id))
         .filter((user): user is UserData => Boolean(user));
     } catch {
-      const results = await Promise.all(uniqueIds.map((id) => this.getUserById(id)));
+      const results = await Promise.all(uniqueIds.map((id) => this.getUserById(id, context)));
       return results.filter(Boolean) as UserData[];
     }
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/permissions';
+import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import {
   findUserNameConflictUserId,
@@ -9,28 +9,12 @@ import {
   normalizeUserName,
   reserveGeneratedUserName,
 } from '@/server/userNames';
-
-const publicUserSelect = {
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  firstName: true,
-  lastName: true,
-  dateOfBirth: true,
-  dobVerified: true,
-  dobVerifiedAt: true,
-  ageVerificationProvider: true,
-  teamIds: true,
-  friendIds: true,
-  userName: true,
-  hasStripeAccount: true,
-  followingIds: true,
-  friendRequestIds: true,
-  friendRequestSentIds: true,
-  uploadedImages: true,
-  profileImageId: true,
-  homePageOrganizationId: true,
-};
+import {
+  applyUserPrivacyList,
+  createVisibilityContext,
+  isVisibleInGenericSearch,
+  publicUserSelect,
+} from '@/server/userPrivacy';
 
 const createSchema = z.object({
   id: z.string(),
@@ -53,9 +37,23 @@ const parseIdsParam = (raw: string | null): string[] => {
   );
 };
 
+const parseContextIdParam = (raw: string | null): string | null => {
+  if (!raw) return null;
+  const normalized = raw.trim();
+  return normalized.length ? normalized : null;
+};
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const ids = parseIdsParam(params.get('ids'));
+  const session = getOptionalSession(req);
+  const visibilityContext = await createVisibilityContext(prisma, {
+    viewerId: session?.userId,
+    isAdmin: session?.isAdmin,
+    teamId: parseContextIdParam(params.get('teamId')),
+    eventId: parseContextIdParam(params.get('eventId')),
+  });
+
   if (ids.length > 0) {
     const users = await prisma.userData.findMany({
       where: { id: { in: ids } },
@@ -66,7 +64,10 @@ export async function GET(req: NextRequest) {
     const orderedUsers = ids
       .map((id) => byId.get(id))
       .filter((user): user is NonNullable<typeof user> => Boolean(user));
-    return NextResponse.json({ users: withLegacyList(orderedUsers) }, { status: 200 });
+    return NextResponse.json(
+      { users: withLegacyList(applyUserPrivacyList(orderedUsers, visibilityContext)) },
+      { status: 200 },
+    );
   }
 
   const query = params.get('query') ?? '';
@@ -85,11 +86,15 @@ export async function GET(req: NextRequest) {
       ],
     },
     select: publicUserSelect,
-    take: 20,
+    take: 100,
     orderBy: { userName: 'asc' },
   });
 
-  return NextResponse.json({ users: withLegacyList(users) }, { status: 200 });
+  const filteredUsers = users.filter((user) => isVisibleInGenericSearch(user)).slice(0, 20);
+  return NextResponse.json(
+    { users: withLegacyList(applyUserPrivacyList(filteredUsers, visibilityContext)) },
+    { status: 200 },
+  );
 }
 
 export async function POST(req: NextRequest) {
