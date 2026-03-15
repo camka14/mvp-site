@@ -227,6 +227,7 @@ model ChatGroup {
   updatedAt DateTime?
   name String?
   userIds String[]
+  mutedUserIds String[] @default([])
   hostId String
 }
 

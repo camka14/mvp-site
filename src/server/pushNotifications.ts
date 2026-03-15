@@ -52,6 +52,9 @@ const normalizeOptional = (value?: string | null): string | null => {
 const normalizeUserIds = (userIds: string[]): string[] => (
   Array.from(new Set(userIds.map((id) => id.trim()).filter(Boolean)))
 );
+const isUserTopicId = (topicId: string | null): boolean => (
+  !!topicId && topicId.startsWith('user_')
+);
 
 const toPushDataValue = (value: unknown): string => {
   if (typeof value === 'string') return value;
@@ -141,6 +144,16 @@ export const unregisterPushDeviceTarget = async ({
   if (!normalizedUserIds.length) return;
 
   if (normalizedPushTarget) {
+    // For per-user topics, never perform broad token deletion without an explicit token.
+    // This preserves multi-device delivery when a single device logs out without a local token.
+    if (!normalizedPushToken && isUserTopicId(normalizedPushTarget)) {
+      console.warn('Skipped tokenless push target unregister for user topic.', {
+        userIds: normalizedUserIds,
+        pushTarget: normalizedPushTarget,
+      });
+      return;
+    }
+
     await prisma.$executeRaw`
       DELETE FROM "PushDeviceTarget"
       WHERE "userId" IN (${Prisma.join(normalizedUserIds)})

@@ -33,15 +33,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
   const explicitRecipientIds = uniqueIds((parsed.data.userIds ?? []).map((id) => id.trim()).filter(Boolean));
   let recipientIds = explicitRecipientIds;
 
+  const topic = await prisma.chatGroup.findUnique({
+    where: { id: topicId },
+    select: { userIds: true, mutedUserIds: true },
+  });
+  const mutedUserIds = new Set(uniqueIds((topic?.mutedUserIds ?? []).map((id) => id.trim()).filter(Boolean)));
+
   if (!recipientIds.length) {
-    const topic = await prisma.chatGroup.findUnique({
-      where: { id: topicId },
-      select: { userIds: true },
-    });
     recipientIds = uniqueIds((topic?.userIds ?? []).map((id) => id.trim()).filter(Boolean));
   }
 
-  const recipients = recipientIds.filter((userId) => userId !== senderId);
+  const recipients = recipientIds.filter((userId) => userId !== senderId && !mutedUserIds.has(userId));
   const delivery = await sendPushToUsers({
     userIds: recipients,
     title: parsed.data.title?.trim() || 'Notification',

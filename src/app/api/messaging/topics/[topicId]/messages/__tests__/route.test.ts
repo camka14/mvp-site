@@ -38,7 +38,10 @@ describe('/api/messaging/topics/[topicId]/messages POST', () => {
 
   it('resolves recipients from topic membership and excludes sender', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
-    prismaMock.chatGroup.findUnique.mockResolvedValue({ userIds: ['user_1', 'user_2', 'user_3'] });
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      userIds: ['user_1', 'user_2', 'user_3'],
+      mutedUserIds: [],
+    });
 
     const res = await POST(requestFor({ title: 'New message', body: 'Hello' }), {
       params: Promise.resolve({ topicId: 'topic_1' }),
@@ -52,6 +55,27 @@ describe('/api/messaging/topics/[topicId]/messages POST', () => {
       body: 'Hello',
     }));
     expect(json.recipientUserIds).toEqual(['user_2', 'user_3']);
+  });
+
+  it('excludes muted users from recipients', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.chatGroup.findUnique.mockResolvedValue({
+      userIds: ['user_1', 'user_2', 'user_3'],
+      mutedUserIds: ['user_3'],
+    });
+
+    const res = await POST(requestFor({ title: 'New message', body: 'Hello' }), {
+      params: Promise.resolve({ topicId: 'topic_1' }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
+      userIds: ['user_2'],
+      title: 'New message',
+      body: 'Hello',
+    }));
+    expect(json.recipientUserIds).toEqual(['user_2']);
   });
 
   it('rejects sender spoofing for non-admin sessions', async () => {

@@ -307,6 +307,7 @@ model ChatGroup {
   name      String?
   // Indexed via a raw SQL GIN migration for array membership lookups.
   userIds   String[]
+  mutedUserIds String[] @default([])
   hostId    String
 }
 

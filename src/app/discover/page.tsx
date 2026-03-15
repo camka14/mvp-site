@@ -7,7 +7,6 @@ import {
   Button,
   Chip,
   Container,
-  Drawer,
   Group,
   Loader,
   Paper,
@@ -21,7 +20,7 @@ import {
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 
-import { ArrowUpDown, CalendarDays, Filter, Search, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, Search, X } from 'lucide-react';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -799,7 +798,6 @@ function EventsTabContent(props: {
 
   const [eventSort, setEventSort] = useState<(typeof EVENT_SORT_OPTIONS)[number]['value']>('soonest');
   const [sportSearchTerm, setSportSearchTerm] = useState('');
-  const [filtersDrawerOpened, setFiltersDrawerOpened] = useState(false);
   const allEventTypesSelected = selectedEventTypes.length === eventTypeOptions.length;
   const allSportsSelected = selectedSports.length === 0;
   const sportsQuery = sportSearchTerm.trim().toLowerCase();
@@ -1127,14 +1125,6 @@ function EventsTabContent(props: {
             <div style={{ minWidth: 190, flexShrink: 0 }}>
               <LocationSearch />
             </div>
-            <Button
-              variant="default"
-              leftSection={<Filter size={16} />}
-              className="lg:hidden"
-              onClick={() => setFiltersDrawerOpened(true)}
-            >
-              Filters{activeFilterCount ? ` (${activeFilterCount})` : ''}
-            </Button>
           </Group>
           <Button size="md" onClick={onCreateEvent}>
             Create event
@@ -1254,30 +1244,6 @@ function EventsTabContent(props: {
           )}
         </div>
       </div>
-
-      <Drawer
-        opened={filtersDrawerOpened}
-        onClose={() => setFiltersDrawerOpened(false)}
-        title="Filters"
-        position="right"
-        size="100%"
-      >
-        <div className="flex h-full flex-col">
-          <div className="flex-1 overflow-y-auto pr-1">
-            {filterPanel}
-          </div>
-          <div className="mt-4 border-t border-slate-200 pt-4">
-            <Group grow>
-              <Button variant="default" onClick={resetFilters}>
-                Reset
-              </Button>
-              <Button onClick={() => setFiltersDrawerOpened(false)}>
-                Apply
-              </Button>
-            </Group>
-          </div>
-        </div>
-      </Drawer>
     </>
   );
 }
@@ -1318,7 +1284,6 @@ function OrganizationsTabContent(props: {
   } = props;
 
   const [sportSearchTerm, setSportSearchTerm] = useState('');
-  const [filtersDrawerOpened, setFiltersDrawerOpened] = useState(false);
   const allSportsSelected = selectedSports.length === 0;
   const sportsQuery = sportSearchTerm.trim().toLowerCase();
   const activeQuery = searchTerm.trim();
@@ -1467,14 +1432,6 @@ function OrganizationsTabContent(props: {
           <div style={{ minWidth: 170, flexShrink: 0 }}>
             <LocationSearch />
           </div>
-          <Button
-            variant="default"
-            leftSection={<Filter size={16} />}
-            className="lg:hidden"
-            onClick={() => setFiltersDrawerOpened(true)}
-          >
-            Filters{activeFilterCount ? ` (${activeFilterCount})` : ''}
-          </Button>
         </Group>
         <Text size="sm" c="dimmed">
           {results.length} organization{results.length === 1 ? '' : 's'}
@@ -1568,26 +1525,6 @@ function OrganizationsTabContent(props: {
           )}
         </div>
       </div>
-
-      <Drawer
-        opened={filtersDrawerOpened}
-        onClose={() => setFiltersDrawerOpened(false)}
-        title="Filters"
-        position="right"
-        size="100%"
-      >
-        <div className="flex h-full flex-col">
-          <div className="flex-1 overflow-y-auto pr-1">{filterPanel}</div>
-          <div className="mt-4 border-t border-slate-200 pt-4">
-            <Group grow>
-              <Button variant="default" onClick={resetFilters}>
-                Reset
-              </Button>
-              <Button onClick={() => setFiltersDrawerOpened(false)}>Apply</Button>
-            </Group>
-          </div>
-        </div>
-      </Drawer>
     </div>
   );
 }
@@ -1634,7 +1571,6 @@ function RentalsTabContent(props: {
   } = props;
 
   const [sportSearchTerm, setSportSearchTerm] = useState('');
-  const [filtersDrawerOpened, setFiltersDrawerOpened] = useState(false);
   const allSportsSelected = selectedSports.length === 0;
   const sportsQuery = sportSearchTerm.trim().toLowerCase();
   const activeQuery = searchTerm.trim();
@@ -1850,14 +1786,6 @@ function RentalsTabContent(props: {
           <div style={{ minWidth: 170, flexShrink: 0 }}>
             <LocationSearch />
           </div>
-          <Button
-            variant="default"
-            leftSection={<Filter size={16} />}
-            className="lg:hidden"
-            onClick={() => setFiltersDrawerOpened(true)}
-          >
-            Filters{activeFilterCount ? ` (${activeFilterCount})` : ''}
-          </Button>
         </Group>
         <Text size="sm" c="dimmed">
           {organizationsWithListings.length} organization{organizationsWithListings.length === 1 ? '' : 's'} with rentals
@@ -1944,26 +1872,6 @@ function RentalsTabContent(props: {
           )}
         </div>
       </div>
-
-      <Drawer
-        opened={filtersDrawerOpened}
-        onClose={() => setFiltersDrawerOpened(false)}
-        title="Filters"
-        position="right"
-        size="100%"
-      >
-        <div className="flex h-full flex-col">
-          <div className="flex-1 overflow-y-auto pr-1">{filterPanel}</div>
-          <div className="mt-4 border-t border-slate-200 pt-4">
-            <Group grow>
-              <Button variant="default" onClick={resetFilters}>
-                Reset
-              </Button>
-              <Button onClick={() => setFiltersDrawerOpened(false)}>Apply</Button>
-            </Group>
-          </div>
-        </div>
-      </Drawer>
     </div>
   );
 }
