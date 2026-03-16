@@ -39,6 +39,7 @@ jest.mock('react-big-calendar', () => {
 });
 
 jest.mock('react-big-calendar/lib/addons/dragAndDrop', () => (Component: any) => Component);
+jest.mock('react-big-calendar/lib/css/react-big-calendar.css', () => ({}));
 jest.mock('react-big-calendar/lib/addons/dragAndDrop/styles.css', () => ({}));
 jest.mock('@/components/ui/CreateFieldModal', () => () => null);
 jest.mock('@/components/ui/CreateRentalSlotModal', () => () => null);

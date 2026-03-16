@@ -14,13 +14,14 @@ interface CreateRentalSlotModalProps {
   opened: boolean;
   onClose: () => void;
   field: Field | null;
+  selectedFields?: Field[];
   slot?: TimeSlot | null;
   /**
    * Optional calendar range to seed the form when creating a new slot.
    * Only used when `slot` is not provided.
    */
   initialRange?: { start: Date; end: Date } | null;
-  onSaved?: (field: Field) => void;
+  onSaved?: (fields: Field[]) => void;
   organizationHasStripeAccount?: boolean;
   organizationId?: string | null;
 }
@@ -107,6 +108,7 @@ export default function CreateRentalSlotModal({
   opened,
   onClose,
   field,
+  selectedFields = [],
   slot,
   initialRange = null,
   onSaved,
@@ -138,6 +140,16 @@ export default function CreateRentalSlotModal({
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const targetFields = useMemo(() => {
+    if (slot) {
+      return field ? [field] : [];
+    }
+    if (selectedFields.length > 0) {
+      return selectedFields;
+    }
+    return field ? [field] : [];
+  }, [field, selectedFields, slot]);
+  const hasTargetFields = targetFields.length > 0;
 
   useEffect(() => {
     if (!opened) {
@@ -311,7 +323,7 @@ export default function CreateRentalSlotModal({
     setError(null);
     try {
       const updatedField = await fieldService.deleteRentalSlot(field, slot.$id);
-      onSaved?.(updatedField);
+      onSaved?.([updatedField]);
       onClose();
     } catch (err) {
       console.error('Failed to delete rental slot:', err);
@@ -323,8 +335,8 @@ export default function CreateRentalSlotModal({
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!field) {
-      setError('A field is required to create a rental slot.');
+    if (!hasTargetFields) {
+      setError('At least one field is required to create a rental slot.');
       return;
     }
     if (!startDate) {
@@ -408,8 +420,11 @@ export default function CreateRentalSlotModal({
         price: organizationHasStripeAccount ? price : (slot?.price ?? 0),
       };
 
-      let result: ManageRentalSlotResult;
+      let results: ManageRentalSlotResult[];
       if (slot) {
+        if (!field) {
+          throw new Error('A field is required to edit this rental slot.');
+        }
         const updatePayload: RentalSlotUpdateInput = {
           $id: slot.$id,
           dayOfWeek: payload.dayOfWeek,
@@ -422,12 +437,15 @@ export default function CreateRentalSlotModal({
           rentalDocumentTemplateId: payload.rentalDocumentTemplateId ?? null,
           price: organizationHasStripeAccount ? payload.price : (slot.price ?? 0),
         };
-        result = await fieldService.updateRentalSlot(field, updatePayload);
+        const result = await fieldService.updateRentalSlot(field, updatePayload);
+        results = [result];
       } else {
-        result = await fieldService.createRentalSlot(field, payload);
+        results = await Promise.all(targetFields.map((targetField) => (
+          fieldService.createRentalSlot(targetField, payload)
+        )));
       }
 
-      onSaved?.(result.field);
+      onSaved?.(results.map((result) => result.field));
       onClose();
     } catch (err) {
       console.error('Failed to save rental slot:', err);
@@ -438,13 +456,21 @@ export default function CreateRentalSlotModal({
   };
 
   return (
-    <Modal opened={opened} onClose={handleClose} title={slot ? 'Edit Rental Slot' : 'Add Rental Slot'} size="lg" centered>
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      title={slot ? 'Edit Rental Slot' : targetFields.length > 1 ? 'Add Rental Slots' : 'Add Rental Slot'}
+      size="lg"
+      centered
+    >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <div>
-            <Text fw={500}>Field</Text>
+            <Text fw={500}>{slot ? 'Field' : 'Fields'}</Text>
             <Text size="sm" c="dimmed">
-              {field ? field.name || `Field ${field.fieldNumber ?? ''}` : 'Select a field to continue'}
+              {targetFields.length > 0
+                ? targetFields.map((targetField) => targetField.name || `Field ${targetField.fieldNumber ?? ''}`).join(', ')
+                : 'Select a field to continue'}
             </Text>
           </div>
 
@@ -461,7 +487,7 @@ export default function CreateRentalSlotModal({
               }
             }}
             required
-            disabled={!field}
+            disabled={!hasTargetFields}
             popoverProps={{ withinPortal: true }}
           />
 
@@ -473,7 +499,7 @@ export default function CreateRentalSlotModal({
             onChange={(value) => setEndDate(coerceDateValue(value))}
             clearable={repeating}
             clearButtonProps={{ 'aria-label': 'Clear end date' }}
-            disabled={!field}
+            disabled={!hasTargetFields}
             required={!repeating}
             popoverProps={{ withinPortal: true }}
             minDate={startDate ?? undefined}
@@ -486,7 +512,7 @@ export default function CreateRentalSlotModal({
                 withSeconds={false}
                 value={startTime}
                 onChange={(value) => setStartTime(value.currentTarget.value)}
-                disabled={!field}
+                disabled={!hasTargetFields}
                 required
               />
               <TimeInput
@@ -494,7 +520,7 @@ export default function CreateRentalSlotModal({
                 withSeconds={false}
                 value={endTime}
                 onChange={(value) => setEndTime(value.currentTarget.value)}
-                disabled={!field}
+                disabled={!hasTargetFields}
                 required
               />
             </Group>
@@ -511,7 +537,7 @@ export default function CreateRentalSlotModal({
                 }
                 setPrice(nextValue);
               }}
-              disabled={!field || !organizationHasStripeAccount}
+              disabled={!hasTargetFields || !organizationHasStripeAccount}
             />
             <PriceWithFeesPreview amountCents={organizationHasStripeAccount ? price : 0} />
             {!organizationHasStripeAccount && (
@@ -531,7 +557,7 @@ export default function CreateRentalSlotModal({
               placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'}
               searchable
               clearable
-              disabled={!field || !organizationId || templatesLoading}
+              disabled={!hasTargetFields || !organizationId || templatesLoading}
               nothingFoundMessage="No templates found"
             />
           </div>
@@ -545,7 +571,7 @@ export default function CreateRentalSlotModal({
               placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
               searchable
               clearable
-              disabled={!field || !organizationId || templatesLoading}
+              disabled={!hasTargetFields || !organizationId || templatesLoading}
               nothingFoundMessage="No templates found"
             />
             {!templatesLoading && organizationId && templateOptions.length === 0 && (
@@ -568,7 +594,7 @@ export default function CreateRentalSlotModal({
                 setEndDate((prev) => prev ?? new Date(startDate.getTime()));
               }
             }}
-            disabled={!field}
+            disabled={!hasTargetFields}
           />
 
           {error && (
@@ -594,8 +620,14 @@ export default function CreateRentalSlotModal({
               <Button variant="default" onClick={handleClose} disabled={submitting || deleting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={!field || submitting || deleting}>
-                {submitting ? 'Saving…' : slot ? 'Save Rental Slot' : 'Create Rental Slot'}
+              <Button type="submit" disabled={!hasTargetFields || submitting || deleting}>
+                {submitting
+                  ? 'Saving…'
+                  : slot
+                    ? 'Save Rental Slot'
+                    : targetFields.length > 1
+                      ? `Create Rental Slots (${targetFields.length})`
+                      : 'Create Rental Slot'}
               </Button>
             </Group>
           </Group>

@@ -57,6 +57,7 @@ export interface LeagueGenerationResponse {
 
 export interface EventFilters {
     query?: string;
+    organizationId?: string;
     maxDistance?: number;
     userLocation?: LocationCoordinates;
     dateFrom?: string;

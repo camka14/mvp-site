@@ -20,6 +20,7 @@ const userLocationSchema = z
 
 const filterSchema = z.object({
   query: z.string().optional(),
+  organizationId: z.string().optional(),
   maxDistance: z.number().optional(),
   userLocation: userLocationSchema.optional(),
   dateFrom: z.string().optional(),
@@ -321,6 +322,10 @@ export async function POST(req: NextRequest) {
       { description: { contains: queryTerm, mode: 'insensitive' } },
       { location: { contains: queryTerm, mode: 'insensitive' } },
     ];
+  }
+  const organizationId = typeof filters.organizationId === 'string' ? filters.organizationId.trim() : '';
+  if (organizationId.length > 0) {
+    where.organizationId = organizationId;
   }
 
   const userLocation = filters.userLocation;

@@ -23,6 +23,7 @@ import {
   View,
 } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import { addHours, endOfDay, endOfMonth, endOfWeek, format, getDay, parse, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
 import Loading from '@/components/ui/Loading';
@@ -39,7 +40,7 @@ import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
 
 type SelectionState = {
-  fieldId: string;
+  fieldIds: string[];
   start: Date;
   end: Date;
 };
@@ -323,6 +324,7 @@ export default function FieldsTabContent({ organization, organizationId, current
   const [editField, setEditField] = useState<Field | null>(null);
   const [createRentalOpen, setCreateRentalOpen] = useState(false);
   const [editingRentalSlot, setEditingRentalSlot] = useState<TimeSlot | null>(null);
+  const [editingRentalField, setEditingRentalField] = useState<Field | null>(null);
   const [rentalDraftRange, setRentalDraftRange] = useState<{ start: Date; end: Date } | null>(null);
 
   useEffect(() => {
@@ -404,7 +406,7 @@ export default function FieldsTabContent({ organization, organizationId, current
   }, [org]);
 
   useEffect(() => {
-    if (!rentalListings.length || selection?.fieldId) return;
+    if (!rentalListings.length || (selection?.fieldIds?.length ?? 0) > 0) return;
 
     const firstListing = rentalListings[0];
     const baseDate = new Date(firstListing.nextOccurrence);
@@ -417,15 +419,15 @@ export default function FieldsTabContent({ organization, organizationId, current
     const initialEnd = initialEndCandidate > initialStart ? initialEndCandidate : addHours(initialStart, 1);
 
     setSelection({
-      fieldId: firstListing.field.$id,
+      fieldIds: [firstListing.field.$id],
       start: initialStart,
       end: initialEnd,
     });
     setCalendarDate(new Date(firstListing.nextOccurrence.getTime()));
-  }, [rentalListings, selection?.fieldId]);
+  }, [rentalListings, selection?.fieldIds]);
 
   useEffect(() => {
-    if (selection?.fieldId) return;
+    if ((selection?.fieldIds?.length ?? 0) > 0) return;
     if (!fields.length) return;
     if (rentalListings.length) return;
 
@@ -433,9 +435,9 @@ export default function FieldsTabContent({ organization, organizationId, current
       const start = new Date();
       start.setMinutes(0, 0, 0);
       const end = new Date(start.getTime() + MIN_SELECTION_MS);
-      return { fieldId: fields[0].$id, start, end };
+      return { fieldIds: [fields[0].$id], start, end };
     });
-  }, [fields, rentalListings.length, selection?.fieldId]);
+  }, [fields, rentalListings.length, selection?.fieldIds]);
 
   useEffect(() => {
     if (canManage) {
@@ -473,10 +475,15 @@ export default function FieldsTabContent({ organization, organizationId, current
     setCalendarDate(new Date(fallbackStart));
   }, [canManage, fields, rentalListings, rentalSelections.length]);
 
-  const selectedField = useMemo(() => {
-    if (!selection) return null;
-    return fields.find((field) => field.$id === selection.fieldId) ?? null;
-  }, [fields, selection]);
+  const selectedFieldIds = useMemo(
+    () => normalizeFieldIds(selection?.fieldIds ?? []),
+    [selection?.fieldIds],
+  );
+  const selectedFields = useMemo(
+    () => fields.filter((field) => selectedFieldIds.includes(field.$id)),
+    [fields, selectedFieldIds],
+  );
+  const selectedField = selectedFields[0] ?? null;
 
   const refreshOrganization = useCallback(async () => {
     if (!organizationId) return;
@@ -512,10 +519,10 @@ export default function FieldsTabContent({ organization, organizationId, current
   const fieldIdsToHydrate = useMemo(
     () => (
       canManage
-        ? (selectedField ? [selectedField.$id] : [])
+        ? selectedFieldIds
         : fields.map((field) => field.$id).filter(Boolean)
     ),
-    [canManage, fields, selectedField],
+    [canManage, fields, selectedFieldIds],
   );
   const fieldEventsRequestKey = useMemo(
     () => (
@@ -540,7 +547,7 @@ export default function FieldsTabContent({ organization, organizationId, current
 
   const selectionCalendarEvents = useMemo<SelectionCalendarEntry[]>(() => {
     if (canManage) {
-      if (!selectedField || !selection) {
+      if (!selectedField || !selection || !selectedFieldIds.length) {
         return [];
       }
       const selectionStart = selection.start;
@@ -550,7 +557,7 @@ export default function FieldsTabContent({ organization, organizationId, current
         title: 'New Rental Slot',
         start: selectionStart,
         end: selectionEnd,
-        resourceId: selection.fieldId,
+        resourceId: selectedFieldIds[0],
         resource: { type: 'selection' },
         metaType: 'selection',
         fieldName: selectedField.name ?? `Field ${selectedField.fieldNumber}`,
@@ -596,17 +603,32 @@ export default function FieldsTabContent({ organization, organizationId, current
       });
     });
     return draftEvents;
-  }, [calendarRange.end, calendarRange.start, canManage, fields, rentalSelections, selectedField, selection]);
+  }, [calendarRange.end, calendarRange.start, canManage, fields, rentalSelections, selectedField, selectedFieldIds, selection]);
 
   const baseCalendarEvents = useMemo<FieldCalendarEntry[]>(() => {
     if (canManage) {
-      if (!selectedField) {
+      if (!selectedFields.length) {
         return [];
       }
-      return buildFieldCalendarEvents([selectedField], calendarRange) as FieldCalendarEntry[];
+      const events = buildFieldCalendarEvents(selectedFields, calendarRange) as FieldCalendarEntry[];
+      const seenBookedKeys = new Set<string>();
+      return events.filter((event) => {
+        if (event.metaType !== 'booked') {
+          return true;
+        }
+        const resource = event.resource as { $id?: string } | undefined;
+        const resourceId = typeof resource?.$id === 'string' ? resource.$id : '';
+        const entryType = event.id.includes('field-booked-match-') ? 'match' : 'event';
+        const dedupeKey = `${entryType}:${resourceId || event.start.toISOString()}:${event.end.toISOString()}`;
+        if (seenBookedKeys.has(dedupeKey)) {
+          return false;
+        }
+        seenBookedKeys.add(dedupeKey);
+        return true;
+      });
     }
     return buildFieldCalendarEvents(fields, calendarRange) as FieldCalendarEntry[];
-  }, [calendarRange, canManage, fields, selectedField]);
+  }, [calendarRange, canManage, fields, selectedFields]);
 
   const calendarEvents = useMemo<CalendarEventData[]>(
     () => [...baseCalendarEvents, ...selectionCalendarEvents],
@@ -741,14 +763,15 @@ export default function FieldsTabContent({ organization, organizationId, current
   }, [canManage, isBlockedRange]);
 
   const existingConflicts = useMemo(() => {
-    if (!selectedField || !selection) return [];
+    if (!selectedFieldIds.length || !selection) return [];
     const selectionStart = selection.start;
     const selectionEnd = selection.end;
     return calendarEvents.filter((event) => {
       if (event.metaType === 'selection' || event.metaType === 'rental') return false;
-      return event.resourceId === selectedField.$id && compareRanges(selectionStart, selectionEnd, event.start, event.end);
+      return selectedFieldIds.includes(event.resourceId)
+        && compareRanges(selectionStart, selectionEnd, event.start, event.end);
     });
-  }, [calendarEvents, selection, selectedField]);
+  }, [calendarEvents, selection, selectedFieldIds]);
 
   useEffect(() => {
     if (!fieldEventsRequestKey || !fieldIdsToHydrate.length) return;
@@ -944,22 +967,23 @@ export default function FieldsTabContent({ organization, organizationId, current
 
   const summaryColor = useMemo(() => {
     if (canManage) {
-      if (!selectedField || !selection) return 'dimmed';
+      if (!selectedFieldIds.length || !selection) return 'dimmed';
       return existingConflicts.length ? 'yellow' : 'teal';
     }
     if (!currentUser) return 'dimmed';
     return canCreateRentalEvent ? 'teal' : 'red';
-  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, selectedField, selection]);
+  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, selectedFieldIds.length, selection]);
 
   const summaryText = useMemo(() => {
     if (canManage) {
-      if (!selectedField || !selection) {
-        return 'Select a field to continue.';
+      if (!selectedFieldIds.length || !selection) {
+        return 'Select at least one field to continue.';
       }
       const startLabel = formatDisplayDateTime(selection.start);
       const endLabel = formatDisplayTime(selection.end);
       const conflictSuffix = existingConflicts.length ? ' (overlaps an event or match on this date)' : '';
-      return `Draft slot: ${startLabel} – ${endLabel}${conflictSuffix}. Click "Add Rental Slot" to set price, or click an existing rental slot to edit.`;
+      const fieldsSuffix = selectedFieldIds.length > 1 ? ` across ${selectedFieldIds.length} fields` : '';
+      return `Draft slot: ${startLabel} – ${endLabel}${fieldsSuffix}${conflictSuffix}. Click "Add Rental Slot" to set price, or click an existing rental slot to edit.`;
     }
     if (!currentUser) {
       return 'Sign in to create an event.';
@@ -971,7 +995,7 @@ export default function FieldsTabContent({ organization, organizationId, current
       return 'Resolve selection errors before creating an event.';
     }
     return `${rentalSelections.length} selection${rentalSelections.length === 1 ? '' : 's'} ready • Total ${formatPrice(totalRentalCents)}`;
-  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, rentalSelections.length, selectedField, selection, totalRentalCents]);
+  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, rentalSelections.length, selectedFieldIds.length, selection, totalRentalCents]);
 
   const updateRentalSelection = useCallback(
     (selectionKey: string, updater: (selectionItem: RentalDraftSelection) => RentalDraftSelection) => {
@@ -1011,7 +1035,7 @@ export default function FieldsTabContent({ organization, organizationId, current
     (start: Date, end: Date, params?: { slotKey?: string }) => {
       if (canManage) {
         setSelection((prev) => {
-          if (!prev?.fieldId) return prev;
+          if (!(prev?.fieldIds?.length)) return prev;
           const nextStart = new Date(start);
           const nextEnd = new Date(end);
           if (nextEnd.getTime() - nextStart.getTime() < MIN_SELECTION_MS) {
@@ -1052,11 +1076,14 @@ export default function FieldsTabContent({ organization, organizationId, current
     (slotInfo: any) => {
       if (!slotInfo?.start) return;
       const slotStart = new Date(slotInfo.start);
-      const slotEnd = slotInfo?.end ? new Date(slotInfo.end) : new Date(slotStart.getTime() + MIN_SELECTION_MS);
+      const slotEndRaw = slotInfo?.end ? new Date(slotInfo.end) : new Date(slotStart.getTime() + MIN_SELECTION_MS);
       if (canManage) {
         setSelection((prev) => {
-          if (!prev?.fieldId) return prev;
-          const duration = Math.max(MIN_SELECTION_MS, prev.end.getTime() - prev.start.getTime());
+          if (!(prev?.fieldIds?.length)) return prev;
+          const proposedDuration = slotEndRaw.getTime() - slotStart.getTime();
+          const duration = proposedDuration >= MIN_SELECTION_MS
+            ? proposedDuration
+            : Math.max(MIN_SELECTION_MS, prev.end.getTime() - prev.start.getTime());
           const nextEnd = new Date(slotStart.getTime() + duration);
           return { ...prev, start: slotStart, end: nextEnd };
         });
@@ -1064,6 +1091,7 @@ export default function FieldsTabContent({ organization, organizationId, current
         return;
       }
 
+      const slotEnd = slotEndRaw;
       const resourceFieldId = typeof slotInfo.resourceId === 'string'
         ? slotInfo.resourceId
         : fields[0]?.$id;
@@ -1290,8 +1318,8 @@ export default function FieldsTabContent({ organization, organizationId, current
 
   const handleAddRentalSlotClick = useCallback(() => {
     if (!canManage) return;
-    if (!selectedField || !selection) {
-      notifications.show({ color: 'red', message: 'Select a field and time range first.' });
+    if (!selectedFieldIds.length || !selection) {
+      notifications.show({ color: 'red', message: 'Select at least one field and a time range first.' });
       return;
     }
     if (selection.start.toDateString() !== selection.end.toDateString()) {
@@ -1300,21 +1328,25 @@ export default function FieldsTabContent({ organization, organizationId, current
     }
 
     setEditingRentalSlot(null);
+    setEditingRentalField(null);
     setRentalDraftRange({ start: selection.start, end: selection.end });
     setCreateRentalOpen(true);
-  }, [canManage, selectedField, selection]);
+  }, [canManage, selectedFieldIds.length, selection]);
 
   const handleSelectCalendarEvent = useCallback((event: any) => {
     if (!canManage) return;
     if (!event || event.metaType !== 'rental') return;
-    if (!selectedField) return;
 
     const slot = event.resource as TimeSlot | undefined;
     if (!slot?.$id) return;
+    const eventFieldId = typeof event.resourceId === 'string' ? event.resourceId : '';
+    const ownerField = fields.find((field) => field.$id === eventFieldId) ?? selectedField;
+    if (!ownerField) return;
+    setEditingRentalField(ownerField);
     setEditingRentalSlot(slot);
     setRentalDraftRange(null);
     setCreateRentalOpen(true);
-  }, [canManage, selectedField]);
+  }, [canManage, fields, selectedField]);
 
   const CalendarEvent: any = ({ event }: any) => {
     const title = event?.metaType === 'booked' ? 'Booked' : (event.resource?.name || event.title);
@@ -1359,7 +1391,7 @@ export default function FieldsTabContent({ organization, organizationId, current
       </div>
     );
   }, [fieldEventsLoading]);
-  const canRenderCalendar = canManage ? Boolean(selectedField && selection) : fields.length > 0;
+  const canRenderCalendar = canManage ? Boolean(selectedFieldIds.length > 0 && selection) : fields.length > 0;
 
   if (orgLoading) {
     return <Loading fullScreen={false} text="Loading fields..." />;
@@ -1374,7 +1406,7 @@ export default function FieldsTabContent({ organization, organizationId, current
           </Title>
           <Text c="dimmed">
             {canManage
-              ? 'Select a range on the calendar to add rental slots (and prices). Click an existing slot to edit.'
+              ? 'Select one or more fields, then pick a calendar range to add rental slots (and prices). Click an existing slot to edit.'
               : 'Choose a field and drag the calendar to set your rental time.'}
           </Text>
         </div>
@@ -1393,9 +1425,10 @@ export default function FieldsTabContent({ organization, organizationId, current
             <Button
               size="xs"
               variant="default"
-              disabled={!selectedField}
+              disabled={!selectedFieldIds.length}
               onClick={() => {
                 setEditingRentalSlot(null);
+                setEditingRentalField(null);
                 setRentalDraftRange(selection ? { start: selection.start, end: selection.end } : null);
                 setCreateRentalOpen(true);
               }}
@@ -1449,24 +1482,31 @@ export default function FieldsTabContent({ organization, organizationId, current
       ) : (
         <Stack gap="md">
           {canManage ? (
-            <Select
-              label="Field"
+            <MultiSelect
+              label="Fields"
               data={fieldOptions}
-              value={selection?.fieldId || null}
-              onChange={(value) => {
-                const nextValue = value ?? '';
+              value={selectedFieldIds}
+              onChange={(values) => {
+                const nextValues = normalizeFieldIds(values);
                 setSelection((prev) => {
-                  if (!nextValue) return null;
+                  const fallback = fields[0]?.$id;
+                  const normalizedNext = nextValues.length
+                    ? nextValues
+                    : (fallback ? [fallback] : []);
+                  if (!normalizedNext.length) {
+                    return prev;
+                  }
                   if (!prev) {
                     const start = new Date();
                     const end = new Date(start.getTime() + MIN_SELECTION_MS);
-                    return { fieldId: nextValue, start, end };
+                    return { fieldIds: normalizedNext, start, end };
                   }
-                  return { ...prev, fieldId: nextValue };
+                  return { ...prev, fieldIds: normalizedNext };
                 });
               }}
-              placeholder="Select a field"
-              clearable
+              placeholder="Select one or more fields"
+              searchable
+              clearable={false}
             />
           ) : (
             <Paper withBorder radius="md" p="sm">
@@ -1586,7 +1626,7 @@ export default function FieldsTabContent({ organization, organizationId, current
 
           <Text size="sm" c="dimmed">
             {canManage
-              ? 'Click a time slot to move the draft block, drag it to adjust, then add a rental slot. Rental slots are shown in green.'
+              ? 'Click a time slot to move the draft block, drag it to adjust, then add a rental slot. New slots are created for each selected field. Rental slots are shown in green.'
               : 'Click empty time ranges in the calendar to add selections. Drag or resize a highlighted selection to update its date/time across selected fields.'}
           </Text>
 
@@ -1643,7 +1683,7 @@ export default function FieldsTabContent({ organization, organizationId, current
                 justifyContent: 'center',
               }}
             >
-              <Text c="dimmed">{canManage ? 'Select a field to view availability.' : 'No fields are available for rentals.'}</Text>
+              <Text c="dimmed">{canManage ? 'Select at least one field to view availability.' : 'No fields are available for rentals.'}</Text>
             </Paper>
           )}
           <Text size="sm" c={summaryColor}>
@@ -1683,7 +1723,7 @@ export default function FieldsTabContent({ organization, organizationId, current
               Back to Discover
             </Button>
             {canManage ? (
-              <Button disabled={!selectedField || !selection} onClick={handleAddRentalSlotClick}>
+              <Button disabled={!selectedFieldIds.length || !selection} onClick={handleAddRentalSlotClick}>
                 Add Rental Slot
               </Button>
             ) : (
@@ -1717,7 +1757,7 @@ export default function FieldsTabContent({ organization, organizationId, current
             const start = new Date();
             start.setMinutes(0, 0, 0);
             const end = new Date(start.getTime() + MIN_SELECTION_MS);
-            return { fieldId: savedField.$id, start, end };
+            return { fieldIds: [savedField.$id], start, end };
           });
           setCalendarDate(new Date());
           await refreshOrganization();
@@ -1729,16 +1769,19 @@ export default function FieldsTabContent({ organization, organizationId, current
         onClose={() => {
           setCreateRentalOpen(false);
           setEditingRentalSlot(null);
+          setEditingRentalField(null);
           setRentalDraftRange(null);
         }}
-        field={selectedField}
+        field={editingRentalField ?? selectedField}
+        selectedFields={!editingRentalSlot ? selectedFields : undefined}
         slot={editingRentalSlot}
         initialRange={editingRentalSlot ? null : rentalDraftRange}
-        onSaved={async (updatedField) => {
+        onSaved={async (updatedFields) => {
           setOrg((prev) => {
             if (!prev) return prev;
             const prevFields = Array.isArray(prev.fields) ? prev.fields : [];
-            const nextFields = prevFields.map((field) => (field.$id === updatedField.$id ? updatedField : field));
+            const updatedById = new Map(updatedFields.map((field) => [field.$id, field]));
+            const nextFields = prevFields.map((field) => updatedById.get(field.$id) ?? field);
             return { ...prev, fields: nextFields };
           });
           await refreshOrganization();

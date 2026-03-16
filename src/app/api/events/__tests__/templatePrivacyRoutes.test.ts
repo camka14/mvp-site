@@ -241,6 +241,19 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('applies organizationId filter in POST /api/events/search', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await searchPost(
+      jsonPost('http://localhost/api/events/search', { filters: { organizationId: ' org_1 ' } }),
+    );
+
+    expect(res.status).toBe(200);
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.organizationId).toBe('org_1');
+  });
+
   it('includes user-owned unpublished events in GET /api/events list visibility', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
     verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });

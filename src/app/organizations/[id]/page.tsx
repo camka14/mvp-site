@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
@@ -27,15 +27,16 @@ import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import { apiRequest } from '@/lib/apiClient';
 import { hasStaffMemberType } from '@/lib/staff';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
-import { Calendar as BigCalendar, dateFnsLocalizer, View } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
 import RoleRosterManager, { type RoleInviteRow, type RoleRosterEntry } from './RoleRosterManager';
-import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
+import { formatDisplayDateTime } from '@/lib/dateUtils';
+import { useLocation } from '@/app/hooks/useLocation';
+import { useDebounce } from '@/app/hooks/useDebounce';
+import { useSports } from '@/app/hooks/useSports';
+import EventsTabContent from '@/app/discover/components/EventsTabContent';
 import {
   getRequiredSignerTypeLabel,
   normalizeRequiredSignerType,
@@ -50,6 +51,8 @@ export default function OrganizationDetailPage() {
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ORG_EVENTS_LIMIT = 18;
+const ORG_EVENTS_DEFAULT_MAX_DISTANCE = 50;
 
 const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
   if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
@@ -198,26 +201,13 @@ const formatSummaryDateTime = (value?: string): string => {
   return formatted || 'Unknown date';
 };
 
-const ORGANIZATION_CALENDAR_FORMATS = {
-  dayFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
-  dayHeaderFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
-  dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
-    `${formatDisplayDate(start, { year: '2-digit' })} - ${formatDisplayDate(end, { year: '2-digit' })}`,
-  monthHeaderFormat: (value: Date) => formatDisplayDate(value),
-  agendaDateFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
-  agendaTimeFormat: (value: Date) => formatDisplayTime(value),
-  agendaTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
-    `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
-  timeGutterFormat: (value: Date) => formatDisplayTime(value),
-  eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
-    `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
-};
-
 function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, authUser, loading: authLoading, isAuthenticated, updateUser } = useApp();
+  const { location, requestLocation } = useLocation();
+  const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<OrganizationTab>('overview');
@@ -227,8 +217,25 @@ function OrganizationDetailContent() {
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [showEventDetailSheet, setShowEventDetailSheet] = useState(false);
-  const [calendarView, setCalendarView] = useState<View>('month');
-  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
+  const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
+  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE'] as const, []);
+  const [eventSearchTerm, setEventSearchTerm] = useState('');
+  const debouncedEventSearch = useDebounce(eventSearchTerm, 500);
+  const [selectedEventTypes, setSelectedEventTypes] =
+    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE']);
+  const [selectedSports, setSelectedSports] = useState<string[]>([]);
+  const [eventsTabMaxDistance, setEventsTabMaxDistance] = useState<number | null>(null);
+  const [eventsTabSelectedStartDate, setEventsTabSelectedStartDate] = useState<Date | null>(null);
+  const [eventsTabSelectedEndDate, setEventsTabSelectedEndDate] = useState<Date | null>(null);
+  const [eventsTabEvents, setEventsTabEvents] = useState<Event[]>([]);
+  const [eventsTabLoadingInitial, setEventsTabLoadingInitial] = useState(true);
+  const [eventsTabLoadingMore, setEventsTabLoadingMore] = useState(false);
+  const [eventsTabHasMoreEvents, setEventsTabHasMoreEvents] = useState(true);
+  const [eventsTabOffset, setEventsTabOffset] = useState(0);
+  const [eventsTabError, setEventsTabError] = useState<string | null>(null);
+  const eventsTabSentinelRef = useRef<HTMLDivElement | null>(null);
+  const locationRequestAttemptedRef = useRef(false);
   const [updatingEventHostId, setUpdatingEventHostId] = useState<string | null>(null);
   const [staffSearch, setStaffSearch] = useState('');
   const [staffResults, setStaffResults] = useState<UserData[]>([]);
@@ -296,28 +303,6 @@ function OrganizationDetailContent() {
     () => Boolean(stripeEmail && EMAIL_REGEX.test(stripeEmail.trim())),
     [stripeEmail],
   );
-
-  const localizer = useMemo(() => dateFnsLocalizer({
-    format,
-    parse: parse as any,
-    startOfWeek,
-    getDay,
-    locales: {} as any,
-  }), []);
-
-  const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
-
-  // Custom event renderer to show start/end times on cards
-  const CalendarEvent: any = ({ event }: any) => {
-    const s: Date = event.start instanceof Date ? event.start : new Date(event.start);
-    const e: Date = event.end instanceof Date ? event.end : new Date(event.end);
-    const title = event.resource?.name || event.title;
-    return (
-      <div className="leading-tight">
-        <div className="truncate">{title}</div>
-      </div>
-    );
-  };
 
   const currentHostIds = useMemo(
     () => (Array.isArray(org?.hostIds) ? org.hostIds.filter((id): id is string => typeof id === 'string') : []),
@@ -555,6 +540,142 @@ function OrganizationDetailContent() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (sportsLoading) return;
+    setSelectedSports((current) => current.filter((sport) => sportOptions.includes(sport)));
+  }, [sportOptions, sportsLoading]);
+
+  const kmBetween = useCallback((a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const R = 6371; // km
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLon = Math.sin(dLon / 2);
+    const c = 2 * Math.asin(
+      Math.sqrt(sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon),
+    );
+    return R * c;
+  }, []);
+
+  const buildEventFilters = useCallback(() => {
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    const normalizedQuery = debouncedEventSearch.trim();
+    const normalizedStartDate =
+      eventsTabSelectedStartDate instanceof Date && !Number.isNaN(eventsTabSelectedStartDate.getTime())
+        ? eventsTabSelectedStartDate
+        : null;
+    const normalizedEndDate =
+      eventsTabSelectedEndDate instanceof Date && !Number.isNaN(eventsTabSelectedEndDate.getTime())
+        ? eventsTabSelectedEndDate
+        : null;
+    const effectiveDate = normalizedStartDate
+      ? normalizedStartDate
+      : normalizedEndDate && normalizedEndDate < startOfToday
+        ? normalizedEndDate
+        : startOfToday;
+    const dateFrom = new Date(
+      effectiveDate.getFullYear(),
+      effectiveDate.getMonth(),
+      effectiveDate.getDate(),
+      0,
+      0,
+      0,
+      0,
+    ).toISOString();
+    const dateTo = normalizedEndDate
+      ? new Date(
+          normalizedEndDate.getFullYear(),
+          normalizedEndDate.getMonth(),
+          normalizedEndDate.getDate(),
+          23,
+          59,
+          59,
+          999,
+        ).toISOString()
+      : undefined;
+    const normalizedOrganizationId = typeof id === 'string' ? id.trim() : '';
+
+    return {
+      organizationId: normalizedOrganizationId || undefined,
+      eventTypes: selectedEventTypes.length === EVENT_TYPE_OPTIONS.length ? undefined : selectedEventTypes,
+      sports: selectedSports.length > 0 ? selectedSports : undefined,
+      userLocation: location || undefined,
+      maxDistance: location && typeof eventsTabMaxDistance === 'number' ? eventsTabMaxDistance : undefined,
+      dateFrom,
+      dateTo,
+      query: normalizedQuery || undefined,
+    };
+  }, [
+    EVENT_TYPE_OPTIONS,
+    debouncedEventSearch,
+    eventsTabMaxDistance,
+    eventsTabSelectedEndDate,
+    eventsTabSelectedStartDate,
+    id,
+    location,
+    selectedEventTypes,
+    selectedSports,
+  ]);
+
+  const loadFirstPageOfOrganizationEvents = useCallback(async () => {
+    const normalizedOrganizationId = typeof id === 'string' ? id.trim() : '';
+    if (!normalizedOrganizationId) {
+      setEventsTabEvents([]);
+      setEventsTabOffset(0);
+      setEventsTabHasMoreEvents(false);
+      setEventsTabLoadingInitial(false);
+      return;
+    }
+
+    setEventsTabLoadingInitial(true);
+    setEventsTabLoadingMore(false);
+    setEventsTabError(null);
+    setEventsTabOffset(0);
+    setEventsTabHasMoreEvents(true);
+    try {
+      const filters = buildEventFilters();
+      const page = await eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, 0);
+      setEventsTabEvents(page);
+      setEventsTabOffset(page.length);
+      setEventsTabHasMoreEvents(page.length === ORG_EVENTS_LIMIT);
+    } catch (error) {
+      console.error('Failed to load organization events:', error);
+      setEventsTabError('Failed to load events. Please try again.');
+    } finally {
+      setEventsTabLoadingInitial(false);
+    }
+  }, [buildEventFilters, id]);
+
+  const loadMoreOrganizationEvents = useCallback(async () => {
+    if (eventsTabLoadingInitial || eventsTabLoadingMore || !eventsTabHasMoreEvents) return;
+    setEventsTabLoadingMore(true);
+    setEventsTabError(null);
+    try {
+      const filters = buildEventFilters();
+      const page = await eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, eventsTabOffset);
+      setEventsTabEvents((previous) => {
+        const merged = [...previous, ...page];
+        const seen = new Set<string>();
+        return merged.filter((event) => {
+          if (seen.has(event.$id)) return false;
+          seen.add(event.$id);
+          return true;
+        });
+      });
+      setEventsTabOffset((previous) => previous + page.length);
+      setEventsTabHasMoreEvents(page.length === ORG_EVENTS_LIMIT);
+    } catch (error) {
+      console.error('Failed to load more organization events:', error);
+      setEventsTabError('Failed to load more events. Please try again.');
+    } finally {
+      setEventsTabLoadingMore(false);
+    }
+  }, [buildEventFilters, eventsTabHasMoreEvents, eventsTabLoadingInitial, eventsTabLoadingMore, eventsTabOffset]);
 
   const handleSetHomePage = useCallback(async (checked: boolean) => {
     if (!user?.$id || !org || !canToggleHomePagePreference) {
@@ -796,6 +917,55 @@ function OrganizationDetailContent() {
       if (id) loadOrg(id);
     }
   }, [authLoading, isAuthenticated, user, router, id, loadOrg]);
+
+  useEffect(() => {
+    if (location) {
+      return;
+    }
+    if (locationRequestAttemptedRef.current) {
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+    locationRequestAttemptedRef.current = true;
+    requestLocation().catch(() => {});
+  }, [location, requestLocation]);
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    if (!isAuthenticated || !user) {
+      return;
+    }
+    if (activeTab !== 'events') {
+      return;
+    }
+    if (!id) {
+      return;
+    }
+    void loadFirstPageOfOrganizationEvents();
+  }, [activeTab, authLoading, id, isAuthenticated, loadFirstPageOfOrganizationEvents, user]);
+
+  useEffect(() => {
+    if (activeTab !== 'events') {
+      return;
+    }
+    if (!eventsTabSentinelRef.current) return;
+    const el = eventsTabSentinelRef.current;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting) {
+          void loadMoreOrganizationEvents();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeTab, loadMoreOrganizationEvents]);
 
   useEffect(() => {
     if (!org || !user) return;
@@ -1685,43 +1855,36 @@ function OrganizationDetailContent() {
             )}
 
             {activeTab === 'events' && (
-              <Paper withBorder p="md" radius="md">
-                <Group justify="space-between" mb="sm">
-                  <Title order={5}>Events Calendar</Title>
-                  {isOwner && <Button onClick={handleCreateEvent}>+ Create Event</Button>}
-                </Group>
-                <div className="h-[800px]">
-                  <BigCalendar
-                    localizer={localizer}
-                    events={(org.events || []).map(e => ({
-                      title: e.name,
-                      start: new Date(e.start),
-                      end: new Date(e.end),
-                      resource: e,
-                    }))}
-                    startAccessor="start"
-                    endAccessor="end"
-                    views={["month", "week", "day", "agenda"]}
-                    view={calendarView}
-                    date={calendarDate}
-                    onView={(view) => setCalendarView(view)}
-                    onNavigate={(date) => setCalendarDate(new Date(date))}
-                    step={30}
-                    popup
-                    selectable
-                    components={{ event: CalendarEvent, month: { event: CalendarEvent } as any }}
-                    onSelectEvent={(evt: any) => {
-                      const selected = evt?.resource as Event | undefined;
-                      if (!selected?.$id) {
-                        return;
-                      }
-                      handleOrganizationEventClick(selected);
-                    }}
-                    onSelectSlot={handleCreateEvent}
-                    formats={ORGANIZATION_CALENDAR_FORMATS}
-                  />
-                </div>
-              </Paper>
+              <EventsTabContent
+                location={location}
+                searchTerm={eventSearchTerm}
+                setSearchTerm={setEventSearchTerm}
+                selectedEventTypes={selectedEventTypes}
+                setSelectedEventTypes={setSelectedEventTypes}
+                eventTypeOptions={EVENT_TYPE_OPTIONS}
+                selectedSports={selectedSports}
+                setSelectedSports={setSelectedSports}
+                maxDistance={eventsTabMaxDistance}
+                setMaxDistance={setEventsTabMaxDistance}
+                selectedStartDate={eventsTabSelectedStartDate}
+                setSelectedStartDate={setEventsTabSelectedStartDate}
+                selectedEndDate={eventsTabSelectedEndDate}
+                setSelectedEndDate={setEventsTabSelectedEndDate}
+                sports={sportOptions}
+                sportsLoading={sportsLoading}
+                sportsError={sportsError?.message ?? null}
+                defaultMaxDistance={ORG_EVENTS_DEFAULT_MAX_DISTANCE}
+                kmBetween={kmBetween}
+                events={eventsTabEvents}
+                isLoadingInitial={eventsTabLoadingInitial}
+                isLoadingMore={eventsTabLoadingMore}
+                hasMoreEvents={eventsTabHasMoreEvents}
+                sentinelRef={eventsTabSentinelRef}
+                eventsError={eventsTabError}
+                onEventClick={handleOrganizationEventClick}
+                onCreateEvent={handleCreateEvent}
+                showCreateEventButton={isOwner}
+              />
             )}
 
             {isOwner && activeTab === 'eventTemplates' && (
