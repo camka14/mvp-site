@@ -1,58 +1,9 @@
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-
-const parseTimeoutMs = (value: string | undefined, fallback: number) => {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-
-const parseBoolean = (value: string | undefined): boolean | undefined => {
-  if (!value) return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
-  return undefined;
-};
-
-// Prevent requests from hanging indefinitely when the DB is unreachable.
-// Override via `PG_CONNECTION_TIMEOUT_MS` if you need a different value.
-const connectionTimeoutMillis = parseTimeoutMs(process.env.PG_CONNECTION_TIMEOUT_MS, 5_000);
-const sslRejectUnauthorized = parseBoolean(process.env.PG_SSL_REJECT_UNAUTHORIZED);
-
-const getConnectionString = (): string => {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error('DATABASE_URL is not set');
-  }
-
-  if (sslRejectUnauthorized === undefined) {
-    return connectionString;
-  }
-
-  try {
-    const url = new URL(connectionString);
-    // pg's connection string parser gives priority to `sslmode` over the `ssl` object.
-    // Normalize sslmode directly so env override is deterministic.
-    if (sslRejectUnauthorized) {
-      url.searchParams.set('sslmode', 'verify-full');
-    } else {
-      url.searchParams.set('sslmode', 'no-verify');
-    }
-    return url.toString();
-  } catch {
-    return connectionString;
-  }
-};
+import { resolvePrismaPgPoolConfig } from './prismaConfig';
 
 const createPrismaClient = (): PrismaClient => {
-  const poolConfig: {
-    connectionString: string;
-    connectionTimeoutMillis: number;
-  } = {
-    connectionString: getConnectionString(),
-    connectionTimeoutMillis,
-  };
+  const poolConfig = resolvePrismaPgPoolConfig();
 
   const adapter = new PrismaPg(
     poolConfig,
