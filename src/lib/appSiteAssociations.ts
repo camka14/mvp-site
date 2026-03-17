@@ -18,7 +18,8 @@ export const APPLE_APP_SITE_ASSOCIATION_BODY = {
 
 export const ANDROID_ASSET_LINKS_BODY = [
   {
-    relation: ['delegate_permission/common.handle_all_urls'],
+    relation: ['delegate_permission/common.handle_all_urls',
+              'delegate_permission/common.get_login_creds'],
     target: {
       namespace: 'android_app',
       package_name: 'com.razumly.mvp',
