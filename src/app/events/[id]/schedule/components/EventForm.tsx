@@ -2444,7 +2444,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     location: event.location ?? '',
     coordinates: Array.isArray(event.coordinates) ? event.coordinates as [number, number] : [0, 0],
     start: event.start,
-    end: event.end,
+    end: event.end ?? '',
     state: (event.state as EventState) ?? 'DRAFT',
     eventType: event.eventType,
     parentEvent: event.parentEvent || undefined,
@@ -2589,7 +2589,11 @@ const eventFormSchema = z
         location: z.string().trim(),
         coordinates: z.tuple([z.number(), z.number()]),
         start: z.string(),
-        end: z.string(),
+        end: z
+            .string()
+            .nullable()
+            .optional()
+            .transform((value) => value ?? ''),
         state: z.string().default('DRAFT'),
         eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']),
         parentEvent: z.string().optional().nullable(),
@@ -7461,6 +7465,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             .map((id) => refereePoolById.get(id))
             .filter((referee): referee is UserData => Boolean(referee));
         const shouldClearWeeklyEnd = source.eventType === 'WEEKLY_EVENT' && Boolean(source.noFixedEndDateTime);
+        const normalizedEnd = (() => {
+            if (shouldClearWeeklyEnd) {
+                return null;
+            }
+            if (typeof source.end === 'string') {
+                const trimmed = source.end.trim();
+                return trimmed.length > 0 ? trimmed : null;
+            }
+            return source.end ?? null;
+        })();
 
         const draft: Partial<Event> = {
             $id: activeEditingEvent?.$id,
@@ -7469,7 +7483,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             description: source.description,
             location: source.location,
             start: source.start,
-            end: shouldClearWeeklyEnd ? '' : source.end,
+            end: normalizedEnd,
             eventType: source.eventType,
             parentEvent: source.parentEvent || undefined,
             noFixedEndDateTime: supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
