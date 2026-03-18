@@ -21,6 +21,7 @@ const userLocationSchema = z
 const filterSchema = z.object({
   query: z.string().optional(),
   organizationId: z.string().optional(),
+  includeWeeklyChildren: z.boolean().optional(),
   maxDistance: z.number().optional(),
   userLocation: userLocationSchema.optional(),
   dateFrom: z.string().optional(),
@@ -267,6 +268,15 @@ export async function POST(req: NextRequest) {
   const where: any = {};
   const visibilityClause = buildDiscoverVisibilityClause(sessionUserId, isAdmin);
   where.AND = [...(Array.isArray(where.AND) ? where.AND : []), ...visibilityClause.AND];
+  if (filters.includeWeeklyChildren !== true) {
+    where.AND.push({
+      OR: [
+        { eventType: null },
+        { eventType: { not: 'WEEKLY_EVENT' } },
+        { eventType: 'WEEKLY_EVENT', parentEvent: null },
+      ],
+    });
+  }
   if (filters.eventTypes?.length) {
     where.eventType = { in: filters.eventTypes };
   }
@@ -304,17 +314,51 @@ export async function POST(req: NextRequest) {
   }
   const parsedDateFrom = typeof filters.dateFrom === 'string' ? new Date(filters.dateFrom) : null;
   const hasExplicitDateFrom = Boolean(parsedDateFrom && !Number.isNaN(parsedDateFrom.getTime()));
-  if (hasExplicitDateFrom) {
-    where.start = { ...(where.start ?? {}), gte: parsedDateFrom as Date };
-  } else if (!hasQuery) {
-    // Feed/list mode defaults to upcoming events; search-query mode is intentionally broader.
-    where.start = { ...(where.start ?? {}), gte: startOfToday };
+  const effectiveDateFrom = hasExplicitDateFrom
+    ? (parsedDateFrom as Date)
+    : (!hasQuery ? startOfToday : null);
+  if (effectiveDateFrom) {
+    where.AND.push({
+      OR: [
+        {
+          eventType: 'WEEKLY_EVENT',
+          OR: [
+            { end: null },
+            { end: { gte: effectiveDateFrom } },
+          ],
+        },
+        {
+          eventType: { not: 'WEEKLY_EVENT' },
+          start: { gte: effectiveDateFrom },
+        },
+        {
+          eventType: null,
+          start: { gte: effectiveDateFrom },
+        },
+      ],
+    });
   }
-  if (filters.dateTo) {
-    const end = new Date(filters.dateTo);
-    if (!Number.isNaN(end.getTime())) {
-      where.end = { ...(where.end ?? {}), lte: end };
-    }
+  const parsedDateTo = typeof filters.dateTo === 'string' ? new Date(filters.dateTo) : null;
+  if (parsedDateTo && !Number.isNaN(parsedDateTo.getTime())) {
+    where.AND.push({
+      OR: [
+        {
+          eventType: 'WEEKLY_EVENT',
+          OR: [
+            { end: null },
+            { end: { lte: parsedDateTo } },
+          ],
+        },
+        {
+          eventType: { not: 'WEEKLY_EVENT' },
+          end: { lte: parsedDateTo },
+        },
+        {
+          eventType: null,
+          end: { lte: parsedDateTo },
+        },
+      ],
+    });
   }
   if (hasQuery) {
     where.OR = [

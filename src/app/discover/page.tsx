@@ -118,9 +118,9 @@ function DiscoverPageContent() {
   const [eventOffset, setEventOffset] = useState(0);
   const [eventsError, setEventsError] = useState<string | null>(null);
 
-  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE'] as const, []);
+  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
-    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE']);
+    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']);
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
   const [maxDistance, setMaxDistance] = useState<number | null>(null);
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);

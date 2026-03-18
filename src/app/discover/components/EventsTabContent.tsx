@@ -11,6 +11,7 @@ import {
 import {
   Alert,
   Button,
+  Checkbox,
   Chip,
   Group,
   Loader,
@@ -82,6 +83,8 @@ type EventsTabContentProps = {
   onEventClick: (event: Event) => void;
   onCreateEvent: () => void;
   showCreateEventButton?: boolean;
+  hideWeeklyChildren?: boolean;
+  setHideWeeklyChildren?: (value: boolean) => void;
 };
 
 export default function EventsTabContent(props: EventsTabContentProps) {
@@ -114,6 +117,8 @@ export default function EventsTabContent(props: EventsTabContentProps) {
     onEventClick,
     onCreateEvent,
     showCreateEventButton = true,
+    hideWeeklyChildren = false,
+    setHideWeeklyChildren,
   } = props;
 
   const [eventSort, setEventSort] = useState<(typeof EVENT_SORT_OPTIONS)[number]['value']>('soonest');
@@ -174,7 +179,10 @@ export default function EventsTabContent(props: EventsTabContentProps) {
   }, [kmBetween, location]);
 
   const sortedEvents = useMemo(() => {
-    const sorted = [...events];
+    const sourceEvents = hideWeeklyChildren
+      ? events.filter((event) => !(event.eventType === 'WEEKLY_EVENT' && typeof event.parentEvent === 'string' && event.parentEvent.trim().length > 0))
+      : events;
+    const sorted = [...sourceEvents];
 
     const compareByStart = (a: Event, b: Event) => {
       const aTime = new Date(a.start).getTime();
@@ -211,7 +219,7 @@ export default function EventsTabContent(props: EventsTabContentProps) {
     }
 
     return sorted;
-  }, [eventSort, events, getEventDistanceKm]);
+  }, [eventSort, events, getEventDistanceKm, hideWeeklyChildren]);
 
   const activeFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
 
@@ -262,6 +270,14 @@ export default function EventsTabContent(props: EventsTabContentProps) {
       key: 'distance',
       label: `Within ${Math.round(kmToMiles(maxDistance))} mi`,
       onRemove: () => setMaxDistance(null),
+    });
+  }
+
+  if (hideWeeklyChildren && setHideWeeklyChildren) {
+    activeFilters.push({
+      key: 'hide-weekly-children',
+      label: 'Hide weekly sessions',
+      onRemove: () => setHideWeeklyChildren(false),
     });
   }
 
@@ -400,6 +416,16 @@ export default function EventsTabContent(props: EventsTabContentProps) {
           />
         </div>
       </div>
+
+      {setHideWeeklyChildren && (
+        <div>
+          <Checkbox
+            checked={hideWeeklyChildren}
+            onChange={(event) => setHideWeeklyChildren(event.currentTarget.checked)}
+            label="Hide weekly child sessions"
+          />
+        </div>
+      )}
 
       {location && (
         <div>

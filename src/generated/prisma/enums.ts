@@ -57,7 +57,8 @@ export type EventsStateEnum = (typeof EventsStateEnum)[keyof typeof EventsStateE
 export const EventsEventTypeEnum = {
   TOURNAMENT: 'TOURNAMENT',
   EVENT: 'EVENT',
-  LEAGUE: 'LEAGUE'
+  LEAGUE: 'LEAGUE',
+  WEEKLY_EVENT: 'WEEKLY_EVENT'
 } as const
 
 export type EventsEventTypeEnum = (typeof EventsEventTypeEnum)[keyof typeof EventsEventTypeEnum]

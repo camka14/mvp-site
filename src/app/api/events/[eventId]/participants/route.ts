@@ -359,6 +359,16 @@ async function updateParticipants(
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
+  const isWeeklyParent = (
+    String(event.eventType ?? '').toUpperCase() === 'WEEKLY_EVENT'
+    && !normalizeId((event as any).parentEvent)
+  );
+  if (mode === 'add' && isWeeklyParent) {
+    return NextResponse.json(
+      { error: 'Register through a weekly session instead of the parent weekly event.' },
+      { status: 403 },
+    );
+  }
   const canManageCurrentEvent = await canManageEvent(session, event);
 
   const userId = parsed.data.userId ?? extractId(parsed.data.user);

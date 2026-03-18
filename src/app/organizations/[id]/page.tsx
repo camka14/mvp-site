@@ -219,12 +219,13 @@ function OrganizationDetailContent() {
   const [showEventDetailSheet, setShowEventDetailSheet] = useState(false);
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
   const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
-  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE'] as const, []);
+  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const, []);
   const [eventSearchTerm, setEventSearchTerm] = useState('');
   const debouncedEventSearch = useDebounce(eventSearchTerm, 500);
   const [selectedEventTypes, setSelectedEventTypes] =
-    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE']);
+    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']);
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
+  const [hideWeeklyChildEvents, setHideWeeklyChildEvents] = useState(false);
   const [eventsTabMaxDistance, setEventsTabMaxDistance] = useState<number | null>(null);
   const [eventsTabSelectedStartDate, setEventsTabSelectedStartDate] = useState<Date | null>(null);
   const [eventsTabSelectedEndDate, setEventsTabSelectedEndDate] = useState<Date | null>(null);
@@ -602,6 +603,7 @@ function OrganizationDetailContent() {
 
     return {
       organizationId: normalizedOrganizationId || undefined,
+      includeWeeklyChildren: true,
       eventTypes: selectedEventTypes.length === EVENT_TYPE_OPTIONS.length ? undefined : selectedEventTypes,
       sports: selectedSports.length > 0 ? selectedSports : undefined,
       userLocation: location || undefined,
@@ -1884,6 +1886,8 @@ function OrganizationDetailContent() {
                 onEventClick={handleOrganizationEventClick}
                 onCreateEvent={handleCreateEvent}
                 showCreateEventButton={isOwner}
+                hideWeeklyChildren={hideWeeklyChildEvents}
+                setHideWeeklyChildren={setHideWeeklyChildEvents}
               />
             )}
 

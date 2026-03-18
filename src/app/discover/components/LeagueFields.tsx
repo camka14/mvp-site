@@ -69,6 +69,57 @@ const parseTimeValue = (value: string): number | undefined => {
   return hours * 60 + minutes;
 };
 
+const formatClockTime = (date: Date): string => new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+}).format(date);
+
+const formatMinutesLabel = (minutes: number): string => {
+  const normalized = Math.max(0, Math.floor(minutes));
+  const date = new Date(2000, 0, 1, 0, 0, 0, 0);
+  date.setMinutes(normalized);
+  return formatClockTime(date);
+};
+
+const formatDateTimeLabel = (date: Date): string => `${formatDisplayDate(date)} ${formatClockTime(date)}`;
+
+const formatConflictTimeRange = ({ schedule, event }: WeeklySlotConflict): string => {
+  const scheduleStart = parseLocalDateTime(schedule?.startDate ?? null);
+  const scheduleEnd = parseLocalDateTime(schedule?.endDate ?? null);
+  const scheduleHasTimeRange = (
+    typeof schedule?.startTimeMinutes === 'number'
+    && typeof schedule?.endTimeMinutes === 'number'
+    && schedule.endTimeMinutes > schedule.startTimeMinutes
+  );
+
+  if (schedule?.repeating !== false && scheduleHasTimeRange) {
+    const timeRange = `${formatMinutesLabel(schedule.startTimeMinutes!)}-${formatMinutesLabel(schedule.endTimeMinutes!)}`;
+    if (scheduleStart && scheduleEnd && scheduleEnd.getTime() > scheduleStart.getTime()) {
+      return `${formatDisplayDate(scheduleStart)} - ${formatDisplayDate(scheduleEnd)}, ${timeRange}`;
+    }
+    if (scheduleStart) {
+      return `${formatDisplayDate(scheduleStart)}, ${timeRange}`;
+    }
+    return timeRange;
+  }
+
+  if (scheduleStart && scheduleEnd && scheduleEnd.getTime() > scheduleStart.getTime()) {
+    return `${formatDateTimeLabel(scheduleStart)} - ${formatDateTimeLabel(scheduleEnd)}`;
+  }
+
+  const eventStart = parseLocalDateTime(event?.start ?? null);
+  const eventEnd = parseLocalDateTime(event?.end ?? null);
+  if (eventStart && eventEnd && eventEnd.getTime() > eventStart.getTime()) {
+    return `${formatDateTimeLabel(eventStart)} - ${formatDateTimeLabel(eventEnd)}`;
+  }
+  if (eventStart) {
+    return formatDateTimeLabel(eventStart);
+  }
+
+  return 'Time range unavailable';
+};
+
 const normalizeSlotDays = (slot: Pick<LeagueSlotForm, 'dayOfWeek' | 'daysOfWeek'>): number[] => {
   const source = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
     ? slot.daysOfWeek
@@ -817,8 +868,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           <div key={`${schedule.$id}-${conflictIndex}`} className="flex items-start gap-2 text-sm">
                             <Badge color="red" variant="light">{event.name}</Badge>
                             <span>
-                              {event.start ? formatDisplayDate(event.start) : ''} -
-                              {event.end ? ` ${formatDisplayDate(event.end)}` : ''} overlaps this slot.
+                              {formatConflictTimeRange({ event, schedule })} overlaps this slot.
                             </span>
                           </div>
                         ))}

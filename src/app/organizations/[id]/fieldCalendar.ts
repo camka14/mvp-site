@@ -60,14 +60,95 @@ export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange =
     const baseTitle = field.name || `Field ${field.fieldNumber}`;
     const events = (field.events || []).filter((evt) => {
       const eventType = typeof evt.eventType === 'string' ? evt.eventType.toUpperCase() : '';
-      return eventType !== 'LEAGUE' && eventType !== 'TOURNAMENT';
+      const hasParentWeeklyEvent = (
+        eventType === 'WEEKLY_EVENT'
+        && typeof evt.parentEvent === 'string'
+        && evt.parentEvent.trim().length > 0
+      );
+      return eventType !== 'LEAGUE' && eventType !== 'TOURNAMENT' && !hasParentWeeklyEvent;
     });
     const matches = field.matches || [];
 
-    const eventEntries: FieldCalendarEntry[] = events.map((evt) => {
+    const eventEntries: FieldCalendarEntry[] = events.flatMap((evt) => {
+      const eventType = typeof evt.eventType === 'string' ? evt.eventType.toUpperCase() : '';
+      if (eventType === 'WEEKLY_EVENT' && !evt.parentEvent && Array.isArray(evt.timeSlots) && evt.timeSlots.length > 0) {
+        const rangeStart = range ? new Date(range.start.getTime()) : new Date();
+        const rangeEnd = range ? new Date(range.end.getTime()) : addDays(rangeStart, 28);
+        rangeStart.setHours(0, 0, 0, 0);
+        rangeEnd.setHours(23, 59, 59, 999);
+
+        const generated: FieldCalendarEntry[] = [];
+        evt.timeSlots.forEach((slot) => {
+          const baseStart = parseToDate(slot.startDate ?? null);
+          if (!baseStart) {
+            return;
+          }
+
+          const slotDays = Array.from(
+            new Set(
+              (
+                Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+                  ? slot.daysOfWeek
+                  : typeof slot.dayOfWeek === 'number'
+                    ? [slot.dayOfWeek]
+                    : []
+              )
+                .map((value) => Number(value))
+                .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+            ),
+          );
+          const startMinutes = typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : null;
+          const endMinutes = typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : null;
+          if (!slotDays.length || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+            return;
+          }
+
+          const normalizedBase = new Date(baseStart.getTime());
+          normalizedBase.setHours(0, 0, 0, 0);
+
+          const slotEndBoundaryRaw = parseToDate(slot.endDate ?? null);
+          const slotEndBoundary = slotEndBoundaryRaw ? new Date(slotEndBoundaryRaw.getTime()) : null;
+          if (slotEndBoundary) {
+            slotEndBoundary.setHours(23, 59, 59, 999);
+          }
+
+          let weekCursor = new Date(rangeStart.getTime());
+          weekCursor.setDate(weekCursor.getDate() - normalizeToMondayIndex(weekCursor));
+          weekCursor.setHours(0, 0, 0, 0);
+
+          while (weekCursor <= rangeEnd) {
+            slotDays.forEach((slotDay) => {
+              const occurrence = addDays(weekCursor, slotDay);
+              if (occurrence < normalizedBase || occurrence < rangeStart || occurrence > rangeEnd) {
+                return;
+              }
+              if (slotEndBoundary && occurrence > slotEndBoundary) {
+                return;
+              }
+              const effectiveStart = new Date(occurrence.getTime());
+              effectiveStart.setMinutes(startMinutes);
+              const effectiveEnd = addMinutes(effectiveStart, Math.max(1, endMinutes - startMinutes));
+              generated.push({
+                id: `field-booked-weekly-${field.$id}-${evt.$id}-${slot.$id}-${effectiveStart.getTime()}`,
+                title: 'Booked',
+                start: effectiveStart,
+                end: effectiveEnd,
+                resourceId: field.$id,
+                resource: evt,
+                metaType: 'booked',
+                fieldName: baseTitle,
+              });
+            });
+            weekCursor = addDays(weekCursor, 7);
+          }
+        });
+
+        return generated;
+      }
+
       const start = parseToDate(evt.start) ?? new Date();
       const end = ensureEndDate(start, evt.end, ONE_HOUR_IN_MINUTES);
-      return {
+      return [{
         id: `field-booked-event-${field.$id}-${evt.$id}`,
         title: 'Booked',
         start,
@@ -76,7 +157,7 @@ export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange =
         resource: evt,
         metaType: 'booked',
         fieldName: baseTitle,
-      };
+      }];
     });
 
     const matchEntries: FieldCalendarEntry[] = matches.map((match) => {

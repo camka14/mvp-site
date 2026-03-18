@@ -41,6 +41,7 @@ enum EventsEventTypeEnum {
   TOURNAMENT
   EVENT
   LEAGUE
+  WEEKLY_EVENT
 }
 
 enum ProductsPeriodEnum {
@@ -408,7 +409,7 @@ model Events {
   updatedAt                    DateTime?
   name                         String
   start                        DateTime
-  end                          DateTime
+  end                          DateTime?
   description                  String?
   divisions                    String[]
   winnerSetCount               Int?
@@ -455,6 +456,7 @@ model Events {
   userIds                      String[]
   leagueScoringConfigId        String?
   organizationId               String?
+  parentEvent                  String?
   autoCancellation             Boolean?
   eventType                    EventsEventTypeEnum?
   doTeamsRef                   Boolean?
@@ -471,6 +473,7 @@ model Events {
   @@index([organizationId])
   @@index([hostId])
   @@index([sportId])
+  @@index([parentEvent])
 }
 
 model Organizations {

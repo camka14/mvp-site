@@ -119,6 +119,7 @@ export type EventsMinAggregateOutputType = {
   sportId: string | null
   leagueScoringConfigId: string | null
   organizationId: string | null
+  parentEvent: string | null
   autoCancellation: boolean | null
   eventType: $Enums.EventsEventTypeEnum | null
   doTeamsRef: boolean | null
@@ -170,6 +171,7 @@ export type EventsMaxAggregateOutputType = {
   sportId: string | null
   leagueScoringConfigId: string | null
   organizationId: string | null
+  parentEvent: string | null
   autoCancellation: boolean | null
   eventType: $Enums.EventsEventTypeEnum | null
   doTeamsRef: boolean | null
@@ -233,6 +235,7 @@ export type EventsCountAggregateOutputType = {
   userIds: number
   leagueScoringConfigId: number
   organizationId: number
+  parentEvent: number
   autoCancellation: number
   eventType: number
   doTeamsRef: number
@@ -342,6 +345,7 @@ export type EventsMinAggregateInputType = {
   sportId?: true
   leagueScoringConfigId?: true
   organizationId?: true
+  parentEvent?: true
   autoCancellation?: true
   eventType?: true
   doTeamsRef?: true
@@ -393,6 +397,7 @@ export type EventsMaxAggregateInputType = {
   sportId?: true
   leagueScoringConfigId?: true
   organizationId?: true
+  parentEvent?: true
   autoCancellation?: true
   eventType?: true
   doTeamsRef?: true
@@ -456,6 +461,7 @@ export type EventsCountAggregateInputType = {
   userIds?: true
   leagueScoringConfigId?: true
   organizationId?: true
+  parentEvent?: true
   autoCancellation?: true
   eventType?: true
   doTeamsRef?: true
@@ -563,7 +569,7 @@ export type EventsGroupByOutputType = {
   updatedAt: Date | null
   name: string
   start: Date
-  end: Date
+  end: Date | null
   description: string | null
   divisions: string[]
   winnerSetCount: number | null
@@ -610,6 +616,7 @@ export type EventsGroupByOutputType = {
   userIds: string[]
   leagueScoringConfigId: string | null
   organizationId: string | null
+  parentEvent: string | null
   autoCancellation: boolean | null
   eventType: $Enums.EventsEventTypeEnum | null
   doTeamsRef: boolean | null
@@ -653,7 +660,7 @@ export type EventsWhereInput = {
   updatedAt?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
   name?: Prisma.StringFilter<"Events"> | string
   start?: Prisma.DateTimeFilter<"Events"> | Date | string
-  end?: Prisma.DateTimeFilter<"Events"> | Date | string
+  end?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
   description?: Prisma.StringNullableFilter<"Events"> | string | null
   divisions?: Prisma.StringNullableListFilter<"Events">
   winnerSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -700,6 +707,7 @@ export type EventsWhereInput = {
   userIds?: Prisma.StringNullableListFilter<"Events">
   leagueScoringConfigId?: Prisma.StringNullableFilter<"Events"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Events"> | string | null
+  parentEvent?: Prisma.StringNullableFilter<"Events"> | string | null
   autoCancellation?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   eventType?: Prisma.EnumEventsEventTypeEnumNullableFilter<"Events"> | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -720,7 +728,7 @@ export type EventsOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrder
   start?: Prisma.SortOrder
-  end?: Prisma.SortOrder
+  end?: Prisma.SortOrderInput | Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
   divisions?: Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -767,6 +775,7 @@ export type EventsOrderByWithRelationInput = {
   userIds?: Prisma.SortOrder
   leagueScoringConfigId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  parentEvent?: Prisma.SortOrderInput | Prisma.SortOrder
   autoCancellation?: Prisma.SortOrderInput | Prisma.SortOrder
   eventType?: Prisma.SortOrderInput | Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -790,7 +799,7 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   updatedAt?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
   name?: Prisma.StringFilter<"Events"> | string
   start?: Prisma.DateTimeFilter<"Events"> | Date | string
-  end?: Prisma.DateTimeFilter<"Events"> | Date | string
+  end?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
   description?: Prisma.StringNullableFilter<"Events"> | string | null
   divisions?: Prisma.StringNullableListFilter<"Events">
   winnerSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -837,6 +846,7 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   userIds?: Prisma.StringNullableListFilter<"Events">
   leagueScoringConfigId?: Prisma.StringNullableFilter<"Events"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Events"> | string | null
+  parentEvent?: Prisma.StringNullableFilter<"Events"> | string | null
   autoCancellation?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   eventType?: Prisma.EnumEventsEventTypeEnumNullableFilter<"Events"> | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -857,7 +867,7 @@ export type EventsOrderByWithAggregationInput = {
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   name?: Prisma.SortOrder
   start?: Prisma.SortOrder
-  end?: Prisma.SortOrder
+  end?: Prisma.SortOrderInput | Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
   divisions?: Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -904,6 +914,7 @@ export type EventsOrderByWithAggregationInput = {
   userIds?: Prisma.SortOrder
   leagueScoringConfigId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  parentEvent?: Prisma.SortOrderInput | Prisma.SortOrder
   autoCancellation?: Prisma.SortOrderInput | Prisma.SortOrder
   eventType?: Prisma.SortOrderInput | Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -932,7 +943,7 @@ export type EventsScalarWhereWithAggregatesInput = {
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Events"> | Date | string | null
   name?: Prisma.StringWithAggregatesFilter<"Events"> | string
   start?: Prisma.DateTimeWithAggregatesFilter<"Events"> | Date | string
-  end?: Prisma.DateTimeWithAggregatesFilter<"Events"> | Date | string
+  end?: Prisma.DateTimeNullableWithAggregatesFilter<"Events"> | Date | string | null
   description?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   divisions?: Prisma.StringNullableListFilter<"Events">
   winnerSetCount?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
@@ -979,6 +990,7 @@ export type EventsScalarWhereWithAggregatesInput = {
   userIds?: Prisma.StringNullableListFilter<"Events">
   leagueScoringConfigId?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
+  parentEvent?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   autoCancellation?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   eventType?: Prisma.EnumEventsEventTypeEnumNullableWithAggregatesFilter<"Events"> | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
@@ -999,7 +1011,7 @@ export type EventsCreateInput = {
   updatedAt?: Date | string | null
   name: string
   start: Date | string
-  end: Date | string
+  end?: Date | string | null
   description?: string | null
   divisions?: Prisma.EventsCreatedivisionsInput | string[]
   winnerSetCount?: number | null
@@ -1046,6 +1058,7 @@ export type EventsCreateInput = {
   userIds?: Prisma.EventsCreateuserIdsInput | string[]
   leagueScoringConfigId?: string | null
   organizationId?: string | null
+  parentEvent?: string | null
   autoCancellation?: boolean | null
   eventType?: $Enums.EventsEventTypeEnum | null
   doTeamsRef?: boolean | null
@@ -1066,7 +1079,7 @@ export type EventsUncheckedCreateInput = {
   updatedAt?: Date | string | null
   name: string
   start: Date | string
-  end: Date | string
+  end?: Date | string | null
   description?: string | null
   divisions?: Prisma.EventsCreatedivisionsInput | string[]
   winnerSetCount?: number | null
@@ -1113,6 +1126,7 @@ export type EventsUncheckedCreateInput = {
   userIds?: Prisma.EventsCreateuserIdsInput | string[]
   leagueScoringConfigId?: string | null
   organizationId?: string | null
+  parentEvent?: string | null
   autoCancellation?: boolean | null
   eventType?: $Enums.EventsEventTypeEnum | null
   doTeamsRef?: boolean | null
@@ -1133,7 +1147,7 @@ export type EventsUpdateInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   start?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  end?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisions?: Prisma.EventsUpdatedivisionsInput | string[]
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1180,6 +1194,7 @@ export type EventsUpdateInput = {
   userIds?: Prisma.EventsUpdateuserIdsInput | string[]
   leagueScoringConfigId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  parentEvent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoCancellation?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   eventType?: Prisma.NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1200,7 +1215,7 @@ export type EventsUncheckedUpdateInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   start?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  end?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisions?: Prisma.EventsUpdatedivisionsInput | string[]
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1247,6 +1262,7 @@ export type EventsUncheckedUpdateInput = {
   userIds?: Prisma.EventsUpdateuserIdsInput | string[]
   leagueScoringConfigId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  parentEvent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoCancellation?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   eventType?: Prisma.NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1267,7 +1283,7 @@ export type EventsCreateManyInput = {
   updatedAt?: Date | string | null
   name: string
   start: Date | string
-  end: Date | string
+  end?: Date | string | null
   description?: string | null
   divisions?: Prisma.EventsCreatedivisionsInput | string[]
   winnerSetCount?: number | null
@@ -1314,6 +1330,7 @@ export type EventsCreateManyInput = {
   userIds?: Prisma.EventsCreateuserIdsInput | string[]
   leagueScoringConfigId?: string | null
   organizationId?: string | null
+  parentEvent?: string | null
   autoCancellation?: boolean | null
   eventType?: $Enums.EventsEventTypeEnum | null
   doTeamsRef?: boolean | null
@@ -1334,7 +1351,7 @@ export type EventsUpdateManyMutationInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   start?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  end?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisions?: Prisma.EventsUpdatedivisionsInput | string[]
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1381,6 +1398,7 @@ export type EventsUpdateManyMutationInput = {
   userIds?: Prisma.EventsUpdateuserIdsInput | string[]
   leagueScoringConfigId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  parentEvent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoCancellation?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   eventType?: Prisma.NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1401,7 +1419,7 @@ export type EventsUncheckedUpdateManyInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   name?: Prisma.StringFieldUpdateOperationsInput | string
   start?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  end?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisions?: Prisma.EventsUpdatedivisionsInput | string[]
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1448,6 +1466,7 @@ export type EventsUncheckedUpdateManyInput = {
   userIds?: Prisma.EventsUpdateuserIdsInput | string[]
   leagueScoringConfigId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  parentEvent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoCancellation?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   eventType?: Prisma.NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput | $Enums.EventsEventTypeEnum | null
   doTeamsRef?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1515,6 +1534,7 @@ export type EventsCountOrderByAggregateInput = {
   userIds?: Prisma.SortOrder
   leagueScoringConfigId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  parentEvent?: Prisma.SortOrder
   autoCancellation?: Prisma.SortOrder
   eventType?: Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrder
@@ -1596,6 +1616,7 @@ export type EventsMaxOrderByAggregateInput = {
   sportId?: Prisma.SortOrder
   leagueScoringConfigId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  parentEvent?: Prisma.SortOrder
   autoCancellation?: Prisma.SortOrder
   eventType?: Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrder
@@ -1647,6 +1668,7 @@ export type EventsMinOrderByAggregateInput = {
   sportId?: Prisma.SortOrder
   leagueScoringConfigId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  parentEvent?: Prisma.SortOrder
   autoCancellation?: Prisma.SortOrder
   eventType?: Prisma.SortOrder
   doTeamsRef?: Prisma.SortOrder
@@ -1881,6 +1903,7 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   userIds?: boolean
   leagueScoringConfigId?: boolean
   organizationId?: boolean
+  parentEvent?: boolean
   autoCancellation?: boolean
   eventType?: boolean
   doTeamsRef?: boolean
@@ -1948,6 +1971,7 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   userIds?: boolean
   leagueScoringConfigId?: boolean
   organizationId?: boolean
+  parentEvent?: boolean
   autoCancellation?: boolean
   eventType?: boolean
   doTeamsRef?: boolean
@@ -2015,6 +2039,7 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   userIds?: boolean
   leagueScoringConfigId?: boolean
   organizationId?: boolean
+  parentEvent?: boolean
   autoCancellation?: boolean
   eventType?: boolean
   doTeamsRef?: boolean
@@ -2082,6 +2107,7 @@ export type EventsSelectScalar = {
   userIds?: boolean
   leagueScoringConfigId?: boolean
   organizationId?: boolean
+  parentEvent?: boolean
   autoCancellation?: boolean
   eventType?: boolean
   doTeamsRef?: boolean
@@ -2096,7 +2122,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "leagueScoringConfigId" | "organizationId" | "autoCancellation" | "eventType" | "doTeamsRef" | "teamRefsMaySwap" | "refereeIds" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "doTeamsRef" | "teamRefsMaySwap" | "refereeIds" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2107,7 +2133,7 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     updatedAt: Date | null
     name: string
     start: Date
-    end: Date
+    end: Date | null
     description: string | null
     divisions: string[]
     winnerSetCount: number | null
@@ -2154,6 +2180,7 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     userIds: string[]
     leagueScoringConfigId: string | null
     organizationId: string | null
+    parentEvent: string | null
     autoCancellation: boolean | null
     eventType: $Enums.EventsEventTypeEnum | null
     doTeamsRef: boolean | null
@@ -2641,6 +2668,7 @@ export interface EventsFieldRefs {
   readonly userIds: Prisma.FieldRef<"Events", 'String[]'>
   readonly leagueScoringConfigId: Prisma.FieldRef<"Events", 'String'>
   readonly organizationId: Prisma.FieldRef<"Events", 'String'>
+  readonly parentEvent: Prisma.FieldRef<"Events", 'String'>
   readonly autoCancellation: Prisma.FieldRef<"Events", 'Boolean'>
   readonly eventType: Prisma.FieldRef<"Events", 'EventsEventTypeEnum'>
   readonly doTeamsRef: Prisma.FieldRef<"Events", 'Boolean'>

@@ -489,7 +489,15 @@ const parseDateValue = (value?: string | null): Date | null => {
 };
 
 const supportsScheduleSlots = (eventType: EventType): boolean =>
-    eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
+    eventType === 'LEAGUE' || eventType === 'TOURNAMENT' || eventType === 'WEEKLY_EVENT';
+
+const hasParentEventRef = (value?: string | null): boolean =>
+    typeof value === 'string' && value.trim().length > 0;
+
+const supportsScheduleSlotsForEvent = (eventType: EventType, parentEvent?: string | null): boolean => (
+    supportsScheduleSlots(eventType)
+    && !(eventType === 'WEEKLY_EVENT' && hasParentEventRef(parentEvent))
+);
 
 type DivisionDetailForm = {
     id: string;
@@ -1042,6 +1050,7 @@ type SlotConflictSnapshot = {
 type SlotConflictPayload = {
     eventId: string;
     eventType: EventType;
+    parentEvent?: string | null;
     eventStart?: string;
     eventEnd?: string;
     slots: SlotConflictSnapshot[];
@@ -1052,6 +1061,11 @@ type SlotConflictContext = {
     eventStart?: string;
     eventEnd?: string;
 };
+
+type ComparableConflictSlot = Pick<
+    TimeSlot,
+    'repeating' | 'startDate' | 'endDate' | 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'scheduledFieldId' | 'scheduledFieldIds'
+>;
 
 const addMinutesToDate = (date: Date, minutes: number): Date => new Date(date.getTime() + minutes * 60 * 1000);
 
@@ -1108,7 +1122,7 @@ const resolveSlotWindowRange = (
 };
 
 const repeatingSlotOverlapsEvent = (
-    slot: Pick<LeagueSlotForm, 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'startDate' | 'endDate'>,
+    slot: Pick<ComparableConflictSlot, 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'startDate' | 'endDate'>,
     eventRange: { start: Date; end: Date },
     eventStart?: string,
     eventEnd?: string,
@@ -1153,12 +1167,182 @@ const repeatingSlotOverlapsEvent = (
     return false;
 };
 
-const slotOverlapsExistingEvent = (
-    slot: Pick<LeagueSlotForm, 'repeating' | 'startDate' | 'endDate' | 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes'>,
+const parseExplicitSlotRange = (
+    slot: Pick<ComparableConflictSlot, 'startDate' | 'endDate'>,
+): { start: Date; end: Date } | null => {
+    const start = parseLocalDateTime(slot.startDate ?? null);
+    const end = parseLocalDateTime(slot.endDate ?? null);
+    if (!start || !end || end.getTime() <= start.getTime()) {
+        return null;
+    }
+    return { start, end };
+};
+
+const repeatingSlotsOverlap = (
+    slotA: Pick<ComparableConflictSlot, 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'startDate' | 'endDate'>,
+    contextA: { eventStart?: string; eventEnd?: string },
+    slotB: Pick<ComparableConflictSlot, 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'startDate' | 'endDate'>,
+    contextB: { eventStart?: string; eventEnd?: string },
+): boolean => {
+    const slotADays = normalizeWeekdays(slotA);
+    const slotBDays = normalizeWeekdays(slotB);
+    if (!slotADays.length || !slotBDays.length) {
+        return false;
+    }
+
+    if (
+        typeof slotA.startTimeMinutes !== 'number'
+        || typeof slotA.endTimeMinutes !== 'number'
+        || typeof slotB.startTimeMinutes !== 'number'
+        || typeof slotB.endTimeMinutes !== 'number'
+        || slotA.endTimeMinutes <= slotA.startTimeMinutes
+        || slotB.endTimeMinutes <= slotB.startTimeMinutes
+    ) {
+        return false;
+    }
+
+    if (!slotsOverlap(slotA.startTimeMinutes, slotA.endTimeMinutes, slotB.startTimeMinutes, slotB.endTimeMinutes)) {
+        return false;
+    }
+
+    const slotAWindow = resolveSlotWindowRange(slotA, contextA.eventStart, contextA.eventEnd);
+    const slotBWindow = resolveSlotWindowRange(slotB, contextB.eventStart, contextB.eventEnd);
+    if (!slotAWindow || !slotBWindow || !slotDateTimeRangesOverlap(slotAWindow.start, slotAWindow.end, slotBWindow.start, slotBWindow.end)) {
+        return false;
+    }
+
+    const overlapStart = new Date(Math.max(slotAWindow.start.getTime(), slotBWindow.start.getTime()));
+    const overlapEnd = new Date(Math.min(slotAWindow.end.getTime(), slotBWindow.end.getTime()));
+    if (overlapEnd.getTime() <= overlapStart.getTime()) {
+        return false;
+    }
+
+    let cursor = atStartOfDay(overlapStart);
+    const lastDay = atStartOfDay(overlapEnd);
+    let scannedDays = 0;
+
+    while (cursor.getTime() <= lastDay.getTime() && scannedDays <= MAX_REPEATING_CONFLICT_SCAN_DAYS) {
+        const weekday = mondayFirstDay(cursor);
+        if (slotADays.includes(weekday) && slotBDays.includes(weekday)) {
+            const slotAStart = withMinutesOnDay(cursor, slotA.startTimeMinutes);
+            const slotAEnd = withMinutesOnDay(cursor, slotA.endTimeMinutes);
+            const slotBStart = withMinutesOnDay(cursor, slotB.startTimeMinutes);
+            const slotBEnd = withMinutesOnDay(cursor, slotB.endTimeMinutes);
+            if (
+                slotDateTimeRangesOverlap(slotAStart, slotAEnd, slotBStart, slotBEnd)
+                && slotDateTimeRangesOverlap(slotAStart, slotAEnd, overlapStart, overlapEnd)
+                && slotDateTimeRangesOverlap(slotBStart, slotBEnd, overlapStart, overlapEnd)
+            ) {
+                return true;
+            }
+        }
+
+        cursor = addMinutesToDate(cursor, 24 * 60);
+        scannedDays += 1;
+    }
+
+    return false;
+};
+
+const slotOverlapsExistingSlot = (
+    slot: Pick<ComparableConflictSlot, 'repeating' | 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'startDate' | 'endDate'>,
+    slotContext: { eventStart?: string; eventEnd?: string },
+    existingSlot: Pick<ComparableConflictSlot, 'repeating' | 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'startDate' | 'endDate'>,
+    existingSlotContext: { eventStart?: string; eventEnd?: string },
+): boolean => {
+    const slotRepeating = slot.repeating !== false;
+    const existingRepeating = existingSlot.repeating !== false;
+
+    if (!slotRepeating && !existingRepeating) {
+        const slotRange = parseExplicitSlotRange(slot);
+        const existingRange = parseExplicitSlotRange(existingSlot);
+        if (!slotRange || !existingRange) {
+            return false;
+        }
+        return slotDateTimeRangesOverlap(slotRange.start, slotRange.end, existingRange.start, existingRange.end);
+    }
+
+    if (slotRepeating && existingRepeating) {
+        return repeatingSlotsOverlap(slot, slotContext, existingSlot, existingSlotContext);
+    }
+
+    if (slotRepeating) {
+        const existingRange = parseExplicitSlotRange(existingSlot)
+            ?? resolveSlotWindowRange(existingSlot, existingSlotContext.eventStart, existingSlotContext.eventEnd);
+        if (!existingRange) {
+            return false;
+        }
+        return repeatingSlotOverlapsEvent(slot, existingRange, slotContext.eventStart, slotContext.eventEnd);
+    }
+
+    const slotRange = parseExplicitSlotRange(slot)
+        ?? resolveSlotWindowRange(slot, slotContext.eventStart, slotContext.eventEnd);
+    if (!slotRange) {
+        return false;
+    }
+    return repeatingSlotOverlapsEvent(existingSlot, slotRange, existingSlotContext.eventStart, existingSlotContext.eventEnd);
+};
+
+const findOverlappingEventSlotForField = (
+    slot: Pick<ComparableConflictSlot, 'repeating' | 'startDate' | 'endDate' | 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes'>,
     event: Event,
     context: SlotConflictContext,
+    fieldId?: string,
+): TimeSlot | null => {
+    if (!event?.$id || event.$id === context.eventId) {
+        return null;
+    }
+    if (!Array.isArray(event.timeSlots) || event.timeSlots.length === 0) {
+        return null;
+    }
+    const normalizedFieldId = typeof fieldId === 'string' ? fieldId.trim() : '';
+    if (!normalizedFieldId) {
+        return null;
+    }
+
+    const eventSlotContext = {
+        eventStart: event.start ?? undefined,
+        eventEnd: event.end ?? undefined,
+    };
+
+    for (const eventSlot of event.timeSlots) {
+        const eventSlotFieldIds = normalizeSlotFieldIds({
+            scheduledFieldId: eventSlot.scheduledFieldId,
+            scheduledFieldIds: eventSlot.scheduledFieldIds,
+        });
+        if (!eventSlotFieldIds.includes(normalizedFieldId)) {
+            continue;
+        }
+        if (slotOverlapsExistingSlot(slot, context, eventSlot, eventSlotContext)) {
+            return eventSlot;
+        }
+    }
+
+    return null;
+};
+
+const slotOverlapsExistingEvent = (
+    slot: Pick<ComparableConflictSlot, 'repeating' | 'startDate' | 'endDate' | 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes'>,
+    event: Event,
+    context: SlotConflictContext,
+    fieldId?: string,
 ): boolean => {
     if (!event?.$id || event.$id === context.eventId) {
+        return false;
+    }
+
+    const normalizedEventType = typeof event.eventType === 'string' ? event.eventType.toUpperCase() : '';
+    const isSlotBasedEventType = (
+        normalizedEventType === 'LEAGUE'
+        || normalizedEventType === 'TOURNAMENT'
+        || (normalizedEventType === 'WEEKLY_EVENT' && !hasParentEventRef(event.parentEvent ?? null))
+    );
+    const overlappingEventSlot = findOverlappingEventSlotForField(slot, event, context, fieldId);
+    if (overlappingEventSlot) {
+        return true;
+    }
+    if (isSlotBasedEventType) {
+        // Slot-based events (league/tournament/weekly parent) should only conflict via slot overlap.
         return false;
     }
 
@@ -1223,13 +1407,76 @@ const slotCanCheckExternalConflicts = (
     return Boolean(resolveSlotWindowRange(slot, context.eventStart, context.eventEnd));
 };
 
-const buildConflictEntry = (event: Event, fieldId: string): LeagueSlotForm['conflicts'][number] => ({
-    event,
+const minutesFromDate = (value: Date | null): number | undefined => {
+    if (!value) {
+        return undefined;
+    }
+    return value.getHours() * 60 + value.getMinutes();
+};
+
+const buildConflictEntry = (
+    slot: LeagueSlotForm,
+    event: Event,
+    fieldId: string,
+    context: SlotConflictContext,
+): LeagueSlotForm['conflicts'][number] => {
+    const overlappingEventSlot = findOverlappingEventSlotForField(slot, event, context, fieldId);
+    if (overlappingEventSlot) {
+        const overlappingFieldIds = normalizeSlotFieldIds({
+            scheduledFieldId: overlappingEventSlot.scheduledFieldId,
+            scheduledFieldIds: overlappingEventSlot.scheduledFieldIds,
+        });
+        return {
+            event,
+            schedule: {
+                $id: overlappingEventSlot.$id || `event-${event.$id}-field-${fieldId}`,
+                repeating: overlappingEventSlot.repeating !== false,
+                dayOfWeek: overlappingEventSlot.dayOfWeek,
+                daysOfWeek: overlappingEventSlot.daysOfWeek,
+                startDate: overlappingEventSlot.startDate,
+                endDate: overlappingEventSlot.endDate ?? undefined,
+                startTimeMinutes: overlappingEventSlot.startTimeMinutes,
+                endTimeMinutes: overlappingEventSlot.endTimeMinutes,
+                scheduledFieldId: overlappingFieldIds[0] ?? fieldId,
+                scheduledFieldIds: overlappingFieldIds.length ? overlappingFieldIds : [fieldId],
+            },
+        };
+    }
+
+    const eventStart = parseLocalDateTime(event.start ?? null);
+    const eventEnd = parseLocalDateTime(event.end ?? null);
+
+    return {
+        event,
+        schedule: {
+            $id: `event-${event.$id}-field-${fieldId}`,
+            repeating: false,
+            startDate: event.start ?? undefined,
+            endDate: event.end ?? undefined,
+            startTimeMinutes: minutesFromDate(eventStart),
+            endTimeMinutes: minutesFromDate(eventEnd),
+            scheduledFieldId: fieldId,
+            scheduledFieldIds: [fieldId],
+        },
+    };
+};
+
+const buildRentalConflictEntry = (slot: TimeSlot, fieldId: string): LeagueSlotForm['conflicts'][number] => ({
+    event: {
+        $id: `rental-${slot.$id}-${fieldId}`,
+        name: 'Rental Slot',
+        start: slot.startDate ?? '',
+        end: slot.endDate ?? slot.startDate ?? '',
+    } as Event,
     schedule: {
-        $id: `event-${event.$id}-field-${fieldId}`,
-        repeating: false,
-        startDate: event.start ?? undefined,
-        endDate: event.end ?? undefined,
+        $id: `rental-${slot.$id}-${fieldId}`,
+        repeating: slot.repeating !== false,
+        dayOfWeek: slot.dayOfWeek,
+        daysOfWeek: slot.daysOfWeek,
+        startDate: slot.startDate,
+        endDate: slot.endDate ?? undefined,
+        startTimeMinutes: slot.startTimeMinutes,
+        endTimeMinutes: slot.endTimeMinutes,
         scheduledFieldId: fieldId,
         scheduledFieldIds: [fieldId],
     },
@@ -1246,7 +1493,7 @@ const buildExternalSlotConflicts = (
     normalizeSlotFieldIds(slot).forEach((fieldId) => {
         const fieldEvents = eventsByFieldId.get(fieldId) ?? [];
         fieldEvents.forEach((event) => {
-            if (!slotOverlapsExistingEvent(slot, event, context)) {
+            if (!slotOverlapsExistingEvent(slot, event, context, fieldId)) {
                 return;
             }
             const key = `${event.$id}:${fieldId}`;
@@ -1254,7 +1501,38 @@ const buildExternalSlotConflicts = (
                 return;
             }
             seen.add(key);
-            conflicts.push(buildConflictEntry(event, fieldId));
+            conflicts.push(buildConflictEntry(slot, event, fieldId, context));
+        });
+    });
+
+    return conflicts.sort((left, right) => {
+        const leftStart = parseLocalDateTime(left.event.start ?? null)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const rightStart = parseLocalDateTime(right.event.start ?? null)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return leftStart - rightStart;
+    });
+};
+
+const buildRentalSlotConflicts = (
+    slot: LeagueSlotForm,
+    rentalSlotsByFieldId: Map<string, TimeSlot[]>,
+    context: SlotConflictContext,
+): LeagueSlotForm['conflicts'] => {
+    const seen = new Set<string>();
+    const conflicts: LeagueSlotForm['conflicts'] = [];
+    const rentalContext = { eventStart: undefined, eventEnd: undefined };
+
+    normalizeSlotFieldIds(slot).forEach((fieldId) => {
+        const rentalSlots = rentalSlotsByFieldId.get(fieldId) ?? [];
+        rentalSlots.forEach((rentalSlot) => {
+            if (!slotOverlapsExistingSlot(slot, context, rentalSlot, rentalContext)) {
+                return;
+            }
+            const key = `${rentalSlot.$id}:${fieldId}`;
+            if (seen.has(key)) {
+                return;
+            }
+            seen.add(key);
+            conflicts.push(buildRentalConflictEntry(rentalSlot, fieldId));
         });
     });
 
@@ -1269,7 +1547,15 @@ const hasConflictingEvents = (
     slot: LeagueSlotForm,
     conflicts: LeagueSlotForm['conflicts'],
     context: SlotConflictContext,
-): boolean => conflicts.some((conflict) => slotOverlapsExistingEvent(slot, conflict.event, context));
+): boolean => conflicts.some((conflict) => slotOverlapsExistingEvent(
+    slot,
+    conflict.event,
+    context,
+    normalizeSlotFieldIds({
+        scheduledFieldId: conflict.schedule?.scheduledFieldId,
+        scheduledFieldIds: conflict.schedule?.scheduledFieldIds,
+    })[0],
+));
 
 const buildAutoResolvedSlotUpdate = (
     slot: LeagueSlotForm,
@@ -1351,9 +1637,10 @@ const buildAutoResolvedSlotUpdate = (
 const computeSlotError = (
     slots: LeagueSlotForm[],
     index: number,
-    eventType: EventType
+    eventType: EventType,
+    parentEvent?: string | null,
 ): string | undefined => {
-    if (!supportsScheduleSlots(eventType)) {
+    if (!supportsScheduleSlotsForEvent(eventType, parentEvent)) {
         return undefined;
     }
 
@@ -1437,11 +1724,11 @@ const computeSlotError = (
 };
 
 // Resets conflict bookkeeping and assigns slot errors so UI can block submission when overlaps exist.
-const normalizeSlotState = (slots: LeagueSlotForm[], eventType: EventType): LeagueSlotForm[] => {
+const normalizeSlotState = (slots: LeagueSlotForm[], eventType: EventType, parentEvent?: string | null): LeagueSlotForm[] => {
     let mutated = false;
 
     const normalized = slots.map((slot, index) => {
-        const error = computeSlotError(slots, index, eventType);
+        const error = computeSlotError(slots, index, eventType, parentEvent);
         const needsUpdate = slot.error !== error;
 
         if (!needsUpdate) {
@@ -1579,6 +1866,7 @@ type EventFormState = {
     end: string;
     state: EventState;
     eventType: EventType;
+    parentEvent?: string;
     sportId: string;
     sportConfig: Sport | null;
     price: number;
@@ -1903,7 +2191,7 @@ const extractTournamentConfigFromEvent = (event?: Partial<Event> | null): Tourna
 };
 
 const mapEventToFormState = (event: Event): EventFormState => {
-    const isSchedulableType = event.eventType === 'LEAGUE' || event.eventType === 'TOURNAMENT';
+    const isSchedulableType = supportsScheduleSlotsForEvent(event.eventType, event.parentEvent);
     const derivedNoFixedEndDateTime = (() => {
         if (typeof event.noFixedEndDateTime === 'boolean') {
             return event.noFixedEndDateTime;
@@ -2130,6 +2418,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     end: event.end,
     state: (event.state as EventState) ?? 'DRAFT',
     eventType: event.eventType,
+    parentEvent: event.parentEvent || undefined,
     sportId: resolvedSportId,
     sportConfig: event.sport && typeof event.sport === 'object'
         ? { ...(event.sport as Sport) }
@@ -2273,7 +2562,8 @@ const eventFormSchema = z
         start: z.string(),
         end: z.string(),
         state: z.string().default('DRAFT'),
-        eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE']),
+        eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']),
+        parentEvent: z.string().optional().nullable(),
         sportId: z.string().trim(),
         sportConfig: z.any().nullable(),
         price: z.number().int().min(0, 'Price must be at least 0'),
@@ -2393,7 +2683,7 @@ const eventFormSchema = z
             });
         }
 
-        if ((values.eventType === 'LEAGUE' || values.eventType === 'TOURNAMENT') && !values.noFixedEndDateTime) {
+        if (supportsScheduleSlotsForEvent(values.eventType, values.parentEvent) && !values.noFixedEndDateTime) {
             const parsedStart = parseLocalDateTime(values.start);
             const parsedEnd = parseLocalDateTime(values.end);
             if (!parsedStart || !parsedEnd || parsedEnd.getTime() <= parsedStart.getTime()) {
@@ -2510,7 +2800,7 @@ const eventFormSchema = z
             }
         }
 
-        if (supportsScheduleSlots(values.eventType)) {
+        if (supportsScheduleSlotsForEvent(values.eventType, values.parentEvent)) {
             const slotDivisionLookup = buildSlotDivisionLookup(
                 values.divisionDetails,
                 values.eventType === 'LEAGUE' && values.leagueData.includePlayoffs && values.splitLeaguePlayoffDivisions
@@ -2683,7 +2973,7 @@ const eventFormSchema = z
                         path: ['leagueSlots', index, 'divisions'],
                     });
                 }
-                const error = computeSlotError(values.leagueSlots, index, values.eventType);
+                const error = computeSlotError(values.leagueSlots, index, values.eventType, values.parentEvent);
                 if (error) {
                     ctx.addIssue({
                         code: "custom",
@@ -3187,7 +3477,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
             }
 
-            if (activeEditingEvent && supportsScheduleSlots(activeEditingEvent.eventType) && activeEditingEvent.timeSlots?.length) {
+            if (
+                activeEditingEvent
+                && supportsScheduleSlotsForEvent(activeEditingEvent.eventType, activeEditingEvent.parentEvent)
+                && activeEditingEvent.timeSlots?.length
+            ) {
                 return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
                     .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
             }
@@ -3250,7 +3544,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             divisionDetails: defaultDivisionDetails,
             divisionFieldIds: defaultDivisionFieldIds,
             selectedFieldIds: defaultSelectedFieldIds,
-            leagueSlots: normalizeSlotState(defaultSlots, base.eventType),
+            leagueSlots: normalizeSlotState(defaultSlots, base.eventType, base.parentEvent),
             leagueData: defaultLeagueData,
             playoffData: defaultPlayoffData,
             tournamentData: defaultTournamentData,
@@ -3873,7 +4167,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
     const isOrganizationHostedEvent = organizationHostedEventId.length > 0;
     const shouldProvisionFields = !isOrganizationHostedEvent && !hasImmutableFields;
-    const shouldManageLocalFields = shouldProvisionFields && (eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT');
+    const shouldManageLocalFields = shouldProvisionFields
+        && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
     const organizationAssignableStaffIds = useMemo(
         () => Array.from(
@@ -4324,6 +4619,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const slotConflictCheckKey = useMemo(() => JSON.stringify({
         eventId: activeEditingEvent?.$id ?? eventData.$id ?? '',
         eventType: eventData.eventType,
+        parentEvent: eventData.parentEvent ?? null,
         eventStart: eventData.start ?? undefined,
         eventEnd: eventData.end ?? undefined,
         slots: leagueSlots.map((slot) => {
@@ -4349,9 +4645,45 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.$id,
         eventData.end,
         eventData.eventType,
+        eventData.parentEvent,
         eventData.start,
         leagueSlots,
     ]);
+    const slotConflictContext = useMemo<SlotConflictContext>(() => ({
+        eventId: activeEditingEvent?.$id ?? eventData.$id ?? '',
+        eventStart: eventData.start ?? undefined,
+        eventEnd: eventData.end ?? undefined,
+    }), [activeEditingEvent?.$id, eventData.$id, eventData.end, eventData.start]);
+    const { hasPendingExternalConflictChecks, hasBlockingExternalSlotConflicts } = useMemo(() => {
+        if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
+            return {
+                hasPendingExternalConflictChecks: false,
+                hasBlockingExternalSlotConflicts: false,
+            };
+        }
+
+        let hasPending = false;
+        let hasConflicts = false;
+        for (const slot of leagueSlots) {
+            if (!slotCanCheckExternalConflicts(slot, slotConflictContext)) {
+                continue;
+            }
+            if (slot.checking) {
+                hasPending = true;
+            }
+            if (slot.conflicts.length > 0) {
+                hasConflicts = true;
+            }
+            if (hasPending && hasConflicts) {
+                break;
+            }
+        }
+
+        return {
+            hasPendingExternalConflictChecks: hasPending,
+            hasBlockingExternalSlotConflicts: hasConflicts,
+        };
+    }, [eventData.eventType, eventData.parentEvent, leagueSlots, slotConflictContext]);
     const divisionTypeOptions = useMemo(() => {
         const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
         const catalogOptions = getDivisionTypeOptionsForSport(sportInput);
@@ -6041,7 +6373,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }, { shouldDirty: false });
         };
 
-        if (!supportsScheduleSlots(payload.eventType) || payload.slots.length === 0) {
+        if (!supportsScheduleSlotsForEvent(payload.eventType, payload.parentEvent) || payload.slots.length === 0) {
             clearConflicts();
             return;
         }
@@ -6084,24 +6416,36 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         let cancelled = false;
         const loadConflicts = async () => {
             try {
-                const eventsByFieldRows = await Promise.all(fieldIds.map(async (fieldId) => {
-                    const events = await eventService.getEventsForFieldInRange(
+                const blockingByFieldRows = await Promise.all(fieldIds.map(async (fieldId) => {
+                    const blocking = await eventService.getBlockingForFieldInRange(
                         fieldId,
                         CONFLICT_LOOKUP_START,
                         CONFLICT_LOOKUP_END,
+                        {
+                            organizationId: resolvedOrganizationId || undefined,
+                            excludeEventId: context.eventId || undefined,
+                        },
                     );
-                    return [fieldId, events] as const;
+                    return [fieldId, blocking] as const;
                 }));
                 if (cancelled || slotConflictRequestRef.current !== requestId) {
                     return;
                 }
 
-                const eventsByFieldId = new Map(eventsByFieldRows);
+                const eventsByFieldId = new Map(
+                    blockingByFieldRows.map(([fieldId, blocking]) => [fieldId, blocking.events]),
+                );
+                const rentalSlotsByFieldId = new Map(
+                    blockingByFieldRows.map(([fieldId, blocking]) => [fieldId, blocking.rentalSlots]),
+                );
                 const conflictsBySlotKey = new Map(
                     slotForms.map((slot) => [
                         slot.key,
                         slotCanCheckExternalConflicts(slot, context)
-                            ? buildExternalSlotConflicts(slot, eventsByFieldId, context)
+                            ? [
+                                ...buildExternalSlotConflicts(slot, eventsByFieldId, context),
+                                ...buildRentalSlotConflicts(slot, rentalSlotsByFieldId, context),
+                            ]
                             : [],
                     ]),
                 );
@@ -6130,12 +6474,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 setLeagueSlots((prev) => {
                     let changed = false;
                     const next = prev.map((slot) => {
-                        if (slot.checking === false) {
+                        if (slot.checking === false && slot.conflicts.length === 0) {
                             return slot;
                         }
                         changed = true;
                         return {
                             ...slot,
+                            conflicts: [],
                             checking: false,
                         };
                     });
@@ -6149,7 +6494,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         return () => {
             cancelled = true;
         };
-    }, [hasImmutableTimeSlots, setLeagueSlots, slotConflictCheckKey]);
+    }, [hasImmutableTimeSlots, resolvedOrganizationId, setLeagueSlots, slotConflictCheckKey]);
 
     // Adds a blank slot row in the LeagueFields list when the user taps "Add Timeslot".
     const handleAddSlot = () => {
@@ -6330,7 +6675,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (hasImmutableTimeSlots) {
             return;
         }
-        if (activeEditingEvent && supportsScheduleSlots(activeEditingEvent.eventType)) {
+        if (activeEditingEvent && supportsScheduleSlotsForEvent(activeEditingEvent.eventType, activeEditingEvent.parentEvent)) {
             if (activeEditingEvent.eventType === 'LEAGUE') {
                 const source = activeEditingEvent.leagueConfig || activeEditingEvent;
                 setLeagueData({
@@ -6666,10 +7011,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             { value: 'EVENT', label: 'Pickup Game' },
             { value: 'TOURNAMENT', label: 'Tournament' },
             { value: 'LEAGUE', label: 'League' },
+            { value: 'WEEKLY_EVENT', label: 'Weekly Event' },
         ],
         [],
     );
-    const supportsNoFixedEndDateTime = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
+    const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
 
     useEffect(() => {
         if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') &&
@@ -6685,6 +7031,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }, { shouldDirty: false });
         }
     }, [eventData.eventType, eventData.teamSignup, setEventData]);
+
+    useEffect(() => {
+        if (isEditMode || hasExternalRentalField) {
+            return;
+        }
+        if (eventData.eventType === 'WEEKLY_EVENT' && !eventData.noFixedEndDateTime) {
+            setValue('noFixedEndDateTime', true, { shouldDirty: false, shouldValidate: true });
+        }
+    }, [eventData.eventType, eventData.noFixedEndDateTime, hasExternalRentalField, isEditMode, setValue]);
 
     // Prevents the creator from joining twice when they toggle team-based registration on.
     useEffect(() => {
@@ -6720,7 +7075,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
     }, [eventData.eventType, eventData.noFixedEndDateTime, hasExternalRentalField, setValue]);
 
-    const leagueError = errors.leagueSlots ? 'Please resolve schedule timeslot issues before submitting.' : null;
+    const leagueError = (() => {
+        if (hasPendingExternalConflictChecks) {
+            return 'Checking field conflicts for timeslots. Please wait.';
+        }
+        if (hasBlockingExternalSlotConflicts) {
+            return 'Resolve field scheduling conflicts in the timeslots before submitting.';
+        }
+        const issue = errors.leagueSlots;
+        if (!issue) {
+            return null;
+        }
+        const message = typeof issue.message === 'string' ? issue.message : null;
+        return message && message.trim().length > 0
+            ? message
+            : 'Please resolve schedule timeslot issues before submitting.';
+    })();
 
     useEffect(() => {
         if (isEditMode || !resolvedOrganization) {
@@ -7057,19 +7427,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const normalizedReferees = normalizedRefereeIds
             .map((id) => refereePoolById.get(id))
             .filter((referee): referee is UserData => Boolean(referee));
+        const shouldClearWeeklyEnd = source.eventType === 'WEEKLY_EVENT' && Boolean(source.noFixedEndDateTime);
 
         const draft: Partial<Event> = {
             $id: activeEditingEvent?.$id,
             hostId: normalizedHostId,
-            name: source.name.trim(),
+            name: (source.name ?? '').trim(),
             description: source.description,
             location: source.location,
             start: source.start,
-            end: source.end,
+            end: shouldClearWeeklyEnd ? '' : source.end,
             eventType: source.eventType,
-            noFixedEndDateTime: (
-                source.eventType === 'LEAGUE' || source.eventType === 'TOURNAMENT'
-            ) ? Boolean(source.noFixedEndDateTime) : false,
+            parentEvent: source.parentEvent || undefined,
+            noFixedEndDateTime: supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
+                ? Boolean(source.noFixedEndDateTime)
+                : false,
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
             price: eventPriceCents,
@@ -7322,7 +7694,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
         }
 
-        if (supportsScheduleSlots(source.eventType)) {
+        if (supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)) {
             const slotDocuments = source.leagueSlots
                 .filter((slot) => {
                     if (!normalizeSlotFieldIds(slot).length) {
@@ -7509,10 +7881,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [buildDraftEvent, getValues],
     );
 
-    const validateDraft = useCallback(
-        () => trigger(),
-        [trigger],
-    );
+    const validateDraft = useCallback(async () => {
+        const isFormValid = await trigger();
+        if (!isFormValid) {
+            return false;
+        }
+
+        if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
+            return true;
+        }
+
+        if (hasPendingExternalConflictChecks || hasBlockingExternalSlotConflicts) {
+            return false;
+        }
+
+        return true;
+    }, [
+        eventData.eventType,
+        eventData.parentEvent,
+        hasBlockingExternalSlotConflicts,
+        hasPendingExternalConflictChecks,
+        trigger,
+    ]);
 
     const commitDirtyBaseline = useCallback(() => {
         const currentValues = getValues();
@@ -7544,9 +7934,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const allowImageEdit = !isImmutableField('imageId');
     const isLocationImmutable = isImmutableField('location') || isImmutableField('coordinates') || hasExternalRentalField;
     const splitLeaguePlayoffDivisionsLocked = isImmutableField('splitLeaguePlayoffDivisions') && !hasExternalRentalField;
-    const isSchedulableEventType = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
+    const isSchedulableEventType = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    const isWeeklyChildEvent = eventData.eventType === 'WEEKLY_EVENT' && hasParentEventRef(eventData.parentEvent);
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
-    const showScheduleConfig = isSchedulableEventType || usesRentalSlots;
+    const showScheduleConfig = isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent;
     const sectionNavItems = useMemo(
         () => [
             { id: 'section-basic-information', label: 'Basic Information', visible: true },
@@ -9512,7 +9903,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
-                                    {isOrganizationManagedEvent ? (
+                                    {isOrganizationManagedEvent && !isWeeklyChildEvent ? (
                                         <Controller
                                             name="selectedFieldIds"
                                             control={control}
@@ -9689,6 +10080,37 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 <Text size="sm" c="dimmed" mt="xs">
                                                     Linked slots: {immutableTimeSlots.length}
                                                 </Text>
+                                            </div>
+                                        ) : null}
+
+                                        {isWeeklyChildEvent ? (
+                                            <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+                                                <Text fw={600} size="sm">Weekly Session Schedule</Text>
+                                                <Text size="sm" c="dimmed">
+                                                    Weekly child sessions use fixed start/end times from the selected session. Timeslots are hidden for child sessions.
+                                                </Text>
+                                                <Controller
+                                                    name="selectedFieldIds"
+                                                    control={control}
+                                                    render={({ field, fieldState }) => (
+                                                        <MantineMultiSelect
+                                                            label="Session Fields"
+                                                            description="Choose which fields this weekly child session can use."
+                                                            placeholder={fieldsLoading ? 'Loading fields...' : 'Select one or more fields'}
+                                                            data={leagueFieldOptions}
+                                                            value={Array.isArray(field.value) ? field.value : []}
+                                                            comboboxProps={sharedComboboxProps}
+                                                            disabled={fieldsLoading || isImmutableField('fieldIds')}
+                                                            onChange={(values) => {
+                                                                if (isImmutableField('fieldIds')) return;
+                                                                field.onChange(values);
+                                                            }}
+                                                            searchable
+                                                            clearable
+                                                            error={fieldState.error?.message}
+                                                        />
+                                                    )}
+                                                />
                                             </div>
                                         ) : null}
 

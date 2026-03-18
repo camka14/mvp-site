@@ -76,6 +76,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'userIds',
   'leagueScoringConfigId',
   'organizationId',
+  'parentEvent',
   'autoCancellation',
   'eventType',
   'doTeamsRef',
@@ -127,8 +128,7 @@ const withLegacyEvent = (row: any) => {
     const end = parseDateInput((legacy as any).end);
     (legacy as any).noFixedEndDateTime = Boolean(
       start
-      && end
-      && start.getTime() === end.getTime(),
+      && (!end || start.getTime() === end.getTime()),
     );
   }
   if ((legacy as any).doTeamsRef !== true) {

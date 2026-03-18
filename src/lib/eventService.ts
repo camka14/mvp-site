@@ -58,6 +58,7 @@ export interface LeagueGenerationResponse {
 export interface EventFilters {
     query?: string;
     organizationId?: string;
+    includeWeeklyChildren?: boolean;
     maxDistance?: number;
     userLocation?: LocationCoordinates;
     dateFrom?: string;
@@ -66,6 +67,11 @@ export interface EventFilters {
     eventTypes?: EventType[];
     sports?: string[];
     divisions?: string[];
+}
+
+export interface FieldBlockingResult {
+    events: Event[];
+    rentalSlots: TimeSlot[];
 }
 
 class EventService {
@@ -156,6 +162,27 @@ class EventService {
             console.error('Failed to add team participant:', error);
             throw error;
         }
+    }
+
+    async createWeeklySession(
+        parentEventId: string,
+        params: {
+            sessionStart: string;
+            sessionEnd: string;
+            slotId?: string;
+            divisionId?: string;
+            divisionTypeId?: string;
+            divisionTypeKey?: string;
+        },
+    ): Promise<Event> {
+        const response = await apiRequest<{ event?: any }>(`/api/events/${parentEventId}/weekly-sessions`, {
+            method: 'POST',
+            body: params,
+        });
+        const payload = response?.event ?? response;
+        await this.ensureSportRelationship(payload);
+        await this.ensureLeagueScoringConfig(payload);
+        return this.mapRowToEvent(payload);
     }
 
     async removeTeamParticipant(eventId: string, teamId: string): Promise<Event> {
@@ -538,6 +565,10 @@ class EventService {
             sportId: row.sportId,
             leagueScoringConfigId: row.leagueScoringConfigId,
             organizationId: row.organizationId,
+            parentEvent:
+                typeof row.parentEvent === 'string' && row.parentEvent.trim().length > 0
+                    ? row.parentEvent
+                    : null,
             requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
                 ? row.requiredTemplateIds.map((id: unknown) => String(id))
                 : [],
@@ -724,15 +755,32 @@ class EventService {
         };
     }
 
-    async getEventsForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Event[]> {
+    async getBlockingForFieldInRange(
+        fieldId: string,
+        start: Date | string,
+        end: Date | string | null = null,
+        options?: {
+            organizationId?: string;
+            excludeEventId?: string;
+        },
+    ): Promise<FieldBlockingResult> {
         const startFilter = this.normalizeDateInput(start) ?? undefined;
         const endFilter = this.normalizeDateInput(end) ?? undefined;
         const params = new URLSearchParams();
         if (startFilter) params.set('start', startFilter);
         if (endFilter) params.set('end', endFilter);
+        const organizationId = typeof options?.organizationId === 'string' ? options.organizationId.trim() : '';
+        if (organizationId.length > 0) {
+            params.set('organizationId', organizationId);
+        }
+        const excludeEventId = typeof options?.excludeEventId === 'string' ? options.excludeEventId.trim() : '';
+        if (excludeEventId.length > 0) {
+            params.set('excludeEventId', excludeEventId);
+        }
 
-        const response = await apiRequest<{ events?: any[] }>(`/api/events/field/${fieldId}?${params.toString()}`);
+        const response = await apiRequest<{ events?: any[]; rentalSlots?: any[] }>(`/api/events/field/${fieldId}?${params.toString()}`);
         const rows = Array.isArray(response?.events) ? response.events : [];
+        const rentalRows = Array.isArray(response?.rentalSlots) ? response.rentalSlots : [];
 
         const events: Event[] = [];
         for (const row of rows) {
@@ -741,7 +789,48 @@ class EventService {
             events.push(this.mapRowToEvent(row));
         }
 
-        return events;
+        const allTimeSlotIds = this.extractStringIds(events.flatMap((event) => event.timeSlotIds ?? []));
+        let hydratedEvents = events;
+        if (allTimeSlotIds.length > 0) {
+            const timeSlots = await this.fetchTimeSlotsByIds(allTimeSlotIds);
+            if (timeSlots.length > 0) {
+                const slotsById = new Map(timeSlots.map((slot) => [slot.$id, slot]));
+                hydratedEvents = events.map((event) => {
+                    const slotIds = this.extractStringIds(event.timeSlotIds ?? []);
+                    if (!slotIds.length) {
+                        return event;
+                    }
+                    const hydratedSlots = slotIds
+                        .map((slotId) => slotsById.get(slotId))
+                        .filter((slot): slot is TimeSlot => Boolean(slot));
+                    if (!hydratedSlots.length) {
+                        return event;
+                    }
+                    return {
+                        ...event,
+                        timeSlots: hydratedSlots,
+                    };
+                });
+            }
+        }
+
+        return {
+            events: hydratedEvents,
+            rentalSlots: rentalRows.map((row) => this.mapRowToTimeSlot(row)),
+        };
+    }
+
+    async getEventsForFieldInRange(
+        fieldId: string,
+        start: Date | string,
+        end: Date | string | null = null,
+        options?: {
+            organizationId?: string;
+            excludeEventId?: string;
+        },
+    ): Promise<Event[]> {
+        const result = await this.getBlockingForFieldInRange(fieldId, start, end, options);
+        return result.events;
     }
 
     async getMatchesForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Match[]> {

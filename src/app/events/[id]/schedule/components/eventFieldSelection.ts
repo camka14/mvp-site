@@ -1,4 +1,4 @@
-type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE';
+type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT';
 
 const normalizeFieldIds = (values: unknown): string[] => {
   if (!Array.isArray(values)) {

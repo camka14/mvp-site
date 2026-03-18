@@ -558,8 +558,9 @@ describe('event template privacy routes', () => {
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: [
-            { start: { lte: new Date(endIso) } },
+          start: { lte: new Date(endIso) },
+          OR: [
+            { end: null },
             { end: { gte: new Date(startIso) } },
           ],
         }),

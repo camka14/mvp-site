@@ -357,7 +357,7 @@ export interface Field {
   rentalSlots?: TimeSlot[];
 }
 
-export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE';
+export type EventType = 'EVENT' | 'TOURNAMENT' | 'LEAGUE' | 'WEEKLY_EVENT';
 
 type FieldRelationKeys = 'matches' | 'events' | 'organization' | 'rentalSlots' | 'rentalSlotIds';
 
@@ -415,7 +415,7 @@ export interface Event {
   name: string;
   description: string;
   start: string;
-  end: string;
+  end: string | null;
   location: string;
   coordinates: [number, number];
   price: number;
@@ -451,6 +451,7 @@ export interface Event {
   sportId?: string;
   leagueScoringConfigId?: string | null;
   organizationId?: string | null;
+  parentEvent?: string | null;
   organization?: Organization | string;
   requiredTemplateIds?: string[];
   divisionFieldIds?: Record<string, string[]>;

@@ -77,6 +77,165 @@ const parseDateValue = (value?: string | null): Date | null => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+type WeeklySessionOption = {
+    id: string;
+    slotId: string;
+    start: Date;
+    end: Date;
+    label: string;
+    divisionLabel: string;
+};
+
+const toMondayIndex = (value: Date): number => (value.getDay() + 6) % 7;
+
+const startOfWeekMonday = (value: Date): Date => {
+    const copy = new Date(value.getTime());
+    copy.setHours(0, 0, 0, 0);
+    copy.setDate(copy.getDate() - toMondayIndex(copy));
+    return copy;
+};
+
+const addDays = (value: Date, days: number): Date => {
+    const copy = new Date(value.getTime());
+    copy.setDate(copy.getDate() + days);
+    return copy;
+};
+
+const formatWeeklyTimeLabel = (value: Date): string => (
+    value.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+        .replace(' ', '')
+        .toLowerCase()
+);
+
+const formatWeeklySessionLabel = (start: Date, end: Date): string => {
+    const dateLabel = `${start.toLocaleDateString('en-US', { weekday: 'short' })} ${start.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })}`;
+    return `${dateLabel}, ${formatWeeklyTimeLabel(start)}-${formatWeeklyTimeLabel(end)}`;
+};
+
+const buildWeeklySessionOptions = (event: Event | null, weeks: number = 3): WeeklySessionOption[] => {
+    if (!event || event.eventType !== 'WEEKLY_EVENT' || !Array.isArray(event.timeSlots) || event.timeSlots.length === 0) {
+        return [];
+    }
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const sessions: WeeklySessionOption[] = [];
+    const sportInput = typeof event.sport === 'string'
+        ? event.sport
+        : event.sport?.name ?? event.sportId ?? null;
+    const divisionNameIndex = buildDivisionDisplayNameIndex(event.divisionDetails);
+    const resolveDivisionNames = (entries: unknown[]): string[] => {
+        const labels: string[] = [];
+        const seen = new Set<string>();
+
+        entries.forEach((entry) => {
+            const divisionId = getDivisionIdFromEventEntry(entry);
+            const fromDivisionId = divisionId
+                ? resolveDivisionDisplayName({
+                    division: divisionId,
+                    divisionNameIndex,
+                    sportInput,
+                })
+                : null;
+            const fromEntryString = typeof entry === 'string'
+                ? resolveDivisionDisplayName({
+                    division: entry,
+                    divisionNameIndex,
+                    sportInput,
+                })
+                : null;
+            const fromObjectName = entry && typeof entry === 'object'
+                ? (() => {
+                    const row = entry as Record<string, unknown>;
+                    return typeof row.name === 'string' ? row.name : null;
+                })()
+                : null;
+
+            const label = (fromDivisionId ?? fromEntryString ?? fromObjectName ?? '').trim();
+            if (!label.length) {
+                return;
+            }
+            const dedupeKey = label.toLowerCase();
+            if (seen.has(dedupeKey)) {
+                return;
+            }
+            seen.add(dedupeKey);
+            labels.push(label);
+        });
+
+        return labels;
+    };
+    const fallbackDivisionNames = resolveDivisionNames(Array.isArray(event.divisions) ? event.divisions : []);
+
+    event.timeSlots.forEach((slot) => {
+        const slotStartDate = parseDateValue(slot.startDate ?? null);
+        if (!slotStartDate) {
+            return;
+        }
+        slotStartDate.setHours(0, 0, 0, 0);
+        const slotEndDate = parseDateValue(slot.endDate ?? null);
+        if (slotEndDate) {
+            slotEndDate.setHours(0, 0, 0, 0);
+        }
+
+        const normalizedDays = Array.from(
+            new Set(
+                (
+                    Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+                        ? slot.daysOfWeek
+                        : typeof slot.dayOfWeek === 'number'
+                            ? [slot.dayOfWeek]
+                            : []
+                )
+                    .map((value) => Number(value))
+                    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+            ),
+        ).sort((left, right) => left - right);
+        const startMinutes = typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : null;
+        const endMinutes = typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : null;
+        if (!normalizedDays.length || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+            return;
+        }
+        const slotDivisionNames = resolveDivisionNames(
+            Array.isArray(slot.divisions) && slot.divisions.length
+                ? slot.divisions
+                : (Array.isArray(event.divisions) ? event.divisions : []),
+        );
+        const divisionLabel = (slotDivisionNames.length ? slotDivisionNames : fallbackDivisionNames).join(', ') || 'All divisions';
+
+        const anchor = new Date(Math.max(now.getTime(), slotStartDate.getTime()));
+        const anchorWeek = startOfWeekMonday(anchor);
+
+        for (let weekOffset = 0; weekOffset < weeks; weekOffset += 1) {
+            const weekStart = addDays(anchorWeek, weekOffset * 7);
+            normalizedDays.forEach((weekday) => {
+                const occurrence = addDays(weekStart, weekday);
+                if (occurrence < anchor || occurrence < slotStartDate) {
+                    return;
+                }
+                if (slotEndDate && occurrence > slotEndDate) {
+                    return;
+                }
+                const sessionStart = new Date(occurrence.getTime());
+                sessionStart.setHours(0, startMinutes, 0, 0);
+                const sessionEnd = new Date(occurrence.getTime());
+                sessionEnd.setHours(0, endMinutes, 0, 0);
+
+                sessions.push({
+                    id: `${slot.$id}-${sessionStart.toISOString()}`,
+                    slotId: String(slot.$id ?? ''),
+                    start: sessionStart,
+                    end: sessionEnd,
+                    label: formatWeeklySessionLabel(sessionStart, sessionEnd),
+                    divisionLabel,
+                });
+            });
+        }
+    });
+
+    return sessions.sort((left, right) => left.start.getTime() - right.start.getTime());
+};
+
 const normalizeUserId = (value: unknown): string | null => {
     if (typeof value !== 'string') {
         return null;
@@ -354,6 +513,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
     const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
+    const [creatingWeeklySessionId, setCreatingWeeklySessionId] = useState<string | null>(null);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -868,6 +1028,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setChildRegistration(null);
             setChildConsent(null);
             setChildRegistrationChildId(null);
+            setCreatingWeeklySessionId(null);
             setSelectedDivisionId('');
             setSelectedDivisionTypeKey('');
         }
@@ -885,6 +1046,37 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             handleViewSchedule('bracket');
         }
     };
+
+    const handleWeeklySessionSelect = useCallback(async (session: WeeklySessionOption) => {
+        if (!currentEvent || currentEvent.eventType !== 'WEEKLY_EVENT' || currentEvent.parentEvent) {
+            return;
+        }
+        if (!user) {
+            window.location.href = '/login';
+            return;
+        }
+
+        setCreatingWeeklySessionId(session.id);
+        setJoinError(null);
+        setJoinNotice(null);
+
+        try {
+            const createdEvent = await eventService.createWeeklySession(currentEvent.$id, {
+                sessionStart: session.start.toISOString(),
+                sessionEnd: session.end.toISOString(),
+                ...(session.slotId ? { slotId: session.slotId } : {}),
+            });
+            const latest = await eventService.getEventWithRelations(createdEvent.$id);
+            const resolvedEvent = latest ?? createdEvent;
+            setDetailedEvent(resolvedEvent);
+            setJoinNotice('Session selected. Finish registration below.');
+            await loadEventDetails(resolvedEvent.$id);
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to load weekly session.');
+        } finally {
+            setCreatingWeeklySessionId(null);
+        }
+    }, [currentEvent, loadEventDetails, user]);
 
     const createBillForOwner = useCallback(async (ownerType: 'USER' | 'TEAM', ownerId: string) => {
         if (!currentEvent) {
@@ -2064,6 +2256,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const { date, time } = getEventDateTime(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
+    const isWeeklyParentEvent = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
+    const weeklySessionOptions = isWeeklyParentEvent ? buildWeeklySessionOptions(currentEvent, 3) : [];
     const totalParticipants = isTeamSignup ? teams.length : players.length;
     const participantCapacity = resolveEventParticipantCapacity(currentEvent);
     const eventAtCapacity = participantCapacity > 0 && totalParticipants >= participantCapacity;
@@ -2168,7 +2362,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const mapEmbedSrc = mapQuery
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
-    const canShowScheduleButton = isEventHost && !renderInline;
+    const canShowScheduleButton = isEventHost && !renderInline && !isWeeklyParentEvent;
+    const showParticipantsSection = !isWeeklyParentEvent;
     const scheduleButtonLabel = isEventHost ? 'Manage Event' : 'View Schedule';
     const selectedTeamRegistration = selectedTeamId
         ? teams.find((team) => team.$id === selectedTeamId || team.parentTeamId === selectedTeamId) ?? null
@@ -2536,6 +2731,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
                         {/* Sidebar */}
                         <div className="space-y-6">
+                            {showParticipantsSection && (
+                                <>
                             {/* Participants */}
                             <h3 className="text-lg font-semibold text-gray-900 mb-4">Participants</h3>
 
@@ -2673,11 +2870,81 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                     />
                                 </div>
                             )}
+                                </>
+                            )}
 
                             {/* Join Options (includes total participants) */}
                             <Paper withBorder p="md" radius="md">
                                 {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
                                 {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
+                                {isWeeklyParentEvent ? (
+                                    <div className="space-y-3">
+                                        <Text size="sm" fw={600}>
+                                            Select a weekly session
+                                        </Text>
+                                        <Text size="xs" c="dimmed">
+                                            Choose a session to create your registration event.
+                                        </Text>
+                                        {!user && (
+                                            <Button
+                                                fullWidth
+                                                color="blue"
+                                                onClick={() => {
+                                                    window.location.href = '/login';
+                                                }}
+                                            >
+                                                Sign in to join
+                                            </Button>
+                                        )}
+                                        {weeklySessionOptions.length === 0 ? (
+                                            <Alert color="yellow" variant="light">
+                                                No upcoming weekly sessions are available.
+                                            </Alert>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {weeklySessionOptions.map((session) => {
+                                                    const isCreatingThisSession = creatingWeeklySessionId === session.id;
+                                                    const isCreatingOtherSession = Boolean(creatingWeeklySessionId) && !isCreatingThisSession;
+                                                    const isDisabled = isCreatingOtherSession || !user;
+                                                    return (
+                                                        <button
+                                                            key={session.id}
+                                                            type="button"
+                                                            onClick={() => { void handleWeeklySessionSelect(session); }}
+                                                            disabled={isDisabled}
+                                                            className={`w-full rounded-lg border border-gray-200 bg-white p-2 text-left transition ${isDisabled ? 'cursor-not-allowed opacity-70' : 'hover:border-blue-400 hover:shadow-sm'}`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="relative h-14 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
+                                                                    <Image
+                                                                        src={eventImageUrl}
+                                                                        alt={currentEvent.name}
+                                                                        fill
+                                                                        unoptimized
+                                                                        sizes="96px"
+                                                                        className="object-cover"
+                                                                    />
+                                                                </div>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <Text size="sm" fw={600} className="truncate">
+                                                                        {session.label}
+                                                                    </Text>
+                                                                    <Text size="xs" c="dimmed">
+                                                                        Divisions: {session.divisionLabel}
+                                                                    </Text>
+                                                                    <Text size="xs" c="dimmed">
+                                                                        {isCreatingThisSession ? 'Preparing session...' : 'Tap to continue'}
+                                                                    </Text>
+                                                                </div>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <>
                                 {hasAgeLimits && (
                                     <Alert color="yellow" variant="light" mb="sm">
                                         <Text fw={600} size="sm">
@@ -3093,6 +3360,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                         )}
                                     </div>
                                 )}
+                                    </>
+                                )}
                             </Paper>
 
                             {/* Refund Options */}
@@ -3170,7 +3439,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             )}
 
             {/* Players Dropdown */}
-            {!isTeamSignup && (
+            {showParticipantsSection && !isTeamSignup && (
                 <ParticipantsDropdown
                     isOpen={showPlayersDropdown}
                     onClose={() => setShowPlayersDropdown(false)}
@@ -3209,7 +3478,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             )}
 
             {/* Teams Dropdown */}
-            {isTeamSignup && (
+            {showParticipantsSection && isTeamSignup && (
                 <ParticipantsDropdown
                     isOpen={showTeamsDropdown}
                     onClose={() => setShowTeamsDropdown(false)}
@@ -3254,7 +3523,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             )}
 
             {/* Free Agents Dropdown */}
-            {isTeamSignup && (
+            {showParticipantsSection && isTeamSignup && (
                 <ParticipantsDropdown
                     isOpen={showFreeAgentsDropdown}
                     onClose={() => setShowFreeAgentsDropdown(false)}

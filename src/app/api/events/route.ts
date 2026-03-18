@@ -415,10 +415,14 @@ const withLegacyEvent = (row: any) => {
     const end = legacy.end ? new Date(legacy.end) : null;
     (legacy as any).noFixedEndDateTime = Boolean(
       start
-      && end
       && !Number.isNaN(start.getTime())
-      && !Number.isNaN(end.getTime())
-      && start.getTime() === end.getTime(),
+      && (
+        !end
+        || (
+          !Number.isNaN(end.getTime())
+          && start.getTime() === end.getTime()
+        )
+      ),
     );
   }
   if ((legacy as any).doTeamsRef !== true) {

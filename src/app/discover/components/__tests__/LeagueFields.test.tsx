@@ -139,7 +139,14 @@ describe('LeagueFields', () => {
             ...baseSlot,
             conflicts: [
               {
-                schedule: { $id: 'slot-1' } as any,
+                schedule: {
+                  $id: 'slot-1',
+                  repeating: true,
+                  startDate: '2026-03-18T00:00:00',
+                  endDate: '2026-03-25T00:00:00',
+                  startTimeMinutes: 9 * 60,
+                  endTimeMinutes: 17 * 60,
+                } as any,
                 event: { $id: 'evt_1', name: 'Other Event' } as any,
               },
             ],
@@ -155,6 +162,7 @@ describe('LeagueFields', () => {
 
     expect(screen.getByText(/There is a conflict on this field/i)).toBeInTheDocument();
     expect(screen.getByText(/Other Event/)).toBeInTheDocument();
+    expect(screen.getByText(/9:00 AM-5:00 PM overlaps this slot/i)).toBeInTheDocument();
   });
 
   it('allows auto-resolving a conflicted slot', () => {

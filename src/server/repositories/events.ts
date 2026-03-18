@@ -1101,9 +1101,135 @@ const clearManagedFieldBlockingEvents = (fields: Record<string, PlayingField>): 
   }
 };
 
+const normalizeMondayIndex = (date: Date): number => (date.getDay() + 6) % 7;
+
+const setMinutesOnDay = (day: Date, minutes: number): Date => {
+  const next = new Date(day.getTime());
+  next.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return next;
+};
+
+const rangesOverlap = (startA: Date, endA: Date, startB: Date, endB: Date): boolean =>
+  startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime();
+
+const normalizeBlockingSlotDays = (slot: any): number[] => normalizeTimeSlotDays({
+  dayOfWeek: slot?.dayOfWeek,
+  daysOfWeek: slot?.daysOfWeek,
+});
+
+const normalizeBlockingSlotFieldIds = (slot: any): string[] => normalizeTimeSlotFieldIds({
+  scheduledFieldId: slot?.scheduledFieldId,
+  scheduledFieldIds: slot?.scheduledFieldIds,
+});
+
+const appendBlockingEvent = (params: {
+  field: PlayingField;
+  id: string;
+  start: Date;
+  end: Date;
+  parentId: string;
+}): void => {
+  if (params.end.getTime() <= params.start.getTime()) {
+    return;
+  }
+  params.field.events.push(
+    new BlockingEvent({
+      id: params.id,
+      start: params.start,
+      end: params.end,
+      participants: [],
+      field: params.field,
+      parentId: params.parentId,
+    }),
+  );
+};
+
+const appendBlockingEventsFromSlot = (params: {
+  slot: any;
+  field: PlayingField;
+  fieldId: string;
+  blockPrefix: string;
+  parentId: string;
+  windowStart: Date;
+  windowEnd: Date;
+  fallbackStart?: Date | null;
+  fallbackEnd?: Date | null;
+}): void => {
+  const slotStart = toOptionalDate(params.slot?.startDate) ?? params.fallbackStart ?? null;
+  if (!slotStart) {
+    return;
+  }
+  const repeating = params.slot?.repeating !== false;
+  const startMinutes = typeof params.slot?.startTimeMinutes === 'number'
+    ? params.slot.startTimeMinutes
+    : slotStart.getHours() * 60 + slotStart.getMinutes();
+  const explicitEnd = toOptionalDate(params.slot?.endDate) ?? params.fallbackEnd ?? null;
+  const endMinutes = typeof params.slot?.endTimeMinutes === 'number'
+    ? params.slot.endTimeMinutes
+    : explicitEnd
+      ? explicitEnd.getHours() * 60 + explicitEnd.getMinutes()
+      : null;
+
+  if (!repeating) {
+    const resolvedEnd = explicitEnd ?? (
+      typeof endMinutes === 'number' && endMinutes > startMinutes
+        ? new Date(slotStart.getTime() + (endMinutes - startMinutes) * MINUTE_MS)
+        : null
+    );
+    if (!resolvedEnd || !rangesOverlap(slotStart, resolvedEnd, params.windowStart, params.windowEnd)) {
+      return;
+    }
+    appendBlockingEvent({
+      field: params.field,
+      id: `${params.blockPrefix}${params.fieldId}__${Math.max(slotStart.getTime(), params.windowStart.getTime())}`,
+      start: new Date(Math.max(slotStart.getTime(), params.windowStart.getTime())),
+      end: new Date(Math.min(resolvedEnd.getTime(), params.windowEnd.getTime())),
+      parentId: params.parentId,
+    });
+    return;
+  }
+
+  if (typeof endMinutes !== 'number' || endMinutes <= startMinutes) {
+    return;
+  }
+  const days = normalizeBlockingSlotDays(params.slot);
+  if (!days.length) {
+    return;
+  }
+  const slotEndBoundary = explicitEnd ?? params.windowEnd;
+  const effectiveStart = new Date(Math.max(slotStart.getTime(), params.windowStart.getTime()));
+  const effectiveEnd = new Date(Math.min(slotEndBoundary.getTime(), params.windowEnd.getTime()));
+  if (effectiveEnd.getTime() <= effectiveStart.getTime()) {
+    return;
+  }
+  const cursor = new Date(effectiveStart.getTime());
+  cursor.setHours(0, 0, 0, 0);
+  const lastDay = new Date(effectiveEnd.getTime());
+  lastDay.setHours(0, 0, 0, 0);
+  const durationMs = Math.max(MINUTE_MS, (endMinutes - startMinutes) * MINUTE_MS);
+
+  while (cursor.getTime() <= lastDay.getTime()) {
+    if (days.includes(normalizeMondayIndex(cursor))) {
+      const occurrenceStart = setMinutesOnDay(cursor, startMinutes);
+      const occurrenceEnd = new Date(occurrenceStart.getTime() + durationMs);
+      if (rangesOverlap(occurrenceStart, occurrenceEnd, effectiveStart, effectiveEnd)) {
+        appendBlockingEvent({
+          field: params.field,
+          id: `${params.blockPrefix}${params.fieldId}__${occurrenceStart.getTime()}`,
+          start: occurrenceStart,
+          end: occurrenceEnd,
+          parentId: params.parentId,
+        });
+      }
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+};
+
 const attachFieldSchedulingConflicts = async (params: {
   client: PrismaLike;
   eventId: string;
+  organizationId?: string | null;
   fields: Record<string, PlayingField>;
   windowStart: Date;
   windowEnd: Date;
@@ -1118,7 +1244,17 @@ const attachFieldSchedulingConflicts = async (params: {
 
   clearManagedFieldBlockingEvents(params.fields);
 
-  const [externalMatchRows, externalEventRows] = await Promise.all([
+  const currentEventRow = await params.client.events.findUnique({
+    where: { id: params.eventId },
+    select: {
+      organizationId: true,
+      timeSlotIds: true,
+    },
+  });
+  const scopedOrganizationId = normalizeEntityId(params.organizationId) ?? normalizeEntityId(currentEventRow?.organizationId);
+  const currentEventSlotIds = new Set(ensureStringArray(currentEventRow?.timeSlotIds));
+
+  const [externalMatchRowsRaw, externalEventRowsRaw, fieldRows] = await Promise.all([
     params.client.matches.findMany({
       where: {
         fieldId: { in: fieldIds },
@@ -1141,16 +1277,56 @@ const attachFieldSchedulingConflicts = async (params: {
         NOT: { state: 'TEMPLATE' },
         start: { lt: params.windowEnd },
         end: { gt: params.windowStart },
+        ...(scopedOrganizationId ? { organizationId: scopedOrganizationId } : {}),
       } as any,
       select: {
         id: true,
         eventType: true,
+        parentEvent: true,
         start: true,
         end: true,
         fieldIds: true,
+        timeSlotIds: true,
+      },
+    }),
+    params.client.fields.findMany({
+      where: {
+        id: { in: fieldIds },
+        ...(scopedOrganizationId ? { organizationId: scopedOrganizationId } : {}),
+      },
+      select: {
+        id: true,
+        rentalSlotIds: true,
       },
     }),
   ]);
+
+  let externalMatchRows = externalMatchRowsRaw;
+  if (scopedOrganizationId) {
+    const matchEventIds = Array.from(
+      new Set(
+        externalMatchRows
+          .map((row) => (typeof row.eventId === 'string' ? row.eventId : ''))
+          .filter((eventId) => eventId.length > 0),
+      ),
+    );
+    if (matchEventIds.length) {
+      const allowedEventRows = await params.client.events.findMany({
+        where: {
+          id: { in: matchEventIds },
+          organizationId: scopedOrganizationId,
+          NOT: { state: 'TEMPLATE' },
+        },
+        select: { id: true },
+      });
+      const allowedEventIds = new Set(allowedEventRows.map((event) => event.id));
+      externalMatchRows = externalMatchRows.filter((row) => (
+        typeof row.eventId === 'string' && allowedEventIds.has(row.eventId)
+      ));
+    } else {
+      externalMatchRows = [];
+    }
+  }
 
   for (const row of externalMatchRows) {
     const fieldId = typeof row.fieldId === 'string' ? row.fieldId : '';
@@ -1171,35 +1347,141 @@ const attachFieldSchedulingConflicts = async (params: {
         participants: [],
         field,
         parentId: row.eventId ?? '',
-      }),
+      })
     );
   }
 
-  for (const row of externalEventRows) {
-    if (isSchedulableEventType(row.eventType)) {
-      continue;
+  const externalEventRows = externalEventRowsRaw.filter((row) => {
+    const eventType = typeof row.eventType === 'string' ? row.eventType.toUpperCase() : '';
+    const parentEventId = normalizeEntityId(row.parentEvent);
+    if (eventType === 'WEEKLY_EVENT' && parentEventId) {
+      return false;
     }
-    const start = toOptionalDate(row.start);
-    const end = toOptionalDate(row.end);
-    if (!start || !end || end.getTime() <= start.getTime()) {
+    if (scopedOrganizationId) {
+      const rowOrganizationId = normalizeEntityId((row as any).organizationId);
+      if (rowOrganizationId && rowOrganizationId !== scopedOrganizationId) {
+        return false;
+      }
+    }
+    return true;
+  });
+  const externalEventSlotIds = Array.from(
+    new Set(
+      externalEventRows.flatMap((row) => ensureStringArray(row.timeSlotIds)),
+    ),
+  );
+  const externalEventSlotRows = externalEventSlotIds.length > 0
+    ? await params.client.timeSlots.findMany({
+      where: {
+        id: { in: externalEventSlotIds },
+      },
+    })
+    : [];
+  const externalEventSlotById = new Map(externalEventSlotRows.map((slot) => [slot.id, slot]));
+  const eventBoundSlotIds = new Set(externalEventSlotIds);
+
+  for (const row of externalEventRows) {
+    const eventType = typeof row.eventType === 'string' ? row.eventType.toUpperCase() : '';
+    const parentEventId = normalizeEntityId(row.parentEvent);
+    if (eventType === 'WEEKLY_EVENT' && parentEventId) {
       continue;
     }
     const eventFieldIds = normalizeFieldIds(row.fieldIds);
-    for (const fieldId of eventFieldIds) {
-      const field = params.fields[fieldId];
-      if (!field) {
+    const relevantFieldIds = eventFieldIds.filter((fieldId) => Boolean(params.fields[fieldId]));
+    if (!relevantFieldIds.length) {
+      continue;
+    }
+
+    const start = toOptionalDate(row.start);
+    const end = toOptionalDate(row.end);
+    const isWeeklyParent = eventType === 'WEEKLY_EVENT' && !parentEventId;
+    const slotBased = isSchedulableEventType(eventType) || isWeeklyParent;
+
+    if (!slotBased) {
+      if (!start || !end || end.getTime() <= start.getTime()) {
         continue;
       }
-      field.events.push(
-        new BlockingEvent({
+      for (const fieldId of relevantFieldIds) {
+        const field = params.fields[fieldId];
+        if (!field) {
+          continue;
+        }
+        appendBlockingEvent({
+          field,
           id: `${FIELD_EVENT_BLOCK_PREFIX}${row.id}__${fieldId}`,
           start,
           end,
-          participants: [],
-          field,
           parentId: row.id,
-        }),
-      );
+        });
+      }
+      continue;
+    }
+
+    const timeSlots = ensureStringArray(row.timeSlotIds)
+      .map((slotId) => externalEventSlotById.get(slotId))
+      .filter((slot): slot is any => Boolean(slot));
+    for (const slot of timeSlots) {
+      const slotFieldIds = normalizeBlockingSlotFieldIds(slot).filter((fieldId) => Boolean(params.fields[fieldId]));
+      for (const fieldId of slotFieldIds) {
+        const field = params.fields[fieldId];
+        if (!field) {
+          continue;
+        }
+        appendBlockingEventsFromSlot({
+          slot,
+          field,
+          fieldId,
+          blockPrefix: `${FIELD_EVENT_BLOCK_PREFIX}${row.id}__${slot.id}__`,
+          parentId: row.id,
+          windowStart: params.windowStart,
+          windowEnd: params.windowEnd,
+          fallbackStart: start,
+          fallbackEnd: end,
+        });
+      }
+    }
+  }
+
+  const rentalSlotIds = Array.from(
+    new Set(
+      fieldRows.flatMap((row) => ensureStringArray(row.rentalSlotIds)),
+    ),
+  );
+  const rentalSlotRows = rentalSlotIds.length > 0
+    ? await params.client.timeSlots.findMany({
+      where: {
+        id: { in: rentalSlotIds },
+      },
+    })
+    : [];
+  const rentalSlotById = new Map(rentalSlotRows.map((slot) => [slot.id, slot]));
+  for (const fieldRow of fieldRows) {
+    const field = params.fields[fieldRow.id];
+    if (!field) {
+      continue;
+    }
+    const rentalIdsForField = ensureStringArray(fieldRow.rentalSlotIds);
+    for (const slotId of rentalIdsForField) {
+      if (currentEventSlotIds.has(slotId) || eventBoundSlotIds.has(slotId)) {
+        continue;
+      }
+      const slot = rentalSlotById.get(slotId);
+      if (!slot) {
+        continue;
+      }
+      const slotFieldIds = normalizeBlockingSlotFieldIds(slot);
+      if (slotFieldIds.length > 0 && !slotFieldIds.includes(fieldRow.id)) {
+        continue;
+      }
+      appendBlockingEventsFromSlot({
+        slot,
+        field,
+        fieldId: fieldRow.id,
+        blockPrefix: `${FIELD_EVENT_BLOCK_PREFIX}rental__${slotId}__`,
+        parentId: '',
+        windowStart: params.windowStart,
+        windowEnd: params.windowEnd,
+      });
     }
   }
 };
@@ -1375,22 +1657,32 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const referees = buildReferees(refereeRows, allDivisions);
   attachTimeSlotsToFields(fields, timeSlots);
   const eventStart = event.start instanceof Date ? event.start : new Date(event.start);
-  const eventEnd = event.end instanceof Date ? event.end : new Date(event.end);
+  const eventEnd = event.end instanceof Date
+    ? event.end
+    : (event.end ? new Date(event.end) : eventStart);
+  const normalizedParentEvent = normalizeEntityId((event as any).parentEvent);
+  const isWeeklyChild = (
+    String(event.eventType ?? '').toUpperCase() === 'WEEKLY_EVENT'
+    && Boolean(normalizedParentEvent)
+  );
   const noFixedEndDateTime = typeof (event as any).noFixedEndDateTime === 'boolean'
     ? (event as any).noFixedEndDateTime
-    : eventStart.getTime() === eventEnd.getTime();
-  const conflictWindowEnd = resolveFieldConflictWindowEnd({
-    start: eventStart,
-    end: eventEnd,
-    noFixedEndDateTime,
-  });
-  await attachFieldSchedulingConflicts({
-    client,
-    eventId: event.id,
-    fields,
-    windowStart: eventStart,
-    windowEnd: conflictWindowEnd,
-  });
+    : event.end == null || eventStart.getTime() === eventEnd.getTime();
+  if (!isWeeklyChild) {
+    const conflictWindowEnd = resolveFieldConflictWindowEnd({
+      start: eventStart,
+      end: eventEnd,
+      noFixedEndDateTime,
+    });
+    await attachFieldSchedulingConflicts({
+      client,
+      eventId: event.id,
+      organizationId: event.organizationId ?? null,
+      fields,
+      windowStart: eventStart,
+      windowEnd: conflictWindowEnd,
+    });
+  }
 
   const coordinates = Array.isArray(event.coordinates)
     ? event.coordinates.filter((value): value is number => typeof value === 'number')
@@ -1483,6 +1775,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
 
   const matches = buildMatches(matchRows, constructed, teams, fields, allDivisions, referees);
   constructed.matches = matches;
+  (constructed as any).parentEvent = normalizedParentEvent;
   return constructed;
 };
 
@@ -2240,6 +2533,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       leagueScoringConfigId: true,
       hostId: true,
       organizationId: true,
+      parentEvent: true,
     },
   });
   const resolvedOrganizationId = normalizeEntityId(payload.organizationId) ?? normalizeEntityId(existingEvent?.organizationId);
@@ -2329,7 +2623,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       : fallbackDivisionIds;
   const singleDivisionEnabled = Boolean(payload.singleDivision);
   const start = coerceDate(payload.start) ?? new Date();
-  const end = coerceDate(payload.end) ?? start;
   const canonicalTimeSlots = canonicalizeTimeSlots({
     eventId: id,
     slots: timeSlots,
@@ -2375,25 +2668,32 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const payloadEventType = typeof payload.eventType === 'string'
     ? payload.eventType.toUpperCase()
     : null;
+  const existingEventType = typeof existingEvent?.eventType === 'string'
+    ? existingEvent.eventType.toUpperCase()
+    : null;
+  const nextEventType = payloadEventType ?? existingEventType;
+  const normalizedParentEvent = normalizeEntityId(payload.parentEvent)
+    ?? normalizeEntityId((existingEvent as any)?.parentEvent);
+  const isWeeklyParent = nextEventType === 'WEEKLY_EVENT' && !normalizedParentEvent;
+  const parsedPayloadEnd = coerceDate(payload.end);
+  const normalizedEnd = isWeeklyParent && parsedPayloadEnd === null
+    ? null
+    : (parsedPayloadEnd ?? start);
   const splitLeaguePlayoffDivisions = payloadEventType === 'LEAGUE'
     ? coerceBoolean(payload.splitLeaguePlayoffDivisions, false)
     : false;
   const fallbackNoFixedEndDateTime = (
     isSchedulableEventType(payloadEventType)
       ? true
-      : start.getTime() === end.getTime()
+      : normalizedEnd === null || start.getTime() === normalizedEnd.getTime()
   );
   const noFixedEndDateTime = coerceBoolean(payload.noFixedEndDateTime, fallbackNoFixedEndDateTime);
 
-  if (!noFixedEndDateTime && end.getTime() <= start.getTime()) {
+  if (!noFixedEndDateTime && (!normalizedEnd || normalizedEnd.getTime() <= start.getTime())) {
     throw new Error('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
   }
 
   const normalizedLeagueScoringConfig = normalizeLeagueScoringConfigPayload(payload.leagueScoringConfig);
-  const existingEventType = typeof existingEvent?.eventType === 'string'
-    ? existingEvent.eventType.toUpperCase()
-    : null;
-  const nextEventType = payloadEventType ?? existingEventType;
   const payloadLeagueScoringConfigId = typeof payload.leagueScoringConfigId === 'string' && payload.leagueScoringConfigId.trim().length > 0
     ? payload.leagueScoringConfigId.trim()
     : null;
@@ -2456,7 +2756,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     id,
     name: payload.name ?? 'Untitled Event',
     start,
-    end,
+    end: normalizedEnd,
     description: payload.description ?? null,
     divisions: normalizedEventDivisionIds,
     winnerSetCount: payload.winnerSetCount ?? null,
@@ -2506,6 +2806,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     userIds: ensureStringArray(payload.userIds),
     leagueScoringConfigId: resolvedLeagueScoringConfigId,
     organizationId: payload.organizationId ?? null,
+    parentEvent: normalizedParentEvent,
     autoCancellation: payload.autoCancellation ?? null,
     eventType: payload.eventType ?? null,
     doTeamsRef: normalizedDoTeamsRef ?? null,
