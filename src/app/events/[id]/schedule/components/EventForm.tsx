@@ -3001,7 +3001,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 }, ref) => {
     const open = isOpen ?? true;
     const refsPrefilledRef = useRef<boolean>(false);
-    const lastResetSourceRef = useRef<Event | null>(null);
+    const lastResetSourceRef = useRef<string | null>(null);
     const dirtyBaselineValuesRef = useRef<EventFormValues | null>(null);
     const pendingInitialDirtyRebaseRef = useRef(false);
     const pendingInitialDirtyRebaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -3612,11 +3612,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             });
             return;
         }
-        const sourceChanged = lastResetSourceRef.current !== activeEditingEvent;
+        const sourceKey = isCreateMode
+            ? 'create'
+            : `event:${String(activeEditingEvent?.$id ?? '')}`;
+        const sourceChanged = lastResetSourceRef.current !== sourceKey;
         if (!sourceChanged) {
             return;
         }
-        lastResetSourceRef.current = activeEditingEvent;
+        lastResetSourceRef.current = sourceKey;
         setIsDirtyTrackingReady(false);
         pendingInitialDirtyRebaseRef.current = true;
         if (pendingInitialDirtyRebaseTimeoutRef.current) {
@@ -3630,6 +3633,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [
         activeEditingEvent,
         buildDefaultFormValues,
+        isCreateMode,
         onDirtyStateChange,
         onDraftStateChange,
         reset,
