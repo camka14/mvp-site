@@ -49,7 +49,7 @@ const normalizeSlotFieldIds = (slot: any): string[] => {
 };
 
 const normalizeSlotDays = (slot: any): number[] => {
-  const days = Array.isArray(slot?.daysOfWeek) && slot.daysOfWeek.length
+  const days: unknown[] = Array.isArray(slot?.daysOfWeek) && slot.daysOfWeek.length
     ? slot.daysOfWeek
     : Number.isInteger(slot?.dayOfWeek)
       ? [slot.dayOfWeek]
@@ -57,8 +57,8 @@ const normalizeSlotDays = (slot: any): number[] => {
   return Array.from(
     new Set(
       days
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+        .map((value: unknown) => Number(value))
+        .filter((value: number) => Number.isInteger(value) && value >= 0 && value <= 6),
     ),
   );
 };

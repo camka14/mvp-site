@@ -363,7 +363,7 @@ export const cloneEventAsTemplate = (
       idFactory,
       scheduledFieldIdMap: hasLocalFields ? fieldIdMap : undefined,
       start: source.start,
-      end: source.end,
+      end: source.end ?? source.start,
     })
     : [];
 

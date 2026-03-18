@@ -7685,7 +7685,7 @@ function EventScheduleContent() {
                       }
                       fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
                       eventStart={activeEvent.start}
-                      eventEnd={activeEvent.end}
+                      eventEnd={activeEvent.end ?? undefined}
                       onMatchClick={(match) => {
                         if (canEditMatches) {
                           handleMatchEditRequest(match, 'schedule');

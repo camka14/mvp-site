@@ -1062,10 +1062,17 @@ type SlotConflictContext = {
     eventEnd?: string;
 };
 
-type ComparableConflictSlot = Pick<
-    TimeSlot,
-    'repeating' | 'startDate' | 'endDate' | 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'scheduledFieldId' | 'scheduledFieldIds'
->;
+type ComparableConflictSlot = {
+    repeating?: boolean;
+    startDate?: string | null;
+    endDate?: string | null;
+    dayOfWeek?: number;
+    daysOfWeek?: number[];
+    startTimeMinutes?: number;
+    endTimeMinutes?: number;
+    scheduledFieldId?: string;
+    scheduledFieldIds?: string[];
+};
 
 const addMinutesToDate = (date: Date, minutes: number): Date => new Date(date.getTime() + minutes * 60 * 1000);
 
@@ -1132,7 +1139,7 @@ const parseEventRange = (event: Event): { start: Date; end: Date } | null => {
 };
 
 const resolveSlotWindowRange = (
-    slot: Pick<LeagueSlotForm, 'startDate' | 'endDate'>,
+    slot: Pick<ComparableConflictSlot, 'startDate' | 'endDate'>,
     eventStart?: string,
     eventEnd?: string,
 ): { start: Date; end: Date } | null => {

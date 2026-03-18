@@ -270,12 +270,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
       where: { id: { in: allEventSlotIds } },
     })
     : [];
-  const eventSlotById = new Map(eventSlotRows.map((slot) => [slot.id, slot]));
+  const eventSlotById = new Map<string, TimeSlotRow>(eventSlotRows.map((slot) => [slot.id, slot]));
   const hydratedEvents = filteredByType.map((event) => {
     const slotIds = normalizeStringList((event as any).timeSlotIds);
-    const timeSlots = slotIds
-      .map((slotId) => eventSlotById.get(slotId))
-      .filter((slot): slot is TimeSlotRow => Boolean(slot));
+    const timeSlots = slotIds.flatMap((slotId) => {
+      const slot = eventSlotById.get(slotId);
+      return slot ? [slot] : [];
+    });
     return {
       ...event,
       timeSlots,

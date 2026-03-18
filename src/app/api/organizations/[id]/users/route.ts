@@ -183,7 +183,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     id: event.id,
     name: event.name,
     start: event.start,
-    end: event.end,
+    end: event.end ?? event.start,
     userIds: normalizeIdList(event.userIds),
     teamIds: normalizeIdList(event.teamIds),
   }));
