@@ -63,6 +63,12 @@ const SIGN_MODAL_Z_INDEX = SHEET_POPOVER_Z_INDEX + 200;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const JOIN_API_TIMEOUT_MS = 5_000;
+const WEEKLY_SESSION_VISIBLE_ROWS = 10;
+const WEEKLY_SESSION_CARD_HEIGHT_PX = 72;
+const WEEKLY_SESSION_CARD_GAP_PX = 8;
+const WEEKLY_SESSION_LIST_MAX_HEIGHT_PX = (
+    WEEKLY_SESSION_VISIBLE_ROWS * WEEKLY_SESSION_CARD_HEIGHT_PX
+) + ((WEEKLY_SESSION_VISIBLE_ROWS - 1) * WEEKLY_SESSION_CARD_GAP_PX);
 
 type JoinIntent = {
     mode: 'user' | 'team' | 'child' | 'child_free_agent' | 'user_waitlist' | 'team_waitlist' | 'child_waitlist';
@@ -2258,6 +2264,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const isTeamSignup = currentEvent.teamSignup;
     const isWeeklyParentEvent = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
     const weeklySessionOptions = isWeeklyParentEvent ? buildWeeklySessionOptions(currentEvent, 3) : [];
+    const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
     const totalParticipants = isTeamSignup ? teams.length : players.length;
     const participantCapacity = resolveEventParticipantCapacity(currentEvent);
     const eventAtCapacity = participantCapacity > 0 && totalParticipants >= participantCapacity;
@@ -2901,7 +2908,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                 No upcoming weekly sessions are available.
                                             </Alert>
                                         ) : (
-                                            <div className="space-y-2">
+                                            <div
+                                                className={`space-y-2 ${shouldScrollWeeklySessions ? 'overflow-y-auto pr-1' : ''}`}
+                                                style={shouldScrollWeeklySessions ? { maxHeight: WEEKLY_SESSION_LIST_MAX_HEIGHT_PX } : undefined}
+                                            >
                                                 {weeklySessionOptions.map((session) => {
                                                     const isCreatingThisSession = creatingWeeklySessionId === session.id;
                                                     const isCreatingOtherSession = Boolean(creatingWeeklySessionId) && !isCreatingThisSession;
