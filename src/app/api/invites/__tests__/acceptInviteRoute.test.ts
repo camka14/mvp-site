@@ -115,6 +115,49 @@ describe('POST /api/invites/[id]/accept', () => {
     expect(txMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
   });
 
+  it('keeps profile teamIds canonical when active child event slots exist', async () => {
+    prismaMock.invites.findUnique.mockResolvedValue({
+      id: 'invite_1',
+      type: 'TEAM',
+      teamId: 'team_1',
+      userId: 'user_1',
+    });
+
+    txMock.teams.findUnique.mockResolvedValue({
+      id: 'team_1',
+      playerIds: ['captain_1'],
+      pending: ['user_1'],
+    });
+
+    txMock.teams.findMany.mockResolvedValue([
+      { id: 'slot_1', playerIds: ['captain_1'] },
+    ]);
+    txMock.events.findMany.mockResolvedValue([
+      { teamIds: ['slot_1'] },
+    ]);
+    txMock.userData.findUnique.mockResolvedValue({
+      id: 'user_1',
+      teamIds: ['existing_parent_team'],
+    });
+    txMock.teams.update.mockResolvedValue({ id: 'team_1' });
+
+    const response = await POST(
+      postRequest(),
+      { params: Promise.resolve({ id: 'invite_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(txMock.userData.update).toHaveBeenCalledWith({
+      where: { id: 'user_1' },
+      data: {
+        teamIds: ['existing_parent_team', 'team_1'],
+        updatedAt: expect.any(Date),
+      },
+    });
+  });
+
   it('returns 400 when invite type is not a staff or team invite', async () => {
     prismaMock.invites.findUnique.mockResolvedValue({
       id: 'invite_1',

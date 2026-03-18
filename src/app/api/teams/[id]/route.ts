@@ -7,7 +7,7 @@ import {
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
-import { deleteTeamChatInTx, syncTeamChatInTx } from '@/server/teamChatSync';
+import { deleteTeamChatInTx, getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -413,11 +413,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     );
     const teamsToSync = new Set<string>([id]);
+    const previousMemberIdsByTeamId = new Map<string, string[]>([
+      [id, getTeamChatBaseMemberIds(existing as Record<string, any>)],
+    ]);
 
     const derivedTeams = await txTeams.findMany({
       where: { parentTeamId: id },
-      select: { id: true },
+      select: {
+        id: true,
+        captainId: true,
+        managerId: true,
+        headCoachId: true,
+        coachIds: true,
+        playerIds: true,
+      },
     });
+    const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
     const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
     if (derivedTeamIds.length) {
       const events = await tx.events.findMany({
@@ -455,6 +466,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         };
 
         for (const teamId of teamIdsToUpdate) {
+          const previousTeam = derivedTeamById.get(teamId);
+          if (previousTeam) {
+            previousMemberIdsByTeamId.set(teamId, getTeamChatBaseMemberIds(previousTeam));
+          }
           await updateTeamWithCompatibility(txTeams, { id: teamId }, updatePayload);
           teamsToSync.add(teamId);
         }
@@ -462,7 +477,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     for (const teamId of teamsToSync) {
-      await syncTeamChatInTx(tx, teamId);
+      await syncTeamChatInTx(tx, teamId, {
+        previousMemberIds: previousMemberIdsByTeamId.get(teamId),
+      });
     }
 
     return canonical;
@@ -500,3 +517,4 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   });
   return NextResponse.json({ deleted: true }, { status: 200 });
 }
+

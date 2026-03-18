@@ -25,6 +25,7 @@ class PaymentService {
     team?: Team,
     timeSlot?: TimeSlot,
     organization?: PaymentOrganizationContext,
+    selection?: DivisionRegistrationSelection,
   ): Promise<PaymentIntent> {
     try {
       if (!event) {
@@ -37,6 +38,7 @@ class PaymentService {
         team,
         timeSlot,
         organization,
+        ...selection,
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {

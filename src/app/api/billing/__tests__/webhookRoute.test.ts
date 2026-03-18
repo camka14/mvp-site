@@ -23,6 +23,15 @@ const prismaMock = {
   products: {
     findUnique: jest.fn(),
   },
+  events: {
+    update: jest.fn(),
+  },
+  eventRegistrations: {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
+  $queryRaw: jest.fn(),
   $transaction: jest.fn(),
 };
 
@@ -105,6 +114,21 @@ describe('POST /api/billing/webhook', () => {
       period: 'MONTH',
       organizationId: 'org_1',
     });
+    prismaMock.events.update.mockResolvedValue({});
+    prismaMock.eventRegistrations.findUnique.mockResolvedValue({ status: 'ACTIVE' });
+    prismaMock.eventRegistrations.create.mockResolvedValue({});
+    prismaMock.eventRegistrations.update.mockResolvedValue({});
+    prismaMock.$queryRaw.mockResolvedValue([
+      {
+        id: 'event_1',
+        eventType: 'EVENT',
+        teamSignup: true,
+        teamIds: ['team_1'],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+      },
+    ]);
 
     prismaMock.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
       const tx = {
@@ -115,6 +139,15 @@ describe('POST /api/billing/webhook', () => {
           findFirst: prismaMock.billPayments.findFirst,
           create: prismaMock.billPayments.create,
         },
+        events: {
+          update: prismaMock.events.update,
+        },
+        eventRegistrations: {
+          findUnique: prismaMock.eventRegistrations.findUnique,
+          create: prismaMock.eventRegistrations.create,
+          update: prismaMock.eventRegistrations.update,
+        },
+        $queryRaw: prismaMock.$queryRaw,
       };
       return callback(tx);
     });
@@ -126,6 +159,18 @@ describe('POST /api/billing/webhook', () => {
       .mockResolvedValueOnce(null);
     prismaMock.bills.create.mockResolvedValueOnce({ id: 'bill_instant_1' });
     prismaMock.billPayments.create.mockResolvedValueOnce({ id: 'bill_payment_instant_1' });
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        eventType: 'EVENT',
+        teamSignup: true,
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+      },
+    ]);
+    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce(null);
 
     const response = await POST(
       jsonPost(buildPaymentIntentSucceededEvent({
@@ -144,7 +189,7 @@ describe('POST /api/billing/webhook', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
     expect(prismaMock.bills.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -169,6 +214,26 @@ describe('POST /api/billing/webhook', () => {
         }),
       }),
     );
+    expect(prismaMock.events.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1' },
+        data: expect.objectContaining({
+          teamIds: ['team_1'],
+          waitListIds: [],
+        }),
+      }),
+    );
+    expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          id: 'event_1__team__team_1',
+          eventId: 'event_1',
+          registrantId: 'team_1',
+          registrantType: 'TEAM',
+          status: 'ACTIVE',
+        }),
+      }),
+    );
     expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
     expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -180,6 +245,49 @@ describe('POST /api/billing/webhook', () => {
         billPaymentId: 'bill_payment_instant_1',
       }),
     );
+  });
+
+  it('skips event registration activation when reservation metadata is present but registration is missing', async () => {
+    prismaMock.billPayments.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prismaMock.bills.create.mockResolvedValueOnce({ id: 'bill_instant_missing_res_1' });
+    prismaMock.billPayments.create.mockResolvedValueOnce({ id: 'bill_payment_instant_missing_res_1' });
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        eventType: 'EVENT',
+        teamSignup: true,
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+      },
+    ]);
+    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentSucceededEvent({
+        intentId: 'pi_event_missing_reservation_1',
+        metadata: {
+          purchase_type: 'event',
+          user_id: 'user_1',
+          team_id: 'team_1',
+          event_id: 'event_1',
+          organization_id: 'org_1',
+          registration_id: 'event_1__team__team_1',
+          amount_cents: '4500',
+        },
+        amount: 4700,
+        amountReceived: 4700,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.update).not.toHaveBeenCalled();
+    expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
   });
 
   it('is idempotent for repeated instant webhook events by payment intent id', async () => {
@@ -202,9 +310,12 @@ describe('POST /api/billing/webhook', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(prismaMock.bills.create).not.toHaveBeenCalled();
     expect(prismaMock.billPayments.create).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.update).not.toHaveBeenCalled();
     expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
   });
 

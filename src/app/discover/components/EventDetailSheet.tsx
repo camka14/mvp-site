@@ -1176,6 +1176,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 user,
                 checkoutEvent ?? currentEvent,
                 resolvedTeam,
+                undefined,
+                undefined,
+                selection,
             );
             setPaymentData(paymentIntent);
             setShowPaymentModal(true);

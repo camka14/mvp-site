@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
-import { syncTeamChatInTx } from '@/server/teamChatSync';
+import { getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +49,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const pending = Array.isArray(team.pending) ? team.pending : [];
     const isPlayerInvite = pending.includes(invite.userId as string);
-    const nextTeamIds = [invite.teamId as string];
+    const profileTeamIds = [invite.teamId as string];
+    const chatSyncTeamIds = [invite.teamId as string];
+    const previousMemberIdsByTeamId = new Map<string, string[]>([
+      [invite.teamId as string, getTeamChatBaseMemberIds(team)],
+    ]);
 
     if (isPlayerInvite) {
       await teamsDelegate.update({
@@ -63,7 +67,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       const childTeams = await teamsDelegate.findMany({
         where: { parentTeamId: invite.teamId as string },
-        select: { id: true, playerIds: true },
+        select: {
+          id: true,
+          captainId: true,
+          managerId: true,
+          headCoachId: true,
+          coachIds: true,
+          playerIds: true,
+        },
       });
       const childTeamIds = childTeams.map((childTeam: { id: string }) => childTeam.id);
       const activeEvents = childTeamIds.length
@@ -83,7 +94,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!activeChildTeamIdSet.has(childTeam.id)) {
           continue;
         }
-        nextTeamIds.push(childTeam.id);
+        chatSyncTeamIds.push(childTeam.id);
+        previousMemberIdsByTeamId.set(childTeam.id, getTeamChatBaseMemberIds(childTeam));
         await teamsDelegate.update({
           where: { id: childTeam.id },
           data: {
@@ -101,15 +113,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         await tx.userData.update({
           where: { id: invite.userId as string },
           data: {
-            teamIds: uniqueStrings([...(Array.isArray(user.teamIds) ? user.teamIds : []), ...nextTeamIds]),
+            teamIds: uniqueStrings([...(Array.isArray(user.teamIds) ? user.teamIds : []), ...profileTeamIds]),
             updatedAt: now,
           },
         });
       }
     }
 
-    for (const teamId of Array.from(new Set(nextTeamIds))) {
-      await syncTeamChatInTx(tx, teamId);
+    for (const teamId of Array.from(new Set(chatSyncTeamIds))) {
+      await syncTeamChatInTx(tx, teamId, {
+        previousMemberIds: previousMemberIdsByTeamId.get(teamId),
+      });
     }
 
     await tx.invites.delete({ where: { id: invite.id } });
@@ -122,3 +136,4 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }
+

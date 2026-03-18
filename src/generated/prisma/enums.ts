@@ -117,6 +117,7 @@ export type EventRegistrationsRegistrantTypeEnum = (typeof EventRegistrationsReg
 
 
 export const EventRegistrationsStatusEnum = {
+  STARTED: 'STARTED',
   PENDINGCONSENT: 'PENDINGCONSENT',
   ACTIVE: 'ACTIVE',
   BLOCKED: 'BLOCKED',

@@ -51,6 +51,229 @@ const toIntOrNull = (value: unknown): number | null => {
   return null;
 };
 
+const normalizeIdList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((entry) => toStringOrNull(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  return Array.from(new Set(normalized));
+};
+
+const sameOrderedIds = (left: string[], right: string[]): boolean => {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+};
+
+const ensureEventRegistrationFromPurchase = async ({
+  purchaseType,
+  eventId,
+  teamId,
+  userId,
+  registrationId,
+  now,
+}: {
+  purchaseType: string | null;
+  eventId: string | null;
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => {
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  if (normalizedPurchaseType !== 'event') {
+    return { applied: false, reason: 'not_event_purchase' };
+  }
+  if (!eventId) {
+    return { applied: false, reason: 'missing_event_id' };
+  }
+  if (!teamId && !userId) {
+    return { applied: false, reason: 'missing_participant' };
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const lockedEvents = await tx.$queryRaw<Array<{
+        id: string;
+        eventType: string | null;
+        teamSignup: boolean | null;
+        teamIds: unknown;
+        userIds: unknown;
+        waitListIds: unknown;
+        freeAgentIds: unknown;
+      }>>`
+        SELECT
+          "id",
+          "eventType",
+          "teamSignup",
+          "teamIds",
+          "userIds",
+          "waitListIds",
+          "freeAgentIds"
+        FROM "Events"
+        WHERE "id" = ${eventId}
+        FOR UPDATE
+      `;
+      const event = lockedEvents[0] ?? null;
+      if (!event) {
+        return { applied: false, reason: 'event_not_found' };
+      }
+
+      if (teamId) {
+        if (!event.teamSignup) {
+          return { applied: false, reason: 'team_signup_disabled' };
+        }
+        const normalizedEventType = String(event.eventType ?? '').toUpperCase();
+        if (normalizedEventType === 'LEAGUE' || normalizedEventType === 'TOURNAMENT') {
+          return { applied: false, reason: 'schedulable_team_event_requires_participant_route' };
+        }
+
+        const expectedRegistrationId = `${eventId}__team__${teamId}`;
+        const normalizedRegistrationId = toStringOrNull(registrationId);
+        if (normalizedRegistrationId && normalizedRegistrationId !== expectedRegistrationId) {
+          return { applied: false, reason: 'registration_id_mismatch' };
+        }
+        const effectiveRegistrationId = normalizedRegistrationId ?? expectedRegistrationId;
+        const existingRegistration = await tx.eventRegistrations.findUnique({
+          where: { id: effectiveRegistrationId },
+          select: { status: true },
+        });
+        if (!existingRegistration && normalizedRegistrationId) {
+          return { applied: false, reason: 'reservation_missing' };
+        }
+
+        const currentTeamIds = normalizeIdList(event.teamIds);
+        const currentWaitListIds = normalizeIdList(event.waitListIds);
+        const nextTeamIds = currentTeamIds.includes(teamId) ? currentTeamIds : [...currentTeamIds, teamId];
+        const nextWaitListIds = currentWaitListIds.filter((value) => value !== teamId);
+
+        if (
+          !sameOrderedIds(currentTeamIds, nextTeamIds) ||
+          !sameOrderedIds(currentWaitListIds, nextWaitListIds)
+        ) {
+          await tx.events.update({
+            where: { id: eventId },
+            data: {
+              teamIds: nextTeamIds,
+              waitListIds: nextWaitListIds,
+              updatedAt: now,
+            },
+          });
+        }
+
+        if (!existingRegistration) {
+          await tx.eventRegistrations.create({
+            data: {
+              id: effectiveRegistrationId,
+              eventId,
+              registrantId: teamId,
+              registrantType: 'TEAM',
+              status: 'ACTIVE',
+              ageAtEvent: null,
+              divisionId: null,
+              divisionTypeId: null,
+              divisionTypeKey: null,
+              createdBy: userId ?? 'system:webhook',
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
+        } else if (existingRegistration.status !== 'ACTIVE') {
+          await tx.eventRegistrations.update({
+            where: { id: effectiveRegistrationId },
+            data: {
+              status: 'ACTIVE',
+              updatedAt: now,
+            },
+          });
+        }
+
+        return { applied: true };
+      }
+
+      if (event.teamSignup) {
+        return { applied: false, reason: 'team_signup_event_requires_team' };
+      }
+
+      const participantUserId = userId as string;
+      const expectedRegistrationId = `${eventId}__self__${participantUserId}`;
+      const normalizedRegistrationId = toStringOrNull(registrationId);
+      if (normalizedRegistrationId && normalizedRegistrationId !== expectedRegistrationId) {
+        return { applied: false, reason: 'registration_id_mismatch' };
+      }
+      const effectiveRegistrationId = normalizedRegistrationId ?? expectedRegistrationId;
+      const existingRegistration = await tx.eventRegistrations.findUnique({
+        where: { id: effectiveRegistrationId },
+        select: { status: true },
+      });
+      if (!existingRegistration && normalizedRegistrationId) {
+        return { applied: false, reason: 'reservation_missing' };
+      }
+      const currentUserIds = normalizeIdList(event.userIds);
+      const currentWaitListIds = normalizeIdList(event.waitListIds);
+      const currentFreeAgentIds = normalizeIdList(event.freeAgentIds);
+      const nextUserIds = currentUserIds.includes(participantUserId)
+        ? currentUserIds
+        : [...currentUserIds, participantUserId];
+      const nextWaitListIds = currentWaitListIds.filter((value) => value !== participantUserId);
+      const nextFreeAgentIds = currentFreeAgentIds.filter((value) => value !== participantUserId);
+
+      if (
+        !sameOrderedIds(currentUserIds, nextUserIds) ||
+        !sameOrderedIds(currentWaitListIds, nextWaitListIds) ||
+        !sameOrderedIds(currentFreeAgentIds, nextFreeAgentIds)
+      ) {
+        await tx.events.update({
+          where: { id: eventId },
+          data: {
+            userIds: nextUserIds,
+            waitListIds: nextWaitListIds,
+            freeAgentIds: nextFreeAgentIds,
+            updatedAt: now,
+          },
+        });
+      }
+
+      if (!existingRegistration) {
+        await tx.eventRegistrations.create({
+          data: {
+            id: effectiveRegistrationId,
+            eventId,
+            registrantId: participantUserId,
+            registrantType: 'SELF',
+            status: 'ACTIVE',
+            ageAtEvent: null,
+            divisionId: null,
+            divisionTypeId: null,
+            divisionTypeKey: null,
+            createdBy: userId ?? 'system:webhook',
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+      } else if (existingRegistration.status !== 'ACTIVE') {
+        await tx.eventRegistrations.update({
+          where: { id: effectiveRegistrationId },
+          data: {
+            status: 'ACTIVE',
+            updatedAt: now,
+          },
+        });
+      }
+
+      return { applied: true };
+    });
+  } catch (error) {
+    console.error('Failed to apply webhook event registration', {
+      purchaseType,
+      eventId,
+      teamId,
+      userId,
+      error,
+    });
+    return { applied: false, reason: 'error' };
+  }
+};
+
 const isUpdatablePaymentIntentStatus = (status: Stripe.PaymentIntent.Status): boolean =>
   status === 'requires_payment_method'
   || status === 'requires_confirmation'
@@ -565,6 +788,7 @@ export async function POST(req: NextRequest) {
   const userId = toStringOrNull(metadata.user_id ?? metadata.userId ?? null);
   const teamId = toStringOrNull(metadata.team_id ?? metadata.teamId ?? null);
   const eventId = toStringOrNull(metadata.event_id ?? metadata.eventId ?? null);
+  const registrationId = toStringOrNull(metadata.registration_id ?? metadata.registrationId ?? null);
   const productId = toStringOrNull(metadata.product_id ?? metadata.productId ?? null);
   const organizationId = toStringOrNull(metadata.organization_id ?? metadata.organizationId ?? null);
   const paymentIntentId = toStringOrNull(dataObject.id);
@@ -683,6 +907,27 @@ export async function POST(req: NextRequest) {
       billId: resolvedBillId,
       billPaymentId: resolvedBillPaymentId,
     };
+
+    const registrationResult = await ensureEventRegistrationFromPurchase({
+      purchaseType,
+      eventId,
+      teamId,
+      userId,
+      registrationId,
+      now,
+    });
+    if (
+      !registrationResult.applied &&
+      registrationResult.reason &&
+      registrationResult.reason !== 'not_event_purchase' &&
+      registrationResult.reason !== 'missing_event_id' &&
+      registrationResult.reason !== 'missing_participant'
+    ) {
+      console.warn('Stripe webhook skipped event registration sync.', {
+        ...receiptLogContext,
+        reason: registrationResult.reason,
+      });
+    }
 
     if (shouldSendReceipt) {
       void sendPurchaseReceiptEmail({

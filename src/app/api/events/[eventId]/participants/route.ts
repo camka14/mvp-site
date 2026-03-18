@@ -74,6 +74,10 @@ const normalizeId = (value: unknown): string | null => {
   const normalized = value.trim();
   return normalized.length ? normalized : null;
 };
+const isSlotProvisionedTeam = (team: { captainId?: unknown; parentTeamId?: unknown }): boolean => (
+  String(team.captainId ?? '').trim().length === 0
+  || normalizeId(team.parentTeamId) !== null
+);
 const normalizeSportKey = (value: unknown): string => {
   if (typeof value !== 'string') {
     return '';
@@ -664,10 +668,7 @@ async function updateParticipants(
             name: true,
           },
         });
-        const usesSlotProvisioning = slotTeams.some((team) => (
-          String(team.captainId ?? '').trim().length === 0
-          || normalizeId(team.parentTeamId) !== null
-        ));
+        const usesSlotProvisioning = slotTeams.some((team) => isSlotProvisionedTeam(team));
         if (!usesSlotProvisioning) {
           return { ok: 'fallback' as const };
         }
@@ -789,18 +790,21 @@ async function updateParticipants(
         const inputTeamId = canonicalTeamId;
         const normalizedRosterTeamIds = new Set(rosterTeamIds);
 
-        const slotTeam = normalizedRosterTeamIds.has(inputTeamId)
+        const slotFromParent = await tx.teams.findFirst({
+          where: {
+            id: { in: rosterTeamIds },
+            parentTeamId: inputTeamId,
+          },
+          select: { id: true, name: true, parentTeamId: true, captainId: true },
+        });
+        const directRosterTeam = normalizedRosterTeamIds.has(inputTeamId)
           ? await tx.teams.findUnique({
             where: { id: inputTeamId },
-            select: { id: true, name: true, parentTeamId: true },
+            select: { id: true, name: true, parentTeamId: true, captainId: true },
           })
-          : await tx.teams.findFirst({
-            where: {
-              id: { in: rosterTeamIds },
-              parentTeamId: inputTeamId,
-            },
-            select: { id: true, name: true, parentTeamId: true },
-          });
+          : null;
+        const slotTeam = slotFromParent
+          ?? ((directRosterTeam && isSlotProvisionedTeam(directRosterTeam)) ? directRosterTeam : null);
 
         if (!slotTeam?.id) {
           return { ok: false as const, status: 404, error: 'Team is not registered for this event.' };

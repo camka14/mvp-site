@@ -79,6 +79,7 @@ enum EventRegistrationsRegistrantTypeEnum {
 }
 
 enum EventRegistrationsStatusEnum {
+  STARTED
   PENDINGCONSENT
   ACTIVE
   BLOCKED

@@ -767,6 +767,86 @@ describe('DELETE /api/events/[eventId]/participants', () => {
     prismaMock.billPayments.findMany.mockResolvedValue([]);
   });
 
+  it('resets only the slot child when removing a team in schedulable slot-provisioned events', async () => {
+    const schedulableEvent = {
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['team_1', 'slot_1'],
+      waitListIds: [],
+      freeAgentIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      singleDivision: true,
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      teamSizeLimit: 2,
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    };
+    const canonicalTeam = {
+      id: 'team_1',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+      captainId: 'user_1',
+      managerId: 'user_1',
+      headCoachId: null,
+      parentTeamId: null,
+    };
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce(schedulableEvent)
+      .mockResolvedValueOnce(schedulableEvent);
+    prismaMock.teams.findUnique.mockResolvedValue(canonicalTeam);
+    prismaMock.teams.findMany.mockResolvedValueOnce([
+      { id: 'team_1', captainId: 'user_1', division: 'div_a', parentTeamId: null, name: 'Canonical Team' },
+      { id: 'slot_1', captainId: 'user_1', division: 'div_a', parentTeamId: 'team_1', name: 'Canonical Team' },
+    ]);
+    prismaMock.teams.findFirst.mockResolvedValueOnce({
+      id: 'slot_1',
+      name: 'Canonical Team',
+      captainId: 'user_1',
+      parentTeamId: 'team_1',
+    });
+    prismaMock.teams.update.mockResolvedValueOnce({});
+    prismaMock.eventRegistrations.deleteMany.mockResolvedValueOnce({ count: 1 });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      teamIds: ['team_1', 'slot_1'],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+
+    const response = await DELETE(
+      jsonDelete('http://localhost/api/events/event_1/participants', { teamId: 'team_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.error).toBeUndefined();
+    expect(prismaMock.teams.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'slot_1' },
+      }),
+    );
+    expect(prismaMock.eventRegistrations.deleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventId: 'event_1',
+          registrantId: 'slot_1',
+          registrantType: 'TEAM',
+        }),
+      }),
+    );
+  });
+
   it('allows a parent to remove a linked child participant', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'parent_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValueOnce({

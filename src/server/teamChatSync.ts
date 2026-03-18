@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { isMinorAtUtcDate } from '@/server/userPrivacy';
 
+const TEAM_CHAT_GROUP_ID_PREFIX = 'team:';
+
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
 
 const normalizeIdList = (value: unknown): string[] => {
@@ -16,6 +18,10 @@ type TeamRecord = {
   headCoachId: string | null;
   coachIds: string[];
   playerIds: string[];
+};
+
+export type TeamChatSyncOptions = {
+  previousMemberIds?: string[];
 };
 
 const resolveTeamChatHostId = (team: TeamRecord, memberIds: string[]): string => {
@@ -42,6 +48,103 @@ const getTeamMemberIds = (team: TeamRecord): string[] => {
     ...normalizeIdList(team.coachIds),
     ...normalizeIdList(team.playerIds),
   ].map((entry) => String(entry).trim()).filter(Boolean)));
+};
+
+export const getTeamChatBaseMemberIds = (team: {
+  captainId?: unknown;
+  managerId?: unknown;
+  headCoachId?: unknown;
+  coachIds?: unknown;
+  playerIds?: unknown;
+}): string[] => {
+  return Array.from(new Set([
+    String(team.managerId ?? '').trim(),
+    String(team.captainId ?? '').trim(),
+    String(team.headCoachId ?? '').trim(),
+    ...normalizeIdList(team.coachIds),
+    ...normalizeIdList(team.playerIds),
+  ].filter(Boolean)));
+};
+
+const buildTeamChatGroupId = (teamId: string): string => {
+  const normalizedTeamId = String(teamId ?? '').trim();
+  if (!normalizedTeamId) {
+    throw new Error('Cannot build team chat group id without a team id');
+  }
+  return `${TEAM_CHAT_GROUP_ID_PREFIX}${normalizedTeamId}`;
+};
+
+const isUnknownTeamIdArgumentError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('Unknown argument `teamId`');
+};
+
+const findExistingTeamChatGroup = async (
+  chatGroupDelegate: any,
+  teamId: string,
+): Promise<{ id: string; userIds: string[] } | null> => {
+  const stableGroupId = buildTeamChatGroupId(teamId);
+
+  const byStableId = await chatGroupDelegate.findUnique({
+    where: { id: stableGroupId },
+    select: { id: true, userIds: true },
+  });
+  if (byStableId?.id) {
+    return byStableId;
+  }
+
+  try {
+    const byLegacyTeamId = await chatGroupDelegate.findUnique({
+      where: { teamId },
+      select: { id: true, userIds: true },
+    });
+    if (byLegacyTeamId?.id) {
+      return byLegacyTeamId;
+    }
+  } catch (error) {
+    if (!isUnknownTeamIdArgumentError(error)) {
+      throw error;
+    }
+  }
+
+  return null;
+};
+
+const createTeamChatGroup = async (
+  chatGroupDelegate: any,
+  params: {
+    chatGroupId: string;
+    team: TeamRecord;
+    memberIds: string[];
+    hostId: string;
+    now: Date;
+  },
+): Promise<void> => {
+  const baseData = {
+    id: params.chatGroupId,
+    name: params.team.name,
+    hostId: params.hostId,
+    userIds: params.memberIds,
+    createdAt: params.now,
+    updatedAt: params.now,
+  };
+
+  try {
+    await chatGroupDelegate.create({
+      data: {
+        ...baseData,
+        teamId: params.team.id,
+      },
+    });
+  } catch (error) {
+    if (!isUnknownTeamIdArgumentError(error)) {
+      throw error;
+    }
+
+    await chatGroupDelegate.create({
+      data: baseData,
+    });
+  }
 };
 
 const getActiveParentIdsForMinorMembers = async (tx: any, memberIds: string[]): Promise<string[]> => {
@@ -103,7 +206,11 @@ const getTeamById = async (tx: any, teamId: string): Promise<TeamRecord | null> 
   });
 };
 
-export const syncTeamChatInTx = async (tx: any, teamId: string): Promise<void> => {
+export const syncTeamChatInTx = async (
+  tx: any,
+  teamId: string,
+  options: TeamChatSyncOptions = {},
+): Promise<void> => {
   const team = await getTeamById(tx, teamId);
   if (!team) {
     return;
@@ -115,24 +222,44 @@ export const syncTeamChatInTx = async (tx: any, teamId: string): Promise<void> =
 
   const baseMemberIds = getTeamMemberIds(team);
   const parentIds = await getActiveParentIdsForMinorMembers(tx, baseMemberIds);
-  const memberIds = Array.from(new Set([...baseMemberIds, ...parentIds]));
-  if (!memberIds.length) {
+  const managedMemberIds = Array.from(new Set([...baseMemberIds, ...parentIds]));
+  if (!managedMemberIds.length) {
     return;
   }
 
-  const hostId = resolveTeamChatHostId(team, memberIds);
+  const hostId = resolveTeamChatHostId(team, managedMemberIds);
   const now = new Date();
-  const existing = await chatGroupDelegate.findUnique({
-    where: { teamId: team.id },
-    select: { id: true },
-  });
+  const chatGroupId = buildTeamChatGroupId(team.id);
+  const existing = await findExistingTeamChatGroup(chatGroupDelegate, team.id);
 
   if (existing) {
+    let nextUserIds = managedMemberIds;
+    const previousMemberIds = normalizeIdList(options.previousMemberIds);
+    if (previousMemberIds.length > 0) {
+      const previousParentIds = await getActiveParentIdsForMinorMembers(tx, previousMemberIds);
+      const previousManagedMemberSet = new Set([...previousMemberIds, ...previousParentIds]);
+      const currentManagedMemberSet = new Set(managedMemberIds);
+      const existingUserSet = new Set(normalizeIdList(existing.userIds));
+
+      for (const memberId of currentManagedMemberSet) {
+        if (!previousManagedMemberSet.has(memberId)) {
+          existingUserSet.add(memberId);
+        }
+      }
+      for (const memberId of previousManagedMemberSet) {
+        if (!currentManagedMemberSet.has(memberId)) {
+          existingUserSet.delete(memberId);
+        }
+      }
+      existingUserSet.add(hostId);
+      nextUserIds = Array.from(existingUserSet);
+    }
+
     await chatGroupDelegate.update({
       where: { id: existing.id },
       data: {
         name: team.name,
-        userIds: memberIds,
+        userIds: nextUserIds,
         hostId,
         updatedAt: now,
       },
@@ -140,16 +267,12 @@ export const syncTeamChatInTx = async (tx: any, teamId: string): Promise<void> =
     return;
   }
 
-  await chatGroupDelegate.create({
-    data: {
-      id: crypto.randomUUID(),
-      name: team.name,
-      teamId: team.id,
-      hostId,
-      userIds: memberIds,
-      createdAt: now,
-      updatedAt: now,
-    },
+  await createTeamChatGroup(chatGroupDelegate, {
+    chatGroupId,
+    team,
+    memberIds: managedMemberIds,
+    hostId,
+    now,
   });
 };
 
@@ -165,10 +288,7 @@ export const deleteTeamChatInTx = async (tx: any, teamId: string): Promise<void>
     return;
   }
 
-  const existing = await chatGroupDelegate.findUnique({
-    where: { teamId },
-    select: { id: true },
-  });
+  const existing = await findExistingTeamChatGroup(chatGroupDelegate, teamId);
   if (!existing?.id) {
     return;
   }

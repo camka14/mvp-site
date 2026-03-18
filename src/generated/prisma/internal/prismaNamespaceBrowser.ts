@@ -302,6 +302,7 @@ export const ChatGroupScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   name: 'name',
+  teamId: 'teamId',
   userIds: 'userIds',
   mutedUserIds: 'mutedUserIds',
   hostId: 'hostId'
