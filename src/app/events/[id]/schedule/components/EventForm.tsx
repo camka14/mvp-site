@@ -1093,6 +1093,35 @@ const slotConflictsEqual = (
     return leftKeys.every((value, index) => value === rightKeys[index]);
 };
 
+type FlattenedFormError = {
+    path: string;
+    message: string;
+};
+
+const flattenFormErrors = (value: unknown, path: string[] = []): FlattenedFormError[] => {
+    if (!value || typeof value !== 'object') {
+        return [];
+    }
+
+    const node = value as Record<string, unknown>;
+    const flattened: FlattenedFormError[] = [];
+    if (typeof node.message === 'string' && node.message.trim().length > 0) {
+        flattened.push({
+            path: path.length ? path.join('.') : 'form',
+            message: node.message,
+        });
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+        if (key === 'message' || key === 'type' || key === 'ref') {
+            continue;
+        }
+        flattened.push(...flattenFormErrors(child, [...path, key]));
+    }
+
+    return flattened;
+};
+
 const parseEventRange = (event: Event): { start: Date; end: Date } | null => {
     const start = parseLocalDateTime(event.start ?? null);
     const end = parseLocalDateTime(event.end ?? null);
@@ -7888,6 +7917,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const validateDraft = useCallback(async () => {
         const isFormValid = await trigger();
         if (!isFormValid) {
+            const flattenedErrors = flattenFormErrors(errors);
+            console.warn('Event form validation failed.', {
+                errorCount: flattenedErrors.length,
+                errors: flattenedErrors,
+            });
             return false;
         }
 
@@ -7896,6 +7930,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         if (hasPendingExternalConflictChecks || hasBlockingExternalSlotConflicts) {
+            console.warn('Event form submission blocked by timeslot conflicts.', {
+                hasPendingExternalConflictChecks,
+                hasBlockingExternalSlotConflicts,
+            });
             return false;
         }
 
@@ -7903,6 +7941,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [
         eventData.eventType,
         eventData.parentEvent,
+        errors,
         hasBlockingExternalSlotConflicts,
         hasPendingExternalConflictChecks,
         trigger,
