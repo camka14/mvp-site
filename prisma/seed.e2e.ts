@@ -228,7 +228,6 @@ const seed = async (): Promise<void> => {
       timeSlotIds: [SEED_RENTAL_SLOT.id],
       teamIds: [],
       userIds: [],
-      registrationIds: [],
       leagueScoringConfigId: null,
       sportId: SEED_SPORT.id,
       organizationId: SEED_ORG.id,

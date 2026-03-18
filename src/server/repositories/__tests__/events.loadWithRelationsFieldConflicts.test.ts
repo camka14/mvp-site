@@ -48,7 +48,6 @@ const baseEventRow = (overrides: Record<string, unknown> = {}) => ({
   refereeIds: [],
   waitListIds: [],
   freeAgentIds: [],
-  registrationIds: [],
   requiredTemplateIds: [],
   organizationId: null,
   sportId: null,

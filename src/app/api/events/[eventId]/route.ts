@@ -74,7 +74,6 @@ const EVENT_UPDATE_FIELDS = new Set([
   'fieldIds',
   'teamIds',
   'userIds',
-  'registrationIds',
   'leagueScoringConfigId',
   'organizationId',
   'autoCancellation',

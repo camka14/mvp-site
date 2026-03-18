@@ -355,7 +355,6 @@ model Events {
   fieldIds String[]
   teamIds String[]
   userIds String[]
-  registrationIds String[]
   leagueScoringConfigId String?
   organizationId String?
   autoCancellation Boolean?

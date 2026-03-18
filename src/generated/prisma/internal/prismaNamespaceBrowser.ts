@@ -469,7 +469,6 @@ export const EventsScalarFieldEnum = {
   fieldIds: 'fieldIds',
   teamIds: 'teamIds',
   userIds: 'userIds',
-  registrationIds: 'registrationIds',
   leagueScoringConfigId: 'leagueScoringConfigId',
   organizationId: 'organizationId',
   autoCancellation: 'autoCancellation',

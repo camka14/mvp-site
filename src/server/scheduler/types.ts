@@ -630,7 +630,6 @@ export class Tournament {
   registeredTeamIds: string[];
   teams: Record<string, Team>;
   players: UserData[];
-  registrationIds: string[];
   divisions: Division[];
   referees: UserData[];
   eventType: string;
@@ -698,7 +697,6 @@ export class Tournament {
     registeredTeamIds?: string[];
     teams?: Record<string, Team>;
     players?: UserData[];
-    registrationIds?: string[];
     divisions?: Division[];
     referees?: UserData[];
     eventType: string;
@@ -780,7 +778,6 @@ export class Tournament {
       : [];
     this.teams = params.teams ?? {};
     this.players = params.players ?? [];
-    this.registrationIds = params.registrationIds ?? [];
     this.divisions = params.divisions ?? [];
     this.referees = params.referees ?? [];
     this.eventType = params.eventType;

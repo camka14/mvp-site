@@ -51,7 +51,6 @@ const baseEventDocument = (): EventDocument => ({
   timeSlotIds: [],
   teamIds: [],
   userIds: [],
-  registrationIds: [],
   leagueScoringConfigId: null,
   organizationId: SEED_ORG.id,
   autoCancellation: false,
