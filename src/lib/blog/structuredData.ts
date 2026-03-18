@@ -19,7 +19,7 @@ export function createArticleStructuredData(post: BlogPostEntry) {
       name: 'BracketIQ by Razumly',
       logo: {
         '@type': 'ImageObject',
-        url: `${SITE_URL}/bracketiq-shield.svg`,
+        url: `${SITE_URL}/BIQ_drawing.svg`,
       },
     },
     image: {

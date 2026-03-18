@@ -261,8 +261,8 @@ export default function HomePage() {
         <div className="container-responsive flex items-center justify-between py-4">
           <Link href="/" className="landing-brand inline-flex items-center gap-3 text-lg font-semibold tracking-wide">
             <Image
-              src="/bracketiq-shield.svg"
-              alt="BracketIQ shield logo"
+              src="/BIQ_drawing.svg"
+              alt="BracketIQ logo"
               width={40}
               height={40}
               className="h-10 w-10"

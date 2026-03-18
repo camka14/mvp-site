@@ -37,13 +37,13 @@ export const metadata: Metadata = {
   keywords: ['sports', 'events', 'tournaments', 'leagues', 'pickup games', 'teams'],
   icons: {
     icon: [
-      { url: '/bracketiq-shield.svg', type: 'image/svg+xml' },
+      { url: '/BIQ_drawing.svg', type: 'image/svg+xml' },
     ],
     shortcut: [
-      { url: '/bracketiq-shield.svg', type: 'image/svg+xml' },
+      { url: '/BIQ_drawing.svg', type: 'image/svg+xml' },
     ],
     apple: [
-      { url: '/bracketiq-shield.svg', type: 'image/svg+xml' },
+      { url: '/BIQ_drawing.svg', type: 'image/svg+xml' },
     ],
   },
   openGraph: {

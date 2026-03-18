@@ -20,8 +20,8 @@ function LoadingSpinner({
     <div className="flex flex-col items-center justify-center space-y-4">
       {showLogo ? (
         <Image
-          src="/bracketiq-shield.svg"
-          alt="BracketIQ shield logo"
+          src="/BIQ_drawing.svg"
+          alt="BracketIQ logo"
           width={72}
           height={72}
           className="h-[72px] w-[72px]"

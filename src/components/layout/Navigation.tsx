@@ -86,8 +86,8 @@ export default function Navigation() {
           {/* Logo */}
           <Link href={homeHref} className="flex items-center gap-3">
             <Image
-              src="/bracketiq-shield.svg"
-              alt="BracketIQ shield logo"
+              src="/BIQ_drawing.svg"
+              alt="BracketIQ logo"
               width={40}
               height={40}
               className="h-10 w-10"
