@@ -85,7 +85,7 @@ const formatDateTimeLabel = (value?: string): string => {
     return formatted || 'Unknown date';
 };
 
-export default function ProfilePage() {
+function ProfilePageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user, authUser, loading, setUser, setAuthUser } = useApp();
@@ -2893,5 +2893,13 @@ export default function ProfilePage() {
                 />
             </div>
         </>
+    );
+}
+
+export default function ProfilePage() {
+    return (
+        <Suspense fallback={<Loading fullScreen text="Loading profile..." />}>
+            <ProfilePageContent />
+        </Suspense>
     );
 }
