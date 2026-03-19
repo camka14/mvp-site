@@ -155,8 +155,11 @@ class UserService {
     return this.updateUser(userId, data as Partial<UserData>);
   }
 
-  async updateEmail(_email: string, _currentPassword: string): Promise<void> {
-    throw new Error('Email updates are not yet supported in the self-hosted auth flow.');
+  async updateEmail(email: string, currentPassword: string): Promise<void> {
+    await apiFetch('/api/auth/email', {
+      method: 'POST',
+      body: JSON.stringify({ newEmail: email, currentPassword }),
+    });
   }
 
   async updatePassword(currentPassword: string, newPassword: string): Promise<void> {

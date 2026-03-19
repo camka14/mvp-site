@@ -69,6 +69,7 @@ describe('RefundRequestsList', () => {
     await waitFor(() => expect(refundRequestService.listRefundRequests).toHaveBeenCalled());
 
     expect(await screen.findByText('Your Refund Requests')).toBeInTheDocument();
+    expect(screen.getByText('Track the refund requests you submitted and their current status.')).toBeInTheDocument();
     expect(await screen.findByText('Event event_123')).toBeInTheDocument();
     expect(screen.getByText('Need to cancel')).toBeInTheDocument();
     expect(screen.getByText('Test User')).toBeInTheDocument();
@@ -120,6 +121,7 @@ describe('RefundRequestsList', () => {
     renderWithMantine(<RefundRequestsList hostId="host_1" />);
 
     await waitFor(() => expect(refundRequestService.listRefundRequests).toHaveBeenCalled());
+    expect(screen.getByText('Review refund requests submitted by participants for events you host.')).toBeInTheDocument();
 
     const user = userEvent.setup();
     const approveButton = await screen.findByRole('button', { name: /approve/i });

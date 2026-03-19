@@ -138,6 +138,16 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
     return 'Your Refund Requests';
   }, [organizationId, hostId]);
 
+  const description = useMemo(() => {
+    if (organizationId) {
+      return 'Review refund requests across events in this organization.';
+    }
+    if (hostId) {
+      return 'Review refund requests submitted by participants for events you host.';
+    }
+    return 'Track the refund requests you submitted and their current status.';
+  }, [organizationId, hostId]);
+
   const visibleRefunds = useMemo(() => {
     if (!refunds.length) return refunds;
     if (hostId) {
@@ -191,7 +201,7 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
         <div>
           <Title order={4}>{title}</Title>
           <Text size="sm" c="dimmed">
-            View refund requests filtered by the current context.
+            {description}
           </Text>
         </div>
         {loading && <Loader size="sm" />}

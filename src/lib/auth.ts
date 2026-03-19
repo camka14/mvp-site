@@ -183,8 +183,11 @@ export const authService = {
     });
   },
 
-  async updateEmail(): Promise<void> {
-    throw new Error('Email updates are not yet supported in the self-hosted auth flow.');
+  async updateEmail(newEmail: string, currentPassword: string): Promise<void> {
+    await apiFetch('/api/auth/email', {
+      method: 'POST',
+      body: JSON.stringify({ newEmail, currentPassword }),
+    });
   },
 
   async resendVerification(): Promise<void> {

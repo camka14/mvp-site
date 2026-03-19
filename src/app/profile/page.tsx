@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
+import { authService } from '@/lib/auth';
 import { userService, type UserSocialGraph } from '@/lib/userService';
 import { familyService, FamilyChild, FamilyJoinRequest } from '@/lib/familyService';
 import { ImageUploader } from '@/components/ui/ImageUploader';
@@ -86,7 +87,8 @@ const formatDateTimeLabel = (value?: string): string => {
 
 export default function ProfilePage() {
     const router = useRouter();
-    const { user, authUser, loading, setUser } = useApp();
+    const searchParams = useSearchParams();
+    const { user, authUser, loading, setUser, setAuthUser } = useApp();
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -130,10 +132,12 @@ export default function ProfilePage() {
         relationship: 'parent',
     });
     const [linkForm, setLinkForm] = useState({
-        childEmail: '',
-        childUserId: '',
         relationship: 'parent',
     });
+    const [linkChildSearchQuery, setLinkChildSearchQuery] = useState('');
+    const [linkChildSearchResults, setLinkChildSearchResults] = useState<UserData[]>([]);
+    const [linkChildSearchLoading, setLinkChildSearchLoading] = useState(false);
+    const [selectedLinkChild, setSelectedLinkChild] = useState<UserData | null>(null);
 
     // Account sections
     const [showEmailSection, setShowEmailSection] = useState(false);
@@ -192,6 +196,8 @@ export default function ProfilePage() {
     const childFormSubmitting = creatingChild || updatingChild;
     const today = new Date();
     const maxDob = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const emailChangeStatus = searchParams.get('emailChange');
+    const emailChangeMessage = searchParams.get('emailChangeMessage');
 
     // Initialize form data when user changes
     useEffect(() => {
@@ -206,6 +212,38 @@ export default function ProfilePage() {
         }
     }, [user]);
 
+    useEffect(() => {
+        if (!emailChangeStatus) return;
+
+        const isSuccess = emailChangeStatus === 'success';
+        const fallbackMessage = isSuccess
+            ? 'Email updated successfully.'
+            : 'Unable to update email. Please request another verification link.';
+        const message = emailChangeMessage?.trim() || fallbackMessage;
+
+        notifications.show({
+            color: isSuccess ? 'green' : 'red',
+            message,
+        });
+
+        if (isSuccess) {
+            void authService.fetchSession()
+                .then((session) => {
+                    setAuthUser(session.user);
+                })
+                .catch((refreshError) => {
+                    console.warn('Failed to refresh auth session after email update', refreshError);
+                });
+        }
+
+        if (typeof window !== 'undefined') {
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.delete('emailChange');
+            nextUrl.searchParams.delete('emailChangeMessage');
+            window.history.replaceState({}, '', nextUrl.toString());
+        }
+    }, [emailChangeMessage, emailChangeStatus, setAuthUser]);
+
     const handleEditToggle = () => {
         if (isEditing) {
             // Cancel editing - reset to original values
@@ -218,6 +256,10 @@ export default function ProfilePage() {
                     profileImageId: user.profileImageId || ''
                 });
             }
+            setShowEmailSection(false);
+            setShowPasswordSection(false);
+            setEmailData({ email: '', currentPassword: '' });
+            setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
         }
         setIsEditing(!isEditing);
         setError(null);
@@ -245,6 +287,10 @@ export default function ProfilePage() {
 
             setUser(updatedUser);
             setIsEditing(false);
+            setShowEmailSection(false);
+            setShowPasswordSection(false);
+            setEmailData({ email: '', currentPassword: '' });
+            setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
         } catch (error: any) {
             setError(error.message || 'Failed to update profile');
         } finally {
@@ -366,8 +412,55 @@ export default function ProfilePage() {
         setChildFormError(null);
     };
 
-    const handleOpenAddChild = () => {
+    const resetLinkChildForm = () => {
+        setLinkForm({ relationship: 'parent' });
+        setLinkChildSearchQuery('');
+        setLinkChildSearchResults([]);
+        setSelectedLinkChild(null);
+        setLinkFormError(null);
+    };
+
+    const searchChildCandidates = useCallback(async (query: string) => {
+        setLinkChildSearchQuery(query);
+        const trimmed = query.trim();
+
+        if (trimmed.length < 2) {
+            setLinkChildSearchResults([]);
+            setLinkChildSearchLoading(false);
+            setLinkFormError(null);
+            return;
+        }
+
+        setLinkChildSearchLoading(true);
+        setLinkFormError(null);
+        try {
+            const existingChildIds = new Set(children.map((child) => child.userId));
+            const results = await userService.searchUsers(trimmed);
+            const filtered = results.filter((candidate) => {
+                if (candidate.$id === user?.$id) return false;
+                if (existingChildIds.has(candidate.$id)) return false;
+                return true;
+            });
+            setLinkChildSearchResults(filtered);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to search users.';
+            setLinkFormError(message);
+            setLinkChildSearchResults([]);
+        } finally {
+            setLinkChildSearchLoading(false);
+        }
+    }, [children, user?.$id]);
+
+    const handleToggleChildForms = () => {
+        if (showAddChildForm) {
+            resetChildForm();
+            resetLinkChildForm();
+            setShowAddChildForm(false);
+            return;
+        }
+
         resetChildForm();
+        resetLinkChildForm();
         setShowAddChildForm(true);
     };
 
@@ -381,12 +474,12 @@ export default function ProfilePage() {
         });
         setEditingChildUserId(child.userId);
         setChildFormError(null);
+        resetLinkChildForm();
         setShowAddChildForm(true);
     };
 
     const handleCancelChildForm = () => {
         resetChildForm();
-        setShowAddChildForm(false);
     };
 
     const handleSaveChild = async () => {
@@ -413,7 +506,6 @@ export default function ProfilePage() {
                     ...payload,
                 });
                 resetChildForm();
-                setShowAddChildForm(false);
                 await Promise.all([loadChildren(), loadJoinRequests(), loadDocuments()]);
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to update child.';
@@ -428,7 +520,6 @@ export default function ProfilePage() {
         try {
             await familyService.createChildAccount(payload);
             resetChildForm();
-            setShowAddChildForm(false);
             await Promise.all([loadChildren(), loadJoinRequests()]);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to create child.';
@@ -439,23 +530,18 @@ export default function ProfilePage() {
     };
 
     const handleLinkChild = async () => {
-        if (!linkForm.childEmail.trim() && !linkForm.childUserId.trim()) {
-            setLinkFormError('Provide a child email or user ID.');
+        if (!selectedLinkChild?.$id) {
+            setLinkFormError('Select a child account from search results.');
             return;
         }
         setLinkingChild(true);
         setLinkFormError(null);
         try {
             await familyService.linkChildToParent({
-                childEmail: linkForm.childEmail.trim() || undefined,
-                childUserId: linkForm.childUserId.trim() || undefined,
+                childUserId: selectedLinkChild.$id,
                 relationship: linkForm.relationship,
             });
-            setLinkForm({
-                childEmail: '',
-                childUserId: '',
-                relationship: 'parent',
-            });
+            resetLinkChildForm();
             await Promise.all([loadChildren(), loadJoinRequests()]);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to link child.';
@@ -470,14 +556,24 @@ export default function ProfilePage() {
     };
 
     const handleEmailUpdate = async () => {
-        if (!emailData.email || !emailData.currentPassword) return;
+        const normalizedEmail = emailData.email.trim().toLowerCase();
+        if (!normalizedEmail || !emailData.currentPassword) return;
+
+        if (authUser?.email?.trim().toLowerCase() === normalizedEmail) {
+            setError('New email must be different from your current email.');
+            return;
+        }
 
         setSaving(true);
+        setError(null);
         try {
-            await userService.updateEmail(emailData.email, emailData.currentPassword);
+            await userService.updateEmail(normalizedEmail, emailData.currentPassword);
             setEmailData({ email: '', currentPassword: '' });
             setShowEmailSection(false);
-            alert('Email update initiated. Please check your email for verification.');
+            notifications.show({
+                color: 'blue',
+                message: 'Verification email sent. Open the link in your new inbox to finish updating your email.',
+            });
         } catch (error: any) {
             setError(error.message || 'Failed to update email');
         } finally {
@@ -1439,6 +1535,106 @@ export default function ProfilePage() {
                                     </div>
                                 </div>
                             </div>
+
+                            {isEditing && (
+                                <div className="mt-8">
+                                    <Title order={4} mb="sm">Account Security</Title>
+                                    <Text size="sm" c="dimmed" mb="md">
+                                        Update your sign-in email and password.
+                                    </Text>
+                                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                                        <Paper withBorder radius="md" p="md">
+                                            <Group justify="space-between" mb="sm">
+                                                <Title order={5}>Email Address</Title>
+                                                <Button variant="subtle" onClick={() => setShowEmailSection(!showEmailSection)}>
+                                                    {showEmailSection ? 'Cancel' : 'Change Email'}
+                                                </Button>
+                                            </Group>
+
+                                            {showEmailSection ? (
+                                                <div className="space-y-4">
+                                                    <TextInput
+                                                        type="email"
+                                                        placeholder="New email address"
+                                                        value={emailData.email}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setEmailData((prev) => ({ ...prev, email: value }));
+                                                        }}
+                                                    />
+                                                    <PasswordInput
+                                                        placeholder="Current password"
+                                                        value={emailData.currentPassword}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setEmailData((prev) => ({ ...prev, currentPassword: value }));
+                                                        }}
+                                                    />
+                                                    <Button
+                                                        onClick={handleEmailUpdate}
+                                                        disabled={saving || !emailData.email || !emailData.currentPassword}
+                                                    >
+                                                        Send verification email
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <Text c="dimmed">{'Click "Change Email" to update your email address'}</Text>
+                                            )}
+                                        </Paper>
+
+                                        <Paper withBorder radius="md" p="md">
+                                            <Group justify="space-between" mb="sm">
+                                                <Title order={5}>Password</Title>
+                                                <Button variant="subtle" onClick={() => setShowPasswordSection(!showPasswordSection)}>
+                                                    {showPasswordSection ? 'Cancel' : 'Change Password'}
+                                                </Button>
+                                            </Group>
+
+                                            {showPasswordSection ? (
+                                                <div className="space-y-4">
+                                                    <PasswordInput
+                                                        placeholder="Current password"
+                                                        value={passwordData.currentPassword}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setPasswordData((prev) => ({ ...prev, currentPassword: value }));
+                                                        }}
+                                                    />
+                                                    <PasswordInput
+                                                        placeholder="New password"
+                                                        value={passwordData.newPassword}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setPasswordData((prev) => ({ ...prev, newPassword: value }));
+                                                        }}
+                                                    />
+                                                    <PasswordInput
+                                                        placeholder="Confirm new password"
+                                                        value={passwordData.confirmPassword}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setPasswordData((prev) => ({ ...prev, confirmPassword: value }));
+                                                        }}
+                                                    />
+                                                    <Button
+                                                        onClick={handlePasswordUpdate}
+                                                        disabled={
+                                                            saving
+                                                            || !passwordData.currentPassword
+                                                            || !passwordData.newPassword
+                                                            || !passwordData.confirmPassword
+                                                        }
+                                                    >
+                                                        Update Password
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <Text c="dimmed">{'Click "Change Password" to update your password'}</Text>
+                                            )}
+                                        </Paper>
+                                    </SimpleGrid>
+                                </div>
+                            )}
                         </div>
                     </Paper>
 
@@ -1477,127 +1673,135 @@ export default function ProfilePage() {
                                     {socialError}
                                 </Alert>
                             )}
-                            <Paper withBorder radius="md" p="md" shadow="xs" className="w-full max-w-3xl" mb="md">
-                                <div className="space-y-3">
-                                    <Title order={5}>Find people</Title>
-                                    <TextInput
-                                        placeholder="Search by name or username"
-                                        value={socialSearchQuery}
-                                        onChange={(event) => {
-                                            const value = event.currentTarget.value;
-                                            void searchSocialUsers(value);
-                                        }}
-                                    />
-                                    {socialSearchError && (
-                                        <Alert color="red" variant="light">
-                                            {socialSearchError}
-                                        </Alert>
-                                    )}
-                                    {socialSearchLoading ? (
-                                        <Text c="dimmed" size="sm">Searching...</Text>
-                                    ) : socialSearchQuery.trim().length < 2 ? (
-                                        <Text c="dimmed" size="sm">Enter at least 2 characters to search.</Text>
-                                    ) : socialSearchResults.length === 0 ? (
-                                        <Text c="dimmed" size="sm">No users found.</Text>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {socialSearchResults.map((candidate) => {
-                                                const candidateId = candidate.$id;
-                                                const isFriend = user.friendIds.includes(candidateId);
-                                                const isFollowing = user.followingIds.includes(candidateId);
-                                                const hasIncomingRequest = user.friendRequestIds.includes(candidateId);
-                                                const hasOutgoingRequest = user.friendRequestSentIds.includes(candidateId);
-                                                const isActing = socialActionUserId === candidateId;
-                                                const isRestricted = isUserSocialInteractionRestricted(candidate);
-                                                const candidateDisplayName = getUserFullName(candidate);
-                                                const candidateHandle = getUserHandle(candidate);
-                                                const followDisabled = isActing || (isRestricted && !isFollowing);
+                            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3, xl: 5 }} spacing="md">
+                                <Paper withBorder radius="md" p="md" shadow="xs">
+                                    <div className="space-y-3">
+                                        <Title order={5}>Find people</Title>
+                                        <TextInput
+                                            placeholder="Search by name or username"
+                                            value={socialSearchQuery}
+                                            onChange={(event) => {
+                                                const value = event.currentTarget.value;
+                                                void searchSocialUsers(value);
+                                            }}
+                                        />
+                                        {socialSearchError && (
+                                            <Alert color="red" variant="light">
+                                                {socialSearchError}
+                                            </Alert>
+                                        )}
+                                        {socialSearchLoading ? (
+                                            <Text c="dimmed" size="sm">Searching...</Text>
+                                        ) : socialSearchQuery.trim().length < 2 ? (
+                                            <Text c="dimmed" size="sm">Enter at least 2 characters to search.</Text>
+                                        ) : socialSearchResults.length === 0 ? (
+                                            <Text c="dimmed" size="sm">No users found.</Text>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {socialSearchResults.map((candidate) => {
+                                                    const candidateId = candidate.$id;
+                                                    const isFriend = user.friendIds.includes(candidateId);
+                                                    const isFollowing = user.followingIds.includes(candidateId);
+                                                    const hasIncomingRequest = user.friendRequestIds.includes(candidateId);
+                                                    const hasOutgoingRequest = user.friendRequestSentIds.includes(candidateId);
+                                                    const isActing = socialActionUserId === candidateId;
+                                                    const isRestricted = isUserSocialInteractionRestricted(candidate);
+                                                    const candidateDisplayName = getUserFullName(candidate);
+                                                    const candidateHandle = getUserHandle(candidate);
+                                                    const followDisabled = isActing || (isRestricted && !isFollowing);
 
-                                                return (
-                                                    <Paper key={candidateId} withBorder radius="md" p="sm">
-                                                        <Group justify="space-between" align="flex-start">
-                                                            <div>
-                                                                <Text fw={600}>{candidateDisplayName}</Text>
-                                                                {candidateHandle && <Text size="sm" c="dimmed">{candidateHandle}</Text>}
-                                                                {isRestricted && (
-                                                                    <Text size="xs" c="dimmed">Social actions are unavailable for this account.</Text>
-                                                                )}
-                                                            </div>
-                                                            <Group gap="xs">
-                                                                {isFriend ? (
-                                                                    <Button
-                                                                        size="xs"
-                                                                        variant="light"
-                                                                        color="red"
-                                                                        loading={isActing}
-                                                                        onClick={() => { void runSocialAction(candidateId, (id) => userService.removeFriend(id), 'Friend removed.'); }}
-                                                                    >
-                                                                        Remove friend
-                                                                    </Button>
-                                                                ) : hasIncomingRequest ? (
-                                                                    <>
-                                                                        <Button
-                                                                            size="xs"
-                                                                            variant="light"
-                                                                            color="green"
-                                                                            loading={isActing}
-                                                                            disabled={isRestricted}
-                                                                            onClick={() => { void runSocialAction(candidateId, (id) => userService.acceptFriendRequest(id), 'Friend request accepted.'); }}
-                                                                        >
-                                                                            Accept
-                                                                        </Button>
+                                                    return (
+                                                        <Paper key={candidateId} withBorder radius="md" p="sm">
+                                                            <Group justify="space-between" align="flex-start">
+                                                                <Group gap="sm" align="flex-start">
+                                                                    <Avatar
+                                                                        src={getUserAvatarUrl(candidate, 40)}
+                                                                        alt={candidateDisplayName}
+                                                                        size={40}
+                                                                        radius="md"
+                                                                    />
+                                                                    <div>
+                                                                        <Text fw={600}>{candidateDisplayName}</Text>
+                                                                        {candidateHandle && <Text size="sm" c="dimmed">{candidateHandle}</Text>}
+                                                                        {isRestricted && (
+                                                                            <Text size="xs" c="dimmed">Social actions are unavailable for this account.</Text>
+                                                                        )}
+                                                                    </div>
+                                                                </Group>
+                                                                <Group gap="xs">
+                                                                    {isFriend ? (
                                                                         <Button
                                                                             size="xs"
                                                                             variant="light"
                                                                             color="red"
                                                                             loading={isActing}
-                                                                            onClick={() => { void runSocialAction(candidateId, (id) => userService.declineFriendRequest(id), 'Friend request declined.'); }}
+                                                                            onClick={() => { void runSocialAction(candidateId, (id) => userService.removeFriend(id), 'Friend removed.'); }}
                                                                         >
-                                                                            Decline
+                                                                            Remove friend
                                                                         </Button>
-                                                                    </>
-                                                                ) : hasOutgoingRequest ? (
-                                                                    <Button size="xs" variant="default" disabled>
-                                                                        Request sent
-                                                                    </Button>
-                                                                ) : (
+                                                                    ) : hasIncomingRequest ? (
+                                                                        <>
+                                                                            <Button
+                                                                                size="xs"
+                                                                                variant="light"
+                                                                                color="green"
+                                                                                loading={isActing}
+                                                                                disabled={isRestricted}
+                                                                                onClick={() => { void runSocialAction(candidateId, (id) => userService.acceptFriendRequest(id), 'Friend request accepted.'); }}
+                                                                            >
+                                                                                Accept
+                                                                            </Button>
+                                                                            <Button
+                                                                                size="xs"
+                                                                                variant="light"
+                                                                                color="red"
+                                                                                loading={isActing}
+                                                                                onClick={() => { void runSocialAction(candidateId, (id) => userService.declineFriendRequest(id), 'Friend request declined.'); }}
+                                                                            >
+                                                                                Decline
+                                                                            </Button>
+                                                                        </>
+                                                                    ) : hasOutgoingRequest ? (
+                                                                        <Button size="xs" variant="default" disabled>
+                                                                            Request sent
+                                                                        </Button>
+                                                                    ) : (
+                                                                        <Button
+                                                                            size="xs"
+                                                                            variant="light"
+                                                                            loading={isActing}
+                                                                            disabled={isRestricted}
+                                                                            onClick={() => { void runSocialAction(candidateId, (id) => userService.sendFriendRequest(id), 'Friend request sent.'); }}
+                                                                        >
+                                                                            Add friend
+                                                                        </Button>
+                                                                    )}
                                                                     <Button
                                                                         size="xs"
                                                                         variant="light"
+                                                                        color={isFollowing ? 'red' : 'blue'}
                                                                         loading={isActing}
-                                                                        disabled={isRestricted}
-                                                                        onClick={() => { void runSocialAction(candidateId, (id) => userService.sendFriendRequest(id), 'Friend request sent.'); }}
+                                                                        disabled={followDisabled}
+                                                                        onClick={() => {
+                                                                            void runSocialAction(
+                                                                                candidateId,
+                                                                                (id) => (isFollowing ? userService.unfollowUser(id) : userService.followUser(id)),
+                                                                                isFollowing ? 'Unfollowed user.' : 'Following user.',
+                                                                            );
+                                                                        }}
                                                                     >
-                                                                        Add friend
+                                                                        {isFollowing ? 'Unfollow' : 'Follow'}
                                                                     </Button>
-                                                                )}
-                                                                <Button
-                                                                    size="xs"
-                                                                    variant="light"
-                                                                    color={isFollowing ? 'red' : 'blue'}
-                                                                    loading={isActing}
-                                                                    disabled={followDisabled}
-                                                                    onClick={() => {
-                                                                        void runSocialAction(
-                                                                            candidateId,
-                                                                            (id) => (isFollowing ? userService.unfollowUser(id) : userService.followUser(id)),
-                                                                            isFollowing ? 'Unfollowed user.' : 'Following user.',
-                                                                        );
-                                                                    }}
-                                                                >
-                                                                    {isFollowing ? 'Unfollow' : 'Follow'}
-                                                                </Button>
+                                                                </Group>
                                                             </Group>
-                                                        </Group>
-                                                    </Paper>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            </Paper>
+                                                        </Paper>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </Paper>
 
-                            <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
                                 <Paper withBorder radius="md" p="md" shadow="xs">
                                     <Title order={5} mb="sm">Incoming Friend Requests</Title>
                                     {socialLoading ? (
@@ -1609,10 +1813,18 @@ export default function ProfilePage() {
                                             {socialGraph?.incomingFriendRequests.map((requester) => (
                                                 <Paper key={requester.$id} withBorder radius="md" p="sm">
                                                     <Group justify="space-between">
-                                                        <div>
-                                                            <Text fw={600}>{getUserFullName(requester)}</Text>
-                                                            {getUserHandle(requester) && <Text size="sm" c="dimmed">{getUserHandle(requester)}</Text>}
-                                                        </div>
+                                                        <Group gap="sm" align="center">
+                                                            <Avatar
+                                                                src={getUserAvatarUrl(requester, 40)}
+                                                                alt={getUserFullName(requester)}
+                                                                size={40}
+                                                                radius="md"
+                                                            />
+                                                            <div>
+                                                                <Text fw={600}>{getUserFullName(requester)}</Text>
+                                                                {getUserHandle(requester) && <Text size="sm" c="dimmed">{getUserHandle(requester)}</Text>}
+                                                            </div>
+                                                        </Group>
                                                         <Group gap="xs">
                                                             <Button
                                                                 size="xs"
@@ -1652,10 +1864,18 @@ export default function ProfilePage() {
                                             {socialGraph?.friends.map((friend) => (
                                                 <Paper key={friend.$id} withBorder radius="md" p="sm">
                                                     <Group justify="space-between">
-                                                        <div>
-                                                            <Text fw={600}>{getUserFullName(friend)}</Text>
-                                                            {getUserHandle(friend) && <Text size="sm" c="dimmed">{getUserHandle(friend)}</Text>}
-                                                        </div>
+                                                        <Group gap="sm" align="center">
+                                                            <Avatar
+                                                                src={getUserAvatarUrl(friend, 40)}
+                                                                alt={getUserFullName(friend)}
+                                                                size={40}
+                                                                radius="md"
+                                                            />
+                                                            <div>
+                                                                <Text fw={600}>{getUserFullName(friend)}</Text>
+                                                                {getUserHandle(friend) && <Text size="sm" c="dimmed">{getUserHandle(friend)}</Text>}
+                                                            </div>
+                                                        </Group>
                                                         <Button
                                                             size="xs"
                                                             variant="light"
@@ -1683,10 +1903,18 @@ export default function ProfilePage() {
                                             {socialGraph?.following.map((entry) => (
                                                 <Paper key={entry.$id} withBorder radius="md" p="sm">
                                                     <Group justify="space-between">
-                                                        <div>
-                                                            <Text fw={600}>{getUserFullName(entry)}</Text>
-                                                            {getUserHandle(entry) && <Text size="sm" c="dimmed">{getUserHandle(entry)}</Text>}
-                                                        </div>
+                                                        <Group gap="sm" align="center">
+                                                            <Avatar
+                                                                src={getUserAvatarUrl(entry, 40)}
+                                                                alt={getUserFullName(entry)}
+                                                                size={40}
+                                                                radius="md"
+                                                            />
+                                                            <div>
+                                                                <Text fw={600}>{getUserFullName(entry)}</Text>
+                                                                {getUserHandle(entry) && <Text size="sm" c="dimmed">{getUserHandle(entry)}</Text>}
+                                                            </div>
+                                                        </Group>
                                                         <Button
                                                             size="xs"
                                                             variant="light"
@@ -1713,8 +1941,18 @@ export default function ProfilePage() {
                                         <div className="space-y-2">
                                             {socialGraph?.followers.map((entry) => (
                                                 <Paper key={entry.$id} withBorder radius="md" p="sm">
-                                                    <Text fw={600}>{getUserFullName(entry)}</Text>
-                                                    {getUserHandle(entry) && <Text size="sm" c="dimmed">{getUserHandle(entry)}</Text>}
+                                                    <Group gap="sm" align="center">
+                                                        <Avatar
+                                                            src={getUserAvatarUrl(entry, 40)}
+                                                            alt={getUserFullName(entry)}
+                                                            size={40}
+                                                            radius="md"
+                                                        />
+                                                        <div>
+                                                            <Text fw={600}>{getUserFullName(entry)}</Text>
+                                                            {getUserHandle(entry) && <Text size="sm" c="dimmed">{getUserHandle(entry)}</Text>}
+                                                        </div>
+                                                    </Group>
                                                 </Paper>
                                             ))}
                                         </div>
@@ -1742,180 +1980,273 @@ export default function ProfilePage() {
                                     {childrenError}
                                 </Alert>
                             )}
-                            <Button onClick={handleOpenAddChild} mb="md">
-                                Add child
-                            </Button>
-
-                            {showAddChildForm && (
-                                <Paper withBorder radius="md" p="md" shadow="xs" mb="md" className="w-full max-w-3xl">
-                                    <div className="space-y-3">
-                                        <Title order={5}>{isEditingChild ? 'Edit child details' : 'Add a child'}</Title>
-                                        {childFormError && (
-                                            <Alert color="red" variant="light">
-                                                {childFormError}
-                                            </Alert>
-                                        )}
-                                        <TextInput
-                                            label="First name"
-                                            value={childForm.firstName}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setChildForm((prev) => ({ ...prev, firstName: value }));
-                                            }}
-                                        />
-                                        <TextInput
-                                            label="Last name"
-                                            value={childForm.lastName}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setChildForm((prev) => ({ ...prev, lastName: value }));
-                                            }}
-                                        />
-                                        <TextInput
-                                            label="Email (optional)"
-                                            value={childForm.email}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setChildForm((prev) => ({ ...prev, email: value }));
-                                            }}
-                                        />
-                                        <TextInput
-                                            label="Date of birth"
-                                            type="date"
-                                            value={childForm.dateOfBirth}
-                                            max={maxDob}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setChildForm((prev) => ({ ...prev, dateOfBirth: value }));
-                                            }}
-                                        />
-                                        <Select
-                                            label="Relationship"
-                                            data={[
-                                                { value: 'parent', label: 'Parent' },
-                                                { value: 'guardian', label: 'Guardian' },
-                                            ]}
-                                            value={childForm.relationship}
-                                            onChange={(value) => setChildForm(prev => ({ ...prev, relationship: value || 'parent' }))}
-                                        />
-                                        <Group>
-                                            <Button onClick={handleSaveChild} loading={childFormSubmitting}>
-                                                {isEditingChild ? 'Save child' : 'Add child'}
-                                            </Button>
-                                            <Button variant="subtle" color="gray" onClick={handleCancelChildForm}>
-                                                Cancel
-                                            </Button>
-                                        </Group>
-                                    </div>
-                                </Paper>
-                            )}
-
-                            <Paper withBorder radius="md" p="md" shadow="xs" className="w-full max-w-3xl">
-                                <div className="space-y-3">
-                                    <Title order={5}>Link an existing child</Title>
-                                    {linkFormError && (
-                                        <Alert color="red" variant="light">
-                                            {linkFormError}
+                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
+                                <Paper withBorder radius="md" p="md" shadow="xs" className="xl:col-span-1">
+                                    <Group justify="space-between" mb="xs">
+                                        <Title order={5}>Join requests awaiting guardian approval</Title>
+                                        <Button
+                                            variant="light"
+                                            size="xs"
+                                            onClick={loadJoinRequests}
+                                            loading={joinRequestsLoading}
+                                        >
+                                            Refresh
+                                        </Button>
+                                    </Group>
+                                    {joinRequestsError && (
+                                        <Alert color="red" variant="light" mb="sm">
+                                            {joinRequestsError}
                                         </Alert>
                                     )}
-                                    <TextInput
-                                        label="Child email"
-                                        value={linkForm.childEmail}
-                                        onChange={(event) => {
-                                            const value = event.currentTarget.value;
-                                            setLinkForm((prev) => ({ ...prev, childEmail: value }));
-                                        }}
-                                    />
-                                    <TextInput
-                                        label="Child user ID"
-                                        value={linkForm.childUserId}
-                                        onChange={(event) => {
-                                            const value = event.currentTarget.value;
-                                            setLinkForm((prev) => ({ ...prev, childUserId: value }));
-                                        }}
-                                    />
-                                    <Select
-                                        label="Relationship"
-                                        data={[
-                                            { value: 'parent', label: 'Parent' },
-                                            { value: 'guardian', label: 'Guardian' },
-                                        ]}
-                                        value={linkForm.relationship}
-                                        onChange={(value) => setLinkForm(prev => ({ ...prev, relationship: value || 'parent' }))}
-                                    />
-                                    <Button onClick={handleLinkChild} loading={linkingChild} variant="light">
-                                        Link child
-                                    </Button>
-                                    <Text size="xs" c="dimmed">
-                                        Provide either the child email or user ID to link an existing account.
-                                    </Text>
-                                </div>
-                            </Paper>
+                                    {joinRequestsLoading ? (
+                                        <Text c="dimmed" size="sm">Loading join requests...</Text>
+                                    ) : joinRequests.length === 0 ? (
+                                        <Text c="dimmed" size="sm">No pending join requests.</Text>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {joinRequests.map((request) => (
+                                                <Paper key={request.registrationId} withBorder radius="md" p="sm">
+                                                    <div className="space-y-1">
+                                                        <Text fw={600}>{request.childFullName || 'Child'} requested to join {request.eventName || 'event'}</Text>
+                                                        <Text size="xs" c="dimmed">
+                                                            Requested: {formatDateTimeLabel(request.requestedAt || undefined)}
+                                                        </Text>
+                                                        <Text size="xs" c="dimmed">
+                                                            Consent status: {request.consentStatus || 'guardian_approval_required'}
+                                                        </Text>
+                                                        {!request.childHasEmail && (
+                                                            <Alert color="yellow" variant="light" mt="xs">
+                                                                Child email is missing. Approval can proceed, but child-signature document steps remain pending.
+                                                            </Alert>
+                                                        )}
+                                                    </div>
+                                                    <Group mt="sm" justify="flex-end">
+                                                        <Button
+                                                            size="xs"
+                                                            variant="light"
+                                                            color="green"
+                                                            loading={resolvingJoinRequestId === request.registrationId}
+                                                            onClick={() => handleResolveJoinRequest(request.registrationId, 'approve')}
+                                                        >
+                                                            Approve
+                                                        </Button>
+                                                        <Button
+                                                            size="xs"
+                                                            variant="light"
+                                                            color="red"
+                                                            loading={resolvingJoinRequestId === request.registrationId}
+                                                            onClick={() => handleResolveJoinRequest(request.registrationId, 'decline')}
+                                                        >
+                                                            Decline
+                                                        </Button>
+                                                    </Group>
+                                                </Paper>
+                                            ))}
+                                        </div>
+                                    )}
+                                </Paper>
 
-                            <Paper withBorder radius="md" p="md" shadow="xs" className="w-full max-w-3xl" mt="md">
-                                <Group justify="space-between" mb="xs">
-                                    <Title order={5}>Join requests awaiting guardian approval</Title>
-                                    <Button
-                                        variant="light"
-                                        size="xs"
-                                        onClick={loadJoinRequests}
-                                        loading={joinRequestsLoading}
-                                    >
-                                        Refresh
-                                    </Button>
-                                </Group>
-                                {joinRequestsError && (
-                                    <Alert color="red" variant="light" mb="sm">
-                                        {joinRequestsError}
-                                    </Alert>
-                                )}
-                                {joinRequestsLoading ? (
-                                    <Text c="dimmed" size="sm">Loading join requests...</Text>
-                                ) : joinRequests.length === 0 ? (
-                                    <Text c="dimmed" size="sm">No pending join requests.</Text>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {joinRequests.map((request) => (
-                                            <Paper key={request.registrationId} withBorder radius="md" p="sm">
-                                                <div className="space-y-1">
-                                                    <Text fw={600}>{request.childFullName || 'Child'} requested to join {request.eventName || 'event'}</Text>
-                                                    <Text size="xs" c="dimmed">
-                                                        Requested: {formatDateTimeLabel(request.requestedAt || undefined)}
-                                                    </Text>
-                                                    <Text size="xs" c="dimmed">
-                                                        Consent status: {request.consentStatus || 'guardian_approval_required'}
-                                                    </Text>
-                                                    {!request.childHasEmail && (
-                                                        <Alert color="yellow" variant="light" mt="xs">
-                                                            Child email is missing. Approval can proceed, but child-signature document steps remain pending.
+                                <Paper withBorder radius="md" p="md" shadow="xs" className="xl:col-span-2">
+                                    <Group justify="space-between" mb="sm">
+                                        <Title order={5}>Add or link a child</Title>
+                                        <Button
+                                            variant={showAddChildForm ? 'default' : 'light'}
+                                            size="xs"
+                                            onClick={handleToggleChildForms}
+                                        >
+                                            {showAddChildForm ? 'Hide child forms' : 'Add child'}
+                                        </Button>
+                                    </Group>
+
+                                    {showAddChildForm ? (
+                                        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                                            <Paper withBorder radius="md" p="md" shadow="xs">
+                                                <div className="space-y-3">
+                                                    <Title order={6}>{isEditingChild ? 'Edit child details' : 'Add a child'}</Title>
+                                                    {childFormError && (
+                                                        <Alert color="red" variant="light">
+                                                            {childFormError}
                                                         </Alert>
                                                     )}
+                                                    <TextInput
+                                                        label="First name"
+                                                        value={childForm.firstName}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setChildForm((prev) => ({ ...prev, firstName: value }));
+                                                        }}
+                                                    />
+                                                    <TextInput
+                                                        label="Last name"
+                                                        value={childForm.lastName}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setChildForm((prev) => ({ ...prev, lastName: value }));
+                                                        }}
+                                                    />
+                                                    <TextInput
+                                                        label="Email (optional)"
+                                                        value={childForm.email}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setChildForm((prev) => ({ ...prev, email: value }));
+                                                        }}
+                                                    />
+                                                    <TextInput
+                                                        label="Date of birth"
+                                                        type="date"
+                                                        value={childForm.dateOfBirth}
+                                                        max={maxDob}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setChildForm((prev) => ({ ...prev, dateOfBirth: value }));
+                                                        }}
+                                                    />
+                                                    <Select
+                                                        label="Relationship"
+                                                        data={[
+                                                            { value: 'parent', label: 'Parent' },
+                                                            { value: 'guardian', label: 'Guardian' },
+                                                        ]}
+                                                        value={childForm.relationship}
+                                                        onChange={(value) => setChildForm(prev => ({ ...prev, relationship: value || 'parent' }))}
+                                                    />
+                                                    <Group>
+                                                        <Button onClick={handleSaveChild} loading={childFormSubmitting}>
+                                                            {isEditingChild ? 'Save child' : 'Add child'}
+                                                        </Button>
+                                                        <Button variant="subtle" color="gray" onClick={handleCancelChildForm}>
+                                                            Clear
+                                                        </Button>
+                                                    </Group>
                                                 </div>
-                                                <Group mt="sm" justify="flex-end">
-                                                    <Button
-                                                        size="xs"
-                                                        variant="light"
-                                                        color="green"
-                                                        loading={resolvingJoinRequestId === request.registrationId}
-                                                        onClick={() => handleResolveJoinRequest(request.registrationId, 'approve')}
-                                                    >
-                                                        Approve
-                                                    </Button>
-                                                    <Button
-                                                        size="xs"
-                                                        variant="light"
-                                                        color="red"
-                                                        loading={resolvingJoinRequestId === request.registrationId}
-                                                        onClick={() => handleResolveJoinRequest(request.registrationId, 'decline')}
-                                                    >
-                                                        Decline
-                                                    </Button>
-                                                </Group>
                                             </Paper>
-                                        ))}
-                                    </div>
-                                )}
-                            </Paper>
+
+                                            <Paper withBorder radius="md" p="md" shadow="xs">
+                                                <div className="space-y-3">
+                                                    <Title order={6}>Link an existing child</Title>
+                                                    {linkFormError && (
+                                                        <Alert color="red" variant="light">
+                                                            {linkFormError}
+                                                        </Alert>
+                                                    )}
+                                                    <TextInput
+                                                        label="Search child account"
+                                                        placeholder="Search by name or username"
+                                                        value={linkChildSearchQuery}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            if (selectedLinkChild) {
+                                                                setSelectedLinkChild(null);
+                                                            }
+                                                            void searchChildCandidates(value);
+                                                        }}
+                                                    />
+
+                                                    {linkChildSearchLoading ? (
+                                                        <Text size="sm" c="dimmed">Searching...</Text>
+                                                    ) : linkChildSearchQuery.trim().length < 2 ? (
+                                                        <Text size="sm" c="dimmed">Enter at least 2 characters to search.</Text>
+                                                    ) : linkChildSearchResults.length === 0 && !selectedLinkChild ? (
+                                                        <Text size="sm" c="dimmed">No matching users found.</Text>
+                                                    ) : null}
+
+                                                    {!selectedLinkChild && linkChildSearchResults.length > 0 && (
+                                                        <div className="space-y-2 max-h-48 overflow-auto">
+                                                            {linkChildSearchResults.map((candidate) => (
+                                                                <Paper key={candidate.$id} withBorder radius="md" p="sm">
+                                                                    <Group justify="space-between" align="center">
+                                                                        <Group gap="sm" align="center">
+                                                                            <Avatar
+                                                                                src={getUserAvatarUrl(candidate, 40)}
+                                                                                alt={getUserFullName(candidate)}
+                                                                                size={40}
+                                                                                radius="md"
+                                                                            />
+                                                                            <div>
+                                                                                <Text fw={600}>{getUserFullName(candidate)}</Text>
+                                                                                {getUserHandle(candidate) && (
+                                                                                    <Text size="sm" c="dimmed">{getUserHandle(candidate)}</Text>
+                                                                                )}
+                                                                            </div>
+                                                                        </Group>
+                                                                        <Button
+                                                                            size="xs"
+                                                                            variant="light"
+                                                                            onClick={() => {
+                                                                                setSelectedLinkChild(candidate);
+                                                                                setLinkChildSearchResults([]);
+                                                                                setLinkChildSearchQuery(getUserFullName(candidate));
+                                                                            }}
+                                                                        >
+                                                                            Select
+                                                                        </Button>
+                                                                    </Group>
+                                                                </Paper>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {selectedLinkChild && (
+                                                        <Paper withBorder radius="md" p="sm">
+                                                            <Group justify="space-between" align="center">
+                                                                <Group gap="sm" align="center">
+                                                                    <Avatar
+                                                                        src={getUserAvatarUrl(selectedLinkChild, 40)}
+                                                                        alt={getUserFullName(selectedLinkChild)}
+                                                                        size={40}
+                                                                        radius="md"
+                                                                    />
+                                                                    <div>
+                                                                        <Text fw={600}>{getUserFullName(selectedLinkChild)}</Text>
+                                                                        {getUserHandle(selectedLinkChild) && (
+                                                                            <Text size="sm" c="dimmed">{getUserHandle(selectedLinkChild)}</Text>
+                                                                        )}
+                                                                    </div>
+                                                                </Group>
+                                                                <Button
+                                                                    size="xs"
+                                                                    variant="subtle"
+                                                                    color="gray"
+                                                                    onClick={() => {
+                                                                        setSelectedLinkChild(null);
+                                                                        setLinkChildSearchQuery('');
+                                                                        setLinkChildSearchResults([]);
+                                                                    }}
+                                                                >
+                                                                    Change
+                                                                </Button>
+                                                            </Group>
+                                                        </Paper>
+                                                    )}
+
+                                                    <Select
+                                                        label="Relationship"
+                                                        data={[
+                                                            { value: 'parent', label: 'Parent' },
+                                                            { value: 'guardian', label: 'Guardian' },
+                                                        ]}
+                                                        value={linkForm.relationship}
+                                                        onChange={(value) => setLinkForm(prev => ({ ...prev, relationship: value || 'parent' }))}
+                                                    />
+                                                    <Button
+                                                        onClick={handleLinkChild}
+                                                        loading={linkingChild}
+                                                        variant="light"
+                                                        disabled={!selectedLinkChild}
+                                                    >
+                                                        Link child
+                                                    </Button>
+                                                </div>
+                                            </Paper>
+                                        </SimpleGrid>
+                                    ) : (
+                                        <Text size="sm" c="dimmed">
+                                            Use Add child to create a child profile or link an existing child account.
+                                        </Text>
+                                    )}
+                                </Paper>
+                            </div>
 
                             <Title order={5} mt="lg" mb="sm">Children</Title>
                             {childrenLoading ? (
@@ -1924,7 +2255,7 @@ export default function ProfilePage() {
                                 <Text c="dimmed">No children linked yet.</Text>
                             ) : (
                                 <SimpleGrid
-                                    cols={{ base: 1, sm: 2, lg: 3 }}
+                                    cols={{ base: 1, sm: 2, md: 3, lg: 4, xl: 6 }}
                                     spacing="md"
                                 >
                                         {children.map((child) => {
@@ -1944,9 +2275,15 @@ export default function ProfilePage() {
                                                 radius="md"
                                                 p="md"
                                                 shadow="xs"
-                                                style={{ aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                                                style={{
+                                                    aspectRatio: '1 / 1',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    justifyContent: 'space-between',
+                                                    overflow: 'hidden',
+                                                }}
                                             >
-                                                <div>
+                                                <div className="space-y-2 overflow-y-auto pr-1">
                                                     <Text fw={600}>{name || 'Child'}</Text>
                                                     <Text size="sm" c="dimmed">@{childHandle || 'user'}</Text>
                                                     <Text size="sm" c="dimmed">
@@ -2006,7 +2343,7 @@ export default function ProfilePage() {
                                         {visibleUnsignedDocuments.length === 0 ? (
                                             <Text c="dimmed">No unsigned document requests.</Text>
                                         ) : (
-                                            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+                                            <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4, xl: 6 }} spacing="md">
                                                 {visibleUnsignedDocuments.map((document) => {
                                                     const viewerCanProxyChildSignature = canViewerProxyChildSignature({
                                                         signerContext: document.signerContext,
@@ -2031,9 +2368,15 @@ export default function ProfilePage() {
                                                         radius="md"
                                                         p="md"
                                                         shadow="xs"
-                                                        style={{ aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                                                        style={{
+                                                            aspectRatio: '1 / 1',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            justifyContent: 'space-between',
+                                                            overflow: 'hidden',
+                                                        }}
                                                     >
-                                                        <div className="space-y-2">
+                                                        <div className="space-y-2 overflow-y-auto pr-1">
                                                             <Badge color="yellow" variant="light">Unsigned</Badge>
                                                             <Text fw={700}>{document.title}</Text>
                                                             <Text size="sm" c="dimmed">{document.organizationName}</Text>
@@ -2087,7 +2430,7 @@ export default function ProfilePage() {
                                         {signedDocuments.length === 0 ? (
                                             <Text c="dimmed">No signed documents yet.</Text>
                                         ) : (
-                                            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+                                            <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4, xl: 6 }} spacing="md">
                                                 {signedDocuments.map((document) => {
                                                     const childName = document.childName
                                                         || (document.childUserId ? childNameById.get(document.childUserId) : undefined)
@@ -2099,9 +2442,15 @@ export default function ProfilePage() {
                                                         radius="md"
                                                         p="md"
                                                         shadow="xs"
-                                                        style={{ aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                                                        style={{
+                                                            aspectRatio: '1 / 1',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            justifyContent: 'space-between',
+                                                            overflow: 'hidden',
+                                                        }}
                                                     >
-                                                        <div className="space-y-2">
+                                                        <div className="space-y-2 overflow-y-auto pr-1">
                                                             <Badge color="green" variant="light">Signed</Badge>
                                                             <Text fw={700}>{document.title}</Text>
                                                             <Text size="sm" c="dimmed">{document.organizationName}</Text>
@@ -2393,86 +2742,6 @@ export default function ProfilePage() {
                                 <RefundRequestsList hostId={user.$id} />
                             </div>
 
-                            {/* Email Section */}
-                            <Paper withBorder radius="md" p="md">
-                                <Group justify="space-between" mb="sm">
-                                    <Title order={4}>Email Address</Title>
-                                    <Button variant="subtle" onClick={() => setShowEmailSection(!showEmailSection)}>
-                                        {showEmailSection ? 'Cancel' : 'Change Email'}
-                                    </Button>
-                                </Group>
-
-                                {showEmailSection ? (
-                                    <div className="space-y-4">
-                                        <TextInput
-                                            type="email"
-                                            placeholder="New email address"
-                                            value={emailData.email}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setEmailData((prev) => ({ ...prev, email: value }));
-                                            }}
-                                        />
-                                        <TextInput
-                                            type="password"
-                                            placeholder="Current password"
-                                            value={emailData.currentPassword}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setEmailData((prev) => ({ ...prev, currentPassword: value }));
-                                            }}
-                                        />
-                                        <Button onClick={handleEmailUpdate} disabled={saving || !emailData.email || !emailData.currentPassword}>Update Email</Button>
-                                    </div>
-                                ) : (
-                                    <Text c="dimmed">{'Click "Change Email" to update your email address'}</Text>
-                                )}
-                            </Paper>
-
-                            {/* Password Section */}
-                            <Paper withBorder radius="md" p="md">
-                                <Group justify="space-between" mb="sm">
-                                    <Title order={4}>Password</Title>
-                                    <Button variant="subtle" onClick={() => setShowPasswordSection(!showPasswordSection)}>
-                                        {showPasswordSection ? 'Cancel' : 'Change Password'}
-                                    </Button>
-                                </Group>
-
-                                {showPasswordSection ? (
-                                    <div className="space-y-4">
-                                        <TextInput
-                                            type="password"
-                                            placeholder="Current password"
-                                            value={passwordData.currentPassword}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setPasswordData((prev) => ({ ...prev, currentPassword: value }));
-                                            }}
-                                        />
-                                        <TextInput
-                                            type="password"
-                                            placeholder="New password"
-                                            value={passwordData.newPassword}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setPasswordData((prev) => ({ ...prev, newPassword: value }));
-                                            }}
-                                        />
-                                        <TextInput
-                                            type="password"
-                                            placeholder="Confirm new password"
-                                            value={passwordData.confirmPassword}
-                                            onChange={(event) => {
-                                                const value = event.currentTarget.value;
-                                                setPasswordData((prev) => ({ ...prev, confirmPassword: value }));
-                                            }}
-                                        />
-                                        <Button onClick={handlePasswordUpdate} disabled={saving || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}>Update Password</Button>
-                                    </div>
-                                ) : (
-                                    <Text c="dimmed">{'Click "Change Password" to update your password'}</Text>
-                                )}
-                            </Paper>
                         </div>
                     )}
                 </Container>

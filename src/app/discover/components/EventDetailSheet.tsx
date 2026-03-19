@@ -29,6 +29,7 @@ import { familyService, FamilyChild } from '@/lib/familyService';
 import { registrationService, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
+import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { buildDivisionCapacityBreakdown, isDivisionAtCapacity, resolveDivisionCapacitySnapshot } from '@/lib/divisionCapacity';
 import {
     buildDivisionToken,
@@ -2590,7 +2591,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <span className="text-sm text-gray-600">Type</span>
-                                            <p className="font-medium capitalize">{currentEvent.eventType}</p>
+                                            <p className="font-medium">{formatEnumDisplayLabel(currentEvent.eventType, 'Event')}</p>
                                         </div>
                                         <div>
                                             <span className="text-sm text-gray-600">Registration</span>

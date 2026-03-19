@@ -29,6 +29,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import LocationSearch from '@/components/location/LocationSearch';
 import Loading from '@/components/ui/Loading';
 import { Event } from '@/types';
+import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 
 const EVENT_SORT_OPTIONS = [
   { value: 'soonest', label: 'Soonest' },
@@ -235,7 +236,7 @@ export default function EventsTabContent(props: EventsTabContentProps) {
     selectedEventTypes.forEach((type) => {
       activeFilters.push({
         key: `event-type-${type}`,
-        label: type.charAt(0).toUpperCase() + type.slice(1).toLowerCase(),
+        label: formatEnumDisplayLabel(type, 'Event'),
         onRemove: () => setSelectedEventTypes(selectedEventTypes.filter((value) => value !== type)),
       });
     });
@@ -312,7 +313,7 @@ export default function EventsTabContent(props: EventsTabContentProps) {
                 }
               }}
             >
-              {type.charAt(0).toUpperCase() + type.slice(1).toLowerCase()}
+              {formatEnumDisplayLabel(type, 'Event')}
             </Chip>
           ))}
         </Group>

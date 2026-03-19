@@ -8,6 +8,7 @@ import {
   getEventImageFallbackUrl,
   getEventImageUrl,
 } from '@/types';
+import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { locationService } from '@/lib/locationService';
 import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
@@ -55,7 +56,11 @@ export default function EventCard({
   const isDraftEvent = normalizedState === 'UNPUBLISHED' || normalizedState === 'DRAFT';
 
   const eventTypeInfo = useMemo(() => {
-    if (event.eventType === 'TOURNAMENT') {
+    const normalizedEventType = typeof event.eventType === 'string'
+      ? event.eventType.trim().toUpperCase()
+      : '';
+
+    if (normalizedEventType === 'TOURNAMENT') {
       return {
         label: 'Tournament',
         className: 'discover-badge-tournament',
@@ -63,7 +68,7 @@ export default function EventCard({
       };
     }
 
-    if (event.eventType === 'LEAGUE') {
+    if (normalizedEventType === 'LEAGUE') {
       return {
         label: 'League',
         className: 'discover-badge-league',
@@ -71,8 +76,16 @@ export default function EventCard({
       };
     }
 
+    if (normalizedEventType === 'WEEKLY_EVENT') {
+      return {
+        label: 'Weekly Event',
+        className: 'discover-badge-event',
+        icon: '📅',
+      };
+    }
+
     return {
-      label: 'Event',
+      label: formatEnumDisplayLabel(event.eventType, 'Event'),
       className: 'discover-badge-event',
       icon: '📅',
     };

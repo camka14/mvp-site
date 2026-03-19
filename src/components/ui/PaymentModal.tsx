@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
 import { Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
+import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import PaymentForm from './PaymentForm';
 import { Modal, Button, Group, Alert, Loader, Text } from '@mantine/core';
 import { MOBILE_APP_THEME_TOKENS } from '@/app/theme/mobilePalette';
@@ -40,7 +41,7 @@ export default function PaymentModal({
 
     const eventName = event.name ?? 'Event';
     const eventLocation = event.location ?? '';
-    const eventTypeLabel = event.eventType ?? 'EVENT';
+    const eventTypeLabel = formatEnumDisplayLabel(event.eventType, 'Event');
 
     // Early return if modal shouldn't be shown
     if (!isOpen) return null;
@@ -131,7 +132,7 @@ export default function PaymentModal({
                         <div>
                             <h4 className="font-semibold text-lg">{eventName}</h4>
                             <p className="text-gray-600">{eventLocation}</p>
-                            <p className="text-sm text-gray-500 capitalize">{eventTypeLabel}</p>
+                            <p className="text-sm text-gray-500">{eventTypeLabel}</p>
                         </div>
                     </div>
 
