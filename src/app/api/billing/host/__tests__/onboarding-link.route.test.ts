@@ -64,6 +64,7 @@ describe('POST /api/billing/host/onboarding-link', () => {
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_CONNECT_CLIENT_ID: process.env.STRIPE_CONNECT_CLIENT_ID,
     AUTH_SECRET: process.env.AUTH_SECRET,
+    STRIPE_CONNECT_REDIRECT_URI: process.env.STRIPE_CONNECT_REDIRECT_URI,
   };
 
   beforeEach(() => {
@@ -98,6 +99,12 @@ describe('POST /api/billing/host/onboarding-link', () => {
       delete process.env.AUTH_SECRET;
     } else {
       process.env.AUTH_SECRET = originalEnv.AUTH_SECRET;
+    }
+
+    if (originalEnv.STRIPE_CONNECT_REDIRECT_URI === undefined) {
+      delete process.env.STRIPE_CONNECT_REDIRECT_URI;
+    } else {
+      process.env.STRIPE_CONNECT_REDIRECT_URI = originalEnv.STRIPE_CONNECT_REDIRECT_URI;
     }
   });
 
@@ -246,6 +253,41 @@ describe('POST /api/billing/host/onboarding-link', () => {
         client_id: 'ca_test_123',
         state: authorizeUrl.searchParams.get('state'),
         redirect_uri: 'http://localhost/api/billing/host/callback',
+      }),
+    );
+  });
+
+  it('uses STRIPE_CONNECT_REDIRECT_URI in OAuth fallback when provided', async () => {
+    process.env.STRIPE_CONNECT_REDIRECT_URI = 'https://bracket-iq.com/api/billing/host/callback';
+    prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_123' });
+    accountsRetrieveMock.mockResolvedValue({
+      type: 'custom',
+      livemode: false,
+      controller: { stripe_dashboard: { type: 'none' } },
+    });
+    accountLinksCreateMock.mockRejectedValue(new Error('accountLinks.create unsupported for this account type'));
+    stripeAuthorizeUrlMock.mockImplementation((options: { state: string; redirect_uri?: string }) =>
+      `https://connect.stripe.com/oauth/authorize?${new URLSearchParams({
+        state: options.state,
+        ...(options.redirect_uri ? { redirect_uri: options.redirect_uri } : {}),
+      }).toString()}`,
+    );
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/host/onboarding-link', {
+        user: { id: 'user_1', email: 'user@example.com' },
+        refreshUrl: 'http://localhost/profile?stripe=refresh',
+        returnUrl: 'http://localhost/profile?stripe=return',
+      }),
+    );
+    const payload = await response.json();
+    const authorizeUrl = new URL(payload.onboardingUrl);
+
+    expect(response.status).toBe(200);
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe('https://bracket-iq.com/api/billing/host/callback');
+    expect(stripeAuthorizeUrlMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirect_uri: 'https://bracket-iq.com/api/billing/host/callback',
       }),
     );
   });

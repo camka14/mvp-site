@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const state = createConnectState(ownerKind, ownerId, returnUrl, refreshUrl);
-        const callbackUrl = getCallbackUrl(origin);
+        const callbackUrl = getCallbackUrl(req.nextUrl.origin);
         const onboardingUrl = buildStripeAuthorizeUrl(new Stripe(secretKey), {
           clientId: connectClientId,
           state,

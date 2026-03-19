@@ -67,6 +67,7 @@ describe('POST /api/billing/host/connect', () => {
     AUTH_SECRET: process.env.AUTH_SECRET,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_CONNECT_CLIENT_ID: process.env.STRIPE_CONNECT_CLIENT_ID,
+    STRIPE_CONNECT_REDIRECT_URI: process.env.STRIPE_CONNECT_REDIRECT_URI,
   };
 
   beforeEach(() => {
@@ -125,6 +126,12 @@ describe('POST /api/billing/host/connect', () => {
       delete process.env.STRIPE_CONNECT_CLIENT_ID;
     } else {
       process.env.STRIPE_CONNECT_CLIENT_ID = originalEnv.STRIPE_CONNECT_CLIENT_ID;
+    }
+
+    if (originalEnv.STRIPE_CONNECT_REDIRECT_URI === undefined) {
+      delete process.env.STRIPE_CONNECT_REDIRECT_URI;
+    } else {
+      process.env.STRIPE_CONNECT_REDIRECT_URI = originalEnv.STRIPE_CONNECT_REDIRECT_URI;
     }
   });
 
@@ -214,6 +221,22 @@ describe('POST /api/billing/host/connect', () => {
         client_id: 'ca_test_123',
         redirect_uri: 'http://localhost/api/billing/host/callback',
         state: authorizeUrl.searchParams.get('state'),
+      }),
+    );
+  });
+
+  it('uses STRIPE_CONNECT_REDIRECT_URI when provided', async () => {
+    process.env.STRIPE_CONNECT_REDIRECT_URI = 'https://bracket-iq.com/api/billing/host/callback';
+
+    const res = await POST(jsonPost('http://localhost/api/billing/host/connect', buildStatefulBody({ user: { id: 'user_1', email: 'user@example.com' } })));
+    const payload = await res.json();
+    const authorizeUrl = new URL(payload.onboardingUrl);
+
+    expect(res.status).toBe(200);
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe('https://bracket-iq.com/api/billing/host/callback');
+    expect(stripeInstance.oauth.authorizeUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirect_uri: 'https://bracket-iq.com/api/billing/host/callback',
       }),
     );
   });

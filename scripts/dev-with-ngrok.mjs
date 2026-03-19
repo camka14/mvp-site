@@ -598,6 +598,11 @@ const run = async () => {
     nextEnv.BOLDSIGN_DEV_REDIRECT_BASE_URL = publicUrl;
     nextEnv.NEXT_PUBLIC_BOLDSIGN_DEV_REDIRECT_BASE_URL = publicUrl;
     nextEnv.PUBLIC_WEB_BASE_URL = publicUrl;
+    try {
+      nextEnv.STRIPE_CONNECT_REDIRECT_URI = new URL('/api/billing/host/callback', publicUrl).toString();
+    } catch {
+      // Ignore malformed URL edge cases and continue startup.
+    }
     nextEnv.MVP_DEV_NGROK_URL = publicUrl;
   }
 

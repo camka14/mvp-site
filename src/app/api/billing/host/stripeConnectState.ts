@@ -9,6 +9,21 @@ export const STRIPE_CONNECT_STATE_TTL_SECONDS = 10 * 60;
 const STRIPE_CONNECT_STATE_AUDIENCE = 'razumly-stripe-connect';
 const STRIPE_CONNECT_STATE_ISSUER = 'razumly';
 
+const normalizeAbsoluteUrl = (value: string | undefined | null): string | null => {
+  const raw = value?.trim();
+  if (!raw) return null;
+
+  try {
+    return new URL(raw).toString();
+  } catch {
+    return null;
+  }
+};
+
+const getConfiguredCallbackUrl = (): string | null => {
+  return normalizeAbsoluteUrl(process.env.STRIPE_CONNECT_REDIRECT_URI);
+};
+
 export type ConnectOwnerKind = 'user' | 'organization';
 
 export type ConnectStatePayload = {
@@ -30,6 +45,11 @@ const getAuthSecret = (): string => {
 export const getRequestOrigin = (req: NextRequest): string => resolveRequestOrigin(req);
 
 export const getCallbackUrl = (origin: string): string => {
+  const configured = getConfiguredCallbackUrl();
+  if (configured) {
+    return configured;
+  }
+
   const normalized = origin.endsWith('/') ? origin.slice(0, -1) : origin;
   return `${normalized}${STRIPE_CONNECT_CALLBACK_PATH}`;
 };
