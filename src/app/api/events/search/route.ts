@@ -57,6 +57,17 @@ const normalizeDivisionKeys = (value: unknown): string[] => {
   return Array.from(new Set(keys));
 };
 
+const normalizeIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
 const getDivisionDetailsForEvents = async (
   events: Array<{ id: string; divisions: unknown; sportId?: string | null }>,
 ): Promise<Map<string, Array<Record<string, unknown>>>> => {
@@ -194,6 +205,13 @@ const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number) 
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+};
+
+const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; teamIds?: unknown; userIds?: unknown }): number => {
+  if (event.teamSignup) {
+    return normalizeIds(event.teamIds).length;
+  }
+  return normalizeIds(event.userIds).length;
 };
 
 const resolveSessionContext = (
@@ -413,7 +431,13 @@ export async function POST(req: NextRequest) {
       .slice(offset, offset + limit);
   }
 
-  const eventsWithAttendees = await withEventAttendeeCounts(events);
+  const eventsWithAttendees = await withEventAttendeeCounts(events).catch((error) => {
+    console.error('Failed to enrich attendee counts for event search', error);
+    return events.map((event) => ({
+      ...event,
+      attendees: fallbackAttendeeCount(event),
+    }));
+  });
 
   const divisionDetailsByEventId = await getDivisionDetailsForEvents(
     eventsWithAttendees.map((event) => ({
@@ -421,7 +445,10 @@ export async function POST(req: NextRequest) {
       divisions: event.divisions,
       sportId: event.sportId,
     })),
-  );
+  ).catch((error) => {
+    console.error('Failed to enrich division details for event search', error);
+    return new Map<string, Array<Record<string, unknown>>>();
+  });
 
   const normalized = eventsWithAttendees.map((event) => withLegacyEvent({
     ...event,

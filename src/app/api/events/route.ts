@@ -66,6 +66,13 @@ const normalizeTeamIds = (value: unknown): string[] => {
   );
 };
 
+const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; teamIds?: unknown; userIds?: unknown }): number => {
+  if (event.teamSignup) {
+    return normalizeTeamIds(event.teamIds).length;
+  }
+  return (coerceArray(event.userIds) ?? []).length;
+};
+
 const normalizeOptionalBoolean = (value: unknown): boolean | null => {
   if (typeof value === 'boolean') {
     return value;
@@ -588,7 +595,13 @@ export async function GET(req: NextRequest) {
     orderBy: { start: 'asc' },
   });
 
-  const eventsWithAttendees = await withEventAttendeeCounts(events);
+  const eventsWithAttendees = await withEventAttendeeCounts(events).catch((error) => {
+    console.error('Failed to enrich attendee counts for events list', error);
+    return events.map((event) => ({
+      ...event,
+      attendees: fallbackAttendeeCount(event),
+    }));
+  });
 
   const divisionDetailsByEventId = await getDivisionDetailsForEvents(
     eventsWithAttendees.map((event) => ({
@@ -596,7 +609,10 @@ export async function GET(req: NextRequest) {
       divisions: event.divisions,
       sportId: event.sportId,
     })),
-  );
+  ).catch((error) => {
+    console.error('Failed to enrich division details for events list', error);
+    return new Map<string, Array<Record<string, unknown>>>();
+  });
 
   const normalized = eventsWithAttendees.map((row) => {
     if (!Array.isArray(row.userIds)) {

@@ -430,6 +430,25 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('returns events from POST /api/events/search even when division enrichment fails', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_2',
+        name: 'Search Split Division Event',
+        divisions: ['event_2__division__open'],
+        sportId: 'sport_1',
+      },
+    ]);
+    prismaMock.divisions.findMany.mockRejectedValueOnce(new Error('divisions table unavailable'));
+
+    const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].id).toBe('event_2');
+    expect(json.events[0].divisionDetails).toEqual([]);
+  });
+
   it('returns attendee counts that exclude placeholder teams in POST /api/events/search', async () => {
     prismaMock.events.findMany.mockResolvedValueOnce([
       {
@@ -455,6 +474,27 @@ describe('event template privacy routes', () => {
     expect(json.events[0].attendees).toBe(2);
   });
 
+  it('returns events from POST /api/events/search even when attendee enrichment fails', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_2',
+        name: 'Search League Event',
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        teamIds: ['slot_1', 'slot_2'],
+        userIds: [],
+        divisions: [],
+      },
+    ]);
+    prismaMock.teams.findMany.mockRejectedValueOnce(new Error('teams table unavailable'));
+
+    const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].attendees).toBe(2);
+  });
+
   it('defaults POST /api/events/search to today-and-later results', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-02-19T15:45:00.000Z'));
     prismaMock.events.findMany.mockResolvedValueOnce([]);
@@ -463,19 +503,15 @@ describe('event template privacy routes', () => {
       const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
 
       expect(res.status).toBe(200);
-      expect(prismaMock.events.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            start: expect.objectContaining({
-              gte: expect.any(Date),
-            }),
-          }),
-        }),
-      );
 
       const findManyCalls = prismaMock.events.findMany.mock.calls;
       const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
-      const startGte = callArgs?.where?.start?.gte as Date | undefined;
+      const andClauses = Array.isArray(callArgs?.where?.AND) ? callArgs.where.AND : [];
+      const dateFloorClause = andClauses.find((clause: any) =>
+        Array.isArray(clause?.OR)
+        && clause.OR.some((entry: any) => entry?.start?.gte instanceof Date),
+      );
+      const startGte = dateFloorClause?.OR?.find((entry: any) => entry?.eventType?.not === 'WEEKLY_EVENT')?.start?.gte as Date | undefined;
       const expectedStart = new Date(
         new Date().getFullYear(),
         new Date().getMonth(),
@@ -542,6 +578,25 @@ describe('event template privacy routes', () => {
         where: expect.objectContaining({ NOT: { state: 'TEMPLATE' } }),
       }),
     );
+  });
+
+  it('returns events from GET /api/events even when division enrichment fails', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        name: 'Split Division Event',
+        divisions: ['event_1__division__open'],
+        sportId: 'sport_1',
+      },
+    ]);
+    prismaMock.divisions.findMany.mockRejectedValueOnce(new Error('divisions table unavailable'));
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events'));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.events[0].id).toBe('event_1');
+    expect(json.events[0].divisionDetails).toEqual([]);
   });
 
   it('uses overlap filtering for GET /api/events/field/:fieldId range queries', async () => {

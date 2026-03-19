@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     }
 
     const stripe = new Stripe(secretKey);
-    const callbackUrl = getCallbackUrl(req.nextUrl.origin);
+    const callbackUrl = getCallbackUrl(origin);
 
     try {
       const state = createConnectState(ownerKind, ownerId, returnUrl, refreshUrl);
