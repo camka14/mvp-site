@@ -452,7 +452,7 @@ function DiscoverPageContent() {
 
   const handleSelectEvent = useCallback(
     (event: Event) => {
-      router.push(`/events/${event.$id}/schedule?tab=details`);
+      router.push(`/events/${event.$id}?tab=details`);
     },
     [router],
   );

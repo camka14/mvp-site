@@ -1042,8 +1042,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     }, [isActive, event, loadEventDetails]);
 
     const handleViewSchedule = (tab?: string) => {
-        const schedulePath = `/events/${currentEvent.$id}/schedule`;
-        const target = tab ? `${schedulePath}?tab=${tab}` : schedulePath;
+        const eventPath = `/events/${currentEvent.$id}`;
+        const target = tab ? `${eventPath}?tab=${tab}` : eventPath;
         router.push(target);
         onClose();
     };

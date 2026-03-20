@@ -24,7 +24,7 @@ const normalizeBaseUrl = (value: string): string => value.replace(/\/+$/, '');
 const buildInviteActionUrl = (input: InviteEmailInput): string => {
   const baseUrl = normalizeBaseUrl(input.baseUrl || 'http://localhost:3000');
   if (input.eventId) {
-    return `${baseUrl}/events/${input.eventId}/schedule`;
+    return `${baseUrl}/events/${input.eventId}`;
   }
   if (input.organizationId) {
     return `${baseUrl}/organizations/${input.organizationId}`;

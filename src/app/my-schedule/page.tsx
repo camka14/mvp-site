@@ -329,7 +329,7 @@ function MySchedulePageContent() {
               endAccessor="end"
               length={120}
               onSelectEvent={(selectedEvent) => {
-                router.push(`/events/${selectedEvent.resource.eventId}/schedule?tab=details`);
+                router.push(`/events/${selectedEvent.resource.eventId}?tab=details`);
               }}
               popup
               selectable

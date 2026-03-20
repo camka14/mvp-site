@@ -207,7 +207,7 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
             return (
               <Paper key={invite.$id} withBorder radius="md" p="sm">
                 <Stack gap="sm">
-                  <EventCard event={event} onClick={() => router.push(`/events/${event.$id}/schedule?tab=details`)} />
+                  <EventCard event={event} onClick={() => router.push(`/events/${event.$id}?tab=details`)} />
                   {staffRoleLabel ? (
                     <Text size="xs" c="dimmed">{staffRoleLabel}</Text>
                   ) : null}
@@ -219,7 +219,7 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
                           void acceptInvite(invite.$id);
                           return;
                         }
-                        router.push(`/events/${event.$id}/schedule?tab=details`);
+                        router.push(`/events/${event.$id}?tab=details`);
                       }}
                     >
                       Accept Invite

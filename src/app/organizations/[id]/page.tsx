@@ -1266,7 +1266,7 @@ function OrganizationDetailContent() {
     if (isOwner) {
       params.set('mode', 'edit');
     }
-    router.push(`/events/${eventId}/schedule?${params.toString()}`);
+    router.push(`/events/${eventId}?${params.toString()}`);
   }, [isOwner, router]);
 
   const handleOrganizationEventClick = useCallback((event: Event) => {

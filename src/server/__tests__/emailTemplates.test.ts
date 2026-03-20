@@ -1,7 +1,7 @@
 import { buildInviteEmail } from '@/server/emailTemplates';
 
 describe('buildInviteEmail', () => {
-  it('builds an event invite with schedule link', () => {
+  it('builds an event invite with event link', () => {
     const result = buildInviteEmail({
       baseUrl: 'http://localhost:3000',
       email: 'ref@example.com',
@@ -13,7 +13,7 @@ describe('buildInviteEmail', () => {
     expect(result.subject).toContain('BracketIQ: Staff Invite');
     expect(result.subject).toContain('Spring Invitational');
     expect(result.text).toContain('Spring Invitational');
-    expect(result.actionUrl).toBe('http://localhost:3000/events/event_123/schedule');
+    expect(result.actionUrl).toBe('http://localhost:3000/events/event_123');
   });
 
   it('builds a team invite with teams link', () => {
