@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { requireSession } from '@/lib/permissions';
-import { canManageOrganization } from '@/server/accessControl';
+import { canManageEvent, canManageOrganization } from '@/server/accessControl';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import {
   deleteMatchesByEvent,

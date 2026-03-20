@@ -2534,6 +2534,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       hostId: true,
       organizationId: true,
       parentEvent: true,
+      end: true,
     },
   });
   const resolvedOrganizationId = normalizeEntityId(payload.organizationId) ?? normalizeEntityId(existingEvent?.organizationId);
