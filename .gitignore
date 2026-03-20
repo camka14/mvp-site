@@ -27,6 +27,8 @@ uploads/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.mvp-site-dev.log
+.mvp-site-dev.pid
 
 # local env files
 .env*.local
