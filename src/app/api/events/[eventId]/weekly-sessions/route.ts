@@ -103,10 +103,12 @@ const matchesSlotOccurrence = (slot: any, sessionStart: Date, sessionEnd: Date):
   }
 
   const slotEndDate = parseDateInput(slot?.endDate);
-  if (slotEndDate instanceof Date && !Number.isNaN(slotEndDate.getTime())) {
-    if (toDateOnlyValue(sessionStart) > toDateOnlyValue(slotEndDate)) {
-      return false;
-    }
+  const shouldEnforceEndDate =
+    slotEndDate instanceof Date
+    && !Number.isNaN(slotEndDate.getTime())
+    && toDateOnlyValue(slotEndDate) > toDateOnlyValue(slotStartDate);
+  if (shouldEnforceEndDate && toDateOnlyValue(sessionStart) > toDateOnlyValue(slotEndDate)) {
+    return false;
   }
 
   return true;

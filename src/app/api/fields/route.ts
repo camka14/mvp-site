@@ -7,6 +7,15 @@ import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
+const isUniqueConstraintError = (error: unknown): boolean => {
+  return Boolean(
+    error
+      && typeof error === 'object'
+      && 'code' in error
+      && (error as { code?: string }).code === 'P2002',
+  );
+};
+
 const createSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
@@ -73,36 +82,51 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const record = await prisma.$transaction(async (tx) => {
-    const created = await tx.fields.create({
-      data: {
-        id: data.id,
-        name: data.name ?? null,
-        location: data.location ?? null,
-        lat: data.lat ?? null,
-        long: data.long ?? null,
-        fieldNumber: data.fieldNumber ?? 0,
-        heading: data.heading ?? null,
-        inUse: data.inUse ?? null,
-        organizationId: orgId,
-        divisions: Array.isArray(data.divisions) ? data.divisions : [],
-        rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
+  try {
+    const record = await prisma.$transaction(async (tx) => {
+      const created = await tx.fields.create({
+        data: {
+          id: data.id,
+          name: data.name ?? null,
+          location: data.location ?? null,
+          lat: data.lat ?? null,
+          long: data.long ?? null,
+          fieldNumber: data.fieldNumber ?? 0,
+          heading: data.heading ?? null,
+          inUse: data.inUse ?? null,
+          organizationId: orgId,
+          divisions: Array.isArray(data.divisions) ? data.divisions : [],
+          rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      if (organization && orgId) {
+        const currentIds = Array.isArray(organization.fieldIds) ? organization.fieldIds : [];
+        const nextIds = Array.from(new Set([...currentIds, created.id]));
+        await tx.organizations.update({
+          where: { id: orgId },
+          data: { fieldIds: nextIds, updatedAt: new Date() },
+        });
+      }
+
+      return created;
     });
 
-    if (organization && orgId) {
-      const currentIds = Array.isArray(organization.fieldIds) ? organization.fieldIds : [];
-      const nextIds = Array.from(new Set([...currentIds, created.id]));
-      await tx.organizations.update({
-        where: { id: orgId },
-        data: { fieldIds: nextIds, updatedAt: new Date() },
-      });
+    return NextResponse.json(withLegacyFields(record), { status: 201 });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        {
+          error: 'Field already exists. A previous create attempt likely succeeded; check whether the event/documents were already created.',
+          code: 'FIELD_ALREADY_EXISTS',
+          fieldId: data.id,
+        },
+        { status: 409 },
+      );
     }
-
-    return created;
-  });
-
-  return NextResponse.json(withLegacyFields(record), { status: 201 });
+    console.error('Create field failed', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 }

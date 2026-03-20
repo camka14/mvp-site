@@ -41,6 +41,7 @@ import {
   getRequiredSignerTypeLabel,
   normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
+import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
 
 export default function OrganizationDetailPage() {
   return (
@@ -1307,7 +1308,11 @@ function OrganizationDetailContent() {
     try {
       setStripeEmailError(null);
       setConnectingStripe(true);
-      const origin = window.location.origin;
+      const origin = resolveClientPublicOrigin();
+      if (!origin) {
+        notifications.show({ color: 'red', message: 'Unable to determine public URL for Stripe onboarding.' });
+        return;
+      }
       const basePath = `/organizations/${org.$id}`;
       const refreshUrl = `${origin}${basePath}?stripe=refresh`;
       const returnUrl = `${origin}${basePath}?stripe=return`;
@@ -1342,7 +1347,11 @@ function OrganizationDetailContent() {
     }
     try {
       setManagingStripe(true);
-      const origin = window.location.origin;
+      const origin = resolveClientPublicOrigin();
+      if (!origin) {
+        notifications.show({ color: 'red', message: 'Unable to determine public URL for Stripe management.' });
+        return;
+      }
       const basePath = `/organizations/${org.$id}`;
       const refreshUrl = `${origin}${basePath}?stripe=refresh`;
       const returnUrl = `${origin}${basePath}?stripe=return`;

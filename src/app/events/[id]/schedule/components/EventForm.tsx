@@ -15,6 +15,7 @@ import { useSports } from '@/app/hooks/useSports';
 import { TextInput, Textarea, NumberInput, Select as MantineSelect, MultiSelect as MantineMultiSelect, Switch, Checkbox, Group, Button, Alert, Loader, Paper, Text, Title, Stack, ActionIcon, SimpleGrid, Collapse, Badge } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { paymentService } from '@/lib/paymentService';
+import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
 import { locationService } from '@/lib/locationService';
 import { userService } from '@/lib/userService';
 import { organizationService } from '@/lib/organizationService';
@@ -7050,16 +7051,39 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [selectedImageId],
     );
 
+    const isRentalCreateFlow = Boolean(!isEditMode && rentalPurchase);
     const eventTypeOptions = useMemo(
         () => [
-            { value: 'EVENT', label: 'Pickup Game' },
+            { value: 'EVENT', label: 'Event' },
             { value: 'TOURNAMENT', label: 'Tournament' },
             { value: 'LEAGUE', label: 'League' },
-            { value: 'WEEKLY_EVENT', label: 'Weekly Event' },
+            ...(isRentalCreateFlow ? [] : [{ value: 'WEEKLY_EVENT', label: 'Weekly Event' }]),
         ],
-        [],
-    );
-    const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+        [isRentalCreateFlow],
+    );    const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    useEffect(() => {
+        if (!isRentalCreateFlow) {
+            return;
+        }
+        if (eventData.eventType === 'WEEKLY_EVENT') {
+            setValue('eventType', 'EVENT', { shouldDirty: true, shouldValidate: true });
+        }
+    }, [eventData.eventType, isRentalCreateFlow, setValue]);
+    useEffect(() => {
+        if (isEditMode || hasExternalRentalField) {
+            return;
+        }
+        if (!supportsNoFixedEndDateTime) {
+            return;
+        }
+        if (!eventData.noFixedEndDateTime) {
+            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+        }
+        const currentEnd = getValues('end');
+        if (typeof currentEnd === 'string' && currentEnd.trim().length > 0) {
+            setValue('end', '', { shouldDirty: true, shouldValidate: true });
+        }
+    }, [eventData.eventType, eventData.parentEvent, getValues, hasExternalRentalField, isEditMode, setValue, supportsNoFixedEndDateTime]);
 
     useEffect(() => {
         if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') &&
@@ -7076,14 +7100,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
     }, [eventData.eventType, eventData.teamSignup, setEventData]);
 
-    useEffect(() => {
-        if (isEditMode || hasExternalRentalField) {
-            return;
-        }
-        if (eventData.eventType === 'WEEKLY_EVENT' && !eventData.noFixedEndDateTime) {
-            setValue('noFixedEndDateTime', true, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [eventData.eventType, eventData.noFixedEndDateTime, hasExternalRentalField, isEditMode, setValue]);
+    
 
     // Prevents the creator from joining twice when they toggle team-based registration on.
     useEffect(() => {
@@ -7161,7 +7178,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (typeof window === 'undefined') return;
         try {
             setConnectingStripe(true);
-            const origin = window.location.origin;
+            const origin = resolveClientPublicOrigin();
+            if (!origin) {
+                console.error('Unable to determine public URL for Stripe onboarding.');
+                return;
+            }
             const refreshUrl = `${origin}/discover?stripe=refresh`;
             const returnUrl = `${origin}/discover?stripe=return`;
             const result = await paymentService.connectStripeAccount({
@@ -7471,9 +7492,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const normalizedReferees = normalizedRefereeIds
             .map((id) => refereePoolById.get(id))
             .filter((referee): referee is UserData => Boolean(referee));
-        const shouldClearWeeklyEnd = source.eventType === 'WEEKLY_EVENT' && Boolean(source.noFixedEndDateTime);
+        const shouldClearEndDateTime = supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
+            && Boolean(source.noFixedEndDateTime);
         const normalizedEnd = (() => {
-            if (shouldClearWeeklyEnd) {
+            if (shouldClearEndDateTime) {
                 return null;
             }
             if (typeof source.end === 'string') {
@@ -8545,13 +8567,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                             if (isImmutableField('noFixedEndDateTime')) return;
                                                                             const checked = event.currentTarget.checked;
                                                                             setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
-                                                                            if (!checked) {
-                                                                                const parsedStart = parseLocalDateTime(getValues('start'));
-                                                                                const parsedEnd = parseLocalDateTime(getValues('end'));
-                                                                                if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                                                                    const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                                                                    setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                                                                }
+                                                                            if (checked) {
+                                                                                setValue('end', '', { shouldDirty: true, shouldValidate: true });
+                                                                                return;
+                                                                            }
+                                                                            const parsedStart = parseLocalDateTime(getValues('start'));
+                                                                            const parsedEnd = parseLocalDateTime(getValues('end'));
+                                                                            if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                                                                const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                                                                setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
                                                                             }
                                                                         }}
                                                                     />
@@ -8564,7 +8588,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                 : undefined
                                                         }
                                                         valueFormat="MM/DD/YYYY hh:mm A"
-                                                        value={parseLocalDateTime(field.value)}
+                                                        value={supportsNoFixedEndDateTime && eventData.noFixedEndDateTime ? null : parseLocalDateTime(field.value)}
                                                         disabled={
                                                             isImmutableField('end')
                                                             || hasExternalRentalField
@@ -10272,3 +10296,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 EventForm.displayName = 'EventForm';
 
 export default EventForm;
+
+
+
+

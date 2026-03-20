@@ -440,6 +440,24 @@ const withLegacyEvent = (row: any) => {
   return legacy;
 };
 
+const buildEventResponsePayload = async (event: any) => {
+  const divisionKeys = normalizeDivisionKeys(event.divisions);
+  const [divisionFieldIds, divisionDetails] = await Promise.all([
+    getDivisionFieldMapForEvent(event.id, divisionKeys),
+    getDivisionDetailsForEvent(event.id, divisionKeys, event.start, {
+      price: event.price,
+      maxParticipants: event.maxParticipants,
+      playoffTeamCount: event.playoffTeamCount,
+      allowPaymentPlans: event.allowPaymentPlans,
+      installmentCount: event.installmentCount,
+      installmentDueDates: event.installmentDueDates,
+      installmentAmounts: event.installmentAmounts,
+    }),
+  ]);
+
+  return withLegacyEvent({ ...event, divisionFieldIds, divisionDetails });
+};
+
 const isSchedulableEventType = (value: unknown): boolean => {
   const normalized = typeof value === 'string' ? value.toUpperCase() : '';
   return normalized === 'LEAGUE' || normalized === 'TOURNAMENT';
@@ -641,6 +659,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing event id' }, { status: 400 });
   }
 
+  const existingEvent = await prisma.events.findUnique({
+    where: { id: eventId },
+  });
+  if (existingEvent) {
+    const canAccessExisting = await canManageEvent(session, existingEvent);
+    if (!canAccessExisting) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const payload = await buildEventResponsePayload(existingEvent);
+    return NextResponse.json(
+      {
+        event: payload,
+        alreadyCreated: true,
+        code: 'EVENT_ALREADY_CREATED',
+        message: 'Event already exists for this id; returning existing event.',
+      },
+      { status: 200 },
+    );
+  }
+
   const eventPayload = {
     ...payload,
     id: eventId,
@@ -669,29 +708,19 @@ export async function POST(req: NextRequest) {
       return fresh;
     });
 
-    const divisionKeys = normalizeDivisionKeys(event.divisions);
-    const [divisionFieldIds, divisionDetails] = await Promise.all([
-      getDivisionFieldMapForEvent(event.id, divisionKeys),
-      getDivisionDetailsForEvent(event.id, divisionKeys, event.start, {
-        price: event.price,
-        maxParticipants: event.maxParticipants,
-        playoffTeamCount: event.playoffTeamCount,
-        allowPaymentPlans: event.allowPaymentPlans,
-        installmentCount: event.installmentCount,
-        installmentDueDates: event.installmentDueDates,
-        installmentAmounts: event.installmentAmounts,
-      }),
-    ]);
-    await notifySocialAudienceOfEventCreation({
+    const payload = await buildEventResponsePayload(event);
+    void notifySocialAudienceOfEventCreation({
       eventId: event.id,
       hostId: event.hostId,
       eventName: event.name,
       eventStart: event.start,
       location: event.location,
       baseUrl: req.nextUrl.origin,
+    }).catch((notificationError) => {
+      console.error('Post-create social notification failed', notificationError);
     });
     return NextResponse.json(
-      { event: withLegacyEvent({ ...event, divisionFieldIds, divisionDetails }) },
+      { event: payload },
       { status: 201 },
     );
   } catch (error) {

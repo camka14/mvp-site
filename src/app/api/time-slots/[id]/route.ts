@@ -25,6 +25,26 @@ const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: nu
   ).sort((a, b) => a - b);
 };
 
+const toDateOnlyValue = (value: Date): number => {
+  const copy = new Date(value.getTime());
+  copy.setHours(0, 0, 0, 0);
+  return copy.getTime();
+};
+
+const normalizeRepeatingEndDate = (
+  startDate: Date,
+  endDate: Date | null,
+  repeating: boolean,
+): Date | null => {
+  if (!repeating) {
+    return endDate;
+  }
+  if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+  return toDateOnlyValue(endDate) > toDateOnlyValue(startDate) ? endDate : null;
+};
+
 const normalizeDivisionKeys = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -91,6 +111,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+  const existingSlot = await prisma.timeSlots.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      startDate: true,
+      endDate: true,
+      repeating: true,
+    },
+  });
+  if (!existingSlot) {
+    return NextResponse.json({ error: 'Time slot not found' }, { status: 404 });
+  }
+
   const payload = stripLegacyFieldsDeep(parsed.data.slot ?? parsed.data ?? {}) as Record<string, unknown>;
   delete payload.id;
   delete payload.createdAt;
@@ -145,6 +178,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     payload.daysOfWeek = normalizedDays;
     payload.dayOfWeek = normalizedDays[0] ?? null;
   }
+
+  const effectiveRepeating = typeof payload.repeating === 'boolean'
+    ? payload.repeating
+    : existingSlot.repeating;
+  const effectiveStartDate = payload.startDate instanceof Date && !Number.isNaN(payload.startDate.getTime())
+    ? payload.startDate
+    : existingSlot.startDate;
+  const currentEndDate = existingSlot.endDate instanceof Date && !Number.isNaN(existingSlot.endDate.getTime())
+    ? existingSlot.endDate
+    : null;
+  const requestedEndDate = payload.endDate instanceof Date && !Number.isNaN(payload.endDate.getTime())
+    ? payload.endDate
+    : null;
+  const endDateCandidate = Object.prototype.hasOwnProperty.call(payload, 'endDate')
+    ? requestedEndDate
+    : currentEndDate;
+  if (effectiveRepeating) {
+    payload.endDate = normalizeRepeatingEndDate(
+      effectiveStartDate,
+      endDateCandidate,
+      true,
+    );
+  }
+
   const updatedAt = new Date();
   const updateData: Record<string, unknown> = { updatedAt };
   const updatableKeys = [

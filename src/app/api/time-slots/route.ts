@@ -6,6 +6,15 @@ import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
+const isUniqueConstraintError = (error: unknown): boolean => {
+  return Boolean(
+    error
+      && typeof error === 'object'
+      && 'code' in error
+      && (error as { code?: string }).code === 'P2002',
+  );
+};
+
 const createSchema = z.object({
   id: z.string(),
   dayOfWeek: z.number().optional(),
@@ -62,6 +71,26 @@ const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: nu
         .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
     ),
   ).sort((a, b) => a - b);
+};
+
+const toDateOnlyValue = (value: Date): number => {
+  const copy = new Date(value.getTime());
+  copy.setHours(0, 0, 0, 0);
+  return copy.getTime();
+};
+
+const normalizeRepeatingEndDate = (
+  startDate: Date,
+  endDate: Date | null,
+  repeating: boolean,
+): Date | null => {
+  if (!repeating) {
+    return endDate;
+  }
+  if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+  return toDateOnlyValue(endDate) > toDateOnlyValue(startDate) ? endDate : null;
 };
 
 const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
@@ -194,6 +223,8 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
   const startDate = parseDateInput(data.startDate) ?? new Date();
   const endDate = data.endDate === null ? null : parseDateInput(data.endDate);
+  const repeating = data.repeating ?? false;
+  const normalizedEndDate = normalizeRepeatingEndDate(startDate, endDate, repeating);
   const normalizedDays = normalizeDaysOfWeek({
     dayOfWeek: data.dayOfWeek ?? undefined,
     daysOfWeek: data.daysOfWeek ?? undefined,
@@ -213,33 +244,48 @@ export async function POST(req: NextRequest) {
   const divisions = normalizeDivisionKeys(data.divisions);
   const now = new Date();
 
-  const slot = await prisma.timeSlots.create({
-    data: {
-      id: data.id,
-      dayOfWeek: normalizedDays[0] ?? data.dayOfWeek ?? null,
-      daysOfWeek: normalizedDays,
+  try {
+    const slot = await prisma.timeSlots.create({
+      data: {
+        id: data.id,
+        dayOfWeek: normalizedDays[0] ?? data.dayOfWeek ?? null,
+        daysOfWeek: normalizedDays,
       startTimeMinutes: data.startTimeMinutes ?? null,
       endTimeMinutes: data.endTimeMinutes ?? null,
       startDate,
-      endDate: endDate ?? null,
-      repeating: data.repeating ?? false,
+      endDate: normalizedEndDate,
+      repeating,
       scheduledFieldId,
       scheduledFieldIds,
-      price: data.price ?? null,
-      requiredTemplateIds,
-      rentalDocumentTemplateId,
-      createdAt: now,
-      updatedAt: now,
-    } as any,
-  });
-  await persistTimeSlotDivisions(data.id, divisions, now);
+        price: data.price ?? null,
+        requiredTemplateIds,
+        rentalDocumentTemplateId,
+        createdAt: now,
+        updatedAt: now,
+      } as any,
+    });
+    await persistTimeSlotDivisions(data.id, divisions, now);
 
-  return NextResponse.json(withLegacyFields({
-    ...slot,
-    dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
-    daysOfWeek: normalizedDays,
-    scheduledFieldId: scheduledFieldIds[0] ?? slot.scheduledFieldId ?? null,
-    scheduledFieldIds,
-    divisions,
-  } as any), { status: 201 });
+    return NextResponse.json(withLegacyFields({
+      ...slot,
+      dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
+      daysOfWeek: normalizedDays,
+      scheduledFieldId: scheduledFieldIds[0] ?? slot.scheduledFieldId ?? null,
+      scheduledFieldIds,
+      divisions,
+    } as any), { status: 201 });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        {
+          error: 'Time slot already exists. A previous create attempt likely succeeded; check whether the event/documents were already created.',
+          code: 'TIME_SLOT_ALREADY_EXISTS',
+          timeSlotId: data.id,
+        },
+        { status: 409 },
+      );
+    }
+    console.error('Create time slot failed', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 }

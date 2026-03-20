@@ -3566,8 +3566,19 @@ function EventScheduleContent() {
     }
     setChangesEvent((prev) => {
       if (prev) return prev;
-      const start = rentalImmutableDefaults?.start ?? formatLocalDateTime(new Date());
-      const end = rentalImmutableDefaults?.end ?? formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+      const defaultStartDate = new Date(Date.now() + 60 * 60 * 1000);
+      if (
+        defaultStartDate.getMinutes() !== 0
+        || defaultStartDate.getSeconds() !== 0
+        || defaultStartDate.getMilliseconds() !== 0
+      ) {
+        defaultStartDate.setHours(defaultStartDate.getHours() + 1, 0, 0, 0);
+      } else {
+        defaultStartDate.setMinutes(0, 0, 0);
+      }
+      const defaultEndDate = new Date(defaultStartDate.getTime() + 60 * 60 * 1000);
+      const start = rentalImmutableDefaults?.start ?? formatLocalDateTime(defaultStartDate);
+      const end = rentalImmutableDefaults?.end ?? formatLocalDateTime(defaultEndDate);
       const locationDefaults = createLocationDefaults;
       const rentalLocation = (rentalImmutableDefaults?.location ?? '').trim();
       const rentalCoordinates = rentalImmutableDefaults?.coordinates;
@@ -8686,3 +8697,4 @@ export default function EventSchedulePage() {
     </Suspense>
   );
 }
+

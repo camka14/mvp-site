@@ -2675,19 +2675,28 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedParentEvent = normalizeEntityId(payload.parentEvent)
     ?? normalizeEntityId((existingEvent as any)?.parentEvent);
   const isWeeklyParent = nextEventType === 'WEEKLY_EVENT' && !normalizedParentEvent;
-  const parsedPayloadEnd = coerceDate(payload.end);
-  const normalizedEnd = isWeeklyParent && parsedPayloadEnd === null
-    ? null
-    : (parsedPayloadEnd ?? start);
+  const supportsNoFixedEndDateTime = isSchedulableEventType(nextEventType) || isWeeklyParent;
+  const payloadIncludesEnd = Object.prototype.hasOwnProperty.call(payload, 'end');
+  const payloadIncludesNoFixedEndDateTime = Object.prototype.hasOwnProperty.call(payload, 'noFixedEndDateTime');
+  const parsedPayloadEnd = payloadIncludesEnd ? coerceDate(payload.end) : null;
+  const parsedExistingEnd = coerceDate(existingEvent?.end);
+  const candidateEnd = payloadIncludesEnd
+    ? parsedPayloadEnd
+    : parsedExistingEnd;
   const splitLeaguePlayoffDivisions = payloadEventType === 'LEAGUE'
     ? coerceBoolean(payload.splitLeaguePlayoffDivisions, false)
     : false;
-  const fallbackNoFixedEndDateTime = (
-    isSchedulableEventType(payloadEventType)
-      ? true
-      : normalizedEnd === null || start.getTime() === normalizedEnd.getTime()
-  );
-  const noFixedEndDateTime = coerceBoolean(payload.noFixedEndDateTime, fallbackNoFixedEndDateTime);
+  const fallbackNoFixedEndDateTime = supportsNoFixedEndDateTime
+    ? (
+      !payloadIncludesNoFixedEndDateTime && typeof (existingEvent as any)?.noFixedEndDateTime === 'boolean'
+        ? Boolean((existingEvent as any).noFixedEndDateTime)
+        : candidateEnd === null
+    )
+    : false;
+  const noFixedEndDateTime = supportsNoFixedEndDateTime
+    ? coerceBoolean(payload.noFixedEndDateTime, fallbackNoFixedEndDateTime)
+    : false;
+  const normalizedEnd = noFixedEndDateTime ? null : candidateEnd;
 
   if (!noFixedEndDateTime && (!normalizedEnd || normalizedEnd.getTime() <= start.getTime())) {
     throw new Error('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
@@ -3077,3 +3086,4 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
 
   return id;
 };
+

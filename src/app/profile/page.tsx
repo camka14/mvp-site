@@ -48,6 +48,7 @@ import {
 } from '@/lib/profileDocumentAccess';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/dateUtils';
 import { selectBillOwnerTeams } from '@/lib/profileBilling';
+import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
 
 const toDateInputValue = (value?: string | null): string => {
     if (!value) return '';
@@ -615,7 +616,11 @@ function ProfilePageContent() {
         }
         try {
             setConnectingStripe(true);
-            const origin = window.location.origin;
+            const origin = resolveClientPublicOrigin();
+            if (!origin) {
+                notifications.show({ color: 'red', message: 'Unable to determine public URL for Stripe onboarding.' });
+                return;
+            }
             const refreshUrl = `${origin}/profile?stripe=refresh`;
             const returnUrl = `${origin}/profile?stripe=return`;
             const result = await paymentService.connectStripeAccount({
@@ -645,7 +650,11 @@ function ProfilePageContent() {
         }
         try {
             setManagingStripe(true);
-            const origin = window.location.origin;
+            const origin = resolveClientPublicOrigin();
+            if (!origin) {
+                notifications.show({ color: 'red', message: 'Unable to determine public URL for Stripe management.' });
+                return;
+            }
             const refreshUrl = `${origin}/profile?stripe=refresh`;
             const returnUrl = `${origin}/profile?stripe=return`;
             const result = await paymentService.manageStripeAccount({
