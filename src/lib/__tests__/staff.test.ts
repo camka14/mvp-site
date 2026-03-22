@@ -7,14 +7,14 @@ import {
 
 describe('staff helpers', () => {
   it('normalizes and dedupes staff member types', () => {
-    expect(normalizeStaffMemberTypes(['host', 'HOST', 'referee', 'invalid'])).toEqual(['HOST', 'REFEREE']);
+    expect(normalizeStaffMemberTypes(['host', 'HOST', 'official', 'invalid'])).toEqual(['HOST', 'OFFICIAL']);
   });
 
   it('blocks active org role derivation when a staff invite is pending', () => {
     const staffMembers = [
       { organizationId: 'org_1', userId: 'user_host', types: ['HOST'] },
       { organizationId: 'org_1', userId: 'user_staff', types: ['STAFF'] },
-      { organizationId: 'org_1', userId: 'user_ref', types: ['REFEREE'] },
+      { organizationId: 'org_1', userId: 'user_ref', types: ['OFFICIAL'] },
     ];
     const invites = [
       { organizationId: 'org_1', userId: 'user_staff', type: 'STAFF', status: 'PENDING' },
@@ -24,11 +24,11 @@ describe('staff helpers', () => {
     expect(getBlockingStaffInvite(invites, 'org_1', 'user_staff')).toBe('PENDING');
     expect(getBlockingStaffInvite(invites, 'org_1', 'user_ref')).toBe('DECLINED');
     expect(deriveOrganizationRoleIds(staffMembers, invites, 'HOST')).toEqual(['user_host']);
-    expect(deriveOrganizationRoleIds(staffMembers, invites, 'REFEREE')).toEqual([]);
+    expect(deriveOrganizationRoleIds(staffMembers, invites, 'OFFICIAL')).toEqual([]);
   });
 
   it('falls back to legacy single-type invites when staffTypes are absent', () => {
     expect(deriveStaffInviteTypes({ staffTypes: [] }, 'host')).toEqual(['HOST']);
-    expect(deriveStaffInviteTypes({ staffTypes: ['staff', 'referee'] }, 'host')).toEqual(['STAFF', 'REFEREE']);
+    expect(deriveStaffInviteTypes({ staffTypes: ['staff', 'official'] }, 'host')).toEqual(['STAFF', 'OFFICIAL']);
   });
 });

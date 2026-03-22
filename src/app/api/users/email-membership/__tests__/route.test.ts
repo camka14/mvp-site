@@ -34,7 +34,7 @@ describe('POST /api/users/email-membership', () => {
 
   it('matches normalized emails using sensitive data first and auth email as fallback', async () => {
     prismaMock.sensitiveUserData.findMany.mockResolvedValue([
-      { userId: 'user_1', email: ' Ref@Example.com ' },
+      { userId: 'user_1', email: ' Official@Example.com ' },
       { userId: 'user_2', email: null },
     ]);
     prismaMock.authUser.findMany.mockResolvedValue([
@@ -43,14 +43,14 @@ describe('POST /api/users/email-membership', () => {
     ]);
 
     const response = await POST(jsonRequest({
-      emails: [' ref@example.com ', 'assistant@example.com', 'REF@example.com'],
+      emails: [' official@example.com ', 'assistant@example.com', 'REF@example.com'],
       userIds: ['user_1', 'user_2', 'user_3', ''],
     }));
     const json = await response.json();
 
     expect(response.status).toBe(200);
     expect(json.matches).toEqual([
-      { email: 'ref@example.com', userId: 'user_1' },
+      { email: 'official@example.com', userId: 'user_1' },
       { email: 'assistant@example.com', userId: 'user_2' },
     ]);
     expect(prismaMock.sensitiveUserData.findMany).toHaveBeenCalledWith({
@@ -76,3 +76,4 @@ describe('POST /api/users/email-membership', () => {
     expect(prismaMock.authUser.findMany).not.toHaveBeenCalled();
   });
 });
+

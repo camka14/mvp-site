@@ -15,7 +15,7 @@ const audienceSchema = z.object({
   managers: z.boolean().optional().default(false),
   players: z.boolean().optional().default(false),
   parents: z.boolean().optional().default(false),
-  referees: z.boolean().optional().default(false),
+  officials: z.boolean().optional().default(false),
   hosts: z.boolean().optional().default(false),
 });
 
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           organizationId: true,
           teamIds: true,
           userIds: true,
-          refereeIds: true,
+          officialIds: true,
         },
       });
 
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
 
       const teamIds = normalizeIds(eventAccess.teamIds);
       const directPlayerIds = normalizeIds(eventAccess.userIds);
-      const refereeIds = normalizeIds(eventAccess.refereeIds);
+      const officialIds = normalizeIds(eventAccess.officialIds);
       const hostIds = normalizeIds([eventAccess.hostId, ...normalizeIds(eventAccess.assistantHostIds)]);
 
       const teams = teamIds.length
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         managers: managerIds,
         players: allPlayerIds,
         parents: parentIds,
-        referees: refereeIds,
+        officials: officialIds,
         hosts: hostIds,
       };
 
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         ...(audience.managers ? audienceRecipients.managers : []),
         ...(audience.players ? audienceRecipients.players : []),
         ...(audience.parents ? audienceRecipients.parents : []),
-        ...(audience.referees ? audienceRecipients.referees : []),
+        ...(audience.officials ? audienceRecipients.officials : []),
         ...(audience.hosts ? audienceRecipients.hosts : []),
       ]);
 

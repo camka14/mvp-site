@@ -73,7 +73,7 @@ describe('POST /api/events/[eventId]/notifications', () => {
       organizationId: null,
       teamIds: ['team_1'],
       userIds: ['free_player_1'],
-      refereeIds: ['ref_1'],
+      officialIds: ['official_1'],
     });
     prismaMock.teams.findMany.mockResolvedValue([
       {
@@ -88,7 +88,7 @@ describe('POST /api/events/[eventId]/notifications', () => {
     ]);
     prismaMock.pushDeviceTarget.findMany.mockResolvedValue([
       { userId: 'manager_1' },
-      { userId: 'ref_1' },
+      { userId: 'official_1' },
       { userId: 'assistant_host_1' },
     ]);
     prismaMock.sensitiveUserData.findMany.mockResolvedValue([
@@ -109,7 +109,7 @@ describe('POST /api/events/[eventId]/notifications', () => {
           managers: true,
           players: true,
           parents: true,
-          referees: true,
+          officials: true,
           hosts: true,
         },
       }),
@@ -120,7 +120,7 @@ describe('POST /api/events/[eventId]/notifications', () => {
     expect(response.status).toBe(200);
     expect(sendPushToUsersMock).toHaveBeenCalledTimes(1);
     expect(new Set(sendPushToUsersMock.mock.calls[0][0].userIds)).toEqual(
-      new Set(['manager_1', 'ref_1', 'assistant_host_1']),
+      new Set(['manager_1', 'official_1', 'assistant_host_1']),
     );
 
     expect(sendEmailMock).toHaveBeenCalledTimes(3);
@@ -146,7 +146,7 @@ describe('POST /api/events/[eventId]/notifications', () => {
           managers: false,
           players: false,
           parents: false,
-          referees: false,
+          officials: false,
           hosts: false,
         },
       }),
@@ -179,4 +179,5 @@ describe('POST /api/events/[eventId]/notifications', () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });
+
 

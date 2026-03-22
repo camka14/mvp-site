@@ -1,6 +1,6 @@
 import type { Invite, InviteStatus, InviteType, StaffMember, StaffMemberType } from '@/types';
 
-export const STAFF_MEMBER_TYPES = ['HOST', 'REFEREE', 'STAFF'] as const;
+export const STAFF_MEMBER_TYPES = ['HOST', 'OFFICIAL', 'STAFF'] as const;
 export const STAFF_ACCESS_TYPES = ['HOST', 'STAFF'] as const;
 export const INVITE_TYPES = ['STAFF', 'TEAM', 'EVENT'] as const;
 export const INVITE_STATUSES = ['PENDING', 'DECLINED', 'FAILED'] as const;
@@ -12,7 +12,7 @@ const LEGACY_TEAM_INVITE_TYPES = new Set([
   'TEAM_ASSISTANT_COACH',
 ]);
 
-const LEGACY_STAFF_INVITE_TYPES = new Set(['HOST', 'REFEREE']);
+const LEGACY_STAFF_INVITE_TYPES = new Set(['HOST', 'OFFICIAL']);
 
 export const normalizeStaffMemberType = (value: unknown): StaffMemberType | null => {
   if (typeof value !== 'string') {

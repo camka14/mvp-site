@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { canManageOrganization, canRefereeOrganization } from '@/server/accessControl';
+import { canManageOrganization, canOfficialOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,7 +121,7 @@ const hasOrganizationUserAccess = async (params: {
     return true;
   }
 
-  if (await canRefereeOrganization(
+  if (await canOfficialOrganization(
     {
       userId: params.sessionUserId,
       isAdmin: params.isAdmin,
@@ -161,7 +161,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const org = await prisma.organizations.findUnique({
     where: { id },
-    select: { id: true, ownerId: true, hostIds: true, refIds: true },
+    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
   });
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
@@ -472,3 +472,4 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return NextResponse.json({ users: usersPayload }, { status: 200 });
 }
+

@@ -264,7 +264,7 @@ describe('/api/invites', () => {
       createdBy: 'host_1',
       firstName: 'Sam',
       lastName: 'Staff',
-      staffTypes: ['REFEREE'],
+      staffTypes: ['OFFICIAL'],
       createdAt,
       updatedAt: createdAt,
     };
@@ -279,7 +279,7 @@ describe('/api/invites', () => {
           email: 'staff@example.com',
           firstName: 'Sam',
           lastName: 'Staff',
-          staffTypes: ['REFEREE'],
+          staffTypes: ['OFFICIAL'],
           replaceStaffTypes: true,
         }],
       }),
@@ -302,7 +302,7 @@ describe('/api/invites', () => {
         type: 'STAFF',
         eventId: 'event_1',
         organizationId: null,
-        staffTypes: ['REFEREE'],
+        staffTypes: ['OFFICIAL'],
         userId: 'user_staff_1',
       }),
     });
@@ -319,7 +319,7 @@ describe('/api/invites', () => {
       userId: 'user_staff_1',
       firstName: 'Sam',
       lastName: 'Staff',
-      staffTypes: ['REFEREE'],
+      staffTypes: ['OFFICIAL'],
     });
     prismaMock.invites.update.mockResolvedValue({
       id: 'invite_existing',

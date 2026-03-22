@@ -97,8 +97,8 @@ type RentalPurchaseContext = {
     rentalDocumentTemplateId?: string;
 };
 
-type StaffAssignmentRole = 'REFEREE' | 'ASSISTANT_HOST';
-type EventInviteStaffType = 'REFEREE' | 'HOST';
+type StaffAssignmentRole = 'OFFICIAL' | 'ASSISTANT_HOST';
+type EventInviteStaffType = 'OFFICIAL' | 'HOST';
 type StaffRosterStatus = 'active' | 'pending' | 'declined' | 'failed';
 
 type PendingStaffInvite = {
@@ -122,7 +122,7 @@ type StaffRosterEntry = {
 
 type AssignedStaffCard = {
     key: string;
-    role: 'REFEREE' | 'HOST' | 'ASSISTANT_HOST';
+    role: 'OFFICIAL' | 'HOST' | 'ASSISTANT_HOST';
     userId: string | null;
     user?: UserData | null;
     email?: string | null;
@@ -172,7 +172,7 @@ const SECTION_ANIMATION_DURATION_MS = 220;
 const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
     'section-basic-information': false,
     'section-event-details': true,
-    'section-referees': true,
+    'section-officials': true,
     'section-division-settings': true,
     'section-league-scoring-config': true,
     'section-schedule-config': true,
@@ -204,17 +204,17 @@ const normalizePendingStaffInvite = (invite: PendingStaffInvite): PendingStaffIn
     lastName: invite.lastName.trim(),
     email: normalizeInviteEmail(invite.email),
     roles: Array.from(new Set((invite.roles || []).filter((role): role is StaffAssignmentRole => (
-        role === 'REFEREE' || role === 'ASSISTANT_HOST'
+        role === 'OFFICIAL' || role === 'ASSISTANT_HOST'
     )))),
 });
 
 const mapRoleToInviteStaffType = (role: StaffAssignmentRole): EventInviteStaffType => (
-    role === 'REFEREE' ? 'REFEREE' : 'HOST'
+    role === 'OFFICIAL' ? 'OFFICIAL' : 'HOST'
 );
 
 const mapInviteStaffTypeToRole = (type: StaffMemberType): StaffAssignmentRole | null => {
-    if (type === 'REFEREE') {
-        return 'REFEREE';
+    if (type === 'OFFICIAL') {
+        return 'OFFICIAL';
     }
     if (type === 'HOST') {
         return 'ASSISTANT_HOST';
@@ -246,8 +246,8 @@ const getUserEmail = (candidate?: Partial<UserData> | null): string | null => {
 };
 
 const formatStaffRoleLabel = (role: AssignedStaffCard['role'] | StaffAssignmentRole): string => {
-    if (role === 'REFEREE') {
-        return 'Referee';
+    if (role === 'OFFICIAL') {
+        return 'Official';
     }
     if (role === 'HOST') {
         return 'Host';
@@ -1937,12 +1937,12 @@ type EventFormState = {
     freeAgents: string[];
     players: UserData[];
     teams: Team[];
-    referees: UserData[];
-    refereeIds: string[];
+    officials: UserData[];
+    officialIds: string[];
     pendingStaffInvites: PendingStaffInvite[];
     assistantHostIds: string[];
-    doTeamsRef: boolean;
-    teamRefsMaySwap: boolean;
+    doTeamsOfficiate: boolean;
+    teamOfficialsMaySwap: boolean;
     leagueScoringConfig: LeagueScoringConfig;
 };
 
@@ -2511,8 +2511,8 @@ const mapEventToFormState = (event: Event): EventFormState => {
     freeAgents: event.freeAgentIds || [],
     players: event.players || [],
     teams: event.teams || [],
-    referees: event.referees || [],
-    refereeIds: event.refereeIds || [],
+    officials: event.officials || [],
+    officialIds: event.officialIds || [],
     pendingStaffInvites: Array.isArray((event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites)
         && (event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites!.length > 0
         ? (event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites!.map((invite) => ({
@@ -2520,13 +2520,13 @@ const mapEventToFormState = (event: Event): EventFormState => {
             lastName: invite.lastName ?? '',
             email: invite.email ?? '',
             roles: Array.isArray(invite.roles) ? invite.roles.filter((role): role is StaffAssignmentRole => (
-                role === 'REFEREE' || role === 'ASSISTANT_HOST'
+                role === 'OFFICIAL' || role === 'ASSISTANT_HOST'
             )) : [],
         }))
         : [],
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
-    doTeamsRef: Boolean(event.doTeamsRef),
-    teamRefsMaySwap: Boolean(event.doTeamsRef) && Boolean((event as any).teamRefsMaySwap),
+    doTeamsOfficiate: Boolean(event.doTeamsOfficiate),
+    teamOfficialsMaySwap: Boolean(event.doTeamsOfficiate) && Boolean((event as any).teamOfficialsMaySwap),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
             ? (event.leagueScoringConfig as Partial<LeagueScoringConfig>)
@@ -2675,19 +2675,19 @@ const eventFormSchema = z
         freeAgents: z.array(z.string()),
         players: z.array(z.any()),
         teams: z.array(z.any()),
-        referees: z.array(z.any()),
-        refereeIds: z.array(z.string()),
+        officials: z.array(z.any()),
+        officialIds: z.array(z.string()),
         pendingStaffInvites: z.array(
             z.object({
                 firstName: z.string().default(''),
                 lastName: z.string().default(''),
                 email: z.string().default(''),
-                roles: z.array(z.enum(['REFEREE', 'ASSISTANT_HOST'])).default([]),
+                roles: z.array(z.enum(['OFFICIAL', 'ASSISTANT_HOST'])).default([]),
             }),
         ).default([]),
         assistantHostIds: z.array(z.string()).default([]),
-        doTeamsRef: z.boolean(),
-        teamRefsMaySwap: z.boolean().default(false),
+        doTeamsOfficiate: z.boolean(),
+        teamOfficialsMaySwap: z.boolean().default(false),
         leagueScoringConfig: z.any(),
         leagueSlots: z.array(leagueSlotSchema),
         leagueData: z.object({
@@ -3209,11 +3209,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (typeof defaults.registrationByDivisionType === 'boolean') {
             next.registrationByDivisionType = defaults.registrationByDivisionType;
         }
-        if (typeof (defaults as any).doTeamsRef === 'boolean') {
-            next.doTeamsRef = Boolean((defaults as any).doTeamsRef);
+        if (typeof (defaults as any).doTeamsOfficiate === 'boolean') {
+            next.doTeamsOfficiate = Boolean((defaults as any).doTeamsOfficiate);
         }
-        if (typeof (defaults as any).teamRefsMaySwap === 'boolean') {
-            next.teamRefsMaySwap = next.doTeamsRef ? Boolean((defaults as any).teamRefsMaySwap) : false;
+        if (typeof (defaults as any).teamOfficialsMaySwap === 'boolean') {
+            next.teamOfficialsMaySwap = next.doTeamsOfficiate ? Boolean((defaults as any).teamOfficialsMaySwap) : false;
         }
         if (Array.isArray((defaults as any).divisionDetails)) {
             const referenceDate = parseDateValue(next.start ?? null);
@@ -4161,8 +4161,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (isEditMode) {
             return;
         }
-        const ids = eventData.refereeIds || [];
-        const refs = eventData.referees || [];
+        const ids = eventData.officialIds || [];
+        const refs = eventData.officials || [];
         const missingIds = ids.filter((id) => !refs.some((ref) => ref.$id === id));
         if (!missingIds.length) {
             return;
@@ -4175,18 +4175,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 if (!cancelled && fetched.length) {
                     setEventData((prev) => ({
                         ...prev,
-                        referees: [...(prev.referees || []), ...fetched.filter((ref) => ref.$id)],
+                        officials: [...(prev.officials || []), ...fetched.filter((ref) => ref.$id)],
                     }), { shouldDirty: false, shouldValidate: false });
                 }
             } catch (error) {
-                console.warn('Failed to hydrate referees for event:', error);
+                console.warn('Failed to hydrate officials for event:', error);
             }
         })();
 
         return () => {
             cancelled = true;
         };
-    }, [eventData.refereeIds, eventData.referees, isEditMode, setEventData]);
+    }, [eventData.officialIds, eventData.officials, isEditMode, setEventData]);
 
     const [assistantHostUsers, setAssistantHostUsers] = useState<UserData[]>([]);
     const [staffInviteError, setStaffInviteError] = useState<string | null>(null);
@@ -4199,7 +4199,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [nonOrgStaffError, setNonOrgStaffError] = useState<string | null>(null);
     const [newStaffInvite, setNewStaffInvite] = useState<PendingStaffInvite>(createEmptyStaffInvite());
     const [organizationStaffVisibleCount, setOrganizationStaffVisibleCount] = useState(5);
-    const [refereeCardVisibleCount, setRefereeCardVisibleCount] = useState(5);
+    const [officialCardVisibleCount, setOfficialCardVisibleCount] = useState(5);
     const [hostCardVisibleCount, setHostCardVisibleCount] = useState(5);
 
     const [fieldsLoading, setFieldsLoading] = useState(false);
@@ -4233,13 +4233,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => new Set(organizationAllowedHostIds),
         [organizationAllowedHostIds],
     );
-    const organizationAllowedRefereeIds = useMemo(
+    const organizationAllowedOfficialIds = useMemo(
         () => organizationAssignableStaffIds,
         [organizationAssignableStaffIds],
     );
-    const organizationAllowedRefereeIdSet = useMemo(
-        () => new Set(organizationAllowedRefereeIds),
-        [organizationAllowedRefereeIds],
+    const organizationAllowedOfficialIdSet = useMemo(
+        () => new Set(organizationAllowedOfficialIds),
+        [organizationAllowedOfficialIds],
     );
     const organizationUsersById = useMemo(() => {
         const map = new Map<string, Partial<UserData>>();
@@ -4253,26 +4253,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         addUser(currentUser);
         return map;
     }, [currentUser, resolvedOrganization?.hosts, resolvedOrganization?.owner]);
-    const organizationRefereesById = useMemo(() => {
+    const organizationOfficialsById = useMemo(() => {
         const map = new Map<string, UserData>();
-        (resolvedOrganization?.referees || []).forEach((referee) => {
-            if (referee?.$id) {
-                map.set(referee.$id, referee);
+        (resolvedOrganization?.officials || []).forEach((official) => {
+            if (official?.$id) {
+                map.set(official.$id, official);
             }
         });
-        (eventData.referees || []).forEach((referee) => {
-            if (!referee?.$id) {
+        (eventData.officials || []).forEach((official) => {
+            if (!official?.$id) {
                 return;
             }
-            if (!organizationAllowedRefereeIdSet.has(referee.$id)) {
+            if (!organizationAllowedOfficialIdSet.has(official.$id)) {
                 return;
             }
-            if (!map.has(referee.$id)) {
-                map.set(referee.$id, referee);
+            if (!map.has(official.$id)) {
+                map.set(official.$id, official);
             }
         });
         return map;
-    }, [eventData.referees, resolvedOrganization?.referees, organizationAllowedRefereeIdSet]);
+    }, [eventData.officials, resolvedOrganization?.officials, organizationAllowedOfficialIdSet]);
     const assistantHostValue = useMemo(
         () => Array.from(
             new Set(
@@ -4434,12 +4434,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             {
                 hostId: eventData.hostId,
                 assistantHostIds: eventData.assistantHostIds || [],
-                refereeIds: [],
+                officialIds: [],
             },
             {
                 ownerId: resolvedOrganization?.ownerId,
                 hostIds: organizationAllowedHostIds,
-                refIds: [],
+                officialIds: [],
             },
         );
         const normalizedCurrentHostId = normalizeEntityId(eventData.hostId) ?? null;
@@ -4474,40 +4474,40 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!isOrganizationHostedEvent) {
             return;
         }
-        const normalizedCurrentRefereeIds = Array.from(
+        const normalizedCurrentOfficialIds = Array.from(
             new Set(
                 [
-                    ...(eventData.refereeIds || []),
-                    ...(eventData.referees || []).map((referee) => referee?.$id),
+                    ...(eventData.officialIds || []),
+                    ...(eventData.officials || []).map((official) => official?.$id),
                 ]
                     .map((id) => normalizeEntityId(id))
                     .filter((id): id is string => Boolean(id)),
             ),
         );
-        const nextRefereeIds = normalizedCurrentRefereeIds.filter((id) => organizationAllowedRefereeIdSet.has(id));
-        const nextReferees = nextRefereeIds
-            .map((id) => organizationRefereesById.get(id))
+        const nextOfficialIds = normalizedCurrentOfficialIds.filter((id) => organizationAllowedOfficialIdSet.has(id));
+        const nextOfficials = nextOfficialIds
+            .map((id) => organizationOfficialsById.get(id))
             .filter((candidate): candidate is UserData => Boolean(candidate));
         if (
-            stringArraysEqual((eventData.refereeIds || []).map((id) => String(id)).filter(Boolean), nextRefereeIds)
+            stringArraysEqual((eventData.officialIds || []).map((id) => String(id)).filter(Boolean), nextOfficialIds)
             && stringArraysEqual(
-                (eventData.referees || []).map((referee) => referee?.$id).filter((id): id is string => Boolean(id)),
-                nextReferees.map((referee) => referee.$id),
+                (eventData.officials || []).map((official) => official?.$id).filter((id): id is string => Boolean(id)),
+                nextOfficials.map((official) => official.$id),
             )
         ) {
             return;
         }
         setEventData((prev) => ({
             ...prev,
-            refereeIds: nextRefereeIds,
-            referees: nextReferees,
+            officialIds: nextOfficialIds,
+            officials: nextOfficials,
         }), { shouldDirty: false });
     }, [
-        eventData.refereeIds,
-        eventData.referees,
+        eventData.officialIds,
+        eventData.officials,
         isOrganizationHostedEvent,
-        organizationAllowedRefereeIdSet,
-        organizationRefereesById,
+        organizationAllowedOfficialIdSet,
+        organizationOfficialsById,
         setEventData,
     ]);
     useEffect(() => {
@@ -5036,43 +5036,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         leagueData.includePlayoffs,
     ]);
 
-    const handleAddReferee = useCallback((referee: { $id?: string; userId?: string | null } & Partial<UserData>) => {
-        const refereeId = normalizeEntityId(referee.$id ?? referee.userId);
-        if (!refereeId) {
+    const handleAddOfficial = useCallback((official: { $id?: string; userId?: string | null } & Partial<UserData>) => {
+        const officialId = normalizeEntityId(official.$id ?? official.userId);
+        if (!officialId) {
             return;
         }
-        if (isOrganizationHostedEvent && !organizationAllowedRefereeIdSet.has(refereeId)) {
+        if (isOrganizationHostedEvent && !organizationAllowedOfficialIdSet.has(officialId)) {
             return;
         }
         setEventData((prev) => {
-            const nextIds = Array.from(new Set([...(prev.refereeIds || []), refereeId]));
-            const nextRefs = referee.$id && !(prev.referees || []).some((ref) => ref.$id === referee.$id)
-                ? [...(prev.referees || []), referee as UserData]
-                : prev.referees || [];
-            return { ...prev, refereeIds: nextIds, referees: nextRefs };
+            const nextIds = Array.from(new Set([...(prev.officialIds || []), officialId]));
+            const nextRefs = official.$id && !(prev.officials || []).some((ref) => ref.$id === official.$id)
+                ? [...(prev.officials || []), official as UserData]
+                : prev.officials || [];
+            return { ...prev, officialIds: nextIds, officials: nextRefs };
         });
-    }, [isOrganizationHostedEvent, organizationAllowedRefereeIdSet, setEventData]);
+    }, [isOrganizationHostedEvent, organizationAllowedOfficialIdSet, setEventData]);
 
-    const handleRemoveReferee = useCallback((refereeId: string) => {
+    const handleRemoveOfficial = useCallback((officialId: string) => {
         setEventData((prev) => ({
             ...prev,
-            refereeIds: (prev.refereeIds || []).filter((id) => id !== refereeId),
-            referees: (prev.referees || []).filter((ref) => ref.$id !== refereeId),
+            officialIds: (prev.officialIds || []).filter((id) => id !== officialId),
+            officials: (prev.officials || []).filter((ref) => ref.$id !== officialId),
         }));
     }, [setEventData]);
 
     const assignedUserIdsByRole = useMemo(() => ({
-        REFEREE: normalizeDirtyTrackedIdList(eventData.refereeIds || []),
+        OFFICIAL: normalizeDirtyTrackedIdList(eventData.officialIds || []),
         ASSISTANT_HOST: normalizeDirtyTrackedIdList([...(eventData.hostId ? [eventData.hostId] : []), ...assistantHostValue]),
-    }) satisfies Record<StaffAssignmentRole, string[]>, [assistantHostValue, eventData.hostId, eventData.refereeIds]);
+    }) satisfies Record<StaffAssignmentRole, string[]>, [assistantHostValue, eventData.hostId, eventData.officialIds]);
 
     const assignedUserIdSetByRole = useMemo(() => ({
-        REFEREE: new Set(assignedUserIdsByRole.REFEREE),
+        OFFICIAL: new Set(assignedUserIdsByRole.OFFICIAL),
         ASSISTANT_HOST: new Set(assignedUserIdsByRole.ASSISTANT_HOST),
     }) satisfies Record<StaffAssignmentRole, Set<string>>, [assignedUserIdsByRole]);
 
     const assignedStaffUserIds = useMemo(
-        () => Array.from(new Set([...assignedUserIdsByRole.REFEREE, ...assignedUserIdsByRole.ASSISTANT_HOST])),
+        () => Array.from(new Set([...assignedUserIdsByRole.OFFICIAL, ...assignedUserIdsByRole.ASSISTANT_HOST])),
         [assignedUserIdsByRole],
     );
 
@@ -5212,7 +5212,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             targetRolesByUserId.set(normalizedUserId, roles);
         };
 
-        (eventData.refereeIds || []).forEach((refereeId) => addTargetRole(refereeId, 'REFEREE'));
+        (eventData.officialIds || []).forEach((officialId) => addTargetRole(officialId, 'OFFICIAL'));
         assistantHostValue.forEach((assistantHostId) => addTargetRole(assistantHostId, 'HOST'));
 
         const unresolvedEmailInvites: PendingStaffInvite[] = [];
@@ -5266,9 +5266,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             try {
                 const fetchedUsers = await userService.getUsersByIds(Array.from(resolvedUserIds));
                 setEventData((prev) => {
-                    const nextRefereeIds = new Set(prev.refereeIds || []);
+                    const nextOfficialIds = new Set(prev.officialIds || []);
                     const nextAssistantHostIds = new Set(prev.assistantHostIds || []);
-                    const nextReferees = [...(prev.referees || [])];
+                    const nextOfficials = [...(prev.officials || [])];
                     fetchedUsers.forEach((userEntry) => {
                         const matchingInvite = fetchedInvites.find((invite) => invite.userId === userEntry.$id || normalizeInviteEmail(invite.email) === getUserEmail(userEntry));
                         const roles = matchingInvite
@@ -5276,10 +5276,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 .map(mapInviteStaffTypeToRole)
                                 .filter((role): role is StaffAssignmentRole => Boolean(role))
                             : inviteRolesByEmail.get(getUserEmail(userEntry) ?? '') || [];
-                        if (roles.includes('REFEREE')) {
-                            nextRefereeIds.add(userEntry.$id);
-                            if (!nextReferees.some((referee) => referee.$id === userEntry.$id)) {
-                                nextReferees.push(userEntry);
+                        if (roles.includes('OFFICIAL')) {
+                            nextOfficialIds.add(userEntry.$id);
+                            if (!nextOfficials.some((official) => official.$id === userEntry.$id)) {
+                                nextOfficials.push(userEntry);
                             }
                         }
                         if (roles.includes('ASSISTANT_HOST') && userEntry.$id !== prev.hostId) {
@@ -5289,8 +5289,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     });
                     return {
                         ...prev,
-                        referees: nextReferees,
-                        refereeIds: Array.from(nextRefereeIds),
+                        officials: nextOfficials,
+                        officialIds: Array.from(nextOfficialIds),
                         assistantHostIds: Array.from(nextAssistantHostIds),
                     };
                 });
@@ -5300,7 +5300,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         const finalTargetUserIds = new Set<string>([
-            ...(eventData.refereeIds || []),
+            ...(eventData.officialIds || []),
             ...assistantHostValue,
             ...Array.from(resolvedUserIds),
         ]);
@@ -5319,39 +5319,39 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         cacheAssistantHostUser,
         currentEventStaffInvites,
         currentUser,
-        eventData.refereeIds,
+        eventData.officialIds,
         getValues,
         isOrganizationHostedEvent,
         setEventData,
         setPendingStaffInvites,
         validatePendingStaffInvites,
     ]);
-    const assignedRefereeCards = useMemo<AssignedStaffCard[]>(() => {
-        const cards: AssignedStaffCard[] = (eventData.refereeIds || []).map((refereeId) => {
-            const referee = (eventData.referees || []).find((candidate) => candidate.$id === refereeId)
-                ?? organizationRefereesById.get(refereeId)
-                ?? nonOrgStaffResults.find((candidate) => candidate.$id === refereeId)
+    const assignedOfficialCards = useMemo<AssignedStaffCard[]>(() => {
+        const cards: AssignedStaffCard[] = (eventData.officialIds || []).map((officialId) => {
+            const official = (eventData.officials || []).find((candidate) => candidate.$id === officialId)
+                ?? organizationOfficialsById.get(officialId)
+                ?? nonOrgStaffResults.find((candidate) => candidate.$id === officialId)
                 ?? null;
-            const invite = currentEventStaffInviteByUserId.get(refereeId);
-            const inviteStatus = invite?.staffTypes?.includes('REFEREE') ? normalizeInviteStatusToken(invite.status) : null;
+            const invite = currentEventStaffInviteByUserId.get(officialId);
+            const inviteStatus = invite?.staffTypes?.includes('OFFICIAL') ? normalizeInviteStatusToken(invite.status) : null;
             return {
-                key: `referee:${refereeId}`,
-                role: 'REFEREE',
-                userId: refereeId,
-                user: referee,
-                email: getUserEmail(referee),
-                displayName: toUserLabel(referee ?? undefined, refereeId),
+                key: `official:${officialId}`,
+                role: 'OFFICIAL',
+                userId: officialId,
+                user: official,
+                email: getUserEmail(official),
+                displayName: toUserLabel(official ?? undefined, officialId),
                 status: inviteStatus && inviteStatus !== 'active' ? inviteStatus : null,
                 source: 'assigned',
             };
         });
         (eventData.pendingStaffInvites || []).forEach((invite) => {
-            if (!invite.roles.includes('REFEREE')) {
+            if (!invite.roles.includes('OFFICIAL')) {
                 return;
             }
             cards.push({
-                key: `draft-referee:${invite.email}`,
-                role: 'REFEREE',
+                key: `draft-official:${invite.email}`,
+                role: 'OFFICIAL',
                 userId: null,
                 user: null,
                 email: invite.email,
@@ -5361,7 +5361,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             });
         });
         return cards;
-    }, [currentEventStaffInviteByUserId, eventData.pendingStaffInvites, eventData.refereeIds, eventData.referees, nonOrgStaffResults, organizationRefereesById]);
+    }, [currentEventStaffInviteByUserId, eventData.pendingStaffInvites, eventData.officialIds, eventData.officials, nonOrgStaffResults, organizationOfficialsById]);
     const assignedHostCards = useMemo<AssignedStaffCard[]>(() => {
         const cards: AssignedStaffCard[] = [];
         const primaryHostId = normalizeEntityId(eventData.hostId);
@@ -5414,8 +5414,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setOrganizationStaffVisibleCount(5);
     }, [filteredOrganizationStaffEntries.length, organizationStaffSearch, organizationStaffStatusFilter, organizationStaffTypeFilter]);
     useEffect(() => {
-        setRefereeCardVisibleCount(5);
-    }, [assignedRefereeCards.length]);
+        setOfficialCardVisibleCount(5);
+    }, [assignedOfficialCards.length]);
     useEffect(() => {
         setHostCardVisibleCount(5);
     }, [assignedHostCards.length]);
@@ -7160,13 +7160,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (refsPrefilledRef.current) {
             return;
         }
-        const orgRefIds = resolvedOrganization.refIds ?? [];
-        const orgReferees = resolvedOrganization.referees ?? [];
-        if (orgRefIds.length || orgReferees.length) {
+        const orgOfficialIds = resolvedOrganization.officialIds ?? [];
+        const orgOfficials = resolvedOrganization.officials ?? [];
+        if (orgOfficialIds.length || orgOfficials.length) {
             setEventData((prev) => ({
                 ...prev,
-                refereeIds: orgRefIds,
-                referees: orgReferees.length ? orgReferees : prev.referees,
+                officialIds: orgOfficialIds,
+                officials: orgOfficials.length ? orgOfficials : prev.officials,
             }));
             refsPrefilledRef.current = true;
         }
@@ -7444,13 +7444,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 {
                     hostId: source.hostId || currentUser?.$id || null,
                     assistantHostIds: source.assistantHostIds || [],
-                    refereeIds: source.refereeIds || [],
+                    officialIds: source.officialIds || [],
                 },
                 {
                     ownerId: resolvedOrganization?.ownerId,
                     hostIds: organizationAllowedHostIds,
-                    refIds: organizationAllowedRefereeIds,
-                    referees: resolvedOrganization?.referees,
+                    officialIds: organizationAllowedOfficialIds,
+                    officials: resolvedOrganization?.officials,
                 },
             )
             : null;
@@ -7469,29 +7469,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         .filter((id) => id.length > 0 && id !== normalizedHostId),
                 ),
             );
-        const normalizedRefereeIds = organizationAssignments
-            ? organizationAssignments.refereeIds
+        const normalizedOfficialIds = organizationAssignments
+            ? organizationAssignments.officialIds
             : Array.from(
                 new Set(
-                    (source.refereeIds || [])
+                    (source.officialIds || [])
                         .map((id) => String(id).trim())
                         .filter((id) => id.length > 0),
                 ),
             );
-        const refereePoolById = new Map<string, UserData>();
-        (source.referees || []).forEach((referee) => {
-            if (referee?.$id) {
-                refereePoolById.set(referee.$id, referee);
+        const officialPoolById = new Map<string, UserData>();
+        (source.officials || []).forEach((official) => {
+            if (official?.$id) {
+                officialPoolById.set(official.$id, official);
             }
         });
         if (isOrganizationHostedEvent) {
-            organizationRefereesById.forEach((referee, id) => {
-                refereePoolById.set(id, referee);
+            organizationOfficialsById.forEach((official, id) => {
+                officialPoolById.set(id, official);
             });
         }
-        const normalizedReferees = normalizedRefereeIds
-            .map((id) => refereePoolById.get(id))
-            .filter((referee): referee is UserData => Boolean(referee));
+        const normalizedOfficials = normalizedOfficialIds
+            .map((id) => officialPoolById.get(id))
+            .filter((official): official is UserData => Boolean(official));
         const shouldClearEndDateTime = supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
             && Boolean(source.noFixedEndDateTime);
         const normalizedEnd = (() => {
@@ -7580,11 +7580,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             freeAgentIds: source.freeAgents,
             teams: source.teams,
             players: source.players,
-            referees: normalizedReferees,
-            refereeIds: normalizedRefereeIds,
+            officials: normalizedOfficials,
+            officialIds: normalizedOfficialIds,
             assistantHostIds: normalizedAssistantHostIds,
-            doTeamsRef: source.doTeamsRef,
-            teamRefsMaySwap: source.doTeamsRef ? Boolean(source.teamRefsMaySwap) : false,
+            doTeamsOfficiate: source.doTeamsOfficiate,
+            teamOfficialsMaySwap: source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
             coordinates: baseCoordinates,
         };
 
@@ -7887,10 +7887,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         isOrganizationHostedEvent,
         organizationHostedEventId,
         resolvedOrganization?.ownerId,
-        resolvedOrganization?.referees,
+        resolvedOrganization?.officials,
         organizationAllowedHostIds,
-        organizationAllowedRefereeIds,
-        organizationRefereesById,
+        organizationAllowedOfficialIds,
+        organizationOfficialsById,
         currentUser,
         joinAsParticipant,
         rentalPurchase,
@@ -8028,7 +8028,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => [
             { id: 'section-basic-information', label: 'Basic Information', visible: true },
             { id: 'section-event-details', label: 'Event Details', visible: true },
-            { id: 'section-referees', label: 'Referees', visible: true },
+            { id: 'section-officials', label: 'Officials', visible: true },
             { id: 'section-division-settings', label: 'Division Settings', visible: true },
             { id: 'section-league-scoring-config', label: 'League Scoring Config', visible: eventData.eventType === 'LEAGUE' },
             { id: 'section-schedule-config', label: 'Schedule Config', visible: showScheduleConfig },
@@ -8953,7 +8953,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         </Paper>
 
                         <Paper
-                            id="section-referees"
+                            id="section-officials"
                             shadow="xs"
                             radius="md"
                             withBorder
@@ -8966,41 +8966,41 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     type="button"
                                     variant="subtle"
                                     size="xs"
-                                    aria-expanded={!collapsedSections['section-referees']}
-                                    aria-controls="section-referees-content"
-                                    onClick={() => toggleSectionCollapse('section-referees')}
+                                    aria-expanded={!collapsedSections['section-officials']}
+                                    aria-controls="section-officials-content"
+                                    onClick={() => toggleSectionCollapse('section-officials')}
                                 >
-                                    {collapsedSections['section-referees'] ? 'Expand' : 'Collapse'}
+                                    {collapsedSections['section-officials'] ? 'Expand' : 'Collapse'}
                                 </Button>
                             </div>
-                            <Collapse in={!collapsedSections['section-referees']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                <Stack id="section-referees-content" gap="md" mt="md">
+                            <Collapse in={!collapsedSections['section-officials']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                <Stack id="section-officials-content" gap="md" mt="md">
                                     <Controller
-                                        name="doTeamsRef"
+                                        name="doTeamsOfficiate"
                                         control={control}
                                         render={({ field }) => (
                                             <Switch
-                                                label="Teams provide referees"
-                                                description="Allow assigning team referees alongside dedicated staff refs."
+                                                label="Teams provide officials"
+                                                description="Allow assigning team officials alongside dedicated staff refs."
                                                 checked={field.value}
                                                 onChange={(e) => {
                                                     const checked = e?.currentTarget?.checked ?? false;
                                                     field.onChange(checked);
                                                     if (!checked) {
-                                                        setValue('teamRefsMaySwap', false, { shouldDirty: true, shouldValidate: true });
+                                                        setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
                                                     }
                                                 }}
                                             />
                                         )}
                                     />
-                                    {eventData.doTeamsRef && (
+                                    {eventData.doTeamsOfficiate && (
                                         <Controller
-                                            name="teamRefsMaySwap"
+                                            name="teamOfficialsMaySwap"
                                             control={control}
                                             render={({ field }) => (
                                                 <Switch
-                                                    label="Team refs may swap"
-                                                    description="Allow any participating team to take over refereeing a match."
+                                                    label="Team officials may swap"
+                                                    description="Allow any participating team to take over officiating a match."
                                                     checked={field.value}
                                                     onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
                                                 />
@@ -9032,7 +9032,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         data={[
                                                             { value: 'all', label: 'All roles' },
                                                             { value: 'HOST', label: 'Host' },
-                                                            { value: 'REFEREE', label: 'Referee' },
+                                                            { value: 'OFFICIAL', label: 'Official' },
                                                             { value: 'STAFF', label: 'Staff' },
                                                         ]}
                                                         value={organizationStaffTypeFilter}
@@ -9058,7 +9058,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 >
                                                     {filteredOrganizationStaffEntries.slice(0, organizationStaffVisibleCount).map((entry) => {
                                                         const userId = entry.userId;
-                                                        const isRefereeAssigned = Boolean(userId && (eventData.refereeIds || []).includes(userId));
+                                                        const isOfficialAssigned = Boolean(userId && (eventData.officialIds || []).includes(userId));
                                                         const isHostAssigned = Boolean(userId && userId === eventData.hostId);
                                                         const isAssistantAssigned = Boolean(userId && assistantHostValue.includes(userId));
                                                         const assignmentsDisabled = !userId;
@@ -9084,10 +9084,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         <Button
                                                                             type="button"
                                                                             size="xs"
-                                                                            disabled={assignmentsDisabled || isRefereeAssigned || isImmutableField('refereeIds')}
-                                                                            onClick={() => handleAddReferee({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
+                                                                            disabled={assignmentsDisabled || isOfficialAssigned || isImmutableField('officialIds')}
+                                                                            onClick={() => handleAddOfficial({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
                                                                         >
-                                                                            Add as referee
+                                                                            Add as official
                                                                         </Button>
                                                                         <Button
                                                                             type="button"
@@ -9124,7 +9124,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 <div>
                                                     <Title order={6}>Add / Invite Staff</Title>
                                                     <Text size="sm" c="dimmed">
-                                                        Add existing users or stage email invites as referees and assistant hosts.
+                                                        Add existing users or stage email invites as officials and assistant hosts.
                                                     </Text>
                                                 </div>
                                                 <TextInput
@@ -9142,7 +9142,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 ) : nonOrgStaffSearch.trim().length >= 2 ? (
                                                     <Stack gap="xs">
                                                         {nonOrgStaffResults.length > 0 ? nonOrgStaffResults.map((result) => {
-                                                            const isRefereeAssigned = (eventData.refereeIds || []).includes(result.$id);
+                                                            const isOfficialAssigned = (eventData.officialIds || []).includes(result.$id);
                                                             const isHostAssigned = result.$id === eventData.hostId;
                                                             const isAssistantAssigned = assistantHostValue.includes(result.$id);
                                                             return (
@@ -9152,10 +9152,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         <Button
                                                                             type="button"
                                                                             size="xs"
-                                                                            disabled={isRefereeAssigned || isImmutableField('refereeIds')}
-                                                                            onClick={() => handleAddReferee(result)}
+                                                                            disabled={isOfficialAssigned || isImmutableField('officialIds')}
+                                                                            onClick={() => handleAddOfficial(result)}
                                                                         >
-                                                                            Add as referee
+                                                                            Add as official
                                                                         </Button>
                                                                         <Button
                                                                             type="button"
@@ -9212,15 +9212,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                             <Button
                                                                 type="button"
                                                                 size="xs"
-                                                                variant={newStaffInvite.roles.includes('REFEREE') ? 'filled' : 'default'}
+                                                                variant={newStaffInvite.roles.includes('OFFICIAL') ? 'filled' : 'default'}
                                                                 onClick={() => setNewStaffInvite((prev) => ({
                                                                     ...prev,
-                                                                    roles: prev.roles.includes('REFEREE')
-                                                                        ? prev.roles.filter((role) => role !== 'REFEREE')
-                                                                        : [...prev.roles, 'REFEREE'],
+                                                                    roles: prev.roles.includes('OFFICIAL')
+                                                                        ? prev.roles.filter((role) => role !== 'OFFICIAL')
+                                                                        : [...prev.roles, 'OFFICIAL'],
                                                                 }))}
                                                             >
-                                                                Referee
+                                                                Official
                                                             </Button>
                                                             <Button
                                                                 type="button"
@@ -9252,14 +9252,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         <Paper withBorder radius="md" p="md" bg="white">
                                             <Stack gap="sm">
                                                 <Group justify="space-between" align="center">
-                                                    <Title order={6}>Referees</Title>
-                                                    <Badge radius="xl" variant="light">{assignedRefereeCards.length}</Badge>
+                                                    <Title order={6}>Officials</Title>
+                                                    <Badge radius="xl" variant="light">{assignedOfficialCards.length}</Badge>
                                                 </Group>
                                                 <div
                                                     className="max-h-[420px] overflow-y-auto space-y-3 pr-1"
-                                                    onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedRefereeCards.length, setRefereeCardVisibleCount)}
+                                                    onScroll={(event) => maybeExtendVisibleCountOnScroll(event, assignedOfficialCards.length, setOfficialCardVisibleCount)}
                                                 >
-                                                    {assignedRefereeCards.slice(0, refereeCardVisibleCount).map((card) => (
+                                                    {assignedOfficialCards.slice(0, officialCardVisibleCount).map((card) => (
                                                         <Paper key={card.key} withBorder radius="md" p="sm">
                                                             <Stack gap="xs">
                                                                 <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
@@ -9286,14 +9286,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         variant="subtle"
                                                                         color="red"
                                                                         size="xs"
-                                                                        disabled={card.source === 'assigned' ? isImmutableField('refereeIds') : false}
+                                                                        disabled={card.source === 'assigned' ? isImmutableField('officialIds') : false}
                                                                         onClick={() => {
                                                                             if (card.source === 'draft' && card.email) {
                                                                                 setPendingStaffInvites((prev) => prev.flatMap((invite) => {
                                                                                     if (normalizeInviteEmail(invite.email) !== normalizeInviteEmail(card.email)) {
                                                                                         return [invite];
                                                                                     }
-                                                                                    const nextRoles = invite.roles.filter((role) => role !== 'REFEREE');
+                                                                                    const nextRoles = invite.roles.filter((role) => role !== 'OFFICIAL');
                                                                                     if (!nextRoles.length) {
                                                                                         return [];
                                                                                     }
@@ -9302,7 +9302,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                                 return;
                                                                             }
                                                                             if (card.userId) {
-                                                                                handleRemoveReferee(card.userId);
+                                                                                handleRemoveOfficial(card.userId);
                                                                             }
                                                                         }}
                                                                     >
@@ -9317,8 +9317,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                             </Stack>
                                                         </Paper>
                                                     ))}
-                                                    {assignedRefereeCards.length === 0 && (
-                                                        <Text size="sm" c="dimmed">No referees assigned.</Text>
+                                                    {assignedOfficialCards.length === 0 && (
+                                                        <Text size="sm" c="dimmed">No officials assigned.</Text>
                                                     )}
                                                 </div>
                                             </Stack>

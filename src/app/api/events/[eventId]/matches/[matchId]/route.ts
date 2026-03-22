@@ -25,15 +25,15 @@ const updateSchema = z.object({
   setResults: z.array(z.number()).optional(),
   team1Id: z.string().nullable().optional(),
   team2Id: z.string().nullable().optional(),
-  refereeId: z.string().nullable().optional(),
-  teamRefereeId: z.string().nullable().optional(),
+  officialId: z.string().nullable().optional(),
+  teamOfficialId: z.string().nullable().optional(),
   fieldId: z.string().nullable().optional(),
   previousLeftId: z.string().nullable().optional(),
   previousRightId: z.string().nullable().optional(),
   winnerNextMatchId: z.string().nullable().optional(),
   loserNextMatchId: z.string().nullable().optional(),
   side: z.string().nullable().optional(),
-  refereeCheckedIn: z.boolean().optional(),
+  officialCheckedIn: z.boolean().optional(),
   matchId: z.number().int().nullable().optional(),
   finalize: z.boolean().optional(),
   time: z.string().optional(),
@@ -224,9 +224,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const isHostOrAdmin = await canManageEvent(session, eventAccess, tx);
       const event = await loadEventWithRelations(eventId, tx);
 
-      const isEventReferee = Array.isArray((event as any).referees) && (event as any).referees.some((ref: any) => {
-        const refId = normalizeIdToken(ref?.id ?? ref?.$id);
-        return refId === session.userId;
+      const isEventOfficial = Array.isArray((event as any).officials) && (event as any).officials.some((official: any) => {
+        const officialId = normalizeIdToken(official?.id ?? official?.$id);
+        return officialId === session.userId;
       });
 
       const targetMatch = event.matches[matchId];
@@ -251,21 +251,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           userEventTeamIds.add(teamId);
         }
       });
-      const assignedTeamRefereeId = normalizeIdToken((targetMatch as any).teamReferee?.id ?? (targetMatch as any).teamReferee?.$id);
-      const matchRefereeCheckedIn = targetMatch.refereeCheckedIn === true;
-      const isTeamRefereeMember = isUserOnTeam((targetMatch as any).teamReferee, session.userId);
-      const isAssignedRefereeUser = normalizeIdToken((targetMatch as any).referee?.id ?? (targetMatch as any).referee?.$id) === session.userId;
-      const isAssignedTeamRefById = Boolean(assignedTeamRefereeId && userEventTeamIds.has(assignedTeamRefereeId));
-      const isReferee = Boolean(isEventReferee || isTeamRefereeMember || isAssignedRefereeUser || isAssignedTeamRefById);
+      const assignedTeamOfficialId = normalizeIdToken((targetMatch as any).teamOfficial?.id ?? (targetMatch as any).teamOfficial?.$id);
+      const matchOfficialCheckedIn = targetMatch.officialCheckedIn === true;
+      const isTeamOfficialMember = isUserOnTeam((targetMatch as any).teamOfficial, session.userId);
+      const isAssignedOfficialUser = normalizeIdToken((targetMatch as any).official?.id ?? (targetMatch as any).official?.$id) === session.userId;
+      const isAssignedTeamOfficialById = Boolean(assignedTeamOfficialId && userEventTeamIds.has(assignedTeamOfficialId));
+      const isOfficial = Boolean(isEventOfficial || isTeamOfficialMember || isAssignedOfficialUser || isAssignedTeamOfficialById);
       const canEventTeamSwap =
         !isHostOrAdmin &&
-        !isReferee &&
-        event.doTeamsRef === true &&
-        event.teamRefsMaySwap === true &&
-        !matchRefereeCheckedIn &&
+        !isOfficial &&
+        event.doTeamsOfficiate === true &&
+        event.teamOfficialsMaySwap === true &&
+        !matchOfficialCheckedIn &&
         userEventTeamIds.size > 0;
 
-      if (!isHostOrAdmin && !isReferee && !canEventTeamSwap) {
+      if (!isHostOrAdmin && !isOfficial && !canEventTeamSwap) {
         throw new Response('Forbidden', { status: 403 });
       }
 
@@ -280,40 +280,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         const requestedKeys = Object.entries(parsed.data)
           .filter(([, value]) => value !== undefined)
           .map(([key]) => key);
-        const swapOnlyKeys = new Set(['teamRefereeId', 'refereeCheckedIn']);
+        const swapOnlyKeys = new Set(['teamOfficialId', 'officialCheckedIn']);
         if (requestedKeys.some((key) => !swapOnlyKeys.has(key))) {
           throw new Response('Forbidden', { status: 403 });
         }
 
-        const requestedTeamRefereeId = normalizeIdToken(parsed.data.teamRefereeId);
-        const isEventTeamRefereeId = eventTeams.some((team) => {
+        const requestedTeamOfficialId = normalizeIdToken(parsed.data.teamOfficialId);
+        const isEventTeamOfficialId = eventTeams.some((team) => {
           if (!team || typeof team !== 'object') {
             return false;
           }
           const row = team as Record<string, unknown>;
           const teamId = normalizeIdToken(row.id ?? row.$id);
-          return teamId === requestedTeamRefereeId;
+          return teamId === requestedTeamOfficialId;
         });
         if (
-          !requestedTeamRefereeId ||
-          !userEventTeamIds.has(requestedTeamRefereeId) ||
-          !isEventTeamRefereeId
+          !requestedTeamOfficialId ||
+          !userEventTeamIds.has(requestedTeamOfficialId) ||
+          !isEventTeamOfficialId
         ) {
           throw new Response('Forbidden', { status: 403 });
         }
 
         updates = {
-          teamRefereeId: requestedTeamRefereeId,
-          // Swap-only action; check-in is a follow-up referee action.
-          refereeCheckedIn: false,
+          teamOfficialId: requestedTeamOfficialId,
+          // Swap-only action; check-in is a follow-up official action.
+          officialCheckedIn: false,
         };
       } else {
         updates = {
           team1Points: parsed.data.team1Points,
           team2Points: parsed.data.team2Points,
           setResults: parsed.data.setResults,
-          refereeCheckedIn: parsed.data.refereeCheckedIn,
-          teamRefereeId: parsed.data.teamRefereeId ?? assignedTeamRefereeId ?? null,
+          officialCheckedIn: parsed.data.officialCheckedIn,
+          teamOfficialId: parsed.data.teamOfficialId ?? assignedTeamOfficialId ?? null,
           finalize: parsed.data.finalize,
           time: parsed.data.time,
         };
@@ -401,3 +401,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
+
+

@@ -1,2 +1,2 @@
 ALTER TABLE "Events"
-  ADD COLUMN IF NOT EXISTS "teamRefsMaySwap" BOOLEAN;
+  ADD COLUMN IF NOT EXISTS "teamOfficialsMaySwap" BOOLEAN;

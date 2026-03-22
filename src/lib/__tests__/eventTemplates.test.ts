@@ -47,8 +47,8 @@ const buildBaseEvent = (overrides: Partial<Event> = {}): Event => ({
   attendees: 0,
   teams: [],
   players: [],
-  referees: [],
-  refereeIds: [],
+  officials: [],
+  officialIds: [],
   ...overrides,
 });
 

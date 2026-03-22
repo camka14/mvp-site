@@ -357,7 +357,7 @@ describe('schedule routes', () => {
     expect(res.status).toBe(403);
   });
 
-  it('allows an event team member to swap into referee when enabled', async () => {
+  it('allows an event team member to swap into official when enabled', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'player_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
@@ -372,16 +372,16 @@ describe('schedule routes', () => {
       id: 'event_1',
       eventType: 'TOURNAMENT',
       hostId: 'host_1',
-      doTeamsRef: true,
-      teamRefsMaySwap: true,
+      doTeamsOfficiate: true,
+      teamOfficialsMaySwap: true,
       matches: {
         match_1: {
           id: 'match_1',
           team1,
           team2,
-          teamReferee: team2,
-          referee: null,
-          refereeCheckedIn: false,
+          teamOfficial: team2,
+          official: null,
+          officialCheckedIn: false,
         },
       },
       teams: {
@@ -389,17 +389,17 @@ describe('schedule routes', () => {
         team_2: team2,
         team_3: team3,
       },
-      referees: [],
+      officials: [],
       divisions: [],
       fields: {},
       timeSlots: [],
     });
-    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', teamRefereeId: 'team_3', refereeCheckedIn: false }]);
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', teamOfficialId: 'team_3', officialCheckedIn: false }]);
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
-        teamRefereeId: 'team_3',
-        refereeCheckedIn: true,
+        teamOfficialId: 'team_3',
+        officialCheckedIn: true,
       }),
       { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
     );
@@ -410,8 +410,8 @@ describe('schedule routes', () => {
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
-        teamRefereeId: 'team_3',
-        refereeCheckedIn: false,
+        teamOfficialId: 'team_3',
+        officialCheckedIn: false,
       }),
     );
     expect(saveMatchesMock).toHaveBeenCalled();
@@ -432,23 +432,23 @@ describe('schedule routes', () => {
       id: 'event_1',
       eventType: 'TOURNAMENT',
       hostId: 'host_1',
-      doTeamsRef: true,
-      teamRefsMaySwap: true,
+      doTeamsOfficiate: true,
+      teamOfficialsMaySwap: true,
       matches: {
         match_1: {
           id: 'match_1',
           team1,
           team2,
-          teamReferee: team2,
-          referee: null,
-          refereeCheckedIn: false,
+          teamOfficial: team2,
+          official: null,
+          officialCheckedIn: false,
         },
       },
       teams: {
         team_1: team1,
         team_2: team2,
       },
-      referees: [],
+      officials: [],
       divisions: [],
       fields: {},
       timeSlots: [],
@@ -456,8 +456,8 @@ describe('schedule routes', () => {
 
     const res = await matchPatch(
       patchRequest('http://localhost/api/events/event_1/matches/match_1', {
-        teamRefereeId: 'team_1',
-        refereeCheckedIn: true,
+        teamOfficialId: 'team_1',
+        officialCheckedIn: true,
         team1Points: [1],
       }),
       { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
@@ -485,7 +485,7 @@ describe('schedule routes', () => {
     serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
 
     const res = await matchPatch(
-      patchRequest('http://localhost/api/events/event_1/matches/match_1', { teamRefereeId: 'team_1', locked: true }),
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', { teamOfficialId: 'team_1', locked: true }),
       { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
     );
     const json = await res.json();
@@ -524,7 +524,7 @@ describe('schedule routes', () => {
     const res = await matchesPatch(
       patchRequest('http://localhost/api/events/event_1/matches', {
         matches: [
-          { id: 'match_1', teamRefereeId: 'team_1', locked: true },
+          { id: 'match_1', teamOfficialId: 'team_1', locked: true },
           { id: 'match_2', fieldId: 'field_2' },
         ],
       }),
@@ -592,7 +592,7 @@ describe('schedule routes', () => {
         match_2: remainingMatch,
       },
       teams: {},
-      referees: [],
+      officials: [],
       fields: {},
       timeSlots: [],
     });
@@ -648,7 +648,7 @@ describe('schedule routes', () => {
         },
       },
       teams: {},
-      referees: [],
+      officials: [],
       fields: {},
       timeSlots: [],
     });
@@ -721,7 +721,7 @@ describe('schedule routes', () => {
         },
       },
       teams: {},
-      referees: [],
+      officials: [],
       fields: {},
       timeSlots: [],
     });
@@ -769,7 +769,7 @@ describe('schedule routes', () => {
         m3: { id: 'm3', matchId: 3, winnerNextMatch: null, loserNextMatch: null, previousLeftMatch: null, previousRightMatch: null },
       },
       teams: {},
-      referees: [],
+      officials: [],
       fields: {},
       timeSlots: [],
     });
@@ -811,7 +811,7 @@ describe('schedule routes', () => {
         root: { id: 'root', matchId: 1, winnerNextMatch: null, loserNextMatch: null, previousLeftMatch: null, previousRightMatch: null },
       },
       teams: {},
-      referees: [],
+      officials: [],
       fields: {},
       timeSlots: [],
     });
@@ -869,12 +869,12 @@ describe('schedule routes', () => {
       matches: {
         match_1: {
           id: 'match_1',
-          teamReferee: null,
-          referee: null,
+          teamOfficial: null,
+          official: null,
         },
       },
       teams: {},
-      referees: [],
+      officials: [],
       divisions: [],
       fields: {},
       timeSlots: [],

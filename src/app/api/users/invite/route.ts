@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     }
 
     const type = (invite.type ?? 'player').toLowerCase();
-    if (!['player', 'referee'].includes(type)) {
+    if (!['player', 'official'].includes(type)) {
       failed.push({ email, reason: 'invalid_type' });
       continue;
     }
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       if ((!invite.eventId && !invite.organizationId) || scopeFields.length !== 1) {
-        failed.push({ email, reason: 'ref_scope_required' });
+        failed.push({ email, reason: 'official_scope_required' });
         continue;
       }
     }
@@ -123,3 +123,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ sent, not_sent: [...notSent, ...notEmailedRecords], failed }, { status: 200 });
 }
+

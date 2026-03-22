@@ -86,7 +86,7 @@ describe('PATCH /api/users/[id]', () => {
     }));
   });
 
-  it('rejects setting homePageOrganizationId when the user is not an org owner/host/referee', async () => {
+  it('rejects setting homePageOrganizationId when the user is not an org owner/host/official', async () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'other_user',
@@ -99,7 +99,7 @@ describe('PATCH /api/users/[id]', () => {
     const json = await response.json();
 
     expect(response.status).toBe(403);
-    expect(json.error).toContain('owners, hosts, or referees');
+    expect(json.error).toContain('owners, hosts, or officials');
     expect(prismaMock.userData.update).not.toHaveBeenCalled();
   });
 

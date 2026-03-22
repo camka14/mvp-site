@@ -282,11 +282,11 @@ describe('EventForm dirty state', () => {
     freeAgents: [],
     players: [],
     teams: [],
-    referees: [],
-    refereeIds: [],
+    officials: [],
+    officialIds: [],
     assistantHostIds: [],
-    doTeamsRef: false,
-    teamRefsMaySwap: false,
+    doTeamsOfficiate: false,
+    teamOfficialsMaySwap: false,
     leagueScoringConfig: null,
     leagueSlots: [],
     leagueData: {
@@ -340,19 +340,19 @@ describe('EventForm dirty state', () => {
         invite: { status: 'ACCEPTED' },
       },
       {
-        $id: 'org_staff_ref_1',
+        $id: 'org_staff_official_1',
         organizationId: 'org_1',
-        userId: 'ref_1',
-        types: ['REFEREE'],
-        user: { $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' },
+        userId: 'official_1',
+        types: ['OFFICIAL'],
+        user: { $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' },
         invite: { status: 'ACCEPTED' },
       },
       {
-        $id: 'org_staff_ref_2',
+        $id: 'org_staff_official_2',
         organizationId: 'org_1',
-        userId: 'ref_2',
-        types: ['REFEREE'],
-        user: { $id: 'ref_2', email: 'ref2@example.com', firstName: 'Casey', lastName: 'Ref' },
+        userId: 'official_2',
+        types: ['OFFICIAL'],
+        user: { $id: 'official_2', email: 'official2@example.com', firstName: 'Casey', lastName: 'Official' },
         invite: { status: 'PENDING' },
       },
     ],
@@ -363,10 +363,10 @@ describe('EventForm dirty state', () => {
       { $id: 'host_2', email: 'host2@example.com', firstName: 'Jordan', lastName: 'Host' },
       { $id: 'assistant_1', email: 'assistant@example.com', firstName: 'Alex', lastName: 'Host' },
     ],
-    refIds: ['ref_1', 'ref_2'],
-    referees: [
-      { $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' },
-      { $id: 'ref_2', email: 'ref2@example.com', firstName: 'Casey', lastName: 'Ref' },
+    officialIds: ['official_1', 'official_2'],
+    officials: [
+      { $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' },
+      { $id: 'official_2', email: 'official2@example.com', firstName: 'Casey', lastName: 'Official' },
     ],
   });
 
@@ -489,7 +489,7 @@ describe('EventForm dirty state', () => {
     });
 
     await act(async () => {
-      setRenderedEvent?.({ ...buildEvent(), name: 'Saved Event Name', refereeIds: ['ref_1'] });
+      setRenderedEvent?.({ ...buildEvent(), name: 'Saved Event Name', officialIds: ['official_1'] });
     });
 
     await waitFor(() => {
@@ -506,17 +506,17 @@ describe('EventForm dirty state', () => {
     });
   });
 
-  it('does not mark edit mode dirty when referee data is already present', async () => {
+  it('does not mark edit mode dirty when official data is already present', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(onDirtyStateChange, undefined, {
       state: 'UNPUBLISHED',
-      refereeIds: ['ref_1'],
-      referees: [{ $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' }] as any,
+      officialIds: ['official_1'],
+      officials: [{ $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' }] as any,
     });
 
     await waitForStableDirtyState(onDirtyStateChange, false);
-    expect(userService.getUsersByIds).not.toHaveBeenCalledWith(['ref_1']);
+    expect(userService.getUsersByIds).not.toHaveBeenCalledWith(['official_1']);
     expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
   });
 
@@ -651,12 +651,12 @@ describe('EventForm dirty state', () => {
     expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
   });
 
-  it('marks the form dirty when a referee is removed', async () => {
+  it('marks the form dirty when a official is removed', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(onDirtyStateChange, undefined, {
-      referees: [{ $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' }],
-      refereeIds: ['ref_1'],
+      officials: [{ $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' }],
+      officialIds: ['official_1'],
     });
 
     await waitFor(() => {
@@ -691,10 +691,10 @@ describe('EventForm dirty state', () => {
     await waitForStableDirtyState(onDirtyStateChange, true);
   });
 
-  it('marks the form dirty when a referee is added', async () => {
+  it('marks the form dirty when a official is added', async () => {
     const onDirtyStateChange = jest.fn();
     (userService.searchUsers as jest.Mock).mockResolvedValue([
-      { $id: 'ref_2', email: 'ref2@example.com', firstName: 'Casey', lastName: 'Ref' },
+      { $id: 'official_2', email: 'official2@example.com', firstName: 'Casey', lastName: 'Official' },
     ]);
 
     renderForm(onDirtyStateChange);
@@ -708,10 +708,10 @@ describe('EventForm dirty state', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Add as referee' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add as official' })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add as referee' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add as official' }));
 
     await waitForStableDirtyState(onDirtyStateChange, true);
   });
@@ -799,7 +799,7 @@ describe('EventForm dirty state', () => {
     await waitForStableDirtyState(onDirtyStateChange, true);
   });
 
-  it('marks the form dirty when an organization referee is removed', async () => {
+  it('marks the form dirty when an organization official is removed', async () => {
     const onDirtyStateChange = jest.fn();
     const organization = buildOrganization();
 
@@ -808,8 +808,8 @@ describe('EventForm dirty state', () => {
       undefined,
       {
         organizationId: organization.$id,
-        refereeIds: ['ref_1'],
-        referees: [{ $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' }],
+        officialIds: ['official_1'],
+        officials: [{ $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' }],
         state: 'UNPUBLISHED',
       },
       organization,
@@ -831,15 +831,15 @@ describe('EventForm dirty state', () => {
       onDirtyStateChange,
       undefined,
       {
-        refereeIds: ['ref_1'],
-        referees: [{ $id: 'ref_1', email: 'ref1@example.com', firstName: 'Riley', lastName: 'Ref' }],
+        officialIds: ['official_1'],
+        officials: [{ $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' }],
         staffInvites: [{
           $id: 'invite_failed_1',
           type: 'STAFF',
           eventId: 'event_1',
-          userId: 'ref_1',
+          userId: 'official_1',
           status: 'FAILED',
-          staffTypes: ['REFEREE'],
+          staffTypes: ['OFFICIAL'],
         }],
       },
     );
@@ -868,25 +868,25 @@ describe('EventForm dirty state', () => {
       target: { value: 'Ref' },
     });
     fireEvent.change(screen.getByLabelText('Email'), {
-      target: { value: 'ref@example.com' },
+      target: { value: 'official@example.com' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Referee' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Official' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add email invite' }));
 
     await waitForStableDirtyState(onDirtyStateChange, true);
     expect(screen.getByText('Email invite')).toBeInTheDocument();
   });
 
-  it('does not stage a referee email invite when the server reports that email already belongs to an assigned referee', async () => {
+  it('does not stage a official email invite when the server reports that email already belongs to an assigned official', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();
     (userService.lookupEmailMembership as jest.Mock).mockResolvedValue([
-      { email: 'ref@example.com', userId: 'ref_1' },
+      { email: 'official@example.com', userId: 'official_1' },
     ]);
 
     renderForm(onDirtyStateChange, formRef, {
-      refereeIds: ['ref_1'],
-      referees: [],
+      officialIds: ['official_1'],
+      officials: [],
     });
 
     await waitFor(() => {
@@ -900,18 +900,18 @@ describe('EventForm dirty state', () => {
       target: { value: 'Ref' },
     });
     fireEvent.change(screen.getByLabelText('Email'), {
-      target: { value: 'ref@example.com' },
+      target: { value: 'official@example.com' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Referee' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Official' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add email invite' }));
 
     await waitFor(() => {
-      expect(screen.getByText('ref@example.com is already added as referee for this event.')).toBeInTheDocument();
+      expect(screen.getByText('official@example.com is already added as official for this event.')).toBeInTheDocument();
     });
     expect(screen.queryByText('Email invite')).not.toBeInTheDocument();
     expect(userService.lookupEmailMembership).toHaveBeenCalledWith(
-      ['ref@example.com'],
-      expect.arrayContaining(['host_1', 'ref_1']),
+      ['official@example.com'],
+      expect.arrayContaining(['host_1', 'official_1']),
     );
   });
 
@@ -954,17 +954,17 @@ describe('EventForm dirty state', () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();
     (userService.inviteUsersByEmail as jest.Mock).mockResolvedValue({
-      sent: [{ userId: 'ref_2', email: 'ref@example.com', staffTypes: ['REFEREE', 'HOST'] }],
+      sent: [{ userId: 'official_2', email: 'official@example.com', staffTypes: ['OFFICIAL', 'HOST'] }],
       not_sent: [],
       failed: [],
     });
     (userService.getUsersByIds as jest.Mock).mockResolvedValue([
-      { $id: 'ref_2', email: 'ref@example.com', firstName: 'Casey', lastName: 'Ref' },
+      { $id: 'official_2', email: 'official@example.com', firstName: 'Casey', lastName: 'Official' },
     ]);
 
     renderForm(onDirtyStateChange, formRef, {
       pendingStaffInvites: [
-        { firstName: 'Casey', lastName: 'Ref', email: 'ref@example.com', roles: ['REFEREE', 'ASSISTANT_HOST'] },
+        { firstName: 'Casey', lastName: 'Official', email: 'official@example.com', roles: ['OFFICIAL', 'ASSISTANT_HOST'] },
       ],
     });
 
@@ -982,12 +982,12 @@ describe('EventForm dirty state', () => {
     expect(invitePayloadArg).toHaveLength(1);
     expect(invitePayloadArg[0]).toEqual(expect.objectContaining({
       firstName: 'Casey',
-      lastName: 'Ref',
-      email: 'ref@example.com',
+      lastName: 'Official',
+      email: 'official@example.com',
       type: 'STAFF',
       eventId: 'event_1',
       replaceStaffTypes: true,
-      staffTypes: expect.arrayContaining(['REFEREE', 'HOST']),
+      staffTypes: expect.arrayContaining(['OFFICIAL', 'HOST']),
     }));
 
     await waitFor(() => {
@@ -996,13 +996,14 @@ describe('EventForm dirty state', () => {
 
     expect(formRef.current?.getDraft()).toEqual(
       expect.objectContaining({
-        refereeIds: expect.arrayContaining(['ref_2']),
-        assistantHostIds: expect.arrayContaining(['ref_2']),
-        referees: expect.arrayContaining([
-          expect.objectContaining({ $id: 'ref_2' }),
+        officialIds: expect.arrayContaining(['official_2']),
+        assistantHostIds: expect.arrayContaining(['official_2']),
+        officials: expect.arrayContaining([
+          expect.objectContaining({ $id: 'official_2' }),
         ]),
       }),
     );
   });
 
 });
+

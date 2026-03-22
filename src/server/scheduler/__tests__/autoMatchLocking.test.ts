@@ -2,23 +2,23 @@ import { applyPersistentAutoLock, shouldAutoLockMatch } from '../updateMatch';
 
 type MatchShape = {
   locked: boolean;
-  refereeCheckedIn?: boolean;
+  officialCheckedIn?: boolean;
   start?: Date | null;
 };
 
 const createMatch = (overrides: Partial<MatchShape> = {}): MatchShape => ({
   locked: false,
-  refereeCheckedIn: false,
+  officialCheckedIn: false,
   start: null,
   ...overrides,
 });
 
 describe('automatic persistent match locking', () => {
-  it('locks matches when referee has checked in', () => {
+  it('locks matches when official has checked in', () => {
     const now = new Date('2026-02-26T12:00:00.000Z');
     const match = createMatch({
       locked: false,
-      refereeCheckedIn: true,
+      officialCheckedIn: true,
       start: new Date('2026-02-26T13:00:00.000Z'),
     });
 
@@ -33,7 +33,7 @@ describe('automatic persistent match locking', () => {
     const now = new Date('2026-02-26T12:00:00.000Z');
     const match = createMatch({
       locked: false,
-      refereeCheckedIn: false,
+      officialCheckedIn: false,
       start: new Date('2026-02-26T11:59:00.000Z'),
     });
 
@@ -48,7 +48,7 @@ describe('automatic persistent match locking', () => {
     const now = new Date('2026-02-26T12:00:00.000Z');
     const match = createMatch({
       locked: false,
-      refereeCheckedIn: true,
+      officialCheckedIn: true,
       start: new Date('2026-02-26T11:00:00.000Z'),
     });
 

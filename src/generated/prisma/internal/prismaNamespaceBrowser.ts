@@ -138,15 +138,15 @@ export const MatchesScalarFieldEnum = {
   loserNextMatchId: 'loserNextMatchId',
   previousRightId: 'previousRightId',
   previousLeftId: 'previousLeftId',
-  refereeCheckedIn: 'refereeCheckedIn',
-  refereeId: 'refereeId',
+  officialCheckedIn: 'officialCheckedIn',
+  officialId: 'officialId',
   team1Id: 'team1Id',
   team2Id: 'team2Id',
   team1Seed: 'team1Seed',
   team2Seed: 'team2Seed',
   eventId: 'eventId',
   fieldId: 'fieldId',
-  teamRefereeId: 'teamRefereeId'
+  teamOfficialId: 'teamOfficialId'
 } as const
 
 export type MatchesScalarFieldEnum = (typeof MatchesScalarFieldEnum)[keyof typeof MatchesScalarFieldEnum]
@@ -474,9 +474,9 @@ export const EventsScalarFieldEnum = {
   parentEvent: 'parentEvent',
   autoCancellation: 'autoCancellation',
   eventType: 'eventType',
-  doTeamsRef: 'doTeamsRef',
-  teamRefsMaySwap: 'teamRefsMaySwap',
-  refereeIds: 'refereeIds',
+  doTeamsOfficiate: 'doTeamsOfficiate',
+  teamOfficialsMaySwap: 'teamOfficialsMaySwap',
+  officialIds: 'officialIds',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
   installmentDueDates: 'installmentDueDates',
@@ -501,7 +501,7 @@ export const OrganizationsScalarFieldEnum = {
   hostIds: 'hostIds',
   website: 'website',
   sports: 'sports',
-  refIds: 'refIds',
+  officialIds: 'officialIds',
   hasStripeAccount: 'hasStripeAccount',
   coordinates: 'coordinates',
   fieldIds: 'fieldIds',

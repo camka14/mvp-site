@@ -299,7 +299,7 @@ describe('League schedule page', () => {
       organizationId: 'org_1',
       hostId: 'host_1',
       assistantHostIds: [],
-      refereeIds: ['ref_1'],
+      officialIds: ['official_1'],
     });
 
     apiRequestMock.mockImplementation((path: string) => {
@@ -369,7 +369,7 @@ describe('League schedule page', () => {
     expect(scoped.getByLabelText(/^managers$/i)).toBeInTheDocument();
     expect(scoped.getByLabelText(/^players$/i)).toBeInTheDocument();
     expect(scoped.getByLabelText(/^parents \(of players\)$/i)).toBeInTheDocument();
-    expect(scoped.getByLabelText(/^referees$/i)).toBeInTheDocument();
+    expect(scoped.getByLabelText(/^officials$/i)).toBeInTheDocument();
     expect(scoped.getByLabelText(/^hosts$/i)).toBeInTheDocument();
   });
 
@@ -744,7 +744,7 @@ describe('League schedule page', () => {
           key: 'open',
           name: 'Open',
           divisionTypeId: 'skill_open_age_18plus',
-          divisionTypeName: 'Open • 18+',
+          divisionTypeName: 'Open â€¢ 18+',
           ratingType: 'SKILL',
           gender: 'C',
           ageCutoffDate: '2026-08-01T19:00:00.000Z',
@@ -758,7 +758,7 @@ describe('League schedule page', () => {
           key: 'advanced',
           name: 'Advanced',
           divisionTypeId: 'skill_premier_age_u17',
-          divisionTypeName: 'Premier • U17',
+          divisionTypeName: 'Premier â€¢ U17',
           ratingType: 'SKILL',
           gender: 'C',
           ageCutoffDate: '2026-08-01T19:00:00.000Z',
@@ -1052,8 +1052,8 @@ describe('League schedule page', () => {
           long: -83.0,
         },
       ],
-      refIds: ['ref_org_1'],
-      referees: [{ $id: 'ref_org_1' }],
+      officialIds: ['official_org_1'],
+      officials: [{ $id: 'official_org_1' }],
     });
 
     apiRequestMock.mockImplementation((path: string) => {
@@ -1682,7 +1682,7 @@ describe('League schedule page', () => {
       seedColor: 0,
       waitListIds: [],
       freeAgentIds: [],
-      refereeIds: [],
+      officialIds: [],
       fields: [
         {
           $id: 'field_local_1',
@@ -1777,7 +1777,7 @@ describe('League schedule page', () => {
       seedColor: 0,
       waitListIds: [],
       freeAgentIds: [],
-      refereeIds: [],
+      officialIds: [],
       fields: [
         {
           $id: 'field_tournament_1',
@@ -2194,3 +2194,4 @@ describe('League schedule page', () => {
     expect(await screen.findByText(/rental terms go here/i)).toBeInTheDocument();
   });
 });
+

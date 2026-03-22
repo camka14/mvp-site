@@ -327,7 +327,7 @@ const toClearedBracketMatchUpdate = (match: Match): Partial<Match> & { $id: stri
   team1Points: [],
   team2Points: [],
   setResults: [],
-  refereeCheckedIn: false,
+  officialCheckedIn: false,
   locked: false,
 });
 
@@ -523,7 +523,7 @@ type LocationDefaults = {
 };
 
 type EventLifecycleStatus = 'DRAFT' | 'PUBLISHED';
-type NotificationAudienceKey = 'managers' | 'players' | 'parents' | 'referees' | 'hosts';
+type NotificationAudienceKey = 'managers' | 'players' | 'parents' | 'officials' | 'hosts';
 type NotificationAudienceState = Record<NotificationAudienceKey, boolean>;
 
 type TeamBillingUserOption = {
@@ -611,7 +611,7 @@ const DEFAULT_NOTIFICATION_AUDIENCE: NotificationAudienceState = {
   managers: false,
   players: false,
   parents: false,
-  referees: false,
+  officials: false,
   hosts: false,
 };
 
@@ -936,7 +936,7 @@ function EventScheduleContent() {
   const [selectedStandingsDivision, setSelectedStandingsDivision] = useState<string | null>(null);
   const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
   const [participantUsers, setParticipantUsers] = useState<UserData[]>([]);
-  const [participantReferees, setParticipantReferees] = useState<UserData[]>([]);
+  const [participantOfficials, setParticipantOfficials] = useState<UserData[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
   const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
@@ -1703,8 +1703,8 @@ function EventScheduleContent() {
 
       if (idChanged(before.team1Id, after.team1Id)) changedFields.push('team 1');
       if (idChanged(before.team2Id, after.team2Id)) changedFields.push('team 2');
-      if (idChanged(before.refereeId, after.refereeId)) changedFields.push('referee');
-      if (idChanged(before.teamRefereeId, after.teamRefereeId)) changedFields.push('team referee');
+      if (idChanged(before.officialId, after.officialId)) changedFields.push('official');
+      if (idChanged(before.teamOfficialId, after.teamOfficialId)) changedFields.push('team official');
       if (idChanged(before.fieldId, after.fieldId)) changedFields.push('field');
       if (valueChanged(startBefore, startAfter)) changedFields.push('start time');
       if (valueChanged(endBefore, endAfter)) changedFields.push('end time');
@@ -1716,8 +1716,8 @@ function EventScheduleContent() {
       if (valueChanged(before.side, after.side)) changedFields.push('side');
       if (Boolean(before.losersBracket) !== Boolean(after.losersBracket)) changedFields.push('winner/loser bracket');
       if (Boolean(before.locked) !== Boolean(after.locked)) changedFields.push('lock status');
-      if (Boolean(before.refereeCheckedIn ?? before.refCheckedIn) !== Boolean(after.refereeCheckedIn ?? after.refCheckedIn)) {
-        changedFields.push('referee check-in');
+      if (Boolean(before.officialCheckedIn ?? before.officialCheckedIn) !== Boolean(after.officialCheckedIn ?? after.officialCheckedIn)) {
+        changedFields.push('official check-in');
       }
       if (
         arrayChanged(before.team1Points, after.team1Points)
@@ -2330,34 +2330,34 @@ function EventScheduleContent() {
 
   const participantTeamIdSet = useMemo(() => new Set(participantTeamIds), [participantTeamIds]);
   const participantUserIdSet = useMemo(() => new Set(participantUserIds), [participantUserIds]);
-  const participantRefereeIds = useMemo(() => {
+  const participantOfficialIds = useMemo(() => {
     const ids = new Set<string>();
 
-    if (Array.isArray(activeEvent?.refereeIds)) {
-      activeEvent.refereeIds
-        .map((refereeId) => normalizeIdToken(refereeId))
-        .filter((refereeId): refereeId is string => Boolean(refereeId))
-        .forEach((refereeId) => ids.add(refereeId));
+    if (Array.isArray(activeEvent?.officialIds)) {
+      activeEvent.officialIds
+        .map((officialId) => normalizeIdToken(officialId))
+        .filter((officialId): officialId is string => Boolean(officialId))
+        .forEach((officialId) => ids.add(officialId));
     }
 
-    if (Array.isArray(activeEvent?.referees)) {
-      activeEvent.referees.forEach((refereeEntry) => {
-        const refereeId = normalizeIdToken(refereeEntry?.$id);
-        if (refereeId) {
-          ids.add(refereeId);
+    if (Array.isArray(activeEvent?.officials)) {
+      activeEvent.officials.forEach((officialEntry) => {
+        const officialId = normalizeIdToken(officialEntry?.$id);
+        if (officialId) {
+          ids.add(officialId);
         }
       });
     }
 
     activeMatches.forEach((match) => {
-      const refereeId = normalizeIdToken(match.refereeId ?? match.referee?.$id);
-      if (refereeId) {
-        ids.add(refereeId);
+      const officialId = normalizeIdToken(match.officialId ?? match.official?.$id);
+      if (officialId) {
+        ids.add(officialId);
       }
     });
 
     return Array.from(ids);
-  }, [activeEvent?.refereeIds, activeEvent?.referees, activeMatches]);
+  }, [activeEvent?.officialIds, activeEvent?.officials, activeMatches]);
 
   const participantTeamsById = useMemo(() => {
     const teams = new Map<string, Team>();
@@ -2727,39 +2727,39 @@ function EventScheduleContent() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadParticipantReferees = async () => {
-      if (participantRefereeIds.length === 0) {
-        setParticipantReferees([]);
+    const loadParticipantOfficials = async () => {
+      if (participantOfficialIds.length === 0) {
+        setParticipantOfficials([]);
         return;
       }
 
       try {
-        const hydratedReferees = await userService.getUsersByIds(
-          participantRefereeIds,
+        const hydratedOfficials = await userService.getUsersByIds(
+          participantOfficialIds,
           { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
         );
         if (cancelled) {
           return;
         }
-        const hydratedById = new Map(hydratedReferees.map((referee) => [referee.$id, referee]));
-        const orderedReferees = participantRefereeIds
-          .map((refereeId) => hydratedById.get(refereeId))
-          .filter((referee): referee is UserData => Boolean(referee));
-        setParticipantReferees(orderedReferees);
-      } catch (refereesError) {
+        const hydratedById = new Map(hydratedOfficials.map((official) => [official.$id, official]));
+        const orderedOfficials = participantOfficialIds
+          .map((officialId) => hydratedById.get(officialId))
+          .filter((official): official is UserData => Boolean(official));
+        setParticipantOfficials(orderedOfficials);
+      } catch (officialsError) {
         if (cancelled) {
           return;
         }
-        console.error('Failed to load referees for event:', refereesError);
+        console.error('Failed to load officials for event:', officialsError);
       }
     };
 
-    void loadParticipantReferees();
+    void loadParticipantOfficials();
 
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, eventId, participantRefereeIds]);
+  }, [activeEvent?.$id, eventId, participantOfficialIds]);
 
   useEffect(() => {
     if (!isAddTeamModalOpen) {
@@ -3613,8 +3613,8 @@ function EventScheduleContent() {
         freeAgentIds: [],
         players: [],
         teams: [],
-        referees: [],
-        refereeIds: [],
+        officials: [],
+        officialIds: [],
         assistantHostIds: [],
       } as Event;
     });
@@ -3804,8 +3804,8 @@ function EventScheduleContent() {
                 : Array.isArray(resolvedHostOrg.fields)
                   ? resolvedHostOrg.fields
                   : base.fields,
-              refereeIds: Array.isArray(resolvedHostOrg.refIds) ? resolvedHostOrg.refIds : base.refereeIds,
-              referees: Array.isArray(resolvedHostOrg.referees) ? resolvedHostOrg.referees : base.referees,
+              officialIds: Array.isArray(resolvedHostOrg.officialIds) ? resolvedHostOrg.officialIds : base.officialIds,
+              officials: Array.isArray(resolvedHostOrg.officials) ? resolvedHostOrg.officials : base.officials,
               location: baseLocation || orgLocation || '',
               coordinates: hasBaseCoordinates ? base.coordinates : orgCoordinates ?? base.coordinates ?? [0, 0],
             } as Event;
@@ -4147,9 +4147,9 @@ function EventScheduleContent() {
       };
     };
 
-    const normalizedReferees = await hydrateAssignedUsers(hydratedEvent.refereeIds, hydratedEvent.referees);
-    hydratedEvent.refereeIds = normalizedReferees.ids;
-    hydratedEvent.referees = normalizedReferees.users;
+    const normalizedOfficials = await hydrateAssignedUsers(hydratedEvent.officialIds, hydratedEvent.officials);
+    hydratedEvent.officialIds = normalizedOfficials.ids;
+    hydratedEvent.officials = normalizedOfficials.users;
 
     const normalizedAssistantHosts = await hydrateAssignedUsers(hydratedEvent.assistantHostIds, hydratedEvent.assistantHosts);
     hydratedEvent.assistantHostIds = normalizedAssistantHosts.ids;
@@ -4708,7 +4708,7 @@ function EventScheduleContent() {
     activeMatches.forEach((match) => {
       addTeam(match.team1);
       addTeam(match.team2);
-      addTeam(match.teamReferee);
+      addTeam(match.teamOfficial);
     });
 
     return Array.from(teamsById.values());
@@ -5013,12 +5013,12 @@ function EventScheduleContent() {
       }
 
       const afterDraft = formApi.getDraft();
-      const beforeRefereeIds = JSON.stringify(Array.isArray(beforeDraft.refereeIds) ? beforeDraft.refereeIds : []);
-      const afterRefereeIds = JSON.stringify(Array.isArray(afterDraft.refereeIds) ? afterDraft.refereeIds : []);
+      const beforeOfficialIds = JSON.stringify(Array.isArray(beforeDraft.officialIds) ? beforeDraft.officialIds : []);
+      const afterOfficialIds = JSON.stringify(Array.isArray(afterDraft.officialIds) ? afterDraft.officialIds : []);
       const beforeAssistantHostIds = JSON.stringify(Array.isArray(beforeDraft.assistantHostIds) ? beforeDraft.assistantHostIds : []);
       const afterAssistantHostIds = JSON.stringify(Array.isArray(afterDraft.assistantHostIds) ? afterDraft.assistantHostIds : []);
       let latestEvent = savedEvent;
-      if (beforeRefereeIds !== afterRefereeIds || beforeAssistantHostIds !== afterAssistantHostIds) {
+      if (beforeOfficialIds !== afterOfficialIds || beforeAssistantHostIds !== afterAssistantHostIds) {
         const invitedEventDraft = { ...savedEvent, ...(afterDraft as Event), $id: savedEventId } as Event;
         latestEvent = await eventService.updateEvent(savedEventId, invitedEventDraft);
       }
@@ -5206,15 +5206,15 @@ function EventScheduleContent() {
       setResults: Array.isArray(match.setResults) ? match.setResults : [],
       team1Id: resolvePersistableTeamId(match.team1Id, match.team1),
       team2Id: resolvePersistableTeamId(match.team2Id, match.team2),
-      refereeId: normalizeRelationId(match.refereeId) ?? normalizeRelationId(match.referee),
-      teamRefereeId: resolvePersistableTeamId(match.teamRefereeId, match.teamReferee),
+      officialId: normalizeRelationId(match.officialId) ?? normalizeRelationId(match.official),
+      teamOfficialId: resolvePersistableTeamId(match.teamOfficialId, match.teamOfficial),
       fieldId: normalizeRelationId(match.fieldId) ?? normalizeRelationId(match.field),
       previousLeftId: asBulkMatchRef(match.previousLeftId),
       previousRightId: asBulkMatchRef(match.previousRightId),
       winnerNextMatchId: asBulkMatchRef(match.winnerNextMatchId),
       loserNextMatchId: asBulkMatchRef(match.loserNextMatchId),
       side: match.side ?? null,
-      refereeCheckedIn: Boolean(match.refereeCheckedIn),
+      officialCheckedIn: Boolean(match.officialCheckedIn),
       start: match.start ?? null,
       end: match.end ?? null,
       division: normalizeIdToken(getDivisionId(match.division) ?? null),
@@ -6219,31 +6219,31 @@ function EventScheduleContent() {
 
   const matchEditorTeams = resolvedMatchTeams;
 
-  const matchEditorReferees = useMemo(() => {
-    const refereesById = new Map<string, UserData>();
-    const addReferee = (candidate: unknown) => {
+  const matchEditorOfficials = useMemo(() => {
+    const officialsById = new Map<string, UserData>();
+    const addOfficial = (candidate: unknown) => {
       if (!candidate || typeof candidate !== 'object') {
         return;
       }
-      const refereeCandidate = candidate as UserData & { id?: string };
-      const refereeId = normalizeIdToken(refereeCandidate.$id ?? refereeCandidate.id);
-      if (!refereeId || refereesById.has(refereeId)) {
+      const officialCandidate = candidate as UserData & { id?: string };
+      const officialId = normalizeIdToken(officialCandidate.$id ?? officialCandidate.id);
+      if (!officialId || officialsById.has(officialId)) {
         return;
       }
-      refereesById.set(refereeId, {
-        ...refereeCandidate,
-        $id: refereeId,
+      officialsById.set(officialId, {
+        ...officialCandidate,
+        $id: officialId,
       } as UserData);
     };
 
-    participantReferees.forEach(addReferee);
-    if (Array.isArray(activeEvent?.referees)) {
-      activeEvent.referees.forEach(addReferee);
+    participantOfficials.forEach(addOfficial);
+    if (Array.isArray(activeEvent?.officials)) {
+      activeEvent.officials.forEach(addOfficial);
     }
-    activeMatches.forEach((match) => addReferee(match.referee));
+    activeMatches.forEach((match) => addOfficial(match.official));
 
-    return Array.from(refereesById.values());
-  }, [participantReferees, activeEvent?.referees, activeMatches]);
+    return Array.from(officialsById.values());
+  }, [participantOfficials, activeEvent?.officials, activeMatches]);
 
   const stageMatchCreate = useCallback((params: {
     creationContext: MatchCreateContext;
@@ -6281,8 +6281,8 @@ function EventScheduleContent() {
       eventId: activeEvent.$id,
       team1Id: null,
       team2Id: null,
-      refereeId: null,
-      teamRefereeId: null,
+      officialId: null,
+      teamOfficialId: null,
       fieldId: params.creationContext === 'schedule'
         ? normalizeIdToken(params.seed?.fieldId as string | undefined)
         : null,
@@ -6296,7 +6296,7 @@ function EventScheduleContent() {
       previousLeftId: asBulkMatchRef(params.seed?.previousLeftId as string | undefined),
       previousRightId: asBulkMatchRef(params.seed?.previousRightId as string | undefined),
       side: params.seed?.side ?? null,
-      refereeCheckedIn: false,
+      officialCheckedIn: false,
       start: params.creationContext === 'schedule' ? defaultStart : null,
       end: params.creationContext === 'schedule' ? defaultEnd : null,
       division: (params.seed?.division as string | undefined) ?? null,
@@ -6498,21 +6498,21 @@ function EventScheduleContent() {
     });
   }, []);
 
-  const isRefereeCheckedIn = useCallback(
-    (match: Match) => Boolean(match.refereeCheckedIn || match.refCheckedIn),
+  const isOfficialCheckedIn = useCallback(
+    (match: Match) => Boolean(match.officialCheckedIn || match.officialCheckedIn),
     [],
   );
 
   const canUserManageScore = useCallback(
     (match: Match) => {
-      if (!user?.$id || !isRefereeCheckedIn(match)) return false;
-      if (match.refereeId === user.$id || match.referee?.$id === user.$id) {
+      if (!user?.$id || !isOfficialCheckedIn(match)) return false;
+      if (match.officialId === user.$id || match.official?.$id === user.$id) {
         return true;
       }
-      const teamRef = resolveTeam(match.teamReferee ?? match.teamRefereeId);
-      return userOnTeam(teamRef);
+      const teamOfficial = resolveTeam(match.teamOfficial ?? match.teamOfficialId);
+      return userOnTeam(teamOfficial);
     },
-    [isRefereeCheckedIn, resolveTeam, user?.$id, userOnTeam],
+    [isOfficialCheckedIn, resolveTeam, user?.$id, userOnTeam],
   );
 
   const handleScoreChange = useCallback(
@@ -6578,7 +6578,7 @@ function EventScheduleContent() {
     [applyMatchUpdate, activeEvent?.$id, eventId],
   );
 
-  const updateMatchRefereeState = useCallback(
+  const updateMatchOfficialState = useCallback(
     async (match: Match, updates: Partial<Match>, failureMessage: string) => {
       const targetEventId = activeEvent?.$id ?? eventId;
       if (!targetEventId) {
@@ -6608,53 +6608,53 @@ function EventScheduleContent() {
       let modalMatch = activeMatches.find((candidate) => candidate.$id === match.$id) ?? match;
 
       if (user?.$id) {
-        const assignedTeamRef = resolveTeam(modalMatch.teamReferee ?? modalMatch.teamRefereeId);
-        const assignedTeamRefId = normalizeIdToken(modalMatch.teamRefereeId ?? modalMatch.teamReferee?.$id);
+        const assignedTeamOfficial = resolveTeam(modalMatch.teamOfficial ?? modalMatch.teamOfficialId);
+        const assignedTeamOfficialId = normalizeIdToken(modalMatch.teamOfficialId ?? modalMatch.teamOfficial?.$id);
         const currentUserEventTeam = findUserEventTeam();
         const currentUserEventTeamId = normalizeIdToken(currentUserEventTeam?.$id) ?? userEventTeamIdFromProfile;
-        const isAssignedUserRef = modalMatch.refereeId === user.$id || modalMatch.referee?.$id === user.$id;
-        const isAssignedTeamRef =
-          userOnTeam(assignedTeamRef) ||
-          Boolean(currentUserEventTeamId && assignedTeamRefId && currentUserEventTeamId === assignedTeamRefId);
-        const userIsCurrentRef = isAssignedUserRef || isAssignedTeamRef;
-        const checkedIn = isRefereeCheckedIn(modalMatch);
+        const isAssignedUserOfficial = modalMatch.officialId === user.$id || modalMatch.official?.$id === user.$id;
+        const isAssignedTeamOfficial =
+          userOnTeam(assignedTeamOfficial) ||
+          Boolean(currentUserEventTeamId && assignedTeamOfficialId && currentUserEventTeamId === assignedTeamOfficialId);
+        const userIsCurrentOfficial = isAssignedUserOfficial || isAssignedTeamOfficial;
+        const checkedIn = isOfficialCheckedIn(modalMatch);
 
-        if (!checkedIn && userIsCurrentRef) {
+        if (!checkedIn && userIsCurrentOfficial) {
           const confirmCheckIn = window.confirm('Would you like to check in and start this match?');
           if (confirmCheckIn) {
-            modalMatch = await updateMatchRefereeState(
+            modalMatch = await updateMatchOfficialState(
               modalMatch,
-              { refereeCheckedIn: true },
-              'Failed to check in as referee. Please try again.',
+              { officialCheckedIn: true },
+              'Failed to check in as official. Please try again.',
             );
           }
         } else {
           const canSwapIntoRef =
             !checkedIn &&
-            Boolean(activeEvent?.doTeamsRef) &&
-            Boolean(activeEvent?.teamRefsMaySwap) &&
+            Boolean(activeEvent?.doTeamsOfficiate) &&
+            Boolean(activeEvent?.teamOfficialsMaySwap) &&
             Boolean(currentUserEventTeamId) &&
-            assignedTeamRefId !== currentUserEventTeamId;
+            assignedTeamOfficialId !== currentUserEventTeamId;
 
           if (canSwapIntoRef && currentUserEventTeamId) {
             const confirmSwap = window.confirm(
-              'The referee has not checked in yet. Do you want your team to referee this match?',
+              'The official has not checked in yet. Do you want your team to official this match?',
             );
             if (confirmSwap) {
-              modalMatch = await updateMatchRefereeState(
+              modalMatch = await updateMatchOfficialState(
                 modalMatch,
                 {
-                  teamRefereeId: currentUserEventTeamId,
-                  refereeCheckedIn: false,
+                  teamOfficialId: currentUserEventTeamId,
+                  officialCheckedIn: false,
                 },
-                'Failed to swap referee for this match. Please try again.',
+                'Failed to swap official for this match. Please try again.',
               );
               const confirmCheckIn = window.confirm('Would you like to check in and start this match?');
               if (confirmCheckIn) {
-                modalMatch = await updateMatchRefereeState(
+                modalMatch = await updateMatchOfficialState(
                   modalMatch,
-                  { refereeCheckedIn: true },
-                  'Failed to check in as referee. Please try again.',
+                  { officialCheckedIn: true },
+                  'Failed to check in as official. Please try again.',
                 );
               }
             }
@@ -6666,15 +6666,15 @@ function EventScheduleContent() {
       setIsScoreModalOpen(true);
     },
     [
-      activeEvent?.doTeamsRef,
-      activeEvent?.teamRefsMaySwap,
+      activeEvent?.doTeamsOfficiate,
+      activeEvent?.teamOfficialsMaySwap,
       activeMatches,
       canEditMatches,
       findUserEventTeam,
       handleMatchEditRequest,
-      isRefereeCheckedIn,
+      isOfficialCheckedIn,
       resolveTeam,
-      updateMatchRefereeState,
+      updateMatchOfficialState,
       user,
       userEventTeamIdFromProfile,
       userOnTeam,
@@ -6841,11 +6841,11 @@ function EventScheduleContent() {
 
   const renderSortIndicator = (field: StandingsSortField) => {
     if (standingsSort.field !== field) {
-      return <span className="ml-1 text-xs text-gray-400">↕</span>;
+      return <span className="ml-1 text-xs text-gray-400">â†•</span>;
     }
     return (
       <span className="ml-1 text-xs font-semibold text-gray-700">
-        {standingsSort.direction === 'asc' ? '↑' : '↓'}
+        {standingsSort.direction === 'asc' ? 'â†‘' : 'â†“'}
       </span>
     );
   };
@@ -7027,7 +7027,7 @@ function EventScheduleContent() {
               <>
                 <Text size="sm" c="dimmed">
                   Document {rentalSignIndex + 1} of {rentalSignLinks.length}
-                  {currentRentalSignLink.title ? ` • ${currentRentalSignLink.title}` : ''}
+                  {currentRentalSignLink.title ? ` â€¢ ${currentRentalSignLink.title}` : ''}
                 </Text>
                 {currentRentalSignLink.requiredSignerLabel ? (
                   <Text size="sm" c="dimmed">
@@ -7907,14 +7907,14 @@ function EventScheduleContent() {
                                           size="xs"
                                         />
                                         <Text size="xs" c={deltaColor}>
-                                          Δ {formatPoints(points.pointsDelta)}
+                                          Î” {formatPoints(points.pointsDelta)}
                                         </Text>
                                       </Group>
                                     ) : (
                                       <Group justify="flex-end" gap="xs" wrap="nowrap">
                                         <Text size="sm" fw={600}>{formatPoints(points.finalPoints)}</Text>
                                         <Text size="xs" c={deltaColor}>
-                                          Δ {formatPoints(points.pointsDelta)}
+                                          Î” {formatPoints(points.pointsDelta)}
                                         </Text>
                                       </Group>
                                     )}
@@ -7987,9 +7987,9 @@ function EventScheduleContent() {
                 disabled={sendingNotification}
               />
               <Checkbox
-                label="Referees"
-                checked={notificationAudience.referees}
-                onChange={(event) => handleNotificationAudienceToggle('referees', event.currentTarget.checked)}
+                label="Officials"
+                checked={notificationAudience.officials}
+                onChange={(event) => handleNotificationAudienceToggle('officials', event.currentTarget.checked)}
                 disabled={sendingNotification}
               />
               <Checkbox
@@ -8153,7 +8153,7 @@ function EventScheduleContent() {
       <Modal
         opened={Boolean(selectedRefundTeam)}
         onClose={closeRefundModal}
-        title={selectedRefundTeam ? `Refunds • ${selectedRefundTeam.name || 'Team'}` : 'Refunds'}
+        title={selectedRefundTeam ? `Refunds â€¢ ${selectedRefundTeam.name || 'Team'}` : 'Refunds'}
         size="xl"
         centered
         fullScreen={Boolean(isMobile)}
@@ -8201,10 +8201,10 @@ function EventScheduleContent() {
                         <Group justify="space-between" align="flex-start" wrap="wrap">
                           <Stack gap={2}>
                             <Text fw={600}>
-                              {bill.ownerType === 'TEAM' ? 'Team bill' : 'User bill'} • {bill.ownerName}
+                              {bill.ownerType === 'TEAM' ? 'Team bill' : 'User bill'} â€¢ {bill.ownerName}
                             </Text>
                             <Text size="xs" c="dimmed">
-                              {bill.status ?? 'OPEN'} • Total {formatBillAmount(bill.totalAmountCents)}
+                              {bill.status ?? 'OPEN'} â€¢ Total {formatBillAmount(bill.totalAmountCents)}
                             </Text>
                           </Stack>
                           <Text size="xs" c="dimmed">
@@ -8216,7 +8216,7 @@ function EventScheduleContent() {
                           <Stack gap={2}>
                             {bill.lineItems.map((item, index) => (
                               <Text key={`${bill.$id}:line:${item.id ?? index}`} size="xs" c="dimmed">
-                                {(item.label ?? 'Line item')} • {formatBillAmount(Number(item.amountCents ?? 0))}
+                                {(item.label ?? 'Line item')} â€¢ {formatBillAmount(Number(item.amountCents ?? 0))}
                               </Text>
                             ))}
                           </Stack>
@@ -8235,7 +8235,7 @@ function EventScheduleContent() {
                                   <Group justify="space-between" align="center" wrap="wrap">
                                     <Text size="sm" fw={500}>Payment #{payment.sequence}</Text>
                                     <Text size="xs" c="dimmed">
-                                      Amount {formatBillAmount(payment.amountCents)} • Refunded {formatBillAmount(payment.refundedAmountCents)}
+                                      Amount {formatBillAmount(payment.amountCents)} â€¢ Refunded {formatBillAmount(payment.refundedAmountCents)}
                                     </Text>
                                   </Group>
                                   <Text size="xs" c="dimmed">
@@ -8298,7 +8298,7 @@ function EventScheduleContent() {
       <Modal
         opened={Boolean(createBillTeam)}
         onClose={closeCreateBillModal}
-        title={createBillTeam ? `Send Bill • ${createBillTeam.name || 'Team'}` : 'Send Bill'}
+        title={createBillTeam ? `Send Bill â€¢ ${createBillTeam.name || 'Team'}` : 'Send Bill'}
         size="lg"
         centered
       >
@@ -8502,7 +8502,7 @@ function EventScheduleContent() {
                                             <Text size="sm">{document.title}</Text>
                                             <Text size="xs" c="dimmed">
                                               {document.signerLabel}
-                                              {document.signOnce ? ' • Sign once' : ' • Event-specific'}
+                                              {document.signOnce ? ' â€¢ Sign once' : ' â€¢ Event-specific'}
                                             </Text>
                                           </Stack>
                                           <Group gap={6}>
@@ -8572,8 +8572,8 @@ function EventScheduleContent() {
         allMatches={activeMatches}
         fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
         teams={matchEditorTeams}
-        referees={matchEditorReferees}
-        doTeamsRef={Boolean(activeEvent.doTeamsRef)}
+        officials={matchEditorOfficials}
+        doTeamsOfficiate={Boolean(activeEvent.doTeamsOfficiate)}
         isCreateMode={Boolean(matchBeingEdited && isClientMatchId(matchBeingEdited.$id))}
         creationContext={matchEditorContext}
         eventType={activeEvent.eventType}
@@ -8601,7 +8601,7 @@ function EventScheduleContent() {
             <>
               <Text size="sm" c="dimmed">
                 Document {rentalSignIndex + 1} of {rentalSignLinks.length}
-                {currentRentalSignLink.title ? ` • ${currentRentalSignLink.title}` : ''}
+                {currentRentalSignLink.title ? ` â€¢ ${currentRentalSignLink.title}` : ''}
               </Text>
               {currentRentalSignLink.requiredSignerLabel ? (
                 <Text size="sm" c="dimmed">
@@ -8697,4 +8697,6 @@ export default function EventSchedulePage() {
     </Suspense>
   );
 }
+
+
 

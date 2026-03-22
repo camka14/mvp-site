@@ -15,7 +15,7 @@ interface MatchCardProps {
     showDate?: boolean;
     layout?: 'vertical' | 'horizontal';
     hideTimeBadge?: boolean;
-    showRefereeInHeader?: boolean;
+    showOfficialInHeader?: boolean;
     fieldLabel?: string;
     team1Placeholder?: string;
     team2Placeholder?: string;
@@ -59,7 +59,7 @@ function MatchCard({
     showDate = false,
     layout = 'vertical',
     hideTimeBadge = false,
-    showRefereeInHeader = false,
+    showOfficialInHeader = false,
     fieldLabel,
     team1Placeholder,
     team2Placeholder,
@@ -151,11 +151,11 @@ function MatchCard({
     };
 
     const getUserName = (userData: any) => {
-        if (!userData) return 'Referee';
+        if (!userData) return 'Official';
         const name = [userData.firstName, userData.lastName].filter(Boolean).join(' ').trim();
         if (name) return toTitleCase(name);
         if (userData.userName) return toTitleCase(userData.userName);
-        return 'Referee';
+        return 'Official';
     };
 
     const getMatchResult = () => {
@@ -368,26 +368,26 @@ function MatchCard({
                 <div className={`flex items-start justify-between gap-3 ${isCompactHorizontal ? 'mb-1' : 'mb-2'}`}>
                     <div className="flex flex-col gap-1 min-w-0">
                         <div className="text-sm text-gray-600">Match #{match.matchId}</div>
-                        {showRefereeInHeader && (match.referee || match.teamReferee) && (
+                        {showOfficialInHeader && (match.official || match.teamOfficial) && (
                             <div className="flex items-center gap-2 text-xs text-gray-700 flex-wrap">
-                                {match.referee && (
+                                {match.official && (
                                     <span className="flex items-center gap-1">
-                                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Official Referee:</span>
+                                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Official Official:</span>
                                         <Image
-                                            src={getUserAvatarUrl(match.referee, 16)}
-                                            alt={getUserName(match.referee)}
+                                            src={getUserAvatarUrl(match.official, 16)}
+                                            alt={getUserName(match.official)}
                                             width={16}
                                             height={16}
                                             unoptimized
                                             className="w-4 h-4 rounded-full"
                                         />
-                                        <span className="truncate max-w-[120px]">{getUserName(match.referee)}</span>
+                                        <span className="truncate max-w-[120px]">{getUserName(match.official)}</span>
                                     </span>
                                 )}
-                                {match.teamReferee && (
+                                {match.teamOfficial && (
                                     <span className="flex items-center gap-1">
-                                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Team Referee:</span>
-                                        <span className="truncate max-w-[120px]">{match.teamReferee.name || 'Team'}</span>
+                                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Team Official:</span>
+                                        <span className="truncate max-w-[120px]">{match.teamOfficial.name || 'Team'}</span>
                                     </span>
                                 )}
                             </div>
@@ -398,38 +398,38 @@ function MatchCard({
                 {layout === 'horizontal' ? renderHorizontalLayout() : renderVerticalLayout()}
             </div>
 
-            {!showRefereeInHeader && (
+            {!showOfficialInHeader && (
                 <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2">
             <div className="bg-white rounded-full px-3 py-1 text-xs text-gray-700 border shadow-sm flex items-center gap-3">
-                {match.referee && (
+                {match.official && (
                     <div className="flex items-center gap-1">
-                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Official Referee:</span>
+                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Official Official:</span>
                         <Image
-                            src={getUserAvatarUrl(match.referee, 18)}
-                            alt={getUserName(match.referee)}
+                            src={getUserAvatarUrl(match.official, 18)}
+                            alt={getUserName(match.official)}
                             width={16}
                             height={16}
                             unoptimized
                             className="w-4 h-4 rounded-full"
                         />
-                                <span className="font-medium truncate max-w-[120px]">{getUserName(match.referee)}</span>
+                                <span className="font-medium truncate max-w-[120px]">{getUserName(match.official)}</span>
                             </div>
                         )}
-                {match.teamReferee && (
+                {match.teamOfficial && (
                     <div className="flex items-center gap-1">
-                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Team Referee:</span>
+                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Team Official:</span>
                         <Image
-                            src={getTeamAvatarUrl(match.teamReferee, 18)}
-                            alt={match.teamReferee.name || 'Ref Team'}
+                            src={getTeamAvatarUrl(match.teamOfficial, 18)}
+                            alt={match.teamOfficial.name || 'Ref Team'}
                             width={16}
                             height={16}
                             unoptimized
                             className="w-4 h-4 rounded-full"
                         />
-                                <span className="font-medium truncate max-w-[120px]">{match.teamReferee.name || 'Ref Team'}</span>
+                                <span className="font-medium truncate max-w-[120px]">{match.teamOfficial.name || 'Ref Team'}</span>
                             </div>
                         )}
-                        {!match.referee && !match.teamReferee && <span>Ref: TBD</span>}
+                        {!match.official && !match.teamOfficial && <span>Official: TBD</span>}
                     </div>
                 </div>
             )}
@@ -438,3 +438,4 @@ function MatchCard({
 }
 
 export default memo(MatchCard);
+

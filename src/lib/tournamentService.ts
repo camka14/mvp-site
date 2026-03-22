@@ -83,23 +83,23 @@ class TournamentService {
         } else if (hasOwn('team2')) {
             payload.team2Id = relationId(match.team2);
         }
-        if (hasOwn('refereeId')) {
-            if (match.refereeId !== undefined) {
-                payload.refereeId = match.refereeId ?? null;
-            } else if (hasOwn('referee')) {
-                payload.refereeId = relationId(match.referee);
+        if (hasOwn('officialId')) {
+            if (match.officialId !== undefined) {
+                payload.officialId = match.officialId ?? null;
+            } else if (hasOwn('official')) {
+                payload.officialId = relationId(match.official);
             }
-        } else if (hasOwn('referee')) {
-            payload.refereeId = relationId(match.referee);
+        } else if (hasOwn('official')) {
+            payload.officialId = relationId(match.official);
         }
-        if (hasOwn('teamRefereeId')) {
-            if (match.teamRefereeId !== undefined) {
-                payload.teamRefereeId = match.teamRefereeId ?? null;
-            } else if (hasOwn('teamReferee')) {
-                payload.teamRefereeId = relationId(match.teamReferee);
+        if (hasOwn('teamOfficialId')) {
+            if (match.teamOfficialId !== undefined) {
+                payload.teamOfficialId = match.teamOfficialId ?? null;
+            } else if (hasOwn('teamOfficial')) {
+                payload.teamOfficialId = relationId(match.teamOfficial);
             }
-        } else if (hasOwn('teamReferee')) {
-            payload.teamRefereeId = relationId(match.teamReferee);
+        } else if (hasOwn('teamOfficial')) {
+            payload.teamOfficialId = relationId(match.teamOfficial);
         }
         if (hasOwn('fieldId')) {
             if (match.fieldId !== undefined) {
@@ -150,8 +150,8 @@ class TournamentService {
         if (hasOwn('side')) {
             payload.side = match.side ?? null;
         }
-        if (hasOwn('refereeCheckedIn') && typeof match.refereeCheckedIn === 'boolean') {
-            payload.refereeCheckedIn = match.refereeCheckedIn;
+        if (hasOwn('officialCheckedIn') && typeof match.officialCheckedIn === 'boolean') {
+            payload.officialCheckedIn = match.officialCheckedIn;
         }
         return payload;
     }
@@ -188,10 +188,10 @@ class TournamentService {
 
             const isHost = tournament.hostId === currentUser?.$id;
             const canManageMatches = Object.values(matches).some((match) => {
-                if (currentUser?.$id && match.refereeId === currentUser.$id) {
+                if (currentUser?.$id && match.officialId === currentUser.$id) {
                     return true;
                 }
-                const teamPlayers = match.teamReferee?.playerIds || [];
+                const teamPlayers = match.teamOfficial?.playerIds || [];
                 return currentUser?.$id ? teamPlayers.includes(currentUser.$id) : false;
             });
 
@@ -241,36 +241,36 @@ class TournamentService {
                             payload.team2Id = null;
                         }
                         break;
-                    case 'referee':
+                    case 'official':
                         if (value && typeof value === 'object' && '$id' in value) {
-                            payload.refereeId = (value as UserData).$id;
+                            payload.officialId = (value as UserData).$id;
                         } else if (typeof value === 'string') {
-                            payload.refereeId = value;
+                            payload.officialId = value;
                         } else if (value === null) {
-                            payload.refereeId = null;
+                            payload.officialId = null;
                         }
                         break;
-                    case 'refereeId':
+                    case 'officialId':
                         if (typeof value === 'string') {
-                            payload.refereeId = value;
+                            payload.officialId = value;
                         } else if (value === null) {
-                            payload.refereeId = null;
+                            payload.officialId = null;
                         }
                         break;
-                    case 'teamReferee':
+                    case 'teamOfficial':
                         if (value && typeof value === 'object' && '$id' in value) {
-                            payload.teamRefereeId = (value as Team).$id;
+                            payload.teamOfficialId = (value as Team).$id;
                         } else if (typeof value === 'string') {
-                            payload.teamRefereeId = value;
+                            payload.teamOfficialId = value;
                         } else if (value === null) {
-                            payload.teamRefereeId = null;
+                            payload.teamOfficialId = null;
                         }
                         break;
-                    case 'teamRefereeId':
+                    case 'teamOfficialId':
                         if (typeof value === 'string') {
-                            payload.teamRefereeId = value;
+                            payload.teamOfficialId = value;
                         } else if (value === null) {
-                            payload.teamRefereeId = null;
+                            payload.teamOfficialId = null;
                         }
                         break;
                     case 'previousLeftMatch':

@@ -63,7 +63,7 @@ type RoleRosterManagerProps = {
 
 const STAFF_TYPE_OPTIONS = [
   { value: 'HOST', label: 'Host' },
-  { value: 'REFEREE', label: 'Referee' },
+  { value: 'OFFICIAL', label: 'Official' },
   { value: 'STAFF', label: 'Staff' },
 ] satisfies Array<{ value: StaffMemberType; label: string }>;
 
@@ -147,7 +147,7 @@ export default function RoleRosterManager({
         <Stack gap={2}>
           <Title order={5}>Staff List</Title>
           <Text size="sm" c="dimmed">
-            Manage organization hosts, referees, and staff access in one roster.
+            Manage organization hosts, officials, and staff access in one roster.
           </Text>
         </Stack>
 

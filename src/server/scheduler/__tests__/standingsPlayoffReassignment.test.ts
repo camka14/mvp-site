@@ -87,7 +87,7 @@ describe('standings playoff reassignment', () => {
       divisions: [east, west],
       playoffDivisions: [playoffTwo],
       splitLeaguePlayoffDivisions: true,
-      referees: [],
+      officials: [],
       fields: {
         [field.id]: field,
       },
@@ -113,7 +113,7 @@ describe('standings playoff reassignment', () => {
           divisions: [playoffTwo],
         }),
       ],
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       gamesPerOpponent: 1,
       includePlayoffs: true,
       playoffTeamCount: 2,

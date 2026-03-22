@@ -458,7 +458,7 @@ describe('TournamentBracketView', () => {
     expect(getMatchNodeTop('p2')).toBe(getMatchNodeTop('c3'));
   });
 
-  it('highlights matches involving the current user, including referee assignments', () => {
+  it('highlights matches involving the current user, including official assignments', () => {
     const userId = 'user_1';
     const playerMatch = buildMatch('m1', {
       winnerNextMatchId: 'm3',
@@ -467,18 +467,18 @@ describe('TournamentBracketView', () => {
         playerIds: [userId],
       } as Match['team1'],
     });
-    const refereeMatch = buildMatch('m2', {
+    const officialMatch = buildMatch('m2', {
       winnerNextMatchId: 'm3',
-      refereeId: userId,
+      officialId: userId,
     });
-    const teamRefereeMatch = buildMatch('m3', {
+    const teamOfficialMatch = buildMatch('m3', {
       previousLeftId: 'm1',
       previousRightId: 'm2',
       winnerNextMatchId: 'm4',
-      teamReferee: {
+      teamOfficial: {
         $id: 'team_ref',
         playerIds: [userId],
-      } as Match['teamReferee'],
+      } as Match['teamOfficial'],
     });
     const otherMatch = buildMatch('m4', {
       previousLeftId: 'm3',
@@ -486,15 +486,15 @@ describe('TournamentBracketView', () => {
         $id: 'team_other',
         playerIds: ['someone_else'],
       } as Match['team1'],
-      refereeId: 'ref_other',
+      officialId: 'official_other',
     });
 
     const bracket: TournamentBracket = {
       tournament: { doubleElimination: false } as TournamentBracket['tournament'],
       matches: {
         [playerMatch.$id]: playerMatch,
-        [refereeMatch.$id]: refereeMatch,
-        [teamRefereeMatch.$id]: teamRefereeMatch,
+        [officialMatch.$id]: officialMatch,
+        [teamOfficialMatch.$id]: teamOfficialMatch,
         [otherMatch.$id]: otherMatch,
       },
       teams: [],
@@ -629,3 +629,4 @@ describe('TournamentBracketView', () => {
     expect(connectorPaths.length).toBeGreaterThan(0);
   });
 });
+

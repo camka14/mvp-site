@@ -92,7 +92,7 @@ describe('event PATCH route', () => {
       id: 'org_1',
       ownerId: 'owner_1',
       hostIds: ['host_1'],
-      refIds: ['ref_1'],
+      officialIds: ['official_1'],
     });
     staffMembersMock.findMany.mockResolvedValue([]);
     invitesMock.findMany.mockResolvedValue([]);
@@ -168,12 +168,12 @@ describe('event PATCH route', () => {
     expect(updateArg.data.userIds).toEqual(['user_1']);
   });
 
-  it('restricts org event host and referee assignments to organization hosts/referees', async () => {
+  it('restricts org event host and official assignments to organization hosts/officials', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     organizationsMock.findUnique.mockResolvedValueOnce({
       ownerId: 'owner_1',
       hostIds: ['host_1', 'host_2'],
-      refIds: ['ref_org_1'],
+      officialIds: ['official_org_1'],
     });
     prismaMock.events.findUnique
       .mockResolvedValueOnce({
@@ -181,21 +181,21 @@ describe('event PATCH route', () => {
         hostId: 'host_1',
         organizationId: 'org_1',
         assistantHostIds: ['host_2'],
-        refereeIds: ['ref_org_1'],
+        officialIds: ['official_org_1'],
       })
       .mockResolvedValueOnce({
         id: 'event_1',
         hostId: 'owner_1',
         organizationId: 'org_1',
         assistantHostIds: ['host_2'],
-        refereeIds: ['ref_org_1'],
+        officialIds: ['official_org_1'],
       });
     prismaMock.events.update.mockResolvedValueOnce({
       id: 'event_1',
       hostId: 'owner_1',
       organizationId: 'org_1',
       assistantHostIds: ['host_2'],
-      refereeIds: ['ref_org_1'],
+      officialIds: ['official_org_1'],
     });
     divisionsMock.findMany.mockResolvedValue([]);
 
@@ -204,7 +204,7 @@ describe('event PATCH route', () => {
         event: {
           hostId: 'outside_host',
           assistantHostIds: ['host_2', 'outside_assistant'],
-          refereeIds: ['ref_org_1', 'outside_ref'],
+          officialIds: ['official_org_1', 'outside_official'],
         },
       }),
       { params: Promise.resolve({ eventId: 'event_1' }) },
@@ -214,7 +214,7 @@ describe('event PATCH route', () => {
     const updateArg = prismaMock.events.update.mock.calls[0][0];
     expect(updateArg.data.hostId).toBe('owner_1');
     expect(updateArg.data.assistantHostIds).toEqual(['host_2']);
-    expect(updateArg.data.refereeIds).toEqual(['ref_org_1']);
+    expect(updateArg.data.officialIds).toEqual(['official_org_1']);
   });
 
   it('syncs division field mappings when divisionFieldIds are provided', async () => {
@@ -829,3 +829,4 @@ describe('event PATCH route', () => {
     }
   });
 });
+

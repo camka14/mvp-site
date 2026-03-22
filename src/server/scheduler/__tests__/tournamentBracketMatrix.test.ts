@@ -71,7 +71,7 @@ const scheduleTournament = (teamCount: number, doubleElimination: boolean) => {
     divisions: [division],
     fields: { [field.id]: field },
     timeSlots: buildTimeSlots(),
-    doTeamsRef: false,
+    doTeamsOfficiate: false,
     doubleElimination,
     winnerSetCount: 1,
     loserSetCount: 1,

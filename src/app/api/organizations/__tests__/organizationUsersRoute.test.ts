@@ -52,7 +52,7 @@ describe('GET /api/organizations/[id]/users', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      refIds: [],
+      officialIds: [],
     });
     prismaMock.events.findMany.mockResolvedValue([
       {
@@ -79,7 +79,7 @@ describe('GET /api/organizations/[id]/users', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      refIds: [],
+      officialIds: [],
     });
     prismaMock.events.findMany.mockResolvedValue([
       {
@@ -195,7 +195,7 @@ describe('GET /api/organizations/[id]/users', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      refIds: [],
+      officialIds: [],
       hostIds: [],
     });
     prismaMock.events.findMany.mockResolvedValue([

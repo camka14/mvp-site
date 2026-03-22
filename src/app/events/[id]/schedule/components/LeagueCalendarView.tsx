@@ -301,8 +301,8 @@ export function LeagueCalendarView({
       if (!hasTrackedUsers) return false;
 
       if (
-        (typeof match.refereeId === 'string' && trackedUserIds.has(match.refereeId))
-        || (typeof match.referee?.$id === 'string' && trackedUserIds.has(match.referee.$id))
+        (typeof match.officialId === 'string' && trackedUserIds.has(match.officialId))
+        || (typeof match.official?.$id === 'string' && trackedUserIds.has(match.official.$id))
       ) {
         return true;
       }
@@ -363,10 +363,10 @@ export function LeagueCalendarView({
             match.team2 && typeof match.team2 === 'object'
               ? match.team2
               : (typeof match.team2Id === 'string' ? teamLookup.get(match.team2Id) : undefined),
-          teamReferee:
-            match.teamReferee && typeof match.teamReferee === 'object'
-              ? match.teamReferee
-              : (typeof match.teamRefereeId === 'string' ? teamLookup.get(match.teamRefereeId) : undefined),
+          teamOfficial:
+            match.teamOfficial && typeof match.teamOfficial === 'object'
+              ? match.teamOfficial
+              : (typeof match.teamOfficialId === 'string' ? teamLookup.get(match.teamOfficialId) : undefined),
         };
         const start = coerceDateTime(match.start);
         if (!start) return null;
@@ -525,7 +525,7 @@ export function LeagueCalendarView({
           className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
           layout="horizontal"
           hideTimeBadge
-          showRefereeInHeader
+          showOfficialInHeader
           fieldLabel={event.fieldLabel}
           hasConflict={hasConflict}
         />
@@ -546,7 +546,7 @@ export function LeagueCalendarView({
           className={`max-w-full ${matchCardPaddingY} ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
           layout="horizontal"
           hideTimeBadge
-          showRefereeInHeader
+          showOfficialInHeader
           fieldLabel={event.fieldLabel}
           hasConflict={hasConflict}
         />
@@ -669,7 +669,7 @@ export function LeagueCalendarView({
         {showRange && (
           <div className="mb-6">
             <Text size="sm" fw={600} mb={8}>
-              Visible hours: {formatHourLabel(timeRange[0])} – {formatHourLabel(timeRange[1])}
+              Visible hours: {formatHourLabel(timeRange[0])} â€“ {formatHourLabel(timeRange[1])}
             </Text>
             <div className="px-2 sm:px-3">
               <RangeSlider
@@ -725,3 +725,4 @@ export function LeagueCalendarView({
 }
 
 export default LeagueCalendarView;
+

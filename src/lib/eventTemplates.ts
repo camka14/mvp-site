@@ -386,9 +386,9 @@ export const cloneEventAsTemplate = (
     $id: templateId,
     name: addEventTemplateSuffix(source.name),
     state: 'TEMPLATE',
-    // Templates are a clean starting point: do not carry over assigned referees either.
-    referees: [],
-    refereeIds: [],
+    // Templates are a clean starting point: do not carry over assigned officials either.
+    officials: [],
+    officialIds: [],
     matches: [],
     divisions: remappedDivisions,
     divisionDetails: remappedDivisionDetails,
@@ -474,8 +474,8 @@ export const seedEventFromTemplate = (
     hostId: params.hostId ?? template.hostId,
     start: nextStartStr,
     end: nextEndStr,
-    referees: [],
-    refereeIds: [],
+    officials: [],
+    officialIds: [],
     matches: [],
     divisions: remappedDivisions,
     divisionDetails: remappedDivisionDetails,

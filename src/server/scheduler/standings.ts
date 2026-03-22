@@ -473,12 +473,12 @@ const detachMatchFromTeam = (team: Team | null | undefined, match: Match): void 
   team.matches = team.matches.filter((entry) => entry.id !== match.id);
 };
 
-const assignTeamRefereeToMatch = (match: Match, team: Team): void => {
-  const previousTeamReferee = match.teamReferee;
-  if (previousTeamReferee) {
-    detachMatchFromTeam(previousTeamReferee, match);
+const assignTeamOfficialToMatch = (match: Match, team: Team): void => {
+  const previousTeamOfficial = match.teamOfficial;
+  if (previousTeamOfficial) {
+    detachMatchFromTeam(previousTeamOfficial, match);
   }
-  match.teamReferee = team;
+  match.teamOfficial = team;
   if (!team.matches) {
     team.matches = [];
   }
@@ -534,19 +534,19 @@ const clearPendingPlayoffAssignments = (matches: Match[]): void => {
     if (match.team2) {
       detachMatchFromTeam(match.team2, match);
     }
-    if (match.teamReferee) {
-      detachMatchFromTeam(match.teamReferee, match);
+    if (match.teamOfficial) {
+      detachMatchFromTeam(match.teamOfficial, match);
     }
 
     match.team1 = null;
     match.team2 = null;
-    match.teamReferee = null;
+    match.teamOfficial = null;
     match.team1Seed = null;
     match.team2Seed = null;
   }
 };
 
-const assignTeamRefereesForKnownMatches = (matches: Match[], candidates: Team[]): void => {
+const assignTeamOfficialsForKnownMatches = (matches: Match[], candidates: Team[]): void => {
   const candidatesById = new Map<string, Team>();
   candidates.forEach((team) => {
     if (!team.id || candidatesById.has(team.id)) {
@@ -584,20 +584,20 @@ const assignTeamRefereesForKnownMatches = (matches: Match[], candidates: Team[])
     const team1 = match.team1;
     const team2 = match.team2;
     if (!team1 || !team2) {
-      if (match.teamReferee) {
-        detachMatchFromTeam(match.teamReferee, match);
-        match.teamReferee = null;
+      if (match.teamOfficial) {
+        detachMatchFromTeam(match.teamOfficial, match);
+        match.teamOfficial = null;
       }
       continue;
     }
 
-    if (match.teamReferee && (match.teamReferee.id === team1.id || match.teamReferee.id === team2.id)) {
-      detachMatchFromTeam(match.teamReferee, match);
-      match.teamReferee = null;
+    if (match.teamOfficial && (match.teamOfficial.id === team1.id || match.teamOfficial.id === team2.id)) {
+      detachMatchFromTeam(match.teamOfficial, match);
+      match.teamOfficial = null;
     }
 
-    if (match.teamReferee) {
-      const existingRef = match.teamReferee;
+    if (match.teamOfficial) {
+      const existingRef = match.teamOfficial;
       const conflict = (existingRef.matches ?? []).some((existingMatch) =>
         existingMatch.id !== match.id
         && windowsOverlap(existingMatch.start, existingMatch.end, match.start, match.end),
@@ -613,7 +613,7 @@ const assignTeamRefereesForKnownMatches = (matches: Match[], candidates: Team[])
       }
 
       detachMatchFromTeam(existingRef, match);
-      match.teamReferee = null;
+      match.teamOfficial = null;
     }
 
     const candidate = orderedCandidates.find((team) => {
@@ -631,7 +631,7 @@ const assignTeamRefereesForKnownMatches = (matches: Match[], candidates: Team[])
       continue;
     }
 
-    assignTeamRefereeToMatch(match, candidate);
+    assignTeamOfficialToMatch(match, candidate);
   }
 };
 
@@ -1014,8 +1014,8 @@ export const assignTeamsToPlayoffDivisionMatches = (
       assignTeamToMatch(firstRoundMatch, 'team1', teams[0], team1Seed);
       assignTeamToMatch(firstRoundMatch, 'team2', teams[1], team2Seed);
     }
-    if (league.doTeamsRef) {
-      assignTeamRefereesForKnownMatches(playoffMatches, teams);
+    if (league.doTeamsOfficiate) {
+      assignTeamOfficialsForKnownMatches(playoffMatches, teams);
     }
     return seededTeamIds;
   }
@@ -1023,8 +1023,8 @@ export const assignTeamsToPlayoffDivisionMatches = (
   const teamLookup = Object.fromEntries(teams.map((team) => [team.id, team]));
   applyTemplateEntrantAssignments(actualRoot, templateRoot, teamLookup);
 
-  if (league.doTeamsRef) {
-    assignTeamRefereesForKnownMatches(playoffMatches, teams);
+  if (league.doTeamsOfficiate) {
+    assignTeamOfficialsForKnownMatches(playoffMatches, teams);
   }
 
   return seededTeamIds;
@@ -1104,3 +1104,4 @@ export const applyLeagueDivisionPlayoffReassignment = (
     teamIdsByPlayoffDivision,
   };
 };
+

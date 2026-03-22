@@ -54,7 +54,7 @@ const baseEventDocument = (): EventDocument => ({
   leagueScoringConfigId: null,
   organizationId: SEED_ORG.id,
   autoCancellation: false,
-  refereeIds: [],
+  officialIds: [],
   allowPaymentPlans: false,
   installmentCount: 0,
   installmentDueDates: [],

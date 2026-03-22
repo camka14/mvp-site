@@ -4,7 +4,7 @@ import { deriveOrganizationRoleIds } from '@/lib/staff';
 type OrganizationAccessLike = {
   ownerId?: string | null;
   hostIds?: string[] | null;
-  refIds?: string[] | null;
+  officialIds?: string[] | null;
   staffMembers?: Array<{
     organizationId?: string | null;
     userId?: string | null;
@@ -16,19 +16,19 @@ type OrganizationAccessLike = {
     type?: string | null;
     status?: string | null;
   } | null | undefined> | null;
-  referees?: Array<Pick<UserData, '$id'> | null | undefined> | null;
+  officials?: Array<Pick<UserData, '$id'> | null | undefined> | null;
 } | null | undefined;
 
 type AssignmentInput = {
   hostId?: string | null;
   assistantHostIds?: string[] | null;
-  refereeIds?: string[] | null;
+  officialIds?: string[] | null;
 };
 
 type AssignmentResult = {
   hostId: string | null;
   assistantHostIds: string[];
-  refereeIds: string[];
+  officialIds: string[];
 };
 
 export const normalizeEntityId = (value: unknown): string | null => {
@@ -77,7 +77,7 @@ export const collectOrganizationHostIds = (organization: OrganizationAccessLike)
   return Array.from(ids);
 };
 
-export const collectOrganizationRefereeIds = (organization: OrganizationAccessLike): string[] => {
+export const collectOrganizationOfficialIds = (organization: OrganizationAccessLike): string[] => {
   const ids = new Set<string>();
   deriveOrganizationRoleIds(
     (organization?.staffMembers ?? []).map((staffMember) => ({
@@ -91,13 +91,13 @@ export const collectOrganizationRefereeIds = (organization: OrganizationAccessLi
       type: typeof invite?.type === 'string' ? invite.type : '',
       status: typeof invite?.status === 'string' ? invite.status : null,
     })),
-    'REFEREE',
+    'OFFICIAL',
   ).forEach((id) => ids.add(id));
-  normalizeUniqueIds(organization?.refIds).forEach((id) => ids.add(id));
-  (organization?.referees ?? []).forEach((referee) => {
-    const refereeId = normalizeEntityId(referee?.$id);
-    if (refereeId) {
-      ids.add(refereeId);
+  normalizeUniqueIds(organization?.officialIds).forEach((id) => ids.add(id));
+  (organization?.officials ?? []).forEach((official) => {
+    const officialId = normalizeEntityId(official?.$id);
+    if (officialId) {
+      ids.add(officialId);
     }
   });
   return Array.from(ids);
@@ -132,12 +132,13 @@ export const sanitizeOrganizationEventAssignments = (
     return allowedHostIdSet.has(id);
   });
 
-  const allowedRefereeIdSet = new Set(collectOrganizationRefereeIds(organization));
-  const refereeIds = normalizeUniqueIds(input.refereeIds).filter((id) => allowedRefereeIdSet.has(id));
+  const allowedOfficialIdSet = new Set(collectOrganizationOfficialIds(organization));
+  const officialIds = normalizeUniqueIds(input.officialIds).filter((id) => allowedOfficialIdSet.has(id));
 
   return {
     hostId,
     assistantHostIds,
-    refereeIds,
+    officialIds,
   };
 };
+

@@ -320,7 +320,7 @@ function OrganizationDetailContent() {
     }
     return null;
   }, [org?.owner, org?.ownerId, user]);
-  const currentReferees = useMemo(() => org?.referees ?? [], [org?.referees]);
+  const currentOfficials = useMemo(() => org?.officials ?? [], [org?.officials]);
   const userDisplayName = useCallback((candidate: Partial<UserData> | undefined, fallbackId: string): string => {
     const firstName = typeof candidate?.firstName === 'string' ? candidate.firstName.trim() : '';
     const lastName = typeof candidate?.lastName === 'string' ? candidate.lastName.trim() : '';
@@ -1163,7 +1163,7 @@ function OrganizationDetailContent() {
           },
           ...current.filter((entry) => entry.operationId !== operationId),
         ]);
-        notifications.show({ color: 'blue', message: 'Template creation submitted. Syncing…' });
+        notifications.show({ color: 'blue', message: 'Template creation submitted. Syncingâ€¦' });
         monitorTemplateCreateOperation({
           organizationId: org.$id,
           operationId,
@@ -1234,7 +1234,7 @@ function OrganizationDetailContent() {
         templateDocumentId: template.$id,
       });
       if (result.operationId) {
-        notifications.show({ color: 'blue', message: 'Template delete submitted. Syncing…' });
+        notifications.show({ color: 'blue', message: 'Template delete submitted. Syncingâ€¦' });
         await pollBoldSignOperation(result.operationId);
       }
       if (previewTemplate?.$id === template.$id) {
@@ -1849,15 +1849,15 @@ function OrganizationDetailContent() {
                   </Paper>
                   {isOwner && (
                     <Paper withBorder p="md" radius="md" mt="md">
-                      <Title order={5} mb="md">Referees</Title>
-                      {currentReferees.length > 0 ? (
+                      <Title order={5} mb="md">Officials</Title>
+                      {currentOfficials.length > 0 ? (
                         <div className="space-y-3">
-                          {currentReferees.slice(0, 4).map((ref) => (
+                          {currentOfficials.slice(0, 4).map((ref) => (
                             <UserCard key={ref.$id} user={ref} className="!p-0 !shadow-none" />
                           ))}
                         </div>
                       ) : (
-                        <Text size="sm" c="dimmed">No referees yet.</Text>
+                        <Text size="sm" c="dimmed">No officials yet.</Text>
                       )}
                     </Paper>
                   )}
@@ -2093,7 +2093,7 @@ function OrganizationDetailContent() {
                                                   </Button>
                                                   <Text size="xs" c="dimmed">
                                                     {formatSummaryDateTime(eventSummary.start)}
-                                                    {eventSummary.status ? ` • ${eventSummary.status}` : ''}
+                                                    {eventSummary.status ? ` â€¢ ${eventSummary.status}` : ''}
                                                   </Text>
                                                 </Stack>
                                               </Group>
@@ -2113,8 +2113,8 @@ function OrganizationDetailContent() {
                                                   <Text size="sm">{documentSummary.title}</Text>
                                                   <Text size="xs" c="dimmed">
                                                     {documentSummary.type}
-                                                    {documentSummary.status ? ` • ${documentSummary.status}` : ''}
-                                                    {documentSummary.signedAt ? ` • ${formatSummaryDateTime(documentSummary.signedAt)}` : ''}
+                                                    {documentSummary.status ? ` â€¢ ${documentSummary.status}` : ''}
+                                                    {documentSummary.signedAt ? ` â€¢ ${formatSummaryDateTime(documentSummary.signedAt)}` : ''}
                                                   </Text>
                                                   {documentSummary.eventName && (
                                                     <Text size="xs" c="dimmed">
@@ -2201,7 +2201,7 @@ function OrganizationDetailContent() {
                           <Group gap="xs" mt="xs">
                             <Loader size="xs" />
                             <Text size="xs" c="dimmed">
-                              Creating template and waiting for projection…
+                              Creating template and waiting for projectionâ€¦
                             </Text>
                           </Group>
                         )}
@@ -2643,7 +2643,7 @@ function OrganizationDetailContent() {
             ) : (
               <Stack gap="sm">
                 <Text size="sm" c="dimmed">
-                  Document 1 of 1{previewTemplate.title ? ` • ${previewTemplate.title}` : ''}
+                  Document 1 of 1{previewTemplate.title ? ` â€¢ ${previewTemplate.title}` : ''}
                 </Text>
                 <Paper withBorder p="md" style={{ maxHeight: 420, overflowY: 'auto' }}>
                   <Text style={{ whiteSpace: 'pre-wrap' }}>
@@ -2868,3 +2868,4 @@ function OrganizationDetailContent() {
     </>
   );
 }
+

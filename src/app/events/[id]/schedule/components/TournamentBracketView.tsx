@@ -446,10 +446,10 @@ export default function TournamentBracketView({
         });
         return map;
     }, [bracket.teams]);
-    const refereesById = useMemo<Map<string, UserData>>(() => {
+    const officialsById = useMemo<Map<string, UserData>>(() => {
         const map = new Map<string, UserData>();
-        const refs = Array.isArray((bracket.tournament as any)?.referees)
-            ? ((bracket.tournament as any).referees as UserData[])
+        const refs = Array.isArray((bracket.tournament as any)?.officials)
+            ? ((bracket.tournament as any).officials as UserData[])
             : [];
         refs.forEach((ref) => {
             const id = extractEntityId(ref);
@@ -1091,15 +1091,15 @@ export default function TournamentBracketView({
             return false;
         }
 
-        const matchRefereeId = extractEntityId(match.referee)
-            || (typeof match.refereeId === 'string' ? match.refereeId.trim() : '');
-        if (matchRefereeId === currentUserId) {
+        const matchOfficialId = extractEntityId(match.official)
+            || (typeof match.officialId === 'string' ? match.officialId.trim() : '');
+        if (matchOfficialId === currentUserId) {
             return true;
         }
 
         return teamHasCurrentUser(match.team1, match.team1Id)
             || teamHasCurrentUser(match.team2, match.team2Id)
-            || teamHasCurrentUser(match.teamReferee, match.teamRefereeId);
+            || teamHasCurrentUser(match.teamOfficial, match.teamOfficialId);
     }, [currentUserId, teamHasCurrentUser]);
 
     const canManageMatch = (match: Match) => {
@@ -1108,11 +1108,11 @@ export default function TournamentBracketView({
         if (!currentUser) return false;
         if (!bracket.canManage && !bracket.isHost) return false;
         if (bracket.isHost) return true;
-        if (match.refereeId && match.refereeId === currentUser.$id) {
+        if (match.officialId && match.officialId === currentUser.$id) {
             return true;
         }
-        const teamRefPlayers = match.teamReferee?.playerIds || [];
-        return teamRefPlayers.includes(currentUser.$id);
+        const teamOfficialPlayers = match.teamOfficial?.playerIds || [];
+        return teamOfficialPlayers.includes(currentUser.$id);
     };
 
     useEffect(() => {
@@ -1158,14 +1158,14 @@ export default function TournamentBracketView({
             <Paper withBorder p="sm">
                 <Group justify="space-between" align="center" wrap="nowrap" w="100%">
                     <Group gap="xs">
-                        <ActionIcon variant="default" onClick={handleZoomOut} disabled={zoomLevel <= 0.5} aria-label="Zoom out">−</ActionIcon>
+                        <ActionIcon variant="default" onClick={handleZoomOut} disabled={zoomLevel <= 0.5} aria-label="Zoom out">âˆ’</ActionIcon>
                         <Badge variant="light">{Math.round(zoomLevel * 100)}%</Badge>
                         <ActionIcon variant="default" onClick={handleZoomIn} disabled={zoomLevel >= 3} aria-label="Zoom in">+</ActionIcon>
                         <Button variant="default" size="xs" onClick={handleZoomReset}>Reset</Button>
                         {isPreview && (
                             <Badge color="yellow" variant="light">Preview</Badge>
                         )}
-                        <Text size="xs" c="dimmed" className="hidden md:inline">Ctrl + scroll to zoom • Ctrl + 0 to reset</Text>
+                        <Text size="xs" c="dimmed" className="hidden md:inline">Ctrl + scroll to zoom â€¢ Ctrl + 0 to reset</Text>
                     </Group>
 
                     <Group gap="sm">
@@ -1215,32 +1215,32 @@ export default function TournamentBracketView({
                                         || (typeof m.team1Id === 'string' ? m.team1Id.trim() : '');
                                     const team2Id = extractEntityId((m as any).team2)
                                         || (typeof m.team2Id === 'string' ? m.team2Id.trim() : '');
-                                    const teamRefereeId = extractEntityId((m as any).teamReferee)
-                                        || (typeof m.teamRefereeId === 'string' ? m.teamRefereeId.trim() : '');
-                                    const refereeId = extractEntityId((m as any).referee)
-                                        || (typeof m.refereeId === 'string' ? m.refereeId.trim() : '');
+                                    const teamOfficialId = extractEntityId((m as any).teamOfficial)
+                                        || (typeof m.teamOfficialId === 'string' ? m.teamOfficialId.trim() : '');
+                                    const officialId = extractEntityId((m as any).official)
+                                        || (typeof m.officialId === 'string' ? m.officialId.trim() : '');
                                     const resolvedTeam1 = (m.team1 && typeof m.team1 === 'object')
                                         ? m.team1
                                         : (team1Id ? teamsById.get(team1Id) ?? null : null);
                                     const resolvedTeam2 = (m.team2 && typeof m.team2 === 'object')
                                         ? m.team2
                                         : (team2Id ? teamsById.get(team2Id) ?? null : null);
-                                    const resolvedTeamReferee = (m.teamReferee && typeof m.teamReferee === 'object')
-                                        ? m.teamReferee
-                                        : (teamRefereeId ? teamsById.get(teamRefereeId) ?? null : null);
-                                    const resolvedReferee = (m.referee && typeof m.referee === 'object')
-                                        ? m.referee
-                                        : (refereeId ? refereesById.get(refereeId) ?? null : null);
+                                    const resolvedTeamOfficial = (m.teamOfficial && typeof m.teamOfficial === 'object')
+                                        ? m.teamOfficial
+                                        : (teamOfficialId ? teamsById.get(teamOfficialId) ?? null : null);
+                                    const resolvedOfficial = (m.official && typeof m.official === 'object')
+                                        ? m.official
+                                        : (officialId ? officialsById.get(officialId) ?? null : null);
 	                                    const resolvedMatch: Match = {
 	                                        ...m,
                                         team1: resolvedTeam1 as Match['team1'],
                                         team2: resolvedTeam2 as Match['team2'],
-                                        teamReferee: resolvedTeamReferee as Match['teamReferee'],
-                                        referee: resolvedReferee as Match['referee'],
+                                        teamOfficial: resolvedTeamOfficial as Match['teamOfficial'],
+                                        official: resolvedOfficial as Match['official'],
                                         team1Id: team1Id || m.team1Id || undefined,
                                         team2Id: team2Id || m.team2Id || undefined,
-                                        teamRefereeId: teamRefereeId || m.teamRefereeId || undefined,
-                                        refereeId: refereeId || m.refereeId || undefined,
+                                        teamOfficialId: teamOfficialId || m.teamOfficialId || undefined,
+                                        officialId: officialId || m.officialId || undefined,
 	                                        previousLeftMatch:
                                             resolveLinkFromAll(m.previousLeftId, m.previousLeftMatch),
 	                                        previousRightMatch:
@@ -1391,3 +1391,4 @@ export default function TournamentBracketView({
         </div>
     );
 }
+

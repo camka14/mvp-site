@@ -43,8 +43,8 @@ export const normalizeApiMatch = (input: Match): Match => {
     field?: Field | string | null;
     team1?: Team | string | null;
     team2?: Team | string | null;
-    referee?: UserData | string | null;
-    teamReferee?: Team | string | null;
+    official?: UserData | string | null;
+    teamOfficial?: Team | string | null;
     division?: Division | string | null;
     previousLeftMatch?: Match | null;
     previousRightMatch?: Match | null;
@@ -58,8 +58,8 @@ export const normalizeApiMatch = (input: Match): Match => {
     field: withLegacyId(match.field as Field | null) ?? match.field,
     team1: withLegacyId(match.team1 as Team | null) ?? match.team1,
     team2: withLegacyId(match.team2 as Team | null) ?? match.team2,
-    referee: withLegacyId(match.referee as UserData | null) ?? match.referee,
-    teamReferee: withLegacyId(match.teamReferee as Team | null) ?? match.teamReferee,
+    official: withLegacyId(match.official as UserData | null) ?? match.official,
+    teamOfficial: withLegacyId(match.teamOfficial as Team | null) ?? match.teamOfficial,
     division: withLegacyId(match.division as Division | null) ?? match.division,
     previousLeftMatch: withLegacyId(match.previousLeftMatch as Match | null) ?? match.previousLeftMatch,
     previousRightMatch: withLegacyId(match.previousRightMatch as Match | null) ?? match.previousRightMatch,
@@ -165,7 +165,7 @@ export const normalizeApiEvent = (input?: Event | null): Event | null => {
     fields?: Field[];
     timeSlots?: TimeSlot[];
     matches?: Match[];
-    referees?: UserData[];
+    officials?: UserData[];
     players?: UserData[];
   };
 
@@ -179,9 +179,9 @@ export const normalizeApiEvent = (input?: Event | null): Event | null => {
     fields: Array.isArray(event.fields) ? event.fields.map(normalizeApiField) : event.fields,
     timeSlots: Array.isArray(event.timeSlots) ? event.timeSlots.map(normalizeApiTimeSlot) : event.timeSlots,
     matches: Array.isArray(event.matches) ? event.matches.map(normalizeApiMatch) : event.matches,
-    referees: Array.isArray(event.referees)
-      ? event.referees.map((ref) => withLegacyId(ref) as UserData)
-      : event.referees,
+    officials: Array.isArray(event.officials)
+      ? event.officials.map((official) => withLegacyId(official) as UserData)
+      : event.officials,
     players: Array.isArray(event.players)
       ? event.players.map((player) => withLegacyId(player) as UserData)
       : event.players,
@@ -221,8 +221,9 @@ export const normalizeOutgoingEventDocument = (eventDocument: Record<string, unk
   mapCollection('fields');
   mapCollection('teams');
   mapCollection('timeSlots');
-  mapCollection('referees');
+  mapCollection('officials');
   mapCollection('players');
 
   return next;
 };
+

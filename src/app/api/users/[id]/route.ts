@@ -80,7 +80,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             id: true,
             ownerId: true,
             hostIds: true,
-            refIds: true,
+            officialIds: true,
           },
         });
         if (!organization) {
@@ -90,11 +90,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const isOrganizationRoleMember = await hasOrganizationStaffAccess(
           { userId: id, isAdmin: false },
           organization,
-          ['HOST', 'REFEREE', 'STAFF'],
+          ['HOST', 'OFFICIAL', 'STAFF'],
         );
         if (!isOrganizationRoleMember) {
           return NextResponse.json(
-            { error: 'Only organization owners, hosts, or referees can set this organization as home page.' },
+            { error: 'Only organization owners, hosts, or officials can set this organization as home page.' },
             { status: 403 },
           );
         }

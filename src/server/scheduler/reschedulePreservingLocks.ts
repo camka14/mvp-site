@@ -149,11 +149,11 @@ const buildScheduleParticipants = (
   schedulingDivisions: Division[],
 ): Record<string, Team | UserData> => {
   const participants: Record<string, Team | UserData> = { ...event.teams };
-  for (const referee of event.referees) {
-    if (!referee.divisions.length) {
-      referee.divisions = [...schedulingDivisions];
+  for (const official of event.officials) {
+    if (!official.divisions.length) {
+      official.divisions = [...schedulingDivisions];
     }
-    participants[referee.id] = referee;
+    participants[official.id] = official;
   }
   return participants;
 };
@@ -165,8 +165,8 @@ const resetScheduleCollections = (event: SchedulerEvent): void => {
   for (const team of Object.values(event.teams)) {
     team.matches = [];
   }
-  for (const referee of event.referees) {
-    referee.matches = [];
+  for (const official of event.officials) {
+    official.matches = [];
   }
 };
 
@@ -448,7 +448,7 @@ type PendingDependencyAssignment = {
   match: Match;
   team1: Team | null;
   team2: Team | null;
-  teamReferee: Team | null;
+  teamOfficial: Team | null;
   team1Seed: number | null;
   team2Seed: number | null;
 };
@@ -458,16 +458,16 @@ const detachPendingDependencyAssignments = (match: Match): PendingDependencyAssi
     match,
     team1: match.team1,
     team2: match.team2,
-    teamReferee: match.teamReferee,
+    teamOfficial: match.teamOfficial,
     team1Seed: match.team1Seed ?? null,
     team2Seed: match.team2Seed ?? null,
   };
   detachMatchFromParticipant(match.team1, match);
   detachMatchFromParticipant(match.team2, match);
-  detachMatchFromParticipant(match.teamReferee, match);
+  detachMatchFromParticipant(match.teamOfficial, match);
   match.team1 = null;
   match.team2 = null;
-  match.teamReferee = null;
+  match.teamOfficial = null;
   return snapshot;
 };
 
@@ -475,7 +475,7 @@ const restorePendingDependencyAssignments = (snapshot: PendingDependencyAssignme
   const { match } = snapshot;
   match.team1 = snapshot.team1;
   match.team2 = snapshot.team2;
-  match.teamReferee = snapshot.teamReferee;
+  match.teamOfficial = snapshot.teamOfficial;
   match.team1Seed = snapshot.team1Seed;
   match.team2Seed = snapshot.team2Seed;
   attachMatchToParticipants(match);
@@ -490,44 +490,44 @@ const dependenciesAreScheduled = (match: Match, pendingIds: Set<string>): boolea
   return true;
 };
 
-const assignMissingUserReferees = (
+const assignMissingUserOfficials = (
   event: SchedulerEvent,
   schedule: Schedule<Match, PlayingField, Team | UserData, Division>,
   matches: Match[],
 ): void => {
-  if (!event.referees.length) {
+  if (!event.officials.length) {
     matches.forEach(attachMatchToParticipants);
     return;
   }
-  const refereeCycle = [...event.referees];
+  const officialCycle = [...event.officials];
   const ordered = [...matches].sort(compareScheduledOrder);
   for (const match of ordered) {
     attachMatchToParticipants(match);
-    if (match.referee || !match.division) continue;
+    if (match.official || !match.division) continue;
     const availableRefs = schedule
       .freeParticipants(match.division, match.start, match.end)
       .filter((participant) => participant instanceof UserData) as UserData[];
-    if (!availableRefs.length || !refereeCycle.length) continue;
-    for (let i = 0; i < refereeCycle.length; i += 1) {
-      const candidate = refereeCycle.shift() as UserData;
+    if (!availableRefs.length || !officialCycle.length) continue;
+    for (let i = 0; i < officialCycle.length; i += 1) {
+      const candidate = officialCycle.shift() as UserData;
       if (availableRefs.some((available) => available.id === candidate.id)) {
-        match.referee = candidate;
+        match.official = candidate;
         appendMatchToParticipant(candidate, match);
         attachMatchToParticipants(match);
-        refereeCycle.push(candidate);
+        officialCycle.push(candidate);
         break;
       }
-      refereeCycle.push(candidate);
+      officialCycle.push(candidate);
     }
   }
 };
 
-const assignMissingTeamReferees = (
+const assignMissingTeamOfficials = (
   event: SchedulerEvent,
   schedule: Schedule<Match, PlayingField, Team | UserData, Division>,
   matches: Match[],
 ): void => {
-  if (!event.doTeamsRef) {
+  if (!event.doTeamsOfficiate) {
     return;
   }
   const requireCaptains = isLeagueEvent(event);
@@ -538,7 +538,7 @@ const assignMissingTeamReferees = (
   const ordered = [...matches].sort(compareScheduledOrder);
   for (const match of ordered) {
     attachMatchToParticipants(match);
-    if (match.teamReferee || !match.division || !(match.team1 && match.team2)) continue;
+    if (match.teamOfficial || !match.division || !(match.team1 && match.team2)) continue;
     const availableTeams = schedule
       .freeParticipants(match.division, match.start, match.end)
       .filter(
@@ -566,7 +566,7 @@ const assignMissingTeamReferees = (
     }
     if (!candidate) continue;
 
-    match.teamReferee = candidate;
+    match.teamOfficial = candidate;
     appendMatchToParticipant(candidate, match);
     attachMatchToParticipants(match);
   }
@@ -639,8 +639,8 @@ export const rescheduleEventMatchesPreservingLocks = (
     detachedPendingAssignments.forEach(restorePendingDependencyAssignments);
   }
 
-  assignMissingUserReferees(event, schedule, allMatches);
-  assignMissingTeamReferees(event, schedule, allMatches);
+  assignMissingUserOfficials(event, schedule, allMatches);
+  assignMissingTeamOfficials(event, schedule, allMatches);
 
   const latestEnd = latestMatchEnd(allMatches);
   if (latestEnd) {

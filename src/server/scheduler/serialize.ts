@@ -80,9 +80,9 @@ const serializeMatch = (match: Match) => ({
   team2Id: match.team2?.id ?? null,
   team1Seed: match.team1Seed ?? null,
   team2Seed: match.team2Seed ?? null,
-  refereeId: match.referee?.id ?? null,
-  teamRefereeId: match.teamReferee?.id ?? null,
-  teamRefereeSeed: null,
+  officialId: match.official?.id ?? null,
+  teamOfficialId: match.teamOfficial?.id ?? null,
+  teamOfficialSeed: null,
   team1Points: match.team1Points ?? [],
   team2Points: match.team2Points ?? [],
   setResults: match.setResults ?? [],
@@ -92,11 +92,11 @@ const serializeMatch = (match: Match) => ({
   previousLeftId: match.previousLeftMatch?.id ?? null,
   previousRightId: match.previousRightMatch?.id ?? null,
   side: match.side ?? null,
-  refereeCheckedIn: match.refereeCheckedIn ?? false,
+  officialCheckedIn: match.officialCheckedIn ?? false,
   team1: match.team1 ? serializeTeam(match.team1) : null,
   team2: match.team2 ? serializeTeam(match.team2) : null,
-  teamReferee: match.teamReferee ? serializeTeam(match.teamReferee) : null,
-  referee: match.referee ? serializeUser(match.referee) : null,
+  teamOfficial: match.teamOfficial ? serializeTeam(match.teamOfficial) : null,
+  official: match.official ? serializeUser(match.official) : null,
   field: match.field ? serializeField(match.field) : null,
 });
 
@@ -130,7 +130,7 @@ const serializeEventBase = (event: Tournament | League) => ({
   userIds: event.players.map((player) => player.id),
   fieldIds: Object.keys(event.fields),
   timeSlotIds: event.timeSlots.map((slot) => slot.id),
-  refereeIds: event.referees.map((ref) => ref.id),
+  officialIds: event.officials.map((official) => official.id),
   cancellationRefundHours: event.cancellationRefundHours ?? null,
   registrationCutoffHours: event.registrationCutoffHours ?? null,
   seedColor: event.seedColor ?? null,
@@ -153,7 +153,7 @@ const serializeEventBase = (event: Tournament | League) => ({
   fields: Object.values(event.fields).map(serializeField),
   teams: Object.values(event.teams).map(serializeTeam),
   timeSlots: event.timeSlots.map(serializeTimeSlot),
-  referees: event.referees.map(serializeUser),
+  officials: event.officials.map(serializeUser),
 });
 
 const serializeTournamentExtras = (event: Tournament) => ({
@@ -175,8 +175,8 @@ const serializeTournamentExtras = (event: Tournament) => ({
   matchDurationMinutes: event.matchDurationMinutes ?? null,
   setDurationMinutes: event.setDurationMinutes ?? null,
   setsPerMatch: event.setsPerMatch ?? null,
-  doTeamsRef: event.doTeamsRef ?? true,
-  teamRefsMaySwap: event.doTeamsRef ? event.teamRefsMaySwap ?? false : false,
+  doTeamsOfficiate: event.doTeamsOfficiate ?? true,
+  teamOfficialsMaySwap: event.doTeamsOfficiate ? event.teamOfficialsMaySwap ?? false : false,
 });
 
 const serializeLeagueExtras = (event: League) => ({
@@ -261,9 +261,9 @@ const serializeMatchLegacy = (match: Match) => ({
   team2Id: match.team2?.id ?? null,
   team1Seed: match.team1Seed ?? null,
   team2Seed: match.team2Seed ?? null,
-  refereeId: match.referee?.id ?? null,
-  teamRefereeId: match.teamReferee?.id ?? null,
-  teamRefereeSeed: null,
+  officialId: match.official?.id ?? null,
+  teamOfficialId: match.teamOfficial?.id ?? null,
+  teamOfficialSeed: null,
   team1Points: match.team1Points ?? [],
   team2Points: match.team2Points ?? [],
   setResults: match.setResults ?? [],
@@ -273,12 +273,11 @@ const serializeMatchLegacy = (match: Match) => ({
   previousLeftId: match.previousLeftMatch?.id ?? null,
   previousRightId: match.previousRightMatch?.id ?? null,
   side: match.side ?? null,
-  refereeCheckedIn: match.refereeCheckedIn ?? false,
-  refCheckedIn: match.refereeCheckedIn ?? false,
+  officialCheckedIn: match.officialCheckedIn ?? false,
   team1: match.team1 ? serializeTeamLegacy(match.team1) : null,
   team2: match.team2 ? serializeTeamLegacy(match.team2) : null,
-  teamReferee: match.teamReferee ? serializeTeamLegacy(match.teamReferee) : null,
-  referee: match.referee ? serializeUserLegacy(match.referee) : null,
+  teamOfficial: match.teamOfficial ? serializeTeamLegacy(match.teamOfficial) : null,
+  official: match.official ? serializeUserLegacy(match.official) : null,
   field: match.field ? serializeFieldLegacy(match.field) : null,
 });
 
@@ -332,9 +331,11 @@ export const serializeEventLegacy = (event: Tournament | League) => {
     fields: Object.values(event.fields).map(serializeFieldLegacy),
     teams: Object.values(event.teams).map(serializeTeamLegacy),
     timeSlots: event.timeSlots.map(serializeTimeSlotLegacy),
-    referees: event.referees.map(serializeUserLegacy),
+    officials: event.officials.map(serializeUserLegacy),
     matches: Object.values(event.matches).map(serializeMatchLegacy),
   };
 };
 
 export const serializeMatchesLegacy = (matches: Match[]) => matches.map(serializeMatchLegacy);
+
+

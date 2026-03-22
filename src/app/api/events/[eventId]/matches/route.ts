@@ -27,15 +27,15 @@ const bulkMatchUpdateSchema = z.object({
   setResults: z.array(z.number()).optional(),
   team1Id: z.string().nullable().optional(),
   team2Id: z.string().nullable().optional(),
-  refereeId: z.string().nullable().optional(),
-  teamRefereeId: z.string().nullable().optional(),
+  officialId: z.string().nullable().optional(),
+  teamOfficialId: z.string().nullable().optional(),
   fieldId: z.string().nullable().optional(),
   previousLeftId: z.string().nullable().optional(),
   previousRightId: z.string().nullable().optional(),
   winnerNextMatchId: z.string().nullable().optional(),
   loserNextMatchId: z.string().nullable().optional(),
   side: z.string().nullable().optional(),
-  refereeCheckedIn: z.boolean().optional(),
+  officialCheckedIn: z.boolean().optional(),
   start: z.string().nullable().optional(),
   end: z.string().nullable().optional(),
   division: z.string().nullable().optional(),
@@ -54,15 +54,15 @@ const bulkMatchCreateSchema = z.object({
   setResults: z.array(z.number()).optional(),
   team1Id: z.string().nullable().optional(),
   team2Id: z.string().nullable().optional(),
-  refereeId: z.string().nullable().optional(),
-  teamRefereeId: z.string().nullable().optional(),
+  officialId: z.string().nullable().optional(),
+  teamOfficialId: z.string().nullable().optional(),
   fieldId: z.string().nullable().optional(),
   previousLeftId: z.string().nullable().optional(),
   previousRightId: z.string().nullable().optional(),
   winnerNextMatchId: z.string().nullable().optional(),
   loserNextMatchId: z.string().nullable().optional(),
   side: z.string().nullable().optional(),
-  refereeCheckedIn: z.boolean().optional(),
+  officialCheckedIn: z.boolean().optional(),
   start: z.string().nullable().optional(),
   end: z.string().nullable().optional(),
   division: z.string().nullable().optional(),
@@ -474,15 +474,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           setResults: Array.isArray(entry.setResults) ? entry.setResults : [],
           bufferMs: Math.max(event.restTimeMinutes ?? 0, 0) * MINUTE_MS,
           side: sideFrom(entry.side ?? null),
-          refereeCheckedIn: Boolean(entry.refereeCheckedIn),
-          teamReferee: (() => {
-            const teamRefId = normalizeOptionalString(entry.teamRefereeId);
-            return teamRefId ? event.teams[teamRefId] ?? null : null;
+          officialCheckedIn: Boolean(entry.officialCheckedIn),
+          teamOfficial: (() => {
+            const teamOfficialId = normalizeOptionalString(entry.teamOfficialId);
+            return teamOfficialId ? event.teams[teamOfficialId] ?? null : null;
           })(),
-          referee: (() => {
-            const refereeId = normalizeOptionalString(entry.refereeId);
-            return refereeId
-              ? event.referees.find((referee) => referee.id === refereeId) ?? null
+          official: (() => {
+            const officialId = normalizeOptionalString(entry.officialId);
+            return officialId
+              ? event.officials.find((official) => official.id === officialId) ?? null
               : null;
           })(),
           team1: team1Id ? event.teams[team1Id] ?? null : null,
@@ -521,15 +521,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           setResults: entry.setResults,
           team1Id: entry.team1Id,
           team2Id: entry.team2Id,
-          refereeId: entry.refereeId,
-          teamRefereeId: entry.teamRefereeId,
+          officialId: entry.officialId,
+          teamOfficialId: entry.teamOfficialId,
           fieldId: entry.fieldId,
           previousLeftId: null,
           previousRightId: null,
           winnerNextMatchId: null,
           loserNextMatchId: null,
           side: entry.side,
-          refereeCheckedIn: entry.refereeCheckedIn,
+          officialCheckedIn: entry.officialCheckedIn,
           matchId: entry.matchId ?? undefined,
         });
 
@@ -689,3 +689,4 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
   await prisma.matches.deleteMany({ where: { eventId } });
   return NextResponse.json({ deleted: true }, { status: 200 });
 }
+

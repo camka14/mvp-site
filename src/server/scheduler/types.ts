@@ -382,9 +382,9 @@ export class Match implements SchedulableEvent {
   setResults: number[];
   bufferMs: number;
   side: Side | null;
-  refereeCheckedIn?: boolean | null;
-  teamReferee: Team | null;
-  referee: UserData | null;
+  officialCheckedIn?: boolean | null;
+  teamOfficial: Team | null;
+  official: UserData | null;
   team1: Team | null;
   team2: Team | null;
   eventId: string;
@@ -411,9 +411,9 @@ export class Match implements SchedulableEvent {
     setResults?: number[];
     bufferMs: number;
     side?: Side | null;
-    refereeCheckedIn?: boolean | null;
-    teamReferee?: Team | null;
-    referee?: UserData | null;
+    officialCheckedIn?: boolean | null;
+    teamOfficial?: Team | null;
+    official?: UserData | null;
     team1?: Team | null;
     team2?: Team | null;
     eventId: string;
@@ -439,9 +439,9 @@ export class Match implements SchedulableEvent {
     this.setResults = params.setResults ?? [];
     this.bufferMs = params.bufferMs;
     this.side = params.side ?? null;
-    this.refereeCheckedIn = params.refereeCheckedIn ?? false;
-    this.teamReferee = params.teamReferee ?? null;
-    this.referee = params.referee ?? null;
+    this.officialCheckedIn = params.officialCheckedIn ?? false;
+    this.teamOfficial = params.teamOfficial ?? null;
+    this.official = params.official ?? null;
     this.team1 = params.team1 ?? null;
     this.team2 = params.team2 ?? null;
     this.eventId = params.eventId;
@@ -514,7 +514,7 @@ export class Match implements SchedulableEvent {
         this.winnerNextMatch.team2 = loser;
         this.winnerNextMatch.team1Seed = winnerSeed;
         this.winnerNextMatch.team2Seed = loserSeed;
-        this.winnerNextMatch.teamReferee = this.teamReferee;
+        this.winnerNextMatch.teamOfficial = this.teamOfficial;
       }
     } else {
       if (this.winnerNextMatch) {
@@ -545,7 +545,7 @@ export class Match implements SchedulableEvent {
 
   getParticipants(): Participant[] {
     const participants: Participant[] = [];
-    for (const participant of [this.team1, this.team2, this.teamReferee, this.referee]) {
+    for (const participant of [this.team1, this.team2, this.teamOfficial, this.official]) {
       if (participant) participants.push(participant);
     }
     return participants;
@@ -614,8 +614,8 @@ export class Tournament {
   rating: number | null;
   minAge: number | null;
   maxAge: number | null;
-  doTeamsRef: boolean;
-  teamRefsMaySwap: boolean;
+  doTeamsOfficiate: boolean;
+  teamOfficialsMaySwap: boolean;
   fieldCount: number | null;
   prize: string | null;
   hostId: string;
@@ -631,7 +631,7 @@ export class Tournament {
   teams: Record<string, Team>;
   players: UserData[];
   divisions: Division[];
-  referees: UserData[];
+  officials: UserData[];
   eventType: string;
   fields: Record<string, PlayingField>;
   doubleElimination: boolean;
@@ -681,8 +681,8 @@ export class Tournament {
     rating?: number | null;
     minAge?: number | null;
     maxAge?: number | null;
-    doTeamsRef?: boolean;
-    teamRefsMaySwap?: boolean;
+    doTeamsOfficiate?: boolean;
+    teamOfficialsMaySwap?: boolean;
     fieldCount?: number | null;
     prize?: string | null;
     hostId?: string;
@@ -698,7 +698,7 @@ export class Tournament {
     teams?: Record<string, Team>;
     players?: UserData[];
     divisions?: Division[];
-    referees?: UserData[];
+    officials?: UserData[];
     eventType: string;
     fields?: Record<string, PlayingField>;
     doubleElimination?: boolean;
@@ -747,8 +747,8 @@ export class Tournament {
     this.rating = params.rating ?? null;
     this.minAge = params.minAge ?? null;
     this.maxAge = params.maxAge ?? null;
-    this.doTeamsRef = typeof params.doTeamsRef === 'boolean' ? params.doTeamsRef : true;
-    this.teamRefsMaySwap = this.doTeamsRef ? Boolean(params.teamRefsMaySwap) : false;
+    this.doTeamsOfficiate = typeof params.doTeamsOfficiate === 'boolean' ? params.doTeamsOfficiate : true;
+    this.teamOfficialsMaySwap = this.doTeamsOfficiate ? Boolean(params.teamOfficialsMaySwap) : false;
     const configuredFieldCount = Object.keys(params.fields ?? {}).length;
     if (configuredFieldCount > 0) {
       this.fieldCount = configuredFieldCount;
@@ -779,7 +779,7 @@ export class Tournament {
     this.teams = params.teams ?? {};
     this.players = params.players ?? [];
     this.divisions = params.divisions ?? [];
-    this.referees = params.referees ?? [];
+    this.officials = params.officials ?? [];
     this.eventType = params.eventType;
     this.fields = params.fields ?? {};
     this.doubleElimination = params.doubleElimination ?? false;

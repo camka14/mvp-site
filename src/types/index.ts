@@ -191,8 +191,8 @@ export interface Match {
   locked?: boolean;
   team1Id?: string | null;
   team2Id?: string | null;
-  refereeId?: string | null;
-  teamRefereeId?: string | null;
+  officialId?: string | null;
+  teamOfficialId?: string | null;
   team1Points: number[];
   team2Points: number[];
   previousLeftId?: string | null;
@@ -204,17 +204,16 @@ export interface Match {
   losersBracket?: boolean;
   setResults: number[];
   side?: string | null;
-  refCheckedIn?: boolean;
-  refereeCheckedIn?: boolean;
+  officialCheckedIn?: boolean;
   team1Seed?: number | null;
   team2Seed?: number | null;
-  teamRefereeSeed?: number | null;
+  teamOfficialSeed?: number | null;
 
   // Relationship fields - hydrated when selected via Queries
   division?: Division | string | null;
   field?: Field;
-  referee?: UserData;
-  teamReferee?: Team;
+  official?: UserData;
+  teamOfficial?: Team;
   team1?: Team;
   team2?: Team;
 
@@ -231,8 +230,8 @@ export interface Match {
 type MatchRelationKeys =
   | 'division'
   | 'field'
-  | 'referee'
-  | 'teamReferee'
+  | 'official'
+  | 'teamOfficial'
   | 'team1'
   | 'team2'
   | 'previousLeftMatch'
@@ -297,7 +296,7 @@ export interface UserData {
   avatarUrl: string;
 }
 
-export type StaffMemberType = 'HOST' | 'REFEREE' | 'STAFF';
+export type StaffMemberType = 'HOST' | 'OFFICIAL' | 'STAFF';
 export type InviteType = 'STAFF' | 'TEAM' | 'EVENT';
 export type InviteStatus = 'PENDING' | 'DECLINED' | 'FAILED';
 
@@ -437,7 +436,7 @@ export interface Event {
   userIds?: string[];
   fieldIds?: string[];
   timeSlotIds?: string[];
-  refereeIds?: string[];
+  officialIds?: string[];
   assistantHostIds?: string[];
   waitList?: string[];
   freeAgents?: string[];
@@ -481,7 +480,7 @@ export interface Event {
   matches?: Match[];
   teams?: Team[];
   players?: UserData[];
-  referees?: UserData[];
+  officials?: UserData[];
   assistantHosts?: UserData[];
   staffInvites?: Invite[];
 
@@ -493,8 +492,8 @@ export interface Event {
   matchDurationMinutes?: number;
   setDurationMinutes?: number;
   setsPerMatch?: number;
-  doTeamsRef?: boolean;
-  teamRefsMaySwap?: boolean;
+  doTeamsOfficiate?: boolean;
+  teamOfficialsMaySwap?: boolean;
   refType?: string;
   pointsToVictory?: number[];
   status?: EventStatus;
@@ -505,7 +504,7 @@ export interface Event {
   attendees: number;
 }
 
-export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'referees' | 'assistantHosts' | 'staffInvites'> & {
+export type EventPayload = Omit<Event, 'fields' | 'matches' | 'teams' | 'timeSlots' | 'organization' | 'attendees' | 'officials' | 'assistantHosts' | 'staffInvites'> & {
   fields?: FieldPayload[];
   matches?: MatchPayload[];
   teams?: TeamPayload[];
@@ -535,7 +534,7 @@ export interface Organization {
   hostIds?: string[];
   hasStripeAccount?: boolean;
   fieldIds?: string[];
-  refIds?: string[];
+  officialIds?: string[];
   staffMembers?: StaffMember[];
   staffInvites?: Invite[];
   staffEmailsByUserId?: Record<string, string>;
@@ -548,7 +547,7 @@ export interface Organization {
   events?: Event[];
   teams?: Team[];
   fields?: Field[];
-  referees?: UserData[];
+  officials?: UserData[];
   hosts?: UserData[];
   owner?: UserData;
   products?: Product[];
@@ -752,8 +751,8 @@ export function toMatchPayload(match: Match): MatchPayload {
   const {
     division,
     field,
-    referee,
-    teamReferee,
+    official,
+    teamOfficial,
     team1,
     team2,
     previousLeftMatch,
@@ -779,17 +778,17 @@ export function toMatchPayload(match: Match): MatchPayload {
     }
   }
 
-  if (payload.refereeId == null) {
-    const refereeId = extractId(referee);
-    if (refereeId) {
-      payload.refereeId = refereeId;
+  if (payload.officialId == null) {
+    const officialId = extractId(official);
+    if (officialId) {
+      payload.officialId = officialId;
     }
   }
 
-  if (payload.teamRefereeId == null) {
-    const teamRefereeId = extractId(teamReferee);
-    if (teamRefereeId) {
-      payload.teamRefereeId = teamRefereeId;
+  if (payload.teamOfficialId == null) {
+    const teamOfficialId = extractId(teamOfficial);
+    if (teamOfficialId) {
+      payload.teamOfficialId = teamOfficialId;
     }
   }
 
@@ -900,7 +899,7 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
 }
 
 export function toEventPayload(event: Event): EventPayload {
-  const { matches, fields, teams, timeSlots, organization, referees, assistantHosts, ...rest } = event;
+  const { matches, fields, teams, timeSlots, organization, officials, assistantHosts, ...rest } = event;
 
   const matchPayloads = Array.isArray(matches) && matches.length
     ? matches.map(toMatchPayload)
@@ -1144,16 +1143,16 @@ export function toEventPayload(event: Event): EventPayload {
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   }
 
-  const hasExplicitReferees = Object.prototype.hasOwnProperty.call(rest, 'refereeIds');
-  const explicitRefereeIds = Array.isArray(rest.refereeIds)
-    ? uniqueIds(rest.refereeIds.map((id) => (typeof id === 'string' ? id : extractId(id))))
+  const hasExplicitOfficials = Object.prototype.hasOwnProperty.call(rest, 'officialIds');
+  const explicitOfficialIds = Array.isArray(rest.officialIds)
+    ? uniqueIds(rest.officialIds.map((id) => (typeof id === 'string' ? id : extractId(id))))
     : [];
-  if (hasExplicitReferees) {
-    payload.refereeIds = explicitRefereeIds;
-  } else if (Array.isArray(referees)) {
-    const derivedRefereeIds = uniqueIds(referees.map((referee) => extractId(referee)));
-    if (derivedRefereeIds.length) {
-      payload.refereeIds = derivedRefereeIds;
+  if (hasExplicitOfficials) {
+    payload.officialIds = explicitOfficialIds;
+  } else if (Array.isArray(officials)) {
+    const derivedOfficialIds = uniqueIds(officials.map((official) => extractId(official)));
+    if (derivedOfficialIds.length) {
+      payload.officialIds = derivedOfficialIds;
     }
   }
 
@@ -1175,10 +1174,10 @@ export function toEventPayload(event: Event): EventPayload {
     payload.eventType = normalizedEventType as EventType;
   }
 
-  if (typeof payload.doTeamsRef === 'boolean' && payload.doTeamsRef !== true) {
-    payload.teamRefsMaySwap = false;
-  } else if (typeof payload.teamRefsMaySwap === 'boolean') {
-    payload.teamRefsMaySwap = Boolean(payload.teamRefsMaySwap);
+  if (typeof payload.doTeamsOfficiate === 'boolean' && payload.doTeamsOfficiate !== true) {
+    payload.teamOfficialsMaySwap = false;
+  } else if (typeof payload.teamOfficialsMaySwap === 'boolean') {
+    payload.teamOfficialsMaySwap = Boolean(payload.teamOfficialsMaySwap);
   }
 
   if (payload.eventType && payload.eventType !== 'LEAGUE') {
@@ -1484,3 +1483,4 @@ export function formatPrice(price?: number) {
 export function formatBillAmount(amountCents: number) {
   return `$${(amountCents / 100).toFixed(2)}`;
 }
+

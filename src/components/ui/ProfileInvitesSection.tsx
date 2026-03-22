@@ -201,7 +201,7 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
             }
             const staffRoleLabel = invite.type === 'STAFF'
               ? Array.isArray(invite.staffTypes) && invite.staffTypes.length > 0
-                ? invite.staffTypes.map((type) => (type === 'REFEREE' ? 'Referee' : 'Host')).join(' + ')
+                ? invite.staffTypes.map((type) => (type === 'OFFICIAL' ? 'Official' : 'Host')).join(' + ')
                 : 'Staff'
               : null;
             return (

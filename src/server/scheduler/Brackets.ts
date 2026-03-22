@@ -57,10 +57,10 @@ export class Brackets {
       field.matches = [];
     }
     const participants: Record<string, Team | UserData> = { ...this.tournament.teams };
-    for (const referee of this.tournament.referees) {
-      if (!referee.divisions.length) referee.divisions = [...this.tournament.divisions];
-      referee.matches = [];
-      participants[referee.id] = referee;
+    for (const official of this.tournament.officials) {
+      if (!official.divisions.length) official.divisions = [...this.tournament.divisions];
+      official.matches = [];
+      participants[official.id] = official;
     }
 
     this.bracketSchedule = new Schedule(
@@ -383,27 +383,27 @@ export class Brackets {
 
     for (const match of orderedMatches) {
       this.attachMatchToParticipants(match);
-      // Official referees can be assigned even when the teams are not yet known (future bracket matches).
-      if (!match.referee && this.tournament.referees.length) {
+      // Official officials can be assigned even when the teams are not yet known (future bracket matches).
+      if (!match.official && this.tournament.officials.length) {
         const availableRefs = this.bracketSchedule.freeParticipants(this.currentDivision, match.start, match.end)
           .filter((participant) => participant instanceof UserData) as UserData[];
         if (availableRefs.length) {
-          match.referee = availableRefs[0];
+          match.official = availableRefs[0];
           availableRefs[0].matches.push(match);
           this.attachMatchToParticipants(match);
         }
       }
     }
 
-    if (this.tournament.doTeamsRef) {
+    if (this.tournament.doTeamsOfficiate) {
       for (const match of orderedMatches) {
         this.attachMatchToParticipants(match);
-        if (!match.team1 || !match.team2 || match.teamReferee) continue;
+        if (!match.team1 || !match.team2 || match.teamOfficial) continue;
         const availableTeams = this.bracketSchedule.freeParticipants(this.currentDivision, match.start, match.end)
           .filter((participant) => participant instanceof Team) as Team[];
         const filtered = availableTeams.filter((team) => team !== match.team1 && team !== match.team2);
         if (filtered.length) {
-          match.teamReferee = filtered[0];
+          match.teamOfficial = filtered[0];
           filtered[0].matches.push(match);
           this.attachMatchToParticipants(match);
         }
@@ -576,8 +576,8 @@ export class Brackets {
       team2Points: Array(multiplier).fill(0),
       start: this.tournament.start,
       end: this.tournament.start,
-      referee: null,
-      teamReferee: ref ?? null,
+      official: null,
+      teamOfficial: ref ?? null,
       loserNextMatch: null,
       losersBracket: isLoser,
       division: this.currentDivision,
@@ -585,7 +585,7 @@ export class Brackets {
       setResults: Array(multiplier).fill(0),
       bufferMs: this.restBuffer(),
       side,
-      refereeCheckedIn: false,
+      officialCheckedIn: false,
       team1,
       team2,
       eventId: this.tournament.id,

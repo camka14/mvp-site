@@ -1,6 +1,6 @@
 import {
   collectOrganizationHostIds,
-  collectOrganizationRefereeIds,
+  collectOrganizationOfficialIds,
   normalizeEntityId,
   normalizeUniqueIds,
   sanitizeOrganizationEventAssignments,
@@ -13,37 +13,37 @@ describe('organizationEventAccess helpers', () => {
     expect(normalizeUniqueIds(['user_1', ' user_1 ', '', 'user_2'])).toEqual(['user_1', 'user_2']);
   });
 
-  it('collects host and referee ids from organization metadata', () => {
+  it('collects host and official ids from organization metadata', () => {
     const organization = {
       ownerId: 'owner_1',
       hostIds: ['host_1', 'host_2'],
-      refIds: ['ref_1'],
-      referees: [{ $id: 'ref_2' }, { $id: 'ref_1' }],
+      officialIds: ['official_1'],
+      officials: [{ $id: 'official_2' }, { $id: 'official_1' }],
     };
 
     expect(collectOrganizationHostIds(organization)).toEqual(['owner_1', 'host_1', 'host_2']);
-    expect(collectOrganizationRefereeIds(organization)).toEqual(['ref_1', 'ref_2']);
+    expect(collectOrganizationOfficialIds(organization)).toEqual(['official_1', 'official_2']);
   });
 
   it('sanitizes assignments for organization events', () => {
     const organization = {
       ownerId: 'owner_1',
       hostIds: ['host_1', 'host_2'],
-      refIds: ['ref_1', 'ref_2'],
+      officialIds: ['official_1', 'official_2'],
     };
 
     const sanitized = sanitizeOrganizationEventAssignments(
       {
         hostId: 'outside_host',
         assistantHostIds: ['host_2', 'outside_assistant', 'owner_1'],
-        refereeIds: ['ref_2', 'outside_ref'],
+        officialIds: ['official_2', 'outside_official'],
       },
       organization,
     );
 
     expect(sanitized.hostId).toBe('owner_1');
     expect(sanitized.assistantHostIds).toEqual(['host_2']);
-    expect(sanitized.refereeIds).toEqual(['ref_2']);
+    expect(sanitized.officialIds).toEqual(['official_2']);
   });
 
   it('keeps non-organization host assignments when no host constraints are provided', () => {
@@ -51,14 +51,16 @@ describe('organizationEventAccess helpers', () => {
       {
         hostId: 'host_1',
         assistantHostIds: ['assistant_1'],
-        refereeIds: ['ref_1'],
+        officialIds: ['official_1'],
       },
       null,
     );
 
     expect(sanitized.hostId).toBe('host_1');
     expect(sanitized.assistantHostIds).toEqual(['assistant_1']);
-    expect(sanitized.refereeIds).toEqual([]);
+    expect(sanitized.officialIds).toEqual([]);
   });
 });
+
+
 

@@ -39,7 +39,7 @@ const createMatch = (params: {
     setResults: [0, 0, 0],
     bufferMs: 5 * MINUTE_MS,
     side: null,
-    refereeCheckedIn: false,
+    officialCheckedIn: false,
     eventId: params.eventId,
   });
 
@@ -154,7 +154,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
         [unlockedMatchOne.id]: unlockedMatchOne,
         [unlockedMatchTwo.id]: unlockedMatchTwo,
       },
-      referees: [],
+      officials: [],
       eventType: 'LEAGUE',
       doubleElimination: false,
       winnerSetCount: null,
@@ -167,7 +167,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       gamesPerOpponent: 1,
       includePlayoffs: false,
       playoffTeamCount: 0,
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       noFixedEndDateTime: false,
       restTimeMinutes: 5,
       timeSlots: [
@@ -320,7 +320,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
         [matchOne.id]: matchOne,
         [matchTwo.id]: matchTwo,
       },
-      referees: [],
+      officials: [],
       eventType: 'LEAGUE',
       doubleElimination: false,
       winnerSetCount: null,
@@ -333,7 +333,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       gamesPerOpponent: 1,
       includePlayoffs: false,
       playoffTeamCount: 0,
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       noFixedEndDateTime: true,
       restTimeMinutes: 5,
       timeSlots: [mirroredSlot],
@@ -444,7 +444,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
         [lockedMatch.id]: lockedMatch,
         [unlockedMatch.id]: unlockedMatch,
       },
-      referees: [],
+      officials: [],
       eventType: 'LEAGUE',
       doubleElimination: false,
       winnerSetCount: null,
@@ -457,7 +457,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       gamesPerOpponent: 1,
       includePlayoffs: false,
       playoffTeamCount: 0,
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       noFixedEndDateTime: false,
       restTimeMinutes: 5,
       timeSlots: [
@@ -588,7 +588,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
         [lockedMatch.id]: lockedMatch,
         [unlockedMatch.id]: unlockedMatch,
       },
-      referees: [],
+      officials: [],
       eventType: 'LEAGUE',
       doubleElimination: false,
       winnerSetCount: null,
@@ -601,7 +601,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       gamesPerOpponent: 1,
       includePlayoffs: false,
       playoffTeamCount: 0,
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       noFixedEndDateTime: false,
       restTimeMinutes: 5,
       timeSlots: [
@@ -711,7 +711,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       matches: {
         [playoffMatch.id]: playoffMatch,
       },
-      referees: [],
+      officials: [],
       eventType: 'LEAGUE',
       doubleElimination: false,
       winnerSetCount: null,
@@ -724,7 +724,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       gamesPerOpponent: 1,
       includePlayoffs: true,
       playoffTeamCount: 2,
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       noFixedEndDateTime: false,
       restTimeMinutes: 5,
       timeSlots: [
@@ -870,7 +870,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
         [qualifierMatch.id]: qualifierMatch,
         [dependentMatch.id]: dependentMatch,
       },
-      referees: [],
+      officials: [],
       eventType: 'LEAGUE',
       doubleElimination: false,
       winnerSetCount: null,
@@ -883,7 +883,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       gamesPerOpponent: 1,
       includePlayoffs: true,
       playoffTeamCount: 2,
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       noFixedEndDateTime: false,
       restTimeMinutes: 5,
       timeSlots: [
@@ -1007,7 +1007,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
         [matchOne.id]: matchOne,
         [matchTwo.id]: matchTwo,
       },
-      referees: [],
+      officials: [],
       eventType: 'LEAGUE',
       doubleElimination: false,
       winnerSetCount: null,
@@ -1020,7 +1020,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       gamesPerOpponent: 1,
       includePlayoffs: false,
       playoffTeamCount: 0,
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       noFixedEndDateTime: true,
       restTimeMinutes: 5,
       timeSlots: [
@@ -1052,7 +1052,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     expect(result.warnings).toHaveLength(0);
   });
 
-  it('reassigns missing official and team referees when rescheduling tournament matches', () => {
+  it('reassigns missing official and team officials when rescheduling tournament matches', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
       id: 'field_tournament_refs',
@@ -1080,16 +1080,16 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const team5 = makeTeam('team_5', 'Team 5');
     const team6 = makeTeam('team_6', 'Team 6');
 
-    const ref1 = new UserData({
-      id: 'ref_1',
-      firstName: 'Ref',
+    const official1 = new UserData({
+      id: 'official_1',
+      firstName: 'Official',
       lastName: 'One',
       matches: [],
       divisions: [division],
     });
-    const ref2 = new UserData({
-      id: 'ref_2',
-      firstName: 'Ref',
+    const official2 = new UserData({
+      id: 'official_2',
+      firstName: 'Official',
       lastName: 'Two',
       matches: [],
       divisions: [division],
@@ -1160,7 +1160,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
         [match2.id]: match2,
         [match3.id]: match3,
       },
-      referees: [ref1, ref2],
+      officials: [official1, official2],
       eventType: 'TOURNAMENT',
       doubleElimination: false,
       winnerSetCount: null,
@@ -1168,7 +1168,7 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       matchDurationMinutes: 60,
       usesSets: false,
       setDurationMinutes: 0,
-      doTeamsRef: true,
+      doTeamsOfficiate: true,
       noFixedEndDateTime: false,
       restTimeMinutes: 5,
       timeSlots: [
@@ -1189,13 +1189,13 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const result = rescheduleEventMatchesPreservingLocks(tournament);
     expect(result.warnings).toHaveLength(0);
 
-    const validRefIds = new Set(['ref_1', 'ref_2']);
+    const validOfficialIds = new Set(['official_1', 'official_2']);
     for (const match of result.matches) {
-      expect(match.referee?.id).toBeTruthy();
-      expect(validRefIds.has(match.referee?.id ?? '')).toBe(true);
-      expect(match.teamReferee?.id).toBeTruthy();
-      expect(match.teamReferee?.id).not.toBe(match.team1?.id);
-      expect(match.teamReferee?.id).not.toBe(match.team2?.id);
+      expect(match.official?.id).toBeTruthy();
+      expect(validOfficialIds.has(match.official?.id ?? '')).toBe(true);
+      expect(match.teamOfficial?.id).toBeTruthy();
+      expect(match.teamOfficial?.id).not.toBe(match.team1?.id);
+      expect(match.teamOfficial?.id).not.toBe(match.team2?.id);
     }
   });
 });

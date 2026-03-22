@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { downloadSignedDocumentPdf, isBoldSignConfigured } from '@/lib/boldsignServer';
-import { canManageOrganization, canRefereeOrganization } from '@/server/accessControl';
+import { canManageOrganization, canOfficialOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +63,7 @@ const hasOrganizationDocumentAccess = async (params: {
     return true;
   }
 
-  if (await canRefereeOrganization(
+  if (await canOfficialOrganization(
     { userId: params.sessionUserId, isAdmin: params.isAdmin },
     org,
   )) {
@@ -156,3 +156,4 @@ export async function GET(
     },
   });
 }
+

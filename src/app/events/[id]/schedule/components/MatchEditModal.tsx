@@ -15,8 +15,8 @@ interface MatchEditModalProps {
   allMatches?: Match[];
   fields?: Field[];
   teams?: Team[];
-  referees?: UserData[];
-  doTeamsRef?: boolean;
+  officials?: UserData[];
+  doTeamsOfficiate?: boolean;
   isCreateMode?: boolean;
   creationContext?: 'schedule' | 'bracket';
   eventType?: string | null;
@@ -100,13 +100,13 @@ const getTeamId = (team?: Match['team1']): string | null => {
   return getEntityId(team);
 };
 
-const getUserId = (user?: Match['referee']): string | null => {
+const getUserId = (user?: Match['official']): string | null => {
   if (!user) return null;
   return getEntityId(user);
 };
 
 const formatUserLabel = (user?: Partial<UserData> | null): string => {
-  if (!user) return 'Referee';
+  if (!user) return 'Official';
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
   if (name) {
     return name;
@@ -114,7 +114,7 @@ const formatUserLabel = (user?: Partial<UserData> | null): string => {
   if (user.userName) {
     return user.userName;
   }
-  return 'Referee';
+  return 'Official';
 };
 
 const findTeamById = (id: string | null, allTeams: Team[], fallback?: Match['team1']): Team | undefined => {
@@ -160,8 +160,8 @@ export default function MatchEditModal({
   allMatches = [],
   fields = [],
   teams = [],
-  referees = [],
-  doTeamsRef = false,
+  officials = [],
+  doTeamsOfficiate = false,
   isCreateMode = false,
   creationContext = 'bracket',
   eventType = null,
@@ -175,8 +175,8 @@ export default function MatchEditModal({
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [team1Id, setTeam1Id] = useState<string | null>(null);
   const [team2Id, setTeam2Id] = useState<string | null>(null);
-  const [teamRefereeId, setTeamRefereeId] = useState<string | null>(null);
-  const [userRefereeId, setUserRefereeId] = useState<string | null>(null);
+  const [teamOfficialId, setTeamOfficialId] = useState<string | null>(null);
+  const [userOfficialId, setUserOfficialId] = useState<string | null>(null);
   const [team1Points, setTeam1Points] = useState<number[]>([0]);
   const [team2Points, setTeam2Points] = useState<number[]>([0]);
   const [setResults, setSetResults] = useState<number[]>([0]);
@@ -195,8 +195,8 @@ export default function MatchEditModal({
       setFieldId(null);
       setTeam1Id(null);
       setTeam2Id(null);
-      setTeamRefereeId(null);
-      setUserRefereeId(null);
+      setTeamOfficialId(null);
+      setUserOfficialId(null);
       setTeam1Points([0]);
       setTeam2Points([0]);
       setSetResults([0]);
@@ -213,13 +213,13 @@ export default function MatchEditModal({
     setFieldId(getEntityId(match.field));
     setTeam1Id(resolveMatchTeamId(match, 'team1'));
     setTeam2Id(resolveMatchTeamId(match, 'team2'));
-    const initialTeamRefId =
-      normalizeOptionalId(match.teamRefereeId) ??
-      getTeamId(match.teamReferee) ??
-      // Legacy fallback when referee held team data
-      getTeamId((match as any).referee);
-    setTeamRefereeId(initialTeamRefId);
-    setUserRefereeId(normalizeOptionalId(match.refereeId) ?? getUserId(match.referee));
+    const initialTeamOfficialId =
+      normalizeOptionalId(match.teamOfficialId) ??
+      getTeamId(match.teamOfficial) ??
+      // Legacy fallback when official held team data
+      getTeamId((match as any).official);
+    setTeamOfficialId(initialTeamOfficialId);
+    setUserOfficialId(normalizeOptionalId(match.officialId) ?? getUserId(match.official));
 
     const aligned = extractSetData(match);
     setTeam1Points(aligned.team1);
@@ -335,12 +335,12 @@ export default function MatchEditModal({
 
   const matchTeam1Id = useMemo(() => resolveMatchTeamId(match, 'team1'), [match]);
   const matchTeam2Id = useMemo(() => resolveMatchTeamId(match, 'team2'), [match]);
-  const matchTeamRefereeId = useMemo(
-    () => normalizeOptionalId(match?.teamRefereeId) ?? getTeamId(match?.teamReferee) ?? getTeamId((match as any)?.referee),
+  const matchTeamOfficialId = useMemo(
+    () => normalizeOptionalId(match?.teamOfficialId) ?? getTeamId(match?.teamOfficial) ?? getTeamId((match as any)?.official),
     [match],
   );
-  const matchUserRefereeId = useMemo(
-    () => normalizeOptionalId(match?.refereeId) ?? getUserId(match?.referee),
+  const matchUserOfficialId = useMemo(
+    () => normalizeOptionalId(match?.officialId) ?? getUserId(match?.official),
     [match],
   );
 
@@ -368,20 +368,20 @@ export default function MatchEditModal({
 
     ensureOption(matchTeam1Id, resolveTeamName(match?.team1, teams));
     ensureOption(matchTeam2Id, resolveTeamName(match?.team2, teams));
-    ensureOption(matchTeamRefereeId, resolveTeamName(match?.teamReferee ?? (match as any)?.referee, teams));
+    ensureOption(matchTeamOfficialId, resolveTeamName(match?.teamOfficial ?? (match as any)?.official, teams));
 
     return Array.from(optionsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [teams, matchTeam1Id, matchTeam2Id, matchTeamRefereeId, match]);
+  }, [teams, matchTeam1Id, matchTeam2Id, matchTeamOfficialId, match]);
 
-  const refereeOptions = useMemo(() => {
-    const options = (referees ?? []).reduce<Array<{ value: string; label: string }>>((acc, referee) => {
-      const refereeId = getEntityId(referee);
-      if (!refereeId) {
+  const officialOptions = useMemo(() => {
+    const options = (officials ?? []).reduce<Array<{ value: string; label: string }>>((acc, official) => {
+      const officialId = getEntityId(official);
+      if (!officialId) {
         return acc;
       }
       acc.push({
-        value: refereeId,
-        label: formatUserLabel(referee),
+        value: officialId,
+        label: formatUserLabel(official),
       });
       return acc;
     }, []);
@@ -393,10 +393,10 @@ export default function MatchEditModal({
       }
     };
 
-    ensureOption(matchUserRefereeId, formatUserLabel(match?.referee as UserData));
+    ensureOption(matchUserOfficialId, formatUserLabel(match?.official as UserData));
 
     return options.sort((a, b) => a.label.localeCompare(b.label));
-  }, [referees, matchUserRefereeId, match]);
+  }, [officials, matchUserOfficialId, match]);
 
   const team1Options = useMemo(
     () => teamOptions.filter((option) => !team2Id || option.value === team1Id || option.value !== team2Id),
@@ -425,20 +425,20 @@ export default function MatchEditModal({
 
   const selectedTeam1 = useMemo(() => findTeamById(team1Id, teams, match?.team1), [team1Id, teams, match]);
   const selectedTeam2 = useMemo(() => findTeamById(team2Id, teams, match?.team2), [team2Id, teams, match]);
-  const selectedTeamReferee = useMemo(
-    () => findTeamById(teamRefereeId, teams, match?.teamReferee ?? (match as any)?.referee),
-    [teamRefereeId, teams, match],
+  const selectedTeamOfficial = useMemo(
+    () => findTeamById(teamOfficialId, teams, match?.teamOfficial ?? (match as any)?.official),
+    [teamOfficialId, teams, match],
   );
-  const selectedUserReferee = useMemo(() => {
-    const fromList = referees.find((referee) => getEntityId(referee) === userRefereeId);
+  const selectedUserOfficial = useMemo(() => {
+    const fromList = officials.find((official) => getEntityId(official) === userOfficialId);
     if (fromList) {
       return fromList;
     }
-    if (match?.referee && getUserId(match.referee) === userRefereeId && typeof match.referee === 'object') {
-      return match.referee as UserData;
+    if (match?.official && getUserId(match.official) === userOfficialId && typeof match.official === 'object') {
+      return match.official as UserData;
     }
     return undefined;
-  }, [referees, userRefereeId, match]);
+  }, [officials, userOfficialId, match]);
 
   const team1DisplayName = selectedTeam1 ? resolveTeamName(selectedTeam1, teams) : 'TBD';
   const team2DisplayName = selectedTeam2 ? resolveTeamName(selectedTeam2, teams) : 'TBD';
@@ -614,20 +614,20 @@ export default function MatchEditModal({
       delete (updated as any).team2;
     }
 
-    updated.teamRefereeId = teamRefereeId ?? null;
-    const nextTeamRef = selectedTeamReferee;
-    if (nextTeamRef) {
-      updated.teamReferee = { ...nextTeamRef };
+    updated.teamOfficialId = teamOfficialId ?? null;
+    const nextTeamOfficial = selectedTeamOfficial;
+    if (nextTeamOfficial) {
+      updated.teamOfficial = { ...nextTeamOfficial };
     } else {
-      delete (updated as any).teamReferee;
+      delete (updated as any).teamOfficial;
     }
 
-    updated.refereeId = userRefereeId ?? null;
-    const nextUserRef = selectedUserReferee;
+    updated.officialId = userOfficialId ?? null;
+    const nextUserRef = selectedUserOfficial;
     if (nextUserRef) {
-      updated.referee = { ...nextUserRef };
+      updated.official = { ...nextUserRef };
     } else {
-      delete (updated as any).referee;
+      delete (updated as any).official;
     }
 
     setError(null);
@@ -701,23 +701,23 @@ export default function MatchEditModal({
           clearable
         />
         <Select
-          label="Team Referee"
-          description={doTeamsRef ? undefined : 'Optional when teams are not providing referees.'}
+          label="Team Official"
+          description={doTeamsOfficiate ? undefined : 'Optional when teams are not providing officials.'}
           data={teamOptions}
-          value={teamRefereeId}
-          onChange={setTeamRefereeId}
-          placeholder="Select referee team"
+          value={teamOfficialId}
+          onChange={setTeamOfficialId}
+          placeholder="Select official team"
           clearable
         />
         <Select
-          label="Referee"
-          data={refereeOptions}
-          value={userRefereeId}
-          onChange={setUserRefereeId}
-          placeholder="Select referee"
+          label="Official"
+          data={officialOptions}
+          value={userOfficialId}
+          onChange={setUserOfficialId}
+          placeholder="Select official"
           clearable
           searchable
-          nothingFoundMessage={refereeOptions.length ? 'No matches' : 'No referees available'}
+          nothingFoundMessage={officialOptions.length ? 'No matches' : 'No officials available'}
         />
 
         {fieldOptions.length > 0 && (
@@ -779,14 +779,14 @@ export default function MatchEditModal({
         {setResults.map((result, index) => (
           <Group key={`set-${index}`} align="flex-end" gap="md" grow>
             <NumberInput
-              label={`${team1DisplayName === 'TBD' ? 'Team 1' : team1DisplayName} – Set ${index + 1}`}
+              label={`${team1DisplayName === 'TBD' ? 'Team 1' : team1DisplayName} â€“ Set ${index + 1}`}
               value={team1Points[index]}
               min={0}
               step={1}
               onChange={(value) => handlePointsChange('team1', index, value)}
             />
             <NumberInput
-              label={`${team2DisplayName === 'TBD' ? 'Team 2' : team2DisplayName} – Set ${index + 1}`}
+              label={`${team2DisplayName === 'TBD' ? 'Team 2' : team2DisplayName} â€“ Set ${index + 1}`}
               value={team2Points[index]}
               min={0}
               step={1}
@@ -837,3 +837,4 @@ export default function MatchEditModal({
     </Modal>
   );
 }
+

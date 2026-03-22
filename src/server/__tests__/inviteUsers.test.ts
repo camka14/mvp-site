@@ -57,13 +57,13 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
     const now = new Date('2020-01-01T00:00:00.000Z');
     await ensureAuthUserAndUserDataByEmail(tx, 'casey@example.com', now, {
       firstName: 'Casey',
-      lastName: 'Ref',
+      lastName: 'Official',
     });
 
     expect(tx.authUser.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          name: 'Casey Ref',
+          name: 'Casey Official',
         }),
       }),
     );
@@ -71,8 +71,8 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           firstName: 'Casey',
-          lastName: 'Ref',
-          userName: expect.stringMatching(/^casey\.ref\d{4}$/),
+          lastName: 'Official',
+          userName: expect.stringMatching(/^casey\.official\d{4}$/),
         }),
       }),
     );
@@ -109,13 +109,13 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
     const now = new Date('2020-01-01T00:00:00.000Z');
     await ensureAuthUserAndUserDataByEmail(tx, 'casey@example.com', now, {
       firstName: 'Casey',
-      lastName: 'Ref',
+      lastName: 'Official',
     });
 
     expect(tx.authUser.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'user_abc' },
-        data: expect.objectContaining({ name: 'Casey Ref' }),
+        data: expect.objectContaining({ name: 'Casey Official' }),
       }),
     );
     expect(tx.userData.update).toHaveBeenCalledWith(
@@ -156,14 +156,14 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
       const now = new Date('2020-01-01T00:00:00.000Z');
       await ensureAuthUserAndUserDataByEmail(tx, 'casey@example.com', now, {
         firstName: 'Casey',
-        lastName: 'Ref',
+        lastName: 'Official',
       });
 
       expect(tx.userData.findFirst).toHaveBeenCalledTimes(2);
       expect(tx.userData.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            userName: 'casey.ref4321',
+            userName: 'casey.official4321',
           }),
         }),
       );
@@ -172,3 +172,4 @@ describe('ensureAuthUserAndUserDataByEmail', () => {
     }
   });
 });
+

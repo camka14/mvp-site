@@ -79,9 +79,9 @@ const EVENT_UPDATE_FIELDS = new Set([
   'parentEvent',
   'autoCancellation',
   'eventType',
-  'doTeamsRef',
-  'teamRefsMaySwap',
-  'refereeIds',
+  'doTeamsOfficiate',
+  'teamOfficialsMaySwap',
+  'officialIds',
   'allowPaymentPlans',
   'installmentCount',
   'installmentDueDates',
@@ -114,8 +114,8 @@ const withLegacyEvent = (row: any) => {
   if (!Array.isArray(legacy.freeAgentIds)) {
     (legacy as any).freeAgentIds = [];
   }
-  if (!Array.isArray(legacy.refereeIds)) {
-    (legacy as any).refereeIds = [];
+  if (!Array.isArray(legacy.officialIds)) {
+    (legacy as any).officialIds = [];
   }
   if (!Array.isArray((legacy as any).assistantHostIds)) {
     (legacy as any).assistantHostIds = [];
@@ -131,10 +131,10 @@ const withLegacyEvent = (row: any) => {
       && (!end || start.getTime() === end.getTime()),
     );
   }
-  if ((legacy as any).doTeamsRef !== true) {
-    (legacy as any).teamRefsMaySwap = false;
-  } else if (typeof (legacy as any).teamRefsMaySwap !== 'boolean') {
-    (legacy as any).teamRefsMaySwap = false;
+  if ((legacy as any).doTeamsOfficiate !== true) {
+    (legacy as any).teamOfficialsMaySwap = false;
+  } else if (typeof (legacy as any).teamOfficialsMaySwap !== 'boolean') {
+    (legacy as any).teamOfficialsMaySwap = false;
   }
   return legacy;
 };
@@ -1374,7 +1374,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
       // Drop relationship objects that Prisma doesn't accept on `events.update`.
       delete payload.players;
-      delete payload.referees;
+      delete payload.officials;
       delete payload.assistantHosts;
       delete payload.teams;
       delete payload.fields;
@@ -1411,12 +1411,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           delete payload.noFixedEndDateTime;
         }
       }
-      if (Object.prototype.hasOwnProperty.call(payload, 'teamRefsMaySwap')) {
-        const normalizedTeamRefsMaySwap = normalizeOptionalBoolean(payload.teamRefsMaySwap);
-        if (normalizedTeamRefsMaySwap !== null) {
-          payload.teamRefsMaySwap = normalizedTeamRefsMaySwap;
+      if (Object.prototype.hasOwnProperty.call(payload, 'teamOfficialsMaySwap')) {
+        const normalizedTeamOfficialsMaySwap = normalizeOptionalBoolean(payload.teamOfficialsMaySwap);
+        if (normalizedTeamOfficialsMaySwap !== null) {
+          payload.teamOfficialsMaySwap = normalizedTeamOfficialsMaySwap;
         } else {
-          delete payload.teamRefsMaySwap;
+          delete payload.teamOfficialsMaySwap;
         }
       }
 
@@ -1437,12 +1437,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       } else if (!Object.prototype.hasOwnProperty.call(data, 'splitLeaguePlayoffDivisions')) {
         data.splitLeaguePlayoffDivisions = Boolean(existing.splitLeaguePlayoffDivisions);
       }
-      if (data.doTeamsRef !== true) {
-        data.teamRefsMaySwap = false;
-      } else if (Object.prototype.hasOwnProperty.call(payload, 'teamRefsMaySwap')) {
-        data.teamRefsMaySwap = Boolean(payload.teamRefsMaySwap);
-      } else if (!Object.prototype.hasOwnProperty.call(data, 'teamRefsMaySwap')) {
-        data.teamRefsMaySwap = Boolean((existing as any).teamRefsMaySwap);
+      if (data.doTeamsOfficiate !== true) {
+        data.teamOfficialsMaySwap = false;
+      } else if (Object.prototype.hasOwnProperty.call(payload, 'teamOfficialsMaySwap')) {
+        data.teamOfficialsMaySwap = Boolean(payload.teamOfficialsMaySwap);
+      } else if (!Object.prototype.hasOwnProperty.call(data, 'teamOfficialsMaySwap')) {
+        data.teamOfficialsMaySwap = Boolean((existing as any).teamOfficialsMaySwap);
       }
       const nextOrganizationId = normalizeEntityId(data.organizationId ?? existing.organizationId ?? null);
       if (nextOrganizationId) {
@@ -1452,7 +1452,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             select: {
               ownerId: true,
               hostIds: true,
-              refIds: true,
+              officialIds: true,
             },
           }),
           tx.staffMembers?.findMany
@@ -1488,17 +1488,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
                 ? data.assistantHostIds
                 : existing.assistantHostIds
             ) as string[] | null | undefined,
-            refereeIds: (
-              Object.prototype.hasOwnProperty.call(data, 'refereeIds')
-                ? data.refereeIds
-                : existing.refereeIds
+            officialIds: (
+              Object.prototype.hasOwnProperty.call(data, 'officialIds')
+                ? data.officialIds
+                : existing.officialIds
             ) as string[] | null | undefined,
           },
           { ...organizationAccess, staffMembers, staffInvites },
         );
         data.hostId = sanitizedAssignments.hostId ?? normalizeEntityId(existing.hostId) ?? '';
         data.assistantHostIds = sanitizedAssignments.assistantHostIds;
-        data.refereeIds = sanitizedAssignments.refereeIds;
+        data.officialIds = sanitizedAssignments.officialIds;
       }
       if (targetEventType === 'LEAGUE') {
         const normalizedLeagueConfig = normalizeLeagueScoringConfigUpdate(incomingLeagueScoringConfig);
@@ -2167,3 +2167,4 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
 
   return NextResponse.json({ deleted: true }, { status: 200 });
 }
+

@@ -1054,7 +1054,7 @@ const buildTimeSlots = (
   });
 };
 
-const buildReferees = (rows: any[], divisions: Division[]) => {
+const buildOfficials = (rows: any[], divisions: Division[]) => {
   return rows.map((row) => new UserData({
     id: row.id,
     firstName: row.firstName ?? '',
@@ -1503,10 +1503,10 @@ const buildMatches = (
   teams: Record<string, Team>,
   fields: Record<string, PlayingField>,
   divisions: Division[],
-  referees: UserData[],
+  officials: UserData[],
 ) => {
   const divisionLookup = new Map(divisions.map((division) => [division.id, division]));
-  const refereeLookup = new Map(referees.map((ref) => [ref.id, ref]));
+  const officialLookup = new Map(officials.map((official) => [official.id, official]));
   const matches: Record<string, Match> = {};
   for (const row of rows) {
     const normalizedDivisionId = normalizeDivisionKey(row.division);
@@ -1541,9 +1541,9 @@ const buildMatches = (
       setResults: ensureArray(row.setResults),
       bufferMs: matchBufferMs(event),
       side: sideFrom(row.side),
-      refereeCheckedIn: row.refereeCheckedIn ?? row.refCheckedIn ?? false,
-      teamReferee: row.teamRefereeId ? teams[row.teamRefereeId] ?? null : null,
-      referee: row.refereeId ? refereeLookup.get(row.refereeId) ?? null : null,
+      officialCheckedIn: row.officialCheckedIn ?? false,
+      teamOfficial: row.teamOfficialId ? teams[row.teamOfficialId] ?? null : null,
+      official: row.officialId ? officialLookup.get(row.officialId) ?? null : null,
       team1: row.team1Id ? teams[row.team1Id] ?? null : null,
       team2: row.team2Id ? teams[row.team2Id] ?? null : null,
       eventId: row.eventId,
@@ -1565,7 +1565,7 @@ const buildMatches = (
     match.winnerNextMatch = row.winnerNextMatchId ? matches[row.winnerNextMatchId] ?? null : null;
     match.loserNextMatch = row.loserNextMatchId ? matches[row.loserNextMatchId] ?? null : null;
   }
-  // Attach to teams/fields/referees
+  // Attach to teams/fields/officials
   for (const match of Object.values(matches)) {
     if (match.field) {
       match.field.matches.push(match);
@@ -1625,13 +1625,13 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const teamIds = ensureStringArray(event.teamIds);
   const teamIdsToLoad = Array.from(new Set(teamIds));
   const timeSlotIds = ensureStringArray(event.timeSlotIds);
-  const refereeIds = ensureStringArray(event.refereeIds);
+  const officialIds = ensureStringArray(event.officialIds);
 
-  const [fieldRows, teamRows, timeSlotRows, refereeRows, matchRows, leagueConfigRow] = await Promise.all([
+  const [fieldRows, teamRows, timeSlotRows, officialRows, matchRows, leagueConfigRow] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
     teamIdsToLoad.length ? client.teams.findMany({ where: { id: { in: teamIdsToLoad } } }) : Promise.resolve([]),
     loadTimeSlotRows(client, timeSlotIds),
-    refereeIds.length ? client.userData.findMany({ where: { id: { in: refereeIds } } }) : Promise.resolve([]),
+    officialIds.length ? client.userData.findMany({ where: { id: { in: officialIds } } }) : Promise.resolve([]),
     client.matches.findMany({ where: { eventId: event.id } }),
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
   ]);
@@ -1654,7 +1654,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   }
   const teams = buildTeams(teamRows, divisionMap, fallbackDivision, divisionByTeamId);
   const timeSlots = buildTimeSlots(timeSlotRows, divisionMap, divisions);
-  const referees = buildReferees(refereeRows, allDivisions);
+  const officials = buildOfficials(officialRows, allDivisions);
   attachTimeSlotsToFields(fields, timeSlots);
   const eventStart = event.start instanceof Date ? event.start : new Date(event.start);
   const eventEnd = event.end instanceof Date
@@ -1727,10 +1727,10 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     rating: event.rating ?? null,
     minAge: event.minAge ?? null,
     maxAge: event.maxAge ?? null,
-    doTeamsRef: typeof event.doTeamsRef === 'boolean' ? event.doTeamsRef : true,
-    teamRefsMaySwap:
-      event.doTeamsRef === true && typeof (event as any).teamRefsMaySwap === 'boolean'
-        ? Boolean((event as any).teamRefsMaySwap)
+    doTeamsOfficiate: typeof event.doTeamsOfficiate === 'boolean' ? event.doTeamsOfficiate : true,
+    teamOfficialsMaySwap:
+      event.doTeamsOfficiate === true && typeof (event as any).teamOfficialsMaySwap === 'boolean'
+        ? Boolean((event as any).teamOfficialsMaySwap)
         : false,
     fieldCount: resolvedFieldCount,
     prize: event.prize ?? null,
@@ -1747,7 +1747,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     teams,
     players: [],
     divisions,
-    referees,
+    officials,
     eventType: event.eventType ?? 'EVENT',
     fields,
     doubleElimination: Boolean(event.doubleElimination),
@@ -1773,7 +1773,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
       })
     : new Tournament(baseParams);
 
-  const matches = buildMatches(matchRows, constructed, teams, fields, allDivisions, referees);
+  const matches = buildMatches(matchRows, constructed, teams, fields, allDivisions, officials);
   constructed.matches = matches;
   (constructed as any).parentEvent = normalizedParentEvent;
   return constructed;
@@ -1813,9 +1813,9 @@ export const saveMatches = async (
       loserNextMatchId: match.loserNextMatch?.id ?? null,
       previousLeftId: match.previousLeftMatch?.id ?? null,
       previousRightId: match.previousRightMatch?.id ?? null,
-      refereeCheckedIn: match.refereeCheckedIn ?? false,
-      refereeId: match.referee?.id ?? null,
-      teamRefereeId: match.teamReferee?.id ?? null,
+      officialCheckedIn: match.officialCheckedIn ?? false,
+      officialId: match.official?.id ?? null,
+      teamOfficialId: match.teamOfficial?.id ?? null,
       team1Id: match.team1?.id ?? null,
       team2Id: match.team2?.id ?? null,
       eventId,
@@ -2530,11 +2530,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       fieldIds: true,
       timeSlotIds: true,
       eventType: true,
+      end: true,
+      noFixedEndDateTime: true,
       leagueScoringConfigId: true,
       hostId: true,
       organizationId: true,
       parentEvent: true,
-      end: true,
     },
   });
   const resolvedOrganizationId = normalizeEntityId(payload.organizationId) ?? normalizeEntityId(existingEvent?.organizationId);
@@ -2545,7 +2546,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       select: {
         ownerId: true,
         hostIds: true,
-        refIds: true,
+        officialIds: true,
       },
     })
     : null;
@@ -2575,7 +2576,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       {
         hostId: payload.hostId ?? resolvedHostId ?? null,
         assistantHostIds: ensureStringArray(payload.assistantHostIds),
-        refereeIds: ensureStringArray(payload.refereeIds),
+        officialIds: ensureStringArray(payload.officialIds),
       },
       organizationAccess ? { ...organizationAccess, staffMembers: organizationStaffMembers, staffInvites: organizationStaffInvites } : null,
     )
@@ -2584,9 +2585,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedAssistantHostIds = organizationAssignments
     ? organizationAssignments.assistantHostIds
     : ensureStringArray(payload.assistantHostIds);
-  const normalizedRefereeIds = organizationAssignments
-    ? organizationAssignments.refereeIds
-    : ensureStringArray(payload.refereeIds);
+  const normalizedOfficialIds = organizationAssignments
+    ? organizationAssignments.officialIds
+    : ensureStringArray(payload.officialIds);
   const billingOwnerHasStripeAccount = await resolveBillingOwnerHasStripeAccount(client, {
     organizationId: resolvedOrganizationId,
     hostId: normalizedHostId,
@@ -2757,9 +2758,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedEventInstallmentAmounts = billingOwnerHasStripeAccount
     ? ensureNumberArray(payload.installmentAmounts)
     : [];
-  const normalizedDoTeamsRef = coerceNullableBoolean(payload.doTeamsRef);
-  const normalizedTeamRefsMaySwap = normalizedDoTeamsRef === true
-    ? coerceBoolean(payload.teamRefsMaySwap, false)
+  const normalizedDoTeamsOfficiate = coerceNullableBoolean(payload.doTeamsOfficiate);
+  const normalizedTeamOfficialsMaySwap = normalizedDoTeamsOfficiate === true
+    ? coerceBoolean(payload.teamOfficialsMaySwap, false)
     : false;
 
   const eventData = {
@@ -2819,9 +2820,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     parentEvent: normalizedParentEvent,
     autoCancellation: payload.autoCancellation ?? null,
     eventType: payload.eventType ?? null,
-    doTeamsRef: normalizedDoTeamsRef ?? null,
-    teamRefsMaySwap: normalizedTeamRefsMaySwap,
-    refereeIds: normalizedRefereeIds,
+    doTeamsOfficiate: normalizedDoTeamsOfficiate ?? null,
+    teamOfficialsMaySwap: normalizedTeamOfficialsMaySwap,
+    officialIds: normalizedOfficialIds,
     allowPaymentPlans: normalizedEventAllowPaymentPlans,
     installmentCount: normalizedEventInstallmentCount,
     installmentDueDates: normalizedEventInstallmentDueDates,
@@ -3087,4 +3088,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
 
   return id;
 };
+
+
 

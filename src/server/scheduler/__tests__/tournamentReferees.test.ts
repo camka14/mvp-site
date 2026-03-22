@@ -54,8 +54,8 @@ const buildTournament = (overrides: Partial<ConstructorParameters<typeof Tournam
     teams: overrides.teams ?? buildTeams(4, division),
     divisions: overrides.divisions ?? [division],
     fields: overrides.fields ?? { [field.id]: field },
-    referees: overrides.referees ?? [],
-    doTeamsRef: overrides.doTeamsRef ?? true,
+    officials: overrides.officials ?? [],
+    doTeamsOfficiate: overrides.doTeamsOfficiate ?? true,
     doubleElimination: overrides.doubleElimination ?? false,
     winnerSetCount: overrides.winnerSetCount ?? 2,
     loserSetCount: overrides.loserSetCount ?? 1,
@@ -65,18 +65,18 @@ const buildTournament = (overrides: Partial<ConstructorParameters<typeof Tournam
   });
 };
 
-describe('tournament scheduling (referees)', () => {
-  it('assigns official referees for every scheduled match (even future matches with TBD teams)', () => {
+describe('tournament scheduling (officials)', () => {
+  it('assigns official officials for every scheduled match (even future matches with TBD teams)', () => {
     const division = buildDivision();
     const teams = buildTeams(4, division);
-    const ref = new UserData({ id: 'ref_1', divisions: [], matches: [] });
+    const official = new UserData({ id: 'official_1', divisions: [], matches: [] });
 
     const tournament = buildTournament({
       id: 'tournament_official_refs',
       teams,
       divisions: [division],
-      referees: [ref],
-      doTeamsRef: false,
+      officials: [official],
+      doTeamsOfficiate: false,
     });
 
     const scheduled = scheduleEvent({ event: tournament }, context);
@@ -86,11 +86,11 @@ describe('tournament scheduling (referees)', () => {
     expect(matches.some((match) => !match.team1 || !match.team2)).toBe(true);
 
     for (const match of matches) {
-      expect(match.referee?.id).toBe('ref_1');
+      expect(match.official?.id).toBe('official_1');
     }
   });
 
-  it('assigns team referees based on results for future matches (single elimination)', () => {
+  it('assigns team officials based on results for future matches (single elimination)', () => {
     const division = buildDivision();
     const teams = buildTeams(4, division);
 
@@ -98,8 +98,8 @@ describe('tournament scheduling (referees)', () => {
       id: 'tournament_team_refs',
       teams,
       divisions: [division],
-      referees: [],
-      doTeamsRef: true,
+      officials: [],
+      doTeamsOfficiate: true,
       doubleElimination: false,
     });
 
@@ -117,15 +117,15 @@ describe('tournament scheduling (referees)', () => {
     const semis = matches.filter((match) => match.winnerNextMatch && match.winnerNextMatch === final);
     expect(semis).toHaveLength(2);
 
-    // Team refs are only assigned when both teams are known.
-    expect(final?.teamReferee ?? null).toBeNull();
+    // Team officials are only assigned when both teams are known.
+    expect(final?.teamOfficial ?? null).toBeNull();
 
     const semi = semis[0];
     expect(semi.team1).toBeTruthy();
     expect(semi.team2).toBeTruthy();
-    expect(semi.teamReferee).toBeTruthy();
-    expect(semi.teamReferee).not.toBe(semi.team1);
-    expect(semi.teamReferee).not.toBe(semi.team2);
+    expect(semi.teamOfficial).toBeTruthy();
+    expect(semi.teamOfficial).not.toBe(semi.team1);
+    expect(semi.teamOfficial).not.toBe(semi.team2);
 
     // Complete the semi: team1 wins.
     semi.setResults = [1, 1];
@@ -137,7 +137,7 @@ describe('tournament scheduling (referees)', () => {
     finalizeMatch(tournament, semi, context, new Date(semi.end));
 
     expect(final?.team1 === winner || final?.team2 === winner).toBe(true);
-    expect(final?.teamReferee?.id).toBe(loser.id);
+    expect(final?.teamOfficial?.id).toBe(loser.id);
   });
 
   it('reschedules dependent matches when a match runs long (pushes following matches later)', () => {
@@ -148,8 +148,8 @@ describe('tournament scheduling (referees)', () => {
       id: 'tournament_reschedule_long',
       teams,
       divisions: [division],
-      referees: [],
-      doTeamsRef: true,
+      officials: [],
+      doTeamsOfficiate: true,
       doubleElimination: false,
       restTimeMinutes: 0,
     });
@@ -191,8 +191,8 @@ describe('tournament scheduling (referees)', () => {
       id: 'tournament_reschedule_locked',
       teams,
       divisions: [division],
-      referees: [],
-      doTeamsRef: true,
+      officials: [],
+      doTeamsOfficiate: true,
       doubleElimination: false,
       restTimeMinutes: 0,
     });
@@ -227,3 +227,4 @@ describe('tournament scheduling (referees)', () => {
     expect(final.start.getTime()).toBe(originalFinalStart);
   });
 });
+

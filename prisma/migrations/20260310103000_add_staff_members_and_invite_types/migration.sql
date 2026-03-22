@@ -35,11 +35,11 @@ WITH normalized_hosts AS (
 normalized_refs AS (
   SELECT
     org."id" AS "organizationId",
-    ref_id AS "userId",
-    'REFEREE'::TEXT AS "roleType"
+    official_id AS "userId",
+    'OFFICIAL'::TEXT AS "roleType"
   FROM "Organizations" org
-  CROSS JOIN LATERAL UNNEST(COALESCE(org."refIds", ARRAY[]::TEXT[])) AS ref_id
-  WHERE BTRIM(ref_id) <> ''
+  CROSS JOIN LATERAL UNNEST(COALESCE(org."officialIds", ARRAY[]::TEXT[])) AS official_id
+  WHERE BTRIM(official_id) <> ''
 ),
 merged_staff AS (
   SELECT
@@ -80,7 +80,7 @@ WHERE UPPER(COALESCE("status", '')) = 'ACCEPTED';
 UPDATE "Invites"
 SET
   "type" = CASE
-    WHEN UPPER(COALESCE("type", '')) IN ('HOST', 'REFEREE') THEN 'STAFF'
+    WHEN UPPER(COALESCE("type", '')) IN ('HOST', 'OFFICIAL') THEN 'STAFF'
     WHEN UPPER(COALESCE("type", '')) IN ('PLAYER', 'TEAM_MANAGER', 'TEAM_HEAD_COACH', 'TEAM_ASSISTANT_COACH') THEN 'TEAM'
     WHEN UPPER(COALESCE("type", '')) = 'EVENT' THEN 'EVENT'
     ELSE UPPER(COALESCE("type", ''))
@@ -92,10 +92,11 @@ SET
   END,
   "staffTypes" = CASE
     WHEN UPPER(COALESCE("type", '')) = 'HOST' THEN ARRAY['HOST']::TEXT[]
-    WHEN UPPER(COALESCE("type", '')) = 'REFEREE' THEN ARRAY['REFEREE']::TEXT[]
+    WHEN UPPER(COALESCE("type", '')) = 'OFFICIAL' THEN ARRAY['OFFICIAL']::TEXT[]
     ELSE COALESCE("staffTypes", ARRAY[]::TEXT[])
   END,
   "updatedAt" = NOW()
 WHERE
-  UPPER(COALESCE("type", '')) IN ('HOST', 'REFEREE', 'PLAYER', 'TEAM_MANAGER', 'TEAM_HEAD_COACH', 'TEAM_ASSISTANT_COACH', 'EVENT')
+  UPPER(COALESCE("type", '')) IN ('HOST', 'OFFICIAL', 'PLAYER', 'TEAM_MANAGER', 'TEAM_HEAD_COACH', 'TEAM_ASSISTANT_COACH', 'EVENT')
   OR UPPER(COALESCE("status", '')) IN ('', 'PENDING', 'SENT', 'DECLINED', 'REJECTED');
+

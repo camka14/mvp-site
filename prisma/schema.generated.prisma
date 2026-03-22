@@ -119,15 +119,15 @@ model Matches {
   loserNextMatchId String?
   previousRightId String?
   previousLeftId String?
-  refereeCheckedIn Boolean?
-  refereeId String?
+  officialCheckedIn Boolean?
+  officialId String?
   team1Id String?
   team2Id String?
   team1Seed Int?
   team2Seed Int?
   eventId String?
   fieldId String?
-  teamRefereeId String?
+  teamOfficialId String?
 }
 
 model Divisions {
@@ -361,8 +361,8 @@ model Events {
   parentEvent String?
   autoCancellation Boolean?
   eventType EventsEventTypeEnum?
-  doTeamsRef Boolean?
-  refereeIds String[]
+  doTeamsOfficiate Boolean?
+  officialIds String[]
   allowPaymentPlans Boolean?
   installmentCount Int?
   installmentDueDates DateTime[]
@@ -382,7 +382,7 @@ model Organizations {
   ownerId String
   hostIds String[] @default([])
   website String?
-  refIds String[]
+  officialIds String[]
   hasStripeAccount Boolean?
   coordinates Json?
   fieldIds String[]

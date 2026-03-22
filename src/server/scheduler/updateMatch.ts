@@ -20,8 +20,8 @@ export type MatchUpdate = {
   setResults?: number[];
   team1Id?: string | null;
   team2Id?: string | null;
-  refereeId?: string | null;
-  teamRefereeId?: string | null;
+  officialId?: string | null;
+  teamOfficialId?: string | null;
   fieldId?: string | null;
   start?: Date;
   end?: Date;
@@ -30,7 +30,7 @@ export type MatchUpdate = {
   loserNextMatchId?: string | null;
   previousLeftId?: string | null;
   previousRightId?: string | null;
-  refereeCheckedIn?: boolean;
+  officialCheckedIn?: boolean;
   matchId?: number | null;
 };
 
@@ -87,7 +87,7 @@ const getMatchStartMs = (match: Match): number | null => {
 };
 
 export const shouldAutoLockMatch = (match: Match, now: Date = new Date()): boolean => {
-  if (match.refereeCheckedIn === true) {
+  if (match.officialCheckedIn === true) {
     return true;
   }
   const startMs = getMatchStartMs(match);
@@ -133,8 +133,8 @@ export const applyMatchUpdates = (event: Tournament | League, match: Match, upda
   if (update.end) {
     match.end = update.end;
   }
-  if (update.refereeCheckedIn !== undefined) {
-    match.refereeCheckedIn = update.refereeCheckedIn;
+  if (update.officialCheckedIn !== undefined) {
+    match.officialCheckedIn = update.officialCheckedIn;
   }
   if (update.side !== undefined) {
     match.side = update.side as any;
@@ -149,17 +149,17 @@ export const applyMatchUpdates = (event: Tournament | League, match: Match, upda
     match.team2 = update.team2Id ? event.teams[update.team2Id] ?? null : null;
     if (match.team2) ensureMatchesArray(match.team2).push(match);
   }
-  if (update.teamRefereeId !== undefined) {
-    detachMatch(match.teamReferee, match);
-    match.teamReferee = update.teamRefereeId ? event.teams[update.teamRefereeId] ?? null : null;
-    if (match.teamReferee) ensureMatchesArray(match.teamReferee).push(match);
+  if (update.teamOfficialId !== undefined) {
+    detachMatch(match.teamOfficial, match);
+    match.teamOfficial = update.teamOfficialId ? event.teams[update.teamOfficialId] ?? null : null;
+    if (match.teamOfficial) ensureMatchesArray(match.teamOfficial).push(match);
   }
-  if (update.refereeId !== undefined) {
-    detachMatch(match.referee, match);
-    match.referee = update.refereeId
-      ? event.referees.find((ref) => ref.id === update.refereeId) ?? null
+  if (update.officialId !== undefined) {
+    detachMatch(match.official, match);
+    match.official = update.officialId
+      ? event.officials.find((official) => official.id === update.officialId) ?? null
       : null;
-    if (match.referee) ensureMatchesArray(match.referee).push(match);
+    if (match.official) ensureMatchesArray(match.official).push(match);
   }
   if (update.fieldId !== undefined) {
     if (match.field) {
@@ -199,9 +199,9 @@ const syncMatchParticipants = (matches: Iterable<Match>) => {
 
 const buildScheduleParticipants = (event: Tournament | League): Record<string, Team | UserData> => {
   const participants: Record<string, Team | UserData> = { ...event.teams };
-  for (const referee of event.referees) {
-    if (!referee.divisions.length) referee.divisions = [...event.divisions];
-    participants[referee.id] = referee;
+  for (const official of event.officials) {
+    if (!official.divisions.length) official.divisions = [...event.divisions];
+    participants[official.id] = official;
   }
   return participants;
 };
@@ -248,7 +248,7 @@ const teamsWaitingToStart = (teams: Team[], currentTime: Date): Team[] => {
   const waiting: Team[] = [];
   for (const team of teams) {
     for (const match of team.matches ?? []) {
-      if (match.start > currentTime && match.teamReferee !== team) {
+      if (match.start > currentTime && match.teamOfficial !== team) {
         waiting.push(team);
         break;
       }
@@ -266,10 +266,10 @@ const isTeamInPreviousMatch = (team: Team, match: Match): boolean => {
   return false;
 };
 
-const reassignTeamReferee = (match: Match, schedule: Schedule<Match, any, any, Division>, currentTime: Date): void => {
+const reassignTeamOfficial = (match: Match, schedule: Schedule<Match, any, any, Division>, currentTime: Date): void => {
   if (!match.division) return;
-  if (match.teamReferee && match.teamReferee.matches) {
-    match.teamReferee.matches = match.teamReferee.matches.filter((existing) => existing.id !== match.id);
+  if (match.teamOfficial && match.teamOfficial.matches) {
+    match.teamOfficial.matches = match.teamOfficial.matches.filter((existing) => existing.id !== match.id);
   }
   const freeParticipants = schedule.freeParticipants(match.division, currentTime, match.end);
   const freeTeams = freeParticipants.filter(
@@ -277,32 +277,32 @@ const reassignTeamReferee = (match: Match, schedule: Schedule<Match, any, any, D
   ) as Team[];
   for (const freeTeam of freeTeams) {
     if (!isTeamInPreviousMatch(freeTeam, match)) {
-      match.teamReferee = freeTeam;
+      match.teamOfficial = freeTeam;
       ensureMatchesArray(freeTeam).push(match);
       return;
     }
   }
 };
 
-const reassignUserReferee = (match: Match, schedule: Schedule<Match, any, any, Division>): void => {
+const reassignUserOfficial = (match: Match, schedule: Schedule<Match, any, any, Division>): void => {
   if (!match.division) return;
-  if (match.referee && match.referee.matches) {
-    match.referee.matches = match.referee.matches.filter((existing) => existing.id !== match.id);
+  if (match.official && match.official.matches) {
+    match.official.matches = match.official.matches.filter((existing) => existing.id !== match.id);
   }
   const freeParticipants = schedule.freeParticipants(match.division, match.start, match.end);
   const freeRefs = freeParticipants.filter((participant) => participant instanceof UserData) as UserData[];
   if (freeRefs.length) {
-    match.referee = freeRefs[0];
+    match.official = freeRefs[0];
     ensureMatchesArray(freeRefs[0]).push(match);
   }
 };
 
-const unscheduleMatchesOnField = (match: Match, useTeamRefs: boolean): void => {
+const unscheduleMatchesOnField = (match: Match, useTeamOfficials: boolean): void => {
   if (!match.field) return;
   const matchesOnField = match.field.matches as Match[];
   for (const matchOnField of matchesOnField) {
     if (matchOnField.locked) continue;
-    if (matchOnField.start > match.start || (useTeamRefs && !matchOnField.teamReferee)) {
+    if (matchOnField.start > match.start || (useTeamOfficials && !matchOnField.teamOfficial)) {
       matchOnField.unschedule();
     }
   }
@@ -313,19 +313,19 @@ const processMatches = (
   bracketSchedule: Schedule<Match, any, any, Division>,
   updatedMatch: Match,
   tournament: Tournament | League,
-  useTeamRefs: boolean,
+  useTeamOfficials: boolean,
 ): void => {
-  unscheduleMatchesOnField(updatedMatch, useTeamRefs);
+  unscheduleMatchesOnField(updatedMatch, useTeamOfficials);
   for (const field of Object.values(tournament.fields)) {
     for (const match of field.matches) {
       if (match.locked) continue;
       if (
         (field === updatedMatch.field && match.start > updatedMatch.start) ||
-        (useTeamRefs && !match.teamReferee)
+        (useTeamOfficials && !match.teamOfficial)
       ) {
         match.unschedule();
       }
-      if (match.start >= updatedMatch.end || (useTeamRefs && !match.teamReferee)) {
+      if (match.start >= updatedMatch.end || (useTeamOfficials && !match.teamOfficial)) {
         match.unschedule();
       }
     }
@@ -339,7 +339,7 @@ const processMatches = (
   }
 };
 
-const assignMissingTeamReferees = (
+const assignMissingTeamOfficials = (
   event: Tournament | League,
   schedule: Schedule<Match, any, any, Division>,
   matches: Iterable<Match>,
@@ -355,7 +355,7 @@ const assignMissingTeamReferees = (
   });
 
   for (const match of ordered) {
-    if (match.teamReferee || !(match.team1 && match.team2)) continue;
+    if (match.teamOfficial || !(match.team1 && match.team2)) continue;
     if (!match.division) continue;
 
     const availableTeams = schedule
@@ -380,7 +380,7 @@ const assignMissingTeamReferees = (
     }
     if (!candidate) continue;
 
-    match.teamReferee = candidate;
+    match.teamOfficial = candidate;
     ensureMatchesArray(candidate).push(match);
   }
 };
@@ -412,7 +412,7 @@ export const finalizeMatch = (
   // League schedules are pre-built (regular season and playoffs). Finalizing a result should advance teams without
   // invoking bracket-style rescheduling, which can fail for split-playoff mapping configurations.
   if (event instanceof League) {
-    if (event.doTeamsRef && seededTeamIds.length) {
+    if (event.doTeamsOfficiate && seededTeamIds.length) {
       const participants = buildScheduleParticipants(event);
       const schedule = new Schedule<Match, PlayingField, Team | UserData, Division>(
         event.start,
@@ -423,7 +423,7 @@ export const finalizeMatch = (
         { endTime: resolveRescheduleEndTime(event, currentTime), timeSlots: event.timeSlots },
       );
       const playoffMatches = Object.values(event.matches).filter((match) => isPlayoffMatch(match));
-      assignMissingTeamReferees(event, schedule, playoffMatches);
+      assignMissingTeamOfficials(event, schedule, playoffMatches);
     }
 
     return { updatedMatch, seededTeamIds };
@@ -473,27 +473,27 @@ export const finalizeMatch = (
     }
   }
 
-  processMatches(matches, matchesSchedule, updatedMatch, event, event.doTeamsRef);
+  processMatches(matches, matchesSchedule, updatedMatch, event, event.doTeamsOfficiate);
 
   const conflicts = matchesSchedule.getParticipantConflicts();
   for (const [participant, conflictMatches] of conflicts.entries()) {
     if (participant instanceof Team) {
-      if (!event.doTeamsRef) continue;
+      if (!event.doTeamsOfficiate) continue;
       for (const match of conflictMatches) {
-        if (participant === match.teamReferee) {
-          reassignTeamReferee(match, matchesSchedule, currentTime);
+        if (participant === match.teamOfficial) {
+          reassignTeamOfficial(match, matchesSchedule, currentTime);
         }
       }
     } else if (participant instanceof UserData) {
       for (const match of conflictMatches) {
-        if (match.referee === participant) {
-          reassignUserReferee(match, matchesSchedule);
+        if (match.official === participant) {
+          reassignUserOfficial(match, matchesSchedule);
         }
       }
     }
   }
 
-  if (event.doTeamsRef) {
+  if (event.doTeamsOfficiate) {
     let matchesInRange: Match[] = [];
     if (updatedMatch.losersBracket) {
       if (updatedMatch.winnerNextMatch) {
@@ -504,8 +504,8 @@ export const finalizeMatch = (
           true,
         );
         for (const match of matchesInRange) {
-          if (!match.teamReferee) {
-            match.teamReferee = winner;
+          if (!match.teamOfficial) {
+            match.teamOfficial = winner;
             ensureMatchesArray(winner).push(match);
             break;
           }
@@ -532,8 +532,8 @@ export const finalizeMatch = (
     }
 
     for (const match of matchesInRange) {
-      if (!match.teamReferee) {
-        match.teamReferee = loser;
+      if (!match.teamOfficial) {
+        match.teamOfficial = loser;
         ensureMatchesArray(loser).push(match);
         break;
       }
@@ -545,8 +545,8 @@ export const finalizeMatch = (
       if (!lastMatch) continue;
       const availableMatches = getUpcomingMatchesInTimeRange(currentTime, lastMatch.start, event.matches, true);
       for (const match of availableMatches) {
-        if (!match.teamReferee) {
-          match.teamReferee = team;
+        if (!match.teamOfficial) {
+          match.teamOfficial = team;
           ensureMatchesArray(team).push(match);
           break;
         }
@@ -556,3 +556,6 @@ export const finalizeMatch = (
 
   return { updatedMatch, seededTeamIds };
 };
+
+
+

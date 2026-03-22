@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     { userIds: { has: user.id } },
     { freeAgentIds: { has: user.id } },
     { waitListIds: { has: user.id } },
-    { refereeIds: { has: user.id } },
+    { officialIds: { has: user.id } },
   ];
   if (relevantTeamIds.length) {
     involvementFilters.push({ teamIds: { hasSome: relevantTeamIds } });
@@ -84,12 +84,12 @@ export async function GET(req: NextRequest) {
   });
 
   const eventIds = events.map((event) => event.id);
-  const matchFilters: Record<string, unknown>[] = [{ refereeId: user.id }];
+  const matchFilters: Record<string, unknown>[] = [{ officialId: user.id }];
   if (relevantTeamIds.length) {
     matchFilters.push(
       { team1Id: { in: relevantTeamIds } },
       { team2Id: { in: relevantTeamIds } },
-      { teamRefereeId: { in: relevantTeamIds } },
+      { teamOfficialId: { in: relevantTeamIds } },
     );
   }
 
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
 
   const relatedTeamIds = uniqueStrings([
     ...events.flatMap((event) => (Array.isArray(event.teamIds) ? event.teamIds : [])),
-    ...matches.flatMap((match) => [match.team1Id, match.team2Id, match.teamRefereeId]),
+    ...matches.flatMap((match) => [match.team1Id, match.team2Id, match.teamOfficialId]),
   ]);
 
   const [fields, teams] = await Promise.all([

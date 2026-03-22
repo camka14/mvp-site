@@ -25,7 +25,7 @@ type OrganizationAccessRecord = {
   id?: string | null | undefined;
   ownerId: string | null | undefined;
   hostIds?: string[] | null | undefined;
-  refIds?: string[] | null | undefined;
+  officialIds?: string[] | null | undefined;
 };
 
 type EventAccessRecord = {
@@ -40,7 +40,7 @@ type OrganizationLookupClient = {
       id?: string | null;
       ownerId: string | null;
       hostIds?: string[] | null;
-      refIds?: string[] | null;
+      officialIds?: string[] | null;
     } | null>;
   };
   staffMembers?: {
@@ -80,11 +80,11 @@ export const hasOrganizationStaffAccess = async (
     return false;
   }
 
-  const legacyHostIds = normalizeIdList(organization.hostIds);
-  const legacyRefIds = normalizeIdList(organization.refIds);
+  const assignedHostIds = normalizeIdList(organization.hostIds);
+  const assignedOfficialIds = normalizeIdList(organization.officialIds);
   if (
-    ((allowedTypes.includes('HOST') || allowedTypes.includes('STAFF')) && legacyHostIds.includes(session.userId))
-    || (allowedTypes.includes('REFEREE') && legacyRefIds.includes(session.userId))
+    ((allowedTypes.includes('HOST') || allowedTypes.includes('STAFF')) && assignedHostIds.includes(session.userId))
+    || (allowedTypes.includes('OFFICIAL') && assignedOfficialIds.includes(session.userId))
   ) {
     return true;
   }
@@ -135,11 +135,11 @@ export const canManageOrganization = async (
   client: OrganizationLookupClient = prisma,
 ): Promise<boolean> => hasOrganizationStaffAccess(session, organization, STAFF_ACCESS_TYPES, client);
 
-export const canRefereeOrganization = async (
+export const canOfficialOrganization = async (
   session: SessionLike,
   organization: OrganizationAccessRecord | null | undefined,
   client: OrganizationLookupClient = prisma,
-): Promise<boolean> => hasOrganizationStaffAccess(session, organization, ['REFEREE'], client);
+): Promise<boolean> => hasOrganizationStaffAccess(session, organization, ['OFFICIAL'], client);
 
 export const canManageEventDirectly = (
   session: SessionLike,
@@ -171,7 +171,8 @@ export const canManageEvent = async (
   }
   const organization = await client.organizations.findUnique({
     where: { id: organizationId },
-    select: { id: true, ownerId: true, hostIds: true, refIds: true },
+    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
   });
   return canManageOrganization(session, organization, client);
 };
+

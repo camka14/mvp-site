@@ -4,8 +4,8 @@ describe('buildInviteEmail', () => {
   it('builds an event invite with event link', () => {
     const result = buildInviteEmail({
       baseUrl: 'http://localhost:3000',
-      email: 'ref@example.com',
-      inviteType: 'referee',
+      email: 'official@example.com',
+      inviteType: 'official',
       eventId: 'event_123',
       eventName: 'Spring Invitational',
     });
@@ -30,3 +30,4 @@ describe('buildInviteEmail', () => {
     expect(result.actionUrl).toBe('https://mvp.razumly.com/teams');
   });
 });
+

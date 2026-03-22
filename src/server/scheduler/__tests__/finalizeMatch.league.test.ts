@@ -76,7 +76,7 @@ describe('finalizeMatch (league)', () => {
       eventType: 'LEAGUE',
       teams,
       divisions: [division],
-      referees: [],
+      officials: [],
       fields: { [field.id]: field },
       timeSlots: [buildWeeklySlot(start.getDay())],
       gamesPerOpponent: 1,
@@ -136,7 +136,7 @@ describe('finalizeMatch (league)', () => {
       eventType: 'LEAGUE',
       teams,
       divisions: [division],
-      referees: [],
+      officials: [],
       fields: { [field.id]: field },
       timeSlots: [buildWeeklySlot(start.getDay())],
       gamesPerOpponent: 1,
@@ -147,7 +147,7 @@ describe('finalizeMatch (league)', () => {
       setDurationMinutes: 20,
       setsPerMatch: 3,
       leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
-      doTeamsRef: true,
+      doTeamsOfficiate: true,
     });
 
     const scheduled = scheduleEvent({ event: league }, context);
@@ -239,7 +239,7 @@ describe('finalizeMatch (league)', () => {
       divisions: [mixedAge],
       playoffDivisions: [mixedAgePlayoff],
       splitLeaguePlayoffDivisions: true,
-      referees: [],
+      officials: [],
       fields: {
         [fieldRegular.id]: fieldRegular,
       },
@@ -255,7 +255,7 @@ describe('finalizeMatch (league)', () => {
           divisions: [mixedAge],
         }),
       ],
-      doTeamsRef: false,
+      doTeamsOfficiate: false,
       gamesPerOpponent: 1,
       includePlayoffs: true,
       playoffTeamCount: 4,

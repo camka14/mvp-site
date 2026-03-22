@@ -165,8 +165,8 @@ class OrganizationService {
     const fieldIds = Array.isArray(row.fieldIds)
       ? row.fieldIds.map((value: unknown) => String(value))
       : undefined;
-    const refIds = Array.isArray(row.refIds)
-      ? row.refIds.map((value: unknown) => String(value))
+    const officialIds = Array.isArray(row.officialIds)
+      ? row.officialIds.map((value: unknown) => String(value))
       : undefined;
     const hostIds = Array.isArray(row.hostIds)
       ? row.hostIds.map((value: unknown) => String(value))
@@ -191,7 +191,7 @@ class OrganizationService {
       ? row.staffMembers.map((value: unknown) => this.mapStaffMember(value as Record<string, unknown>))
       : [];
     const derivedHostIds = deriveOrganizationRoleIds(staffMembers, staffInvites, 'HOST');
-    const derivedRefIds = deriveOrganizationRoleIds(staffMembers, staffInvites, 'REFEREE');
+    const derivedOfficialIds = deriveOrganizationRoleIds(staffMembers, staffInvites, 'OFFICIAL');
 
     const organization: Organization = {
       $id: row.$id,
@@ -206,7 +206,7 @@ class OrganizationService {
       hostIds: staffMembers.length > 0 ? derivedHostIds : hostIds,
       hasStripeAccount: Boolean(row.hasStripeAccount),
       fieldIds,
-      refIds: staffMembers.length > 0 ? derivedRefIds : refIds,
+      officialIds: staffMembers.length > 0 ? derivedOfficialIds : officialIds,
       staffMembers,
       staffInvites,
       staffEmailsByUserId: row.staffEmailsByUserId && typeof row.staffEmailsByUserId === 'object'
@@ -222,7 +222,7 @@ class OrganizationService {
       events: [],
       teams: [],
       fields: [],
-      referees: [],
+      officials: [],
       hosts: [],
       products: [],
     };
@@ -236,8 +236,8 @@ class OrganizationService {
       hasStripeAccount: data.hasStripeAccount ?? false,
     });
 
-    if (data.refIds !== undefined) {
-      payload.refIds = Array.isArray(data.refIds) ? data.refIds : [];
+    if (data.officialIds !== undefined) {
+      payload.officialIds = Array.isArray(data.officialIds) ? data.officialIds : [];
     }
     if (data.hostIds !== undefined) {
       payload.hostIds = Array.isArray(data.hostIds) ? data.hostIds : [];
@@ -258,8 +258,8 @@ class OrganizationService {
 
   async updateOrganization(id: string, data: Partial<Organization>): Promise<Organization> {
     const payload = buildPayload(data);
-    if (data.refIds !== undefined) {
-      payload.refIds = Array.isArray(data.refIds) ? data.refIds : [];
+    if (data.officialIds !== undefined) {
+      payload.officialIds = Array.isArray(data.officialIds) ? data.officialIds : [];
     }
     if (data.hostIds !== undefined) {
       payload.hostIds = Array.isArray(data.hostIds) ? data.hostIds : [];
@@ -407,13 +407,13 @@ class OrganizationService {
       };
     });
     const activeHostIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'HOST');
-    const activeRefereeIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'REFEREE');
+    const activeOfficialIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'OFFICIAL');
 
     organization.fields = fields;
     organization.staffMembers = hydratedStaffMembers;
     organization.hostIds = activeHostIds;
-    organization.refIds = activeRefereeIds;
-    organization.referees = activeRefereeIds
+    organization.officialIds = activeOfficialIds;
+    organization.officials = activeOfficialIds
       .map((userId) => staffUsersById.get(userId))
       .filter((entry): entry is UserData => Boolean(entry));
     organization.hosts = activeHostIds
@@ -473,11 +473,11 @@ class OrganizationService {
         };
       });
       const activeHostIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'HOST');
-      const activeRefereeIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'REFEREE');
+      const activeOfficialIds = deriveOrganizationRoleIds(hydratedStaffMembers, staffInvites, 'OFFICIAL');
       const activeHosts = activeHostIds
         .map((id) => staffUsersById.get(id))
         .filter((entry): entry is UserData => Boolean(entry));
-      const activeReferees = activeRefereeIds
+      const activeOfficials = activeOfficialIds
         .map((id) => staffUsersById.get(id))
         .filter((entry): entry is UserData => Boolean(entry));
 
@@ -485,8 +485,8 @@ class OrganizationService {
       organization.events = events;
       organization.staffMembers = hydratedStaffMembers;
       organization.hostIds = activeHostIds;
-      organization.refIds = activeRefereeIds;
-      organization.referees = activeReferees;
+      organization.officialIds = activeOfficialIds;
+      organization.officials = activeOfficials;
       organization.hosts = activeHosts;
       organization.owner = owner;
       organization.products = products;
@@ -509,3 +509,4 @@ class OrganizationService {
 }
 
 export const organizationService = new OrganizationService();
+
