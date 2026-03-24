@@ -318,10 +318,16 @@ export function LeagueCalendarView({
   const matchInvolvesCurrentUser = useCallback(
     (match: Match) => {
       if (!hasTrackedUsers) return false;
+      const assignedOfficialUserIds = Array.isArray(match.officialIds)
+        ? match.officialIds
+            .map((assignment) => (typeof assignment?.userId === 'string' ? assignment.userId.trim() : ''))
+            .filter((userId) => userId.length > 0)
+        : [];
 
       if (
         (typeof match.officialId === 'string' && trackedUserIds.has(match.officialId))
         || (typeof match.official?.$id === 'string' && trackedUserIds.has(match.official.$id))
+        || assignedOfficialUserIds.some((officialUserId) => trackedUserIds.has(officialUserId))
       ) {
         return true;
       }

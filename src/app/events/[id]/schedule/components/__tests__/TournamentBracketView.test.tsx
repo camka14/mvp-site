@@ -488,6 +488,18 @@ describe('TournamentBracketView', () => {
       } as Match['team1'],
       officialId: 'official_other',
     });
+    const assignedOfficialSlotMatch = buildMatch('m5', {
+      previousLeftId: 'm4',
+      officialIds: [
+        {
+          positionId: 'position-r1',
+          slotIndex: 0,
+          holderType: 'OFFICIAL',
+          userId,
+          eventOfficialId: 'event-official-1',
+        },
+      ],
+    });
 
     const bracket: TournamentBracket = {
       tournament: { doubleElimination: false } as TournamentBracket['tournament'],
@@ -496,6 +508,7 @@ describe('TournamentBracketView', () => {
         [officialMatch.$id]: officialMatch,
         [teamOfficialMatch.$id]: teamOfficialMatch,
         [otherMatch.$id]: otherMatch,
+        [assignedOfficialSlotMatch.$id]: assignedOfficialSlotMatch,
       },
       teams: [],
       isHost: false,
@@ -513,6 +526,7 @@ describe('TournamentBracketView', () => {
     expect(screen.getByText('highlight-m2')).toBeInTheDocument();
     expect(screen.getByText('highlight-m3')).toBeInTheDocument();
     expect(screen.getByText('normal-m4')).toBeInTheDocument();
+    expect(screen.getByText('highlight-m5')).toBeInTheDocument();
   });
 
   it('renders disconnected matches in a collapsible unplaced dock', () => {

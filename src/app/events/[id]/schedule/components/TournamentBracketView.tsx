@@ -1097,7 +1097,12 @@ export default function TournamentBracketView({
 
         const matchOfficialId = extractEntityId(match.official)
             || (typeof match.officialId === 'string' ? match.officialId.trim() : '');
-        if (matchOfficialId === currentUserId) {
+        const hasAssignedOfficialSlot = Array.isArray(match.officialIds)
+            && match.officialIds.some((assignment) => {
+                const userId = typeof assignment?.userId === 'string' ? assignment.userId.trim() : '';
+                return userId.length > 0 && userId === currentUserId;
+            });
+        if (matchOfficialId === currentUserId || hasAssignedOfficialSlot) {
             return true;
         }
 
