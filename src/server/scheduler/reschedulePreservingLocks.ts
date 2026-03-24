@@ -528,36 +528,10 @@ const hasFullStaffingCoverage = (match: Match, planner: OfficialStaffingPlanner)
   return true;
 };
 
-const assignMissingUserOfficials = (
-  event: SchedulerEvent,
-  schedule: Schedule<Match, PlayingField, Team | UserData, Division>,
-  matches: Match[],
-): void => {
-  if (!event.officials.length) {
-    matches.forEach(attachMatchToParticipants);
-    return;
-  }
-  const officialCycle = [...event.officials];
-  const ordered = [...matches].sort(compareScheduledOrder);
-  for (const match of ordered) {
-    attachMatchToParticipants(match);
-    if (match.official || !match.division) continue;
-    const availableRefs = schedule
-      .freeParticipants(match.division, match.start, match.end)
-      .filter((participant) => participant instanceof UserData) as UserData[];
-    if (!availableRefs.length || !officialCycle.length) continue;
-    for (let i = 0; i < officialCycle.length; i += 1) {
-      const candidate = officialCycle.shift() as UserData;
-      if (availableRefs.some((available) => available.id === candidate.id)) {
-        match.official = candidate;
-        appendMatchToParticipant(candidate, match);
-        attachMatchToParticipants(match);
-        officialCycle.push(candidate);
-        break;
-      }
-      officialCycle.push(candidate);
-    }
-  }
+const clearUserOfficialAssignments = (match: Match): void => {
+  match.official = null;
+  match.officialAssignments = [];
+  match.officialCheckedIn = false;
 };
 
 const assignMissingTeamOfficials = (
@@ -626,16 +600,13 @@ export const rescheduleEventMatchesPreservingLocks = (
   const lockedMatches = allMatches.filter((match) => match.locked);
   const warnings = collectWarnings(event, lockedMatches, rescheduleEndTime);
   resetScheduleCollections(event);
-  const staffingPlanner = event.officialSchedulingMode === 'STAFFING'
-    ? new OfficialStaffingPlanner(event)
-    : null;
-  const staffingModeWithRequiredSlots = Boolean(staffingPlanner?.hasRequiredSlots());
+  const staffingPlanner = new OfficialStaffingPlanner(event);
+  const plannerHasRequiredSlots = staffingPlanner.hasRequiredSlots();
+  const staffingModeWithRequiredSlots = event.officialSchedulingMode === 'STAFFING' && plannerHasRequiredSlots;
 
   for (const match of lockedMatches) {
     if (staffingModeWithRequiredSlots && staffingPlanner && !hasFullStaffingCoverage(match, staffingPlanner)) {
-      match.official = null;
-      match.officialAssignments = [];
-      match.officialCheckedIn = false;
+      clearUserOfficialAssignments(match);
     }
     attachLockedMatchToField(event, match);
     attachMatchToParticipants(match);
@@ -654,6 +625,11 @@ export const rescheduleEventMatchesPreservingLocks = (
   const unlockedMatches = allMatches
     .filter((match) => !match.locked)
     .sort(compareMatches);
+  if (plannerHasRequiredSlots) {
+    for (const match of unlockedMatches) {
+      clearUserOfficialAssignments(match);
+    }
+  }
   if (staffingModeWithRequiredSlots && staffingPlanner) {
     const lockedWithCoverage: Match[] = [];
     const lockedWithoutCoverage: Match[] = [];
@@ -668,11 +644,11 @@ export const rescheduleEventMatchesPreservingLocks = (
     for (const lockedMatch of lockedWithoutCoverage) {
       staffingPlanner.assignMatch(lockedMatch);
     }
-    for (const match of unlockedMatches) {
-      match.official = null;
-      match.officialAssignments = [];
-      match.officialCheckedIn = false;
-    }
+  } else if (plannerHasRequiredSlots) {
+    const lockedWithCommittedAssignments = [...lockedMatches]
+      .sort(compareScheduledOrder)
+      .filter((match) => staffingPlanner.hasCommittedAssignments(match));
+    staffingPlanner.seedCommittedMatches(lockedWithCommittedAssignments);
   }
   const unlockedById = new Map(unlockedMatches.map((match) => [match.id, match]));
   const pendingIds = new Set(unlockedMatches.map((match) => match.id));
@@ -716,8 +692,8 @@ export const rescheduleEventMatchesPreservingLocks = (
     detachedPendingAssignments.forEach(restorePendingDependencyAssignments);
   }
 
-  if (!staffingModeWithRequiredSlots) {
-    assignMissingUserOfficials(event, schedule, allMatches);
+  if (!staffingModeWithRequiredSlots && plannerHasRequiredSlots) {
+    staffingPlanner.assignMatches(unlockedMatches);
   }
   assignMissingTeamOfficials(event, schedule, allMatches);
 

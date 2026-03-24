@@ -1199,6 +1199,308 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     }
   });
 
+  it('SCHEDULE mode clears stale conflicting assignments and leaves overlap slots empty', () => {
+    const division = new Division('open', 'Open');
+    const field1 = new PlayingField({
+      id: 'field_schedule_mode_1',
+      fieldNumber: 1,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court 1',
+    });
+    const field2 = new PlayingField({
+      id: 'field_schedule_mode_2',
+      fieldNumber: 2,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court 2',
+    });
+
+    const makeTeam = (id: string) => new Team({
+      id,
+      captainId: `captain_${id}`,
+      division,
+      name: id,
+      matches: [],
+      playerIds: [],
+    });
+
+    const teams = {
+      team_1: makeTeam('team_1'),
+      team_2: makeTeam('team_2'),
+      team_3: makeTeam('team_3'),
+      team_4: makeTeam('team_4'),
+    };
+
+    const official = new UserData({
+      id: 'official_schedule_mode',
+      firstName: 'Schedule',
+      lastName: 'Official',
+      matches: [],
+      divisions: [division],
+    });
+
+    const eventStart = new Date('2026-03-04T10:00:00.000Z');
+    const eventEnd = new Date('2026-03-04T11:00:00.000Z');
+
+    const match1 = createMatch({
+      id: 'schedule_mode_match_1',
+      matchId: 1,
+      start: new Date('2026-03-04T10:00:00.000Z'),
+      end: new Date('2026-03-04T11:00:00.000Z'),
+      field: field1,
+      division,
+      team1: teams.team_1,
+      team2: teams.team_2,
+      eventId: 'event_schedule_mode',
+    });
+    const match2 = createMatch({
+      id: 'schedule_mode_match_2',
+      matchId: 2,
+      start: new Date('2026-03-04T10:00:00.000Z'),
+      end: new Date('2026-03-04T11:00:00.000Z'),
+      field: field2,
+      division,
+      team1: teams.team_3,
+      team2: teams.team_4,
+      eventId: 'event_schedule_mode',
+    });
+
+    match1.official = official;
+    match1.officialAssignments = [{
+      positionId: 'r1',
+      slotIndex: 0,
+      holderType: 'OFFICIAL',
+      userId: official.id,
+      eventOfficialId: 'event_official_schedule_mode',
+      checkedIn: false,
+      hasConflict: false,
+    }];
+    match2.official = official;
+    match2.officialAssignments = [{
+      positionId: 'r1',
+      slotIndex: 0,
+      holderType: 'OFFICIAL',
+      userId: official.id,
+      eventOfficialId: 'event_official_schedule_mode',
+      checkedIn: false,
+      hasConflict: false,
+    }];
+
+    const tournament = new Tournament({
+      id: 'event_schedule_mode',
+      name: 'Schedule Mode Reschedule',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams,
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [division],
+      fields: {
+        [field1.id]: field1,
+        [field2.id]: field2,
+      },
+      matches: {
+        [match1.id]: match1,
+        [match2.id]: match2,
+      },
+      officials: [official],
+      eventType: 'TOURNAMENT',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      doTeamsOfficiate: false,
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [{ id: 'r1', name: 'R1', count: 1, order: 0 }],
+      eventOfficials: [{
+        id: 'event_official_schedule_mode',
+        userId: official.id,
+        positionIds: ['r1'],
+        fieldIds: [],
+        isActive: true,
+      }],
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_schedule_mode',
+          dayOfWeek: 3,
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 11 * 60,
+          fieldIds: [field1.id, field2.id],
+          divisions: [division],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(tournament);
+    expect(result.warnings).toHaveLength(0);
+
+    const assignmentTotal = result.matches.reduce(
+      (total, match) => total + match.officialAssignments.filter((assignment) => assignment.holderType === 'OFFICIAL').length,
+      0,
+    );
+    expect(assignmentTotal).toBe(1);
+    expect(result.matches.some((match) => match.officialAssignments.length === 0)).toBe(true);
+    expect(result.matches.some((match) => match.officialAssignments.some((assignment) => assignment.hasConflict))).toBe(false);
+  });
+
+  it('OFF mode reassigns overlaps and marks conflicts during lock-preserving reschedule', () => {
+    const division = new Division('open', 'Open');
+    const field1 = new PlayingField({
+      id: 'field_off_mode_1',
+      fieldNumber: 1,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court 1',
+    });
+    const field2 = new PlayingField({
+      id: 'field_off_mode_2',
+      fieldNumber: 2,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court 2',
+    });
+
+    const makeTeam = (id: string) => new Team({
+      id,
+      captainId: `captain_${id}`,
+      division,
+      name: id,
+      matches: [],
+      playerIds: [],
+    });
+
+    const teams = {
+      team_1: makeTeam('off_team_1'),
+      team_2: makeTeam('off_team_2'),
+      team_3: makeTeam('off_team_3'),
+      team_4: makeTeam('off_team_4'),
+    };
+
+    const official = new UserData({
+      id: 'official_off_mode',
+      firstName: 'Off',
+      lastName: 'Official',
+      matches: [],
+      divisions: [division],
+    });
+
+    const eventStart = new Date('2026-03-05T10:00:00.000Z');
+    const eventEnd = new Date('2026-03-05T11:00:00.000Z');
+
+    const match1 = createMatch({
+      id: 'off_mode_match_1',
+      matchId: 1,
+      start: new Date('2026-03-05T10:00:00.000Z'),
+      end: new Date('2026-03-05T11:00:00.000Z'),
+      field: field1,
+      division,
+      team1: teams.team_1,
+      team2: teams.team_2,
+      eventId: 'event_off_mode',
+    });
+    const match2 = createMatch({
+      id: 'off_mode_match_2',
+      matchId: 2,
+      start: new Date('2026-03-05T10:00:00.000Z'),
+      end: new Date('2026-03-05T11:00:00.000Z'),
+      field: field2,
+      division,
+      team1: teams.team_3,
+      team2: teams.team_4,
+      eventId: 'event_off_mode',
+    });
+
+    const tournament = new Tournament({
+      id: 'event_off_mode',
+      name: 'Off Mode Reschedule',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams,
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [division],
+      fields: {
+        [field1.id]: field1,
+        [field2.id]: field2,
+      },
+      matches: {
+        [match1.id]: match1,
+        [match2.id]: match2,
+      },
+      officials: [official],
+      eventType: 'TOURNAMENT',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      doTeamsOfficiate: false,
+      officialSchedulingMode: 'OFF',
+      officialPositions: [{ id: 'r1', name: 'R1', count: 1, order: 0 }],
+      eventOfficials: [{
+        id: 'event_official_off_mode',
+        userId: official.id,
+        positionIds: ['r1'],
+        fieldIds: [],
+        isActive: true,
+      }],
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_off_mode',
+          dayOfWeek: 4,
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 11 * 60,
+          fieldIds: [field1.id, field2.id],
+          divisions: [division],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(tournament);
+    expect(result.warnings).toHaveLength(0);
+
+    const assignmentTotal = result.matches.reduce(
+      (total, match) => total + match.officialAssignments.filter((assignment) => assignment.holderType === 'OFFICIAL').length,
+      0,
+    );
+    expect(assignmentTotal).toBe(2);
+    expect(result.matches.some((match) => match.officialAssignments.some((assignment) => assignment.hasConflict))).toBe(true);
+  });
+
   it('STAFFING mode fills all required official positions when rescheduling existing matches', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
