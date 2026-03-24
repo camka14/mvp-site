@@ -164,6 +164,21 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
   }
 
   scheduleEvent(event: E, durationMs: number): void {
+    this.scheduleEventWithOptions(event, durationMs);
+  }
+
+  scheduleEventWithOptions(
+    event: E,
+    durationMs: number,
+    opts?: {
+      canUseCandidate?: (candidate: {
+        event: E;
+        resource: R;
+        start: Date;
+        end: Date;
+      }) => boolean;
+    },
+  ): void {
     this.currentGroups = event.getGroups() as G[];
     let earliestStart = this.getEarliestStartTime(event);
     earliestStart = this.nextValidStartTime(earliestStart, durationMs);
@@ -177,7 +192,7 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
         throw new Error(`${NOT_ENOUGH_TIME_ALLOTTED_MESSAGE} No available time slots remaining for scheduling.`);
       }
       if (this.checkAvailabilityOfParticipants(earliestStart, new Date(earliestStart.getTime() + durationMs), event.getParticipants().length)) {
-        const resource = this.findAvailableResource(earliestStart, durationMs);
+        const resource = this.findAvailableResource(earliestStart, durationMs, event, opts?.canUseCandidate);
         if (resource) {
           event.setResource(resource);
           event.start = earliestStart;
@@ -233,7 +248,17 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     return availableParticipants >= minParticipants;
   }
 
-  private findAvailableResource(start: Date, durationMs: number): R | null {
+  private findAvailableResource(
+    start: Date,
+    durationMs: number,
+    event: E | null,
+    canUseCandidate?: (candidate: {
+      event: E;
+      resource: R;
+      start: Date;
+      end: Date;
+    }) => boolean,
+  ): R | null {
     let freeResource: R | null = null;
     const resources: R[] = [];
     for (const group of this.currentGroups) {
@@ -245,6 +270,12 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
       if (!this.resourceSupportsTime(resource, start, durationMs)) continue;
       const usingEvent = this.resourceEventAvailable(resource, start, durationMs);
       if (!usingEvent) {
+        if (event && canUseCandidate) {
+          const end = new Date(start.getTime() + durationMs);
+          if (!canUseCandidate({ event, resource, start, end })) {
+            continue;
+          }
+        }
         freeResource = resource;
         break;
       }

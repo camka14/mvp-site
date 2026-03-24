@@ -24,6 +24,14 @@ import {
   inferDivisionDetails,
 } from '@/lib/divisionTypes';
 import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeSlotCanonical';
+import {
+  buildEventOfficialPositionsFromTemplates,
+  deriveEventOfficialsFromLegacyOfficialIds,
+  normalizeEventOfficials,
+  normalizeEventOfficialPositions,
+  normalizeOfficialSchedulingMode,
+  normalizeSportOfficialPositionTemplates,
+} from '@/server/officials/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,9 +87,11 @@ const EVENT_UPDATE_FIELDS = new Set([
   'parentEvent',
   'autoCancellation',
   'eventType',
+  'officialSchedulingMode',
   'doTeamsOfficiate',
   'teamOfficialsMaySwap',
   'officialIds',
+  'officialPositions',
   'allowPaymentPlans',
   'installmentCount',
   'installmentDueDates',
@@ -117,6 +127,15 @@ const withLegacyEvent = (row: any) => {
   if (!Array.isArray(legacy.officialIds)) {
     (legacy as any).officialIds = [];
   }
+  if (!Array.isArray((legacy as any).officialPositions)) {
+    (legacy as any).officialPositions = [];
+  }
+  if (!Array.isArray((legacy as any).eventOfficials)) {
+    (legacy as any).eventOfficials = [];
+  }
+  if (typeof (legacy as any).officialSchedulingMode !== 'string') {
+    (legacy as any).officialSchedulingMode = 'STAFFING';
+  }
   if (!Array.isArray((legacy as any).assistantHostIds)) {
     (legacy as any).assistantHostIds = [];
   }
@@ -137,6 +156,56 @@ const withLegacyEvent = (row: any) => {
     (legacy as any).teamOfficialsMaySwap = false;
   }
   return legacy;
+};
+
+const buildEventOfficialResponse = async (event: any) => {
+  const [eventOfficialRows, sportRow] = await Promise.all([
+    typeof (prisma as any).eventOfficials?.findMany === 'function'
+      ? (prisma as any).eventOfficials.findMany({ where: { eventId: event.id }, orderBy: { createdAt: 'asc' } })
+      : Promise.resolve([]),
+    event.sportId && typeof (prisma as any).sports?.findUnique === 'function'
+      ? (prisma as any).sports.findUnique({
+          where: { id: event.sportId },
+          select: { officialPositionTemplates: true } as any,
+        })
+      : Promise.resolve(null),
+  ]);
+  const templatePositions = buildEventOfficialPositionsFromTemplates(
+    event.id,
+    normalizeSportOfficialPositionTemplates((sportRow as any)?.officialPositionTemplates),
+  );
+  const officialPositions = (() => {
+    const explicit = normalizeEventOfficialPositions((event as any).officialPositions, event.id);
+    if (explicit.length) {
+      return explicit;
+    }
+    return templatePositions;
+  })();
+  const eventOfficials = eventOfficialRows.length
+    ? (eventOfficialRows as any[])
+        .map((row) => ({
+          id: row.id,
+          userId: row.userId,
+          positionIds: normalizeFieldIds(row.positionIds).filter((positionId: string) => (
+            officialPositions.some((position) => position.id === positionId)
+          )),
+          fieldIds: normalizeFieldIds(row.fieldIds).filter((fieldId: string) => (
+            normalizeFieldIds(event.fieldIds).includes(fieldId)
+          )),
+          isActive: row.isActive !== false,
+        }))
+        .filter((row) => row.positionIds.length > 0)
+    : deriveEventOfficialsFromLegacyOfficialIds({
+        eventId: event.id,
+        officialIds: Array.isArray(event.officialIds) ? event.officialIds : [],
+        positionIds: officialPositions.map((position) => position.id),
+      });
+  return {
+    officialSchedulingMode: normalizeOfficialSchedulingMode((event as any).officialSchedulingMode),
+    officialPositions,
+    eventOfficials,
+    officialIds: eventOfficials.map((official: { userId: string }) => official.userId),
+  };
 };
 
 const isSchedulableEventType = (value: unknown): boolean => {
@@ -1283,9 +1352,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       orderBy: { createdAt: 'desc' },
     }),
   ]);
+  const officialResponse = await buildEventOfficialResponse(event);
   return NextResponse.json(
     withLegacyEvent({
       ...event,
+      ...officialResponse,
       divisionFieldIds,
       divisionDetails,
       playoffDivisionDetails,
@@ -1570,6 +1641,65 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       ) {
         data.fieldIds = nextFieldIds;
       }
+      const nextSportId = normalizeEntityId(data.sportId ?? existing.sportId ?? null);
+      const [existingEventOfficialRows, sportRow] = await Promise.all([
+        typeof (tx as any).eventOfficials?.findMany === 'function'
+          ? (tx as any).eventOfficials.findMany({ where: { eventId }, orderBy: { createdAt: 'asc' } })
+          : Promise.resolve([]),
+        nextSportId && typeof (tx as any).sports?.findUnique === 'function'
+          ? (tx as any).sports.findUnique({
+              where: { id: nextSportId },
+              select: { officialPositionTemplates: true } as any,
+            })
+          : Promise.resolve(null),
+      ]);
+      const templateOfficialPositions = buildEventOfficialPositionsFromTemplates(
+        eventId,
+        normalizeSportOfficialPositionTemplates((sportRow as any)?.officialPositionTemplates),
+      );
+      const hasOfficialPositionsInput = Object.prototype.hasOwnProperty.call(payload, 'officialPositions');
+      let nextOfficialPositions = hasOfficialPositionsInput
+        ? normalizeEventOfficialPositions(payload.officialPositions, eventId)
+        : normalizeEventOfficialPositions((existing as any).officialPositions, eventId);
+      if (!nextOfficialPositions.length) {
+        nextOfficialPositions = templateOfficialPositions;
+      }
+      const nextCompatibilityOfficialIds = Object.prototype.hasOwnProperty.call(data, 'officialIds')
+        ? normalizeEntityIdList(data.officialIds)
+        : normalizeEntityIdList(existing.officialIds);
+      if (!nextOfficialPositions.length && nextCompatibilityOfficialIds.length) {
+        nextOfficialPositions = buildEventOfficialPositionsFromTemplates(eventId, [{ name: 'Official', count: 1 }]);
+      }
+      data.officialPositions = nextOfficialPositions;
+      data.officialSchedulingMode = normalizeOfficialSchedulingMode(
+        data.officialSchedulingMode ?? (existing as any).officialSchedulingMode,
+      );
+      const validPositionIdSet = new Set(nextOfficialPositions.map((position) => position.id));
+      const validFieldIdSet = new Set(nextFieldIds);
+      const sanitizedExistingEventOfficials = (existingEventOfficialRows as any[])
+        .map((row) => ({
+          id: row.id,
+          userId: row.userId,
+          positionIds: normalizeEntityIdList(row.positionIds).filter((positionId: string) => validPositionIdSet.has(positionId)),
+          fieldIds: normalizeEntityIdList(row.fieldIds).filter((fieldId: string) => validFieldIdSet.has(fieldId)),
+          isActive: row.isActive !== false,
+        }))
+        .filter((row) => row.positionIds.length > 0);
+      const hasEventOfficialsInput = Object.prototype.hasOwnProperty.call(payload, 'eventOfficials');
+      const nextEventOfficials = hasEventOfficialsInput
+        ? normalizeEventOfficials(payload.eventOfficials, {
+            eventId,
+            positionIds: nextOfficialPositions.map((position) => position.id),
+            fieldIds: nextFieldIds,
+          })
+        : sanitizedExistingEventOfficials.length
+          ? sanitizedExistingEventOfficials
+          : deriveEventOfficialsFromLegacyOfficialIds({
+              eventId,
+              officialIds: nextCompatibilityOfficialIds,
+              positionIds: nextOfficialPositions.map((position) => position.id),
+            });
+      data.officialIds = nextEventOfficials.map((official) => official.userId);
       const nextDivisionKeys = (() => {
         if (Array.isArray(data.divisions)) {
           const normalized = hasDivisionDetailsInput
@@ -1803,6 +1933,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           updatedAt: new Date(),
         },
       });
+      if (
+        typeof (tx as any).eventOfficials?.deleteMany === 'function'
+        && (
+          hasEventOfficialsInput
+          || hasOfficialPositionsInput
+          || Object.prototype.hasOwnProperty.call(payload, 'sportId')
+          || existingEventOfficialRows.length === 0
+        )
+      ) {
+        await (tx as any).eventOfficials.deleteMany({ where: { eventId } });
+        for (const official of nextEventOfficials) {
+          await (tx as any).eventOfficials.create({
+            data: {
+              id: official.id,
+              eventId,
+              userId: official.userId,
+              positionIds: official.positionIds,
+              fieldIds: official.fieldIds,
+              isActive: official.isActive,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+        }
+      }
 
       const defaultDivisionPrice = (() => {
         const parsed = normalizeNullableNumber(data.price ?? existing.price);
@@ -1916,8 +2071,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         installmentAmounts: updated.installmentAmounts,
       }),
     ]);
+    const officialResponse = await buildEventOfficialResponse(updated);
     return NextResponse.json(
-      withLegacyEvent({ ...updated, divisionFieldIds, divisionDetails, playoffDivisionDetails }),
+      withLegacyEvent({
+        ...updated,
+        ...officialResponse,
+        divisionFieldIds,
+        divisionDetails,
+        playoffDivisionDetails,
+      }),
       { status: 200 },
     );
   } catch (error) {

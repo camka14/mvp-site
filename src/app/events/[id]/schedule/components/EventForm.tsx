@@ -7,7 +7,7 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, formatBillAmount, formatPrice } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -431,6 +431,151 @@ const normalizeFieldIds = (values: unknown): string[] => {
                 .filter((value) => value.length > 0),
         ),
     );
+};
+
+const normalizeOfficialSchedulingMode = (value: unknown): OfficialSchedulingMode => {
+    if (value === 'SCHEDULE' || value === 'OFF') {
+        return value;
+    }
+    return 'STAFFING';
+};
+
+const normalizeSportOfficialPositionTemplates = (value: unknown): SportOfficialPositionTemplate[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .map((entry) => {
+            if (!entry || typeof entry !== 'object') {
+                return null;
+            }
+            const row = entry as Record<string, unknown>;
+            const name = String(row.name ?? '').trim();
+            if (!name) {
+                return null;
+            }
+            const count = Number(row.count);
+            return {
+                name,
+                count: Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : 1,
+            } satisfies SportOfficialPositionTemplate;
+        })
+        .filter((entry): entry is SportOfficialPositionTemplate => Boolean(entry));
+};
+
+const buildOfficialPositionsFromTemplates = (
+    templates: SportOfficialPositionTemplate[],
+): EventOfficialPosition[] => templates.map((template, index) => ({
+    id: createClientId(),
+    name: template.name,
+    count: Math.max(1, Math.trunc(template.count || 1)),
+    order: index,
+}));
+
+const normalizeEventOfficialPositions = (
+    value: unknown,
+    fallbackTemplates: SportOfficialPositionTemplate[] = [],
+): EventOfficialPosition[] => {
+    if (!Array.isArray(value) || value.length === 0) {
+        return buildOfficialPositionsFromTemplates(fallbackTemplates);
+    }
+
+    const normalized = value
+        .map((entry, index) => {
+            if (!entry || typeof entry !== 'object') {
+                return null;
+            }
+            const row = entry as Record<string, unknown>;
+            const name = String(row.name ?? '').trim();
+            if (!name) {
+                return null;
+            }
+            const id = String(row.id ?? '').trim() || createClientId();
+            const count = Number(row.count);
+            const order = Number(row.order);
+            return {
+                id,
+                name,
+                count: Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : 1,
+                order: Number.isFinite(order) ? Math.max(0, Math.trunc(order)) : index,
+            } satisfies EventOfficialPosition;
+        })
+        .filter((entry): entry is EventOfficialPosition => Boolean(entry))
+        .sort((left, right) => left.order - right.order);
+
+    return normalized.map((entry, index) => ({
+        ...entry,
+        order: index,
+    }));
+};
+
+const normalizeEventOfficials = (
+    value: unknown,
+    officialIds: string[],
+    positions: EventOfficialPosition[],
+): EventOfficial[] => {
+    const normalizedOfficialIds = Array.from(
+        new Set(
+            officialIds
+                .map((id) => String(id).trim())
+                .filter((id) => id.length > 0),
+        ),
+    );
+    const allowedOfficialIdSet = new Set(normalizedOfficialIds);
+    const positionIds = positions.map((position) => position.id);
+    const positionIdSet = new Set(positionIds);
+
+    const byUserId = new Map<string, EventOfficial>();
+    if (Array.isArray(value)) {
+        value.forEach((entry) => {
+            if (!entry || typeof entry !== 'object') {
+                return;
+            }
+            const row = entry as Record<string, unknown>;
+            const userId = String(row.userId ?? '').trim();
+            if (!userId || !allowedOfficialIdSet.has(userId)) {
+                return;
+            }
+            const positionIdsForOfficial = Array.isArray(row.positionIds)
+                ? Array.from(
+                    new Set(
+                        row.positionIds
+                            .map((positionId) => String(positionId).trim())
+                            .filter((positionId) => positionId.length > 0 && positionIdSet.has(positionId)),
+                    ),
+                )
+                : [];
+            byUserId.set(userId, {
+                id: String(row.id ?? '').trim() || createClientId(),
+                userId,
+                positionIds: positionIdsForOfficial.length ? positionIdsForOfficial : [...positionIds],
+                fieldIds: Array.isArray(row.fieldIds)
+                    ? Array.from(
+                        new Set(
+                            row.fieldIds
+                                .map((fieldId) => String(fieldId).trim())
+                                .filter((fieldId) => fieldId.length > 0),
+                        ),
+                    )
+                    : [],
+                isActive: row.isActive === undefined ? true : Boolean(row.isActive),
+            });
+        });
+    }
+
+    return normalizedOfficialIds.map((userId) => {
+        const existing = byUserId.get(userId);
+        if (existing) {
+            return existing;
+        }
+        return {
+            id: createClientId(),
+            userId,
+            positionIds: [...positionIds],
+            fieldIds: [],
+            isActive: true,
+        } satisfies EventOfficial;
+    });
 };
 
 const normalizeSlotFieldIds = (slot: { scheduledFieldId?: string; scheduledFieldIds?: string[] }): string[] => {
@@ -1939,6 +2084,9 @@ type EventFormState = {
     teams: Team[];
     officials: UserData[];
     officialIds: string[];
+    officialSchedulingMode: OfficialSchedulingMode;
+    officialPositions: EventOfficialPosition[];
+    eventOfficials: EventOfficial[];
     pendingStaffInvites: PendingStaffInvite[];
     assistantHostIds: string[];
     doTeamsOfficiate: boolean;
@@ -2259,6 +2407,26 @@ const mapEventToFormState = (event: Event): EventFormState => {
     const resolvedSportInput = (event.sport && typeof event.sport === 'object'
         ? ((event.sport as Sport).name || (event.sport as Sport).$id || '')
         : resolvedSportId) || '';
+    const officialPositionTemplates = normalizeSportOfficialPositionTemplates(
+        event.sport && typeof event.sport === 'object'
+            ? (event.sport as Sport).officialPositionTemplates
+            : undefined,
+    );
+    const normalizedOfficialPositions = normalizeEventOfficialPositions(
+        event.officialPositions,
+        officialPositionTemplates,
+    );
+    const normalizedOfficialIds = Array.isArray(event.officialIds)
+        ? Array.from(new Set(event.officialIds.map((officialId) => String(officialId)).filter(Boolean)))
+        : Array.isArray(event.eventOfficials)
+            ? Array.from(
+                new Set(
+                    event.eventOfficials
+                        .map((official) => String(official?.userId ?? '').trim())
+                        .filter((officialId) => officialId.length > 0),
+                ),
+            )
+            : [];
     const divisionReferenceDate = parseDateValue(event.start ?? null);
     const defaultEventInstallmentAmounts = normalizeInstallmentAmounts(event.installmentAmounts);
     const defaultEventInstallmentDueDates = Array.isArray(event.installmentDueDates)
@@ -2512,7 +2680,14 @@ const mapEventToFormState = (event: Event): EventFormState => {
     players: event.players || [],
     teams: event.teams || [],
     officials: event.officials || [],
-    officialIds: event.officialIds || [],
+    officialIds: normalizedOfficialIds,
+    officialSchedulingMode: normalizeOfficialSchedulingMode(event.officialSchedulingMode),
+    officialPositions: normalizedOfficialPositions,
+    eventOfficials: normalizeEventOfficials(
+        event.eventOfficials,
+        normalizedOfficialIds,
+        normalizedOfficialPositions,
+    ),
     pendingStaffInvites: Array.isArray((event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites)
         && (event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites!.length > 0
         ? (event as { pendingStaffInvites?: PendingStaffInvite[] }).pendingStaffInvites!.map((invite) => ({
@@ -2677,6 +2852,24 @@ const eventFormSchema = z
         teams: z.array(z.any()),
         officials: z.array(z.any()),
         officialIds: z.array(z.string()),
+        officialSchedulingMode: z.enum(['STAFFING', 'SCHEDULE', 'OFF']).default('STAFFING'),
+        officialPositions: z.array(
+            z.object({
+                id: z.string().trim().min(1),
+                name: z.string().trim().min(1),
+                count: z.number().int().min(1),
+                order: z.number().int().min(0),
+            }),
+        ).default([]),
+        eventOfficials: z.array(
+            z.object({
+                id: z.string().trim().min(1),
+                userId: z.string().trim().min(1),
+                positionIds: z.array(z.string()).default([]),
+                fieldIds: z.array(z.string()).default([]),
+                isActive: z.boolean().optional(),
+            }),
+        ).default([]),
         pendingStaffInvites: z.array(
             z.object({
                 firstName: z.string().default(''),
@@ -3214,6 +3407,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         if (typeof (defaults as any).teamOfficialsMaySwap === 'boolean') {
             next.teamOfficialsMaySwap = next.doTeamsOfficiate ? Boolean((defaults as any).teamOfficialsMaySwap) : false;
+        }
+        if ((defaults as any).officialSchedulingMode !== undefined) {
+            next.officialSchedulingMode = normalizeOfficialSchedulingMode((defaults as any).officialSchedulingMode);
+        }
+        if (Array.isArray((defaults as any).officialPositions)) {
+            next.officialPositions = normalizeEventOfficialPositions((defaults as any).officialPositions);
+        }
+        if (Array.isArray((defaults as any).eventOfficials) || Array.isArray((defaults as any).officialIds)) {
+            next.eventOfficials = normalizeEventOfficials(
+                (defaults as any).eventOfficials,
+                Array.isArray((defaults as any).officialIds)
+                    ? (defaults as any).officialIds.map((id: unknown) => String(id).trim()).filter(Boolean)
+                    : next.officialIds,
+                next.officialPositions,
+            );
         }
         if (Array.isArray((defaults as any).divisionDetails)) {
             const referenceDate = parseDateValue(next.start ?? null);
@@ -5035,6 +5243,148 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.splitLeaguePlayoffDivisions,
         leagueData.includePlayoffs,
     ]);
+
+    const selectedSportForOfficials = useMemo(
+        () => (
+            (eventData.sportId ? sportsById.get(eventData.sportId) : null)
+            ?? eventData.sportConfig
+            ?? null
+        ),
+        [eventData.sportConfig, eventData.sportId, sportsById],
+    );
+    const sportOfficialPositionTemplates = useMemo(
+        () => normalizeSportOfficialPositionTemplates(selectedSportForOfficials?.officialPositionTemplates),
+        [selectedSportForOfficials],
+    );
+    const availableOfficialFieldOptions = useMemo(() => {
+        const allowedFieldIdSet = selectedFieldIds.length > 0 ? new Set(selectedFieldIds) : null;
+        return fields
+            .filter((field) => {
+                const fieldId = String(field?.$id ?? '').trim();
+                if (!fieldId) {
+                    return false;
+                }
+                return allowedFieldIdSet ? allowedFieldIdSet.has(fieldId) : true;
+            })
+            .map((field, index) => ({
+                value: field.$id,
+                label: field.name?.trim()
+                    || (
+                        typeof field.fieldNumber === 'number' && Number.isFinite(field.fieldNumber)
+                            ? `Field ${field.fieldNumber}`
+                            : `Field ${index + 1}`
+                    ),
+            }));
+    }, [fields, selectedFieldIds]);
+    const eventOfficialByUserId = useMemo(
+        () => new Map((eventData.eventOfficials || []).map((official) => [official.userId, official] as const)),
+        [eventData.eventOfficials],
+    );
+
+    useEffect(() => {
+        const normalized = normalizeEventOfficials(
+            eventData.eventOfficials,
+            eventData.officialIds || [],
+            eventData.officialPositions || [],
+        );
+        if (JSON.stringify(eventData.eventOfficials || []) === JSON.stringify(normalized)) {
+            return;
+        }
+        setValue('eventOfficials', normalized, { shouldDirty: false, shouldValidate: false });
+    }, [eventData.eventOfficials, eventData.officialIds, eventData.officialPositions, setValue]);
+
+    const handleResetOfficialPositionsFromSport = useCallback(() => {
+        const nextPositions = buildOfficialPositionsFromTemplates(sportOfficialPositionTemplates);
+        setEventData((prev) => ({
+            ...prev,
+            officialPositions: nextPositions,
+            eventOfficials: normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions),
+        }));
+    }, [setEventData, sportOfficialPositionTemplates]);
+
+    const handleAddOfficialPosition = useCallback(() => {
+        setEventData((prev) => {
+            const nextPositions = [
+                ...(prev.officialPositions || []),
+                {
+                    id: createClientId(),
+                    name: '',
+                    count: 1,
+                    order: (prev.officialPositions || []).length,
+                } satisfies EventOfficialPosition,
+            ];
+            return {
+                ...prev,
+                officialPositions: nextPositions,
+                eventOfficials: normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions),
+            };
+        });
+    }, [setEventData]);
+
+    const handleUpdateOfficialPosition = useCallback((
+        positionId: string,
+        updates: Partial<Pick<EventOfficialPosition, 'name' | 'count'>>,
+    ) => {
+        setEventData((prev) => {
+            const nextPositions = (prev.officialPositions || []).map((position, index) => (
+                position.id === positionId
+                    ? {
+                        ...position,
+                        name: updates.name ?? position.name,
+                        count: updates.count !== undefined
+                            ? Math.max(1, Math.trunc(updates.count || 1))
+                            : position.count,
+                        order: index,
+                    }
+                    : { ...position, order: index }
+            ));
+            return {
+                ...prev,
+                officialPositions: nextPositions,
+                eventOfficials: normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions),
+            };
+        });
+    }, [setEventData]);
+
+    const handleRemoveOfficialPosition = useCallback((positionId: string) => {
+        setEventData((prev) => {
+            const nextPositions = (prev.officialPositions || [])
+                .filter((position) => position.id !== positionId)
+                .map((position, index) => ({ ...position, order: index }));
+            return {
+                ...prev,
+                officialPositions: nextPositions,
+                eventOfficials: normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions),
+            };
+        });
+    }, [setEventData]);
+
+    const handleUpdateEventOfficialEligibility = useCallback((
+        userId: string,
+        updates: Partial<Pick<EventOfficial, 'positionIds' | 'fieldIds'>>,
+    ) => {
+        setEventData((prev) => {
+            const nextPositions = prev.officialPositions || [];
+            const nextOfficials = normalizeEventOfficials(prev.eventOfficials, prev.officialIds || [], nextPositions).map((official) => {
+                if (official.userId !== userId) {
+                    return official;
+                }
+                return {
+                    ...official,
+                    positionIds: updates.positionIds !== undefined
+                        ? Array.from(new Set(updates.positionIds.filter(Boolean)))
+                        : official.positionIds,
+                    fieldIds: updates.fieldIds !== undefined
+                        ? Array.from(new Set(updates.fieldIds.filter(Boolean)))
+                        : official.fieldIds,
+                };
+            });
+            return {
+                ...prev,
+                eventOfficials: normalizeEventOfficials(nextOfficials, prev.officialIds || [], nextPositions),
+            };
+        });
+    }, [setEventData]);
 
     const handleAddOfficial = useCallback((official: { $id?: string; userId?: string | null } & Partial<UserData>) => {
         const officialId = normalizeEntityId(official.$id ?? official.userId);
@@ -7582,6 +7932,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             players: source.players,
             officials: normalizedOfficials,
             officialIds: normalizedOfficialIds,
+            officialSchedulingMode: normalizeOfficialSchedulingMode(source.officialSchedulingMode),
+            officialPositions: normalizeEventOfficialPositions(
+                source.officialPositions,
+                normalizeSportOfficialPositionTemplates(resolvedSport?.officialPositionTemplates),
+            ),
+            eventOfficials: normalizeEventOfficials(
+                source.eventOfficials,
+                normalizedOfficialIds,
+                normalizeEventOfficialPositions(
+                    source.officialPositions,
+                    normalizeSportOfficialPositionTemplates(resolvedSport?.officialPositionTemplates),
+                ),
+            ),
             assistantHostIds: normalizedAssistantHostIds,
             doTeamsOfficiate: source.doTeamsOfficiate,
             teamOfficialsMaySwap: source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
@@ -9008,6 +9371,82 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         />
                                     )}
 
+                                    <Paper withBorder radius="md" p="md" bg="white">
+                                        <Stack gap="sm">
+                                            <MantineSelect
+                                                label="Official scheduling mode"
+                                                description="Choose whether the scheduler prioritizes staffing coverage or match layout."
+                                                data={[
+                                                    { value: 'STAFFING', label: 'Staffing: no schedule conflicts and full staffing first' },
+                                                    { value: 'SCHEDULE', label: 'Schedule: preserve schedule, avoid official conflicts, allow empty slots' },
+                                                    { value: 'OFF', label: 'Off: preserve schedule and allow official conflicts' },
+                                                ]}
+                                                value={eventData.officialSchedulingMode}
+                                                onChange={(value) => setValue('officialSchedulingMode', normalizeOfficialSchedulingMode(value), { shouldDirty: true, shouldValidate: true })}
+                                                comboboxProps={sharedComboboxProps}
+                                            />
+                                            <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
+                                                <div>
+                                                    <Title order={6}>Official Positions</Title>
+                                                    <Text size="sm" c="dimmed">
+                                                        Edit the event-specific official positions and slot counts. Sport defaults only seed this list.
+                                                    </Text>
+                                                </div>
+                                                <Group gap="xs">
+                                                    <Button
+                                                        type="button"
+                                                        size="xs"
+                                                        variant="default"
+                                                        disabled={sportOfficialPositionTemplates.length === 0}
+                                                        onClick={handleResetOfficialPositionsFromSport}
+                                                    >
+                                                        Load sport defaults
+                                                    </Button>
+                                                    <Button type="button" size="xs" onClick={handleAddOfficialPosition}>
+                                                        Add position
+                                                    </Button>
+                                                </Group>
+                                            </Group>
+                                            <Stack gap="xs">
+                                                {(eventData.officialPositions || []).map((position) => (
+                                                    <Group key={position.id} align="flex-end" gap="sm" wrap="nowrap">
+                                                        <TextInput
+                                                            label="Position"
+                                                            placeholder="Referee"
+                                                            value={position.name}
+                                                            onChange={(event) => handleUpdateOfficialPosition(position.id, { name: event.currentTarget.value })}
+                                                            maxLength={MAX_SHORT_TEXT_LENGTH}
+                                                            className="flex-1"
+                                                        />
+                                                        <NumberInput
+                                                            label="Count"
+                                                            value={position.count}
+                                                            min={1}
+                                                            allowDecimal={false}
+                                                            clampBehavior="strict"
+                                                            onChange={(value) => handleUpdateOfficialPosition(position.id, { count: Number(value) || 1 })}
+                                                            maw={120}
+                                                        />
+                                                        <ActionIcon
+                                                            type="button"
+                                                            variant="subtle"
+                                                            color="red"
+                                                            aria-label={`Remove ${position.name || 'official position'}`}
+                                                            onClick={() => handleRemoveOfficialPosition(position.id)}
+                                                        >
+                                                            <span aria-hidden="true">×</span>
+                                                        </ActionIcon>
+                                                    </Group>
+                                                ))}
+                                                {(!eventData.officialPositions || eventData.officialPositions.length === 0) && (
+                                                    <Text size="sm" c="dimmed">
+                                                        No official positions configured yet. Add them here or load the sport defaults.
+                                                    </Text>
+                                                )}
+                                            </Stack>
+                                        </Stack>
+                                    </Paper>
+
                                     {isOrganizationHostedEvent ? (
                                         <Paper withBorder radius="md" p="md" bg="white">
                                             <Stack gap="sm">
@@ -9309,6 +9748,35 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         Remove
                                                                     </Button>
                                                                 </Group>
+                                                                {card.userId && card.source === 'assigned' && (
+                                                                    <SimpleGrid cols={{ base: 1, md: availableOfficialFieldOptions.length > 0 ? 2 : 1 }} spacing="sm">
+                                                                        <MantineMultiSelect
+                                                                            label="Eligible positions"
+                                                                            description="Used by the scheduler when assigning this official."
+                                                                            data={(eventData.officialPositions || []).map((position) => ({
+                                                                                value: position.id,
+                                                                                label: `${position.name} (${position.count})`,
+                                                                            }))}
+                                                                            value={eventOfficialByUserId.get(card.userId)?.positionIds || []}
+                                                                            onChange={(value) => handleUpdateEventOfficialEligibility(card.userId!, { positionIds: value })}
+                                                                            searchable
+                                                                            clearable={false}
+                                                                            comboboxProps={sharedComboboxProps}
+                                                                        />
+                                                                        {availableOfficialFieldOptions.length > 0 && (
+                                                                            <MantineMultiSelect
+                                                                                label="Eligible fields"
+                                                                                description="Leave empty to allow all event fields."
+                                                                                data={availableOfficialFieldOptions}
+                                                                                value={eventOfficialByUserId.get(card.userId)?.fieldIds || []}
+                                                                                onChange={(value) => handleUpdateEventOfficialEligibility(card.userId!, { fieldIds: value })}
+                                                                                searchable
+                                                                                clearable
+                                                                                comboboxProps={sharedComboboxProps}
+                                                                            />
+                                                                        )}
+                                                                    </SimpleGrid>
+                                                                )}
                                                                 {card.status === 'failed' && (
                                                                     <Text size="xs" c="red">
                                                                         Email likely failed to send. Remove and re-add this invite to retry.

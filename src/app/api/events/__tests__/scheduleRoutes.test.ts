@@ -850,6 +850,140 @@ describe('schedule routes', () => {
     );
   });
 
+  it('rejects bulk create when official assignments reference an unknown position', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      restTimeMinutes: 0,
+      teamSizeLimit: 2,
+      maxParticipants: 8,
+      registeredTeamIds: [],
+      divisions: [{ id: 'open', name: 'Open' }],
+      matches: {},
+      teams: {},
+      officials: [{ id: 'official_1' }],
+      officialPositions: [{ id: 'referee', name: 'Referee', count: 1, order: 0 }],
+      eventOfficials: [
+        {
+          id: 'event_official_1',
+          userId: 'official_1',
+          positionIds: ['referee'],
+          fieldIds: [],
+          isActive: true,
+        },
+      ],
+      fields: {
+        field_1: { id: 'field_1', fieldNumber: 1, name: 'Court 1' },
+      },
+      timeSlots: [],
+    });
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        creates: [
+          {
+            clientId: 'new_1',
+            start: '2026-01-02T09:00:00.000Z',
+            end: '2026-01-02T10:00:00.000Z',
+            fieldId: 'field_1',
+            officialIds: [
+              {
+                positionId: 'unknown_position',
+                slotIndex: 0,
+                holderType: 'OFFICIAL',
+                userId: 'official_1',
+                eventOfficialId: 'event_official_1',
+              },
+            ],
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect(saveMatchesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects single-match updates when official assignments duplicate the same slot', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      noFixedEndDateTime: true,
+      restTimeMinutes: 0,
+      officialPositions: [{ id: 'referee', name: 'Referee', count: 1, order: 0 }],
+      eventOfficials: [
+        {
+          id: 'event_official_1',
+          userId: 'official_1',
+          positionIds: ['referee'],
+          fieldIds: [],
+          isActive: true,
+        },
+      ],
+      matches: {
+        match_1: {
+          id: 'match_1',
+          start: new Date('2026-01-02T09:00:00.000Z'),
+          end: new Date('2026-01-02T10:00:00.000Z'),
+          division: { id: 'open', name: 'Open' },
+          field: { id: 'field_1', fieldNumber: 1, name: 'Court 1' },
+          teamOfficial: null,
+          official: null,
+          officialAssignments: [],
+        },
+      },
+      teams: {},
+      officials: [{ id: 'official_1' }],
+      divisions: [{ id: 'open', name: 'Open' }],
+      fields: {
+        field_1: { id: 'field_1', fieldNumber: 1, name: 'Court 1' },
+      },
+      timeSlots: [],
+    });
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        officialIds: [
+          {
+            positionId: 'referee',
+            slotIndex: 0,
+            holderType: 'OFFICIAL',
+            userId: 'official_1',
+            eventOfficialId: 'event_official_1',
+          },
+          {
+            positionId: 'referee',
+            slotIndex: 0,
+            holderType: 'OFFICIAL',
+            userId: 'official_1',
+            eventOfficialId: 'event_official_1',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect(saveMatchesMock).not.toHaveBeenCalled();
+  });
+
   it('notifies the host when auto-reschedule fails because fixed end time was reached', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({

@@ -26,6 +26,30 @@ export type PlayoffDivisionConfig = {
   restTimeMinutes: number;
 };
 
+export type OfficialSchedulingMode = 'STAFFING' | 'SCHEDULE' | 'OFF';
+export type EventOfficialPosition = {
+  id: string;
+  name: string;
+  count: number;
+  order: number;
+};
+export type EventOfficial = {
+  id: string;
+  userId: string;
+  positionIds: string[];
+  fieldIds: string[];
+  isActive: boolean;
+};
+export type MatchOfficialAssignment = {
+  positionId: string;
+  slotIndex: number;
+  holderType: 'OFFICIAL' | 'PLAYER';
+  userId: string;
+  eventOfficialId?: string;
+  checkedIn: boolean;
+  hasConflict: boolean;
+};
+
 export const sideFrom = (value?: string | null): Side | null => {
   if (!value) return null;
   if (value === Side.LEFT) return Side.LEFT;
@@ -383,6 +407,7 @@ export class Match implements SchedulableEvent {
   bufferMs: number;
   side: Side | null;
   officialCheckedIn?: boolean | null;
+  officialAssignments: MatchOfficialAssignment[];
   teamOfficial: Team | null;
   official: UserData | null;
   team1: Team | null;
@@ -412,6 +437,7 @@ export class Match implements SchedulableEvent {
     bufferMs: number;
     side?: Side | null;
     officialCheckedIn?: boolean | null;
+    officialAssignments?: MatchOfficialAssignment[];
     teamOfficial?: Team | null;
     official?: UserData | null;
     team1?: Team | null;
@@ -440,6 +466,7 @@ export class Match implements SchedulableEvent {
     this.bufferMs = params.bufferMs;
     this.side = params.side ?? null;
     this.officialCheckedIn = params.officialCheckedIn ?? false;
+    this.officialAssignments = params.officialAssignments ?? [];
     this.teamOfficial = params.teamOfficial ?? null;
     this.official = params.official ?? null;
     this.team1 = params.team1 ?? null;
@@ -616,6 +643,9 @@ export class Tournament {
   maxAge: number | null;
   doTeamsOfficiate: boolean;
   teamOfficialsMaySwap: boolean;
+  officialSchedulingMode: OfficialSchedulingMode;
+  officialPositions: EventOfficialPosition[];
+  eventOfficials: EventOfficial[];
   fieldCount: number | null;
   prize: string | null;
   hostId: string;
@@ -683,6 +713,9 @@ export class Tournament {
     maxAge?: number | null;
     doTeamsOfficiate?: boolean;
     teamOfficialsMaySwap?: boolean;
+    officialSchedulingMode?: OfficialSchedulingMode;
+    officialPositions?: EventOfficialPosition[];
+    eventOfficials?: EventOfficial[];
     fieldCount?: number | null;
     prize?: string | null;
     hostId?: string;
@@ -749,6 +782,9 @@ export class Tournament {
     this.maxAge = params.maxAge ?? null;
     this.doTeamsOfficiate = typeof params.doTeamsOfficiate === 'boolean' ? params.doTeamsOfficiate : true;
     this.teamOfficialsMaySwap = this.doTeamsOfficiate ? Boolean(params.teamOfficialsMaySwap) : false;
+    this.officialSchedulingMode = params.officialSchedulingMode ?? 'STAFFING';
+    this.officialPositions = params.officialPositions ?? [];
+    this.eventOfficials = params.eventOfficials ?? [];
     const configuredFieldCount = Object.keys(params.fields ?? {}).length;
     if (configuredFieldCount > 0) {
       this.fieldCount = configuredFieldCount;

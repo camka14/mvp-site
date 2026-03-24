@@ -58,6 +58,7 @@ export const ModelName = {
   SensitiveUserData: 'SensitiveUserData',
   Invites: 'Invites',
   StaffMembers: 'StaffMembers',
+  EventOfficials: 'EventOfficials',
   Teams: 'Teams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
@@ -140,6 +141,7 @@ export const MatchesScalarFieldEnum = {
   previousLeftId: 'previousLeftId',
   officialCheckedIn: 'officialCheckedIn',
   officialId: 'officialId',
+  officialIds: 'officialIds',
   team1Id: 'team1Id',
   team2Id: 'team2Id',
   team1Seed: 'team1Seed',
@@ -255,6 +257,20 @@ export const StaffMembersScalarFieldEnum = {
 } as const
 
 export type StaffMembersScalarFieldEnum = (typeof StaffMembersScalarFieldEnum)[keyof typeof StaffMembersScalarFieldEnum]
+
+
+export const EventOfficialsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  userId: 'userId',
+  positionIds: 'positionIds',
+  fieldIds: 'fieldIds',
+  isActive: 'isActive'
+} as const
+
+export type EventOfficialsScalarFieldEnum = (typeof EventOfficialsScalarFieldEnum)[keyof typeof EventOfficialsScalarFieldEnum]
 
 
 export const TeamsScalarFieldEnum = {
@@ -474,9 +490,11 @@ export const EventsScalarFieldEnum = {
   parentEvent: 'parentEvent',
   autoCancellation: 'autoCancellation',
   eventType: 'eventType',
+  officialSchedulingMode: 'officialSchedulingMode',
   doTeamsOfficiate: 'doTeamsOfficiate',
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
   officialIds: 'officialIds',
+  officialPositions: 'officialPositions',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
   installmentDueDates: 'installmentDueDates',
@@ -668,7 +686,8 @@ export const SportsScalarFieldEnum = {
   useBonusPointsForHighScoringMatch: 'useBonusPointsForHighScoringMatch',
   useEnablePenaltyUnsporting: 'useEnablePenaltyUnsporting',
   usePenaltyPointsUnsporting: 'usePenaltyPointsUnsporting',
-  usePointPrecision: 'usePointPrecision'
+  usePointPrecision: 'usePointPrecision',
+  officialPositionTemplates: 'officialPositionTemplates'
 } as const
 
 export type SportsScalarFieldEnum = (typeof SportsScalarFieldEnum)[keyof typeof SportsScalarFieldEnum]

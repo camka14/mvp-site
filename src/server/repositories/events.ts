@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '../../generated/prisma/client';
+import type { PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
@@ -31,8 +31,22 @@ import {
   normalizeTimeSlotDays,
   normalizeTimeSlotFieldIds,
 } from '@/server/timeSlotCanonical';
+import {
+  buildEventOfficialPositionsFromTemplates,
+  buildLegacyOfficialAssignment,
+  deriveEventOfficialsFromLegacyOfficialIds,
+  deriveLegacyOfficialCheckedInFromAssignments,
+  deriveLegacyOfficialIdFromAssignments,
+  normalizeEventOfficials,
+  normalizeEventOfficialPositions,
+  normalizeMatchOfficialAssignments,
+  normalizeOfficialSchedulingMode,
+  normalizeSportOfficialPositionTemplates,
+  type EventOfficialRecord,
+  type MatchOfficialAssignment,
+} from '@/server/officials/config';
 
-type PrismaLike = PrismaClient | Prisma.TransactionClient;
+type PrismaLike = PrismaClient | any;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
 const warnedMissingEventArguments = new Set<string>();
 
@@ -126,6 +140,41 @@ const normalizeEntityId = (value: unknown): string | null => {
   }
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
+};
+
+const loadEventOfficialRows = async (client: PrismaLike, eventId: string): Promise<any[]> => {
+  if (typeof (client as any).eventOfficials?.findMany !== 'function') {
+    return [];
+  }
+  return (client as any).eventOfficials.findMany({
+    where: { eventId },
+    orderBy: { createdAt: 'asc' },
+  });
+};
+
+const persistEventOfficialRows = async (
+  client: PrismaLike,
+  eventId: string,
+  rows: EventOfficialRecord[],
+): Promise<void> => {
+  if (typeof (client as any).eventOfficials?.deleteMany !== 'function') {
+    return;
+  }
+  await (client as any).eventOfficials.deleteMany({ where: { eventId } });
+  for (const row of rows) {
+    await (client as any).eventOfficials.create({
+      data: {
+        id: row.id,
+        eventId,
+        userId: row.userId,
+        positionIds: row.positionIds,
+        fieldIds: row.fieldIds,
+        isActive: row.isActive,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  }
 };
 
 const resolveBillingOwnerHasStripeAccount = async (
@@ -1306,8 +1355,8 @@ const attachFieldSchedulingConflicts = async (params: {
     const matchEventIds = Array.from(
       new Set(
         externalMatchRows
-          .map((row) => (typeof row.eventId === 'string' ? row.eventId : ''))
-          .filter((eventId) => eventId.length > 0),
+          .map((row: any) => (typeof row.eventId === 'string' ? row.eventId : ''))
+          .filter((eventId: string) => eventId.length > 0),
       ),
     );
     if (matchEventIds.length) {
@@ -1319,8 +1368,8 @@ const attachFieldSchedulingConflicts = async (params: {
         },
         select: { id: true },
       });
-      const allowedEventIds = new Set(allowedEventRows.map((event) => event.id));
-      externalMatchRows = externalMatchRows.filter((row) => (
+      const allowedEventIds = new Set(allowedEventRows.map((event: any) => event.id));
+      externalMatchRows = externalMatchRows.filter((row: any) => (
         typeof row.eventId === 'string' && allowedEventIds.has(row.eventId)
       ));
     } else {
@@ -1351,7 +1400,7 @@ const attachFieldSchedulingConflicts = async (params: {
     );
   }
 
-  const externalEventRows = externalEventRowsRaw.filter((row) => {
+  const externalEventRows = externalEventRowsRaw.filter((row: any) => {
     const eventType = typeof row.eventType === 'string' ? row.eventType.toUpperCase() : '';
     const parentEventId = normalizeEntityId(row.parentEvent);
     if (eventType === 'WEEKLY_EVENT' && parentEventId) {
@@ -1367,7 +1416,7 @@ const attachFieldSchedulingConflicts = async (params: {
   });
   const externalEventSlotIds = Array.from(
     new Set(
-      externalEventRows.flatMap((row) => ensureStringArray(row.timeSlotIds)),
+      externalEventRows.flatMap((row: any) => ensureStringArray(row.timeSlotIds)),
     ),
   );
   const externalEventSlotRows = externalEventSlotIds.length > 0
@@ -1377,7 +1426,7 @@ const attachFieldSchedulingConflicts = async (params: {
       },
     })
     : [];
-  const externalEventSlotById = new Map(externalEventSlotRows.map((slot) => [slot.id, slot]));
+  const externalEventSlotById = new Map(externalEventSlotRows.map((slot: any) => [slot.id, slot]));
   const eventBoundSlotIds = new Set(externalEventSlotIds);
 
   for (const row of externalEventRows) {
@@ -1444,7 +1493,7 @@ const attachFieldSchedulingConflicts = async (params: {
 
   const rentalSlotIds = Array.from(
     new Set(
-      fieldRows.flatMap((row) => ensureStringArray(row.rentalSlotIds)),
+      fieldRows.flatMap((row: any) => ensureStringArray(row.rentalSlotIds)),
     ),
   );
   const rentalSlotRows = rentalSlotIds.length > 0
@@ -1454,7 +1503,7 @@ const attachFieldSchedulingConflicts = async (params: {
       },
     })
     : [];
-  const rentalSlotById = new Map(rentalSlotRows.map((slot) => [slot.id, slot]));
+  const rentalSlotById = new Map(rentalSlotRows.map((slot: any) => [slot.id, slot]));
   for (const fieldRow of fieldRows) {
     const field = params.fields[fieldRow.id];
     if (!field) {
@@ -1507,6 +1556,8 @@ const buildMatches = (
 ) => {
   const divisionLookup = new Map(divisions.map((division) => [division.id, division]));
   const officialLookup = new Map(officials.map((official) => [official.id, official]));
+  const eventOfficialsById = new Map(event.eventOfficials.map((official) => [official.id, official]));
+  const positionCountsById = new Map(event.officialPositions.map((position) => [position.id, position.count]));
   const matches: Record<string, Match> = {};
   for (const row of rows) {
     const normalizedDivisionId = normalizeDivisionKey(row.division);
@@ -1517,6 +1568,27 @@ const buildMatches = (
       : divisions[0];
     const start = toOptionalDate(row.start);
     const end = toOptionalDate(row.end);
+    let officialAssignments: MatchOfficialAssignment[] = [];
+    try {
+      officialAssignments = normalizeMatchOfficialAssignments((row as any).officialIds, {
+        positionCountsById,
+        eventOfficialsById,
+      });
+    } catch {
+      officialAssignments = [];
+    }
+    if (!officialAssignments.length) {
+      officialAssignments = buildLegacyOfficialAssignment({
+        eventId: row.eventId ?? event.id,
+        officialId: row.officialId ?? null,
+        officialCheckedIn: row.officialCheckedIn === true,
+        officialPositions: event.officialPositions,
+      });
+    }
+    const primaryOfficialId = deriveLegacyOfficialIdFromAssignments(officialAssignments) ?? normalizeEntityId(row.officialId);
+    const primaryOfficialCheckedIn = officialAssignments.length
+      ? deriveLegacyOfficialCheckedInFromAssignments(officialAssignments)
+      : row.officialCheckedIn ?? false;
     const match = new Match({
       id: row.id,
       matchId: row.matchId ?? null,
@@ -1541,9 +1613,10 @@ const buildMatches = (
       setResults: ensureArray(row.setResults),
       bufferMs: matchBufferMs(event),
       side: sideFrom(row.side),
-      officialCheckedIn: row.officialCheckedIn ?? false,
+      officialCheckedIn: primaryOfficialCheckedIn,
+      officialAssignments,
       teamOfficial: row.teamOfficialId ? teams[row.teamOfficialId] ?? null : null,
-      official: row.officialId ? officialLookup.get(row.officialId) ?? null : null,
+      official: primaryOfficialId ? officialLookup.get(primaryOfficialId) ?? null : null,
       team1: row.team1Id ? teams[row.team1Id] ?? null : null,
       team2: row.team2Id ? teams[row.team2Id] ?? null : null,
       eventId: row.eventId,
@@ -1589,11 +1662,11 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const allDivisionRows = await client.divisions.findMany({
     where: { eventId: event.id },
   });
-  const leagueDivisionRows = allDivisionRows.filter((row) => normalizeDivisionKind((row as any).kind, 'LEAGUE') !== 'PLAYOFF');
-  const playoffDivisionRows = allDivisionRows.filter((row) => normalizeDivisionKind((row as any).kind, 'LEAGUE') === 'PLAYOFF');
+  const leagueDivisionRows = allDivisionRows.filter((row: any) => normalizeDivisionKind((row as any).kind, 'LEAGUE') !== 'PLAYOFF');
+  const playoffDivisionRows = allDivisionRows.filter((row: any) => normalizeDivisionKind((row as any).kind, 'LEAGUE') === 'PLAYOFF');
   const leagueDivisionIds = eventDivisionIds.length
     ? eventDivisionIds
-    : leagueDivisionRows.map((row) => row.id);
+    : leagueDivisionRows.map((row: any) => row.id);
   const { divisions, map: leagueDivisionMap, fieldIdsByDivision } = buildDivisions(
     leagueDivisionIds,
     leagueDivisionRows,
@@ -1603,7 +1676,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     divisions: playoffDivisions,
     map: playoffDivisionMap,
   } = buildDivisions(
-    playoffDivisionRows.map((row) => row.id),
+    playoffDivisionRows.map((row: any) => row.id),
     playoffDivisionRows,
     event.sportId ?? null,
     { allowFallback: false, fallbackKind: 'PLAYOFF' },
@@ -1625,7 +1698,52 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const teamIds = ensureStringArray(event.teamIds);
   const teamIdsToLoad = Array.from(new Set(teamIds));
   const timeSlotIds = ensureStringArray(event.timeSlotIds);
-  const officialIds = ensureStringArray(event.officialIds);
+  const [eventOfficialRows, sportRow] = await Promise.all([
+    loadEventOfficialRows(client, event.id),
+    event.sportId && typeof (client as any).sports?.findUnique === 'function'
+      ? (client as any).sports.findUnique({
+          where: { id: event.sportId },
+          select: { officialPositionTemplates: true } as any,
+        })
+      : Promise.resolve(null),
+  ]);
+  const templatePositions = buildEventOfficialPositionsFromTemplates(
+    event.id,
+    normalizeSportOfficialPositionTemplates((sportRow as any)?.officialPositionTemplates),
+  );
+  const officialPositions = (() => {
+    const explicitPositions = normalizeEventOfficialPositions((event as any).officialPositions, event.id);
+    if (explicitPositions.length) {
+      return explicitPositions;
+    }
+    if (templatePositions.length) {
+      return templatePositions;
+    }
+    if (ensureStringArray(event.officialIds).length) {
+      return buildEventOfficialPositionsFromTemplates(event.id, [{ name: 'Official', count: 1 }]);
+    }
+    return [];
+  })();
+  const validPositionIdSetForLoad = new Set(officialPositions.map((position) => position.id));
+  const validFieldIdSetForLoad = new Set(fieldIds);
+  const eventOfficials = eventOfficialRows.length
+    ? (eventOfficialRows as any[])
+        .map((row) => ({
+          id: row.id,
+          userId: row.userId,
+          positionIds: ensureStringArray(row.positionIds).filter((positionId) => validPositionIdSetForLoad.has(positionId)),
+          fieldIds: ensureStringArray(row.fieldIds).filter((fieldId) => validFieldIdSetForLoad.has(fieldId)),
+          isActive: row.isActive !== false,
+        }))
+        .filter((row) => row.positionIds.length > 0)
+    : deriveEventOfficialsFromLegacyOfficialIds({
+        eventId: event.id,
+        officialIds: ensureStringArray(event.officialIds),
+        positionIds: officialPositions.map((position) => position.id),
+      });
+  const officialIds = eventOfficials.length
+    ? eventOfficials.map((official: any) => official.userId)
+    : ensureStringArray(event.officialIds);
 
   const [fieldRows, teamRows, timeSlotRows, officialRows, matchRows, leagueConfigRow] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
@@ -1685,7 +1803,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   }
 
   const coordinates = Array.isArray(event.coordinates)
-    ? event.coordinates.filter((value): value is number => typeof value === 'number')
+    ? event.coordinates.filter((value: unknown): value is number => typeof value === 'number')
     : null;
   const resolvedFieldCount = (() => {
     const resolvedFieldEntries = Object.keys(fields).length;
@@ -1732,6 +1850,9 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
       event.doTeamsOfficiate === true && typeof (event as any).teamOfficialsMaySwap === 'boolean'
         ? Boolean((event as any).teamOfficialsMaySwap)
         : false,
+    officialSchedulingMode: normalizeOfficialSchedulingMode((event as any).officialSchedulingMode),
+    officialPositions,
+    eventOfficials,
     fieldCount: resolvedFieldCount,
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
@@ -1791,6 +1912,15 @@ export const saveMatches = async (
     );
     const start = (match as unknown as { start: Date | null }).start ?? null;
     const end = (match as unknown as { end: Date | null }).end ?? null;
+    const officialAssignments = Array.isArray(match.officialAssignments)
+      ? match.officialAssignments
+      : [];
+    const primaryOfficialId = officialAssignments.length
+      ? deriveLegacyOfficialIdFromAssignments(officialAssignments)
+      : (match.official?.id ?? null);
+    const primaryOfficialCheckedIn = officialAssignments.length
+      ? deriveLegacyOfficialCheckedInFromAssignments(officialAssignments)
+      : (match.officialCheckedIn ?? false);
     const data = {
       id: match.id,
       matchId: match.matchId ?? 0,
@@ -1813,8 +1943,11 @@ export const saveMatches = async (
       loserNextMatchId: match.loserNextMatch?.id ?? null,
       previousLeftId: match.previousLeftMatch?.id ?? null,
       previousRightId: match.previousRightMatch?.id ?? null,
-      officialCheckedIn: match.officialCheckedIn ?? false,
-      officialId: match.official?.id ?? null,
+      officialCheckedIn: primaryOfficialCheckedIn,
+      officialId: primaryOfficialId,
+      officialIds: officialAssignments.length
+        ? (officialAssignments as unknown as Record<string, unknown>[])
+        : null,
       teamOfficialId: match.teamOfficial?.id ?? null,
       team1Id: match.team1?.id ?? null,
       team2Id: match.team2?.id ?? null,
@@ -1918,7 +2051,7 @@ export const persistScheduledRosterTeams = async (
       division: true,
     },
   });
-  const existingTeamById = new Map(existingTeams.map((team) => [team.id, team]));
+  const existingTeamById = new Map(existingTeams.map((team: any) => [team.id, team]));
 
   for (const teamId of rosterTeamIds) {
     const scheduledTeam = params.scheduled.teams[teamId];
@@ -1956,7 +2089,7 @@ export const persistScheduledRosterTeams = async (
       continue;
     }
 
-    const existingDivision = normalizeDivisionKey(existingTeam.division);
+    const existingDivision = normalizeDivisionKey((existingTeam as any).division);
     const nextDivision = normalizeDivisionKey(divisionId);
     if (existingDivision !== nextDivision) {
       await client.teams.update({
@@ -2431,11 +2564,11 @@ export const syncEventDivisions = async (
     finalEntries.map((entry) => normalizeDivisionKey(entry.id) ?? entry.id),
   );
   const staleDivisionIds = existingRows
-    .filter((row) => {
+    .filter((row: any) => {
       const normalizedId = normalizeDivisionKey(row.id) ?? row.id;
       return !finalIdSet.has(normalizedId);
     })
-    .map((row) => row.id);
+    .map((row: any) => row.id);
 
   if (staleDivisionIds.length) {
     await client.divisions.deleteMany({
@@ -2536,6 +2669,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       hostId: true,
       organizationId: true,
       parentEvent: true,
+      officialIds: true,
+      officialPositions: true as any,
+      officialSchedulingMode: true as any,
+      sportId: true,
     },
   });
   const resolvedOrganizationId = normalizeEntityId(payload.organizationId) ?? normalizeEntityId(existingEvent?.organizationId);
@@ -2588,6 +2725,16 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedOfficialIds = organizationAssignments
     ? organizationAssignments.officialIds
     : ensureStringArray(payload.officialIds);
+  const [existingEventOfficialRows, sportRow] = await Promise.all([
+    existingEvent ? loadEventOfficialRows(client, id) : Promise.resolve([]),
+    (normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId))
+      && typeof (client as any).sports?.findUnique === 'function'
+      ? (client as any).sports.findUnique({
+          where: { id: normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId) ?? '' },
+          select: { officialPositionTemplates: true } as any,
+        })
+      : Promise.resolve(null),
+  ]);
   const billingOwnerHasStripeAccount = await resolveBillingOwnerHasStripeAccount(client, {
     organizationId: resolvedOrganizationId,
     hostId: normalizedHostId,
@@ -2642,6 +2789,46 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : Array.isArray(payload.fieldIds) && payload.fieldIds.length
       ? normalizeFieldIds(payload.fieldIds)
       : fields.map((field: any) => field.$id || field.id).filter(Boolean);
+  const hasExplicitOfficialPositions = Object.prototype.hasOwnProperty.call(payload, 'officialPositions');
+  const sportTemplatePositions = buildEventOfficialPositionsFromTemplates(
+    id,
+    normalizeSportOfficialPositionTemplates((sportRow as any)?.officialPositionTemplates),
+  );
+  let resolvedOfficialPositions = hasExplicitOfficialPositions
+    ? normalizeEventOfficialPositions(payload.officialPositions, id)
+    : normalizeEventOfficialPositions((existingEvent as any)?.officialPositions, id);
+  if (!resolvedOfficialPositions.length) {
+    resolvedOfficialPositions = sportTemplatePositions;
+  }
+  if (!resolvedOfficialPositions.length && normalizedOfficialIds.length) {
+    resolvedOfficialPositions = buildEventOfficialPositionsFromTemplates(id, [{ name: 'Official', count: 1 }]);
+  }
+  const hasExplicitEventOfficials = Object.prototype.hasOwnProperty.call(payload, 'eventOfficials');
+  const validPositionIdSet = new Set(resolvedOfficialPositions.map((position) => position.id));
+  const validFieldIdSet = new Set(fieldIds);
+  const existingEventOfficials = existingEventOfficialRows
+    .map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      positionIds: ensureStringArray(row.positionIds).filter((positionId) => validPositionIdSet.has(positionId)),
+      fieldIds: ensureStringArray(row.fieldIds).filter((fieldId) => validFieldIdSet.has(fieldId)),
+      isActive: row.isActive !== false,
+    }))
+    .filter((row: any) => row.positionIds.length > 0);
+  const resolvedEventOfficials = hasExplicitEventOfficials
+    ? normalizeEventOfficials(payload.eventOfficials, {
+        eventId: id,
+        positionIds: resolvedOfficialPositions.map((position) => position.id),
+        fieldIds,
+      })
+    : existingEventOfficials.length
+      ? existingEventOfficials
+      : deriveEventOfficialsFromLegacyOfficialIds({
+          eventId: id,
+          officialIds: normalizedOfficialIds,
+          positionIds: resolvedOfficialPositions.map((position) => position.id),
+        });
+  const compatibilityOfficialIds = resolvedEventOfficials.map((official: any) => official.userId);
   const allowedFieldIdSet = new Set(fieldIds);
   const fieldsToPersist = allowedFieldIdSet.size
     ? fields.filter((field: any) => {
@@ -2762,6 +2949,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedTeamOfficialsMaySwap = normalizedDoTeamsOfficiate === true
     ? coerceBoolean(payload.teamOfficialsMaySwap, false)
     : false;
+  const officialSchedulingMode = normalizeOfficialSchedulingMode(
+    payload.officialSchedulingMode,
+    normalizeOfficialSchedulingMode((existingEvent as any)?.officialSchedulingMode),
+  );
 
   const eventData = {
     id,
@@ -2820,9 +3011,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     parentEvent: normalizedParentEvent,
     autoCancellation: payload.autoCancellation ?? null,
     eventType: payload.eventType ?? null,
+    officialSchedulingMode,
     doTeamsOfficiate: normalizedDoTeamsOfficiate ?? null,
     teamOfficialsMaySwap: normalizedTeamOfficialsMaySwap,
-    officialIds: normalizedOfficialIds,
+    officialIds: compatibilityOfficialIds,
+    officialPositions: resolvedOfficialPositions,
     allowPaymentPlans: normalizedEventAllowPaymentPlans,
     installmentCount: normalizedEventInstallmentCount,
     installmentDueDates: normalizedEventInstallmentDueDates,
@@ -2881,6 +3074,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : [];
 
   await upsertEventWithUnknownArgFallback(client, id, eventData as Record<string, unknown>);
+  if (hasExplicitEventOfficials || !existingEvent || existingEventOfficials.length === 0) {
+    await persistEventOfficialRows(client, id, resolvedEventOfficials);
+  }
 
   await syncEventDivisions({
     eventId: id,

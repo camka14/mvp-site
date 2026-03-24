@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { OfficialStaffingPlanner } from './officialStaffing';
 import { Schedule } from './Schedule';
 import {
   Division,
@@ -40,6 +41,7 @@ export class Brackets {
   perfectCount = false;
   seededEntrants: SeededEntrant[] = [];
   bracketSchedule: Schedule<Match, PlayingField, Team | UserData, Division>;
+  officialStaffingPlanner: OfficialStaffingPlanner;
 
   constructor(tournament: Tournament, context: SchedulerContext) {
     this.tournament = tournament;
@@ -71,6 +73,7 @@ export class Brackets {
       undefined,
       { timeSlots: this.tournament.timeSlots, endTime: this.tournament.end },
     );
+    this.officialStaffingPlanner = new OfficialStaffingPlanner(this.tournament);
   }
 
   private getMultiplier(match: Match): number {
@@ -358,7 +361,16 @@ export class Brackets {
     for (const match of [...matches].reverse()) {
       match.matchId = count;
       try {
-        this.bracketSchedule.scheduleEvent(match, this.getMultiplier(match) * TIMES.SET);
+        if (this.tournament.officialSchedulingMode === 'STAFFING' && this.officialStaffingPlanner.hasRequiredSlots()) {
+          this.bracketSchedule.scheduleEventWithOptions(match, this.getMultiplier(match) * TIMES.SET, {
+            canUseCandidate: ({ resource, start, end }) => (
+              this.officialStaffingPlanner.previewSchedulingCandidate(match, resource, start, end)
+            ),
+          });
+          this.officialStaffingPlanner.commitScheduledMatch(match);
+        } else {
+          this.bracketSchedule.scheduleEvent(match, this.getMultiplier(match) * TIMES.SET);
+        }
       } catch (err) {
         this.context.error(`ERROR scheduling event for match ${count}: ${err}`);
       }
@@ -383,31 +395,6 @@ export class Brackets {
 
     for (const match of orderedMatches) {
       this.attachMatchToParticipants(match);
-      // Official officials can be assigned even when the teams are not yet known (future bracket matches).
-      if (!match.official && this.tournament.officials.length) {
-        const availableRefs = this.bracketSchedule.freeParticipants(this.currentDivision, match.start, match.end)
-          .filter((participant) => participant instanceof UserData) as UserData[];
-        if (availableRefs.length) {
-          match.official = availableRefs[0];
-          availableRefs[0].matches.push(match);
-          this.attachMatchToParticipants(match);
-        }
-      }
-    }
-
-    if (this.tournament.doTeamsOfficiate) {
-      for (const match of orderedMatches) {
-        this.attachMatchToParticipants(match);
-        if (!match.team1 || !match.team2 || match.teamOfficial) continue;
-        const availableTeams = this.bracketSchedule.freeParticipants(this.currentDivision, match.start, match.end)
-          .filter((participant) => participant instanceof Team) as Team[];
-        const filtered = availableTeams.filter((team) => team !== match.team1 && team !== match.team2);
-        if (filtered.length) {
-          match.teamOfficial = filtered[0];
-          filtered[0].matches.push(match);
-          this.attachMatchToParticipants(match);
-        }
-      }
     }
   }
 

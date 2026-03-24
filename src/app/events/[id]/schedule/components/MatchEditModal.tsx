@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider, Checkbox, Switch } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
-import type { Field, Match, Team, UserData } from '@/types';
+import type { EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, Team, UserData } from '@/types';
 
 interface MatchEditModalProps {
   opened: boolean;
@@ -16,6 +16,8 @@ interface MatchEditModalProps {
   fields?: Field[];
   teams?: Team[];
   officials?: UserData[];
+  officialPositions?: EventOfficialPosition[];
+  eventOfficials?: EventOfficial[];
   doTeamsOfficiate?: boolean;
   isCreateMode?: boolean;
   creationContext?: 'schedule' | 'bracket';
@@ -105,6 +107,54 @@ const getUserId = (user?: Match['official']): string | null => {
   return getEntityId(user);
 };
 
+const encodeAssignmentValue = (holderType: MatchOfficialAssignment['holderType'], id: string) => `${holderType}:${id}`;
+
+const decodeAssignmentValue = (
+  value: string | null,
+): { holderType: MatchOfficialAssignment['holderType']; id: string } | null => {
+  if (!value) {
+    return null;
+  }
+  const [holderType, ...rest] = value.split(':');
+  const id = rest.join(':').trim();
+  if (!id || (holderType !== 'OFFICIAL' && holderType !== 'PLAYER')) {
+    return null;
+  }
+  return { holderType, id };
+};
+
+const normalizeAssignments = (value: unknown): MatchOfficialAssignment[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const normalized: Array<MatchOfficialAssignment | null> = value
+    .map((entry): MatchOfficialAssignment | null => {
+      if (!entry || typeof entry !== 'object') {
+        return null;
+      }
+      const row = entry as Record<string, unknown>;
+      const positionId = typeof row.positionId === 'string' ? row.positionId.trim() : '';
+      const userId = typeof row.userId === 'string' ? row.userId.trim() : '';
+      const slotIndex = Number(row.slotIndex);
+      const holderType = row.holderType === 'PLAYER' ? 'PLAYER' : row.holderType === 'OFFICIAL' ? 'OFFICIAL' : null;
+      if (!positionId || !userId || !holderType || !Number.isInteger(slotIndex) || slotIndex < 0) {
+        return null;
+      }
+      return {
+        positionId,
+        slotIndex,
+        holderType,
+        userId,
+        eventOfficialId: typeof row.eventOfficialId === 'string' && row.eventOfficialId.trim().length > 0
+          ? row.eventOfficialId.trim()
+          : undefined,
+        checkedIn: typeof row.checkedIn === 'boolean' ? row.checkedIn : undefined,
+        hasConflict: typeof row.hasConflict === 'boolean' ? row.hasConflict : undefined,
+      };
+    });
+  return normalized.filter((entry): entry is MatchOfficialAssignment => entry !== null);
+};
+
 const formatUserLabel = (user?: Partial<UserData> | null): string => {
   if (!user) return 'Official';
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
@@ -161,6 +211,8 @@ export default function MatchEditModal({
   fields = [],
   teams = [],
   officials = [],
+  officialPositions = [],
+  eventOfficials = [],
   doTeamsOfficiate = false,
   isCreateMode = false,
   creationContext = 'bracket',
@@ -177,6 +229,7 @@ export default function MatchEditModal({
   const [team2Id, setTeam2Id] = useState<string | null>(null);
   const [teamOfficialId, setTeamOfficialId] = useState<string | null>(null);
   const [userOfficialId, setUserOfficialId] = useState<string | null>(null);
+  const [officialAssignments, setOfficialAssignments] = useState<MatchOfficialAssignment[]>([]);
   const [team1Points, setTeam1Points] = useState<number[]>([0]);
   const [team2Points, setTeam2Points] = useState<number[]>([0]);
   const [setResults, setSetResults] = useState<number[]>([0]);
@@ -197,6 +250,7 @@ export default function MatchEditModal({
       setTeam2Id(null);
       setTeamOfficialId(null);
       setUserOfficialId(null);
+      setOfficialAssignments([]);
       setTeam1Points([0]);
       setTeam2Points([0]);
       setSetResults([0]);
@@ -220,6 +274,29 @@ export default function MatchEditModal({
       getTeamId((match as any).official);
     setTeamOfficialId(initialTeamOfficialId);
     setUserOfficialId(normalizeOptionalId(match.officialId) ?? getUserId(match.official));
+    const normalizedAssignments = normalizeAssignments(match.officialIds);
+    if (normalizedAssignments.length > 0) {
+      setOfficialAssignments(normalizedAssignments);
+    } else if (officialPositions.length > 0) {
+      const legacyOfficialId = normalizeOptionalId(match.officialId) ?? getUserId(match.official);
+      const firstPosition = officialPositions[0];
+      const fallbackEventOfficial = legacyOfficialId
+        ? eventOfficials.find((official) => official.userId === legacyOfficialId)
+        : undefined;
+      setOfficialAssignments(
+        legacyOfficialId && firstPosition
+          ? [{
+              positionId: firstPosition.id,
+              slotIndex: 0,
+              holderType: 'OFFICIAL',
+              userId: legacyOfficialId,
+              eventOfficialId: fallbackEventOfficial?.id,
+            }]
+          : [],
+      );
+    } else {
+      setOfficialAssignments([]);
+    }
 
     const aligned = extractSetData(match);
     setTeam1Points(aligned.team1);
@@ -230,7 +307,7 @@ export default function MatchEditModal({
     setLosersBracket(Boolean(match.losersBracket));
     setLocked(Boolean(match.locked));
     setError(null);
-  }, [match, opened]);
+  }, [eventOfficials, match, officialPositions, opened]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const allMatchOptions = useMemo(() => {
@@ -439,6 +516,87 @@ export default function MatchEditModal({
     }
     return undefined;
   }, [officials, userOfficialId, match]);
+  const eventOfficialById = useMemo(
+    () => new Map(eventOfficials.map((official) => [official.id, official] as const)),
+    [eventOfficials],
+  );
+  const officialUserById = useMemo(() => {
+    const map = new Map<string, UserData>();
+    officials.forEach((official) => {
+      const officialId = getEntityId(official);
+      if (officialId) {
+        map.set(officialId, official);
+      }
+    });
+    if (match?.official && typeof match.official === 'object') {
+      const officialId = getUserId(match.official);
+      if (officialId) {
+        map.set(officialId, match.official as UserData);
+      }
+    }
+    return map;
+  }, [officials, match]);
+  const playerCandidates = useMemo(() => {
+    const map = new Map<string, { user: UserData; teamName: string }>();
+    const registerTeamPlayers = (team?: Team) => {
+      if (!team || !Array.isArray(team.players)) {
+        return;
+      }
+      const teamName = resolveTeamName(team, teams);
+      team.players.forEach((player) => {
+        const playerId = typeof player?.$id === 'string' ? player.$id.trim() : '';
+        if (playerId && !map.has(playerId)) {
+          map.set(playerId, { user: player, teamName });
+        }
+      });
+    };
+    registerTeamPlayers(selectedTeam1);
+    registerTeamPlayers(selectedTeam2);
+    return map;
+  }, [selectedTeam1, selectedTeam2, teams]);
+  const assignmentSlots = useMemo(
+    () => officialPositions.flatMap((position) =>
+      Array.from({ length: Math.max(1, Math.trunc(position.count || 1)) }, (_, slotIndex) => ({
+        position,
+        slotIndex,
+      })),
+    ),
+    [officialPositions],
+  );
+  const assignmentBySlotKey = useMemo(() => {
+    const map = new Map<string, MatchOfficialAssignment>();
+    normalizeAssignments(officialAssignments).forEach((assignment) => {
+      map.set(`${assignment.positionId}:${assignment.slotIndex}`, assignment);
+    });
+    return map;
+  }, [officialAssignments]);
+
+  const getAssignmentOptions = useCallback((position: EventOfficialPosition) => {
+    const options: Array<{ value: string; label: string }> = [];
+    eventOfficials.forEach((eventOfficial) => {
+      if (eventOfficial.isActive === false) {
+        return;
+      }
+      if (!eventOfficial.positionIds.includes(position.id)) {
+        return;
+      }
+      if (fieldId && eventOfficial.fieldIds.length > 0 && !eventOfficial.fieldIds.includes(fieldId)) {
+        return;
+      }
+      const user = officialUserById.get(eventOfficial.userId);
+      options.push({
+        value: encodeAssignmentValue('OFFICIAL', eventOfficial.id),
+        label: `Official: ${formatUserLabel(user ?? { userName: eventOfficial.userId })}`,
+      });
+    });
+    playerCandidates.forEach(({ user, teamName }, playerId) => {
+      options.push({
+        value: encodeAssignmentValue('PLAYER', playerId),
+        label: `Player: ${formatUserLabel(user)} (${teamName})`,
+      });
+    });
+    return options.sort((left, right) => left.label.localeCompare(right.label));
+  }, [eventOfficials, fieldId, officialUserById, playerCandidates]);
 
   const team1DisplayName = selectedTeam1 ? resolveTeamName(selectedTeam1, teams) : 'TBD';
   const team2DisplayName = selectedTeam2 ? resolveTeamName(selectedTeam2, teams) : 'TBD';
@@ -468,6 +626,43 @@ export default function MatchEditModal({
 
   const handleEndDateChange = (value: Date | string | null) => {
     setEndValue(parseLocalDateTime(value));
+  };
+
+  const handleOfficialAssignmentChange = (
+    positionId: string,
+    slotIndex: number,
+    value: string | null,
+  ) => {
+    const decoded = decodeAssignmentValue(value);
+    setOfficialAssignments((prev) => {
+      const next = normalizeAssignments(prev).filter(
+        (assignment) => !(assignment.positionId === positionId && assignment.slotIndex === slotIndex),
+      );
+      if (!decoded) {
+        return next;
+      }
+      if (decoded.holderType === 'OFFICIAL') {
+        const eventOfficial = eventOfficialById.get(decoded.id);
+        if (!eventOfficial) {
+          return next;
+        }
+        next.push({
+          positionId,
+          slotIndex,
+          holderType: 'OFFICIAL',
+          userId: eventOfficial.userId,
+          eventOfficialId: eventOfficial.id,
+        });
+        return next;
+      }
+      next.push({
+        positionId,
+        slotIndex,
+        holderType: 'PLAYER',
+        userId: decoded.id,
+      });
+      return next;
+    });
   };
 
   const handlePointsChange = (team: 'team1' | 'team2', index: number, value: string | number | null) => {
@@ -589,6 +784,20 @@ export default function MatchEditModal({
       winnerNextMatchId: selectedWinnerNextMatchId ?? undefined,
       loserNextMatchId: selectedLoserNextMatchId ?? undefined,
     };
+    const sanitizedAssignments = assignmentSlots
+      .map(({ position, slotIndex }) => assignmentBySlotKey.get(`${position.id}:${slotIndex}`) ?? null)
+      .filter((assignment): assignment is MatchOfficialAssignment => Boolean(assignment));
+    const duplicateAssignmentUserIds = sanitizedAssignments.reduce<Set<string>>((duplicates, assignment, index) => {
+      if (sanitizedAssignments.findIndex((candidate) => candidate.userId === assignment.userId) !== index) {
+        duplicates.add(assignment.userId);
+      }
+      return duplicates;
+    }, new Set<string>());
+    if (duplicateAssignmentUserIds.size > 0) {
+      setError('The same user cannot hold more than one official position in the same match.');
+      return;
+    }
+    const primaryOfficialAssignment = sanitizedAssignments.find((assignment) => assignment.holderType === 'OFFICIAL');
 
     const nextField = findFieldById(fieldId);
     updated.fieldId = fieldId ?? null;
@@ -628,6 +837,18 @@ export default function MatchEditModal({
       updated.official = { ...nextUserRef };
     } else {
       delete (updated as any).official;
+    }
+    if (officialPositions.length > 0) {
+      updated.officialIds = sanitizedAssignments;
+      updated.officialId = primaryOfficialAssignment?.userId ?? null;
+      const primaryOfficialUser = primaryOfficialAssignment
+        ? officialUserById.get(primaryOfficialAssignment.userId)
+        : undefined;
+      if (primaryOfficialUser) {
+        updated.official = { ...primaryOfficialUser };
+      } else {
+        delete (updated as any).official;
+      }
     }
 
     setError(null);
@@ -709,16 +930,53 @@ export default function MatchEditModal({
           placeholder="Select official team"
           clearable
         />
-        <Select
-          label="Official"
-          data={officialOptions}
-          value={userOfficialId}
-          onChange={setUserOfficialId}
-          placeholder="Select official"
-          clearable
-          searchable
-          nothingFoundMessage={officialOptions.length ? 'No matches' : 'No officials available'}
-        />
+        {officialPositions.length > 0 ? (
+          <Stack gap="sm">
+            <Divider label="Official Assignments" />
+            {assignmentSlots.map(({ position, slotIndex }) => {
+              const assignment = assignmentBySlotKey.get(`${position.id}:${slotIndex}`);
+              const assignmentEventOfficialId = assignment?.holderType === 'OFFICIAL'
+                ? (assignment.eventOfficialId ?? eventOfficials.find((official) => official.userId === assignment.userId)?.id ?? '')
+                : '';
+              const currentValue = assignment && (
+                assignment.holderType === 'PLAYER'
+                || assignmentEventOfficialId.length > 0
+              )
+                ? encodeAssignmentValue(
+                    assignment.holderType,
+                    assignment.holderType === 'OFFICIAL'
+                      ? assignmentEventOfficialId
+                      : assignment.userId,
+                  )
+                : null;
+              const options = getAssignmentOptions(position);
+              return (
+                <Select
+                  key={`${position.id}:${slotIndex}`}
+                  label={position.count > 1 ? `${position.name} ${slotIndex + 1}` : position.name}
+                  data={options}
+                  value={currentValue}
+                  onChange={(value) => handleOfficialAssignmentChange(position.id, slotIndex, value)}
+                  placeholder="Unassigned"
+                  clearable
+                  searchable
+                  nothingFoundMessage={options.length ? 'No matches' : 'No eligible officials or players'}
+                />
+              );
+            })}
+          </Stack>
+        ) : (
+          <Select
+            label="Official"
+            data={officialOptions}
+            value={userOfficialId}
+            onChange={setUserOfficialId}
+            placeholder="Select official"
+            clearable
+            searchable
+            nothingFoundMessage={officialOptions.length ? 'No matches' : 'No officials available'}
+          />
+        )}
 
         {fieldOptions.length > 0 && (
           <Select
@@ -779,14 +1037,14 @@ export default function MatchEditModal({
         {setResults.map((result, index) => (
           <Group key={`set-${index}`} align="flex-end" gap="md" grow>
             <NumberInput
-              label={`${team1DisplayName === 'TBD' ? 'Team 1' : team1DisplayName} â€“ Set ${index + 1}`}
+              label={`${team1DisplayName === 'TBD' ? 'Team 1' : team1DisplayName} - Set ${index + 1}`}
               value={team1Points[index]}
               min={0}
               step={1}
               onChange={(value) => handlePointsChange('team1', index, value)}
             />
             <NumberInput
-              label={`${team2DisplayName === 'TBD' ? 'Team 2' : team2DisplayName} â€“ Set ${index + 1}`}
+              label={`${team2DisplayName === 'TBD' ? 'Team 2' : team2DisplayName} - Set ${index + 1}`}
               value={team2Points[index]}
               min={0}
               step={1}

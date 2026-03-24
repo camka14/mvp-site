@@ -31,6 +31,16 @@ const leagueScoringConfigsMock = {
   upsert: jest.fn(),
 };
 
+const sportsMock = {
+  findUnique: jest.fn(),
+};
+
+const eventOfficialsMock = {
+  findMany: jest.fn(),
+  deleteMany: jest.fn(),
+  create: jest.fn(),
+};
+
 const organizationsMock = {
   findUnique: jest.fn(),
 };
@@ -49,6 +59,8 @@ const prismaMock = {
   events: eventsMock,
   timeSlots: timeSlotsMock,
   divisions: divisionsMock,
+  sports: sportsMock,
+  eventOfficials: eventOfficialsMock,
   organizations: organizationsMock,
   staffMembers: staffMembersMock,
   invites: invitesMock,
@@ -58,6 +70,8 @@ const prismaMock = {
     fields: fieldsMock,
     matches: matchesMock,
     divisions: divisionsMock,
+    sports: sportsMock,
+    eventOfficials: eventOfficialsMock,
     leagueScoringConfigs: leagueScoringConfigsMock,
     organizations: organizationsMock,
     staffMembers: staffMembersMock,
@@ -96,6 +110,10 @@ describe('event PATCH route', () => {
     });
     staffMembersMock.findMany.mockResolvedValue([]);
     invitesMock.findMany.mockResolvedValue([]);
+    sportsMock.findUnique.mockResolvedValue(null);
+    eventOfficialsMock.findMany.mockResolvedValue([]);
+    eventOfficialsMock.deleteMany.mockResolvedValue({ count: 0 });
+    eventOfficialsMock.create.mockResolvedValue({});
   });
 
   it('strips legacy $-prefixed fields and ignores unsupported keys (no legacy mapping)', async () => {
@@ -827,6 +845,126 @@ describe('event PATCH route', () => {
     } finally {
       randomUUIDSpy.mockRestore();
     }
+  });
+
+  it('persists explicit official staffing fields on PATCH and returns normalized staffing response', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        sportId: 'sport_1',
+        officialSchedulingMode: 'STAFFING',
+        officialPositions: null,
+        officialIds: ['official_legacy'],
+        fieldIds: ['field_1'],
+        start: new Date('2026-01-01T00:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        sportId: 'sport_1',
+        officialSchedulingMode: 'SCHEDULE',
+        officialPositions: [
+          { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+          { id: 'event_pos_line', name: 'Line Judge', count: 2, order: 1 },
+        ],
+        officialIds: ['official_1'],
+        fieldIds: ['field_1'],
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      sportId: 'sport_1',
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [
+        { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+        { id: 'event_pos_line', name: 'Line Judge', count: 2, order: 1 },
+      ],
+      officialIds: ['official_1'],
+      fieldIds: ['field_1'],
+    });
+    sportsMock.findUnique.mockResolvedValue({
+      officialPositionTemplates: [
+        { name: 'R1', count: 1 },
+        { name: 'Line Judge', count: 2 },
+      ],
+    });
+    eventOfficialsMock.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_official_1',
+        userId: 'official_1',
+        positionIds: ['event_pos_r1'],
+        fieldIds: ['field_1'],
+        isActive: true,
+      },
+    ]);
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          officialSchedulingMode: 'SCHEDULE',
+          officialPositions: [
+            { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+            { id: 'event_pos_line', name: 'Line Judge', count: 2, order: 1 },
+          ],
+          eventOfficials: [
+            {
+              id: 'event_official_1',
+              userId: 'official_1',
+              positionIds: ['event_pos_r1'],
+              fieldIds: ['field_1'],
+              isActive: true,
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          officialSchedulingMode: 'SCHEDULE',
+          officialPositions: [
+            { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+            { id: 'event_pos_line', name: 'Line Judge', count: 2, order: 1 },
+          ],
+        }),
+      }),
+    );
+    expect(eventOfficialsMock.deleteMany).toHaveBeenCalledWith({ where: { eventId: 'event_1' } });
+    expect(eventOfficialsMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          id: 'event_official_1',
+          eventId: 'event_1',
+          userId: 'official_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        }),
+      }),
+    );
+
+    const json = await res.json();
+    expect(json.officialSchedulingMode).toBe('SCHEDULE');
+    expect(json.officialPositions).toEqual([
+      { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
+      { id: 'event_pos_line', name: 'Line Judge', count: 2, order: 1 },
+    ]);
+    expect(json.eventOfficials).toHaveLength(1);
+    expect(json.eventOfficials[0]).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        userId: 'official_1',
+        positionIds: ['event_pos_r1', 'event_pos_line'],
+        fieldIds: [],
+        isActive: true,
+      }),
+    );
+    expect(json.officialIds).toEqual(['official_1']);
   });
 });
 

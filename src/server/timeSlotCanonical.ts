@@ -124,13 +124,14 @@ export const canonicalizeTimeSlots = ({
   normalizeDivisions,
 }: CanonicalizeSlotsParams): CanonicalTimeSlotInput[] => {
   const seenSlotIds = new Map<string, number>();
+  const resolvedFallbackStartDate = parseDateInput(fallbackStartDate) ?? new Date(0);
 
   return slots.flatMap((rawSlot, index) => {
     const slot = rawSlot ?? {};
     const slotId = ensureUniqueSlotId(normalizeSlotId(slot, eventId, index), seenSlotIds);
     const repeating = typeof slot.repeating === 'boolean' ? slot.repeating : true;
 
-    const startDate = parseDateInput(slot.startDate) ?? fallbackStartDate;
+    const startDate = parseDateInput(slot.startDate) ?? resolvedFallbackStartDate;
     const parsedEndDate = slot.endDate === null ? null : parseDateInput(slot.endDate);
 
     const normalizedDays = normalizeTimeSlotDays({

@@ -116,6 +116,7 @@ export type MatchesCountAggregateOutputType = {
   previousLeftId: number
   officialCheckedIn: number
   officialId: number
+  officialIds: number
   team1Id: number
   team2Id: number
   team1Seed: number
@@ -217,6 +218,7 @@ export type MatchesCountAggregateInputType = {
   previousLeftId?: true
   officialCheckedIn?: true
   officialId?: true
+  officialIds?: true
   team1Id?: true
   team2Id?: true
   team1Seed?: true
@@ -333,6 +335,7 @@ export type MatchesGroupByOutputType = {
   previousLeftId: string | null
   officialCheckedIn: boolean | null
   officialId: string | null
+  officialIds: runtime.JsonValue | null
   team1Id: string | null
   team2Id: string | null
   team1Seed: number | null
@@ -385,6 +388,7 @@ export type MatchesWhereInput = {
   previousLeftId?: Prisma.StringNullableFilter<"Matches"> | string | null
   officialCheckedIn?: Prisma.BoolNullableFilter<"Matches"> | boolean | null
   officialId?: Prisma.StringNullableFilter<"Matches"> | string | null
+  officialIds?: Prisma.JsonNullableFilter<"Matches">
   team1Id?: Prisma.StringNullableFilter<"Matches"> | string | null
   team2Id?: Prisma.StringNullableFilter<"Matches"> | string | null
   team1Seed?: Prisma.IntNullableFilter<"Matches"> | number | null
@@ -414,6 +418,7 @@ export type MatchesOrderByWithRelationInput = {
   previousLeftId?: Prisma.SortOrderInput | Prisma.SortOrder
   officialCheckedIn?: Prisma.SortOrderInput | Prisma.SortOrder
   officialId?: Prisma.SortOrderInput | Prisma.SortOrder
+  officialIds?: Prisma.SortOrderInput | Prisma.SortOrder
   team1Id?: Prisma.SortOrderInput | Prisma.SortOrder
   team2Id?: Prisma.SortOrderInput | Prisma.SortOrder
   team1Seed?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -446,6 +451,7 @@ export type MatchesWhereUniqueInput = Prisma.AtLeast<{
   previousLeftId?: Prisma.StringNullableFilter<"Matches"> | string | null
   officialCheckedIn?: Prisma.BoolNullableFilter<"Matches"> | boolean | null
   officialId?: Prisma.StringNullableFilter<"Matches"> | string | null
+  officialIds?: Prisma.JsonNullableFilter<"Matches">
   team1Id?: Prisma.StringNullableFilter<"Matches"> | string | null
   team2Id?: Prisma.StringNullableFilter<"Matches"> | string | null
   team1Seed?: Prisma.IntNullableFilter<"Matches"> | number | null
@@ -475,6 +481,7 @@ export type MatchesOrderByWithAggregationInput = {
   previousLeftId?: Prisma.SortOrderInput | Prisma.SortOrder
   officialCheckedIn?: Prisma.SortOrderInput | Prisma.SortOrder
   officialId?: Prisma.SortOrderInput | Prisma.SortOrder
+  officialIds?: Prisma.SortOrderInput | Prisma.SortOrder
   team1Id?: Prisma.SortOrderInput | Prisma.SortOrder
   team2Id?: Prisma.SortOrderInput | Prisma.SortOrder
   team1Seed?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -512,6 +519,7 @@ export type MatchesScalarWhereWithAggregatesInput = {
   previousLeftId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   officialCheckedIn?: Prisma.BoolNullableWithAggregatesFilter<"Matches"> | boolean | null
   officialId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
+  officialIds?: Prisma.JsonNullableWithAggregatesFilter<"Matches">
   team1Id?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   team2Id?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   team1Seed?: Prisma.IntNullableWithAggregatesFilter<"Matches"> | number | null
@@ -541,6 +549,7 @@ export type MatchesCreateInput = {
   previousLeftId?: string | null
   officialCheckedIn?: boolean | null
   officialId?: string | null
+  officialIds?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   team1Id?: string | null
   team2Id?: string | null
   team1Seed?: number | null
@@ -570,6 +579,7 @@ export type MatchesUncheckedCreateInput = {
   previousLeftId?: string | null
   officialCheckedIn?: boolean | null
   officialId?: string | null
+  officialIds?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   team1Id?: string | null
   team2Id?: string | null
   team1Seed?: number | null
@@ -599,6 +609,7 @@ export type MatchesUpdateInput = {
   previousLeftId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   officialCheckedIn?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   officialId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  officialIds?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   team1Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team2Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -628,6 +639,7 @@ export type MatchesUncheckedUpdateInput = {
   previousLeftId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   officialCheckedIn?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   officialId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  officialIds?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   team1Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team2Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -657,6 +669,7 @@ export type MatchesCreateManyInput = {
   previousLeftId?: string | null
   officialCheckedIn?: boolean | null
   officialId?: string | null
+  officialIds?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   team1Id?: string | null
   team2Id?: string | null
   team1Seed?: number | null
@@ -686,6 +699,7 @@ export type MatchesUpdateManyMutationInput = {
   previousLeftId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   officialCheckedIn?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   officialId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  officialIds?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   team1Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team2Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -715,6 +729,7 @@ export type MatchesUncheckedUpdateManyInput = {
   previousLeftId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   officialCheckedIn?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   officialId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  officialIds?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   team1Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team2Id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   team1Seed?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -752,6 +767,7 @@ export type MatchesCountOrderByAggregateInput = {
   previousLeftId?: Prisma.SortOrder
   officialCheckedIn?: Prisma.SortOrder
   officialId?: Prisma.SortOrder
+  officialIds?: Prisma.SortOrder
   team1Id?: Prisma.SortOrder
   team2Id?: Prisma.SortOrder
   team1Seed?: Prisma.SortOrder
@@ -892,6 +908,7 @@ export type MatchesSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   previousLeftId?: boolean
   officialCheckedIn?: boolean
   officialId?: boolean
+  officialIds?: boolean
   team1Id?: boolean
   team2Id?: boolean
   team1Seed?: boolean
@@ -921,6 +938,7 @@ export type MatchesSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   previousLeftId?: boolean
   officialCheckedIn?: boolean
   officialId?: boolean
+  officialIds?: boolean
   team1Id?: boolean
   team2Id?: boolean
   team1Seed?: boolean
@@ -950,6 +968,7 @@ export type MatchesSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   previousLeftId?: boolean
   officialCheckedIn?: boolean
   officialId?: boolean
+  officialIds?: boolean
   team1Id?: boolean
   team2Id?: boolean
   team1Seed?: boolean
@@ -979,6 +998,7 @@ export type MatchesSelectScalar = {
   previousLeftId?: boolean
   officialCheckedIn?: boolean
   officialId?: boolean
+  officialIds?: boolean
   team1Id?: boolean
   team2Id?: boolean
   team1Seed?: boolean
@@ -988,7 +1008,7 @@ export type MatchesSelectScalar = {
   teamOfficialId?: boolean
 }
 
-export type MatchesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "start" | "end" | "locked" | "division" | "team1Points" | "team2Points" | "setResults" | "side" | "matchId" | "losersBracket" | "winnerNextMatchId" | "loserNextMatchId" | "previousRightId" | "previousLeftId" | "officialCheckedIn" | "officialId" | "team1Id" | "team2Id" | "team1Seed" | "team2Seed" | "eventId" | "fieldId" | "teamOfficialId", ExtArgs["result"]["matches"]>
+export type MatchesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "start" | "end" | "locked" | "division" | "team1Points" | "team2Points" | "setResults" | "side" | "matchId" | "losersBracket" | "winnerNextMatchId" | "loserNextMatchId" | "previousRightId" | "previousLeftId" | "officialCheckedIn" | "officialId" | "officialIds" | "team1Id" | "team2Id" | "team1Seed" | "team2Seed" | "eventId" | "fieldId" | "teamOfficialId", ExtArgs["result"]["matches"]>
 
 export type $MatchesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Matches"
@@ -1013,6 +1033,7 @@ export type $MatchesPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     previousLeftId: string | null
     officialCheckedIn: boolean | null
     officialId: string | null
+    officialIds: runtime.JsonValue | null
     team1Id: string | null
     team2Id: string | null
     team1Seed: number | null
@@ -1462,6 +1483,7 @@ export interface MatchesFieldRefs {
   readonly previousLeftId: Prisma.FieldRef<"Matches", 'String'>
   readonly officialCheckedIn: Prisma.FieldRef<"Matches", 'Boolean'>
   readonly officialId: Prisma.FieldRef<"Matches", 'String'>
+  readonly officialIds: Prisma.FieldRef<"Matches", 'Json'>
   readonly team1Id: Prisma.FieldRef<"Matches", 'String'>
   readonly team2Id: Prisma.FieldRef<"Matches", 'String'>
   readonly team1Seed: Prisma.FieldRef<"Matches", 'Int'>

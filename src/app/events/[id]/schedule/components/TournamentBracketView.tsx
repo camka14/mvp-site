@@ -460,6 +460,10 @@ export default function TournamentBracketView({
         });
         return map;
     }, [bracket.tournament]);
+    const officialLookupById = useMemo<Record<string, UserData>>(
+        () => Object.fromEntries(Array.from(officialsById.entries())),
+        [officialsById],
+    );
     const leaguePlayoffPlaceholderAssignments = useMemo<Record<string, string>>(() => {
         const eventDivisionIds = extractEventDivisionOrder(bracket.tournament.divisions);
         const allDivisionDetails = collectAllDivisionDetails(bracket.tournament);
@@ -1093,7 +1097,12 @@ export default function TournamentBracketView({
 
         const matchOfficialId = extractEntityId(match.official)
             || (typeof match.officialId === 'string' ? match.officialId.trim() : '');
-        if (matchOfficialId === currentUserId) {
+        const hasAssignedOfficialSlot = Array.isArray(match.officialIds)
+            && match.officialIds.some((assignment) => {
+                const userId = typeof assignment?.userId === 'string' ? assignment.userId.trim() : '';
+                return userId.length > 0 && userId === currentUserId;
+            });
+        if (matchOfficialId === currentUserId || hasAssignedOfficialSlot) {
             return true;
         }
 
@@ -1158,14 +1167,14 @@ export default function TournamentBracketView({
             <Paper withBorder p="sm">
                 <Group justify="space-between" align="center" wrap="nowrap" w="100%">
                     <Group gap="xs">
-                        <ActionIcon variant="default" onClick={handleZoomOut} disabled={zoomLevel <= 0.5} aria-label="Zoom out">âˆ’</ActionIcon>
+                        <ActionIcon variant="default" onClick={handleZoomOut} disabled={zoomLevel <= 0.5} aria-label="Zoom out">-</ActionIcon>
                         <Badge variant="light">{Math.round(zoomLevel * 100)}%</Badge>
                         <ActionIcon variant="default" onClick={handleZoomIn} disabled={zoomLevel >= 3} aria-label="Zoom in">+</ActionIcon>
                         <Button variant="default" size="xs" onClick={handleZoomReset}>Reset</Button>
                         {isPreview && (
                             <Badge color="yellow" variant="light">Preview</Badge>
                         )}
-                        <Text size="xs" c="dimmed" className="hidden md:inline">Ctrl + scroll to zoom â€¢ Ctrl + 0 to reset</Text>
+                        <Text size="xs" c="dimmed" className="hidden md:inline">Ctrl + scroll to zoom | Ctrl + 0 to reset</Text>
                     </Group>
 
                     <Group gap="sm">
@@ -1276,6 +1285,7 @@ export default function TournamentBracketView({
                                                 team1Placeholder={team1Placeholder}
                                                 team2Placeholder={team2Placeholder}
                                                 hasConflict={hasConflict}
+                                                officialUsersById={officialLookupById}
 	                                        />
 	                                    </div>
 	                                );
@@ -1345,6 +1355,7 @@ export default function TournamentBracketView({
                                                     team1Placeholder={team1Placeholder}
                                                     team2Placeholder={team2Placeholder}
                                                     hasConflict={hasConflict}
+                                                    officialUsersById={officialLookupById}
                                                 />
                                             );
                                         })}

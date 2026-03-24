@@ -53,6 +53,11 @@ export type Invites = Prisma.InvitesModel
  */
 export type StaffMembers = Prisma.StaffMembersModel
 /**
+ * Model EventOfficials
+ * 
+ */
+export type EventOfficials = Prisma.EventOfficialsModel
+/**
  * Model Teams
  * 
  */

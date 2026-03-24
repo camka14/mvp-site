@@ -12,6 +12,12 @@ import {
   MINUTE_MS,
 } from './types';
 import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
+import {
+  buildLegacyOfficialAssignment,
+  deriveLegacyOfficialCheckedInFromAssignments,
+  deriveLegacyOfficialIdFromAssignments,
+  type MatchOfficialAssignment,
+} from '@/server/officials/config';
 
 export type MatchUpdate = {
   locked?: boolean;
@@ -31,6 +37,7 @@ export type MatchUpdate = {
   previousLeftId?: string | null;
   previousRightId?: string | null;
   officialCheckedIn?: boolean;
+  officialAssignments?: MatchOfficialAssignment[] | null;
   matchId?: number | null;
 };
 
@@ -135,6 +142,13 @@ export const applyMatchUpdates = (event: Tournament | League, match: Match, upda
   }
   if (update.officialCheckedIn !== undefined) {
     match.officialCheckedIn = update.officialCheckedIn;
+    if (Array.isArray(match.officialAssignments) && match.officialAssignments.length) {
+      match.officialAssignments = match.officialAssignments.map((assignment, index) => (
+        index === 0 && assignment.holderType === 'OFFICIAL'
+          ? { ...assignment, checkedIn: update.officialCheckedIn === true }
+          : assignment
+      ));
+    }
   }
   if (update.side !== undefined) {
     match.side = update.side as any;
@@ -159,6 +173,25 @@ export const applyMatchUpdates = (event: Tournament | League, match: Match, upda
     match.official = update.officialId
       ? event.officials.find((official) => official.id === update.officialId) ?? null
       : null;
+    match.officialAssignments = buildLegacyOfficialAssignment({
+      eventId: match.eventId,
+      officialId: update.officialId ?? null,
+      officialCheckedIn: update.officialCheckedIn ?? match.officialCheckedIn === true,
+      officialPositions: event.officialPositions,
+    });
+    match.officialCheckedIn = deriveLegacyOfficialCheckedInFromAssignments(match.officialAssignments);
+    if (match.official) ensureMatchesArray(match.official).push(match);
+  }
+  if (update.officialAssignments !== undefined) {
+    detachMatch(match.official, match);
+    match.officialAssignments = Array.isArray(update.officialAssignments)
+      ? update.officialAssignments.map((assignment) => ({ ...assignment }))
+      : [];
+    const primaryOfficialId = deriveLegacyOfficialIdFromAssignments(match.officialAssignments);
+    match.official = primaryOfficialId
+      ? event.officials.find((official) => official.id === primaryOfficialId) ?? null
+      : null;
+    match.officialCheckedIn = deriveLegacyOfficialCheckedInFromAssignments(match.officialAssignments);
     if (match.official) ensureMatchesArray(match.official).push(match);
   }
   if (update.fieldId !== undefined) {

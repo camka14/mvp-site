@@ -168,6 +168,23 @@ const normalizeIdToken = (value: unknown): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
+const collectMatchAssignmentUserIds = (match: Match): string[] => {
+  const ids = new Set<string>();
+  const officialId = normalizeIdToken(match.officialId ?? match.official?.$id);
+  if (officialId) {
+    ids.add(officialId);
+  }
+  if (Array.isArray(match.officialIds)) {
+    match.officialIds.forEach((assignment) => {
+      const userId = normalizeIdToken(assignment?.userId);
+      if (userId) {
+        ids.add(userId);
+      }
+    });
+  }
+  return Array.from(ids);
+};
+
 const clearMatchReferencesToTarget = (match: Match, removedMatchId: string): Match => {
   const targetId = normalizeIdToken(removedMatchId);
   if (!targetId) {
@@ -2340,6 +2357,13 @@ function EventScheduleContent() {
         .forEach((officialId) => ids.add(officialId));
     }
 
+    if (Array.isArray(activeEvent?.eventOfficials)) {
+      activeEvent.eventOfficials
+        .map((officialEntry) => normalizeIdToken(officialEntry?.userId))
+        .filter((officialId): officialId is string => Boolean(officialId))
+        .forEach((officialId) => ids.add(officialId));
+    }
+
     if (Array.isArray(activeEvent?.officials)) {
       activeEvent.officials.forEach((officialEntry) => {
         const officialId = normalizeIdToken(officialEntry?.$id);
@@ -2350,14 +2374,11 @@ function EventScheduleContent() {
     }
 
     activeMatches.forEach((match) => {
-      const officialId = normalizeIdToken(match.officialId ?? match.official?.$id);
-      if (officialId) {
-        ids.add(officialId);
-      }
+      collectMatchAssignmentUserIds(match).forEach((officialId) => ids.add(officialId));
     });
 
     return Array.from(ids);
-  }, [activeEvent?.officialIds, activeEvent?.officials, activeMatches]);
+  }, [activeEvent?.eventOfficials, activeEvent?.officialIds, activeEvent?.officials, activeMatches]);
 
   const participantTeamsById = useMemo(() => {
     const teams = new Map<string, Team>();
@@ -3615,6 +3636,9 @@ function EventScheduleContent() {
         teams: [],
         officials: [],
         officialIds: [],
+        officialSchedulingMode: 'STAFFING',
+        officialPositions: [],
+        eventOfficials: [],
         assistantHostIds: [],
       } as Event;
     });
@@ -4714,19 +4738,48 @@ function EventScheduleContent() {
     return Array.from(teamsById.values());
   }, [participantTeams, activeEvent?.teams, activeMatches]);
 
+  const bracketOfficials = useMemo<UserData[]>(() => {
+    const officialsById = new Map<string, UserData>();
+    const addOfficial = (candidate: unknown) => {
+      if (!candidate || typeof candidate !== 'object') {
+        return;
+      }
+      const officialCandidate = candidate as UserData & { id?: string };
+      const officialId = normalizeIdToken(officialCandidate.$id ?? officialCandidate.id);
+      if (!officialId || officialsById.has(officialId)) {
+        return;
+      }
+      officialsById.set(officialId, {
+        ...officialCandidate,
+        $id: officialId,
+      } as UserData);
+    };
+
+    if (Array.isArray(activeEvent?.officials)) {
+      activeEvent.officials.forEach(addOfficial);
+    }
+    participantOfficials.forEach(addOfficial);
+    activeMatches.forEach((match) => addOfficial(match.official));
+
+    return Array.from(officialsById.values());
+  }, [activeEvent?.officials, participantOfficials, activeMatches]);
+
   const bracketData = useMemo<TournamentBracket | null>(() => {
     if (!activeEvent || !bracketMatchesMap) {
       return null;
     }
 
     return {
-      tournament: activeEvent,
+      tournament: {
+        ...activeEvent,
+        officials: bracketOfficials,
+      },
       matches: bracketMatchesMap,
       teams: resolvedMatchTeams,
       isHost: canManageEvent,
       canManage: !isPreview && canManageEvent,
     };
-  }, [activeEvent, bracketMatchesMap, resolvedMatchTeams, canManageEvent, isPreview]);
+  }, [activeEvent, bracketMatchesMap, resolvedMatchTeams, canManageEvent, isPreview, bracketOfficials]);
 
   const scheduleDivisionSelectData = useMemo<DivisionOption[]>(
     () => [{ value: 'all', label: 'All divisions' }, ...scheduleDivisionOptions],
@@ -5207,6 +5260,7 @@ function EventScheduleContent() {
       team1Id: resolvePersistableTeamId(match.team1Id, match.team1),
       team2Id: resolvePersistableTeamId(match.team2Id, match.team2),
       officialId: normalizeRelationId(match.officialId) ?? normalizeRelationId(match.official),
+      officialIds: Array.isArray(match.officialIds) ? match.officialIds : [],
       teamOfficialId: resolvePersistableTeamId(match.teamOfficialId, match.teamOfficial),
       fieldId: normalizeRelationId(match.fieldId) ?? normalizeRelationId(match.field),
       previousLeftId: asBulkMatchRef(match.previousLeftId),
@@ -6282,6 +6336,7 @@ function EventScheduleContent() {
       team1Id: null,
       team2Id: null,
       officialId: null,
+      officialIds: [],
       teamOfficialId: null,
       fieldId: params.creationContext === 'schedule'
         ? normalizeIdToken(params.seed?.fieldId as string | undefined)
@@ -6506,7 +6561,7 @@ function EventScheduleContent() {
   const canUserManageScore = useCallback(
     (match: Match) => {
       if (!user?.$id || !isOfficialCheckedIn(match)) return false;
-      if (match.officialId === user.$id || match.official?.$id === user.$id) {
+      if (collectMatchAssignmentUserIds(match).includes(user.$id)) {
         return true;
       }
       const teamOfficial = resolveTeam(match.teamOfficial ?? match.teamOfficialId);
@@ -6612,7 +6667,7 @@ function EventScheduleContent() {
         const assignedTeamOfficialId = normalizeIdToken(modalMatch.teamOfficialId ?? modalMatch.teamOfficial?.$id);
         const currentUserEventTeam = findUserEventTeam();
         const currentUserEventTeamId = normalizeIdToken(currentUserEventTeam?.$id) ?? userEventTeamIdFromProfile;
-        const isAssignedUserOfficial = modalMatch.officialId === user.$id || modalMatch.official?.$id === user.$id;
+        const isAssignedUserOfficial = collectMatchAssignmentUserIds(modalMatch).includes(user.$id);
         const isAssignedTeamOfficial =
           userOnTeam(assignedTeamOfficial) ||
           Boolean(currentUserEventTeamId && assignedTeamOfficialId && currentUserEventTeamId === assignedTeamOfficialId);
@@ -7695,6 +7750,7 @@ function EventScheduleContent() {
                           : (Array.isArray(activeEvent.teams) ? activeEvent.teams : [])
                       }
                       fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
+                      officials={Array.isArray(activeEvent.officials) ? activeEvent.officials : []}
                       eventStart={activeEvent.start}
                       eventEnd={activeEvent.end ?? undefined}
                       onMatchClick={(match) => {
@@ -8573,6 +8629,8 @@ function EventScheduleContent() {
         fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
         teams={matchEditorTeams}
         officials={matchEditorOfficials}
+        officialPositions={Array.isArray(activeEvent.officialPositions) ? activeEvent.officialPositions : []}
+        eventOfficials={Array.isArray(activeEvent.eventOfficials) ? activeEvent.eventOfficials : []}
         doTeamsOfficiate={Boolean(activeEvent.doTeamsOfficiate)}
         isCreateMode={Boolean(matchBeingEdited && isClientMatchId(matchBeingEdited.$id))}
         creationContext={matchEditorContext}
