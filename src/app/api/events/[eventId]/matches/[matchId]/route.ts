@@ -9,12 +9,16 @@ import {
   applyPersistentAutoLock,
   finalizeMatch,
   isScheduleWindowExceededError,
+  type MatchUpdate,
 } from '@/server/scheduler/updateMatch';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
 import { isEmailEnabled, sendEmail } from '@/server/email';
 import { sendPushToUsers } from '@/server/pushNotifications';
+import {
+  normalizeMatchOfficialAssignments,
+} from '@/server/officials/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +30,7 @@ const updateSchema = z.object({
   team1Id: z.string().nullable().optional(),
   team2Id: z.string().nullable().optional(),
   officialId: z.string().nullable().optional(),
+  officialIds: z.any().optional(),
   teamOfficialId: z.string().nullable().optional(),
   fieldId: z.string().nullable().optional(),
   previousLeftId: z.string().nullable().optional(),
@@ -89,6 +94,18 @@ const normalizeIdToken = (value: unknown): string | null => {
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+};
+
+const normalizeOfficialAssignmentsOrThrow = (
+  value: unknown,
+  options: Parameters<typeof normalizeMatchOfficialAssignments>[1],
+): ReturnType<typeof normalizeMatchOfficialAssignments> => {
+  try {
+    return normalizeMatchOfficialAssignments(value, options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid official assignments.';
+    throw new Response(message, { status: 400 });
+  }
 };
 
 const isUserOnTeam = (team: unknown, userId: string): boolean => {
@@ -223,6 +240,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       const isHostOrAdmin = await canManageEvent(session, eventAccess, tx);
       const event = await loadEventWithRelations(eventId, tx);
+      const officialPositions = Array.isArray(event.officialPositions) ? event.officialPositions : [];
+      const eventOfficials = Array.isArray(event.eventOfficials) ? event.eventOfficials : [];
+      const positionCountsById = new Map(officialPositions.map((position) => [position.id, position.count]));
+      const eventOfficialsById = new Map(eventOfficials.map((official) => [official.id, official]));
 
       const isEventOfficial = Array.isArray((event as any).officials) && (event as any).officials.some((official: any) => {
         const officialId = normalizeIdToken(official?.id ?? official?.$id);
@@ -273,9 +294,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Unsupported event type', { status: 400 });
       }
 
-      let updates: z.infer<typeof updateSchema>;
+      let updates: MatchUpdate & { finalize?: boolean; time?: string };
       if (isHostOrAdmin) {
-        updates = parsed.data;
+        updates = { ...parsed.data };
       } else if (canEventTeamSwap) {
         const requestedKeys = Object.entries(parsed.data)
           .filter(([, value]) => value !== undefined)
@@ -313,10 +334,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           team2Points: parsed.data.team2Points,
           setResults: parsed.data.setResults,
           officialCheckedIn: parsed.data.officialCheckedIn,
+          officialAssignments: Object.prototype.hasOwnProperty.call(parsed.data, 'officialIds')
+            ? normalizeOfficialAssignmentsOrThrow(parsed.data.officialIds, {
+                positionCountsById,
+                eventOfficialsById,
+              })
+            : undefined,
           teamOfficialId: parsed.data.teamOfficialId ?? assignedTeamOfficialId ?? null,
           finalize: parsed.data.finalize,
           time: parsed.data.time,
         };
+      }
+
+      if (Object.prototype.hasOwnProperty.call(updates, 'officialIds')) {
+        delete (updates as Record<string, unknown>).officialIds;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(parsed.data, 'officialIds') && isHostOrAdmin) {
+        updates.officialAssignments = normalizeOfficialAssignmentsOrThrow(parsed.data.officialIds, {
+          positionCountsById,
+          eventOfficialsById,
+        });
       }
 
       applyMatchUpdates(event, targetMatch, updates);

@@ -391,6 +391,7 @@ export const ModelName = {
   SensitiveUserData: 'SensitiveUserData',
   Invites: 'Invites',
   StaffMembers: 'StaffMembers',
+  EventOfficials: 'EventOfficials',
   Teams: 'Teams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
@@ -431,7 +432,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "eventOfficials" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -950,6 +951,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.StaffMembersCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.StaffMembersCountAggregateOutputType> | number
+        }
+      }
+    }
+    EventOfficials: {
+      payload: Prisma.$EventOfficialsPayload<ExtArgs>
+      fields: Prisma.EventOfficialsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.EventOfficialsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.EventOfficialsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>
+        }
+        findFirst: {
+          args: Prisma.EventOfficialsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.EventOfficialsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>
+        }
+        findMany: {
+          args: Prisma.EventOfficialsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>[]
+        }
+        create: {
+          args: Prisma.EventOfficialsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>
+        }
+        createMany: {
+          args: Prisma.EventOfficialsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.EventOfficialsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>[]
+        }
+        delete: {
+          args: Prisma.EventOfficialsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>
+        }
+        update: {
+          args: Prisma.EventOfficialsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>
+        }
+        deleteMany: {
+          args: Prisma.EventOfficialsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.EventOfficialsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.EventOfficialsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>[]
+        }
+        upsert: {
+          args: Prisma.EventOfficialsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventOfficialsPayload>
+        }
+        aggregate: {
+          args: Prisma.EventOfficialsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEventOfficials>
+        }
+        groupBy: {
+          args: Prisma.EventOfficialsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventOfficialsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.EventOfficialsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventOfficialsCountAggregateOutputType> | number
         }
       }
     }
@@ -2881,6 +2956,7 @@ export const MatchesScalarFieldEnum = {
   previousLeftId: 'previousLeftId',
   officialCheckedIn: 'officialCheckedIn',
   officialId: 'officialId',
+  officialIds: 'officialIds',
   team1Id: 'team1Id',
   team2Id: 'team2Id',
   team1Seed: 'team1Seed',
@@ -2996,6 +3072,20 @@ export const StaffMembersScalarFieldEnum = {
 } as const
 
 export type StaffMembersScalarFieldEnum = (typeof StaffMembersScalarFieldEnum)[keyof typeof StaffMembersScalarFieldEnum]
+
+
+export const EventOfficialsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  userId: 'userId',
+  positionIds: 'positionIds',
+  fieldIds: 'fieldIds',
+  isActive: 'isActive'
+} as const
+
+export type EventOfficialsScalarFieldEnum = (typeof EventOfficialsScalarFieldEnum)[keyof typeof EventOfficialsScalarFieldEnum]
 
 
 export const TeamsScalarFieldEnum = {
@@ -3215,9 +3305,11 @@ export const EventsScalarFieldEnum = {
   parentEvent: 'parentEvent',
   autoCancellation: 'autoCancellation',
   eventType: 'eventType',
+  officialSchedulingMode: 'officialSchedulingMode',
   doTeamsOfficiate: 'doTeamsOfficiate',
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
   officialIds: 'officialIds',
+  officialPositions: 'officialPositions',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
   installmentDueDates: 'installmentDueDates',
@@ -3409,7 +3501,8 @@ export const SportsScalarFieldEnum = {
   useBonusPointsForHighScoringMatch: 'useBonusPointsForHighScoringMatch',
   useEnablePenaltyUnsporting: 'useEnablePenaltyUnsporting',
   usePenaltyPointsUnsporting: 'usePenaltyPointsUnsporting',
-  usePointPrecision: 'usePointPrecision'
+  usePointPrecision: 'usePointPrecision',
+  officialPositionTemplates: 'officialPositionTemplates'
 } as const
 
 export type SportsScalarFieldEnum = (typeof SportsScalarFieldEnum)[keyof typeof SportsScalarFieldEnum]
@@ -3694,20 +3787,6 @@ export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel,
 
 
 /**
- * Reference to a field of type 'DivisionsKindEnum'
- */
-export type EnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionsKindEnum'>
-    
-
-
-/**
- * Reference to a field of type 'DivisionsKindEnum[]'
- */
-export type ListEnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionsKindEnum[]'>
-    
-
-
-/**
  * Reference to a field of type 'Json'
  */
 export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
@@ -3718,6 +3797,20 @@ export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'J
  * Reference to a field of type 'QueryMode'
  */
 export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
+    
+
+
+/**
+ * Reference to a field of type 'DivisionsKindEnum'
+ */
+export type EnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionsKindEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'DivisionsKindEnum[]'
+ */
+export type ListEnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionsKindEnum[]'>
     
 
 
@@ -3802,6 +3895,20 @@ export type EnumEventsEventTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputTy
  * Reference to a field of type 'EventsEventTypeEnum[]'
  */
 export type ListEnumEventsEventTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsEventTypeEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'EventsOfficialSchedulingModeEnum'
+ */
+export type EnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsOfficialSchedulingModeEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'EventsOfficialSchedulingModeEnum[]'
+ */
+export type ListEnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsOfficialSchedulingModeEnum[]'>
     
 
 
@@ -4032,6 +4139,7 @@ export type GlobalOmitConfig = {
   sensitiveUserData?: Prisma.SensitiveUserDataOmit
   invites?: Prisma.InvitesOmit
   staffMembers?: Prisma.StaffMembersOmit
+  eventOfficials?: Prisma.EventOfficialsOmit
   teams?: Prisma.TeamsOmit
   messages?: Prisma.MessagesOmit
   chatGroup?: Prisma.ChatGroupOmit

@@ -368,4 +368,59 @@ describe('eventService', () => {
 
     warnSpy.mockRestore();
   });
+
+  it('preserves multi-position official assignments when mapping a match row', () => {
+    const mapMatchRecord = (eventService as any).mapMatchRecord.bind(eventService);
+    const match = mapMatchRecord(
+      {
+        $id: 'match_1',
+        start: '2026-04-25T16:00:00.000Z',
+        end: '2026-04-25T16:20:00.000Z',
+        team1Points: [],
+        team2Points: [],
+        setResults: [],
+        officialId: 'official_1',
+        officialIds: [
+          {
+            positionId: 'r1',
+            slotIndex: 0,
+            holderType: 'OFFICIAL',
+            userId: 'official_1',
+            eventOfficialId: 'event_official_1',
+          },
+          {
+            positionId: 'r2',
+            slotIndex: 0,
+            holderType: 'OFFICIAL',
+            userId: 'official_2',
+            eventOfficialId: 'event_official_2',
+          },
+          {
+            positionId: 'scorekeeper',
+            slotIndex: 0,
+            holderType: 'OFFICIAL',
+            userId: 'official_3',
+            eventOfficialId: 'event_official_3',
+          },
+        ],
+      },
+      {
+        teamsById: new Map(),
+        fieldsById: new Map(),
+        officialsById: new Map([
+          ['official_1', { $id: 'official_1', firstName: 'One' }],
+          ['official_2', { $id: 'official_2', firstName: 'Two' }],
+          ['official_3', { $id: 'official_3', firstName: 'Three' }],
+        ]),
+      },
+    );
+
+    expect(Array.isArray(match.officialIds)).toBe(true);
+    expect(match.officialIds).toHaveLength(3);
+    expect(match.officialIds?.map((assignment: any) => assignment.positionId)).toEqual([
+      'r1',
+      'r2',
+      'scorekeeper',
+    ]);
+  });
 });

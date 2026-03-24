@@ -1,12 +1,14 @@
 import { apiRequest } from './apiClient';
 import {
     Event,
+    EventOfficial,
     EventType,
     Field,
     LocationCoordinates,
     Team,
     UserData,
     Match,
+    MatchOfficialAssignment,
     LeagueConfig,
     LeagueScoringConfig,
     Sport,
@@ -75,6 +77,42 @@ export interface FieldBlockingResult {
 }
 
 class EventService {
+    private normalizeMatchOfficialAssignments(value: unknown): MatchOfficialAssignment[] {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+        const normalized: Array<MatchOfficialAssignment | null> = value
+            .map((entry): MatchOfficialAssignment | null => {
+                if (!entry || typeof entry !== 'object') {
+                    return null;
+                }
+                const row = entry as Record<string, unknown>;
+                const positionId = typeof row.positionId === 'string' ? row.positionId.trim() : '';
+                const userId = typeof row.userId === 'string' ? row.userId.trim() : '';
+                const holderType = row.holderType === 'PLAYER'
+                    ? 'PLAYER'
+                    : row.holderType === 'OFFICIAL'
+                        ? 'OFFICIAL'
+                        : null;
+                const slotIndex = Number(row.slotIndex);
+                if (!positionId || !userId || !holderType || !Number.isInteger(slotIndex) || slotIndex < 0) {
+                    return null;
+                }
+                return {
+                    positionId,
+                    slotIndex,
+                    holderType,
+                    userId,
+                    eventOfficialId: typeof row.eventOfficialId === 'string' && row.eventOfficialId.trim().length > 0
+                        ? row.eventOfficialId.trim()
+                        : undefined,
+                    checkedIn: typeof row.checkedIn === 'boolean' ? row.checkedIn : undefined,
+                    hasConflict: typeof row.hasConflict === 'boolean' ? row.hasConflict : undefined,
+                };
+            });
+        return normalized.filter((entry): entry is MatchOfficialAssignment => entry !== null);
+    }
+
     /**
      * Get event with all relationships expanded (matching Python backend approach)
      * This fetches all related data in a single database call using hydrated relationships
@@ -443,6 +481,108 @@ class EventService {
         return event;
     }
 
+    private normalizeOfficialSchedulingMode(value: unknown): Event['officialSchedulingMode'] {
+        if (value === 'SCHEDULE' || value === 'OFF') {
+            return value;
+        }
+        return 'STAFFING';
+    }
+
+    private mapEventOfficialPositions(value: unknown): NonNullable<Event['officialPositions']> {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+        return value
+            .map((entry, index) => {
+                if (!entry || typeof entry !== 'object') {
+                    return null;
+                }
+                const row = entry as Record<string, unknown>;
+                const id = String(row.id ?? '').trim();
+                const name = String(row.name ?? '').trim();
+                if (!id || !name) {
+                    return null;
+                }
+                const count = Number(row.count);
+                const order = Number(row.order);
+                return {
+                    id,
+                    name,
+                    count: Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : 1,
+                    order: Number.isFinite(order) ? Math.max(0, Math.trunc(order)) : index,
+                };
+            })
+            .filter((entry): entry is NonNullable<Event['officialPositions']>[number] => Boolean(entry))
+            .sort((left, right) => left.order - right.order)
+            .map((entry, index) => ({ ...entry, order: index }));
+    }
+
+    private mapEventOfficials(
+        value: unknown,
+        fallbackOfficialIds: string[],
+        officialPositions: NonNullable<Event['officialPositions']>,
+    ): NonNullable<Event['eventOfficials']> {
+        const officialIds = Array.from(new Set(fallbackOfficialIds.map((id) => String(id).trim()).filter(Boolean)));
+        const officialIdSet = new Set(officialIds);
+        const positionIds = officialPositions.map((position) => position.id);
+        const positionIdSet = new Set(positionIds);
+
+        const byUserId = new Map<string, EventOfficial>();
+        if (Array.isArray(value)) {
+            value.forEach((entry) => {
+                if (!entry || typeof entry !== 'object') {
+                    return;
+                }
+                const row = entry as Record<string, unknown>;
+                const id = String(row.id ?? '').trim();
+                const userId = String(row.userId ?? '').trim();
+                if (!id || !userId || !officialIdSet.has(userId)) {
+                    return;
+                }
+                byUserId.set(userId, {
+                    id,
+                    userId,
+                    positionIds: Array.isArray(row.positionIds)
+                        ? Array.from(
+                            new Set(
+                                row.positionIds
+                                    .map((positionId) => String(positionId).trim())
+                                    .filter((positionId) => positionId.length > 0 && positionIdSet.has(positionId)),
+                            ),
+                        )
+                        : [...positionIds],
+                    fieldIds: Array.isArray(row.fieldIds)
+                        ? Array.from(
+                            new Set(
+                                row.fieldIds
+                                    .map((fieldId) => String(fieldId).trim())
+                                    .filter(Boolean),
+                            ),
+                        )
+                        : [],
+                    isActive: row.isActive === undefined ? true : Boolean(row.isActive),
+                });
+            });
+        }
+
+        return officialIds.map((userId) => {
+            const existing = byUserId.get(userId);
+            if (existing) {
+                return {
+                    ...existing,
+                    positionIds: existing.positionIds.length ? existing.positionIds : [...positionIds],
+                };
+            }
+            return {
+                id: createId(),
+                userId,
+                positionIds: [...positionIds],
+                fieldIds: [],
+                isActive: true,
+            };
+        });
+    }
+
     private normalizeEventState(value: unknown): EventState {
         if (typeof value === 'string') {
             const normalized = value.toUpperCase();
@@ -517,6 +657,18 @@ class EventService {
             }
             return undefined;
         })();
+        const officialPositions = this.mapEventOfficialPositions(row.officialPositions);
+        const officialIds = Array.isArray(row.officialIds)
+            ? row.officialIds.map((id: unknown) => String(id))
+            : Array.isArray(row.eventOfficials)
+                ? Array.from(
+                    new Set(
+                        row.eventOfficials
+                            .map((entry: any) => String(entry?.userId ?? '').trim())
+                            .filter((id: string) => id.length > 0),
+                    ),
+                )
+                : [];
 
         return {
             $id: row.$id,
@@ -551,7 +703,10 @@ class EventService {
             userIds: Array.isArray(row.userIds) ? row.userIds.map(String) : [],
             fieldIds: normalizedFieldIds,
             timeSlotIds: row.timeSlotIds,
-            officialIds: Array.isArray(row.officialIds) ? row.officialIds.map((id: unknown) => String(id)) : [],
+            officialIds,
+            officialSchedulingMode: this.normalizeOfficialSchedulingMode(row.officialSchedulingMode),
+            officialPositions,
+            eventOfficials: this.mapEventOfficials(row.eventOfficials, officialIds, officialPositions),
             assistantHostIds: Array.isArray(row.assistantHostIds) ? row.assistantHostIds.map((id: unknown) => String(id)) : [],
             waitList: row.waitList,
             freeAgents: row.freeAgents,
@@ -896,8 +1051,14 @@ class EventService {
         const fieldIds = this.extractStringIds(data.fieldIds ?? event.fieldIds ?? []);
         const timeSlotIds = this.extractStringIds(data.timeSlotIds ?? event.timeSlotIds ?? []);
         const userIds = this.extractStringIds(data.userIds ?? event.userIds ?? []);
-        const officialIds = this.extractStringIds(data.officialIds ?? event.officialIds ?? []);
+        const officialIds = this.extractStringIds(
+            data.officialIds
+            ?? event.officialIds
+            ?? (Array.isArray(data.eventOfficials) ? data.eventOfficials.map((entry: any) => entry?.userId) : [])
+            ?? [],
+        );
         const assistantHostIds = this.extractStringIds(data.assistantHostIds ?? event.assistantHostIds ?? []);
+        const officialPositions = this.mapEventOfficialPositions(data.officialPositions ?? event.officialPositions ?? []);
 
         const [teams, players, fields, timeSlots, organization, officials, assistantHosts] = await Promise.all([
             this.resolveTeams(data.teams, teamIds),
@@ -929,6 +1090,9 @@ class EventService {
         event.teams = teams;
         event.players = players;
         event.officialIds = officialIds;
+        event.officialSchedulingMode = this.normalizeOfficialSchedulingMode(data.officialSchedulingMode ?? event.officialSchedulingMode);
+        event.officialPositions = officialPositions;
+        event.eventOfficials = this.mapEventOfficials(data.eventOfficials ?? event.eventOfficials, officialIds, officialPositions);
         event.officials = officials;
         event.assistantHostIds = assistantHostIds;
         event.assistantHosts = assistantHosts;
@@ -1230,6 +1394,11 @@ class EventService {
             if (typeof row.officialId === 'string') {
                 officialIds.add(row.officialId);
             }
+            this.normalizeMatchOfficialAssignments(row.officialIds).forEach((assignment) => {
+                if (assignment.holderType === 'OFFICIAL' && assignment.userId) {
+                    officialIds.add(assignment.userId);
+                }
+            });
         });
 
         const missingTeamOfficialIds = Array.from(teamOfficialIds).filter((id) => !teamsById.has(id));
@@ -1454,6 +1623,7 @@ class EventService {
             loserNextMatchId:
                 input.loserNextMatchId ?? (input.loserNextMatch ? (input.loserNextMatch as Match).$id : undefined),
             field: fieldId ? context?.fieldsById?.get(fieldId) : undefined,
+            officialIds: this.normalizeMatchOfficialAssignments(input.officialIds),
         };
 
         if (input.division) {

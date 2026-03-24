@@ -10,6 +10,7 @@ import {
   UserData,
 } from './types';
 import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
+import { OfficialStaffingPlanner } from './officialStaffing';
 
 type SchedulerEvent = League | Tournament;
 
@@ -490,6 +491,43 @@ const dependenciesAreScheduled = (match: Match, pendingIds: Set<string>): boolea
   return true;
 };
 
+const hasFullStaffingCoverage = (match: Match, planner: OfficialStaffingPlanner): boolean => {
+  if (!planner.requiredSlots.length) {
+    return true;
+  }
+  if (!Array.isArray(match.officialAssignments) || !match.officialAssignments.length) {
+    return false;
+  }
+  const requiredSlotKeys = new Set(
+    planner.requiredSlots.map((slot) => `${slot.positionId}:${slot.slotIndex}`),
+  );
+  const assignedSlotKeys = new Set<string>();
+  for (const assignment of match.officialAssignments) {
+    const positionId = typeof assignment?.positionId === 'string' ? assignment.positionId.trim() : '';
+    const userId = typeof assignment?.userId === 'string' ? assignment.userId.trim() : '';
+    const slotIndex = Number(assignment?.slotIndex);
+    if (
+      assignment?.holderType !== 'OFFICIAL'
+      || !positionId
+      || !userId
+      || !Number.isInteger(slotIndex)
+      || slotIndex < 0
+    ) {
+      continue;
+    }
+    assignedSlotKeys.add(`${positionId}:${slotIndex}`);
+  }
+  if (assignedSlotKeys.size < requiredSlotKeys.size) {
+    return false;
+  }
+  for (const requiredSlotKey of requiredSlotKeys) {
+    if (!assignedSlotKeys.has(requiredSlotKey)) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const assignMissingUserOfficials = (
   event: SchedulerEvent,
   schedule: Schedule<Match, PlayingField, Team | UserData, Division>,
@@ -588,8 +626,17 @@ export const rescheduleEventMatchesPreservingLocks = (
   const lockedMatches = allMatches.filter((match) => match.locked);
   const warnings = collectWarnings(event, lockedMatches, rescheduleEndTime);
   resetScheduleCollections(event);
+  const staffingPlanner = event.officialSchedulingMode === 'STAFFING'
+    ? new OfficialStaffingPlanner(event)
+    : null;
+  const staffingModeWithRequiredSlots = Boolean(staffingPlanner?.hasRequiredSlots());
 
   for (const match of lockedMatches) {
+    if (staffingModeWithRequiredSlots && staffingPlanner && !hasFullStaffingCoverage(match, staffingPlanner)) {
+      match.official = null;
+      match.officialAssignments = [];
+      match.officialCheckedIn = false;
+    }
     attachLockedMatchToField(event, match);
     attachMatchToParticipants(match);
   }
@@ -607,6 +654,26 @@ export const rescheduleEventMatchesPreservingLocks = (
   const unlockedMatches = allMatches
     .filter((match) => !match.locked)
     .sort(compareMatches);
+  if (staffingModeWithRequiredSlots && staffingPlanner) {
+    const lockedWithCoverage: Match[] = [];
+    const lockedWithoutCoverage: Match[] = [];
+    for (const match of [...lockedMatches].sort(compareScheduledOrder)) {
+      if (hasFullStaffingCoverage(match, staffingPlanner)) {
+        lockedWithCoverage.push(match);
+      } else {
+        lockedWithoutCoverage.push(match);
+      }
+    }
+    staffingPlanner.seedCommittedMatches(lockedWithCoverage);
+    for (const lockedMatch of lockedWithoutCoverage) {
+      staffingPlanner.assignMatch(lockedMatch);
+    }
+    for (const match of unlockedMatches) {
+      match.official = null;
+      match.officialAssignments = [];
+      match.officialCheckedIn = false;
+    }
+  }
   const unlockedById = new Map(unlockedMatches.map((match) => [match.id, match]));
   const pendingIds = new Set(unlockedMatches.map((match) => match.id));
   const detachedPendingAssignments: PendingDependencyAssignment[] = [];
@@ -630,7 +697,17 @@ export const rescheduleEventMatchesPreservingLocks = (
         : [unlockedById.get(Array.from(pendingIds.values())[0]) as Match];
 
       for (const match of nextBatch) {
-        schedule.scheduleEvent(match, durationForReschedule(match));
+        const matchDuration = durationForReschedule(match);
+        if (staffingModeWithRequiredSlots && staffingPlanner) {
+          schedule.scheduleEventWithOptions(match, matchDuration, {
+            canUseCandidate: ({ resource, start, end }) => (
+              staffingPlanner.previewSchedulingCandidate(match, resource, start, end)
+            ),
+          });
+          staffingPlanner.commitScheduledMatch(match);
+        } else {
+          schedule.scheduleEvent(match, matchDuration);
+        }
         attachMatchToParticipants(match);
         pendingIds.delete(match.id);
       }
@@ -639,7 +716,9 @@ export const rescheduleEventMatchesPreservingLocks = (
     detachedPendingAssignments.forEach(restorePendingDependencyAssignments);
   }
 
-  assignMissingUserOfficials(event, schedule, allMatches);
+  if (!staffingModeWithRequiredSlots) {
+    assignMissingUserOfficials(event, schedule, allMatches);
+  }
   assignMissingTeamOfficials(event, schedule, allMatches);
 
   const latestEnd = latestMatchEnd(allMatches);

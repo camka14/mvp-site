@@ -1198,4 +1198,190 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
       expect(match.teamOfficial?.id).not.toBe(match.team2?.id);
     }
   });
+
+  it('STAFFING mode fills all required official positions when rescheduling existing matches', () => {
+    const division = new Division('open', 'Open');
+    const field = new PlayingField({
+      id: 'field_staffing_reschedule',
+      fieldNumber: 1,
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court Staffing',
+    });
+
+    const makeTeam = (id: string, name: string) => new Team({
+      id,
+      captainId: `captain_${id}`,
+      division,
+      name,
+      matches: [],
+      playerIds: [],
+    });
+
+    const teams = {
+      team_1: makeTeam('team_1', 'Team 1'),
+      team_2: makeTeam('team_2', 'Team 2'),
+      team_3: makeTeam('team_3', 'Team 3'),
+      team_4: makeTeam('team_4', 'Team 4'),
+    };
+
+    const official1 = new UserData({
+      id: 'official_staffing_1',
+      firstName: 'Official',
+      lastName: 'One',
+      matches: [],
+      divisions: [division],
+    });
+    const official2 = new UserData({
+      id: 'official_staffing_2',
+      firstName: 'Official',
+      lastName: 'Two',
+      matches: [],
+      divisions: [division],
+    });
+    const official3 = new UserData({
+      id: 'official_staffing_3',
+      firstName: 'Official',
+      lastName: 'Three',
+      matches: [],
+      divisions: [division],
+    });
+
+    const eventStart = new Date('2026-03-03T10:00:00.000Z');
+    const eventEnd = new Date('2026-03-03T13:00:00.000Z');
+
+    const match1 = createMatch({
+      id: 'match_staffing_1',
+      matchId: 1,
+      start: new Date('2026-03-03T10:00:00.000Z'),
+      end: new Date('2026-03-03T11:00:00.000Z'),
+      field,
+      division,
+      team1: teams.team_1,
+      team2: teams.team_2,
+      eventId: 'event_staffing_reschedule',
+    });
+    const match2 = createMatch({
+      id: 'match_staffing_2',
+      matchId: 2,
+      start: new Date('2026-03-03T11:00:00.000Z'),
+      end: new Date('2026-03-03T12:00:00.000Z'),
+      field,
+      division,
+      team1: teams.team_3,
+      team2: teams.team_4,
+      eventId: 'event_staffing_reschedule',
+    });
+
+    // Simulate legacy persisted assignments where only one position was filled.
+    match1.official = official1;
+    match1.officialAssignments = [{
+      positionId: 'r1',
+      slotIndex: 0,
+      holderType: 'OFFICIAL',
+      userId: official1.id,
+      eventOfficialId: 'event_official_staffing_1',
+      checkedIn: false,
+      hasConflict: false,
+    }];
+    match2.official = official2;
+    match2.officialAssignments = [{
+      positionId: 'r1',
+      slotIndex: 0,
+      holderType: 'OFFICIAL',
+      userId: official2.id,
+      eventOfficialId: 'event_official_staffing_2',
+      checkedIn: false,
+      hasConflict: false,
+    }];
+
+    const tournament = new Tournament({
+      id: 'event_staffing_reschedule',
+      name: 'Staffing Reschedule',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams,
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [division],
+      fields: { [field.id]: field },
+      matches: {
+        [match1.id]: match1,
+        [match2.id]: match2,
+      },
+      officials: [official1, official2, official3],
+      eventType: 'TOURNAMENT',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      doTeamsOfficiate: false,
+      officialSchedulingMode: 'STAFFING',
+      officialPositions: [
+        { id: 'r1', name: 'R1', count: 1, order: 0 },
+        { id: 'r2', name: 'R2', count: 1, order: 1 },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_staffing_1',
+          userId: official1.id,
+          positionIds: ['r1', 'r2'],
+          fieldIds: [],
+          isActive: true,
+        },
+        {
+          id: 'event_official_staffing_2',
+          userId: official2.id,
+          positionIds: ['r1', 'r2'],
+          fieldIds: [],
+          isActive: true,
+        },
+        {
+          id: 'event_official_staffing_3',
+          userId: official3.id,
+          positionIds: ['r1', 'r2'],
+          fieldIds: [],
+          isActive: true,
+        },
+      ],
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_staffing_reschedule',
+          dayOfWeek: 1,
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 13 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(tournament);
+    expect(result.warnings).toHaveLength(0);
+
+    for (const match of result.matches) {
+      expect(match.officialAssignments).toHaveLength(2);
+      const slotIds = new Set(match.officialAssignments.map((assignment) => assignment.positionId));
+      expect(slotIds).toEqual(new Set(['r1', 'r2']));
+      const userIds = match.officialAssignments.map((assignment) => assignment.userId);
+      expect(new Set(userIds).size).toBe(2);
+      expect(match.official?.id).toBeTruthy();
+      expect(userIds).toContain(match.official?.id ?? '');
+    }
+  });
 });

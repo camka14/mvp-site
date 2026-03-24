@@ -11,6 +11,10 @@ import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/mat
 import { applyMatchUpdates, applyPersistentAutoLock } from '@/server/scheduler/updateMatch';
 import { Division, Match as SchedulerMatch, MINUTE_MS, Team as SchedulerTeam, sideFrom } from '@/server/scheduler/types';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import {
+  deriveLegacyOfficialIdFromAssignments,
+  normalizeMatchOfficialAssignments,
+} from '@/server/officials/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +32,7 @@ const bulkMatchUpdateSchema = z.object({
   team1Id: z.string().nullable().optional(),
   team2Id: z.string().nullable().optional(),
   officialId: z.string().nullable().optional(),
+  officialIds: z.any().optional(),
   teamOfficialId: z.string().nullable().optional(),
   fieldId: z.string().nullable().optional(),
   previousLeftId: z.string().nullable().optional(),
@@ -55,6 +60,7 @@ const bulkMatchCreateSchema = z.object({
   team1Id: z.string().nullable().optional(),
   team2Id: z.string().nullable().optional(),
   officialId: z.string().nullable().optional(),
+  officialIds: z.any().optional(),
   teamOfficialId: z.string().nullable().optional(),
   fieldId: z.string().nullable().optional(),
   previousLeftId: z.string().nullable().optional(),
@@ -104,6 +110,18 @@ const normalizeMatchRef = (value: unknown): string | null => {
     return null;
   }
   return normalized;
+};
+
+const normalizeOfficialAssignmentsOrThrow = (
+  value: unknown,
+  options: Parameters<typeof normalizeMatchOfficialAssignments>[1],
+): ReturnType<typeof normalizeMatchOfficialAssignments> => {
+  try {
+    return normalizeMatchOfficialAssignments(value, options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid official assignments.';
+    throw new Response(message, { status: 400 });
+  }
 };
 
 const resolveMatchId = (entry: BulkMatchUpdateInput): string | null => {
@@ -228,6 +246,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       const event = await loadEventWithRelations(eventId, tx);
+      const officialPositions = Array.isArray(event.officialPositions) ? event.officialPositions : [];
+      const eventOfficials = Array.isArray(event.eventOfficials) ? event.eventOfficials : [];
+      const positionCountsById = new Map(officialPositions.map((position) => [position.id, position.count]));
+      const eventOfficialsById = new Map(eventOfficials.map((official) => [official.id, official]));
       const lockEvaluationTime = new Date();
       const touchedIds: string[] = [];
       const deletedMatchIdSet = new Set<string>();
@@ -384,6 +406,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         const canonicalNodeId = resolveCanonicalNodeId(entry);
         const requestedDivisionId = normalizeOptionalString(entry.division);
         const matchDivision = resolveDivisionForMatch(event, requestedDivisionId);
+        const normalizedOfficialAssignments = hasOwn(entry, 'officialIds')
+          ? normalizeOfficialAssignmentsOrThrow(entry.officialIds, {
+              positionCountsById,
+              eventOfficialsById,
+            })
+          : [];
+        const primaryOfficialId = normalizedOfficialAssignments.length
+          ? deriveLegacyOfficialIdFromAssignments(normalizedOfficialAssignments)
+          : normalizeOptionalString(entry.officialId);
 
         const parsedStart = parseDateInput(entry.start);
         const parsedEnd = parseDateInput(entry.end);
@@ -475,12 +506,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           bufferMs: Math.max(event.restTimeMinutes ?? 0, 0) * MINUTE_MS,
           side: sideFrom(entry.side ?? null),
           officialCheckedIn: Boolean(entry.officialCheckedIn),
+          officialAssignments: normalizedOfficialAssignments,
           teamOfficial: (() => {
             const teamOfficialId = normalizeOptionalString(entry.teamOfficialId);
             return teamOfficialId ? event.teams[teamOfficialId] ?? null : null;
           })(),
           official: (() => {
-            const officialId = normalizeOptionalString(entry.officialId);
+            const officialId = primaryOfficialId;
             return officialId
               ? event.officials.find((official) => official.id === officialId) ?? null
               : null;
@@ -522,6 +554,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           team1Id: entry.team1Id,
           team2Id: entry.team2Id,
           officialId: entry.officialId,
+          officialAssignments: hasOwn(entry, 'officialIds')
+            ? normalizeOfficialAssignmentsOrThrow(entry.officialIds, {
+                positionCountsById,
+                eventOfficialsById,
+              })
+            : undefined,
           teamOfficialId: entry.teamOfficialId,
           fieldId: entry.fieldId,
           previousLeftId: null,

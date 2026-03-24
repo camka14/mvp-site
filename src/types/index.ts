@@ -83,9 +83,42 @@ export interface TournamentConfig {
   setDurationMinutes?: number;
 }
 
+export type OfficialSchedulingMode = 'STAFFING' | 'SCHEDULE' | 'OFF';
+
+export interface SportOfficialPositionTemplate {
+  name: string;
+  count: number;
+}
+
+export interface EventOfficialPosition {
+  id: string;
+  name: string;
+  count: number;
+  order: number;
+}
+
+export interface EventOfficial {
+  id: string;
+  userId: string;
+  positionIds: string[];
+  fieldIds: string[];
+  isActive?: boolean;
+}
+
+export interface MatchOfficialAssignment {
+  positionId: string;
+  slotIndex: number;
+  holderType: 'OFFICIAL' | 'PLAYER';
+  userId: string;
+  eventOfficialId?: string;
+  checkedIn?: boolean;
+  hasConflict?: boolean;
+}
+
 export interface Sport {
   $id: string;
   name: string;
+  officialPositionTemplates?: SportOfficialPositionTemplate[];
   usePointsForWin: boolean;
   usePointsForDraw: boolean;
   usePointsForLoss: boolean;
@@ -192,6 +225,7 @@ export interface Match {
   team1Id?: string | null;
   team2Id?: string | null;
   officialId?: string | null;
+  officialIds?: MatchOfficialAssignment[];
   teamOfficialId?: string | null;
   team1Points: number[];
   team2Points: number[];
@@ -437,6 +471,9 @@ export interface Event {
   fieldIds?: string[];
   timeSlotIds?: string[];
   officialIds?: string[];
+  officialSchedulingMode?: OfficialSchedulingMode;
+  officialPositions?: EventOfficialPosition[];
+  eventOfficials?: EventOfficial[];
   assistantHostIds?: string[];
   waitList?: string[];
   freeAgents?: string[];

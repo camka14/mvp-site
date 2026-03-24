@@ -19,6 +19,13 @@ import { SchedulerContext } from '@/server/scheduler/types';
 import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
 import { evaluateDivisionAgeEligibility, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { notifySocialAudienceOfEventCreation } from '@/server/eventCreationNotifications';
+import {
+  buildEventOfficialPositionsFromTemplates,
+  deriveEventOfficialsFromLegacyOfficialIds,
+  normalizeEventOfficialPositions,
+  normalizeOfficialSchedulingMode,
+  normalizeSportOfficialPositionTemplates,
+} from '@/server/officials/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -411,6 +418,15 @@ const withLegacyEvent = (row: any) => {
   if (!Array.isArray(legacy.officialIds)) {
     (legacy as any).officialIds = [];
   }
+  if (!Array.isArray((legacy as any).officialPositions)) {
+    (legacy as any).officialPositions = [];
+  }
+  if (!Array.isArray((legacy as any).eventOfficials)) {
+    (legacy as any).eventOfficials = [];
+  }
+  if (typeof (legacy as any).officialSchedulingMode !== 'string') {
+    (legacy as any).officialSchedulingMode = 'STAFFING';
+  }
   if (!Array.isArray((legacy as any).assistantHostIds)) {
     (legacy as any).assistantHostIds = [];
   }
@@ -441,6 +457,47 @@ const withLegacyEvent = (row: any) => {
 };
 
 const buildEventResponsePayload = async (event: any) => {
+  const [eventOfficialRows, sportRow] = await Promise.all([
+    typeof (prisma as any).eventOfficials?.findMany === 'function'
+      ? (prisma as any).eventOfficials.findMany({ where: { eventId: event.id }, orderBy: { createdAt: 'asc' } })
+      : Promise.resolve([]),
+    event.sportId
+      ? prisma.sports.findUnique({
+          where: { id: event.sportId },
+          select: { officialPositionTemplates: true } as any,
+        })
+      : Promise.resolve(null),
+  ]);
+  const sportPositions = buildEventOfficialPositionsFromTemplates(
+    event.id,
+    normalizeSportOfficialPositionTemplates((sportRow as any)?.officialPositionTemplates),
+  );
+  const officialPositions = (() => {
+    const explicit = normalizeEventOfficialPositions((event as any).officialPositions, event.id);
+    if (explicit.length) {
+      return explicit;
+    }
+    return sportPositions;
+  })();
+  const eventOfficials = eventOfficialRows.length
+    ? (eventOfficialRows as any[])
+        .map((row) => ({
+          id: row.id,
+          userId: row.userId,
+          positionIds: normalizeFieldIds(row.positionIds).filter((positionId: string) => (
+            officialPositions.some((position) => position.id === positionId)
+          )),
+          fieldIds: normalizeFieldIds(row.fieldIds).filter((fieldId: string) => (
+            normalizeFieldIds(event.fieldIds).includes(fieldId)
+          )),
+          isActive: row.isActive !== false,
+        }))
+        .filter((row) => row.positionIds.length > 0)
+    : deriveEventOfficialsFromLegacyOfficialIds({
+        eventId: event.id,
+        officialIds: Array.isArray(event.officialIds) ? event.officialIds : [],
+        positionIds: officialPositions.map((position) => position.id),
+      });
   const divisionKeys = normalizeDivisionKeys(event.divisions);
   const [divisionFieldIds, divisionDetails] = await Promise.all([
     getDivisionFieldMapForEvent(event.id, divisionKeys),
@@ -455,7 +512,15 @@ const buildEventResponsePayload = async (event: any) => {
     }),
   ]);
 
-  return withLegacyEvent({ ...event, divisionFieldIds, divisionDetails });
+  return withLegacyEvent({
+    ...event,
+    officialSchedulingMode: normalizeOfficialSchedulingMode((event as any).officialSchedulingMode),
+    officialPositions,
+    eventOfficials,
+    officialIds: eventOfficials.map((official: { userId: string }) => official.userId),
+    divisionFieldIds,
+    divisionDetails,
+  });
 };
 
 const isSchedulableEventType = (value: unknown): boolean => {

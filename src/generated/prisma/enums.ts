@@ -64,6 +64,15 @@ export const EventsEventTypeEnum = {
 export type EventsEventTypeEnum = (typeof EventsEventTypeEnum)[keyof typeof EventsEventTypeEnum]
 
 
+export const EventsOfficialSchedulingModeEnum = {
+  STAFFING: 'STAFFING',
+  SCHEDULE: 'SCHEDULE',
+  OFF: 'OFF'
+} as const
+
+export type EventsOfficialSchedulingModeEnum = (typeof EventsOfficialSchedulingModeEnum)[keyof typeof EventsOfficialSchedulingModeEnum]
+
+
 export const ProductsPeriodEnum = {
   WEEK: 'WEEK',
   MONTH: 'MONTH',

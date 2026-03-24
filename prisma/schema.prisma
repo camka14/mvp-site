@@ -44,6 +44,12 @@ enum EventsEventTypeEnum {
   WEEKLY_EVENT
 }
 
+enum EventsOfficialSchedulingModeEnum {
+  STAFFING
+  SCHEDULE
+  OFF
+}
+
 enum ProductsPeriodEnum {
   WEEK
   MONTH
@@ -127,31 +133,32 @@ model Fields {
 }
 
 model Matches {
-  id                String    @id
-  createdAt         DateTime?
-  updatedAt         DateTime?
-  start             DateTime?
-  end               DateTime?
-  locked            Boolean   @default(false)
-  division          String?
-  team1Points       Int[]
-  team2Points       Int[]
-  setResults        Int[]
-  side              String?
-  matchId           Int
-  losersBracket     Boolean?
-  winnerNextMatchId String?
-  loserNextMatchId  String?
-  previousRightId   String?
-  previousLeftId    String?
+  id                 String    @id
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  start              DateTime?
+  end                DateTime?
+  locked             Boolean   @default(false)
+  division           String?
+  team1Points        Int[]
+  team2Points        Int[]
+  setResults         Int[]
+  side               String?
+  matchId            Int
+  losersBracket      Boolean?
+  winnerNextMatchId  String?
+  loserNextMatchId   String?
+  previousRightId    String?
+  previousLeftId     String?
   officialCheckedIn  Boolean?
   officialId         String?
-  team1Id           String?
-  team2Id           String?
-  team1Seed         Int?
-  team2Seed         Int?
-  eventId           String?
-  fieldId           String?
+  officialIds        Json?
+  team1Id            String?
+  team2Id            String?
+  team1Seed          Int?
+  team2Seed          Int?
+  eventId            String?
+  fieldId            String?
   teamOfficialId     String?
 
   @@index([eventId])
@@ -259,6 +266,21 @@ model StaffMembers {
 
   @@unique([organizationId, userId])
   @@index([organizationId])
+  @@index([userId])
+}
+
+model EventOfficials {
+  id         String   @id
+  createdAt  DateTime?
+  updatedAt  DateTime?
+  eventId    String
+  userId     String
+  positionIds String[] @default([])
+  fieldIds   String[] @default([])
+  isActive   Boolean? @default(true)
+
+  @@unique([eventId, userId])
+  @@index([eventId])
   @@index([userId])
 }
 
@@ -459,15 +481,17 @@ model Events {
   parentEvent                  String?
   autoCancellation             Boolean?
   eventType                    EventsEventTypeEnum?
-  doTeamsOfficiate                   Boolean?
-  teamOfficialsMaySwap              Boolean?
-  officialIds                   String[]
+  officialSchedulingMode       EventsOfficialSchedulingModeEnum @default(STAFFING)
+  doTeamsOfficiate             Boolean?
+  teamOfficialsMaySwap         Boolean?
+  officialIds                  String[]
+  officialPositions            Json?
   allowPaymentPlans            Boolean?
   installmentCount             Int?
   installmentDueDates          DateTime[]
   installmentAmounts           Int[]
   allowTeamSplitDefault        Boolean?
-  splitLeaguePlayoffDivisions  Boolean?             @default(false)
+  splitLeaguePlayoffDivisions  Boolean?                         @default(false)
   requiredTemplateIds          String[]
 
   @@index([organizationId])
@@ -643,6 +667,7 @@ model Sports {
   useEnablePenaltyUnsporting        Boolean?
   usePenaltyPointsUnsporting        Boolean?
   usePointPrecision                 Boolean?
+  officialPositionTemplates         Json?
 }
 
 model TemplateDocuments {

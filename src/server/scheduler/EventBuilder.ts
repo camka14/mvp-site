@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Brackets } from './Brackets';
+import { OfficialStaffingPlanner } from './officialStaffing';
 import { Schedule } from './Schedule';
 import {
   Division,
@@ -24,7 +25,7 @@ export class EventBuilder {
   private playoffPlaceholderIds: Set<string> = new Set();
   private nextPlaceholderOrdinal: number = 1;
   private participants: Record<string, Team | UserData> = {};
-  private officialCycle: UserData[] = [];
+  private officialStaffingPlanner: OfficialStaffingPlanner | null = null;
 
   constructor(event: League | Tournament, context: SchedulerContext) {
     this.context = context;
@@ -38,6 +39,7 @@ export class EventBuilder {
       undefined,
       { endTime: this.event.end, timeSlots: this.event.timeSlots },
     );
+    this.officialStaffingPlanner = new OfficialStaffingPlanner(this.event);
     this.resetState();
   }
 
@@ -88,6 +90,7 @@ export class EventBuilder {
       undefined,
       { endTime: this.event.end, timeSlots: this.event.timeSlots },
     );
+    this.officialStaffingPlanner = new OfficialStaffingPlanner(this.event);
 
     const durationMs = this.matchDuration();
     const scheduledMatches: Match[] = [];
@@ -120,7 +123,7 @@ export class EventBuilder {
 
     this.stripPlaceholderAssignments(scheduledMatches);
     this.assignUserOfficials(scheduledMatches);
-    if (this.isLeague && this.event.doTeamsOfficiate) {
+    if (this.event.doTeamsOfficiate) {
       this.assignTeamOfficials(scheduledMatches);
     }
     if (this.isLeague) {
@@ -168,7 +171,6 @@ export class EventBuilder {
         official.divisions = [...officialDivisions];
       }
     }
-    this.officialCycle = [...this.event.officials];
     this.regularPlaceholderIds.clear();
     this.playoffPlaceholderIds.clear();
     this.nextPlaceholderOrdinal = Object.keys(this.event.teams).length + 1;
@@ -441,6 +443,7 @@ export class EventBuilder {
       start: this.event.start,
       end: this.event.start,
       official: null,
+      officialAssignments: [],
       teamOfficial: null,
       winnerNextMatch: null,
       loserNextMatch: null,
@@ -463,7 +466,7 @@ export class EventBuilder {
       const roundScheduled: Match[] = [];
       for (const [home, away] of roundPairs) {
         const match = this.createMatch(home, away, division);
-        this.schedule.scheduleEvent(match, durationMs);
+        this.scheduleMatch(match, durationMs);
         this.attachMatchToParticipants(match);
         scheduled.push(match);
         roundScheduled.push(match);
@@ -761,6 +764,9 @@ export class EventBuilder {
       matchDurationMinutes: this.event.matchDurationMinutes,
       usesSets: this.event.usesSets,
       setDurationMinutes: this.event.setDurationMinutes,
+      officialSchedulingMode: this.event.officialSchedulingMode,
+      officialPositions: this.event.officialPositions,
+      eventOfficials: this.event.eventOfficials,
     });
 
     const bracketBuilder = new Brackets(playoffTournament, this.context);
@@ -781,11 +787,23 @@ export class EventBuilder {
         match.teamOfficial = teamLookup[match.teamOfficial.id] ?? match.teamOfficial;
       }
       match.bufferMs = this.matchBuffer();
-      this.schedule.scheduleEvent(match, durationMs);
+      this.scheduleMatch(match, durationMs);
       this.attachMatchToParticipants(match);
       scheduledMatches.push(match);
     }
     return scheduledMatches;
+  }
+
+  private scheduleMatch(match: Match, durationMs: number): void {
+    const planner = this.officialStaffingPlanner;
+    if (this.event.officialSchedulingMode === 'STAFFING' && planner?.hasRequiredSlots()) {
+      this.schedule.scheduleEventWithOptions(match, durationMs, {
+        canUseCandidate: ({ resource, start, end }) => planner.previewSchedulingCandidate(match, resource, start, end),
+      });
+      planner.commitScheduledMatch(match);
+      return;
+    }
+    this.schedule.scheduleEvent(match, durationMs);
   }
 
   private resolvePlayoffParticipantCount(division: Division, fallbackTeamCount: number): number {
@@ -850,35 +868,19 @@ export class EventBuilder {
   }
 
   private assignUserOfficials(matches: Match[]): void {
-    if (!this.event.officials.length) {
-      matches.forEach((match) => this.attachMatchToParticipants(match));
+    const planner = this.officialStaffingPlanner ?? new OfficialStaffingPlanner(this.event);
+    this.officialStaffingPlanner = planner;
+    if (!planner.hasRequiredSlots()) {
       return;
     }
-    const ordered = [...matches].sort((a, b) => {
-      const startDiff = a.start.getTime() - b.start.getTime();
-      if (startDiff !== 0) return startDiff;
-      const endDiff = a.end.getTime() - b.end.getTime();
-      if (endDiff !== 0) return endDiff;
-      return (a.field?.id ?? '').localeCompare(b.field?.id ?? '');
-    });
-    for (const match of ordered) {
-      this.attachMatchToParticipants(match);
-      if (match.official || !match.division) continue;
-      const availableRefs = this.schedule.freeParticipants(match.division, match.start, match.end)
-        .filter((participant) => participant instanceof UserData) as UserData[];
-      if (!availableRefs.length) continue;
-      for (let i = 0; i < this.officialCycle.length; i += 1) {
-        const candidate = this.officialCycle.shift() as UserData;
-        if (availableRefs.find((ref) => ref.id === candidate.id)) {
-          match.official = candidate;
-          candidate.matches.push(match);
-          this.attachMatchToParticipants(match);
-          this.officialCycle.push(candidate);
-          break;
-        }
-        this.officialCycle.push(candidate);
+    if (this.event.officialSchedulingMode === 'STAFFING') {
+      const unstafedMatch = matches.find((match) => !planner.hasCommittedAssignments(match));
+      if (unstafedMatch) {
+        throw new Error('Unable to fully staff all matches without conflicts.');
       }
+      return;
     }
+    planner.assignMatches(matches);
   }
 
   private assignTeamOfficials(matches: Match[]): void {

@@ -19,6 +19,7 @@ interface LeagueCalendarViewProps {
   matches: Match[];
   teams?: Team[];
   fields?: Field[];
+  officials?: UserData[];
   eventStart?: string;
   eventEnd?: string;
   onMatchClick?: (match: Match) => void;
@@ -217,6 +218,7 @@ export function LeagueCalendarView({
   matches,
   teams = [],
   fields = [],
+  officials = [],
   eventStart,
   eventEnd,
   onMatchClick,
@@ -263,6 +265,23 @@ export function LeagueCalendarView({
     });
     return lookup;
   }, [teams]);
+  const officialLookupById = useMemo(() => {
+    const lookup: Record<string, UserData> = {};
+    officials.forEach((official) => {
+      if (typeof official?.$id === 'string' && official.$id.trim().length > 0) {
+        lookup[official.$id.trim()] = official;
+      }
+    });
+    matches.forEach((match) => {
+      if (match.official && typeof match.official === 'object' && typeof match.official.$id === 'string') {
+        const officialId = match.official.$id.trim();
+        if (officialId.length > 0) {
+          lookup[officialId] = match.official;
+        }
+      }
+    });
+    return lookup;
+  }, [matches, officials]);
 
   const teamHasUser = useCallback(
     (team: Match['team1'], fallbackId?: string | null) => {
@@ -528,10 +547,11 @@ export function LeagueCalendarView({
           showOfficialInHeader
           fieldLabel={event.fieldLabel}
           hasConflict={hasConflict}
+          officialUsersById={officialLookupById}
         />
       );
     },
-    [canManage, conflictMatchIdSet, onMatchClick, userInvolvedMatchIds],
+    [canManage, conflictMatchIdSet, officialLookupById, onMatchClick, userInvolvedMatchIds],
   );
 
   const AgendaEventComponent = useCallback(
@@ -549,10 +569,11 @@ export function LeagueCalendarView({
           showOfficialInHeader
           fieldLabel={event.fieldLabel}
           hasConflict={hasConflict}
+          officialUsersById={officialLookupById}
         />
       );
     },
-    [canManage, conflictMatchIdSet, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
+    [canManage, conflictMatchIdSet, officialLookupById, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
   );
 
   const components = useMemo(

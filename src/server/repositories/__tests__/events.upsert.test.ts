@@ -10,11 +10,13 @@ import { buildEventDivisionId } from '@/lib/divisionTypes';
 type MockClient = {
   $executeRaw: jest.Mock;
   events: { findUnique: jest.Mock; upsert: jest.Mock };
+  sports: { findUnique: jest.Mock };
   organizations: { findUnique: jest.Mock };
   staffMembers: { findMany: jest.Mock };
   invites: { findMany: jest.Mock };
   userData: { findUnique: jest.Mock };
   leagueScoringConfigs: { upsert: jest.Mock };
+  eventOfficials: { findMany: jest.Mock; deleteMany: jest.Mock; create: jest.Mock };
   fields: { findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
   matches: { deleteMany: jest.Mock };
   divisions: { findMany: jest.Mock; deleteMany: jest.Mock; upsert: jest.Mock };
@@ -27,6 +29,9 @@ const createMockClient = (): MockClient => ({
   events: {
     findUnique: jest.fn().mockResolvedValue(null),
     upsert: jest.fn().mockResolvedValue(undefined),
+  },
+  sports: {
+    findUnique: jest.fn().mockResolvedValue(null),
   },
   organizations: {
     findUnique: jest.fn().mockResolvedValue(null),
@@ -42,6 +47,11 @@ const createMockClient = (): MockClient => ({
   },
   leagueScoringConfigs: {
     upsert: jest.fn().mockResolvedValue(undefined),
+  },
+  eventOfficials: {
+    findMany: jest.fn().mockResolvedValue([]),
+    deleteMany: jest.fn().mockResolvedValue(undefined),
+    create: jest.fn().mockResolvedValue(undefined),
   },
   fields: {
     findUnique: jest.fn().mockResolvedValue(null),
@@ -978,6 +988,80 @@ describe('upsertEventFromPayload', () => {
     const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
     expect(eventUpsertArgs.create.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
     expect(eventUpsertArgs.update.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
+  });
+
+  it('persists official staffing payload fields and event-official rows', async () => {
+    const client = createMockClient();
+    client.sports.findUnique.mockResolvedValue({
+      officialPositionTemplates: [
+        { name: 'R1', count: 1 },
+        { name: 'Line Judge', count: 2 },
+      ],
+    });
+
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [
+        {
+          id: 'event_pos_r1',
+          name: 'R1',
+          count: 1,
+          order: 0,
+        },
+        {
+          id: 'event_pos_line',
+          name: 'Line Judge',
+          count: 2,
+          order: 1,
+        },
+      ],
+      officialIds: ['official_1'],
+      eventOfficials: [
+        {
+          id: 'event_official_1',
+          userId: 'official_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.events.upsert).toHaveBeenCalledTimes(1);
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create).toEqual(
+      expect.objectContaining({
+        officialSchedulingMode: 'SCHEDULE',
+        officialPositions: payload.officialPositions,
+        officialIds: ['official_1'],
+      }),
+    );
+    expect(eventUpsertArgs.update).toEqual(
+      expect.objectContaining({
+        officialSchedulingMode: 'SCHEDULE',
+        officialPositions: payload.officialPositions,
+        officialIds: ['official_1'],
+      }),
+    );
+    expect(client.eventOfficials.deleteMany).toHaveBeenCalledWith({
+      where: { eventId: 'event_1' },
+    });
+    expect(client.eventOfficials.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'event_official_1',
+        eventId: 'event_1',
+        userId: 'official_1',
+        positionIds: ['event_pos_r1'],
+        fieldIds: ['field_1'],
+        isActive: true,
+        createdAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    });
   });
 });
 

@@ -1,4 +1,4 @@
-import { Event, Team, Field, Match, TournamentBracket, UserData } from '@/types';
+import { Event, Team, Field, Match, TournamentBracket, UserData, MatchOfficialAssignment } from '@/types';
 import { eventService } from './eventService';
 import { authService } from './auth';
 import { apiRequest } from './apiClient';
@@ -35,6 +35,54 @@ export type LeagueStandingsDivisionResponse = {
 };
 
 class TournamentService {
+    private normalizeMatchOfficialAssignments(value: unknown): MatchOfficialAssignment[] {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+        const normalized: Array<MatchOfficialAssignment | null> = value
+            .map((entry): MatchOfficialAssignment | null => {
+                if (!entry || typeof entry !== 'object') {
+                    return null;
+                }
+                const row = entry as Record<string, unknown>;
+                const positionId = typeof row.positionId === 'string' ? row.positionId.trim() : '';
+                const userId = typeof row.userId === 'string' ? row.userId.trim() : '';
+                const holderType = row.holderType === 'PLAYER' ? 'PLAYER' : row.holderType === 'OFFICIAL' ? 'OFFICIAL' : null;
+                const slotIndex = Number(row.slotIndex);
+                if (!positionId || !userId || !holderType || !Number.isInteger(slotIndex) || slotIndex < 0) {
+                    return null;
+                }
+                return {
+                    positionId,
+                    slotIndex,
+                    holderType,
+                    userId,
+                    eventOfficialId: typeof row.eventOfficialId === 'string' && row.eventOfficialId.trim().length > 0
+                        ? row.eventOfficialId.trim()
+                        : undefined,
+                    checkedIn: typeof row.checkedIn === 'boolean' ? row.checkedIn : undefined,
+                    hasConflict: typeof row.hasConflict === 'boolean' ? row.hasConflict : undefined,
+                };
+            });
+        return normalized.filter((entry): entry is MatchOfficialAssignment => entry !== null);
+    }
+
+    private collectMatchAssignedUserIds(match: Match): string[] {
+        const ids = new Set<string>();
+        if (typeof match.officialId === 'string' && match.officialId.trim().length > 0) {
+            ids.add(match.officialId.trim());
+        }
+        if (match.official && typeof match.official === 'object' && typeof match.official.$id === 'string' && match.official.$id.trim().length > 0) {
+            ids.add(match.official.$id.trim());
+        }
+        this.normalizeMatchOfficialAssignments(match.officialIds).forEach((assignment) => {
+            if (assignment.userId) {
+                ids.add(assignment.userId);
+            }
+        });
+        return Array.from(ids);
+    }
+
     private toBulkMatchUpdatePayload(match: Partial<Match> & { $id: string }): Record<string, unknown> {
         const payload: Record<string, unknown> = { id: match.$id };
         const hasOwn = (key: string) => Object.prototype.hasOwnProperty.call(match, key);
@@ -91,6 +139,9 @@ class TournamentService {
             }
         } else if (hasOwn('official')) {
             payload.officialId = relationId(match.official);
+        }
+        if (hasOwn('officialIds')) {
+            payload.officialIds = this.normalizeMatchOfficialAssignments(match.officialIds);
         }
         if (hasOwn('teamOfficialId')) {
             if (match.teamOfficialId !== undefined) {
@@ -188,7 +239,7 @@ class TournamentService {
 
             const isHost = tournament.hostId === currentUser?.$id;
             const canManageMatches = Object.values(matches).some((match) => {
-                if (currentUser?.$id && match.officialId === currentUser.$id) {
+                if (currentUser?.$id && this.collectMatchAssignedUserIds(match).includes(currentUser.$id)) {
                     return true;
                 }
                 const teamPlayers = match.teamOfficial?.playerIds || [];
@@ -256,6 +307,9 @@ class TournamentService {
                         } else if (value === null) {
                             payload.officialId = null;
                         }
+                        break;
+                    case 'officialIds':
+                        payload.officialIds = this.normalizeMatchOfficialAssignments(value);
                         break;
                     case 'teamOfficial':
                         if (value && typeof value === 'object' && '$id' in value) {
