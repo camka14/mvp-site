@@ -305,6 +305,15 @@ function OrganizationDetailContent() {
     () => Boolean(stripeEmail && EMAIL_REGEX.test(stripeEmail.trim())),
     [stripeEmail],
   );
+  const overviewRecentEvents = useMemo(() => {
+    const sourceEvents = Array.isArray(org?.events) ? org.events : [];
+    return sourceEvents.filter((event) => {
+      const normalizedEventType = typeof event.eventType === 'string' ? event.eventType.toUpperCase() : '';
+      const isWeeklyEventType = normalizedEventType === 'WEEKLY_EVENT' || normalizedEventType === 'WEEKLY_EVENTS';
+      const isWeeklyChildEvent = typeof event.parentEvent === 'string' && event.parentEvent.trim().length > 0;
+      return !(isWeeklyEventType && isWeeklyChildEvent);
+    });
+  }, [org?.events]);
 
   const currentHostIds = useMemo(
     () => (Array.isArray(org?.hostIds) ? org.hostIds.filter((id): id is string => typeof id === 'string') : []),
@@ -1770,9 +1779,9 @@ function OrganizationDetailContent() {
                   </Paper>
                   <Paper withBorder p="md" radius="md">
                     <Title order={5} mb="md">Recent Events</Title>
-                    {org.events && org.events.length > 0 ? (
+                    {overviewRecentEvents.length > 0 ? (
                       <ResponsiveCardGrid>
-                        {org.events.slice(0, 4).map((e) => (
+                        {overviewRecentEvents.slice(0, 4).map((e) => (
                           <EventCard
                             key={e.$id}
                             event={e}

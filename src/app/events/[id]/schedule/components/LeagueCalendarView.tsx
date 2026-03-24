@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Paper, RangeSlider, SegmentedControl, Text } from '@mantine/core';
 import {
   Calendar as BigCalendar,
@@ -41,6 +41,7 @@ type CalendarResource = {
 const UNASSIGNED_FIELD_RESOURCE_ID = '__unassigned_field__';
 const MIN_VISIBLE_HOUR_SLOTS = 6;
 const MIN_HOUR_SLOT_HEIGHT = 112;
+const CALENDAR_BOTTOM_GUTTER = 24;
 
 const clampHour = (value: number): number => Math.max(0, Math.min(24, value));
 
@@ -575,12 +576,41 @@ export function LeagueCalendarView({
     [calendarView, calendarViews],
   );
   const showRange = effectiveCalendarView === 'week' || effectiveCalendarView === 'day';
+  const calendarRootRef = useRef<HTMLDivElement | null>(null);
+  const [calendarHeight, setCalendarHeight] = useState<number>(MIN_CALENDAR_HEIGHT);
 
   useEffect(() => {
     if (calendarView !== effectiveCalendarView) {
       setCalendarView(effectiveCalendarView);
     }
   }, [calendarView, effectiveCalendarView]);
+
+  const measureCalendarHeight = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const root = calendarRootRef.current;
+    if (!root) return;
+
+    const top = root.getBoundingClientRect().top;
+    const availableHeight = Math.floor(window.innerHeight - top - CALENDAR_BOTTOM_GUTTER);
+    const nextHeight = Math.max(MIN_CALENDAR_HEIGHT, availableHeight);
+    setCalendarHeight((previous) => (previous === nextHeight ? previous : nextHeight));
+  }, []);
+
+  useEffect(() => {
+    measureCalendarHeight();
+  }, [measureCalendarHeight, showRange, layoutMode, effectiveCalendarView]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    window.addEventListener('resize', measureCalendarHeight);
+    window.addEventListener('orientationchange', measureCalendarHeight);
+
+    return () => {
+      window.removeEventListener('resize', measureCalendarHeight);
+      window.removeEventListener('orientationchange', measureCalendarHeight);
+    };
+  }, [measureCalendarHeight]);
 
   const visibleHourSpan = useMemo(
     () => Math.max(MIN_VISIBLE_HOUR_SLOTS, timeRange[1] - timeRange[0]),
@@ -628,7 +658,7 @@ export function LeagueCalendarView({
         withBorder
         radius="md"
         p="lg"
-        style={{ width: '100%', minHeight: MIN_CALENDAR_HEIGHT + (showRange ? 120 : 0) }}
+        style={{ width: '100%' }}
         data-testid="league-calendar"
       >
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -692,33 +722,35 @@ export function LeagueCalendarView({
             </div>
           </div>
         )}
-        <BigCalendar
-          localizer={localizer}
-          events={calendarEvents}
-          resources={layoutMode === 'resource' ? calendarResources : undefined}
-          date={calendarDate}
-          view={effectiveCalendarView}
-          views={calendarViews}
-          onView={handleViewChange}
-          onNavigate={handleNavigate}
-          selectable
-          popup
-          longPressThreshold={20}
-          components={components}
-          eventPropGetter={eventPropGetter}
-          onSelectSlot={handleSelectSlot}
-          onSelectEvent={handleSelectEvent}
-          startAccessor="start"
-          endAccessor="end"
-          resourceAccessor="resourceId"
-          resourceIdAccessor="resourceId"
-          resourceTitleAccessor="resourceTitle"
-          min={minTime}
-          max={maxTime}
-          style={{ height: '100%', minHeight: MIN_CALENDAR_HEIGHT }}
-          slotGroupPropGetter={slotGroupPropGetter}
-          formats={calendarFormats}
-        />
+        <div ref={calendarRootRef} style={{ width: '100%' }}>
+          <BigCalendar
+            localizer={localizer}
+            events={calendarEvents}
+            resources={layoutMode === 'resource' ? calendarResources : undefined}
+            date={calendarDate}
+            view={effectiveCalendarView}
+            views={calendarViews}
+            onView={handleViewChange}
+            onNavigate={handleNavigate}
+            selectable
+            popup
+            longPressThreshold={20}
+            components={components}
+            eventPropGetter={eventPropGetter}
+            onSelectSlot={handleSelectSlot}
+            onSelectEvent={handleSelectEvent}
+            startAccessor="start"
+            endAccessor="end"
+            resourceAccessor="resourceId"
+            resourceIdAccessor="resourceId"
+            resourceTitleAccessor="resourceTitle"
+            min={minTime}
+            max={maxTime}
+            style={{ height: calendarHeight, minHeight: MIN_CALENDAR_HEIGHT }}
+            slotGroupPropGetter={slotGroupPropGetter}
+            formats={calendarFormats}
+          />
+        </div>
       </Paper>
     </>
   );
