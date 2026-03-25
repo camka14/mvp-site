@@ -4,7 +4,7 @@ import {
 } from '@/server/matches/bracketGraph';
 
 describe('bracket graph validation', () => {
-  it('allows winner and loser to flow to the same next match', () => {
+  it('preserves both incoming slots when winner and loser flow to the same next match', () => {
     const result = validateAndNormalizeBracketGraph([
       {
         id: 'match_1',
@@ -20,15 +20,15 @@ describe('bracket graph validation', () => {
 
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
-    expect(result.incomingCountById.match_2).toBe(1);
+    expect(result.incomingCountById.match_2).toBe(2);
     expect(result.normalizedById.match_2).toEqual({
       previousLeftId: 'match_1',
-      previousRightId: null,
-      incomingCount: 1,
+      previousRightId: 'match_1',
+      incomingCount: 2,
     });
   });
 
-  it('still rejects targets with more than two unique incoming matches', () => {
+  it('still rejects targets with more than two incoming matches', () => {
     const result = validateAndNormalizeBracketGraph([
       { id: 'match_1', matchId: 1, winnerNextMatchId: 'match_4' },
       { id: 'match_2', matchId: 2, winnerNextMatchId: 'match_4' },

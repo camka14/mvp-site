@@ -36,7 +36,7 @@ export type BracketValidationResult = {
   incomingCountById: Record<string, number>;
 };
 
-type Edge = { sourceId: string; targetId: string };
+type Edge = { sourceId: string; targetId: string; lane: string };
 
 const normalizeRef = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -75,7 +75,7 @@ const collectEdges = (
     previousRight: string | null;
   }>();
 
-  const addEdge = (sourceId: string, targetId: string) => {
+  const addEdge = (sourceId: string, targetId: string, lane: string) => {
     if (sourceId === targetId) {
       errors.push({
         code: 'SELF_REFERENCE',
@@ -86,9 +86,9 @@ const collectEdges = (
       return;
     }
 
-    const key = `${sourceId}->${targetId}`;
+    const key = `${sourceId}->${targetId}#${lane}`;
     if (!edgesByKey.has(key)) {
-      edgesByKey.set(key, { sourceId, targetId });
+      edgesByKey.set(key, { sourceId, targetId, lane });
     }
   };
 
@@ -129,16 +129,11 @@ const collectEdges = (
 
   }
 
-  const shouldIncludeReverseEdge = (sourceId: string, targetId: string): boolean => {
+  const shouldIncludeReverseEdge = (sourceId: string): boolean => {
     const sourceRefs = refsByNodeId.get(sourceId);
     if (!sourceRefs) {
       return false;
     }
-
-    if (sourceRefs.winnerNext === targetId || sourceRefs.loserNext === targetId) {
-      return true;
-    }
-
     const hasAnyForwardLink = Boolean(sourceRefs.winnerNext || sourceRefs.loserNext);
     return !hasAnyForwardLink;
   };
@@ -150,19 +145,19 @@ const collectEdges = (
     }
 
     if (refs.winnerNext && nodeById.has(refs.winnerNext)) {
-      addEdge(node.id, refs.winnerNext);
+      addEdge(node.id, refs.winnerNext, 'winnerNext');
     }
     if (refs.loserNext && nodeById.has(refs.loserNext)) {
-      addEdge(node.id, refs.loserNext);
+      addEdge(node.id, refs.loserNext, 'loserNext');
     }
 
-    // Previous links are treated as derived reverse pointers unless the source
-    // has no forward links at all (legacy/partial data fallback).
-    if (refs.previousLeft && nodeById.has(refs.previousLeft) && shouldIncludeReverseEdge(refs.previousLeft, node.id)) {
-      addEdge(refs.previousLeft, node.id);
+    // Previous links are treated as derived reverse pointers only when the
+    // source has no forward links (legacy/partial data fallback).
+    if (refs.previousLeft && nodeById.has(refs.previousLeft) && shouldIncludeReverseEdge(refs.previousLeft)) {
+      addEdge(refs.previousLeft, node.id, 'previousLeft');
     }
-    if (refs.previousRight && nodeById.has(refs.previousRight) && shouldIncludeReverseEdge(refs.previousRight, node.id)) {
-      addEdge(refs.previousRight, node.id);
+    if (refs.previousRight && nodeById.has(refs.previousRight) && shouldIncludeReverseEdge(refs.previousRight)) {
+      addEdge(refs.previousRight, node.id, 'previousRight');
     }
   }
 
@@ -215,18 +210,18 @@ export const validateAndNormalizeBracketGraph = (nodes: BracketNode[]): BracketV
 
   const errors: BracketValidationError[] = [];
   const edges = collectEdges(nodeById, errors);
-  const incomingByTarget = new Map<string, Set<string>>();
+  const incomingByTarget = new Map<string, string[]>();
 
   for (const nodeId of nodeById.keys()) {
-    incomingByTarget.set(nodeId, new Set<string>());
+    incomingByTarget.set(nodeId, []);
   }
 
   for (const edge of edges) {
-    incomingByTarget.get(edge.targetId)?.add(edge.sourceId);
+    incomingByTarget.get(edge.targetId)?.push(edge.sourceId);
   }
 
-  for (const [targetId, incomingSet] of incomingByTarget.entries()) {
-    if (incomingSet.size > 2) {
+  for (const [targetId, incomingSources] of incomingByTarget.entries()) {
+    if (incomingSources.length > 2) {
       errors.push({
         code: 'TARGET_OVER_CAPACITY',
         message: `Match ${targetId} cannot have more than two incoming matches.`,
@@ -245,14 +240,14 @@ export const validateAndNormalizeBracketGraph = (nodes: BracketNode[]): BracketV
   const normalizedById: BracketValidationResult['normalizedById'] = {};
   const incomingCountById: BracketValidationResult['incomingCountById'] = {};
 
-  for (const [nodeId, incomingSet] of incomingByTarget.entries()) {
-    const orderedIncoming = sortNodeIds(nodeById, Array.from(incomingSet));
+  for (const [nodeId, incomingSources] of incomingByTarget.entries()) {
+    const orderedIncoming = sortNodeIds(nodeById, incomingSources);
     normalizedById[nodeId] = {
       previousLeftId: orderedIncoming[0] ?? null,
       previousRightId: orderedIncoming[1] ?? null,
-      incomingCount: incomingSet.size,
+      incomingCount: incomingSources.length,
     };
-    incomingCountById[nodeId] = incomingSet.size;
+    incomingCountById[nodeId] = incomingSources.length;
   }
 
   return {
