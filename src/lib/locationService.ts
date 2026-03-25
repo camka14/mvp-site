@@ -8,6 +8,7 @@ export interface LocationInfo extends LocationCoordinates {
   state?: string;
   country?: string;
   zipCode?: string;
+  formattedAddress?: string;
 }
 
 class LocationService {
@@ -116,7 +117,8 @@ class LocationService {
       const result = data.results[0];
       const location_info: LocationInfo = {
         lat: result.geometry.location.lat,
-        lng: result.geometry.location.lng
+        lng: result.geometry.location.lng,
+        formattedAddress: typeof result.formatted_address === 'string' ? result.formatted_address : undefined,
       };
 
       // Extract city, state, zipCode from address components

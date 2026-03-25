@@ -1,4 +1,5 @@
 import type { UserData } from '@/types';
+import { normalizeOptionalName } from '@/lib/nameCase';
 
 interface UserAccount {
   $id: string;
@@ -8,12 +9,17 @@ interface UserAccount {
 
 const normalizeUserData = (user: UserData | null): UserData | null => {
   if (!user) return null;
-  if (user.$id) return user;
+  const normalizedUser = {
+    ...user,
+    firstName: normalizeOptionalName(user.firstName) ?? '',
+    lastName: normalizeOptionalName(user.lastName) ?? '',
+  };
+  if (normalizedUser.$id) return normalizedUser;
   const raw = user as UserData & { id?: string };
   if (raw.id) {
-    return { ...user, $id: raw.id };
+    return { ...normalizedUser, $id: raw.id };
   }
-  return user;
+  return normalizedUser;
 };
 
 type ExistingUserLookup = { userId: string; sensitiveUserId?: string };
@@ -129,9 +135,19 @@ export const authService = {
     userName: string,
     dateOfBirth: string,
   ): Promise<UserAccount> {
+    const normalizedFirstName = normalizeOptionalName(firstName) ?? firstName.trim();
+    const normalizedLastName = normalizeOptionalName(lastName) ?? lastName.trim();
     const data = await apiFetch<AuthPayload>('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password, name: `${firstName} ${lastName}`.trim(), firstName, lastName, userName, dateOfBirth }),
+      body: JSON.stringify({
+        email,
+        password,
+        name: `${normalizedFirstName} ${normalizedLastName}`.trim(),
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        userName,
+        dateOfBirth,
+      }),
     });
     if (!data.user) throw new Error('Authentication failed');
     const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };

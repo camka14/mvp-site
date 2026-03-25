@@ -157,6 +157,7 @@ type EventType = Event['eventType'];
 
 type DefaultLocation = {
     location?: string;
+    address?: string;
     coordinates?: [number, number];
 };
 
@@ -2043,6 +2044,7 @@ type EventFormState = {
     name: string;
     description: string;
     location: string;
+    address: string;
     coordinates: [number, number];
     start: string;
     end: string;
@@ -2618,6 +2620,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     name: event.name,
     description: event.description ?? '',
     location: event.location ?? '',
+    address: event.address ?? '',
     coordinates: Array.isArray(event.coordinates) ? event.coordinates as [number, number] : [0, 0],
     start: event.start,
     end: event.end ?? '',
@@ -2770,6 +2773,7 @@ const eventFormSchema = z
         name: z.string().trim().min(1, 'Event name is required'),
         description: z.string().default(''),
         location: z.string().trim(),
+        address: z.string().trim().default(''),
         coordinates: z.tuple([z.number(), z.number()]),
         start: z.string(),
         end: z
@@ -3362,6 +3366,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (defaults.name !== undefined) next.name = defaults.name ?? '';
         if (defaults.description !== undefined) next.description = defaults.description ?? '';
         if (defaults.location !== undefined) next.location = defaults.location ?? '';
+        if (defaults.address !== undefined) next.address = defaults.address ?? '';
         if (Array.isArray(defaults.coordinates) && defaults.coordinates.length === 2) {
             next.coordinates = defaults.coordinates as [number, number];
         }
@@ -3544,6 +3549,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const buildDefaultFormValues = useCallback((): EventFormValues => {
         const defaultLocationLabel = (defaultLocation?.location ?? '').trim();
+        const defaultLocationAddress = (defaultLocation?.address ?? '').trim();
         const defaultLocationCoordinates = defaultLocation?.coordinates;
 
         const base = (() => {
@@ -3558,6 +3564,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             if (!initial.location && defaultLocationLabel) {
                 initial.location = defaultLocationLabel;
+            }
+            if (!initial.address && defaultLocationAddress) {
+                initial.address = defaultLocationAddress;
             }
             if (!coordinatesAreSet(initial.coordinates) && defaultLocationCoordinates) {
                 initial.coordinates = defaultLocationCoordinates;
@@ -3805,8 +3814,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         activeEditingEvent,
         applyImmutableDefaults,
         createSlotForm,
-        defaultLocation?.coordinates,
-        defaultLocation?.location,
+      defaultLocation?.coordinates,
+      defaultLocation?.address,
+      defaultLocation?.location,
         hasImmutableFields,
         immutableDefaults,
         immutableFields,
@@ -7861,6 +7871,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             name: (source.name ?? '').trim(),
             description: source.description,
             location: source.location,
+            address: source.address?.trim() || undefined,
             start: source.start,
             end: normalizedEnd,
             eventType: source.eventType,
@@ -8866,10 +8877,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     lat: (eventData.coordinates[1] ?? defaultLocation?.coordinates?.[1] ?? 0),
                                                     lng: (eventData.coordinates[0] ?? defaultLocation?.coordinates?.[0] ?? 0),
                                                 }}
-                                                onChange={(location, lat, lng) => {
+                                                onChange={(location, lat, lng, address) => {
                                                     if (isLocationImmutable) return;
                                                     field.onChange(location);
                                                     setValue('coordinates', [lng, lat], { shouldDirty: true, shouldValidate: true });
+                                                    setValue('address', address ?? '', { shouldDirty: true, shouldValidate: true });
                                                 }}
                                                 isValid={!fieldState.error}
                                                 disabled={isLocationImmutable}

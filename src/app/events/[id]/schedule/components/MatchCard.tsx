@@ -21,6 +21,7 @@ interface MatchCardProps {
     team2Placeholder?: string;
     hasConflict?: boolean;
     officialUsersById?: Record<string, UserData>;
+    showEventOfficialNames?: boolean;
 }
 
 type MatchDivisionInput = Match['division'] | string | null | undefined;
@@ -66,6 +67,7 @@ function MatchCard({
     team2Placeholder,
     hasConflict = false,
     officialUsersById,
+    showEventOfficialNames = true,
 }: MatchCardProps) {
     const isCompactHorizontal = layout === 'horizontal' && hideTimeBadge;
 
@@ -217,6 +219,10 @@ function MatchCard({
         });
         return Array.from(labels);
     })();
+    const showEventOfficialDetails =
+        showEventOfficialNames && (assignmentSummary.length > 0 || Boolean(match.official));
+    const showTeamOfficialDetails = Boolean(match.teamOfficial);
+    const showAnyOfficialDetails = showEventOfficialDetails || showTeamOfficialDetails;
 
     const resolvedFieldLabel = (() => {
         const explicitLabel = fieldLabel?.trim();
@@ -407,11 +413,11 @@ function MatchCard({
                 <div className={`flex items-start justify-between gap-3 ${isCompactHorizontal ? 'mb-1' : 'mb-2'}`}>
                     <div className="flex flex-col gap-1 min-w-0">
                         <div className="text-sm text-gray-600">Match #{match.matchId}</div>
-                        {showOfficialInHeader && (match.official || match.teamOfficial || assignmentSummary.length > 0) && (
+                        {showOfficialInHeader && showAnyOfficialDetails && (
                             <div className="flex items-center gap-2 text-xs text-gray-700 flex-wrap">
-                                {assignmentSummary.length > 0 ? (
+                                {showEventOfficialDetails && assignmentSummary.length > 0 ? (
                                     <span className="truncate max-w-[220px]">Officials: {assignmentSummary.join(', ')}</span>
-                                ) : match.official && (
+                                ) : showEventOfficialDetails && match.official && (
                                     <span className="flex items-center gap-1">
                                         <span className="text-[10px] uppercase tracking-wide text-gray-500">Official Official:</span>
                                         <Image
@@ -439,12 +445,12 @@ function MatchCard({
                 {layout === 'horizontal' ? renderHorizontalLayout() : renderVerticalLayout()}
             </div>
 
-            {!showOfficialInHeader && (
+            {!showOfficialInHeader && showAnyOfficialDetails && (
                 <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2">
             <div className="bg-white rounded-full px-3 py-1 text-xs text-gray-700 border shadow-sm flex items-center gap-3">
-                {assignmentSummary.length > 0 ? (
+                {showEventOfficialDetails && assignmentSummary.length > 0 ? (
                     <span className="font-medium truncate max-w-[220px]">Officials: {assignmentSummary.join(', ')}</span>
-                ) : match.official && (
+                ) : showEventOfficialDetails && match.official && (
                     <div className="flex items-center gap-1">
                         <span className="text-[10px] uppercase tracking-wide text-gray-500">Official Official:</span>
                         <Image
@@ -472,7 +478,6 @@ function MatchCard({
                                 <span className="font-medium truncate max-w-[120px]">{match.teamOfficial.name || 'Ref Team'}</span>
                             </div>
                         )}
-                        {!match.official && !match.teamOfficial && assignmentSummary.length === 0 && <span>Official: TBD</span>}
                     </div>
                 </div>
             )}

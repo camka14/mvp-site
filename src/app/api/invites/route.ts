@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession } from '@/lib/permissions';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import {
@@ -45,6 +46,8 @@ const mapInviteRecord = (invite: Record<string, any>) => withLegacyFields({
   type: normalizeInviteType(invite.type) ?? invite.type,
   status: normalizeInviteStatus(invite.status) ?? 'PENDING',
   staffTypes: deriveStaffInviteTypes({ staffTypes: invite.staffTypes }, invite.type),
+  firstName: normalizeOptionalName(invite.firstName),
+  lastName: normalizeOptionalName(invite.lastName),
 });
 
 const unionStrings = (left: string[] | null | undefined, right: string[] | null | undefined): string[] => Array.from(
@@ -92,8 +95,8 @@ const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date
   }
 
   const ensured = await prisma.$transaction(async (tx) => ensureAuthUserAndUserDataByEmail(tx, email, now, {
-    firstName: invite.firstName,
-    lastName: invite.lastName,
+    firstName: normalizeOptionalName(invite.firstName),
+    lastName: normalizeOptionalName(invite.lastName),
   }));
   userId = ensured.userId;
   shouldSendEmail = !ensured.authUserExisted;
@@ -150,6 +153,8 @@ export async function POST(req: NextRequest) {
     }
 
     const invite = parsedInvite.data;
+    const normalizedFirstName = normalizeOptionalName(invite.firstName);
+    const normalizedLastName = normalizeOptionalName(invite.lastName);
     const inviteType = normalizeInviteType(invite.type);
     if (!inviteType) {
       return NextResponse.json({ error: 'Invalid invite type' }, { status: 400 });
@@ -259,8 +264,8 @@ export async function POST(req: NextRequest) {
               status: normalizedStatus,
               staffTypes: replaceStaffTypes ? staffTypes : unionStrings(existingInvite.staffTypes, staffTypes),
               createdBy: invite.createdBy ?? session.userId,
-              firstName: invite.firstName ?? existingInvite.firstName,
-              lastName: invite.lastName ?? existingInvite.lastName,
+              firstName: normalizedFirstName ?? existingInvite.firstName,
+              lastName: normalizedLastName ?? existingInvite.lastName,
               updatedAt: now,
             },
           })
@@ -275,8 +280,8 @@ export async function POST(req: NextRequest) {
               organizationId,
               userId: inviteUserId,
               createdBy: invite.createdBy ?? session.userId,
-              firstName: invite.firstName ?? null,
-              lastName: invite.lastName ?? null,
+              firstName: normalizedFirstName ?? null,
+              lastName: normalizedLastName ?? null,
               createdAt: now,
               updatedAt: now,
             },
@@ -317,8 +322,8 @@ export async function POST(req: NextRequest) {
               email: resolvedUser.email,
               status: normalizedStatus,
               createdBy: invite.createdBy ?? session.userId,
-              firstName: invite.firstName ?? existingInvite.firstName,
-              lastName: invite.lastName ?? existingInvite.lastName,
+              firstName: normalizedFirstName ?? existingInvite.firstName,
+              lastName: normalizedLastName ?? existingInvite.lastName,
               updatedAt: now,
             },
           })
@@ -331,8 +336,8 @@ export async function POST(req: NextRequest) {
               teamId,
               userId: inviteUserId,
               createdBy: invite.createdBy ?? session.userId,
-              firstName: invite.firstName ?? null,
-              lastName: invite.lastName ?? null,
+              firstName: normalizedFirstName ?? null,
+              lastName: normalizedLastName ?? null,
               createdAt: now,
               updatedAt: now,
             },
@@ -362,8 +367,8 @@ export async function POST(req: NextRequest) {
             email: resolvedUser.email,
             status: normalizedStatus,
             createdBy: invite.createdBy ?? session.userId,
-            firstName: invite.firstName ?? existingInvite.firstName,
-            lastName: invite.lastName ?? existingInvite.lastName,
+            firstName: normalizedFirstName ?? existingInvite.firstName,
+            lastName: normalizedLastName ?? existingInvite.lastName,
             updatedAt: now,
           },
         })
@@ -378,8 +383,8 @@ export async function POST(req: NextRequest) {
             teamId,
             userId: inviteUserId,
             createdBy: invite.createdBy ?? session.userId,
-            firstName: invite.firstName ?? null,
-            lastName: invite.lastName ?? null,
+            firstName: normalizedFirstName ?? null,
+            lastName: normalizedLastName ?? null,
             createdAt: now,
             updatedAt: now,
           },

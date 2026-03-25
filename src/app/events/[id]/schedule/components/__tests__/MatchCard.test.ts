@@ -100,4 +100,29 @@ describe('MatchCard conflict rendering', () => {
     expect(screen.getByText('Winner of match #63')).toBeInTheDocument();
     expect(screen.getByText('Loser of match #63')).toBeInTheDocument();
   });
+
+  it('hides event official names when showEventOfficialNames is false but still shows team officials', () => {
+    renderWithMantine(
+      createElement(MatchCard, {
+        showEventOfficialNames: false,
+        match: buildMatch({
+          officialIds: [
+            {
+              positionId: 'position_1',
+              slotIndex: 0,
+              holderType: 'OFFICIAL',
+              userId: 'official_user_1',
+            },
+          ],
+          teamOfficial: {
+            $id: 'team_official_1',
+            name: 'Ref Team',
+          } as Match['teamOfficial'],
+        }),
+      }),
+    );
+
+    expect(screen.queryByText(/^Officials:/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Ref Team')).toBeInTheDocument();
+  });
 });

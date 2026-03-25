@@ -385,6 +385,7 @@ interface TournamentBracketViewProps {
     canEditMatches?: boolean;
     showDateOnMatches?: boolean;
     conflictMatchIdsById?: Record<string, string[]>;
+    showEventOfficialNames?: boolean;
 }
 
 export default function TournamentBracketView({
@@ -398,6 +399,7 @@ export default function TournamentBracketView({
     canEditMatches = false,
     showDateOnMatches = false,
     conflictMatchIdsById = {},
+    showEventOfficialNames = true,
 }: TournamentBracketViewProps) {
     const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
     const [showScoreModal, setShowScoreModal] = useState(false);
@@ -1286,6 +1288,7 @@ export default function TournamentBracketView({
                                                 team2Placeholder={team2Placeholder}
                                                 hasConflict={hasConflict}
                                                 officialUsersById={officialLookupById}
+                                                showEventOfficialNames={showEventOfficialNames}
 	                                        />
 	                                    </div>
 	                                );
@@ -1356,6 +1359,7 @@ export default function TournamentBracketView({
                                                     team2Placeholder={team2Placeholder}
                                                     hasConflict={hasConflict}
                                                     officialUsersById={officialLookupById}
+                                                    showEventOfficialNames={showEventOfficialNames}
                                                 />
                                             );
                                         })}

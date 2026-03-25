@@ -133,10 +133,24 @@ const normalizeAssignments = (value: unknown): MatchOfficialAssignment[] => {
         return null;
       }
       const row = entry as Record<string, unknown>;
-      const positionId = typeof row.positionId === 'string' ? row.positionId.trim() : '';
-      const userId = typeof row.userId === 'string' ? row.userId.trim() : '';
-      const slotIndex = Number(row.slotIndex);
-      const holderType = row.holderType === 'PLAYER' ? 'PLAYER' : row.holderType === 'OFFICIAL' ? 'OFFICIAL' : null;
+      const positionId = normalizeOptionalId(row.positionId)
+        ?? normalizeOptionalId(typeof row.position === 'string' ? row.position : getEntityId(row.position))
+        ?? '';
+      const userId = normalizeOptionalId(row.userId)
+        ?? normalizeOptionalId(row.officialId)
+        ?? '';
+      const slotIndexRaw = row.slotIndex ?? row.slot ?? 0;
+      const slotIndex = Number(slotIndexRaw);
+      const holderTypeToken = typeof row.holderType === 'string' ? row.holderType.trim().toUpperCase() : '';
+      const isLegacyOfficialAssignment = Boolean(
+        normalizeOptionalId(row.officialId)
+        || normalizeOptionalId(row.eventOfficialId),
+      );
+      const holderType = holderTypeToken === 'PLAYER'
+        ? 'PLAYER'
+        : holderTypeToken === 'OFFICIAL' || isLegacyOfficialAssignment
+          ? 'OFFICIAL'
+          : null;
       if (!positionId || !userId || !holderType || !Number.isInteger(slotIndex) || slotIndex < 0) {
         return null;
       }
@@ -516,9 +530,39 @@ export default function MatchEditModal({
     }
     return undefined;
   }, [officials, userOfficialId, match]);
+  const normalizedEventOfficials = useMemo<EventOfficial[]>(() => (
+    (Array.isArray(eventOfficials) ? eventOfficials : [])
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') {
+          return null;
+        }
+        const row = entry as EventOfficial & { $id?: string };
+        const id = normalizeOptionalId(row.id) ?? normalizeOptionalId(row.$id);
+        const userId = normalizeOptionalId(row.userId);
+        if (!id || !userId) {
+          return null;
+        }
+        return {
+          ...row,
+          id,
+          userId,
+          positionIds: Array.isArray(row.positionIds)
+            ? row.positionIds.map((positionId) => String(positionId).trim()).filter(Boolean)
+            : [],
+          fieldIds: Array.isArray(row.fieldIds)
+            ? row.fieldIds.map((idToken) => String(idToken).trim()).filter(Boolean)
+            : [],
+        } satisfies EventOfficial;
+      })
+      .filter((entry): entry is EventOfficial => Boolean(entry))
+  ), [eventOfficials]);
   const eventOfficialById = useMemo(
-    () => new Map(eventOfficials.map((official) => [official.id, official] as const)),
-    [eventOfficials],
+    () => new Map(normalizedEventOfficials.map((official) => [official.id, official] as const)),
+    [normalizedEventOfficials],
+  );
+  const eventOfficialByUserId = useMemo(
+    () => new Map(normalizedEventOfficials.map((official) => [official.userId, official] as const)),
+    [normalizedEventOfficials],
   );
   const officialUserById = useMemo(() => {
     const map = new Map<string, UserData>();
@@ -571,9 +615,14 @@ export default function MatchEditModal({
     return map;
   }, [officialAssignments]);
 
-  const getAssignmentOptions = useCallback((position: EventOfficialPosition) => {
-    const options: Array<{ value: string; label: string }> = [];
-    eventOfficials.forEach((eventOfficial) => {
+  const getAssignmentOptions = useCallback((position: EventOfficialPosition, assignment?: MatchOfficialAssignment) => {
+    const optionsByValue = new Map<string, string>();
+    const addOption = (value: string, label: string) => {
+      if (!optionsByValue.has(value)) {
+        optionsByValue.set(value, label);
+      }
+    };
+    normalizedEventOfficials.forEach((eventOfficial) => {
       if (eventOfficial.isActive === false) {
         return;
       }
@@ -584,19 +633,52 @@ export default function MatchEditModal({
         return;
       }
       const user = officialUserById.get(eventOfficial.userId);
-      options.push({
-        value: encodeAssignmentValue('OFFICIAL', eventOfficial.id),
-        label: `Official: ${formatUserLabel(user ?? { userName: eventOfficial.userId })}`,
-      });
+      addOption(
+        encodeAssignmentValue('OFFICIAL', eventOfficial.id),
+        `Official: ${formatUserLabel(user ?? { userName: eventOfficial.userId })}`,
+      );
     });
     playerCandidates.forEach(({ user, teamName }, playerId) => {
-      options.push({
-        value: encodeAssignmentValue('PLAYER', playerId),
-        label: `Player: ${formatUserLabel(user)} (${teamName})`,
-      });
+      addOption(
+        encodeAssignmentValue('PLAYER', playerId),
+        `Player: ${formatUserLabel(user)} (${teamName})`,
+      );
     });
-    return options.sort((left, right) => left.label.localeCompare(right.label));
-  }, [eventOfficials, fieldId, officialUserById, playerCandidates]);
+    if (assignment?.holderType === 'OFFICIAL') {
+      const assignmentUserId = normalizeOptionalId(assignment.userId);
+      const assignedEventOfficial = (
+        normalizeOptionalId(assignment.eventOfficialId)
+          ? eventOfficialById.get(normalizeOptionalId(assignment.eventOfficialId) as string)
+          : undefined
+      ) ?? (assignmentUserId ? eventOfficialByUserId.get(assignmentUserId) : undefined);
+      if (assignedEventOfficial) {
+        const user = officialUserById.get(assignedEventOfficial.userId);
+        addOption(
+          encodeAssignmentValue('OFFICIAL', assignedEventOfficial.id),
+          `Official: ${formatUserLabel(user ?? { userName: assignedEventOfficial.userId })}`,
+        );
+      } else if (assignmentUserId) {
+        const fallbackUser = officialUserById.get(assignmentUserId);
+        addOption(
+          encodeAssignmentValue('OFFICIAL', assignmentUserId),
+          `Official: ${formatUserLabel(fallbackUser ?? { userName: assignmentUserId })}`,
+        );
+      }
+    }
+    if (assignment?.holderType === 'PLAYER') {
+      const assignmentUserId = normalizeOptionalId(assignment.userId);
+      if (assignmentUserId && !optionsByValue.has(encodeAssignmentValue('PLAYER', assignmentUserId))) {
+        const player = playerCandidates.get(assignmentUserId);
+        const label = player
+          ? `Player: ${formatUserLabel(player.user)} (${player.teamName})`
+          : `Player: ${assignmentUserId}`;
+        addOption(encodeAssignmentValue('PLAYER', assignmentUserId), label);
+      }
+    }
+    return Array.from(optionsByValue.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [eventOfficialById, eventOfficialByUserId, fieldId, normalizedEventOfficials, officialUserById, playerCandidates]);
 
   const team1DisplayName = selectedTeam1 ? resolveTeamName(selectedTeam1, teams) : 'TBD';
   const team2DisplayName = selectedTeam2 ? resolveTeamName(selectedTeam2, teams) : 'TBD';
@@ -642,8 +724,18 @@ export default function MatchEditModal({
         return next;
       }
       if (decoded.holderType === 'OFFICIAL') {
-        const eventOfficial = eventOfficialById.get(decoded.id);
+        const eventOfficial = eventOfficialById.get(decoded.id) ?? eventOfficialByUserId.get(decoded.id);
         if (!eventOfficial) {
+          const fallbackUserId = normalizeOptionalId(decoded.id);
+          if (!fallbackUserId) {
+            return next;
+          }
+          next.push({
+            positionId,
+            slotIndex,
+            holderType: 'OFFICIAL',
+            userId: fallbackUserId,
+          });
           return next;
         }
         next.push({
@@ -935,21 +1027,25 @@ export default function MatchEditModal({
             <Divider label="Official Assignments" />
             {assignmentSlots.map(({ position, slotIndex }) => {
               const assignment = assignmentBySlotKey.get(`${position.id}:${slotIndex}`);
-              const assignmentEventOfficialId = assignment?.holderType === 'OFFICIAL'
-                ? (assignment.eventOfficialId ?? eventOfficials.find((official) => official.userId === assignment.userId)?.id ?? '')
-                : '';
               const currentValue = assignment && (
                 assignment.holderType === 'PLAYER'
-                || assignmentEventOfficialId.length > 0
+                || assignment.holderType === 'OFFICIAL'
               )
                 ? encodeAssignmentValue(
                     assignment.holderType,
                     assignment.holderType === 'OFFICIAL'
-                      ? assignmentEventOfficialId
+                      ? (
+                        (
+                          normalizeOptionalId(assignment.eventOfficialId)
+                          && eventOfficialById.has(normalizeOptionalId(assignment.eventOfficialId) as string)
+                        )
+                          ? (normalizeOptionalId(assignment.eventOfficialId) as string)
+                          : (eventOfficialByUserId.get(assignment.userId)?.id ?? assignment.userId)
+                      )
                       : assignment.userId,
                   )
                 : null;
-              const options = getAssignmentOptions(position);
+              const options = getAssignmentOptions(position, assignment);
               return (
                 <Select
                   key={`${position.id}:${slotIndex}`}
@@ -1095,4 +1191,3 @@ export default function MatchEditModal({
     </Modal>
   );
 }
-

@@ -90,6 +90,7 @@ export type EventsMinAggregateOutputType = {
   loserSetCount: number | null
   doubleElimination: boolean | null
   location: string | null
+  address: string | null
   rating: number | null
   teamSizeLimit: number | null
   maxParticipants: number | null
@@ -143,6 +144,7 @@ export type EventsMaxAggregateOutputType = {
   loserSetCount: number | null
   doubleElimination: boolean | null
   location: string | null
+  address: string | null
   rating: number | null
   teamSizeLimit: number | null
   maxParticipants: number | null
@@ -197,6 +199,7 @@ export type EventsCountAggregateOutputType = {
   loserSetCount: number
   doubleElimination: number
   location: number
+  address: number
   rating: number
   teamSizeLimit: number
   maxParticipants: number
@@ -320,6 +323,7 @@ export type EventsMinAggregateInputType = {
   loserSetCount?: true
   doubleElimination?: true
   location?: true
+  address?: true
   rating?: true
   teamSizeLimit?: true
   maxParticipants?: true
@@ -373,6 +377,7 @@ export type EventsMaxAggregateInputType = {
   loserSetCount?: true
   doubleElimination?: true
   location?: true
+  address?: true
   rating?: true
   teamSizeLimit?: true
   maxParticipants?: true
@@ -427,6 +432,7 @@ export type EventsCountAggregateInputType = {
   loserSetCount?: true
   doubleElimination?: true
   location?: true
+  address?: true
   rating?: true
   teamSizeLimit?: true
   maxParticipants?: true
@@ -584,6 +590,7 @@ export type EventsGroupByOutputType = {
   loserSetCount: number | null
   doubleElimination: boolean | null
   location: string
+  address: string | null
   rating: number | null
   teamSizeLimit: number
   maxParticipants: number | null
@@ -677,6 +684,7 @@ export type EventsWhereInput = {
   loserSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
   doubleElimination?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   location?: Prisma.StringFilter<"Events"> | string
+  address?: Prisma.StringNullableFilter<"Events"> | string | null
   rating?: Prisma.FloatNullableFilter<"Events"> | number | null
   teamSizeLimit?: Prisma.IntFilter<"Events"> | number
   maxParticipants?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -747,6 +755,7 @@ export type EventsOrderByWithRelationInput = {
   loserSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
   doubleElimination?: Prisma.SortOrderInput | Prisma.SortOrder
   location?: Prisma.SortOrder
+  address?: Prisma.SortOrderInput | Prisma.SortOrder
   rating?: Prisma.SortOrderInput | Prisma.SortOrder
   teamSizeLimit?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -820,6 +829,7 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   loserSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
   doubleElimination?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   location?: Prisma.StringFilter<"Events"> | string
+  address?: Prisma.StringNullableFilter<"Events"> | string | null
   rating?: Prisma.FloatNullableFilter<"Events"> | number | null
   teamSizeLimit?: Prisma.IntFilter<"Events"> | number
   maxParticipants?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -890,6 +900,7 @@ export type EventsOrderByWithAggregationInput = {
   loserSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
   doubleElimination?: Prisma.SortOrderInput | Prisma.SortOrder
   location?: Prisma.SortOrder
+  address?: Prisma.SortOrderInput | Prisma.SortOrder
   rating?: Prisma.SortOrderInput | Prisma.SortOrder
   teamSizeLimit?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -968,6 +979,7 @@ export type EventsScalarWhereWithAggregatesInput = {
   loserSetCount?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
   doubleElimination?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   location?: Prisma.StringWithAggregatesFilter<"Events"> | string
+  address?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   rating?: Prisma.FloatNullableWithAggregatesFilter<"Events"> | number | null
   teamSizeLimit?: Prisma.IntWithAggregatesFilter<"Events"> | number
   maxParticipants?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
@@ -1038,6 +1050,7 @@ export type EventsCreateInput = {
   loserSetCount?: number | null
   doubleElimination?: boolean | null
   location: string
+  address?: string | null
   rating?: number | null
   teamSizeLimit: number
   maxParticipants?: number | null
@@ -1108,6 +1121,7 @@ export type EventsUncheckedCreateInput = {
   loserSetCount?: number | null
   doubleElimination?: boolean | null
   location: string
+  address?: string | null
   rating?: number | null
   teamSizeLimit: number
   maxParticipants?: number | null
@@ -1178,6 +1192,7 @@ export type EventsUpdateInput = {
   loserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   doubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   location?: Prisma.StringFieldUpdateOperationsInput | string
+  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   rating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   teamSizeLimit?: Prisma.IntFieldUpdateOperationsInput | number
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1248,6 +1263,7 @@ export type EventsUncheckedUpdateInput = {
   loserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   doubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   location?: Prisma.StringFieldUpdateOperationsInput | string
+  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   rating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   teamSizeLimit?: Prisma.IntFieldUpdateOperationsInput | number
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1318,6 +1334,7 @@ export type EventsCreateManyInput = {
   loserSetCount?: number | null
   doubleElimination?: boolean | null
   location: string
+  address?: string | null
   rating?: number | null
   teamSizeLimit: number
   maxParticipants?: number | null
@@ -1388,6 +1405,7 @@ export type EventsUpdateManyMutationInput = {
   loserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   doubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   location?: Prisma.StringFieldUpdateOperationsInput | string
+  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   rating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   teamSizeLimit?: Prisma.IntFieldUpdateOperationsInput | number
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1458,6 +1476,7 @@ export type EventsUncheckedUpdateManyInput = {
   loserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   doubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   location?: Prisma.StringFieldUpdateOperationsInput | string
+  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   rating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   teamSizeLimit?: Prisma.IntFieldUpdateOperationsInput | number
   maxParticipants?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1528,6 +1547,7 @@ export type EventsCountOrderByAggregateInput = {
   loserSetCount?: Prisma.SortOrder
   doubleElimination?: Prisma.SortOrder
   location?: Prisma.SortOrder
+  address?: Prisma.SortOrder
   rating?: Prisma.SortOrder
   teamSizeLimit?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
@@ -1623,6 +1643,7 @@ export type EventsMaxOrderByAggregateInput = {
   loserSetCount?: Prisma.SortOrder
   doubleElimination?: Prisma.SortOrder
   location?: Prisma.SortOrder
+  address?: Prisma.SortOrder
   rating?: Prisma.SortOrder
   teamSizeLimit?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
@@ -1676,6 +1697,7 @@ export type EventsMinOrderByAggregateInput = {
   loserSetCount?: Prisma.SortOrder
   doubleElimination?: Prisma.SortOrder
   location?: Prisma.SortOrder
+  address?: Prisma.SortOrder
   rating?: Prisma.SortOrder
   teamSizeLimit?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
@@ -1905,6 +1927,7 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   loserSetCount?: boolean
   doubleElimination?: boolean
   location?: boolean
+  address?: boolean
   rating?: boolean
   teamSizeLimit?: boolean
   maxParticipants?: boolean
@@ -1975,6 +1998,7 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   loserSetCount?: boolean
   doubleElimination?: boolean
   location?: boolean
+  address?: boolean
   rating?: boolean
   teamSizeLimit?: boolean
   maxParticipants?: boolean
@@ -2045,6 +2069,7 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   loserSetCount?: boolean
   doubleElimination?: boolean
   location?: boolean
+  address?: boolean
   rating?: boolean
   teamSizeLimit?: boolean
   maxParticipants?: boolean
@@ -2115,6 +2140,7 @@ export type EventsSelectScalar = {
   loserSetCount?: boolean
   doubleElimination?: boolean
   location?: boolean
+  address?: boolean
   rating?: boolean
   teamSizeLimit?: boolean
   maxParticipants?: boolean
@@ -2172,7 +2198,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialIds" | "officialPositions" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialIds" | "officialPositions" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2190,6 +2216,7 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     loserSetCount: number | null
     doubleElimination: boolean | null
     location: string
+    address: string | null
     rating: number | null
     teamSizeLimit: number
     maxParticipants: number | null
@@ -2680,6 +2707,7 @@ export interface EventsFieldRefs {
   readonly loserSetCount: Prisma.FieldRef<"Events", 'Int'>
   readonly doubleElimination: Prisma.FieldRef<"Events", 'Boolean'>
   readonly location: Prisma.FieldRef<"Events", 'String'>
+  readonly address: Prisma.FieldRef<"Events", 'String'>
   readonly rating: Prisma.FieldRef<"Events", 'Float'>
   readonly teamSizeLimit: Prisma.FieldRef<"Events", 'Int'>
   readonly maxParticipants: Prisma.FieldRef<"Events", 'Int'>

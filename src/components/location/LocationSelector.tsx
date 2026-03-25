@@ -7,7 +7,7 @@ import { locationService } from '@/lib/locationService';
 interface LocationSelectorProps {
     value: string;
     coordinates: { lat: number; lng: number };
-    onChange: (location: string, lat: number, lng: number) => void;
+    onChange: (location: string, lat: number, lng: number, address?: string) => void;
     isValid: boolean;
     disabled?: boolean;
     label?: string;
@@ -31,6 +31,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
     const [mapSearchQuery, setMapSearchQuery] = useState('');
     const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+    const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
     const geolocationRequestedRef = useRef(false);
     const hasCoordinates = coordinates.lat !== 0 || coordinates.lng !== 0;
     const mapCenter = hasCoordinates ? coordinates : center;
@@ -62,9 +63,50 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         );
     }, [isLoaded, showMap, coordinates.lat, coordinates.lng]);
 
+    const autocompleteOptions = useRef<google.maps.places.AutocompleteOptions>({
+        fields: ['name', 'formatted_address', 'geometry', 'place_id'],
+    });
+
+    const getPlaceDetails = useCallback(async (placeId: string): Promise<google.maps.places.PlaceResult | null> => {
+        if (!google.maps?.places) return null;
+        return new Promise((resolve) => {
+            const service = new google.maps.places.PlacesService(mapInstance ?? document.createElement('div'));
+            service.getDetails(
+                {
+                    placeId,
+                    fields: ['name', 'formatted_address', 'geometry', 'place_id'],
+                },
+                (place, status) => {
+                    if (status === google.maps.places.PlacesServiceStatus.OK && place) {
+                        resolve(place);
+                        return;
+                    }
+                    resolve(null);
+                },
+            );
+        });
+    }, [mapInstance]);
+
     const onMapClick = useCallback(async (e: google.maps.MapMouseEvent) => {
         if (disabled) return;
         if (e.latLng) {
+            const iconEvent = e as google.maps.IconMouseEvent;
+            if (iconEvent.placeId) {
+                iconEvent.stop();
+                const place = await getPlaceDetails(iconEvent.placeId);
+                const placeLocation = place?.geometry?.location;
+                if (placeLocation) {
+                    const lat = placeLocation.lat();
+                    const lng = placeLocation.lng();
+                    const locationName = place.name?.trim() || place.formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                    const formattedAddress = place.formatted_address || undefined;
+                    setCenter({ lat, lng });
+                    onChange(locationName, lat, lng, formattedAddress);
+                    setMapSearchQuery(locationName);
+                    return;
+                }
+            }
+
             const lat = e.latLng.lat();
             const lng = e.latLng.lng();
             setCenter({ lat, lng });
@@ -74,14 +116,16 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                 const geocoder = new google.maps.Geocoder();
                 const result = await geocoder.geocode({ location: { lat, lng } });
                 if (result.results[0]) {
-                    onChange(result.results[0].formatted_address, lat, lng);
+                    const formattedAddress = result.results[0].formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                    onChange(formattedAddress, lat, lng, formattedAddress);
                 }
             } catch (error) {
                 console.error('Geocoding failed:', error);
-                onChange(`${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng);
+                const fallback = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                onChange(fallback, lat, lng);
             }
         }
-    }, [disabled, onChange]);
+    }, [disabled, getPlaceDetails, onChange]);
 
     const searchLocation = async (address: string) => {
         if (disabled) return;
@@ -90,7 +134,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         try {
             const result = await locationService.geocodeLocation(address);
             setCenter({ lat: result.lat, lng: result.lng });
-            onChange(address, result.lat, result.lng);
+            onChange(address, result.lat, result.lng, result.formattedAddress);
             setMapSearchQuery(address);
         } catch (error) {
             console.error('Location search failed:', error);
@@ -105,11 +149,12 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
 
         const lat = location.lat();
         const lng = location.lng();
-        const address = place.formatted_address || place.name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        const locationName = place.name?.trim() || place.formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        const formattedAddress = place.formatted_address || undefined;
 
         setCenter({ lat, lng });
-        onChange(address, lat, lng);
-        setMapSearchQuery(address);
+        onChange(locationName, lat, lng, formattedAddress);
+        setMapSearchQuery(locationName);
     }, [autocomplete, onChange]);
 
     return (
@@ -170,6 +215,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                         <Autocomplete
                             onLoad={setAutocomplete}
                             onPlaceChanged={handlePlaceChanged}
+                            options={autocompleteOptions.current}
                         >
                             <TextInput
                                 value={mapSearchQuery}
@@ -193,6 +239,8 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                         mapContainerStyle={{ width: '100%', height: '100%' }}
                         center={mapCenter}
                         zoom={15}
+                        onLoad={setMapInstance}
+                        onUnmount={() => setMapInstance(null)}
                         onClick={onMapClick}
                         options={{
                             clickableIcons: true,

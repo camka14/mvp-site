@@ -1,4 +1,5 @@
 import { Invite, StaffMemberType, UserData, Subscription } from '@/types';
+import { normalizeOptionalName } from '@/lib/nameCase';
 
 const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(path, {
@@ -12,6 +13,20 @@ const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   }
   return res.json() as Promise<T>;
 };
+
+const normalizeUserDataNames = (user: UserData): UserData => ({
+  ...user,
+  firstName: normalizeOptionalName(user.firstName) ?? '',
+  lastName: normalizeOptionalName(user.lastName) ?? '',
+});
+
+const normalizeUserDataList = (users: UserData[]): UserData[] => users.map(normalizeUserDataNames);
+
+const normalizeInviteNames = (invite: Invite): Invite => ({
+  ...invite,
+  firstName: normalizeOptionalName(invite.firstName) ?? undefined,
+  lastName: normalizeOptionalName(invite.lastName) ?? undefined,
+});
 
 interface UpdateProfileData {
   firstName?: string;
@@ -49,7 +64,7 @@ class UserService {
       method: 'POST',
       body: JSON.stringify({ id, data }),
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async getUserById(id: string, context: UserVisibilityContext = {}): Promise<UserData | undefined> {
@@ -59,7 +74,7 @@ class UserService {
       if (context.eventId) params.set('eventId', context.eventId);
       const query = params.toString();
       const response = await apiFetch<{ user: UserData }>(`/api/users/${id}${query ? `?${query}` : ''}`);
-      return response.user;
+      return normalizeUserDataNames(response.user);
     } catch {
       return undefined;
     }
@@ -82,7 +97,8 @@ class UserService {
       );
 
       const users = responses.flatMap((response) => response.users ?? []);
-      const byId = new Map(users.map((user) => [user.$id, user] as const));
+      const normalizedUsers = normalizeUserDataList(users);
+      const byId = new Map(normalizedUsers.map((user) => [user.$id, user] as const));
       return uniqueIds
         .map((id) => byId.get(id))
         .filter((user): user is UserData => Boolean(user));
@@ -97,7 +113,7 @@ class UserService {
     const params = new URLSearchParams();
     params.set('query', query.trim());
     const response = await apiFetch<{ users: UserData[] }>(`/api/users?${params.toString()}`);
-    return response.users ?? [];
+    return normalizeUserDataList(response.users ?? []);
   }
 
   async ensureUserByEmail(email: string): Promise<UserData> {
@@ -110,7 +126,7 @@ class UserService {
       method: 'POST',
       body: JSON.stringify({ email: normalized }),
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async lookupEmailMembership(emails: string[], userIds: string[]): Promise<Array<{ email: string; userId: string }>> {
@@ -148,7 +164,7 @@ class UserService {
       method: 'PATCH',
       body: JSON.stringify({ data: updates }),
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async updateProfile(userId: string, data: UpdateProfileData): Promise<UserData> {
@@ -180,12 +196,12 @@ class UserService {
     }>('/api/users/social');
 
     return {
-      user: response.user,
-      friends: response.friends ?? [],
-      following: response.following ?? [],
-      followers: response.followers ?? [],
-      incomingFriendRequests: response.incomingFriendRequests ?? [],
-      outgoingFriendRequests: response.outgoingFriendRequests ?? [],
+      user: normalizeUserDataNames(response.user),
+      friends: normalizeUserDataList(response.friends ?? []),
+      following: normalizeUserDataList(response.following ?? []),
+      followers: normalizeUserDataList(response.followers ?? []),
+      incomingFriendRequests: normalizeUserDataList(response.incomingFriendRequests ?? []),
+      outgoingFriendRequests: normalizeUserDataList(response.outgoingFriendRequests ?? []),
     };
   }
 
@@ -194,7 +210,7 @@ class UserService {
       method: 'POST',
       body: JSON.stringify({ targetUserId }),
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async acceptFriendRequest(requesterUserId: string): Promise<UserData> {
@@ -202,21 +218,21 @@ class UserService {
       method: 'POST',
       body: JSON.stringify({}),
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async declineFriendRequest(requesterUserId: string): Promise<UserData> {
     const response = await apiFetch<{ user: UserData }>(`/api/users/social/friend-requests/${encodeURIComponent(requesterUserId)}`, {
       method: 'DELETE',
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async removeFriend(friendUserId: string): Promise<UserData> {
     const response = await apiFetch<{ user: UserData }>(`/api/users/social/friends/${encodeURIComponent(friendUserId)}`, {
       method: 'DELETE',
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async followUser(targetUserId: string): Promise<UserData> {
@@ -224,14 +240,14 @@ class UserService {
       method: 'POST',
       body: JSON.stringify({ targetUserId }),
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async unfollowUser(targetUserId: string): Promise<UserData> {
     const response = await apiFetch<{ user: UserData }>(`/api/users/social/following/${encodeURIComponent(targetUserId)}`, {
       method: 'DELETE',
     });
-    return response.user;
+    return normalizeUserDataNames(response.user);
   }
 
   async listUserSubscriptions(_userId: string): Promise<Subscription[]> {
@@ -251,10 +267,10 @@ class UserService {
         const response = await apiFetch<{ invites?: Invite[] }>(`/api/invites?${typeParams.toString()}`);
         return response.invites ?? [];
       }));
-      return inviteLists.flat();
+      return inviteLists.flat().map(normalizeInviteNames);
     }
     const response = await apiFetch<{ invites?: Invite[] }>(`/api/invites?${params.toString()}`);
-    return response.invites ?? [];
+    return (response.invites ?? []).map(normalizeInviteNames);
   }
 
   async inviteUsersByEmail(
@@ -283,7 +299,7 @@ class UserService {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    const created = response.invites ?? [];
+    const created = (response.invites ?? []).map(normalizeInviteNames);
     return { sent: created, not_sent: [], failed: [] };
   }
 

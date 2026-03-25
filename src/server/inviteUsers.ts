@@ -1,15 +1,9 @@
 import crypto from 'crypto';
 import { Prisma } from '@/generated/prisma/client';
 import { INVITED_PLACEHOLDER_PASSWORD_HASH } from '@/lib/authUserPlaceholders';
+import { normalizeOptionalName } from '@/lib/nameCase';
 
 const normalizeEmail = (value: string): string => value.trim().toLowerCase();
-const normalizeOptionalName = (value?: string | null): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length ? trimmed : null;
-};
 const defaultInvitedUserName = (userId: string): string => {
   // UserData is public; never derive usernames from email (even partially).
   const compact = userId.replace(/-/g, '');

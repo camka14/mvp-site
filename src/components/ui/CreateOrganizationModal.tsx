@@ -60,6 +60,7 @@ export default function CreateOrganizationModal({
     website: '',
     sports: [] as string[],
     location: '',
+    address: '',
     logoId: '',
   });
 
@@ -123,6 +124,7 @@ export default function CreateOrganizationModal({
             .filter((sport) => sport.length > 0)
           : [],
         location: editingLabel,
+        address: organization.address ?? '',
         logoId: organization.logoId ?? '',
       });
       setCoordinates(editingCoords);
@@ -154,6 +156,7 @@ export default function CreateOrganizationModal({
       website: '',
       sports: [],
       location: label,
+      address: '',
       logoId: '',
     });
     setCoordinates(baseCoords);
@@ -194,6 +197,7 @@ export default function CreateOrganizationModal({
       const trimmedDescription = form.description.trim();
       const trimmedWebsite = form.website.trim();
       const trimmedLocation = form.location.trim();
+      const trimmedAddress = form.address.trim();
       const selectedSports = Array.from(
         new Set(
           form.sports
@@ -213,6 +217,7 @@ export default function CreateOrganizationModal({
           website: trimmedWebsite || undefined,
           sports: selectedSports,
           location: trimmedLocation || undefined,
+          address: trimmedAddress || undefined,
           logoId: form.logoId || undefined,
         };
 
@@ -230,6 +235,7 @@ export default function CreateOrganizationModal({
           website: trimmedWebsite || undefined,
           sports: selectedSports,
           location: trimmedLocation || undefined,
+          address: trimmedAddress || undefined,
           coordinates: coordinatesPayload,
           logoId: form.logoId || undefined,
           ownerId: currentUser.$id,
@@ -243,6 +249,7 @@ export default function CreateOrganizationModal({
           website: '',
           sports: [],
           location: '',
+          address: '',
           logoId: '',
         });
         setLogoUrl('');
@@ -319,8 +326,8 @@ export default function CreateOrganizationModal({
             lat: coordinates?.lat ?? DEFAULT_COORDINATES.lat,
             lng: coordinates?.lng ?? DEFAULT_COORDINATES.lng,
           }}
-          onChange={(location, lat, lng) => {
-            setForm((prev) => ({ ...prev, location }));
+          onChange={(location, lat, lng, address) => {
+            setForm((prev) => ({ ...prev, location, address: address ?? '' }));
             setCoordinates({ lat, lng });
           }}
           isValid={Boolean(form.location.trim()) && coordinatesPresent}

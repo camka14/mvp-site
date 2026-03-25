@@ -1,5 +1,6 @@
 import { formatDisplayDate, formatDisplayTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
+import { formatNameParts } from '@/lib/nameCase';
 
 // User types
 export interface UserAccount {
@@ -450,6 +451,7 @@ export interface Event {
   start: string;
   end: string | null;
   location: string;
+  address?: string;
   coordinates: [number, number];
   price: number;
   minAge?: number;
@@ -566,6 +568,7 @@ export interface Organization {
   sports?: string[];
   logoId?: string;
   location?: string;
+  address?: string;
   coordinates?: [number, number];
   ownerId?: string;
   hostIds?: string[];
@@ -1254,7 +1257,7 @@ export function getUserFullName(user: UserData): string {
     return explicitDisplayName;
   }
 
-  const fullName = `${user.firstName} ${user.lastName}`.trim();
+  const fullName = formatNameParts(user.firstName, user.lastName);
   if (fullName) {
     return fullName;
   }

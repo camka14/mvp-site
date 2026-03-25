@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession } from '@/lib/permissions';
 import { calculateAgeOnDate } from '@/lib/age';
 
@@ -40,10 +41,12 @@ export async function GET(req: NextRequest) {
     const email = emailByUserId.get(link.childId) ?? null;
     const now = new Date();
     const age = child?.dateOfBirth ? calculateAgeOnDate(child.dateOfBirth, now) : undefined;
+    const firstName = normalizeOptionalName(child?.firstName) ?? '';
+    const lastName = normalizeOptionalName(child?.lastName) ?? '';
     return {
       userId: link.childId,
-      firstName: child?.firstName ?? '',
-      lastName: child?.lastName ?? '',
+      firstName,
+      lastName,
       userName: child?.userName?.trim() || null,
       dateOfBirth: child?.dateOfBirth ? child.dateOfBirth.toISOString() : null,
       age,
@@ -70,13 +73,18 @@ export async function POST(req: NextRequest) {
   if (Number.isNaN(dob.getTime())) {
     return NextResponse.json({ error: 'Invalid dateOfBirth' }, { status: 400 });
   }
+  const firstName = normalizeOptionalName(parsed.data.firstName);
+  const lastName = normalizeOptionalName(parsed.data.lastName);
+  if (!firstName || !lastName) {
+    return NextResponse.json({ error: 'First name and last name are required' }, { status: 400 });
+  }
 
   await prisma.userData.create({
     data: {
       id: childId,
-      firstName: parsed.data.firstName,
-      lastName: parsed.data.lastName,
-      userName: `${parsed.data.firstName}.${parsed.data.lastName}.${childId.slice(0, 6)}`.toLowerCase(),
+      firstName,
+      lastName,
+      userName: `${firstName}.${lastName}.${childId.slice(0, 6)}`.toLowerCase(),
       dateOfBirth: dob,
       teamIds: [],
       friendIds: [],

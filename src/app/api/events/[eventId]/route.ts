@@ -34,6 +34,8 @@ import {
 } from '@/server/officials/config';
 
 export const dynamic = 'force-dynamic';
+const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
+const warnedMissingEventArguments = new Set<string>();
 
 const EVENT_UPDATE_FIELDS = new Set([
   'name',
@@ -45,6 +47,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'loserSetCount',
   'doubleElimination',
   'location',
+  'address',
   'rating',
   'teamSizeLimit',
   'maxParticipants',
@@ -115,6 +118,50 @@ const updateSchema = z.object({
   event: z.record(z.string(), z.any()).optional(),
   reschedule: z.boolean().optional(),
 }).passthrough();
+
+const extractUnknownPrismaArgument = (error: unknown): string | null => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
+  return match?.[1] ?? null;
+};
+
+const updateEventWithUnknownArgFallback = async (
+  tx: any,
+  eventId: string,
+  updateData: Record<string, unknown>,
+): Promise<{ event: any; removedArguments: Set<string> }> => {
+  const removedArguments = new Set<string>();
+
+  while (true) {
+    const payload: Record<string, unknown> = { ...updateData };
+    for (const argumentName of removedArguments) {
+      delete payload[argumentName];
+    }
+
+    try {
+      const event = await tx.events.update({
+        where: { id: eventId },
+        data: payload,
+      });
+      return { event, removedArguments };
+    } catch (error) {
+      const unknownArgument = extractUnknownPrismaArgument(error);
+      const hasArgument = unknownArgument
+        ? Object.prototype.hasOwnProperty.call(payload, unknownArgument)
+        : false;
+      if (!unknownArgument || !hasArgument || removedArguments.has(unknownArgument)) {
+        throw error;
+      }
+      removedArguments.add(unknownArgument);
+      if (!warnedMissingEventArguments.has(unknownArgument)) {
+        warnedMissingEventArguments.add(unknownArgument);
+        console.warn(
+          `[events] Prisma client is missing Events.${unknownArgument}; retrying without it. Regenerate Prisma client to restore this field.`,
+        );
+      }
+    }
+  }
+};
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
@@ -1926,13 +1973,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         }
       }
 
-      const updatedEvent = await tx.events.update({
-        where: { id: eventId },
-        data: {
+      const { event: updatedEvent, removedArguments } = await updateEventWithUnknownArgFallback(
+        tx,
+        eventId,
+        {
           ...data,
           updatedAt: new Date(),
         },
-      });
+      );
+      const shouldFallbackAddressWrite = removedArguments.has('address')
+        && Object.prototype.hasOwnProperty.call(data, 'address');
+      const fallbackAddressValue = shouldFallbackAddressWrite
+        ? (data.address == null ? null : String(data.address))
+        : null;
+      if (shouldFallbackAddressWrite) {
+        if (typeof (tx as any).$executeRaw === 'function') {
+          await (tx as any).$executeRaw`
+            UPDATE "Events"
+            SET "address" = ${fallbackAddressValue}, "updatedAt" = ${new Date()}
+            WHERE "id" = ${eventId}
+          `;
+        } else {
+          console.warn(
+            '[events] Unable to persist fallback address because transaction client has no $executeRaw.',
+          );
+        }
+      }
       if (
         typeof (tx as any).eventOfficials?.deleteMany === 'function'
         && (
@@ -2045,6 +2111,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const fresh = await tx.events.findUnique({ where: { id: eventId } });
       if (!fresh) {
         throw new Error('Failed to update event');
+      }
+      if (shouldFallbackAddressWrite) {
+        (fresh as Record<string, unknown>).address = fallbackAddressValue;
       }
       return fresh;
     });
@@ -2329,4 +2398,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
 
   return NextResponse.json({ deleted: true }, { status: 200 });
 }
+
 

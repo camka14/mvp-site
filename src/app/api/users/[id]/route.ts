@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession, assertUserAccess, getOptionalSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { hasOrganizationStaffAccess } from '@/server/accessControl';
@@ -14,6 +15,15 @@ import { applyUserPrivacy, createVisibilityContext, publicUserSelect } from '@/s
 const updateSchema = z.object({
   data: z.record(z.string(), z.any()),
 });
+
+const normalizeNameFields = (data: Record<string, unknown>) => {
+  if (Object.prototype.hasOwnProperty.call(data, 'firstName')) {
+    data.firstName = normalizeOptionalName(data.firstName);
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'lastName')) {
+    data.lastName = normalizeOptionalName(data.lastName);
+  }
+};
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -50,6 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const nextData: Record<string, unknown> = { ...parsed.data.data };
+  normalizeNameFields(nextData);
   if (Object.prototype.hasOwnProperty.call(nextData, 'userName')) {
     const normalizedUserName = normalizeUserName(nextData.userName);
     if (!normalizedUserName) {
@@ -109,7 +120,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { ...nextData, updatedAt: new Date() },
     });
-    return NextResponse.json({ user: withLegacyFields(updated) }, { status: 200 });
+    return NextResponse.json({ user: withLegacyFields(applyNameCaseToUserFields(updated)) }, { status: 200 });
   } catch (error) {
     if (isPrismaUserNameUniqueError(error)) {
       return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });

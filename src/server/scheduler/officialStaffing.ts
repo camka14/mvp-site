@@ -468,6 +468,7 @@ export class OfficialStaffingPlanner {
       holderType: 'OFFICIAL',
       userId: fallbackUserId,
       checkedIn: match.officialCheckedIn === true,
+      hasConflict: false,
     }];
   }
 

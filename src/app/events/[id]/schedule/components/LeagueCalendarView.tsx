@@ -30,6 +30,7 @@ interface LeagueCalendarViewProps {
   onToggleLockAllMatches?: (locked: boolean, matchIds: string[]) => void | Promise<void>;
   lockingAllMatches?: boolean;
   conflictMatchIdsById?: Record<string, string[]>;
+  showEventOfficialNames?: boolean;
 }
 
 type CalendarLayoutMode = 'calendar' | 'resource';
@@ -43,6 +44,7 @@ const UNASSIGNED_FIELD_RESOURCE_ID = '__unassigned_field__';
 const MIN_VISIBLE_HOUR_SLOTS = 6;
 const MIN_HOUR_SLOT_HEIGHT = 112;
 const CALENDAR_BOTTOM_GUTTER = 24;
+const AGENDA_MATCH_CARD_WIDTH = 420;
 
 const clampHour = (value: number): number => Math.max(0, Math.min(24, value));
 
@@ -182,6 +184,11 @@ type CalendarEvent = {
   resourceId: string;
   fieldLabel: string;
   resource: Match;
+  relatedMatchIds: string[];
+  hasTrackedUserMatch: boolean;
+  hasConflictMatch: boolean;
+  agendaMatches?: Match[];
+  isAgendaGroup?: boolean;
 };
 
 const localizer = dateFnsLocalizer({
@@ -230,6 +237,7 @@ export function LeagueCalendarView({
   onToggleLockAllMatches,
   lockingAllMatches = false,
   conflictMatchIdsById = {},
+  showEventOfficialNames = true,
 }: LeagueCalendarViewProps) {
   const userTeamIds = useMemo(() => new Set(currentUser?.teamIds ?? []), [currentUser?.teamIds]);
   const trackedUserIds = useMemo(() => {
@@ -400,9 +408,14 @@ export function LeagueCalendarView({
           ?? new Date(start.getTime() + 60 * 60 * 1000);
         const fieldId = resolveMatchFieldId(hydratedMatch);
         const fieldLabel = resolveMatchFieldLabel(hydratedMatch, fieldLookup);
+        const matchId = typeof match.$id === 'string' && match.$id.trim().length > 0
+          ? match.$id.trim()
+          : `match-${match.matchId}-${start.getTime()}`;
+        const hasTrackedUserMatch = userInvolvedMatchIds.has(matchId);
+        const hasConflictMatch = conflictMatchIdSet.has(matchId);
 
         return {
-          id: match.$id,
+          id: matchId,
           title: `${resolveTeamLabel(hydratedMatch, 'team1')} vs ${resolveTeamLabel(hydratedMatch, 'team2')}`,
           start,
           end,
@@ -410,11 +423,43 @@ export function LeagueCalendarView({
           resourceId: fieldId ?? UNASSIGNED_FIELD_RESOURCE_ID,
           fieldLabel,
           resource: hydratedMatch,
+          relatedMatchIds: [matchId],
+          hasTrackedUserMatch,
+          hasConflictMatch,
         } as CalendarEvent;
       })
       .filter((event): event is CalendarEvent => Boolean(event))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [fieldLookup, matchesToDisplay, teamLookup]);
+  }, [conflictMatchIdSet, fieldLookup, matchesToDisplay, teamLookup, userInvolvedMatchIds]);
+
+  const agendaCalendarEvents = useMemo<CalendarEvent[]>(() => {
+    const grouped = new Map<string, CalendarEvent>();
+
+    calendarEvents.forEach((event) => {
+      const key = `${event.start.getTime()}-${event.end.getTime()}`;
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, {
+          ...event,
+          id: `agenda-${key}`,
+          isAgendaGroup: true,
+          agendaMatches: [event.resource],
+          relatedMatchIds: [...event.relatedMatchIds],
+        });
+        return;
+      }
+
+      grouped.set(key, {
+        ...existing,
+        agendaMatches: [...(existing.agendaMatches ?? []), event.resource],
+        relatedMatchIds: [...existing.relatedMatchIds, ...event.relatedMatchIds],
+        hasTrackedUserMatch: existing.hasTrackedUserMatch || event.hasTrackedUserMatch,
+        hasConflictMatch: existing.hasConflictMatch || event.hasConflictMatch,
+      });
+    });
+
+    return Array.from(grouped.values()).sort((a, b) => a.start.getTime() - b.start.getTime());
+  }, [calendarEvents]);
 
   const calendarResources = useMemo<CalendarResource[]>(() => {
     const resources = new Map<string, CalendarResource>();
@@ -499,15 +544,26 @@ export function LeagueCalendarView({
   };
 
   const handleSelectEvent = (event: CalendarEvent) => {
-    if (onMatchClick) {
-      onMatchClick(event.resource);
-    }
+    if (!onMatchClick || event.isAgendaGroup) return;
+    onMatchClick(event.resource);
   };
 
   const eventPropGetter = useCallback(
     (event: CalendarEvent) => {
-      const isUsersMatch = userInvolvedMatchIds.has(event.resource.$id);
-      const hasConflict = conflictMatchIdSet.has(event.resource.$id);
+      if (event.isAgendaGroup) {
+        return {
+          style: {
+            backgroundColor: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: 'default',
+            color: 'var(--mantine-color-text, var(--mvp-text))',
+          },
+          className: 'p-0',
+        };
+      }
+      const isUsersMatch = event.hasTrackedUserMatch;
+      const hasConflict = event.hasConflictMatch;
       return {
         style: {
           backgroundColor: hasConflict
@@ -527,7 +583,7 @@ export function LeagueCalendarView({
         className: 'p-0',
       };
     },
-    [conflictMatchIdSet, onMatchClick, userInvolvedMatchIds],
+    [onMatchClick],
   );
 
   const MonthEventComponent = useCallback(({ event }: EventProps<CalendarEvent>) => {
@@ -541,8 +597,8 @@ export function LeagueCalendarView({
 
   const WeekDayEventComponent = useCallback(
     ({ event }: EventProps<CalendarEvent>) => {
-      const hasConflict = conflictMatchIdSet.has(event.resource.$id);
-      const shouldHighlightUser = userInvolvedMatchIds.has(event.resource.$id) && !hasConflict;
+      const hasConflict = event.hasConflictMatch;
+      const shouldHighlightUser = event.hasTrackedUserMatch && !hasConflict;
       return (
         <MatchCard
           match={event.resource}
@@ -555,32 +611,54 @@ export function LeagueCalendarView({
           fieldLabel={event.fieldLabel}
           hasConflict={hasConflict}
           officialUsersById={officialLookupById}
+          showEventOfficialNames={showEventOfficialNames}
         />
       );
     },
-    [canManage, conflictMatchIdSet, officialLookupById, onMatchClick, userInvolvedMatchIds],
+    [canManage, officialLookupById, onMatchClick, showEventOfficialNames],
   );
 
   const AgendaEventComponent = useCallback(
     ({ event }: EventProps<CalendarEvent>) => {
-      const hasConflict = conflictMatchIdSet.has(event.resource.$id);
-      const shouldHighlightUser = userInvolvedMatchIds.has(event.resource.$id) && !hasConflict;
+      const agendaMatches = event.agendaMatches?.length ? event.agendaMatches : [event.resource];
+
       return (
-        <MatchCard
-          match={event.resource}
-          canManage={canManage}
-          onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-          className={`max-w-full ${matchCardPaddingY} ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
-          layout="horizontal"
-          hideTimeBadge
-          showOfficialInHeader
-          fieldLabel={event.fieldLabel}
-          hasConflict={hasConflict}
-          officialUsersById={officialLookupById}
-        />
+        <div className={`w-full ${matchCardPaddingY}`}>
+          <div className="overflow-x-auto pb-2">
+            <div className="flex min-w-max gap-3 pr-1">
+              {agendaMatches.map((match, index) => {
+                const matchId = typeof match.$id === 'string' ? match.$id.trim() : '';
+                const hasConflict = matchId.length > 0 && conflictMatchIdSet.has(matchId);
+                const shouldHighlightUser = matchId.length > 0 && userInvolvedMatchIds.has(matchId) && !hasConflict;
+
+                return (
+                  <div
+                    key={matchId || `${event.id}-${index}`}
+                    className="shrink-0"
+                    style={{ width: `${AGENDA_MATCH_CARD_WIDTH}px`, minWidth: `${AGENDA_MATCH_CARD_WIDTH}px` }}
+                  >
+                    <MatchCard
+                      match={match}
+                      canManage={canManage}
+                      onClick={onMatchClick ? () => onMatchClick(match) : undefined}
+                      className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
+                      layout="horizontal"
+                      hideTimeBadge
+                      showOfficialInHeader
+                      fieldLabel={resolveMatchFieldLabel(match, fieldLookup)}
+                      hasConflict={hasConflict}
+                      officialUsersById={officialLookupById}
+                      showEventOfficialNames={showEventOfficialNames}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       );
     },
-    [canManage, conflictMatchIdSet, officialLookupById, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
+    [canManage, conflictMatchIdSet, fieldLookup, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, userInvolvedMatchIds],
   );
 
   const components = useMemo(
@@ -601,6 +679,10 @@ export function LeagueCalendarView({
   const effectiveCalendarView = useMemo<View>(
     () => (calendarViews.includes(calendarView) ? calendarView : calendarViews[0]),
     [calendarView, calendarViews],
+  );
+  const displayedCalendarEvents = useMemo<CalendarEvent[]>(
+    () => (effectiveCalendarView === 'agenda' ? agendaCalendarEvents : calendarEvents),
+    [agendaCalendarEvents, calendarEvents, effectiveCalendarView],
   );
   const showRange = effectiveCalendarView === 'week' || effectiveCalendarView === 'day';
   const calendarRootRef = useRef<HTMLDivElement | null>(null);
@@ -726,7 +808,7 @@ export function LeagueCalendarView({
         {showRange && (
           <div className="mb-6">
             <Text size="sm" fw={600} mb={8}>
-              Visible hours: {formatHourLabel(timeRange[0])} â€“ {formatHourLabel(timeRange[1])}
+              Visible hours: {formatHourLabel(timeRange[0])} - {formatHourLabel(timeRange[1])}
             </Text>
             <div className="px-2 sm:px-3">
               <RangeSlider
@@ -752,7 +834,7 @@ export function LeagueCalendarView({
         <div ref={calendarRootRef} style={{ width: '100%' }}>
           <BigCalendar
             localizer={localizer}
-            events={calendarEvents}
+            events={displayedCalendarEvents}
             resources={layoutMode === 'resource' ? calendarResources : undefined}
             date={calendarDate}
             view={effectiveCalendarView}

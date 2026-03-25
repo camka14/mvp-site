@@ -1172,7 +1172,7 @@ function OrganizationDetailContent() {
           },
           ...current.filter((entry) => entry.operationId !== operationId),
         ]);
-        notifications.show({ color: 'blue', message: 'Template creation submitted. Syncingâ€¦' });
+        notifications.show({ color: 'blue', message: 'Template creation submitted. Syncing\u2026' });
         monitorTemplateCreateOperation({
           organizationId: org.$id,
           operationId,
@@ -1243,7 +1243,7 @@ function OrganizationDetailContent() {
         templateDocumentId: template.$id,
       });
       if (result.operationId) {
-        notifications.show({ color: 'blue', message: 'Template delete submitted. Syncingâ€¦' });
+        notifications.show({ color: 'blue', message: 'Template delete submitted. Syncing\u2026' });
         await pollBoldSignOperation(result.operationId);
       }
       if (previewTemplate?.$id === template.$id) {
@@ -2102,7 +2102,7 @@ function OrganizationDetailContent() {
                                                   </Button>
                                                   <Text size="xs" c="dimmed">
                                                     {formatSummaryDateTime(eventSummary.start)}
-                                                    {eventSummary.status ? ` â€¢ ${eventSummary.status}` : ''}
+                                                    {eventSummary.status ? ` \u2022 ${eventSummary.status}` : ''}
                                                   </Text>
                                                 </Stack>
                                               </Group>
@@ -2122,8 +2122,8 @@ function OrganizationDetailContent() {
                                                   <Text size="sm">{documentSummary.title}</Text>
                                                   <Text size="xs" c="dimmed">
                                                     {documentSummary.type}
-                                                    {documentSummary.status ? ` â€¢ ${documentSummary.status}` : ''}
-                                                    {documentSummary.signedAt ? ` â€¢ ${formatSummaryDateTime(documentSummary.signedAt)}` : ''}
+                                                    {documentSummary.status ? ` \u2022 ${documentSummary.status}` : ''}
+                                                    {documentSummary.signedAt ? ` \u2022 ${formatSummaryDateTime(documentSummary.signedAt)}` : ''}
                                                   </Text>
                                                   {documentSummary.eventName && (
                                                     <Text size="xs" c="dimmed">
@@ -2210,7 +2210,7 @@ function OrganizationDetailContent() {
                           <Group gap="xs" mt="xs">
                             <Loader size="xs" />
                             <Text size="xs" c="dimmed">
-                              Creating template and waiting for projectionâ€¦
+                              Creating template and waiting for projection\u2026
                             </Text>
                           </Group>
                         )}
@@ -2652,7 +2652,7 @@ function OrganizationDetailContent() {
             ) : (
               <Stack gap="sm">
                 <Text size="sm" c="dimmed">
-                  Document 1 of 1{previewTemplate.title ? ` â€¢ ${previewTemplate.title}` : ''}
+                  Document 1 of 1{previewTemplate.title ? ` \u2022 ${previewTemplate.title}` : ''}
                 </Text>
                 <Paper withBorder p="md" style={{ maxHeight: 420, overflowY: 'auto' }}>
                   <Text style={{ whiteSpace: 'pre-wrap' }}>

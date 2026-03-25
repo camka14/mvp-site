@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken, setAuthCookie, signSessionToken } from '@/lib/authServer';
+import { applyNameCaseToUserFields } from '@/lib/nameCase';
 import { withLegacyFields } from '@/server/legacyFormat';
 
 const toPublicUser = (user: { id: string; email: string; name: string | null; createdAt: Date | null; updatedAt: Date | null }) => ({
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
       user: toPublicUser(user),
       session: decoded,
       token: refreshed,
-      profile: profile ? withLegacyFields(profile) : null,
+      profile: profile ? withLegacyFields(applyNameCaseToUserFields(profile)) : null,
     },
     { status: 200 },
   );

@@ -5,11 +5,14 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
+const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
+const warnedMissingOrganizationArguments = new Set<string>();
 
 const createSchema = z.object({
   id: z.string(),
   name: z.string(),
   location: z.string().optional(),
+  address: z.string().optional(),
   description: z.string().optional(),
   logoId: z.string().optional(),
   ownerId: z.string(),
@@ -23,6 +26,43 @@ const createSchema = z.object({
   productIds: z.array(z.string()).optional(),
   teamIds: z.array(z.string()).optional(),
 }).passthrough();
+
+const extractUnknownPrismaArgument = (error: unknown): string | null => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
+  return match?.[1] ?? null;
+};
+
+const createOrganizationWithUnknownArgFallback = async (organizationData: Record<string, unknown>) => {
+  const removedArguments = new Set<string>();
+
+  while (true) {
+    const createData: Record<string, unknown> = { ...organizationData };
+    for (const argumentName of removedArguments) {
+      delete createData[argumentName];
+    }
+    try {
+      return await prisma.organizations.create({
+        data: createData as any,
+      });
+    } catch (error) {
+      const unknownArgument = extractUnknownPrismaArgument(error);
+      const hasArgument = unknownArgument
+        ? Object.prototype.hasOwnProperty.call(createData, unknownArgument)
+        : false;
+      if (!unknownArgument || !hasArgument || removedArguments.has(unknownArgument)) {
+        throw error;
+      }
+      removedArguments.add(unknownArgument);
+      if (!warnedMissingOrganizationArguments.has(unknownArgument)) {
+        warnedMissingOrganizationArguments.add(unknownArgument);
+        console.warn(
+          `[organizations] Prisma client is missing Organizations.${unknownArgument}; retrying without it. Regenerate Prisma client to restore this field.`,
+        );
+      }
+    }
+  }
+};
 
 const normalizeSearchQuery = (value: string | null): string => (value ?? '').trim();
 
@@ -44,13 +84,14 @@ const secondaryRank = (value: string | null | undefined, normalizedQuery: string
 };
 
 const relevanceScore = (
-  organization: { name?: string | null; location?: string | null; description?: string | null },
+  organization: { name?: string | null; location?: string | null; address?: string | null; description?: string | null },
   normalizedQuery: string,
-): [number, number, number] => {
+): [number, number, number, number] => {
   const primary = nameRank(organization.name, normalizedQuery);
   const location = secondaryRank(organization.location, normalizedQuery);
+  const address = secondaryRank(organization.address, normalizedQuery);
   const description = secondaryRank(organization.description, normalizedQuery);
-  return [primary, location, description];
+  return [primary, location, address, description];
 };
 
 export async function GET(req: NextRequest) {
@@ -96,6 +137,7 @@ export async function GET(req: NextRequest) {
     const queryWhere = [
       { name: { contains: query, mode: 'insensitive' } },
       { location: { contains: query, mode: 'insensitive' } },
+      { address: { contains: query, mode: 'insensitive' } },
       { description: { contains: query, mode: 'insensitive' } },
     ];
     if (where.OR) {
@@ -127,6 +169,7 @@ export async function GET(req: NextRequest) {
         if (leftScore[0] !== rightScore[0]) return leftScore[0] - rightScore[0];
         if (leftScore[1] !== rightScore[1]) return leftScore[1] - rightScore[1];
         if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
+        if (leftScore[3] !== rightScore[3]) return leftScore[3] - rightScore[3];
         return (left.name ?? '').localeCompare(right.name ?? '');
       })
       .slice(0, normalizedLimit);
@@ -148,26 +191,25 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
-  const organization = await prisma.organizations.create({
-    data: {
-      id: data.id,
-      name: data.name,
-      location: data.location ?? null,
-      description: data.description ?? null,
-      logoId: data.logoId ?? null,
-      ownerId: data.ownerId,
-      hostIds: Array.isArray(data.hostIds) ? data.hostIds : [],
-      website: data.website ?? null,
-      sports: Array.isArray(data.sports) ? data.sports : [],
-      officialIds: Array.isArray(data.officialIds) ? data.officialIds : [],
-      hasStripeAccount: data.hasStripeAccount ?? false,
-      coordinates: data.coordinates ?? null,
-      fieldIds: Array.isArray(data.fieldIds) ? data.fieldIds : [],
-      productIds: Array.isArray(data.productIds) ? data.productIds : [],
-      teamIds: Array.isArray(data.teamIds) ? data.teamIds : [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+  const organization = await createOrganizationWithUnknownArgFallback({
+    id: data.id,
+    name: data.name,
+    location: data.location ?? null,
+    address: data.address ?? null,
+    description: data.description ?? null,
+    logoId: data.logoId ?? null,
+    ownerId: data.ownerId,
+    hostIds: Array.isArray(data.hostIds) ? data.hostIds : [],
+    website: data.website ?? null,
+    sports: Array.isArray(data.sports) ? data.sports : [],
+    officialIds: Array.isArray(data.officialIds) ? data.officialIds : [],
+    hasStripeAccount: data.hasStripeAccount ?? false,
+    coordinates: data.coordinates ?? null,
+    fieldIds: Array.isArray(data.fieldIds) ? data.fieldIds : [],
+    productIds: Array.isArray(data.productIds) ? data.productIds : [],
+    teamIds: Array.isArray(data.teamIds) ? data.teamIds : [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
   });
 
   return NextResponse.json(withLegacyFields(organization), { status: 201 });

@@ -201,6 +201,7 @@ class OrganizationService {
       sports,
       logoId: row.logoId ?? row.logo_id ?? undefined,
       location: row.location ?? undefined,
+      address: row.address ?? undefined,
       coordinates: coordinates,
       ownerId: row.ownerId ?? row.owner_id ?? undefined,
       hostIds: staffMembers.length > 0 ? derivedHostIds : hostIds,

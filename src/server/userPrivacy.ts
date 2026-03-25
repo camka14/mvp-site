@@ -1,4 +1,5 @@
 import type { Prisma } from '@/generated/prisma/client';
+import { formatNameParts, normalizeOptionalName } from '@/lib/nameCase';
 
 export const NAME_HIDDEN_LABEL = 'Name Hidden';
 
@@ -106,7 +107,7 @@ export const isMinorAtUtcDate = (value: Date | string | null | undefined, now: D
 };
 
 const resolveDisplayName = (user: Pick<PublicUser, 'firstName' | 'lastName' | 'userName'>): string => {
-  const fullName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+  const fullName = formatNameParts(user.firstName, user.lastName);
   if (fullName) return fullName;
   const handle = user.userName?.trim();
   if (handle) return handle;
@@ -422,12 +423,18 @@ export const applyUserPrivacy = (user: PublicUser, context: VisibilityContext): 
   const canViewMinor = isMinor ? canViewerSeeMinorIdentity(user.id, context) : true;
   const isIdentityHidden = isMinor && !canViewMinor;
 
+  const normalizedUser: PublicUser = {
+    ...user,
+    firstName: normalizeOptionalName(user.firstName),
+    lastName: normalizeOptionalName(user.lastName),
+  };
+
   if (!isIdentityHidden) {
     return {
-      ...user,
+      ...normalizedUser,
       isMinor,
       isIdentityHidden: false,
-      displayName: resolveDisplayName(user),
+      displayName: resolveDisplayName(normalizedUser),
     };
   }
 

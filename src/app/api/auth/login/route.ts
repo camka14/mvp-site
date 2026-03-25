@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { applyNameCaseToUserFields } from '@/lib/nameCase';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -41,7 +42,10 @@ export async function POST(req: NextRequest) {
 
   const session: SessionToken = { userId: authUser.id, isAdmin: false };
   const token = signSessionToken(session);
-  const res = NextResponse.json({ user: toPublicUser(authUser), session, token, profile }, { status: 200 });
+  const res = NextResponse.json(
+    { user: toPublicUser(authUser), session, token, profile: profile ? applyNameCaseToUserFields(profile) : null },
+    { status: 200 },
+  );
   setAuthCookie(res, token);
   return res;
 }

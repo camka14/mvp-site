@@ -2360,9 +2360,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const mapLat = hasCoordinates ? Number(currentEvent.coordinates[1]) : undefined;
     const mapLng = hasCoordinates ? Number(currentEvent.coordinates[0]) : undefined;
     const hasValidCoords = typeof mapLat === 'number' && typeof mapLng === 'number' && !Number.isNaN(mapLat) && !Number.isNaN(mapLng);
-    const mapQuery = hasValidCoords
-        ? `${mapLat},${mapLng}`
-        : (currentEvent.location || '').trim();
+    const eventAddress = (currentEvent.address || '').trim();
+    const mapQuery = eventAddress.length > 0
+        ? eventAddress
+        : (hasValidCoords ? `${mapLat},${mapLng}` : '');
     const encodedMapQuery = encodeURIComponent(mapQuery);
     const googleMapsLink = mapQuery
         ? `https://www.google.com/maps/search/?api=1&query=${encodedMapQuery}`

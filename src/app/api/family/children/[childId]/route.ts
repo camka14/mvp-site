@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ch
   if (Number.isNaN(dob.getTime())) {
     return NextResponse.json({ error: 'Invalid dateOfBirth' }, { status: 400 });
   }
+  const firstName = normalizeOptionalName(parsed.data.firstName);
+  const lastName = normalizeOptionalName(parsed.data.lastName);
+  if (!firstName || !lastName) {
+    return NextResponse.json({ error: 'First name and last name are required' }, { status: 400 });
+  }
 
   const now = new Date();
   const normalizedEmail = parsed.data.email?.trim().toLowerCase();
@@ -46,8 +52,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ch
     await tx.userData.update({
       where: { id: childId },
       data: {
-        firstName: parsed.data.firstName,
-        lastName: parsed.data.lastName,
+        firstName,
+        lastName,
         dateOfBirth: dob,
         updatedAt: now,
       },

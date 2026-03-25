@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
+import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import {
   findUserNameConflictUserId,
   isPrismaUserNameUniqueError,
@@ -83,8 +84,8 @@ const buildIncomingSnapshot = (input: {
   userName?: string;
   dateOfBirth?: string;
 }): ProfileSnapshot => ({
-  firstName: normalizeText(input.firstName),
-  lastName: normalizeText(input.lastName),
+  firstName: normalizeOptionalName(input.firstName),
+  lastName: normalizeOptionalName(input.lastName),
   userName: normalizeText(input.userName),
   dateOfBirth: normalizeDateOnly(input.dateOfBirth),
 });
@@ -95,8 +96,8 @@ const buildExistingSnapshot = (profile: {
   userName: string | null;
   dateOfBirth: Date | null;
 } | null): ProfileSnapshot => ({
-  firstName: normalizeText(profile?.firstName),
-  lastName: normalizeText(profile?.lastName),
+  firstName: normalizeOptionalName(profile?.firstName),
+  lastName: normalizeOptionalName(profile?.lastName),
   userName: normalizeText(profile?.userName),
   dateOfBirth: dateToDateOnly(profile?.dateOfBirth),
 });
@@ -126,8 +127,8 @@ const resolveProfileSnapshot = ({
   };
 }): ProfileSnapshot => {
   const selected: ProfileSnapshot = {
-    firstName: normalizeText(profileSelection?.firstName),
-    lastName: normalizeText(profileSelection?.lastName),
+    firstName: normalizeOptionalName(profileSelection?.firstName),
+    lastName: normalizeOptionalName(profileSelection?.lastName),
     userName: normalizeText(profileSelection?.userName),
     dateOfBirth: normalizeDateOnly(profileSelection?.dateOfBirth),
   };
@@ -330,7 +331,7 @@ export async function POST(req: NextRequest) {
     user: toPublicUser(authUser),
     session,
     token,
-    profile,
+    profile: applyNameCaseToUserFields(profile),
   }, { status: 201 });
   setAuthCookie(res, token);
   return res;

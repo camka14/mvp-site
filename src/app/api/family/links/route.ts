@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -52,8 +53,8 @@ export async function POST(req: NextRequest) {
     child: child
       ? {
           userId: childId,
-          firstName: child.firstName ?? '',
-          lastName: child.lastName ?? '',
+          firstName: normalizeOptionalName(child.firstName) ?? '',
+          lastName: normalizeOptionalName(child.lastName) ?? '',
           userName: child.userName?.trim() || null,
         }
       : undefined,

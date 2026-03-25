@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import {
@@ -41,6 +42,15 @@ const parseContextIdParam = (raw: string | null): string | null => {
   if (!raw) return null;
   const normalized = raw.trim();
   return normalized.length ? normalized : null;
+};
+
+const normalizeNameFields = (data: Record<string, unknown>) => {
+  if (Object.prototype.hasOwnProperty.call(data, 'firstName')) {
+    data.firstName = normalizeOptionalName(data.firstName);
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'lastName')) {
+    data.lastName = normalizeOptionalName(data.lastName);
+  }
 };
 
 export async function GET(req: NextRequest) {
@@ -107,6 +117,7 @@ export async function POST(req: NextRequest) {
 
   const { id, data } = parsed.data;
   const normalizedData: Record<string, unknown> = { ...data };
+  normalizeNameFields(normalizedData);
   if (normalizedData.dateOfBirth) {
     const parsedDate = new Date(normalizedData.dateOfBirth as any);
     if (!Number.isNaN(parsedDate.getTime())) {
@@ -136,7 +147,7 @@ export async function POST(req: NextRequest) {
       const record = await prisma.userData.create({
         data: { id, createdAt: now, updatedAt: now, ...normalizedData, userName, dateOfBirth },
       });
-      return NextResponse.json({ user: withLegacyFields(record) }, { status: 201 });
+      return NextResponse.json({ user: withLegacyFields(applyNameCaseToUserFields(record)) }, { status: 201 });
     } catch (error) {
       if (isPrismaUserNameUniqueError(error)) {
         return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
@@ -160,7 +171,10 @@ export async function POST(req: NextRequest) {
       ? await prisma.userData.update({ where: { id }, data: { ...normalizedData, updatedAt: now } })
       : null;
 
-    return NextResponse.json({ user: record ? withLegacyFields(record) : record }, { status: 201 });
+    return NextResponse.json(
+      { user: record ? withLegacyFields(applyNameCaseToUserFields(record)) : record },
+      { status: 201 },
+    );
   } catch (error) {
     if (isPrismaUserNameUniqueError(error)) {
       return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });

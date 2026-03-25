@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession } from '@/lib/permissions';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { withLegacyFields } from '@/server/legacyFormat';
@@ -85,10 +86,12 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date();
+    const firstName = normalizeOptionalName(invite.firstName);
+    const lastName = normalizeOptionalName(invite.lastName);
     const { userId, authUserExisted } = await prisma.$transaction(async (tx) => {
       return ensureAuthUserAndUserDataByEmail(tx, email, now, {
-        firstName: invite.firstName,
-        lastName: invite.lastName,
+        firstName,
+        lastName,
       });
     });
 
@@ -103,8 +106,8 @@ export async function POST(req: NextRequest) {
         teamId: invite.teamId ?? null,
         userId,
         createdBy: inviterId,
-        firstName: invite.firstName ?? null,
-        lastName: invite.lastName ?? null,
+        firstName: firstName ?? null,
+        lastName: lastName ?? null,
         createdAt: now,
         updatedAt: now,
       },

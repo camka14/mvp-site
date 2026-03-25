@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const mobileGoogleSchema = z.object({
@@ -137,8 +138,8 @@ export async function POST(req: NextRequest) {
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
 
   const displayName = tokenInfo.name?.trim() || null;
-  const firstName = tokenInfo.given_name?.trim() || null;
-  const lastName = tokenInfo.family_name?.trim() || null;
+  const firstName = normalizeOptionalName(tokenInfo.given_name);
+  const lastName = normalizeOptionalName(tokenInfo.family_name);
 
   const [authUser, profile] = await prisma.$transaction(async (tx) => {
     const createdAuth = existingAuth
@@ -223,7 +224,7 @@ export async function POST(req: NextRequest) {
       user: toPublicUser(authUser),
       session,
       token,
-      profile,
+      profile: applyNameCaseToUserFields(profile),
     },
     { status: 200 },
   );

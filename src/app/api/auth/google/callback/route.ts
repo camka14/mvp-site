@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { normalizeOptionalName } from '@/lib/nameCase';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const STATE_COOKIE = 'google_oauth_state';
@@ -140,8 +141,8 @@ export async function GET(req: NextRequest) {
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
 
   const displayName = userInfo.name?.trim() || null;
-  const firstName = userInfo.given_name?.trim() || null;
-  const lastName = userInfo.family_name?.trim() || null;
+  const firstName = normalizeOptionalName(userInfo.given_name);
+  const lastName = normalizeOptionalName(userInfo.family_name);
 
   const [authUser, profile] = await prisma.$transaction(async (tx) => {
     const createdAuth = existingAuth

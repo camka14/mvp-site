@@ -536,6 +536,7 @@ type RankedStandingsRow = StandingsRow & { rank: number };
 
 type LocationDefaults = {
   location?: string;
+  address?: string;
   coordinates?: [number, number];
 };
 
@@ -1095,6 +1096,7 @@ function EventScheduleContent() {
   const buildLocationDefaults = useCallback(
     (organizationInput?: Organization | null): LocationDefaults | undefined => {
       const orgLabel = organizationInput?.location?.trim() ?? '';
+      const orgAddress = organizationInput?.address?.trim() ?? '';
       const orgCoordinates =
         Array.isArray(organizationInput?.coordinates) &&
           typeof organizationInput.coordinates[0] === 'number' &&
@@ -1105,6 +1107,7 @@ function EventScheduleContent() {
       if (organizationInput && (orgLabel || orgCoordinates)) {
         return {
           location: orgLabel || userLocationLabel,
+          address: orgAddress || undefined,
           coordinates: orgCoordinates ?? userCoordinates ?? undefined,
         };
       }
@@ -1112,6 +1115,7 @@ function EventScheduleContent() {
       if (userLocationLabel || userCoordinates) {
         return {
           location: userLocationLabel,
+          address: undefined,
           coordinates: userCoordinates ?? undefined,
         };
       }
@@ -1189,6 +1193,7 @@ function EventScheduleContent() {
       start: normalizedStart,
       end: normalizedEnd,
       location: derivedLocation,
+      address: rentalOrganization?.address ?? undefined,
     };
 
     if (derivedCoordinates) {
@@ -1638,8 +1643,29 @@ function EventScheduleContent() {
         : [],
     [activeEvent?.assistantHostIds],
   );
+  const eventOfficialIds = useMemo(() => {
+    const activeEventOfficialIds = Array.isArray(activeEvent?.eventOfficials)
+      ? activeEvent.eventOfficials
+          .filter((officialEntry) => officialEntry?.isActive !== false)
+          .map((officialEntry) => normalizeIdToken(officialEntry?.userId))
+          .filter((officialId): officialId is string => Boolean(officialId))
+      : [];
+
+    if (activeEventOfficialIds.length > 0) {
+      return activeEventOfficialIds;
+    }
+
+    return Array.isArray(activeEvent?.officialIds)
+      ? activeEvent.officialIds
+          .map((officialId) => normalizeIdToken(officialId))
+          .filter((officialId): officialId is string => Boolean(officialId))
+      : [];
+  }, [activeEvent?.eventOfficials, activeEvent?.officialIds]);
   const isPrimaryHost = activeEvent?.hostId === user?.$id;
   const isAssistantHost = Boolean(user?.$id && assistantHostIds.includes(user.$id));
+  const isEventOfficial = Boolean(
+    user?.$id && eventOfficialIds.includes(user.$id),
+  );
   const isOrganizationManager = Boolean(
     user?.$id
       && activeOrganization
@@ -1884,6 +1910,7 @@ function EventScheduleContent() {
     </Popover>
   );
   const canEditMatches = Boolean(canManageEvent && isEditingEvent);
+  const showEventOfficialNames = Boolean(canEditMatches || isEventOfficial);
   const shouldShowCreationSheet = Boolean(
     isCreateMode
     || (isEditingEvent && canManageEvent && user),
@@ -3602,12 +3629,14 @@ function EventScheduleContent() {
       const end = rentalImmutableDefaults?.end ?? formatLocalDateTime(defaultEndDate);
       const locationDefaults = createLocationDefaults;
       const rentalLocation = (rentalImmutableDefaults?.location ?? '').trim();
+      const rentalAddress = (rentalImmutableDefaults?.address ?? '').trim();
       const rentalCoordinates = rentalImmutableDefaults?.coordinates;
       return {
         $id: eventId || 'temp-id',
         name: '',
         description: '',
         location: rentalLocation || locationDefaults?.location || '',
+        address: rentalAddress || locationDefaults?.address || '',
         coordinates: rentalCoordinates ?? locationDefaults?.coordinates ?? [0, 0],
         start,
         end,
@@ -3806,6 +3835,7 @@ function EventScheduleContent() {
           setChangesEvent((prev) => {
             const base = prev ?? ({ $id: eventId, state: 'DRAFT' } as Event);
             const orgLocation = (resolvedHostOrg.location ?? '').trim();
+            const orgAddress = (resolvedHostOrg.address ?? '').trim();
             const orgCoordinates =
               Array.isArray(resolvedHostOrg.coordinates) &&
                 typeof resolvedHostOrg.coordinates[0] === 'number' &&
@@ -3813,6 +3843,7 @@ function EventScheduleContent() {
                 ? (resolvedHostOrg.coordinates as [number, number])
                 : undefined;
             const baseLocation = (base.location ?? '').trim();
+            const baseAddress = (base.address ?? '').trim();
             const hasBaseCoordinates =
               Array.isArray(base.coordinates) &&
                 typeof base.coordinates[0] === 'number' &&
@@ -3831,6 +3862,7 @@ function EventScheduleContent() {
               officialIds: Array.isArray(resolvedHostOrg.officialIds) ? resolvedHostOrg.officialIds : base.officialIds,
               officials: Array.isArray(resolvedHostOrg.officials) ? resolvedHostOrg.officials : base.officials,
               location: baseLocation || orgLocation || '',
+              address: baseAddress || orgAddress || '',
               coordinates: hasBaseCoordinates ? base.coordinates : orgCoordinates ?? base.coordinates ?? [0, 0],
             } as Event;
           });
@@ -6896,11 +6928,11 @@ function EventScheduleContent() {
 
   const renderSortIndicator = (field: StandingsSortField) => {
     if (standingsSort.field !== field) {
-      return <span className="ml-1 text-xs text-gray-400">â†•</span>;
+      return <span className="ml-1 text-xs text-gray-400">{'\u2195'}</span>;
     }
     return (
       <span className="ml-1 text-xs font-semibold text-gray-700">
-        {standingsSort.direction === 'asc' ? 'â†‘' : 'â†“'}
+        {standingsSort.direction === 'asc' ? '\u2191' : '\u2193'}
       </span>
     );
   };
@@ -7082,7 +7114,7 @@ function EventScheduleContent() {
               <>
                 <Text size="sm" c="dimmed">
                   Document {rentalSignIndex + 1} of {rentalSignLinks.length}
-                  {currentRentalSignLink.title ? ` â€¢ ${currentRentalSignLink.title}` : ''}
+                  {currentRentalSignLink.title ? ` \u2022 ${currentRentalSignLink.title}` : ''}
                 </Text>
                 {currentRentalSignLink.requiredSignerLabel ? (
                   <Text size="sm" c="dimmed">
@@ -7761,6 +7793,7 @@ function EventScheduleContent() {
                         void handleMatchClick(match);
                       }}
                       canManage={canEditMatches}
+                      showEventOfficialNames={showEventOfficialNames}
                       currentUser={user}
                       childUserIds={childUserIds}
                       onToggleLockAllMatches={handleToggleLockAllMatches}
@@ -7799,6 +7832,7 @@ function EventScheduleContent() {
                       isPreview={isPreview}
                       onMatchClick={handleMatchClick}
                       canEditMatches={canEditMatches}
+                      showEventOfficialNames={showEventOfficialNames}
                       showDateOnMatches={showDateOnMatches}
                       conflictMatchIdsById={matchConflictsById}
                     />
@@ -8209,7 +8243,7 @@ function EventScheduleContent() {
       <Modal
         opened={Boolean(selectedRefundTeam)}
         onClose={closeRefundModal}
-        title={selectedRefundTeam ? `Refunds â€¢ ${selectedRefundTeam.name || 'Team'}` : 'Refunds'}
+        title={selectedRefundTeam ? `Refunds \u2022 ${selectedRefundTeam.name || 'Team'}` : 'Refunds'}
         size="xl"
         centered
         fullScreen={Boolean(isMobile)}
@@ -8257,10 +8291,10 @@ function EventScheduleContent() {
                         <Group justify="space-between" align="flex-start" wrap="wrap">
                           <Stack gap={2}>
                             <Text fw={600}>
-                              {bill.ownerType === 'TEAM' ? 'Team bill' : 'User bill'} â€¢ {bill.ownerName}
+                              {bill.ownerType === 'TEAM' ? 'Team bill' : 'User bill'} {'\u2022'} {bill.ownerName}
                             </Text>
                             <Text size="xs" c="dimmed">
-                              {bill.status ?? 'OPEN'} â€¢ Total {formatBillAmount(bill.totalAmountCents)}
+                              {bill.status ?? 'OPEN'} {'\u2022'} Total {formatBillAmount(bill.totalAmountCents)}
                             </Text>
                           </Stack>
                           <Text size="xs" c="dimmed">
@@ -8272,7 +8306,7 @@ function EventScheduleContent() {
                           <Stack gap={2}>
                             {bill.lineItems.map((item, index) => (
                               <Text key={`${bill.$id}:line:${item.id ?? index}`} size="xs" c="dimmed">
-                                {(item.label ?? 'Line item')} â€¢ {formatBillAmount(Number(item.amountCents ?? 0))}
+                                {(item.label ?? 'Line item')} {'\u2022'} {formatBillAmount(Number(item.amountCents ?? 0))}
                               </Text>
                             ))}
                           </Stack>
@@ -8291,7 +8325,7 @@ function EventScheduleContent() {
                                   <Group justify="space-between" align="center" wrap="wrap">
                                     <Text size="sm" fw={500}>Payment #{payment.sequence}</Text>
                                     <Text size="xs" c="dimmed">
-                                      Amount {formatBillAmount(payment.amountCents)} â€¢ Refunded {formatBillAmount(payment.refundedAmountCents)}
+                                      Amount {formatBillAmount(payment.amountCents)} {'\u2022'} Refunded {formatBillAmount(payment.refundedAmountCents)}
                                     </Text>
                                   </Group>
                                   <Text size="xs" c="dimmed">
@@ -8354,7 +8388,7 @@ function EventScheduleContent() {
       <Modal
         opened={Boolean(createBillTeam)}
         onClose={closeCreateBillModal}
-        title={createBillTeam ? `Send Bill â€¢ ${createBillTeam.name || 'Team'}` : 'Send Bill'}
+        title={createBillTeam ? `Send Bill \u2022 ${createBillTeam.name || 'Team'}` : 'Send Bill'}
         size="lg"
         centered
       >
@@ -8558,7 +8592,7 @@ function EventScheduleContent() {
                                             <Text size="sm">{document.title}</Text>
                                             <Text size="xs" c="dimmed">
                                               {document.signerLabel}
-                                              {document.signOnce ? ' â€¢ Sign once' : ' â€¢ Event-specific'}
+                                              {document.signOnce ? ' \u2022 Sign once' : ' \u2022 Event-specific'}
                                             </Text>
                                           </Stack>
                                           <Group gap={6}>
@@ -8659,7 +8693,7 @@ function EventScheduleContent() {
             <>
               <Text size="sm" c="dimmed">
                 Document {rentalSignIndex + 1} of {rentalSignLinks.length}
-                {currentRentalSignLink.title ? ` â€¢ ${currentRentalSignLink.title}` : ''}
+                {currentRentalSignLink.title ? ` \u2022 ${currentRentalSignLink.title}` : ''}
               </Text>
               {currentRentalSignLink.requiredSignerLabel ? (
                 <Text size="sm" c="dimmed">

@@ -1,0 +1,5 @@
+ALTER TABLE "Events"
+ADD COLUMN IF NOT EXISTS "address" TEXT;
+
+ALTER TABLE "Organizations"
+ADD COLUMN IF NOT EXISTS "address" TEXT;
