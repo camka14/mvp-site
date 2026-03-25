@@ -1,44 +1,48 @@
-export const MOBILE_APP_SEED_COLOR = '#6ABDFF' as const;
+export const MOBILE_APP_SEED_COLOR = '#19497A' as const;
 
 /*
- * Derived from the mobile app's Material 3 dynamic theme:
- * seed #6ABDFF + PaletteStyle.Neutral (light scheme roles).
+ * Derived from composeApp ThemeTokens.kt (LightAppColorScheme / LightAppExtendedColors).
  */
 export const MOBILE_APP_MATCH_DETAIL_GRADIENT = {
-  start: '#d4e4f6', // tertiaryContainer
-  end: '#d9e4f0', // primaryContainer
+  start: '#EFE7D1', // tertiaryContainer
+  end: '#DCEAF7', // primaryContainer
 } as const;
 
 export const MOBILE_APP_MANTINE_PRIMARY_SCALE = [
-  '#e7f2ff',
-  '#d9e4f0',
-  '#bdc8d4',
-  '#a2acb8',
-  '#87929d',
-  '#6e7883',
-  '#555f6a',
-  '#3e4852',
-  '#28313b',
-  '#131d26',
+  '#EEF5FB',
+  '#DCEAF7',
+  '#BFD2E6',
+  '#8EB8DE',
+  '#6AA0CF',
+  '#19497A',
+  '#294867',
+  '#213244',
+  '#10263B',
+  '#0B1A2B',
 ] as const;
 
 export const MOBILE_APP_THEME_TOKENS = {
-  background: '#fbf9fa',
-  surface: '#ffffff',
-  surfaceMuted: '#f5f3f4',
-  border: '#c8c6c7',
-  text: '#1b1c1d',
-  textMuted: '#474748',
-  primary: '#555f6a',
-  primaryHover: '#3e4852',
-  primaryForeground: '#ffffff',
-  primarySoft: '#d9e4f0',
+  background: '#FFFFFF',
+  surface: '#F8FAFC',
+  surfaceMuted: '#F2F5F8',
+  border: '#D3DCE6',
+  text: '#1E2633',
+  textMuted: '#5E6B78',
+  primary: '#19497A',
+  primaryHover: '#163F69',
+  primaryForeground: '#FFFFFF',
+  primarySoft: '#DCEAF7',
   matchGradientStart: MOBILE_APP_MATCH_DETAIL_GRADIENT.start,
   matchGradientEnd: MOBILE_APP_MATCH_DETAIL_GRADIENT.end,
-  success: '#1f8b63',
-  successSoft: '#dff7ef',
-  danger: '#c93f52',
-  dangerSoft: '#ffe7eb',
+  success: '#1F8B63',
+  successSoft: '#DFF7EF',
+  danger: '#C93F52',
+  dangerSoft: '#FFE7EB',
+  premiumAccent: '#B6A676',
+  liveAccent: '#DE7837',
+  placeholderReadable: '#6B7785',
+  disabledReadable: '#5E6B78',
+  sharedScrim: 'rgba(14, 26, 38, 0.6)',
 } as const;
 
 /*
@@ -47,16 +51,16 @@ export const MOBILE_APP_THEME_TOKENS = {
  */
 export const MOBILE_APP_MUI_PALETTE = {
   primary: {
-    light: '#87929d',
+    light: '#8EB8DE',
     main: MOBILE_APP_THEME_TOKENS.primary,
-    dark: MOBILE_APP_THEME_TOKENS.primaryHover,
+    dark: '#294867',
     contrastText: MOBILE_APP_THEME_TOKENS.primaryForeground,
   },
   secondary: {
-    light: '#dee3eb',
-    main: '#595f65',
-    dark: '#3e4852',
-    contrastText: '#ffffff',
+    light: '#EEF5FB',
+    main: '#BFD2E6',
+    dark: '#213244',
+    contrastText: '#1E2633',
   },
   background: {
     default: MOBILE_APP_THEME_TOKENS.background,
@@ -69,12 +73,12 @@ export const MOBILE_APP_MUI_PALETTE = {
 } as const;
 
 export const MOBILE_APP_AVATAR_PALETTE = [
-  { bg: '#FDE68A', text: '#92400E' },
-  { bg: '#BFDBFE', text: '#1D4ED8' },
-  { bg: '#BBF7D0', text: '#166534' },
-  { bg: '#FED7AA', text: '#9A3412' },
-  { bg: '#E9D5FF', text: '#6B21A8' },
-  { bg: '#FBCFE8', text: '#9D174D' },
-  { bg: '#BAE6FD', text: '#0C4A6E' },
-  { bg: '#C7D2FE', text: '#3730A3' },
+  { bg: '#DCEAF7', text: '#19497A' },
+  { bg: '#F2F5F8', text: '#1E2633' },
+  { bg: '#EFE7D1', text: '#5B4B1F' },
+  { bg: '#E2EAF0', text: '#4D5D6E' },
+  { bg: '#294867', text: '#EDF3FA' },
+  { bg: '#223041', text: '#EDF3FA' },
+  { bg: '#564F37', text: '#F3EDD0' },
+  { bg: '#2C394B', text: '#EDF3FA' },
 ] as const;
