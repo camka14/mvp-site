@@ -3665,7 +3665,7 @@ function EventScheduleContent() {
         teams: [],
         officials: [],
         officialIds: [],
-        officialSchedulingMode: 'STAFFING',
+        officialSchedulingMode: 'SCHEDULE',
         officialPositions: [],
         eventOfficials: [],
         assistantHostIds: [],

@@ -435,10 +435,13 @@ const normalizeFieldIds = (values: unknown): string[] => {
 };
 
 const normalizeOfficialSchedulingMode = (value: unknown): OfficialSchedulingMode => {
-    if (value === 'SCHEDULE' || value === 'OFF') {
+    if (value === 'NONE') {
+        return 'OFF';
+    }
+    if (value === 'STAFFING' || value === 'SCHEDULE' || value === 'OFF') {
         return value;
     }
-    return 'STAFFING';
+    return 'SCHEDULE';
 };
 
 const normalizeSportOfficialPositionTemplates = (value: unknown): SportOfficialPositionTemplate[] => {
@@ -2856,7 +2859,7 @@ const eventFormSchema = z
         teams: z.array(z.any()),
         officials: z.array(z.any()),
         officialIds: z.array(z.string()),
-        officialSchedulingMode: z.enum(['STAFFING', 'SCHEDULE', 'OFF']).default('STAFFING'),
+        officialSchedulingMode: z.enum(['STAFFING', 'SCHEDULE', 'OFF']).default('SCHEDULE'),
         officialPositions: z.array(
             z.object({
                 id: z.string().trim().min(1),
@@ -5435,6 +5438,57 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => Array.from(new Set([...assignedUserIdsByRole.OFFICIAL, ...assignedUserIdsByRole.ASSISTANT_HOST])),
         [assignedUserIdsByRole],
     );
+    const requiredOfficialSlotsPerMatch = useMemo(
+        () => (eventData.officialPositions || []).reduce(
+            (total, position) => total + Math.max(1, Number(position.count) || 1),
+            0,
+        ),
+        [eventData.officialPositions],
+    );
+    const assignedActiveOfficialsForStaffing = useMemo(() => {
+        const normalizedOfficialIds = Array.from(
+            new Set(
+                (eventData.officialIds || [])
+                    .map((id) => String(id).trim())
+                    .filter((id) => id.length > 0),
+            ),
+        );
+        if (!normalizedOfficialIds.length) {
+            return 0;
+        }
+        const normalizedEventOfficials = normalizeEventOfficials(
+            eventData.eventOfficials,
+            normalizedOfficialIds,
+            eventData.officialPositions || [],
+        );
+        const allowedPositionIds = new Set((eventData.officialPositions || []).map((position) => position.id));
+        return normalizedEventOfficials.filter((official) => {
+            if (official.isActive === false) {
+                return false;
+            }
+            if (!official.userId || !normalizedOfficialIds.includes(official.userId)) {
+                return false;
+            }
+            if (!allowedPositionIds.size) {
+                return true;
+            }
+            return official.positionIds.some((positionId) => allowedPositionIds.has(positionId));
+        }).length;
+    }, [eventData.eventOfficials, eventData.officialIds, eventData.officialPositions]);
+    const officialStaffingCoverageError = useMemo(() => {
+        if (eventData.officialSchedulingMode !== 'STAFFING') {
+            return null;
+        }
+        if (requiredOfficialSlotsPerMatch <= 0) {
+            return null;
+        }
+        if (assignedActiveOfficialsForStaffing >= requiredOfficialSlotsPerMatch) {
+            return null;
+        }
+        const requiredLabel = requiredOfficialSlotsPerMatch === 1 ? 'official' : 'officials';
+        const assignedLabel = assignedActiveOfficialsForStaffing === 1 ? 'is' : 'are';
+        return `STAFFING requires at least ${requiredOfficialSlotsPerMatch} ${requiredLabel} for each match, but only ${assignedActiveOfficialsForStaffing} ${assignedLabel} assigned to this event.`;
+    }, [assignedActiveOfficialsForStaffing, eventData.officialSchedulingMode, requiredOfficialSlotsPerMatch]);
 
     const lookupPendingStaffInviteMembership = useCallback(async (pendingInvites: PendingStaffInvite[]) => {
         const pendingEmails = Array.from(new Set(
@@ -8342,6 +8396,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return false;
         }
 
+        if (officialStaffingCoverageError) {
+            console.warn('Event form submission blocked by official staffing requirements.', {
+                requiredOfficialSlotsPerMatch,
+                assignedActiveOfficialsForStaffing,
+                mode: eventData.officialSchedulingMode,
+            });
+            return false;
+        }
+
         if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
             return true;
         }
@@ -8356,11 +8419,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         return true;
     }, [
+        assignedActiveOfficialsForStaffing,
         eventData.eventType,
+        eventData.officialSchedulingMode,
         eventData.parentEvent,
         errors,
         hasBlockingExternalSlotConflicts,
         hasPendingExternalConflictChecks,
+        officialStaffingCoverageError,
+        requiredOfficialSlotsPerMatch,
         trigger,
     ]);
 
@@ -9387,16 +9454,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         <Stack gap="sm">
                                             <MantineSelect
                                                 label="Official scheduling mode"
-                                                description="Choose whether the scheduler prioritizes staffing coverage or match layout."
+                                                description="Choose how the scheduler should prioritize staffing requirements."
                                                 data={[
-                                                    { value: 'STAFFING', label: 'Staffing: no schedule conflicts and full staffing first' },
-                                                    { value: 'SCHEDULE', label: 'Schedule: preserve schedule, avoid official conflicts, allow empty slots' },
-                                                    { value: 'OFF', label: 'Off: preserve schedule and allow official conflicts' },
+                                                    { value: 'STAFFING', label: 'STAFFING - Requires each match be fully staffed with no conflicts' },
+                                                    { value: 'SCHEDULE', label: 'SCHEDULE - Matches do not need to be fully staffed' },
+                                                    { value: 'OFF', label: 'NONE - Fully staffed matches, but conflicts allowed' },
                                                 ]}
                                                 value={eventData.officialSchedulingMode}
                                                 onChange={(value) => setValue('officialSchedulingMode', normalizeOfficialSchedulingMode(value), { shouldDirty: true, shouldValidate: true })}
                                                 comboboxProps={sharedComboboxProps}
+                                                error={officialStaffingCoverageError ?? undefined}
                                             />
+                                            {officialStaffingCoverageError && (
+                                                <Alert color="yellow" variant="light">
+                                                    {officialStaffingCoverageError}
+                                                </Alert>
+                                            )}
                                             <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
                                                 <div>
                                                     <Title order={6}>Official Positions</Title>

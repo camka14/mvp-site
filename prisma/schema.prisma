@@ -482,7 +482,7 @@ model Events {
   parentEvent                  String?
   autoCancellation             Boolean?
   eventType                    EventsEventTypeEnum?
-  officialSchedulingMode       EventsOfficialSchedulingModeEnum @default(STAFFING)
+  officialSchedulingMode       EventsOfficialSchedulingModeEnum @default(SCHEDULE)
   doTeamsOfficiate             Boolean?
   teamOfficialsMaySwap         Boolean?
   officialIds                  String[]

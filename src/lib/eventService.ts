@@ -482,10 +482,13 @@ class EventService {
     }
 
     private normalizeOfficialSchedulingMode(value: unknown): Event['officialSchedulingMode'] {
-        if (value === 'SCHEDULE' || value === 'OFF') {
+        if (value === 'NONE') {
+            return 'OFF';
+        }
+        if (value === 'STAFFING' || value === 'SCHEDULE' || value === 'OFF') {
             return value;
         }
-        return 'STAFFING';
+        return 'SCHEDULE';
     }
 
     private mapEventOfficialPositions(value: unknown): NonNullable<Event['officialPositions']> {

@@ -72,11 +72,12 @@ export const ensureStringArray = (value: unknown): string[] => (
 
 export const normalizeOfficialSchedulingMode = (
   value: unknown,
-  fallback: OfficialSchedulingMode = 'STAFFING',
+  fallback: OfficialSchedulingMode = 'SCHEDULE',
 ): OfficialSchedulingMode => {
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
-  return SCHEDULING_MODES.has(normalized as OfficialSchedulingMode)
-    ? normalized as OfficialSchedulingMode
+  const canonical = normalized === 'NONE' ? 'OFF' : normalized;
+  return SCHEDULING_MODES.has(canonical as OfficialSchedulingMode)
+    ? canonical as OfficialSchedulingMode
     : fallback;
 };
 

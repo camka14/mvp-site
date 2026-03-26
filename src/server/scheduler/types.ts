@@ -782,7 +782,7 @@ export class Tournament {
     this.maxAge = params.maxAge ?? null;
     this.doTeamsOfficiate = typeof params.doTeamsOfficiate === 'boolean' ? params.doTeamsOfficiate : true;
     this.teamOfficialsMaySwap = this.doTeamsOfficiate ? Boolean(params.teamOfficialsMaySwap) : false;
-    this.officialSchedulingMode = params.officialSchedulingMode ?? 'STAFFING';
+    this.officialSchedulingMode = params.officialSchedulingMode ?? 'SCHEDULE';
     this.officialPositions = params.officialPositions ?? [];
     this.eventOfficials = params.eventOfficials ?? [];
     const configuredFieldCount = Object.keys(params.fields ?? {}).length;

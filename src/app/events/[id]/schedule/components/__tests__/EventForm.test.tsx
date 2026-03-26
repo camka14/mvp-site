@@ -167,6 +167,7 @@ jest.mock('@/lib/eventService', () => ({
   eventService: {
     getEventWithRelations: jest.fn().mockResolvedValue(null),
     getEventsForFieldInRange: jest.fn().mockResolvedValue([]),
+    getBlockingForFieldInRange: jest.fn().mockResolvedValue([]),
   },
 }));
 
@@ -207,6 +208,7 @@ describe('EventForm dirty state', () => {
     mockUseSportsState = buildMockUseSportsState();
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(null);
     (eventService.getEventsForFieldInRange as jest.Mock).mockResolvedValue([]);
+    (eventService.getBlockingForFieldInRange as jest.Mock).mockResolvedValue([]);
     (userService.getUsersByIds as jest.Mock).mockResolvedValue([]);
     (userService.searchUsers as jest.Mock).mockResolvedValue([]);
     (userService.lookupEmailMembership as jest.Mock).mockResolvedValue([]);
@@ -415,6 +417,59 @@ describe('EventForm dirty state', () => {
     });
   });
 
+  it('defaults official scheduling mode to SCHEDULE when missing on the event payload', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange);
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect((screen.getByLabelText('Official scheduling mode') as HTMLSelectElement).value).toBe('SCHEDULE');
+  });
+
+  it('blocks validation when STAFFING is selected without enough assigned officials', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        officialSchedulingMode: 'STAFFING',
+        officialIds: ['official_1'],
+        officialPositions: [
+          { id: 'position_r1', name: 'R1', count: 2, order: 0 },
+        ],
+        eventOfficials: [
+          {
+            id: 'event_official_1',
+            userId: 'official_1',
+            positionIds: ['position_r1'],
+            fieldIds: [],
+            isActive: true,
+          },
+        ],
+      },
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/STAFFING requires at least 2 officials for each match/i)).toBeInTheDocument();
+    });
+
+    let isValid = true;
+    await act(async () => {
+      isValid = await formRef.current!.validate();
+    });
+
+    expect(isValid).toBe(false);
+  });
+
   it('updates the dirty baseline after a successful save commit', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();
@@ -616,7 +671,7 @@ describe('EventForm dirty state', () => {
 
   it('does not mark edit mode dirty when timeslot conflict checks update slot metadata', async () => {
     const onDirtyStateChange = jest.fn();
-    (eventService.getEventsForFieldInRange as jest.Mock).mockResolvedValue([]);
+    (eventService.getBlockingForFieldInRange as jest.Mock).mockResolvedValue([]);
 
     renderForm(onDirtyStateChange, undefined, {
       state: 'UNPUBLISHED',
@@ -644,7 +699,7 @@ describe('EventForm dirty state', () => {
     });
 
     await waitFor(() => {
-      expect(eventService.getEventsForFieldInRange).toHaveBeenCalled();
+      expect(eventService.getBlockingForFieldInRange).toHaveBeenCalled();
     });
 
     await waitForStableDirtyState(onDirtyStateChange, false);

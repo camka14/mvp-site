@@ -1,0 +1,2 @@
+ALTER TABLE "Events"
+ALTER COLUMN "officialSchedulingMode" SET DEFAULT 'SCHEDULE';

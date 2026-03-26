@@ -114,7 +114,7 @@ export class OfficialStaffingPlanner {
 
   constructor(event: Tournament | League) {
     this.event = event;
-    this.mode = event.officialSchedulingMode ?? 'STAFFING';
+    this.mode = event.officialSchedulingMode ?? 'SCHEDULE';
     this.positions = defaultPositionsForEvent(event);
     this.requiredSlots = buildRequiredSlots(this.positions);
     this.userById = new Map(event.officials.map((official) => [official.id, official]));
