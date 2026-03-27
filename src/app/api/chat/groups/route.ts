@@ -27,18 +27,41 @@ export async function GET(req: NextRequest) {
     orderBy: { updatedAt: 'desc' },
   });
 
-  const groupsWithUnread = await Promise.all(groups.map(async (group) => {
-    const unreadCount = await prisma.messages.count({
+  const groupIds = groups.map((group) => group.id);
+  const unreadCountByGroupId = new Map<string, number>();
+  const lastMessageByGroupId = new Map<string, any>();
+
+  if (groupIds.length > 0) {
+    const unreadRows = await prisma.messages.groupBy({
+      by: ['chatId'],
       where: {
-        chatId: group.id,
+        chatId: { in: groupIds },
         userId: { not: session.userId },
         NOT: { readByIds: { has: session.userId } },
       },
+      _count: { _all: true },
     });
-    return {
-      ...group,
-      unreadCount,
-    };
+    unreadRows.forEach((row) => {
+      unreadCountByGroupId.set(row.chatId, row._count._all);
+    });
+
+    const latestMessages = await prisma.messages.findMany({
+      where: { chatId: { in: groupIds } },
+      distinct: ['chatId'],
+      orderBy: [
+        { chatId: 'asc' },
+        { sentTime: 'desc' },
+      ],
+    });
+    latestMessages.forEach((message) => {
+      lastMessageByGroupId.set(message.chatId, withLegacyFields(message));
+    });
+  }
+
+  const groupsWithUnread = groups.map((group) => ({
+    ...group,
+    unreadCount: unreadCountByGroupId.get(group.id) ?? 0,
+    lastMessage: lastMessageByGroupId.get(group.id) ?? null,
   }));
 
   return NextResponse.json({ groups: withLegacyList(groupsWithUnread) }, { status: 200 });
