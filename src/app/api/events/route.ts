@@ -29,6 +29,11 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+const CREATE_EVENT_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 const createSchema = z.object({
   id: z.string().optional(),
   event: z.record(z.string(), z.any()).optional(),
@@ -771,7 +776,7 @@ export async function POST(req: NextRequest) {
         throw new Error('Failed to create event');
       }
       return fresh;
-    });
+    }, CREATE_EVENT_TRANSACTION_OPTIONS);
 
     const payload = await buildEventResponsePayload(event);
     void notifySocialAudienceOfEventCreation({

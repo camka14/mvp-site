@@ -17,6 +17,34 @@ export const SEED_USERS = {
   },
 } as const;
 
+export const SEED_CAMKA = {
+  id: 'user_camka',
+  email: 'camka@test.com',
+  password: 'password',
+  firstName: 'Samuel',
+  lastName: 'Razumovskiy',
+  userName: 'camka',
+} as const;
+
+export const SEED_DEV_USERS = Array.from({ length: 30 }, (_, index) => {
+  const userNumber = index + 1;
+  return {
+    id: `dev_user_${userNumber}`,
+    email: `exampl${userNumber}@test.com`,
+    password: 'password',
+    firstName: `Example${userNumber}`,
+    lastName: `User${userNumber}`,
+    userName: `exampleuser${userNumber}`,
+  };
+}) as ReadonlyArray<{
+  id: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  userName: string;
+}>;
+
 export const SEED_DIVISION = {
   id: 'division_open',
   name: 'Open',

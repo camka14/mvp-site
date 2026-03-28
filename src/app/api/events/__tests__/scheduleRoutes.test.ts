@@ -158,11 +158,52 @@ describe('schedule routes', () => {
     serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
 
     const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
-      eventDocument: { $id: 'event_1' },
+      eventDocument: {
+        $id: 'event_1',
+        fields: [
+          {
+            id: 'field_inline_1',
+            fieldNumber: 1,
+            divisions: ['open'],
+          },
+        ],
+        timeSlots: [
+          {
+            id: 'slot_inline_1',
+            dayOfWeek: 1,
+            daysOfWeek: [1, 3],
+            startTimeMinutes: 600,
+            endTimeMinutes: 660,
+            startDate: '2026-01-01T00:00:00.000Z',
+            repeating: true,
+            scheduledFieldId: 'field_inline_1',
+            scheduledFieldIds: ['field_inline_1'],
+          },
+        ],
+      },
     }));
     const json = await res.json();
 
     expect(res.status).toBe(200);
+    expect(upsertEventFromPayloadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fields: [
+          expect.objectContaining({
+            id: 'field_inline_1',
+            fieldNumber: 1,
+            divisions: ['open'],
+          }),
+        ],
+        timeSlots: [
+          expect.objectContaining({
+            id: 'slot_inline_1',
+            scheduledFieldId: 'field_inline_1',
+            scheduledFieldIds: ['field_inline_1'],
+          }),
+        ],
+      }),
+      prismaMock,
+    );
     expect(scheduleEventMock).toHaveBeenCalled();
     expect(deleteMatchesByEventMock).toHaveBeenCalledWith('event_1', prismaMock);
     expect(saveMatchesMock).toHaveBeenCalled();
@@ -212,6 +253,26 @@ describe('schedule routes', () => {
         eventDocument: {
           maxParticipants: 5,
           teamIds: [],
+          fields: [
+            {
+              id: 'field_inline_2',
+              fieldNumber: 2,
+              divisions: ['open'],
+            },
+          ],
+          timeSlots: [
+            {
+              id: 'slot_inline_2',
+              dayOfWeek: 2,
+              daysOfWeek: [2],
+              startTimeMinutes: 700,
+              endTimeMinutes: 760,
+              startDate: '2026-01-01T00:00:00.000Z',
+              repeating: true,
+              scheduledFieldId: 'field_inline_2',
+              scheduledFieldIds: ['field_inline_2'],
+            },
+          ],
         },
       }),
       { params: Promise.resolve({ eventId: 'event_1' }) },
@@ -224,6 +285,20 @@ describe('schedule routes', () => {
         id: 'event_1',
         $id: 'event_1',
         maxParticipants: 5,
+        fields: [
+          expect.objectContaining({
+            id: 'field_inline_2',
+            fieldNumber: 2,
+            divisions: ['open'],
+          }),
+        ],
+        timeSlots: [
+          expect.objectContaining({
+            id: 'slot_inline_2',
+            scheduledFieldId: 'field_inline_2',
+            scheduledFieldIds: ['field_inline_2'],
+          }),
+        ],
       }),
       prismaMock,
     );
@@ -232,6 +307,67 @@ describe('schedule routes', () => {
     expect(saveMatchesMock).toHaveBeenCalled();
     expect(json.event.$id).toBe('event_1');
     expect(json.matches[0].$id).toBe('match_1');
+    expect(prismaMock.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: 10_000,
+        timeout: 20_000,
+      }),
+    );
+  });
+
+  it('returns 500 when schedule upsert fails before persistence work starts', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    upsertEventFromPayloadMock.mockRejectedValueOnce(new Error('upsert failed'));
+
+    const res = await schedulePost(
+      jsonRequest('http://localhost/api/events/schedule', {
+        eventDocument: { $id: 'event_1' },
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(json).toEqual(expect.objectContaining({ error: 'Internal Server Error' }));
+    expect(scheduleEventMock).not.toHaveBeenCalled();
+    expect(deleteMatchesByEventMock).not.toHaveBeenCalled();
+    expect(saveMatchesMock).not.toHaveBeenCalled();
+    expect(saveEventScheduleMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when schedule match persistence fails in eventId schedule route', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      matches: {},
+    });
+    scheduleEventMock.mockReturnValue({
+      preview: false,
+      event: { id: 'event_1' },
+      matches: [{ id: 'match_1' }],
+    });
+    saveMatchesMock.mockRejectedValueOnce(new Error('save matches failed'));
+
+    const res = await scheduleByIdPost(
+      jsonRequest('http://localhost/api/events/event_1/schedule', {}),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(json).toEqual(expect.objectContaining({ error: 'Internal Server Error' }));
+    expect(scheduleEventMock).toHaveBeenCalled();
+    expect(deleteMatchesByEventMock).toHaveBeenCalledWith('event_1', prismaMock);
+    expect(saveMatchesMock).toHaveBeenCalledWith('event_1', [{ id: 'match_1' }], prismaMock);
+    expect(saveEventScheduleMock).not.toHaveBeenCalled();
   });
 
   it('preserves locked matches during event reschedule and returns warnings', async () => {

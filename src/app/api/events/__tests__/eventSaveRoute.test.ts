@@ -49,7 +49,10 @@ const postRequest = (url: string, body: any) =>
 
 describe('event save route', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+    prismaMock.$transaction.mockImplementation(
+      async (callback: (tx: typeof prismaMock) => Promise<unknown> | unknown) => callback(prismaMock),
+    );
     notifySocialAudienceOfEventCreationMock.mockResolvedValue(undefined);
   });
 
@@ -57,16 +60,18 @@ describe('event save route', () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     upsertEventFromPayloadMock.mockResolvedValueOnce('event_1');
     loadEventWithRelationsMock.mockResolvedValueOnce({ eventType: 'EVENT' });
-    prismaMock.events.findUnique.mockResolvedValueOnce({
-      id: 'event_1',
-      name: 'Saved Event',
-      hostId: 'host_1',
-      divisions: ['open'],
-      fieldIds: ['field_1'],
-      state: 'UNPUBLISHED',
-      start: new Date('2026-01-01T00:00:00.000Z'),
-      end: new Date('2026-02-01T00:00:00.000Z'),
-    });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        name: 'Saved Event',
+        hostId: 'host_1',
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        state: 'UNPUBLISHED',
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        end: new Date('2026-02-01T00:00:00.000Z'),
+      });
     prismaMock.divisions.findMany.mockResolvedValueOnce([
       { key: 'open', fieldIds: ['field_1'] },
     ]);
@@ -79,6 +84,27 @@ describe('event save route', () => {
           eventType: 'EVENT',
           divisions: ['open'],
           fieldIds: ['field_1'],
+          fields: [
+            {
+              id: 'field_inline_1',
+              name: 'Inline Field',
+              fieldNumber: 1,
+              divisions: ['open'],
+            },
+          ],
+          timeSlots: [
+            {
+              id: 'slot_inline_1',
+              dayOfWeek: 1,
+              daysOfWeek: [1, 3],
+              startTimeMinutes: 600,
+              endTimeMinutes: 660,
+              startDate: '2026-01-01T00:00:00.000Z',
+              repeating: true,
+              scheduledFieldId: 'field_inline_1',
+              scheduledFieldIds: ['field_inline_1'],
+            },
+          ],
           start: '2026-01-01T00:00:00.000Z',
           end: '2026-02-01T00:00:00.000Z',
         },
@@ -90,8 +116,30 @@ describe('event save route', () => {
       expect.objectContaining({
         id: 'event_1',
         hostId: 'host_1',
+        fields: [
+          expect.objectContaining({
+            id: 'field_inline_1',
+            fieldNumber: 1,
+            divisions: ['open'],
+          }),
+        ],
+        timeSlots: [
+          expect.objectContaining({
+            id: 'slot_inline_1',
+            scheduledFieldId: 'field_inline_1',
+            scheduledFieldIds: ['field_inline_1'],
+            daysOfWeek: [1, 3],
+          }),
+        ],
       }),
       prismaMock,
+    );
+    expect(prismaMock.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: 10_000,
+        timeout: 20_000,
+      }),
     );
     expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1', prismaMock);
 
@@ -103,5 +151,31 @@ describe('event save route', () => {
       hostId: 'host_1',
       eventName: 'Saved Event',
     }));
+  });
+
+  it('returns 500 when upsert fails and does not emit creation notifications', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValueOnce(null);
+    upsertEventFromPayloadMock.mockRejectedValueOnce(new Error('upsert failed'));
+
+    const res = await eventsPost(
+      postRequest('http://localhost/api/events', {
+        event: {
+          id: 'event_1',
+          name: 'Broken Event',
+          eventType: 'EVENT',
+          start: '2026-01-01T00:00:00.000Z',
+          end: '2026-02-01T00:00:00.000Z',
+        },
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(json).toEqual(expect.objectContaining({ error: 'Internal Server Error' }));
+    expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
+    expect(saveMatchesMock).not.toHaveBeenCalled();
+    expect(saveEventScheduleMock).not.toHaveBeenCalled();
+    expect(notifySocialAudienceOfEventCreationMock).not.toHaveBeenCalled();
   });
 });
