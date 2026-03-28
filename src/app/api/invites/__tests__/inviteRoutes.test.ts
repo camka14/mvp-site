@@ -358,4 +358,29 @@ describe('/api/invites', () => {
       }),
     });
   });
+
+  it('silently skips STAFF invite entries by userId when no email can be resolved', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue(null);
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+    sendInviteEmailsMock.mockResolvedValue([]);
+
+    const res = await POST(
+      jsonRequest({
+        invites: [{
+          type: 'STAFF',
+          eventId: 'event_1',
+          userId: 'child_profile_only_1',
+          staffTypes: ['OFFICIAL'],
+        }],
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.invites).toEqual([]);
+    expect(prismaMock.invites.create).not.toHaveBeenCalled();
+    expect(prismaMock.invites.update).not.toHaveBeenCalled();
+    expect(sendInviteEmailsMock).toHaveBeenCalledWith([], 'http://localhost');
+  });
 });

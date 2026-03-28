@@ -47,7 +47,7 @@ describe('sendInviteEmails', () => {
     });
   });
 
-  it('attempts push delivery after a successful invite email send', async () => {
+  it('uses push delivery for user-id invites when push targets exist', async () => {
     const invites = await sendInviteEmails([{
       id: 'invite_1',
       email: 'player@example.com',
@@ -56,7 +56,7 @@ describe('sendInviteEmails', () => {
       status: 'PENDING',
     }], 'http://localhost');
 
-    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock).not.toHaveBeenCalled();
     expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
       userIds: ['user_1'],
       title: 'You are invited',
@@ -67,9 +67,16 @@ describe('sendInviteEmails', () => {
     })]);
   });
 
-  it('does not attempt push when email sending fails', async () => {
-    sendEmailMock.mockRejectedValue(new Error('smtp down'));
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  it('falls back to email when a user-id invite has no push targets', async () => {
+    sendPushToUsersMock.mockResolvedValue({
+      attempted: false,
+      reason: 'no_tokens',
+      recipientCount: 1,
+      tokenCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      prunedTokenCount: 0,
+    });
 
     const invites = await sendInviteEmails([{
       id: 'invite_2',
@@ -79,13 +86,44 @@ describe('sendInviteEmails', () => {
       status: 'PENDING',
     }], 'http://localhost');
 
-    expect(sendPushToUsersMock).not.toHaveBeenCalled();
+    expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
+      userIds: ['user_1'],
+    }));
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
     expect(invites).toEqual([expect.objectContaining({
       id: 'invite_2',
+      status: 'PENDING',
+    })]);
+  });
+
+  it('marks invite as FAILED when email fallback fails', async () => {
+    sendPushToUsersMock.mockResolvedValue({
+      attempted: false,
+      reason: 'no_tokens',
+      recipientCount: 1,
+      tokenCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      prunedTokenCount: 0,
+    });
+    sendEmailMock.mockRejectedValue(new Error('smtp down'));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const invites = await sendInviteEmails([{
+      id: 'invite_3',
+      email: 'player@example.com',
+      userId: 'user_1',
+      type: 'TEAM',
+      status: 'PENDING',
+    }], 'http://localhost');
+
+    expect(sendPushToUsersMock).toHaveBeenCalled();
+    expect(invites).toEqual([expect.objectContaining({
+      id: 'invite_3',
       status: 'FAILED',
     })]);
     expect(prismaMock.invites.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'invite_2' },
+      where: { id: 'invite_3' },
       data: expect.objectContaining({ status: 'FAILED' }),
     }));
     expect(consoleErrorSpy).toHaveBeenCalled();

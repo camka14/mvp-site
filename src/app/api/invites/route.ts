@@ -59,6 +59,7 @@ const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date
   let email = typeof invite.email === 'string' ? invite.email.trim().toLowerCase() : '';
   let userId = inviteUserId;
   let shouldSendEmail = false;
+  let skipped = false;
 
   if (userId) {
     const authUser = await prisma.authUser.findUnique({
@@ -84,10 +85,13 @@ const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date
       }
     }
     if (!emailSchema.safeParse(email).success) {
-      throw new Error('Missing invite email');
+      // Some profile-only users (for example dependent child profiles) may not have
+      // a linked auth account or sensitive email yet. Skip invite creation silently.
+      skipped = true;
+      return { userId, email: '', shouldSendEmail: false, skipped };
     }
     shouldSendEmail = isInvitePlaceholderAuthUser(authUser);
-    return { userId, email, shouldSendEmail };
+    return { userId, email, shouldSendEmail, skipped };
   }
 
   if (!emailSchema.safeParse(email).success) {
@@ -100,7 +104,7 @@ const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date
   }));
   userId = ensured.userId;
   shouldSendEmail = !ensured.authUserExisted;
-  return { userId, email, shouldSendEmail };
+  return { userId, email, shouldSendEmail, skipped };
 };
 
 export async function GET(req: NextRequest) {
@@ -153,6 +157,7 @@ export async function POST(req: NextRequest) {
     }
 
     const invite = parsedInvite.data;
+    const isUserIdInvite = Boolean(typeof invite.userId === 'string' && invite.userId.trim());
     const normalizedFirstName = normalizeOptionalName(invite.firstName);
     const normalizedLastName = normalizeOptionalName(invite.lastName);
     const inviteType = normalizeInviteType(invite.type);
@@ -169,6 +174,12 @@ export async function POST(req: NextRequest) {
 
     try {
       const resolvedUser = await resolveInviteUser(invite, now);
+      if (resolvedUser.skipped) {
+        if (inviteType !== 'STAFF') {
+          return NextResponse.json({ error: 'Missing invite email' }, { status: 400 });
+        }
+        continue;
+      }
       const inviteUserId = resolvedUser.userId;
 
       if (inviteType === 'STAFF') {
@@ -287,7 +298,7 @@ export async function POST(req: NextRequest) {
             },
           });
         created.push(record);
-        if (resolvedUser.shouldSendEmail) {
+        if (isUserIdInvite || resolvedUser.shouldSendEmail) {
           toEmail.push(record);
         }
         continue;
@@ -343,7 +354,7 @@ export async function POST(req: NextRequest) {
             },
           });
         created.push(record);
-        if (resolvedUser.shouldSendEmail) {
+        if (isUserIdInvite || resolvedUser.shouldSendEmail) {
           toEmail.push(record);
         }
         continue;
@@ -390,7 +401,7 @@ export async function POST(req: NextRequest) {
           },
         });
       created.push(record);
-      if (resolvedUser.shouldSendEmail) {
+      if (isUserIdInvite || resolvedUser.shouldSendEmail) {
         toEmail.push(record);
       }
     } catch (error) {

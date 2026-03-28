@@ -21,9 +21,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const normalizeEmail = (value?: string | null): string => (value ?? '').trim().toLowerCase();
 
 export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string): Promise<InviteRecord[]> => {
-  if (!invites.length || !isEmailEnabled()) {
+  if (!invites.length) {
     return invites;
   }
+  const emailEnabled = isEmailEnabled();
 
   const eventIds = new Set<string>();
   const organizationIds = new Set<string>();
@@ -62,13 +63,11 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
 
   const results = await Promise.all(invites.map(async (invite) => {
     const email = normalizeEmail(invite.email);
-    if (!email || !EMAIL_REGEX.test(email)) {
-      return { id: invite.id, status: null };
-    }
+    const hasValidEmail = Boolean(email && EMAIL_REGEX.test(email));
 
     const content = buildInviteEmail({
       baseUrl,
-      email,
+      email: hasValidEmail ? email : (invite.email?.trim() ?? ''),
       inviteType: invite.type,
       firstName: invite.firstName,
       lastName: invite.lastName,
@@ -80,6 +79,44 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
       teamName: invite.teamId ? teamNames.get(invite.teamId) : undefined,
     });
 
+    const inviteUserId = invite.userId?.trim();
+    if (inviteUserId) {
+      const pushResult = await sendPushToUsers({
+        userIds: [inviteUserId],
+        title: content.subject,
+        body: 'You have a new invitation in BracketIQ. Open the app to review it.',
+        data: {
+          inviteId: invite.id,
+          inviteType: invite.type ?? '',
+          eventId: invite.eventId ?? '',
+          organizationId: invite.organizationId ?? '',
+          teamId: invite.teamId ?? '',
+        },
+      }).catch((error) => {
+        console.warn('Failed to send invite push notification', { inviteId: invite.id, error });
+        return {
+          attempted: false,
+          reason: 'dispatch_error',
+          recipientCount: 1,
+          tokenCount: 0,
+          successCount: 0,
+          failureCount: 0,
+          prunedTokenCount: 0,
+        };
+      });
+
+      // User-id invite policy:
+      // 1) If the user has push targets, rely on push delivery.
+      // 2) If they have no push targets, fall back to email (when available).
+      if (pushResult.reason !== 'no_tokens') {
+        return { id: invite.id, status: invite.status ?? 'PENDING' };
+      }
+    }
+
+    if (!emailEnabled || !hasValidEmail) {
+      return { id: invite.id, status: null };
+    }
+
     try {
       await sendEmail({
         to: email,
@@ -87,25 +124,6 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
         text: content.text,
         html: content.html,
       });
-
-      const inviteUserId = invite.userId?.trim();
-      if (inviteUserId) {
-        await sendPushToUsers({
-          userIds: [inviteUserId],
-          title: content.subject,
-          body: 'You have a new invitation in BracketIQ. Open the app to review it.',
-          data: {
-            inviteId: invite.id,
-            inviteType: invite.type ?? '',
-            eventId: invite.eventId ?? '',
-            organizationId: invite.organizationId ?? '',
-            teamId: invite.teamId ?? '',
-          },
-        }).catch((error) => {
-          console.warn('Failed to send invite push notification', { inviteId: invite.id, error });
-        });
-      }
-
       return { id: invite.id, status: invite.status ?? 'PENDING' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
