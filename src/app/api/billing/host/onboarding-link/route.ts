@@ -40,6 +40,17 @@ export async function POST(req: NextRequest) {
     const refreshUrl = sanitizeSameOriginUrl(parsed.data.refreshUrl, origin);
 
     if (!returnUrl || !refreshUrl) {
+      console.warn('Stripe onboarding-link invalid redirect url', {
+        requestUrl: req.nextUrl.toString(),
+        requestOrigin: origin,
+        forwardedProto: req.headers.get('x-forwarded-proto'),
+        forwardedHost: req.headers.get('x-forwarded-host'),
+        host: req.headers.get('host'),
+        returnUrlRaw: parsed.data.returnUrl,
+        refreshUrlRaw: parsed.data.refreshUrl,
+        returnUrlSanitized: returnUrl,
+        refreshUrlSanitized: refreshUrl,
+      });
       return NextResponse.json({ error: 'Invalid redirect url' }, { status: 400 });
     }
 
