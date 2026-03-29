@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
   const relevantTeamIds = uniqueStrings([...teamIds, ...slotTeamIds]);
 
   const involvementFilters: Record<string, unknown>[] = [
+    { hostId: user.id },
     { userIds: { has: user.id } },
     { freeAgentIds: { has: user.id } },
     { waitListIds: { has: user.id } },

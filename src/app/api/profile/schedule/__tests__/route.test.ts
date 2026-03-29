@@ -105,6 +105,7 @@ describe('GET /api/profile/schedule', () => {
         where: expect.objectContaining({
           NOT: { state: 'TEMPLATE' },
           OR: expect.arrayContaining([
+            { hostId: 'user_1' },
             { userIds: { has: 'user_1' } },
             { freeAgentIds: { has: 'user_1' } },
             { waitListIds: { has: 'user_1' } },
@@ -158,6 +159,55 @@ describe('GET /api/profile/schedule', () => {
     expect(prismaMock.matches.findMany).not.toHaveBeenCalled();
     expect(prismaMock.fields.findMany).not.toHaveBeenCalled();
     expect(prismaMock.teams.findMany).not.toHaveBeenCalled();
+  });
+
+  it('includes events where the user is the host even without participant involvement', async () => {
+    prismaMock.userData.findUnique.mockResolvedValue({
+      id: 'user_1',
+      teamIds: [],
+    });
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'hosted_event_1',
+        name: 'Test map',
+        state: 'PUBLISHED',
+        start: new Date('2026-03-01T10:00:00Z'),
+        end: new Date('2026-03-01T12:00:00Z'),
+        fieldIds: [],
+        teamIds: [],
+        hostId: 'user_1',
+        userIds: [],
+        freeAgentIds: [],
+        waitListIds: [],
+        officialIds: [],
+      },
+    ]);
+    prismaMock.matches.findMany.mockResolvedValue([]);
+
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/profile/schedule?from=2026-03-01T00:00:00Z&to=2026-03-31T23:59:59Z&limit=50',
+      ),
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.events).toHaveLength(1);
+    expect(json.events[0].$id).toBe('hosted_event_1');
+    expect(json.events[0].name).toBe('Test map');
+
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          NOT: { state: 'TEMPLATE' },
+          OR: expect.arrayContaining([
+            { hostId: 'user_1' },
+          ]),
+          AND: expect.any(Array),
+        }),
+        take: 50,
+      }),
+    );
   });
 
   it('falls back to legacy volleyBallTeams delegate when teams delegate is unavailable', async () => {

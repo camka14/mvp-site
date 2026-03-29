@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 const DEFAULT_SPORTS = [
   // NOTE: These flags intentionally gate which LeagueScoringConfig fields render in the UI.
-  // If they are missing (null), the UI will hide scoring controls entirely.
+  // Keep this set focused on core scoring inputs only.
   {
     id: 'Indoor Volleyball',
     name: 'Indoor Volleyball',
@@ -16,7 +16,6 @@ const DEFAULT_SPORTS = [
     usePointsPerSetLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Beach Volleyball',
@@ -27,7 +26,6 @@ const DEFAULT_SPORTS = [
     usePointsPerSetLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Grass Volleyball',
@@ -38,7 +36,6 @@ const DEFAULT_SPORTS = [
     usePointsPerSetLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Basketball',
@@ -47,7 +44,6 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Indoor Soccer',
@@ -57,7 +53,6 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Grass Soccer',
@@ -67,7 +62,6 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Beach Soccer',
@@ -77,7 +71,6 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Tennis',
@@ -90,7 +83,6 @@ const DEFAULT_SPORTS = [
     usePointsPerGameLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Pickleball',
@@ -101,7 +93,6 @@ const DEFAULT_SPORTS = [
     usePointsPerSetLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Football',
@@ -111,7 +102,6 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Hockey',
@@ -121,10 +111,6 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    useOvertimeEnabled: true,
-    usePointsForOvertimeWin: true,
-    usePointsForOvertimeLoss: true,
-    usePointPrecision: true,
   },
   {
     id: 'Baseball',
@@ -133,7 +119,6 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
   {
     id: 'Other',
@@ -143,7 +128,6 @@ const DEFAULT_SPORTS = [
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
     usePointsPerGoalConceded: false,
-    usePointPrecision: true,
   },
 ];
 

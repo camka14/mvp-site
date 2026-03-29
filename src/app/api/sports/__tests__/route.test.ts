@@ -124,7 +124,6 @@ describe('GET /api/sports', () => {
         usePointsForLoss: true,
         usePointsPerGoalScored: true,
         usePointsPerGoalConceded: true,
-        usePointPrecision: true,
       },
     ];
     prismaMock.sports.findMany
@@ -146,7 +145,6 @@ describe('GET /api/sports', () => {
         usePointsForLoss: null,
         usePointsPerGoalScored: null,
         usePointsPerGoalConceded: null,
-        usePointPrecision: null,
       },
     ];
     prismaMock.sports.findMany
@@ -158,7 +156,6 @@ describe('GET /api/sports', () => {
           usePointsForLoss: true,
           usePointsPerGoalScored: false,
           usePointsPerGoalConceded: false,
-          usePointPrecision: true,
         },
       ]);
 
@@ -172,7 +169,6 @@ describe('GET /api/sports', () => {
         usePointsForLoss: true,
         usePointsPerGoalScored: false,
         usePointsPerGoalConceded: false,
-        usePointPrecision: true,
       },
     });
   });
