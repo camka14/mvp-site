@@ -1,7 +1,12 @@
 /** @jest-environment node */
 
 import { scheduleEvent } from '@/server/scheduler/scheduleEvent';
-import { applyLeagueDivisionPlayoffReassignment, isPlayoffMatch } from '@/server/scheduler/standings';
+import {
+  applyLeagueDivisionPlayoffReassignment,
+  isPlayoffMatch,
+  normalizeLeaguePlayoffPlacementMappings,
+  validateDivisionPlayoffMapping,
+} from '@/server/scheduler/standings';
 import { Division, League, Match, PlayingField, Team, TimeSlot } from '@/server/scheduler/types';
 
 const context = {
@@ -42,6 +47,144 @@ const getPlayoffMatches = (league: League, playoffDivisionId: string): Match[] =
 );
 
 describe('standings playoff reassignment', () => {
+  it('auto-fills single-division playoff mappings in bracket order', () => {
+    const open = new Division(
+      'open',
+      'Open',
+      [],
+      null,
+      8,
+      4,
+      'LEAGUE',
+      ['playoff_1', '', 'playoff_unknown'],
+    );
+    const playoffOne = new Division('playoff_1', 'Playoff 1', [], null, 8, null, 'PLAYOFF');
+    const playoffTwo = new Division('playoff_2', 'Playoff 2', [], null, 8, null, 'PLAYOFF');
+
+    const league = new League({
+      id: 'league_mapping_autofill',
+      name: 'League Mapping Autofill',
+      start: new Date('2026-01-05T08:00:00.000Z'),
+      end: new Date('2026-03-30T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: true,
+      teams: {},
+      divisions: [open],
+      playoffDivisions: [playoffOne, playoffTwo],
+      splitLeaguePlayoffDivisions: true,
+      officials: [],
+      fields: {},
+      timeSlots: [],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const changedDivisionIds = normalizeLeaguePlayoffPlacementMappings(league);
+
+    expect(changedDivisionIds).toEqual([open.id]);
+    expect(open.playoffPlacementDivisionIds).toEqual([
+      playoffOne.id,
+      playoffTwo.id,
+      playoffOne.id,
+      playoffTwo.id,
+    ]);
+  });
+
+  it('does not auto-fill playoff mappings for split league divisions', () => {
+    const east = new Division('east', 'East', [], null, 6, 3, 'LEAGUE', ['playoff_1', '', '']);
+    const west = new Division('west', 'West', [], null, 6, 3, 'LEAGUE', ['playoff_1', '', '']);
+    const playoffOne = new Division('playoff_1', 'Playoff 1', [], null, 8, null, 'PLAYOFF');
+    const playoffTwo = new Division('playoff_2', 'Playoff 2', [], null, 8, null, 'PLAYOFF');
+
+    const league = new League({
+      id: 'league_mapping_manual_split',
+      name: 'League Mapping Manual Split',
+      start: new Date('2026-01-05T08:00:00.000Z'),
+      end: new Date('2026-03-30T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 12,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams: {},
+      divisions: [east, west],
+      playoffDivisions: [playoffOne, playoffTwo],
+      splitLeaguePlayoffDivisions: true,
+      officials: [],
+      fields: {},
+      timeSlots: [],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 3,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const changedDivisionIds = normalizeLeaguePlayoffPlacementMappings(league);
+
+    expect(changedDivisionIds).toEqual([]);
+    expect(east.playoffPlacementDivisionIds).toEqual(['playoff_1', '', '']);
+    expect(west.playoffPlacementDivisionIds).toEqual(['playoff_1', '', '']);
+  });
+
+  it('does not require placement mapping when split playoffs are disabled', () => {
+    const open = new Division(
+      'open',
+      'Open',
+      [],
+      null,
+      12,
+      9,
+      'LEAGUE',
+      [],
+    );
+    const league = new League({
+      id: 'league_no_split_mapping_required',
+      name: 'League No Split Mapping Required',
+      start: new Date('2026-01-05T08:00:00.000Z'),
+      end: new Date('2026-03-30T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 12,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: true,
+      teams: {},
+      divisions: [open],
+      playoffDivisions: [],
+      splitLeaguePlayoffDivisions: false,
+      officials: [],
+      fields: {},
+      timeSlots: [],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 9,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const errors = validateDivisionPlayoffMapping(league, open);
+
+    expect(errors).toEqual([]);
+  });
+
   it('assigns each seeded team to a single entrant slot when bracket capacity is larger than confirmed entrants', () => {
     const east = new Division(
       'east',

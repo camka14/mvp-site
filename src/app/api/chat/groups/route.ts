@@ -8,10 +8,10 @@ import { isMinorAtUtcDate } from '@/server/userPrivacy';
 export const dynamic = 'force-dynamic';
 
 const createSchema = z.object({
-  id: z.string(),
+  id: z.string().trim().min(1),
   name: z.string().optional(),
-  userIds: z.array(z.string()),
-  hostId: z.string(),
+  userIds: z.array(z.string().trim().min(1)).min(2),
+  hostId: z.string().trim().min(1),
 }).passthrough();
 
 export async function GET(req: NextRequest) {
@@ -75,11 +75,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  if (!parsed.data.userIds.includes(session.userId)) {
+  const normalizedHostId = parsed.data.hostId.trim();
+  const requestedUserIds = Array.from(new Set(parsed.data.userIds.map((entry) => entry.trim()).filter(Boolean)));
+
+  if (!requestedUserIds.includes(session.userId)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const requestedUserIds = Array.from(new Set(parsed.data.userIds.map((entry) => entry.trim()).filter(Boolean)));
+  if (normalizedHostId !== session.userId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  if (requestedUserIds.length < 2) {
+    return NextResponse.json(
+      { error: 'Invalid input', details: { userIds: ['At least two unique users are required'] } },
+      { status: 400 },
+    );
+  }
+
   const targetUserIds = requestedUserIds.filter((id) => id !== session.userId);
   if (targetUserIds.length > 0) {
     const targetUsers = await prisma.userData.findMany({
@@ -96,8 +109,8 @@ export async function POST(req: NextRequest) {
     data: {
       id: parsed.data.id,
       name: parsed.data.name ?? null,
-      userIds: parsed.data.userIds,
-      hostId: parsed.data.hostId,
+      userIds: requestedUserIds,
+      hostId: normalizedHostId,
       createdAt: new Date(),
       updatedAt: new Date(),
     },

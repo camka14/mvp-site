@@ -14,7 +14,11 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { rescheduleEventMatchesPreservingLocks } from '@/server/scheduler/reschedulePreservingLocks';
 import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
-import { SchedulerContext } from '@/server/scheduler/types';
+import {
+  applyLeagueDivisionPlayoffReassignment,
+  normalizeLeaguePlayoffPlacementMappings,
+} from '@/server/scheduler/standings';
+import { League, SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
@@ -45,6 +49,43 @@ const isFixedEndValidationError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes('No fixed end date/time')
     || message.includes('End date/time must be after start date/time');
+};
+
+const isLeagueEvent = (event: { eventType?: unknown }): event is League => (
+  typeof event.eventType === 'string' && event.eventType.toUpperCase() === 'LEAGUE'
+);
+
+const applyConfirmedLeaguePlayoffReassignments = (
+  league: League,
+  context: SchedulerContext,
+): {
+  affectedPlayoffDivisionIds: string[];
+  teamIdsByPlayoffDivision: Record<string, string[]>;
+} => {
+  const affectedPlayoffDivisionIds = new Set<string>();
+  const teamIdsByPlayoffDivision: Record<string, string[]> = {};
+
+  for (const division of league.divisions) {
+    if (!division.standingsConfirmedAt) {
+      continue;
+    }
+    const reassignment = applyLeagueDivisionPlayoffReassignment(
+      league,
+      division.id,
+      context,
+    );
+    reassignment.affectedPlayoffDivisionIds.forEach((playoffDivisionId) => {
+      affectedPlayoffDivisionIds.add(playoffDivisionId);
+    });
+    Object.entries(reassignment.teamIdsByPlayoffDivision).forEach(([playoffDivisionId, teamIds]) => {
+      teamIdsByPlayoffDivision[playoffDivisionId] = teamIds;
+    });
+  }
+
+  return {
+    affectedPlayoffDivisionIds: Array.from(affectedPlayoffDivisionIds),
+    teamIdsByPlayoffDivision,
+  };
 };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
@@ -88,28 +129,82 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         return { preview: false, event, matches: Object.values(event.matches), warnings: [] };
       }
 
-      const existingMatches = Object.values(event.matches);
-      const hasExistingMatches = existingMatches.length > 0;
-      if (hasExistingMatches) {
-        let scheduled;
-        try {
-          scheduled = rescheduleEventMatchesPreservingLocks(event);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unable to reschedule while preserving existing matches.';
-          throw new ScheduleError(message);
+      if (isLeagueEvent(event) && event.singleDivision) {
+        const changedLeagueDivisionIds = normalizeLeaguePlayoffPlacementMappings(event);
+        if (changedLeagueDivisionIds.length) {
+          const now = new Date();
+          const playoffMappingByDivisionId = new Map(
+            event.divisions.map((division) => [division.id, [...(division.playoffPlacementDivisionIds ?? [])] as string[]]),
+          );
+          await Promise.all(
+            changedLeagueDivisionIds.map((divisionId) =>
+              tx.divisions.update({
+                where: { id: divisionId },
+                data: {
+                  playoffPlacementDivisionIds: playoffMappingByDivisionId.get(divisionId) ?? [],
+                  updatedAt: now,
+                } as any,
+              }),
+            ),
+          );
         }
-        await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
-        await saveMatches(eventId, scheduled.matches, tx);
-        await saveEventSchedule(scheduled.event, tx);
-        return { preview: false, ...scheduled };
       }
 
-      const scheduled = scheduleEvent({ event, participantCount: parsed.data.participantCount }, context);
+      const existingMatches = Object.values(event.matches);
+      const hasExistingMatches = existingMatches.length > 0;
+      const scheduled = (() => {
+        if (hasExistingMatches) {
+          try {
+            return rescheduleEventMatchesPreservingLocks(event);
+          } catch (error) {
+            const message = error instanceof Error
+              ? error.message
+              : 'Unable to reschedule while preserving existing matches.';
+            throw new ScheduleError(message);
+          }
+        }
+        return scheduleEvent({ event, participantCount: parsed.data.participantCount }, context);
+      })();
+
+      if (isLeagueEvent(scheduled.event) && scheduled.event.singleDivision) {
+        let reassignment;
+        try {
+          reassignment = applyConfirmedLeaguePlayoffReassignments(scheduled.event, context);
+        } catch (error) {
+          const message = error instanceof Error
+            ? error.message
+            : 'Unable to assign league standings to playoff brackets.';
+          throw new ScheduleError(message);
+        }
+        if (reassignment.affectedPlayoffDivisionIds.length) {
+          const now = new Date();
+          await Promise.all(
+            reassignment.affectedPlayoffDivisionIds.map((playoffDivisionId) =>
+              tx.divisions.update({
+                where: { id: playoffDivisionId },
+                data: {
+                  teamIds: reassignment.teamIdsByPlayoffDivision[playoffDivisionId] ?? [],
+                  updatedAt: now,
+                } as any,
+              }),
+            ),
+          );
+        }
+      }
+
       await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
-      await deleteMatchesByEvent(eventId, tx);
+      if (!hasExistingMatches) {
+        await deleteMatchesByEvent(eventId, tx);
+      }
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);
-      return { ...scheduled, warnings: [] };
+      return {
+        preview: false,
+        ...scheduled,
+        warnings: Array.isArray((scheduled as { warnings?: unknown[] }).warnings)
+          ? (scheduled as { warnings: unknown[] }).warnings
+          : [],
+      };
     }, SCHEDULE_TRANSACTION_OPTIONS);
 
     return NextResponse.json(

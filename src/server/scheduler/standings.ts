@@ -316,9 +316,70 @@ const getDivisionPlayoffTeamCount = (league: League, division: Division): number
   return divisionCount ?? leagueCount;
 };
 
+export const normalizeLeaguePlayoffPlacementMappings = (league: League): string[] => {
+  if (!league.includePlayoffs) {
+    return [];
+  }
+  if (!league.singleDivision) {
+    return [];
+  }
+
+  const playoffDivisionIdsByToken = new Map<string, string>();
+  const orderedPlayoffDivisionIds: string[] = [];
+  for (const playoffDivision of league.playoffDivisions) {
+    const normalizedPlayoffDivisionId = normalizeToken(playoffDivision.id);
+    if (!normalizedPlayoffDivisionId) {
+      continue;
+    }
+    if (playoffDivisionIdsByToken.has(normalizedPlayoffDivisionId)) {
+      continue;
+    }
+    playoffDivisionIdsByToken.set(normalizedPlayoffDivisionId, playoffDivision.id);
+    orderedPlayoffDivisionIds.push(playoffDivision.id);
+  }
+
+  if (!orderedPlayoffDivisionIds.length) {
+    return [];
+  }
+
+  const changedDivisionIds: string[] = [];
+
+  for (const division of league.divisions) {
+    const playoffTeamCount = getDivisionPlayoffTeamCount(league, division);
+    const currentMapping = Array.isArray(division.playoffPlacementDivisionIds)
+      ? division.playoffPlacementDivisionIds
+      : [];
+
+    const nextMapping: string[] = [];
+    for (let index = 0; index < playoffTeamCount; index += 1) {
+      const mappedDivisionToken = normalizeToken(currentMapping[index]);
+      const mappedDivisionId = mappedDivisionToken ? playoffDivisionIdsByToken.get(mappedDivisionToken) : null;
+      if (mappedDivisionId) {
+        nextMapping.push(mappedDivisionId);
+        continue;
+      }
+      nextMapping.push(orderedPlayoffDivisionIds[index % orderedPlayoffDivisionIds.length]);
+    }
+
+    const unchanged = currentMapping.length === nextMapping.length
+      && nextMapping.every((value, index) => value === currentMapping[index]);
+    if (unchanged) {
+      continue;
+    }
+
+    division.playoffPlacementDivisionIds = nextMapping;
+    changedDivisionIds.push(division.id);
+  }
+
+  return changedDivisionIds;
+};
+
 export const validateDivisionPlayoffMapping = (league: League, division: Division): string[] => {
   const errors: string[] = [];
   if (!league.includePlayoffs) {
+    return errors;
+  }
+  if (!league.splitLeaguePlayoffDivisions) {
     return errors;
   }
 
@@ -350,6 +411,9 @@ export const validateDivisionPlayoffMapping = (league: League, division: Divisio
 export const validatePlayoffDivisionReferenceCapacities = (league: League): string[] => {
   const errors: string[] = [];
   if (!league.includePlayoffs) {
+    return errors;
+  }
+  if (!league.splitLeaguePlayoffDivisions) {
     return errors;
   }
 
