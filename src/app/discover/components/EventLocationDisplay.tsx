@@ -1,13 +1,15 @@
 import React from 'react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
 
 const EventLocationDisplay: React.FC<{
     location: string;
     coordinates: { lat: number; lng: number };
 }> = ({ location, coordinates }) => {
     const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
+        id: GOOGLE_MAPS_SCRIPT_ID,
         googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
+        libraries: GOOGLE_MAPS_LIBRARIES,
     });
 
     const [showMap, setShowMap] = React.useState(false);

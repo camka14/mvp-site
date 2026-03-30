@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TextInput, Button, Paper } from '@mantine/core';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import { locationService } from '@/lib/locationService';
+import { GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
 
 interface LocationSelectorProps {
     value: string;
@@ -37,9 +38,9 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     const mapCenter = hasCoordinates ? coordinates : center;
 
     const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
+        id: GOOGLE_MAPS_SCRIPT_ID,
         googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
-        libraries: ['places']
+        libraries: GOOGLE_MAPS_LIBRARIES,
     });
 
     useEffect(() => {
