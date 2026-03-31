@@ -446,7 +446,6 @@ const seed = async (): Promise<void> => {
       data: {
         id: SEED_FIELD.id,
         fieldNumber: SEED_FIELD.fieldNumber,
-        divisions: [...SEED_FIELD.divisions],
         lat: SEED_FIELD.lat,
         long: SEED_FIELD.long,
         name: SEED_FIELD.name,

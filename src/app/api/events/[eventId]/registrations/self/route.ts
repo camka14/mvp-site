@@ -203,11 +203,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     });
     participantTemplates = participantRequiredTemplateIds
       .map((templateId) => templateById.get(templateId))
-      .filter((template): template is {
-        id: string;
-        requiredSignerType: string | null;
-        signOnce: boolean | null;
-      } => Boolean(template));
+      .filter((template): template is NonNullable<typeof template> => template !== undefined);
   }
 
   let hasAllParticipantSignatures = false;

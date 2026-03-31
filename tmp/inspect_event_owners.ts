@@ -1,8 +1,8 @@
-import { prisma } from @/lib/prisma;
+import { prisma } from '@/lib/prisma';
 
 const ids = [
-  898e89f0-68c9-4141-b09d-328e42e24ef3,
-  1706436e-fbcd-47db-85d1-af903c4fe71c,
+  '898e89f0-68c9-4141-b09d-328e42e24ef3',
+  '1706436e-fbcd-47db-85d1-af903c4fe71c',
 ];
 
 async function main() {
@@ -23,7 +23,7 @@ async function main() {
       state: true,
       name: true,
     },
-    orderBy: { createdAt: asc },
+    orderBy: { createdAt: 'asc' },
   });
 
   const orgId = events[0]?.organizationId ?? null;
@@ -60,7 +60,7 @@ async function main() {
           createdBy: true,
           createdAt: true,
         },
-        orderBy: { createdAt: desc },
+        orderBy: { createdAt: 'desc' },
         take: 50,
       })
     : [];
@@ -75,7 +75,7 @@ async function main() {
       ownerType: true,
       createdAt: true,
     },
-    orderBy: { createdAt: asc },
+    orderBy: { createdAt: 'asc' },
   });
 
   const operations = await prisma.boldSignSyncOperations.findMany({
@@ -87,7 +87,7 @@ async function main() {
       createdAt: true,
       operationType: true,
     },
-    orderBy: { createdAt: asc },
+    orderBy: { createdAt: 'asc' },
   });
 
   console.log(JSON.stringify({ events, org, staffMembers, invites, bills, operations }, null, 2));
@@ -99,5 +99,5 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await prisma.();
+    await prisma.$disconnect();
   });
