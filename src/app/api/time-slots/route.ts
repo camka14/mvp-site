@@ -29,6 +29,7 @@ const createSchema = z.object({
   scheduledFieldId: z.string().optional(),
   price: z.number().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
+  hostRequiredTemplateIds: z.array(z.string()).optional(),
 }).passthrough();
 
 const normalizeDivisionKeys = (value: unknown): string[] => {
@@ -70,6 +71,19 @@ const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: nu
         .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
     ),
   ).sort((a, b) => a - b);
+};
+
+const normalizeTemplateIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((id) => String(id).trim())
+        .filter((id) => id.length > 0),
+    ),
+  );
 };
 
 const toDateOnlyValue = (value: Date): number => {
@@ -198,6 +212,8 @@ export async function GET(req: NextRequest) {
       daysOfWeek: (slot as any).daysOfWeek ?? undefined,
     });
     const normalizedDivisions = normalizeDivisionKeys((slot as any).divisions);
+    const normalizedRequiredTemplateIds = normalizeTemplateIds((slot as any).requiredTemplateIds);
+    const normalizedHostRequiredTemplateIds = normalizeTemplateIds((slot as any).hostRequiredTemplateIds);
     return withLegacyFields({
       ...slot,
       dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
@@ -205,6 +221,8 @@ export async function GET(req: NextRequest) {
       scheduledFieldId: normalizedFieldIds[0] ?? null,
       scheduledFieldIds: normalizedFieldIds,
       divisions: normalizedDivisions,
+      requiredTemplateIds: normalizedRequiredTemplateIds,
+      hostRequiredTemplateIds: normalizedHostRequiredTemplateIds,
     } as any);
   });
 
@@ -228,9 +246,8 @@ export async function POST(req: NextRequest) {
     dayOfWeek: data.dayOfWeek ?? undefined,
     daysOfWeek: data.daysOfWeek ?? undefined,
   });
-  const requiredTemplateIds = Array.isArray(data.requiredTemplateIds)
-    ? Array.from(new Set(data.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
-    : [];
+  const requiredTemplateIds = normalizeTemplateIds(data.requiredTemplateIds);
+  const hostRequiredTemplateIds = normalizeTemplateIds(data.hostRequiredTemplateIds);
   const scheduledFieldIds = normalizeFieldIds([
     ...(Array.isArray(data.scheduledFieldIds) ? data.scheduledFieldIds : []),
     ...(typeof data.scheduledFieldId === 'string' ? [data.scheduledFieldId] : []),
@@ -254,6 +271,7 @@ export async function POST(req: NextRequest) {
         scheduledFieldIds,
         price: data.price ?? null,
         requiredTemplateIds,
+        hostRequiredTemplateIds,
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -267,6 +285,8 @@ export async function POST(req: NextRequest) {
       scheduledFieldId: scheduledFieldIds[0] ?? slot.scheduledFieldId ?? null,
       scheduledFieldIds,
       divisions,
+      requiredTemplateIds,
+      hostRequiredTemplateIds,
     } as any), { status: 201 });
   } catch (error) {
     if (isUniqueConstraintError(error)) {

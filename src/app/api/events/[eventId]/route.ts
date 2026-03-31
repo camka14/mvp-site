@@ -1871,6 +1871,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             scheduledFieldIds: slot.scheduledFieldIds,
             price: slot.price,
             requiredTemplateIds: slot.requiredTemplateIds,
+            hostRequiredTemplateIds: slot.hostRequiredTemplateIds,
             updatedAt: now,
           };
 
@@ -2221,11 +2222,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
         }),
         tx.timeSlots.findMany({
           where: {
-            requiredTemplateIds: { has: eventId },
+            OR: [
+              { requiredTemplateIds: { has: eventId } },
+              { hostRequiredTemplateIds: { has: eventId } },
+            ],
           },
           select: {
             id: true,
             requiredTemplateIds: true,
+            hostRequiredTemplateIds: true,
           },
         }),
       ]);
@@ -2245,6 +2250,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
           where: { id: linkedSlot.id },
           data: {
             requiredTemplateIds: removeEntityIdFromList(linkedSlot.requiredTemplateIds, eventId),
+            hostRequiredTemplateIds: removeEntityIdFromList(linkedSlot.hostRequiredTemplateIds, eventId),
             updatedAt: new Date(),
           },
         });

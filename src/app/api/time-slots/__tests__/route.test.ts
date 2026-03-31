@@ -200,6 +200,7 @@ describe('time-slots routes', () => {
       endTimeMinutes: 600,
       price: null,
       requiredTemplateIds: ['tmpl_rental_doc'],
+      hostRequiredTemplateIds: ['tmpl_host_contract'],
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -215,6 +216,7 @@ describe('time-slots routes', () => {
       repeating: true,
       divisions: ['Open'],
       requiredTemplateIds: ['tmpl_rental_doc', 'tmpl_rental_doc'],
+      hostRequiredTemplateIds: ['tmpl_host_contract', 'tmpl_host_contract'],
       startDate: '2026-01-05T00:00:00.000Z',
       endDate: null,
     }));
@@ -229,6 +231,7 @@ describe('time-slots routes', () => {
           scheduledFieldId: 'field_2',
           scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
           requiredTemplateIds: ['tmpl_rental_doc'],
+          hostRequiredTemplateIds: ['tmpl_host_contract'],
         }),
       }),
     );
@@ -239,6 +242,7 @@ describe('time-slots routes', () => {
       scheduledFieldId: 'field_2',
       scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
       requiredTemplateIds: ['tmpl_rental_doc'],
+      hostRequiredTemplateIds: ['tmpl_host_contract'],
     }));
   });
 
@@ -257,6 +261,7 @@ describe('time-slots routes', () => {
       endTimeMinutes: 600,
       price: null,
       requiredTemplateIds: ['tmpl_patch_doc'],
+      hostRequiredTemplateIds: ['tmpl_patch_host_doc'],
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -267,6 +272,7 @@ describe('time-slots routes', () => {
           daysOfWeek: [4, 2, 4],
           scheduledFieldIds: ['field_a', 'field_b', 'field_a'],
           requiredTemplateIds: ['tmpl_patch_doc', 'tmpl_patch_doc'],
+          hostRequiredTemplateIds: ['tmpl_patch_host_doc', 'tmpl_patch_host_doc'],
         },
       }, 'PATCH'),
       { params: Promise.resolve({ id: 'slot_patch' }) },
@@ -283,6 +289,7 @@ describe('time-slots routes', () => {
           scheduledFieldId: 'field_a',
           scheduledFieldIds: ['field_a', 'field_b'],
           requiredTemplateIds: ['tmpl_patch_doc'],
+          hostRequiredTemplateIds: ['tmpl_patch_host_doc'],
         }),
       }),
     );
@@ -293,6 +300,7 @@ describe('time-slots routes', () => {
       scheduledFieldId: 'field_a',
       scheduledFieldIds: ['field_a', 'field_b'],
       requiredTemplateIds: ['tmpl_patch_doc'],
+      hostRequiredTemplateIds: ['tmpl_patch_host_doc'],
     }));
   });
 

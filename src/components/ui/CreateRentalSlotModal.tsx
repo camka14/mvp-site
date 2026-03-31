@@ -134,6 +134,7 @@ export default function CreateRentalSlotModal({
   const [repeating, setRepeating] = useState<boolean>(false);
   const [price, setPrice] = useState<number>(0);
   const [requiredTemplateIds, setRequiredTemplateIds] = useState<string[]>([]);
+  const [hostRequiredTemplateIds, setHostRequiredTemplateIds] = useState<string[]>([]);
   const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [templatesLoading, setTemplatesLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -191,6 +192,11 @@ export default function CreateRentalSlotModal({
           ? slot.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)
           : [],
       );
+      setHostRequiredTemplateIds(
+        Array.isArray(slot.hostRequiredTemplateIds)
+          ? slot.hostRequiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)
+          : [],
+      );
       return;
     }
 
@@ -210,6 +216,7 @@ export default function CreateRentalSlotModal({
       setRepeating(true);
       setPrice(0);
       setRequiredTemplateIds([]);
+      setHostRequiredTemplateIds([]);
       return;
     }
 
@@ -224,6 +231,7 @@ export default function CreateRentalSlotModal({
     setRepeating(false);
     setPrice(0);
     setRequiredTemplateIds([]);
+    setHostRequiredTemplateIds([]);
   }, [opened, slot, initialRange, organizationHasStripeAccount]);
 
   useEffect(() => {
@@ -408,6 +416,7 @@ export default function CreateRentalSlotModal({
         startTimeMinutes: repeating && startMinutes !== null ? startMinutes : undefined,
         endTimeMinutes: repeating && endMinutes !== null ? endMinutes : undefined,
         requiredTemplateIds,
+        hostRequiredTemplateIds,
         price: organizationHasStripeAccount ? price : (slot?.price ?? 0),
       };
 
@@ -425,6 +434,7 @@ export default function CreateRentalSlotModal({
           startTimeMinutes: payload.startTimeMinutes,
           endTimeMinutes: payload.endTimeMinutes,
           requiredTemplateIds: payload.requiredTemplateIds,
+          hostRequiredTemplateIds: payload.hostRequiredTemplateIds,
           price: organizationHasStripeAccount ? payload.price : (slot.price ?? 0),
         };
         const result = await fieldService.updateRentalSlot(field, updatePayload);
@@ -539,7 +549,7 @@ export default function CreateRentalSlotModal({
 
           <div>
             <MultiSelect
-              label="Event required templates (optional)"
+              label="Participant required templates (optional)"
               data={templateOptions}
               value={requiredTemplateIds}
               onChange={setRequiredTemplateIds}
@@ -554,6 +564,20 @@ export default function CreateRentalSlotModal({
                 No templates available for this organization yet.
               </Text>
             )}
+          </div>
+
+          <div>
+            <MultiSelect
+              label="Host required templates (optional)"
+              data={templateOptions}
+              value={hostRequiredTemplateIds}
+              onChange={setHostRequiredTemplateIds}
+              placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+              searchable
+              clearable
+              disabled={!hasTargetFields || !organizationId || templatesLoading}
+              nothingFoundMessage="No templates found"
+            />
           </div>
 
           <Switch

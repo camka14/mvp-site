@@ -169,6 +169,37 @@ describe('POST /api/billing/purchase-intent', () => {
     expect(String(data.error ?? '')).toContain('Damage Waiver');
   });
 
+  it('uses host-required templates for rental checkout verification when provided', async () => {
+    prismaMock.templateDocuments.findMany.mockResolvedValue([
+      {
+        id: 'tmpl_host_only',
+        title: 'Host Rental Contract',
+        signOnce: false,
+      },
+    ]);
+    prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+      timeSlot: {
+        $id: 'slot_1',
+        price: 2500,
+        requiredTemplateIds: ['tmpl_participant_only'],
+        hostRequiredTemplateIds: ['tmpl_host_only'],
+      },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(String(data.error ?? '')).toContain('Host Rental Contract');
+    expect(prismaMock.templateDocuments.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['tmpl_host_only'] } },
+      }),
+    );
+  });
+
   it('creates STARTED registration reservation before event checkout payment intent', async () => {
     const now = new Date('2026-03-18T12:00:00.000Z');
     prismaMock.eventRegistrations.findMany

@@ -75,6 +75,7 @@ type RentalSelectionValidation = {
   totalCents: number;
   totalHours: number;
   requiredTemplateIds: string[];
+  hostRequiredTemplateIds: string[];
   errors: string[];
 };
 
@@ -869,6 +870,7 @@ export default function FieldsTabContent({ organization, organizationId, current
       const dateRange = resolveSelectionDateRange(selectionItem);
       const errors: string[] = [];
       const requiredTemplateIds = new Set<string>();
+      const hostRequiredTemplateIds = new Set<string>();
       let totalCents = 0;
 
       if (!normalizedFieldIds.length) {
@@ -908,6 +910,12 @@ export default function FieldsTabContent({ organization, organizationId, current
               requiredTemplateIds.add(normalized);
             }
           });
+          (matchedRentalSlot.hostRequiredTemplateIds || []).forEach((id) => {
+            const normalized = String(id ?? '').trim();
+            if (normalized.length > 0) {
+              hostRequiredTemplateIds.add(normalized);
+            }
+          });
         });
       }
 
@@ -921,6 +929,7 @@ export default function FieldsTabContent({ organization, organizationId, current
         totalCents,
         totalHours: dateRange ? Math.max(0, (dateRange.end.getTime() - dateRange.start.getTime()) / (60 * 60 * 1000)) : 0,
         requiredTemplateIds: Array.from(requiredTemplateIds),
+        hostRequiredTemplateIds: Array.from(hostRequiredTemplateIds),
         errors,
       };
     });
@@ -938,6 +947,10 @@ export default function FieldsTabContent({ organization, organizationId, current
 
   const rentalRequiredTemplateIds = useMemo(
     () => Array.from(new Set(rentalSelectionValidations.flatMap((validation) => validation.requiredTemplateIds))),
+    [rentalSelectionValidations],
+  );
+  const rentalHostRequiredTemplateIds = useMemo(
+    () => Array.from(new Set(rentalSelectionValidations.flatMap((validation) => validation.hostRequiredTemplateIds))),
     [rentalSelectionValidations],
   );
 
@@ -1274,6 +1287,9 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (rentalRequiredTemplateIds.length > 0) {
       params.set('rentalRequiredTemplateIds', rentalRequiredTemplateIds.join(','));
     }
+    if (rentalHostRequiredTemplateIds.length > 0) {
+      params.set('rentalHostRequiredTemplateIds', rentalHostRequiredTemplateIds.join(','));
+    }
     if (serializedSelections.length > 0) {
       params.set('rentalSelections', JSON.stringify(serializedSelections));
     }
@@ -1291,6 +1307,7 @@ export default function FieldsTabContent({ organization, organizationId, current
     fields,
     hostSelection,
     org?.$id,
+    rentalHostRequiredTemplateIds,
     rentalRequiredTemplateIds,
     rentalSelectionValidations,
     totalRentalCents,

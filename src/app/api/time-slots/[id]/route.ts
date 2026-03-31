@@ -71,6 +71,19 @@ const normalizeFieldIds = (value: unknown): string[] => {
   );
 };
 
+const normalizeTemplateIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .map((id) => String(id).trim())
+        .filter((id) => id.length > 0),
+    ),
+  );
+};
+
 const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   const normalized = message.toLowerCase();
@@ -141,15 +154,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
   if (payload.requiredTemplateIds !== undefined) {
-    payload.requiredTemplateIds = Array.isArray(payload.requiredTemplateIds)
-      ? Array.from(
-        new Set(
-          payload.requiredTemplateIds
-            .map((id: unknown) => String(id))
-            .filter((id: string) => id.length > 0),
-        ),
-      )
-      : [];
+    payload.requiredTemplateIds = normalizeTemplateIds(payload.requiredTemplateIds);
+  }
+  if (payload.hostRequiredTemplateIds !== undefined) {
+    payload.hostRequiredTemplateIds = normalizeTemplateIds(payload.hostRequiredTemplateIds);
   }
   if (payload.scheduledFieldIds !== undefined || payload.scheduledFieldId !== undefined) {
     const normalized = normalizeFieldIds([
@@ -210,6 +218,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'endDate',
     'price',
     'requiredTemplateIds',
+    'hostRequiredTemplateIds',
   ] as const;
   for (const key of updatableKeys) {
     if (Object.prototype.hasOwnProperty.call(payload, key)) {

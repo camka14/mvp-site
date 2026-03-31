@@ -727,6 +727,7 @@ function EventScheduleContent() {
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
   const rentalPriceParam = searchParams?.get('rentalPriceCents') || undefined;
   const rentalRequiredTemplateIdsParam = searchParams?.get('rentalRequiredTemplateIds') || undefined;
+  const rentalHostRequiredTemplateIdsParam = searchParams?.get('rentalHostRequiredTemplateIds') || undefined;
   const rentalSelectionsParam = searchParams?.get('rentalSelections') || undefined;
   const rentalRequiredTemplateIds = useMemo(
     () => (
@@ -742,6 +743,21 @@ function EventScheduleContent() {
         : []
     ),
     [rentalRequiredTemplateIdsParam],
+  );
+  const rentalHostRequiredTemplateIds = useMemo(
+    () => (
+      rentalHostRequiredTemplateIdsParam
+        ? Array.from(
+          new Set(
+            rentalHostRequiredTemplateIdsParam
+              .split(',')
+              .map((id) => id.trim())
+              .filter((id) => id.length > 0),
+          ),
+        )
+        : []
+    ),
+    [rentalHostRequiredTemplateIdsParam],
   );
   const rentalSelections = useMemo<RentalSelectionQuery[]>(() => {
     if (!rentalSelectionsParam) {
@@ -1264,7 +1280,7 @@ function EventScheduleContent() {
       end: normalizedEnd,
       fieldId: rentalFieldIdParam ?? rentalFieldIdsFromSelections[0] ?? undefined,
       priceCents: normalizedPrice,
-      requiredTemplateIds: rentalRequiredTemplateIds,
+      requiredTemplateIds: rentalHostRequiredTemplateIds,
     };
   }, [
     isCreateMode,
@@ -1272,8 +1288,8 @@ function EventScheduleContent() {
     normalizedRentalStart,
     rentalFieldIdParam,
     rentalFieldIdsFromSelections,
+    rentalHostRequiredTemplateIds,
     rentalPriceParam,
-    rentalRequiredTemplateIds,
   ]);
 
   const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
@@ -1312,9 +1328,10 @@ function EventScheduleContent() {
       repeating: false,
       scheduledFieldId,
       price,
-      requiredTemplateIds: rentalPurchaseContext.requiredTemplateIds ?? [],
+      requiredTemplateIds: rentalRequiredTemplateIds,
+      hostRequiredTemplateIds: rentalPurchaseContext.requiredTemplateIds ?? [],
     };
-  }, [changesEvent?.fields, rentalImmutableDefaults?.fields, rentalPurchaseContext]);
+  }, [changesEvent?.fields, rentalImmutableDefaults?.fields, rentalPurchaseContext, rentalRequiredTemplateIds]);
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
@@ -5415,7 +5432,7 @@ function EventScheduleContent() {
   }, [handlePreviewEventUpdate, rentalOrganization, scheduleRegularEvent, syncPendingEventFormInvites, user]);
 
   const startRentalCheckoutFlow = useCallback(async (context: PendingRentalCheckoutContext) => {
-    if (!rentalRequiredTemplateIds.length) {
+    if (!rentalHostRequiredTemplateIds.length) {
       await startRentalPaymentIntent(context);
       return;
     }
@@ -5428,7 +5445,7 @@ function EventScheduleContent() {
       const signLinks = await boldsignService.createRentalSignLinks({
         user,
         userEmail: authUser?.email ?? undefined,
-        templateIds: rentalRequiredTemplateIds,
+        templateIds: rentalHostRequiredTemplateIds,
         eventId: context.eventDraft.$id ?? eventId,
         organizationId: rentalOrganization?.$id ?? context.eventDraft.organizationId ?? undefined,
         timeoutMs: 45_000,
@@ -5453,7 +5470,7 @@ function EventScheduleContent() {
   }, [
     authUser?.email,
     eventId,
-    rentalRequiredTemplateIds,
+    rentalHostRequiredTemplateIds,
     rentalOrganization?.$id,
     startRentalPaymentIntent,
     user,
@@ -6113,7 +6130,7 @@ function EventScheduleContent() {
           ? rentalPurchaseTimeSlot.price
           : undefined;
         const requiresPayment = typeof rentalPriceCents === 'number' && rentalPriceCents > 0;
-        const requiresSignature = rentalRequiredTemplateIds.length > 0;
+        const requiresSignature = rentalHostRequiredTemplateIds.length > 0;
 
         if (requiresSignature || requiresPayment) {
           await startRentalCheckoutFlow({

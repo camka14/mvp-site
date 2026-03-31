@@ -14,6 +14,7 @@ export type CanonicalTimeSlotInput = {
   price: number | null;
   divisions: string[];
   requiredTemplateIds: string[];
+  hostRequiredTemplateIds: string[];
 };
 
 const MINUTE_MS = 60 * 1000;
@@ -208,6 +209,7 @@ export const canonicalizeTimeSlots = ({
       price: normalizePrice(slot.price),
       divisions,
       requiredTemplateIds: normalizeRequiredTemplateIds(slot.requiredTemplateIds),
+      hostRequiredTemplateIds: normalizeRequiredTemplateIds(slot.hostRequiredTemplateIds),
     } satisfies CanonicalTimeSlotInput];
   });
 };

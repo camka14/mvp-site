@@ -98,8 +98,13 @@ export async function DELETE(
       select: { id: true, requiredTemplateIds: true },
     }),
     prisma.timeSlots.findMany({
-      where: { requiredTemplateIds: { has: templateDocumentId } },
-      select: { id: true, requiredTemplateIds: true },
+      where: {
+        OR: [
+          { requiredTemplateIds: { has: templateDocumentId } },
+          { hostRequiredTemplateIds: { has: templateDocumentId } },
+        ],
+      },
+      select: { id: true, requiredTemplateIds: true, hostRequiredTemplateIds: true },
     }),
   ]);
 
@@ -116,6 +121,7 @@ export async function DELETE(
       where: { id: timeSlot.id },
       data: {
         requiredTemplateIds: timeSlot.requiredTemplateIds.filter((entry) => entry !== templateDocumentId),
+        hostRequiredTemplateIds: timeSlot.hostRequiredTemplateIds.filter((entry) => entry !== templateDocumentId),
         updatedAt: now,
       },
     })),

@@ -2092,6 +2092,7 @@ describe('League schedule page', () => {
         if (key === 'rentalFieldId') return 'field_1';
         if (key === 'rentalOrgId') return 'org_rental';
         if (key === 'rentalRequiredTemplateIds') return 'tmpl_waiver,tmpl_release';
+        if (key === 'rentalHostRequiredTemplateIds') return 'tmpl_host_contract';
         if (key === 'mode') return 'edit';
         return null;
       },
@@ -2115,8 +2116,7 @@ describe('League schedule page', () => {
       'tmpl_release',
     ]);
     expect(capturedEventFormProps?.rentalPurchase?.requiredTemplateIds).toEqual([
-      'tmpl_waiver',
-      'tmpl_release',
+      'tmpl_host_contract',
     ]);
   });
 
@@ -2151,7 +2151,7 @@ describe('League schedule page', () => {
         if (key === 'rentalEnd') return end;
         if (key === 'rentalFieldId') return 'field_1';
         if (key === 'rentalOrgId') return 'org_rental';
-        if (key === 'rentalRequiredTemplateIds') return 'tmpl_rental_contract';
+        if (key === 'rentalHostRequiredTemplateIds') return 'tmpl_rental_contract';
         return null;
       },
     });

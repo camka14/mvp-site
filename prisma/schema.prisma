@@ -567,6 +567,7 @@ model TimeSlots {
   price               Int?
   divisions           String[]  @default([])
   requiredTemplateIds String[]  @default([])
+  hostRequiredTemplateIds String[] @default([])
 
   @@index([scheduledFieldId])
 }
