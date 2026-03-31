@@ -215,9 +215,6 @@ class FieldService {
     const requiredTemplateIds = Array.isArray(row.requiredTemplateIds)
       ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id: string) => id.length > 0)
       : [];
-    const rentalDocumentTemplateId = typeof row.rentalDocumentTemplateId === 'string'
-      ? row.rentalDocumentTemplateId.trim()
-      : '';
     const slot: TimeSlot = {
       $id: String(row.$id ?? row.id ?? ''),
       dayOfWeek: (normalizedDays[0] ?? Number(row.dayOfWeek ?? 0)) as TimeSlot['dayOfWeek'],
@@ -227,7 +224,6 @@ class FieldService {
       scheduledFieldIds: normalizedFieldIds,
       eventId: typeof row.eventId === 'string' ? row.eventId : undefined,
       requiredTemplateIds,
-      rentalDocumentTemplateId: rentalDocumentTemplateId.length > 0 ? rentalDocumentTemplateId : null,
     };
 
     if (typeof startMinutes === 'number') {
@@ -345,10 +341,6 @@ class FieldService {
       requiredTemplateIds: Array.isArray(slot.requiredTemplateIds)
         ? Array.from(new Set(slot.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
         : [],
-      rentalDocumentTemplateId:
-        typeof slot.rentalDocumentTemplateId === 'string' && slot.rentalDocumentTemplateId.trim().length > 0
-          ? slot.rentalDocumentTemplateId.trim()
-          : null,
     };
 
     if (options.slotId) {

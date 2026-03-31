@@ -290,8 +290,6 @@ export interface TimeSlot {
   repeating: boolean;
   price?: number;
   requiredTemplateIds?: string[];
-  rentalDocumentTemplateId?: string | null;
-  rentalDocumentTemplateIds?: string[];
   event?: Event;
   eventId?: string;
   field?: Field;

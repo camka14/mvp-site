@@ -29,7 +29,6 @@ const createSchema = z.object({
   scheduledFieldId: z.string().optional(),
   price: z.number().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
-  rentalDocumentTemplateId: z.string().nullable().optional(),
 }).passthrough();
 
 const normalizeDivisionKeys = (value: unknown): string[] => {
@@ -232,10 +231,6 @@ export async function POST(req: NextRequest) {
   const requiredTemplateIds = Array.isArray(data.requiredTemplateIds)
     ? Array.from(new Set(data.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
     : [];
-  const rentalDocumentTemplateId =
-    typeof data.rentalDocumentTemplateId === 'string' && data.rentalDocumentTemplateId.trim().length > 0
-      ? data.rentalDocumentTemplateId.trim()
-      : null;
   const scheduledFieldIds = normalizeFieldIds([
     ...(Array.isArray(data.scheduledFieldIds) ? data.scheduledFieldIds : []),
     ...(typeof data.scheduledFieldId === 'string' ? [data.scheduledFieldId] : []),
@@ -250,16 +245,15 @@ export async function POST(req: NextRequest) {
         id: data.id,
         dayOfWeek: normalizedDays[0] ?? data.dayOfWeek ?? null,
         daysOfWeek: normalizedDays,
-      startTimeMinutes: data.startTimeMinutes ?? null,
-      endTimeMinutes: data.endTimeMinutes ?? null,
-      startDate,
-      endDate: normalizedEndDate,
-      repeating,
-      scheduledFieldId,
-      scheduledFieldIds,
+        startTimeMinutes: data.startTimeMinutes ?? null,
+        endTimeMinutes: data.endTimeMinutes ?? null,
+        startDate,
+        endDate: normalizedEndDate,
+        repeating,
+        scheduledFieldId,
+        scheduledFieldIds,
         price: data.price ?? null,
         requiredTemplateIds,
-        rentalDocumentTemplateId,
         createdAt: now,
         updatedAt: now,
       } as any,

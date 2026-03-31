@@ -94,7 +94,7 @@ type RentalPurchaseContext = {
     organization?: Organization | null;
     organizationEmail?: string | null;
     priceCents?: number;
-    rentalDocumentTemplateId?: string;
+    requiredTemplateIds?: string[];
 };
 
 type StaffAssignmentRole = 'OFFICIAL' | 'ASSISTANT_HOST';

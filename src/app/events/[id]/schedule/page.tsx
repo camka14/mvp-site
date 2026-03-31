@@ -727,28 +727,7 @@ function EventScheduleContent() {
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
   const rentalPriceParam = searchParams?.get('rentalPriceCents') || undefined;
   const rentalRequiredTemplateIdsParam = searchParams?.get('rentalRequiredTemplateIds') || undefined;
-  const rentalDocumentTemplateIdParam = searchParams?.get('rentalDocumentTemplateId') || undefined;
-  const rentalDocumentTemplateIdsParam = searchParams?.get('rentalDocumentTemplateIds') || undefined;
   const rentalSelectionsParam = searchParams?.get('rentalSelections') || undefined;
-  const rentalDocumentTemplateIds = useMemo(
-    () => Array.from(
-      new Set(
-        [
-          ...(rentalDocumentTemplateIdsParam
-            ? rentalDocumentTemplateIdsParam
-              .split(',')
-              .map((id) => id.trim())
-              .filter((id) => id.length > 0)
-            : []),
-          ...(rentalDocumentTemplateIdParam && rentalDocumentTemplateIdParam.trim().length > 0
-            ? [rentalDocumentTemplateIdParam.trim()]
-            : []),
-        ],
-      ),
-    ),
-    [rentalDocumentTemplateIdParam, rentalDocumentTemplateIdsParam],
-  );
-  const rentalDocumentTemplateId = rentalDocumentTemplateIds[0];
   const rentalRequiredTemplateIds = useMemo(
     () => (
       rentalRequiredTemplateIdsParam
@@ -1285,18 +1264,16 @@ function EventScheduleContent() {
       end: normalizedEnd,
       fieldId: rentalFieldIdParam ?? rentalFieldIdsFromSelections[0] ?? undefined,
       priceCents: normalizedPrice,
-      rentalDocumentTemplateId,
-      rentalDocumentTemplateIds,
+      requiredTemplateIds: rentalRequiredTemplateIds,
     };
   }, [
     isCreateMode,
     normalizedRentalEnd,
     normalizedRentalStart,
-    rentalDocumentTemplateId,
-    rentalDocumentTemplateIds,
     rentalFieldIdParam,
     rentalFieldIdsFromSelections,
     rentalPriceParam,
+    rentalRequiredTemplateIds,
   ]);
 
   const rentalPurchaseTimeSlot = useMemo<TimeSlot | null>(() => {
@@ -1335,8 +1312,7 @@ function EventScheduleContent() {
       repeating: false,
       scheduledFieldId,
       price,
-      rentalDocumentTemplateId: rentalPurchaseContext.rentalDocumentTemplateId ?? null,
-      rentalDocumentTemplateIds: rentalPurchaseContext.rentalDocumentTemplateIds ?? [],
+      requiredTemplateIds: rentalPurchaseContext.requiredTemplateIds ?? [],
     };
   }, [changesEvent?.fields, rentalImmutableDefaults?.fields, rentalPurchaseContext]);
 
@@ -5439,7 +5415,7 @@ function EventScheduleContent() {
   }, [handlePreviewEventUpdate, rentalOrganization, scheduleRegularEvent, syncPendingEventFormInvites, user]);
 
   const startRentalCheckoutFlow = useCallback(async (context: PendingRentalCheckoutContext) => {
-    if (!rentalDocumentTemplateIds.length) {
+    if (!rentalRequiredTemplateIds.length) {
       await startRentalPaymentIntent(context);
       return;
     }
@@ -5452,7 +5428,7 @@ function EventScheduleContent() {
       const signLinks = await boldsignService.createRentalSignLinks({
         user,
         userEmail: authUser?.email ?? undefined,
-        templateIds: rentalDocumentTemplateIds,
+        templateIds: rentalRequiredTemplateIds,
         eventId: context.eventDraft.$id ?? eventId,
         organizationId: rentalOrganization?.$id ?? context.eventDraft.organizationId ?? undefined,
         timeoutMs: 45_000,
@@ -5477,7 +5453,7 @@ function EventScheduleContent() {
   }, [
     authUser?.email,
     eventId,
-    rentalDocumentTemplateIds,
+    rentalRequiredTemplateIds,
     rentalOrganization?.$id,
     startRentalPaymentIntent,
     user,
@@ -6137,7 +6113,7 @@ function EventScheduleContent() {
           ? rentalPurchaseTimeSlot.price
           : undefined;
         const requiresPayment = typeof rentalPriceCents === 'number' && rentalPriceCents > 0;
-        const requiresSignature = rentalDocumentTemplateIds.length > 0;
+        const requiresSignature = rentalRequiredTemplateIds.length > 0;
 
         if (requiresSignature || requiresPayment) {
           await startRentalCheckoutFlow({

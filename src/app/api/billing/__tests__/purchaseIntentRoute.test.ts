@@ -106,7 +106,7 @@ describe('POST /api/billing/purchase-intent', () => {
     const res = await POST(jsonPost({
       user: { $id: 'user_1' },
       event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
-      timeSlot: { $id: 'slot_1', price: 2500, rentalDocumentTemplateId: 'tmpl_rental_1' },
+      timeSlot: { $id: 'slot_1', price: 2500, requiredTemplateIds: ['tmpl_rental_1'] },
     }));
     const data = await res.json();
 
@@ -129,7 +129,7 @@ describe('POST /api/billing/purchase-intent', () => {
     const res = await POST(jsonPost({
       user: { $id: 'user_1' },
       event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
-      timeSlot: { $id: 'slot_1', price: 2500, rentalDocumentTemplateId: 'tmpl_rental_1' },
+      timeSlot: { $id: 'slot_1', price: 2500, requiredTemplateIds: ['tmpl_rental_1'] },
     }));
     const data = await res.json();
 
@@ -160,8 +160,7 @@ describe('POST /api/billing/purchase-intent', () => {
       timeSlot: {
         $id: 'slot_1',
         price: 2500,
-        rentalDocumentTemplateId: 'tmpl_rental_1',
-        rentalDocumentTemplateIds: ['tmpl_rental_1', 'tmpl_rental_2', 'tmpl_rental_1'],
+        requiredTemplateIds: ['tmpl_rental_1', 'tmpl_rental_2', 'tmpl_rental_1'],
       },
     }));
     const data = await res.json();

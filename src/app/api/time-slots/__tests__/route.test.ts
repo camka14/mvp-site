@@ -9,6 +9,7 @@ const prismaMock = {
   },
   timeSlots: {
     findMany: jest.fn(),
+    findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -57,6 +58,12 @@ describe('time-slots routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.timeSlots.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+      id: where.id,
+      startDate: new Date('2026-01-05T00:00:00.000Z'),
+      endDate: null,
+      repeating: true,
+    }));
   });
 
   it('GET applies array-aware field/day filters and returns canonical arrays with legacy aliases', async () => {
@@ -192,8 +199,7 @@ describe('time-slots routes', () => {
       startTimeMinutes: 540,
       endTimeMinutes: 600,
       price: null,
-      requiredTemplateIds: [],
-      rentalDocumentTemplateId: 'tmpl_rental_doc',
+      requiredTemplateIds: ['tmpl_rental_doc'],
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -208,7 +214,7 @@ describe('time-slots routes', () => {
       endTimeMinutes: 600,
       repeating: true,
       divisions: ['Open'],
-      rentalDocumentTemplateId: 'tmpl_rental_doc',
+      requiredTemplateIds: ['tmpl_rental_doc', 'tmpl_rental_doc'],
       startDate: '2026-01-05T00:00:00.000Z',
       endDate: null,
     }));
@@ -222,7 +228,7 @@ describe('time-slots routes', () => {
           daysOfWeek: [1, 3],
           scheduledFieldId: 'field_2',
           scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
-          rentalDocumentTemplateId: 'tmpl_rental_doc',
+          requiredTemplateIds: ['tmpl_rental_doc'],
         }),
       }),
     );
@@ -232,7 +238,7 @@ describe('time-slots routes', () => {
       daysOfWeek: [1, 3],
       scheduledFieldId: 'field_2',
       scheduledFieldIds: ['field_2', 'field_1', 'field_3'],
-      rentalDocumentTemplateId: 'tmpl_rental_doc',
+      requiredTemplateIds: ['tmpl_rental_doc'],
     }));
   });
 
@@ -250,8 +256,7 @@ describe('time-slots routes', () => {
       startTimeMinutes: 540,
       endTimeMinutes: 600,
       price: null,
-      requiredTemplateIds: [],
-      rentalDocumentTemplateId: 'tmpl_patch_doc',
+      requiredTemplateIds: ['tmpl_patch_doc'],
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -261,7 +266,7 @@ describe('time-slots routes', () => {
         slot: {
           daysOfWeek: [4, 2, 4],
           scheduledFieldIds: ['field_a', 'field_b', 'field_a'],
-          rentalDocumentTemplateId: '  tmpl_patch_doc  ',
+          requiredTemplateIds: ['tmpl_patch_doc', 'tmpl_patch_doc'],
         },
       }, 'PATCH'),
       { params: Promise.resolve({ id: 'slot_patch' }) },
@@ -277,7 +282,7 @@ describe('time-slots routes', () => {
           daysOfWeek: [2, 4],
           scheduledFieldId: 'field_a',
           scheduledFieldIds: ['field_a', 'field_b'],
-          rentalDocumentTemplateId: 'tmpl_patch_doc',
+          requiredTemplateIds: ['tmpl_patch_doc'],
         }),
       }),
     );
@@ -287,7 +292,7 @@ describe('time-slots routes', () => {
       daysOfWeek: [2, 4],
       scheduledFieldId: 'field_a',
       scheduledFieldIds: ['field_a', 'field_b'],
-      rentalDocumentTemplateId: 'tmpl_patch_doc',
+      requiredTemplateIds: ['tmpl_patch_doc'],
     }));
   });
 
@@ -306,7 +311,6 @@ describe('time-slots routes', () => {
       endTimeMinutes: 600,
       price: null,
       requiredTemplateIds: [],
-      rentalDocumentTemplateId: null,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
       updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });

@@ -1775,10 +1775,6 @@ class EventService {
             requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
                 ? row.requiredTemplateIds.map((id: unknown) => String(id)).filter((id: string) => id.length > 0)
                 : [],
-            rentalDocumentTemplateId:
-                typeof row.rentalDocumentTemplateId === 'string' && row.rentalDocumentTemplateId.trim().length > 0
-                    ? row.rentalDocumentTemplateId.trim()
-                    : null,
         };
 
         const normalizedStartDate = ensureLocalDateTimeString(row.startDate ?? row.start ?? null);

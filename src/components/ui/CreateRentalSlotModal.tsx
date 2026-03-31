@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Group, Modal, MultiSelect, Select, Stack, Switch, Text } from '@mantine/core';
+import { Button, Group, Modal, MultiSelect, Stack, Switch, Text } from '@mantine/core';
 import { DatePickerInput, TimeInput } from '@mantine/dates';
 import type { Field, TimeSlot } from '@/types';
 import { fieldService, type ManageRentalSlotResult } from '@/lib/fieldService';
@@ -134,7 +134,6 @@ export default function CreateRentalSlotModal({
   const [repeating, setRepeating] = useState<boolean>(false);
   const [price, setPrice] = useState<number>(0);
   const [requiredTemplateIds, setRequiredTemplateIds] = useState<string[]>([]);
-  const [rentalDocumentTemplateId, setRentalDocumentTemplateId] = useState<string | null>(null);
   const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [templatesLoading, setTemplatesLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -192,11 +191,6 @@ export default function CreateRentalSlotModal({
           ? slot.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)
           : [],
       );
-      setRentalDocumentTemplateId(
-        typeof slot.rentalDocumentTemplateId === 'string' && slot.rentalDocumentTemplateId.trim().length > 0
-          ? slot.rentalDocumentTemplateId.trim()
-          : null,
-      );
       return;
     }
 
@@ -216,7 +210,6 @@ export default function CreateRentalSlotModal({
       setRepeating(true);
       setPrice(0);
       setRequiredTemplateIds([]);
-      setRentalDocumentTemplateId(null);
       return;
     }
 
@@ -231,7 +224,6 @@ export default function CreateRentalSlotModal({
     setRepeating(false);
     setPrice(0);
     setRequiredTemplateIds([]);
-    setRentalDocumentTemplateId(null);
   }, [opened, slot, initialRange, organizationHasStripeAccount]);
 
   useEffect(() => {
@@ -416,7 +408,6 @@ export default function CreateRentalSlotModal({
         startTimeMinutes: repeating && startMinutes !== null ? startMinutes : undefined,
         endTimeMinutes: repeating && endMinutes !== null ? endMinutes : undefined,
         requiredTemplateIds,
-        rentalDocumentTemplateId: rentalDocumentTemplateId ?? null,
         price: organizationHasStripeAccount ? price : (slot?.price ?? 0),
       };
 
@@ -434,7 +425,6 @@ export default function CreateRentalSlotModal({
           startTimeMinutes: payload.startTimeMinutes,
           endTimeMinutes: payload.endTimeMinutes,
           requiredTemplateIds: payload.requiredTemplateIds,
-          rentalDocumentTemplateId: payload.rentalDocumentTemplateId ?? null,
           price: organizationHasStripeAccount ? payload.price : (slot.price ?? 0),
         };
         const result = await fieldService.updateRentalSlot(field, updatePayload);
@@ -545,21 +535,6 @@ export default function CreateRentalSlotModal({
                 Connect a Stripe account to charge for rentals.
               </Text>
             )}
-          </div>
-
-          <div>
-            <Select
-              label="Rental document template (optional)"
-              description="If selected, renters must sign this document before checkout."
-              data={templateOptions}
-              value={rentalDocumentTemplateId}
-              onChange={setRentalDocumentTemplateId}
-              placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'}
-              searchable
-              clearable
-              disabled={!hasTargetFields || !organizationId || templatesLoading}
-              nothingFoundMessage="No templates found"
-            />
           </div>
 
           <div>

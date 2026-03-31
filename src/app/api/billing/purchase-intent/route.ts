@@ -383,37 +383,36 @@ export async function POST(req: NextRequest) {
   const eventId = extractEntityId(payload.event);
   const teamId = extractEntityId(payload.team);
   const divisionSelectionInput = normalizeDivisionInput(payloadRow);
-  const rentalDocumentTemplateIds = Array.from(
+  const requiredTemplateIds = Array.from(
     new Set(
       [
-        normalizeString(payload.timeSlot?.rentalDocumentTemplateId),
         ...(
-          Array.isArray(payload.timeSlot?.rentalDocumentTemplateIds)
-            ? payload.timeSlot.rentalDocumentTemplateIds.map((value) => normalizeString(value))
+          Array.isArray(payload.timeSlot?.requiredTemplateIds)
+            ? payload.timeSlot.requiredTemplateIds.map((value) => normalizeString(value))
             : []
         ),
       ].filter((value): value is string => Boolean(value)),
     ),
   );
-  const primaryRentalDocumentTemplateId = rentalDocumentTemplateIds[0] ?? null;
+  const primaryRequiredTemplateId = requiredTemplateIds[0] ?? null;
 
-  if (payload.timeSlot && rentalDocumentTemplateIds.length > 0) {
+  if (payload.timeSlot && requiredTemplateIds.length > 0) {
     if (!userId) {
       return NextResponse.json({ error: 'Sign in to complete rental document signing before payment.' }, { status: 403 });
     }
     const templates = await prisma.templateDocuments.findMany({
-      where: { id: { in: rentalDocumentTemplateIds } },
+      where: { id: { in: requiredTemplateIds } },
       select: { id: true, title: true, signOnce: true },
     });
     const templateById = new Map(templates.map((template) => [template.id, template]));
-    const missingTemplateIds = rentalDocumentTemplateIds.filter((templateId) => !templateById.has(templateId));
+    const missingTemplateIds = requiredTemplateIds.filter((templateId) => !templateById.has(templateId));
     if (missingTemplateIds.length > 0) {
       return NextResponse.json({
         error: `Rental document templates not found: ${missingTemplateIds.join(', ')}`,
       }, { status: 400 });
     }
     const unsignedTemplateLabels: string[] = [];
-    for (const templateId of rentalDocumentTemplateIds) {
+    for (const templateId of requiredTemplateIds) {
       const template = templateById.get(templateId);
       if (!template) {
         continue;
@@ -566,9 +565,9 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'time_slot_id', extractEntityId(payload.timeSlot));
     appendMetadata(metadata, 'time_slot_start', payload.timeSlot?.startDate);
     appendMetadata(metadata, 'time_slot_end', payload.timeSlot?.endDate);
-    appendMetadata(metadata, 'rental_template_id', primaryRentalDocumentTemplateId);
-    if (rentalDocumentTemplateIds.length > 1) {
-      appendMetadata(metadata, 'rental_template_ids', rentalDocumentTemplateIds.join(','));
+    appendMetadata(metadata, 'rental_template_id', primaryRequiredTemplateId);
+    if (requiredTemplateIds.length > 1) {
+      appendMetadata(metadata, 'rental_template_ids', requiredTemplateIds.join(','));
     }
     appendMetadata(metadata, 'registration_id', reservedRegistrationId);
     appendMetadata(metadata, 'product_name', product?.name);
