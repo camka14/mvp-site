@@ -1,5 +1,5 @@
 import React from 'react';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 import { GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
 
 const EventLocationDisplay: React.FC<{
@@ -13,6 +13,53 @@ const EventLocationDisplay: React.FC<{
     });
 
     const [showMap, setShowMap] = React.useState(false);
+    const [mapInstance, setMapInstance] = React.useState<google.maps.Map | null>(null);
+    const markerRef = React.useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+
+    React.useEffect(() => {
+        return () => {
+            if (markerRef.current) {
+                markerRef.current.map = null;
+                markerRef.current = null;
+            }
+        };
+    }, []);
+
+    React.useEffect(() => {
+        let cancelled = false;
+
+        const syncMarker = async () => {
+            if (!isLoaded || !mapInstance || !showMap) {
+                if (markerRef.current) {
+                    markerRef.current.map = null;
+                    markerRef.current = null;
+                }
+                return;
+            }
+
+            const markerLibrary = await google.maps.importLibrary('marker') as google.maps.MarkerLibrary;
+            if (cancelled) return;
+
+            if (!markerRef.current) {
+                markerRef.current = new markerLibrary.AdvancedMarkerElement({
+                    map: mapInstance,
+                    position: coordinates,
+                    title: location || 'Event location',
+                });
+                return;
+            }
+
+            markerRef.current.map = mapInstance;
+            markerRef.current.position = coordinates;
+            markerRef.current.title = location || 'Event location';
+        };
+
+        void syncMarker();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [coordinates, isLoaded, location, mapInstance, showMap]);
 
     if (!coordinates.lat || !coordinates.lng) {
         return (
@@ -40,11 +87,13 @@ const EventLocationDisplay: React.FC<{
                         mapContainerStyle={{ width: '100%', height: '100%' }}
                         center={coordinates}
                         zoom={15}
-                    >
-                        <Marker position={coordinates} />
-                    </GoogleMap>
+                        onLoad={setMapInstance}
+                        onUnmount={() => setMapInstance(null)}
+                    />
                 </div>
             )}
         </div>
     );
 };
+
+export default EventLocationDisplay;

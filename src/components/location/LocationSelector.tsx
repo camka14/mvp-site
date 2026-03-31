@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TextInput, Button, Paper } from '@mantine/core';
-import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 import { locationService } from '@/lib/locationService';
 import { GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
+import { useDebounce } from '@/app/hooks/useDebounce';
 
 interface LocationSelectorProps {
     value: string;
@@ -31,9 +31,13 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     const [showMap, setShowMap] = useState(false);
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
     const [mapSearchQuery, setMapSearchQuery] = useState('');
-    const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
     const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+    const [predictionSessionToken, setPredictionSessionToken] = useState<google.maps.places.AutocompleteSessionToken | null>(null);
+    const [predictions, setPredictions] = useState<Array<{ description: string; placeId: string }>>([]);
+    const [predictionsLoading, setPredictionsLoading] = useState(false);
     const geolocationRequestedRef = useRef(false);
+    const advancedMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+    const debouncedMapSearchQuery = useDebounce(mapSearchQuery, 250);
     const hasCoordinates = coordinates.lat !== 0 || coordinates.lng !== 0;
     const mapCenter = hasCoordinates ? coordinates : center;
 
@@ -64,9 +68,99 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         );
     }, [isLoaded, showMap, coordinates.lat, coordinates.lng]);
 
-    const autocompleteOptions = useRef<google.maps.places.AutocompleteOptions>({
-        fields: ['name', 'formatted_address', 'geometry', 'place_id'],
-    });
+    const startPredictionSession = useCallback(() => {
+        if (!predictionSessionToken) {
+            setPredictionSessionToken(locationService.createPlacesSessionToken());
+        }
+    }, [predictionSessionToken]);
+
+    const resetPredictionSession = useCallback(() => {
+        setPredictionSessionToken(null);
+        setPredictions([]);
+        setPredictionsLoading(false);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (advancedMarkerRef.current) {
+                advancedMarkerRef.current.map = null;
+                advancedMarkerRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        let isCancelled = false;
+
+        const mountOrUpdateMarker = async () => {
+            if (!isLoaded || !mapInstance || !hasCoordinates) {
+                if (advancedMarkerRef.current) {
+                    advancedMarkerRef.current.map = null;
+                    advancedMarkerRef.current = null;
+                }
+                return;
+            }
+
+            const markerLibrary = await google.maps.importLibrary('marker') as google.maps.MarkerLibrary;
+            if (isCancelled) return;
+
+            if (!advancedMarkerRef.current) {
+                advancedMarkerRef.current = new markerLibrary.AdvancedMarkerElement({
+                    map: mapInstance,
+                    position: coordinates,
+                    title: value || 'Selected location',
+                });
+                return;
+            }
+
+            advancedMarkerRef.current.map = mapInstance;
+            advancedMarkerRef.current.position = coordinates;
+            advancedMarkerRef.current.title = value || 'Selected location';
+        };
+
+        void mountOrUpdateMarker();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [coordinates, hasCoordinates, isLoaded, mapInstance, value]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const fetchPredictions = async () => {
+            if (!showMap || !isLoaded || !debouncedMapSearchQuery.trim()) {
+                setPredictions([]);
+                setPredictionsLoading(false);
+                return;
+            }
+
+            try {
+                setPredictionsLoading(true);
+                const nextPredictions = await locationService.getPlacePredictions(
+                    debouncedMapSearchQuery,
+                    predictionSessionToken ?? undefined,
+                );
+                if (!cancelled) {
+                    setPredictions(nextPredictions);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setPredictions([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setPredictionsLoading(false);
+                }
+            }
+        };
+
+        void fetchPredictions();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [debouncedMapSearchQuery, isLoaded, predictionSessionToken, showMap]);
 
     const getPlaceDetails = useCallback(async (placeId: string): Promise<google.maps.places.PlaceResult | null> => {
         if (!google.maps?.places) return null;
@@ -128,7 +222,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         }
     }, [disabled, getPlaceDetails, onChange]);
 
-    const searchLocation = async (address: string) => {
+    const searchLocation = useCallback(async (address: string) => {
         if (disabled) return;
         if (!address.trim()) return;
 
@@ -140,23 +234,29 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
         } catch (error) {
             console.error('Location search failed:', error);
         }
-    };
+    }, [disabled, onChange]);
 
-    const handlePlaceChanged = useCallback(() => {
-        if (!autocomplete) return;
-        const place = autocomplete.getPlace();
-        const location = place.geometry?.location;
-        if (!location) return;
+    const selectPrediction = useCallback(async (prediction: { description: string; placeId: string }) => {
+        if (disabled) return;
 
-        const lat = location.lat();
-        const lng = location.lng();
-        const locationName = place.name?.trim() || place.formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-        const formattedAddress = place.formatted_address || undefined;
+        const place = await getPlaceDetails(prediction.placeId);
+        const placeLocation = place?.geometry?.location;
+
+        if (!placeLocation) {
+            await searchLocation(prediction.description);
+            return;
+        }
+
+        const lat = placeLocation.lat();
+        const lng = placeLocation.lng();
+        const locationName = place?.name?.trim() || place?.formatted_address || prediction.description;
+        const formattedAddress = place?.formatted_address || undefined;
 
         setCenter({ lat, lng });
         onChange(locationName, lat, lng, formattedAddress);
         setMapSearchQuery(locationName);
-    }, [autocomplete, onChange]);
+        setPredictions([]);
+    }, [disabled, getPlaceDetails, onChange, searchLocation]);
 
     return (
         <div>
@@ -184,6 +284,9 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                                 const nextShowMap = !showMap;
                                 if (nextShowMap) {
                                     setMapSearchQuery('');
+                                    startPredictionSession();
+                                } else {
+                                    resetPredictionSession();
                                 }
                                 setShowMap(nextShowMap);
                             }}
@@ -213,28 +316,61 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                             boxSizing: 'border-box',
                         }}
                     >
-                        <Autocomplete
-                            onLoad={setAutocomplete}
-                            onPlaceChanged={handlePlaceChanged}
-                            options={autocompleteOptions.current}
-                        >
-                            <TextInput
-                                value={mapSearchQuery}
-                                onChange={(e) => {
-                                    const next = e.currentTarget.value;
-                                    setMapSearchQuery(next);
+                        <TextInput
+                            value={mapSearchQuery}
+                            onFocus={startPredictionSession}
+                            onChange={(e) => {
+                                const next = e.currentTarget.value;
+                                setMapSearchQuery(next);
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    void searchLocation(mapSearchQuery);
+                                }
+                            }}
+                            placeholder="Search for an address or place"
+                            disabled={disabled}
+                            autoComplete="off"
+                        />
+                        {(predictionsLoading || predictions.length > 0) && (
+                            <div
+                                style={{
+                                    marginTop: '4px',
+                                    maxHeight: '200px',
+                                    overflowY: 'auto',
+                                    background: 'white',
+                                    borderRadius: '8px',
+                                    border: '1px solid #e5e7eb',
                                 }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        void searchLocation(mapSearchQuery);
-                                    }
-                                }}
-                                placeholder="Search for an address or place"
-                                disabled={disabled}
-                                autoComplete="off"
-                            />
-                        </Autocomplete>
+                            >
+                                {predictionsLoading && (
+                                    <div style={{ padding: '8px 12px', fontSize: '12px', color: '#6b7280' }}>
+                                        Loading suggestions...
+                                    </div>
+                                )}
+                                {predictions.map((prediction) => (
+                                    <button
+                                        key={prediction.placeId}
+                                        type="button"
+                                        onClick={() => { void selectPrediction(prediction); }}
+                                        style={{
+                                            display: 'block',
+                                            width: '100%',
+                                            padding: '8px 12px',
+                                            textAlign: 'left',
+                                            border: 0,
+                                            borderBottom: '1px solid #f3f4f6',
+                                            background: 'white',
+                                            cursor: 'pointer',
+                                            fontSize: '14px',
+                                        }}
+                                    >
+                                        {prediction.description}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <GoogleMap
                         mapContainerStyle={{ width: '100%', height: '100%' }}
@@ -249,11 +385,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                             mapTypeControl: false,
                             streetViewControl: showStreetViewControl,
                         }}
-                    >
-                        {hasCoordinates && (
-                            <Marker position={coordinates} />
-                        )}
-                    </GoogleMap>
+                    />
                 </Paper>
             )}
         </div>
